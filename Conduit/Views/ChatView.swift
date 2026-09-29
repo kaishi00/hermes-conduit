@@ -705,6 +705,8 @@ struct MessageBubble: View {
             ClarifyCard(message: message)
         case .approval:
             ApprovalCard(message: message)
+        case .inputPrompt:
+            InputPromptCard(message: message)
         case .system:
             if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
                 ReviewSummaryCard(activity: review, timestamp: message.timestamp)
@@ -2392,6 +2394,193 @@ struct ApprovalCard: View {
         case .pending, .submitting: return .orange
         case .approved: return .green
         case .rejected, .expired, .error: return .red
+        }
+    }
+}
+
+/// Masked single-value prompt (sudo password, secret, password-manager
+/// unlock). The typed value lives only in this view's state: it is handed to
+/// AppState once on submit and cleared, never stored on the message.
+struct InputPromptCard: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let message: ChatMessage
+    @EnvironmentObject var appState: AppState
+    /// The typed secret. Deliberately view state only — never AppState, the
+    /// message model or any cache — even though a lazy transcript can drop
+    /// it if the row scrolls far away: retyping is the accepted cost of the
+    /// value never outliving this card.
+    @State private var value = ""
+    @FocusState private var fieldFocused: Bool
+
+    var body: some View {
+        if let prompt = message.inputPrompt {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: iconName(for: prompt.kind))
+                        .foregroundStyle(statusColor(for: prompt.status))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(statusTitle(for: prompt.status))
+                            .font(.caption2.weight(.bold))
+                            .tracking(0.5)
+                            .foregroundStyle(statusColor(for: prompt.status))
+                        Text(prompt.title)
+                            .font(.subheadline.weight(.bold))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    Spacer(minLength: 8)
+                    if prompt.status == .submitting {
+                        ProgressView().controlSize(.small)
+                    } else if prompt.status == .expired {
+                        Image(systemName: "clock.badge.xmark")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                    MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                }
+
+                if let detail = detail(for: prompt), !detail.isEmpty {
+                    SelectableTextView(
+                        text: detail,
+                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                        textColor: .label,
+                        maximumNumberOfLines: 5
+                    )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+
+                switch prompt.status {
+                case .submitted:
+                    Label(AppLocalization.string("Sent"), systemImage: "checkmark")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.green)
+                case .skipped:
+                    Label(AppLocalization.string("Skipped"), systemImage: "forward")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                case .expired:
+                    Text(prompt.error.flatMap { $0.isEmpty ? nil : $0 }
+                         ?? AppLocalization.string("This request is no longer active."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .pending, .submitting, .error:
+                    // No .textContentType(.password): it would offer to save
+                    // a sudo or password-manager master password to the
+                    // system keychain.
+                    SecureField(placeholder(for: prompt.kind), text: $value)
+                        .accessibilityHint(AppLocalization.string("Send gives Hermes this value. Skip lets it continue without one."))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($fieldFocused)
+                        .submitLabel(.send)
+                        .onSubmit { submit(prompt) }
+                        .padding(10)
+                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .disabled(!prompt.isAnswerable)
+
+                    HStack(spacing: 8) {
+                        Button {
+                            submit(prompt)
+                        } label: {
+                            Label(AppLocalization.string("Send"), systemImage: "paperplane.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!prompt.isAnswerable || !hasValue)
+
+                        Spacer(minLength: 0)
+
+                        Button(AppLocalization.string("Skip")) {
+                            skip(prompt)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!prompt.isAnswerable)
+                    }
+                    .font(.subheadline.weight(.medium))
+                }
+
+                if prompt.status == .error, let error = prompt.error, !error.isEmpty {
+                    Label(error, systemImage: "exclamationmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+            .padding(16)
+            .conduitGlassSurface(cornerRadius: 22, tint: statusColor(for: prompt.status).opacity(0.08))
+            .onChange(of: prompt.status) { _, status in
+                // Drop the typed value once the request is settled either
+                // way. A failed send (.error) keeps it so the user can retry
+                // without retyping; it never leaves this view's state.
+                if status == .submitted || status == .skipped || status == .expired { value = "" }
+            }
+        }
+    }
+
+    private func submit(_ prompt: InputPromptActivity) {
+        guard prompt.isAnswerable, hasValue else { return }
+        // Sent untrimmed: a password may legitimately contain spaces.
+        let answer = value
+        fieldFocused = false
+        Task { await appState.respondToInputPrompt(messageId: message.id, value: answer) }
+    }
+
+    /// Whitespace alone is not an answer (Hermes would store it as the
+    /// secret); only a real value enables Send. Deliberate trade-off: an
+    /// all-space password cannot be entered here, while one merely
+    /// containing spaces is sent untrimmed.
+    private var hasValue: Bool {
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func skip(_ prompt: InputPromptActivity) {
+        guard prompt.isAnswerable else { return }
+        value = ""
+        fieldFocused = false
+        Task { await appState.respondToInputPrompt(messageId: message.id, value: nil) }
+    }
+
+    private func detail(for prompt: InputPromptActivity) -> String? {
+        switch prompt.kind {
+        case .sudo: return prompt.command
+        case .secret: return prompt.envVar
+        case .vaultUnlock: return nil
+        }
+    }
+
+    private func iconName(for kind: InputPromptActivity.Kind) -> String {
+        switch kind {
+        case .sudo: return "lock.shield"
+        case .secret: return "key"
+        case .vaultUnlock: return "lock.rectangle.stack"
+        }
+    }
+
+    private func placeholder(for kind: InputPromptActivity.Kind) -> String {
+        switch kind {
+        case .sudo: return AppLocalization.string("sudo password")
+        case .secret: return AppLocalization.string("Secret value")
+        case .vaultUnlock: return AppLocalization.string("Master password")
+        }
+    }
+
+    private func statusTitle(for status: InputPromptActivity.Status) -> String {
+        switch status {
+        case .pending: return AppLocalization.string("INPUT NEEDED")
+        case .submitting: return AppLocalization.string("SENDING")
+        case .submitted: return AppLocalization.string("SENT")
+        case .skipped: return AppLocalization.string("SKIPPED")
+        case .expired: return AppLocalization.string("EXPIRED")
+        case .error: return AppLocalization.string("TRY AGAIN")
+        }
+    }
+
+    private func statusColor(for status: InputPromptActivity.Status) -> Color {
+        switch status {
+        case .pending, .submitting: return .orange
+        case .submitted: return .green
+        case .skipped: return .secondary
+        case .expired, .error: return .red
         }
     }
 }

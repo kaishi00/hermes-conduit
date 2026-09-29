@@ -20,6 +20,9 @@ enum MessageRole: String, Codable, Equatable {
     case tool
     case clarify
     case approval
+    /// A masked single-value prompt from a Hermes server→client request:
+    /// sudo password, skill/setup secret, or password-manager unlock.
+    case inputPrompt
 }
 
 enum SessionSource: String, Codable, CaseIterable {
@@ -397,6 +400,95 @@ struct ApprovalActivity: Codable, Equatable {
     }
 }
 
+/// One masked single-value prompt Hermes asks through a server→client
+/// request (`tui_gateway/contracts/server_requests.py`): `sudo`, `secret`
+/// or `vault.unlock_prompt`, each answered with `{value}` ('' = skip).
+///
+/// Deliberately NOT Codable: the card is live-only (a resume re-announces
+/// it from `open_requests`), so it can never reach the presentation or
+/// offline caches. The value the user types never enters this model — it
+/// lives in the card's view state and goes straight onto the socket.
+struct InputPromptActivity: Equatable {
+    enum Kind: String, Equatable {
+        case sudo
+        case secret
+        case vaultUnlock = "vault.unlock_prompt"
+    }
+
+    enum Status: Equatable {
+        case pending
+        case submitting
+        case submitted
+        case skipped
+        case expired
+        case error
+    }
+
+    /// The server request id (`srq-…`) the answer is addressed to.
+    let requestId: String
+    let sessionId: String
+    let kind: Kind
+    /// sudo: the (server-redacted) command that needs the password.
+    var command: String = ""
+    /// secret: the env var the value is stored under, and Hermes' prompt.
+    var envVar: String = ""
+    var prompt: String = ""
+    /// vault.unlock_prompt: the password manager's name.
+    var displayName: String = ""
+    var status: Status = .pending
+    var error: String?
+
+    /// Parses a server request (live frame or `open_requests` entry).
+    /// Returns nil for any other method or a request without a session.
+    static func from(requestId: String, method: String, params: [String: AnyCodable]) -> InputPromptActivity? {
+        guard let kind = Kind(rawValue: method), !requestId.isEmpty else { return nil }
+        let sessionId = params["session_id"]?.stringValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !sessionId.isEmpty else { return nil }
+        func text(_ key: String) -> String {
+            params[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }
+        var activity = InputPromptActivity(requestId: requestId, sessionId: sessionId, kind: kind)
+        switch kind {
+        case .sudo:
+            activity.command = text("command")
+        case .secret:
+            activity.envVar = text("env_var")
+            activity.prompt = text("prompt")
+        case .vaultUnlock:
+            activity.displayName = text("display_name").isEmpty ? text("backend") : text("display_name")
+        }
+        return activity
+    }
+
+    /// Every sudo / secret / vault-unlock entry of a resume's
+    /// `open_requests`, oldest first as the gateway lists them.
+    static func pending(inOpenRequests openRequests: AnyCodable?) -> [InputPromptActivity] {
+        (openRequests?.arrayValue ?? []).compactMap { entry in
+            guard let object = entry.objectValue,
+                  let id = object["id"]?.stringValue,
+                  let method = object["method"]?.stringValue else { return nil }
+            return from(requestId: id, method: method, params: object["params"]?.objectValue ?? [:])
+        }
+    }
+
+    /// Transcript text for the card row. Never contains the answer.
+    var title: String {
+        switch kind {
+        case .sudo:
+            return AppLocalization.string("Hermes needs your sudo password")
+        case .secret:
+            return prompt.isEmpty ? AppLocalization.string("Hermes needs a secret value") : prompt
+        case .vaultUnlock:
+            return displayName.isEmpty
+                ? AppLocalization.string("Unlock your password manager")
+                : AppLocalization.string("Unlock \(displayName)")
+        }
+    }
+
+    var isAnswerable: Bool { status == .pending || status == .error }
+}
+
 // MARK: - ChatMessage
 
 struct ChatMessage: Identifiable, Equatable {
@@ -411,6 +503,7 @@ struct ChatMessage: Identifiable, Equatable {
     var review: ReviewActivity?
     var clarify: ClarifyActivity?
     var approval: ApprovalActivity?
+    var inputPrompt: InputPromptActivity?
     var attachments: [Attachment]?
     var code: String?
     /// Canonical Hermes `display_kind` when the persisted row arrived with
@@ -435,6 +528,7 @@ struct ChatMessage: Identifiable, Equatable {
         review: ReviewActivity? = nil,
         clarify: ClarifyActivity? = nil,
         approval: ApprovalActivity? = nil,
+        inputPrompt: InputPromptActivity? = nil,
         attachments: [Attachment]? = nil,
         code: String? = nil,
         displayKind: String? = nil
@@ -450,6 +544,7 @@ struct ChatMessage: Identifiable, Equatable {
         self.review = review
         self.clarify = clarify
         self.approval = approval
+        self.inputPrompt = inputPrompt
         self.attachments = attachments
         self.code = code
         self.displayKind = displayKind

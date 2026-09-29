@@ -1241,6 +1241,76 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(RelayTransportPolicy.allowsCredentialTransport(url("http://[::1]:8080/v1/meta")))
     }
 
+    func testConfiguredRelayURLFallsBackToDefaultWhenBlank() {
+        let fallback = PushNotificationService.defaultRelayURL
+        XCTAssertEqual(fallback.absoluteString, "https://push.milim.dev")
+        XCTAssertEqual(PushNotificationService.configuredRelayURL(from: nil), fallback)
+        XCTAssertEqual(PushNotificationService.configuredRelayURL(from: ""), fallback)
+        XCTAssertEqual(PushNotificationService.configuredRelayURL(from: "  \n"), fallback)
+        XCTAssertEqual(PushNotificationService.configuredRelayURL(from: "https:"), fallback, "a value with no host is never used as the relay")
+        XCTAssertEqual(
+            PushNotificationService.configuredRelayURL(from: " https://relay.example.com "),
+            URL(string: "https://relay.example.com")!
+        )
+    }
+
+    func testCredentialRequestsGoToIssuingRelayNotConfiguredOne() {
+        let configured = URL(string: "https://relay-b.example.com")!
+        XCTAssertEqual(
+            PushNotificationService.requestRelayURL(issuer: "https://relay-a.example.com", configured: configured),
+            URL(string: "https://relay-a.example.com")!,
+            "a registration's credential never follows an edited Settings value"
+        )
+        XCTAssertEqual(
+            PushNotificationService.requestRelayURL(issuer: nil, configured: configured),
+            configured,
+            "with no registration the configured relay applies"
+        )
+        XCTAssertNil(
+            PushNotificationService.requestRelayURL(issuer: "", configured: configured),
+            "an issuer that doesn't parse sends the credential nowhere, never to the configured relay"
+        )
+        XCTAssertNil(
+            PushNotificationService.requestRelayURL(issuer: "https:", configured: configured),
+            "an issuer that parses but names no host is just as unusable"
+        )
+        XCTAssertFalse(
+            PushNotificationService.isSameRelay("https:", configured),
+            "an unusable issuer never matches, so Settings offers a move that recovers"
+        )
+        XCTAssertFalse(
+            RelayTransportPolicy.allowsCredentialTransport(PushNotificationService.unusableRelayURL),
+            "the stand-in for an unusable issuer must be refused before any request is sent"
+        )
+    }
+
+    func testSameRelayIgnoresCosmeticDifferences() {
+        func same(_ issuer: String, _ configured: String) -> Bool {
+            PushNotificationService.isSameRelay(issuer, URL(string: configured)!)
+        }
+        XCTAssertTrue(same("https://relay.example.com", "https://relay.example.com/"))
+        XCTAssertTrue(same("https://relay.example.com", "HTTPS://Relay.Example.com"))
+        XCTAssertTrue(same("https://relay.example.com", "https://relay.example.com:443"))
+        XCTAssertTrue(same("https://relay.example.com/push", "https://relay.example.com/push/"))
+        XCTAssertFalse(same("https://relay.example.com", "https://other.example.com"))
+        XCTAssertFalse(same("https://relay.example.com", "http://relay.example.com"))
+        XCTAssertFalse(same("https://relay.example.com", "https://relay.example.com:8443"))
+        XCTAssertFalse(same("https://relay.example.com", "https://relay.example.com/push"))
+        XCTAssertFalse(PushNotificationService.isSameRelay(nil, URL(string: "https://relay.example.com")!))
+    }
+
+    func testRelayInputValidationRejectsValuesThatWouldFallBackSilently() {
+        XCTAssertTrue(PushNotificationService.isValidRelayInput(""), "blank means the default relay")
+        XCTAssertTrue(PushNotificationService.isValidRelayInput("  "))
+        XCTAssertTrue(PushNotificationService.isValidRelayInput("https://relay.example.com"))
+        XCTAssertTrue(PushNotificationService.isValidRelayInput(" http://localhost:8080 "), "loopback HTTP is the development exception")
+        XCTAssertFalse(PushNotificationService.isValidRelayInput("http://relay.example.com"), "cleartext relays would be refused after saving")
+        XCTAssertFalse(PushNotificationService.isValidRelayInput("my relay.com"))
+        XCTAssertFalse(PushNotificationService.isValidRelayInput("relay.example.com"), "a bare host has no scheme")
+        XCTAssertFalse(PushNotificationService.isValidRelayInput("ftp://relay.example.com"))
+        XCTAssertFalse(PushNotificationService.isValidRelayInput("https://"))
+    }
+
     func testApprovalActivityNormalizesGatewayChoices() {
         let activity = MessageNormalizer.approvalActivity(
             from: [

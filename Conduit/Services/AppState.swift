@@ -1458,16 +1458,27 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A Gemini Live conversation only CarPlay was
-    /// presenting ends; one the phone's sheet shows keeps going.
+    /// presenting ends; one the phone's sheet shows keeps going. A
+    /// conversation that already failed drops its memory and persona too:
+    /// nothing presents it, so nothing would close it.
     func releaseCarPlayGeminiLive() {
-        guard isGeminiLiveActive, !(isSceneActive && showGeminiLiveSheet) else { return }
-        closeGeminiLiveConversation()
+        guard !(isSceneActive && showGeminiLiveSheet) else { return }
+        if isGeminiLiveActive {
+            closeGeminiLiveConversation()
+        } else {
+            dropGeminiLiveHostContext()
+        }
     }
 
     func closeGeminiLiveConversation() {
         if geminiLiveControllerCreated { geminiLiveController.stop() }
         showGeminiLiveSheet = false
-        // Personal text isn't kept around between conversations.
+        dropGeminiLiveHostContext()
+    }
+
+    /// Personal text (the host's memory and persona) isn't kept around
+    /// between conversations, nor once nothing presents one.
+    private func dropGeminiLiveHostContext() {
         geminiLiveMemoryContext = nil
         geminiLivePersonality = nil
     }
@@ -1475,7 +1486,12 @@ final class AppState: ObservableObject {
     /// Boundary teardown (disconnect, server/profile change, forced
     /// sign-out). Background jobs are retired by the same boundaries.
     private func stopGeminiLiveConversation() {
-        guard showGeminiLiveSheet || isGeminiLiveActive else { return }
+        // A conversation that already failed with no sheet up has nothing
+        // to close, but its host text still goes at the boundary.
+        guard showGeminiLiveSheet || isGeminiLiveActive else {
+            dropGeminiLiveHostContext()
+            return
+        }
         closeGeminiLiveConversation()
     }
 
@@ -1540,6 +1556,26 @@ final class AppState: ObservableObject {
     /// starts and dropped when it closes.
     private var gptLivePersonality: String?
     private var gptLiveMemoryContext: GeminiLiveMemoryContext?
+
+    /// The host text the live modes hold between a call's start and close,
+    /// by field.
+    var liveVoiceHostContextForTesting: [String] {
+        [
+            geminiLiveMemoryContext != nil ? "geminiMemory" : nil,
+            geminiLivePersonality != nil ? "geminiPersona" : nil,
+            gptLiveMemoryContext != nil ? "gptMemory" : nil,
+            gptLivePersonality != nil ? "gptPersona" : nil,
+        ].compactMap { $0 }
+    }
+
+    /// Fills every live mode's host text, as a call's start would.
+    func installLiveVoiceHostContextForTesting() {
+        let memory = GeminiLiveMemoryContext(text: "memory", canRecall: false)
+        geminiLiveMemoryContext = memory
+        geminiLivePersonality = "persona"
+        gptLiveMemoryContext = memory
+        gptLivePersonality = "persona"
+    }
 
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
     /// through whichever dashboard bridge is current at call time.
@@ -1617,16 +1653,27 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A GPT-Live call only CarPlay was presenting ends;
-    /// one the phone's sheet shows keeps going.
+    /// one the phone's sheet shows keeps going. A call that already failed
+    /// drops its memory and persona too: nothing presents it, so nothing
+    /// would close it.
     func releaseCarPlayGPTLive() {
-        guard isGPTLiveActive, !(isSceneActive && showGPTLiveSheet) else { return }
-        closeGPTLiveConversation()
+        guard !(isSceneActive && showGPTLiveSheet) else { return }
+        if isGPTLiveActive {
+            closeGPTLiveConversation()
+        } else {
+            dropGPTLiveHostContext()
+        }
     }
 
     func closeGPTLiveConversation() {
         if gptLiveControllerCreated { gptLiveController.stop() }
         showGPTLiveSheet = false
-        // Personal text isn't kept around between conversations.
+        dropGPTLiveHostContext()
+    }
+
+    /// Personal text (the host's memory and persona) isn't kept around
+    /// between conversations, nor once nothing presents one.
+    private func dropGPTLiveHostContext() {
         gptLiveMemoryContext = nil
         gptLivePersonality = nil
     }
@@ -1634,7 +1681,12 @@ final class AppState: ObservableObject {
     /// Boundary teardown (disconnect, server/profile change, sign-out, or
     /// another voice mode taking over).
     private func stopGPTLiveConversation() {
-        guard showGPTLiveSheet || isGPTLiveActive else { return }
+        // A conversation that already failed with no sheet up has nothing
+        // to close, but its host text still goes at the boundary.
+        guard showGPTLiveSheet || isGPTLiveActive else {
+            dropGPTLiveHostContext()
+            return
+        }
         closeGPTLiveConversation()
     }
 
@@ -7809,6 +7861,15 @@ final class AppState: ObservableObject {
         if let pendingClarify = result.snapshot.pendingClarify {
             applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
         }
+        for clarify in result.snapshot.additionalPendingClarifies {
+            applyClarifyActivity(clarify, source: .authoritativeSnapshot)
+        }
+        // Masked input prompts are live-only (never cached), so the rebuilt
+        // transcript holds none: the gateway's open requests are the whole
+        // truth, and a prompt withdrawn while detached simply stays gone.
+        for prompt in result.snapshot.pendingInputPrompts {
+            applyInputPromptActivity(prompt)
+        }
         let authoritativePendingApproval = result.snapshot.pendingApprovalPayload.flatMap {
             MessageNormalizer.approvalActivity(from: $0, sessionId: result.sessionId)
         }
@@ -7828,6 +7889,9 @@ final class AppState: ObservableObject {
         var gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
         if let pendingClarify = result.snapshot.pendingClarify {
             gatewayPendingDecisionKeys.insert("clarify:\(pendingClarify.requestId)")
+        }
+        for clarify in result.snapshot.additionalPendingClarifies {
+            gatewayPendingDecisionKeys.insert("clarify:\(clarify.requestId)")
         }
         if let pendingApproval = authoritativePendingApproval,
            let key = SessionPresentationCache.pendingDecisionKey(for: ChatMessage(
@@ -7998,7 +8062,10 @@ final class AppState: ObservableObject {
             let approvalPending = message.approval.map {
                 SessionPresentationCache.isPendingDecision($0.status)
             } ?? false
-            return clarifyPending || approvalPending
+            let inputPending = message.inputPrompt.map {
+                $0.isAnswerable || $0.status == .submitting
+            } ?? false
+            return clarifyPending || approvalPending || inputPending
         }
     }
 
@@ -17711,8 +17778,9 @@ final class AppState: ObservableObject {
                 .messageInterrupted(let sessionId), .sessionBusy(let sessionId, _),
                 .sessionInfo(let sessionId, _), .sessionTitle(let sessionId, _, _),
                 .toolStart(let sessionId, _, _, _),
-                .toolComplete(let sessionId, _, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _),
-                .approval(let sessionId, _),
+                .toolComplete(let sessionId, _, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _, _),
+                .approval(let sessionId, _), .approvalWithdrawn(let sessionId, _, _),
+                .inputPrompt(let sessionId, _), .inputPromptExpire(let sessionId, _, _),
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
                 .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _):
@@ -17829,6 +17897,11 @@ final class AppState: ObservableObject {
             // authoritative state as the resume copy.
             if let pendingClarify = snapshot.pendingClarify {
                 applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
+            }
+            // Empty from current Hermes (open requests ride session.resume
+            // only); applied for parity should a gateway include them.
+            for prompt in snapshot.pendingInputPrompts {
+                applyInputPromptActivity(prompt)
             }
             if let payload = snapshot.pendingApprovalPayload,
                let pendingApproval = MessageNormalizer.approvalActivity(
@@ -18018,12 +18091,22 @@ final class AppState: ObservableObject {
             applyClarifyActivity(activity, source: .streamEvent)
             setRunning(true)
 
-        case .clarifyExpire(_, let requestId):
-            expireClarifyRequest(requestId: requestId)
+        case .clarifyExpire(_, let requestId, let reason):
+            expireClarifyRequest(requestId: requestId, reason: reason)
 
         case .approval(_, let activity):
             applyApprovalActivity(activity, authoritative: false)
             setRunning(true)
+
+        case .inputPrompt(_, let activity):
+            applyInputPromptActivity(activity)
+            setRunning(true)
+
+        case .inputPromptExpire(_, let requestId, let reason):
+            expireInputPrompt(requestId: requestId, reason: reason)
+
+        case .approvalWithdrawn(_, let requestId, let reason):
+            withdrawApproval(requestId: requestId, reason: reason)
 
         case .contextUpdate(_, let percent, let used, let max):
             runtime.contextPercent = normalizedContextPercent(percent, used: used, max: max)
@@ -18085,6 +18168,10 @@ final class AppState: ObservableObject {
     /// This state is ephemeral and never persisted. Restored approval cards
     /// from disk without an active RPC in flight yield to authoritative replays.
     private var liveApprovalSubmissions = Set<ApprovalSubmissionIdentity>()
+    /// Input prompts withdrawn (`request.cancel`) while this device's answer
+    /// was in flight, with the cancel reason. The gateway drops an answer for
+    /// a closed request, so the send's completion must not claim "Sent".
+    private var withdrawnInFlightInputPrompts = [String: String]()
 
     private func hasLiveApprovalSubmission(
         for activity: ApprovalActivity,
@@ -18360,7 +18447,7 @@ final class AppState: ObservableObject {
     /// presenting answer controls and a late response can no longer make the
     /// request read as answered. Request identity — never question text —
     /// decides which card is torn down, so unrelated clarifies are untouched.
-    private func expireClarifyRequest(requestId: String) {
+    private func expireClarifyRequest(requestId: String, reason: String? = nil) {
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify,
               !activity.isExpired else { return }
@@ -18370,9 +18457,140 @@ final class AppState: ObservableObject {
             activity.questions[questionIndex].status = .expired
             activity.questions[questionIndex].error = nil
         }
-        activity.error = Self.clarifyExpiredNotice(for: activity.questions.count)
+        activity.error = Self.clarifyExpiredNotice(for: activity.questions.count, reason: reason)
         messages[index].clarify = activity
         cacheMessagePresentation()
+    }
+
+    /// Upserts one masked input card keyed by its server request id. A
+    /// re-delivery (resume replay) never re-arms a card this device already
+    /// answered, skipped or has in flight.
+    private func applyInputPromptActivity(_ activity: InputPromptActivity) {
+        if let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == activity.requestId }) {
+            guard let existing = messages[index].inputPrompt, existing.isAnswerable else { return }
+            messages[index].content = activity.title
+            messages[index].inputPrompt = activity
+            return
+        }
+        settleReasoningSegmentIntoTranscript()
+        messages.append(ChatMessage(
+            id: "input-prompt-\(activity.requestId)",
+            role: .inputPrompt,
+            content: activity.title,
+            timestamp: Self.localTimestamp(),
+            inputPrompt: activity
+        ))
+    }
+
+    /// Applies `request.cancel` for a masked input prompt: the gateway
+    /// stopped waiting, so the card stops offering input. Like
+    /// `withdrawApproval`, an answer this device already has in flight owns
+    /// the card's outcome.
+    private func expireInputPrompt(requestId: String, reason: String? = nil) {
+        guard let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == requestId }),
+              var activity = messages[index].inputPrompt else { return }
+        if activity.status == .submitting {
+            // The in-flight send owns the card; its completion reports the
+            // withdrawal instead of a success Hermes never received.
+            withdrawnInFlightInputPrompts[requestId] = reason ?? ""
+            return
+        }
+        guard activity.isAnswerable else { return }
+        activity.status = .expired
+        activity.error = Self.inputPromptWithdrawnNotice(reason: reason)
+        messages[index].inputPrompt = activity
+    }
+
+    /// Only a timeout may claim Hermes stopped waiting and carried on; a
+    /// request another surface answered says so; anything else is neutral.
+    private static func inputPromptWithdrawnNotice(reason: String?) -> String {
+        switch reason {
+        case "timeout":
+            return AppLocalization.string("This request is no longer active — Hermes stopped waiting and continued.")
+        case "resolved":
+            return AppLocalization.string("This request was answered elsewhere.")
+        default:
+            return AppLocalization.string("This request is no longer active.")
+        }
+    }
+
+    /// Settles a card whose request was withdrawn mid-send; false when it
+    /// was not.
+    private func settleWithdrawnInFlightInputPrompt(at index: Int, requestId: String) -> Bool {
+        guard let reason = withdrawnInFlightInputPrompts.removeValue(forKey: requestId) else { return false }
+        messages[index].inputPrompt?.status = .expired
+        messages[index].inputPrompt?.error = Self.inputPromptWithdrawnNotice(reason: reason)
+        return true
+    }
+
+    /// Sends the value typed into a masked input card, or `nil` to skip.
+    /// The value is handed to the client and dropped; only the card's
+    /// status is recorded.
+    func respondToInputPrompt(messageId: String, value: String?) async {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let current = messages[index].inputPrompt,
+              current.isAnswerable else { return }
+        let skipped = value == nil
+        messages[index].inputPrompt?.status = .submitting
+        messages[index].inputPrompt?.error = nil
+        // Same as approvals and clarifies: answering resumes the turn.
+        setRunning(true)
+        guard let client else {
+            messages[index].inputPrompt?.status = .error
+            messages[index].inputPrompt?.error = AppLocalization.string("Gateway connection is unavailable.")
+            return
+        }
+        // Same ownership fence as respondToApproval: a completion from a
+        // replaced client must not touch whatever card is current.
+        let profile = activeProfile
+        // Whatever the completion path (including a rejected ownership
+        // fence), a mid-send withdrawal record never outlives this send.
+        defer { withdrawnInFlightInputPrompts.removeValue(forKey: current.requestId) }
+        do {
+            try await client.respondToInputPrompt(requestId: current.requestId, value: value ?? "")
+            guard profile == activeProfile, self.client === client,
+                  let updated = messages.firstIndex(where: { $0.id == messageId }),
+                  messages[updated].inputPrompt?.status == .submitting else { return }
+            if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
+            messages[updated].inputPrompt?.status = skipped ? .skipped : .submitted
+        } catch {
+            guard profile == activeProfile, self.client === client,
+                  let updated = messages.firstIndex(where: { $0.id == messageId }),
+                  messages[updated].inputPrompt?.status == .submitting else { return }
+            if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
+            messages[updated].inputPrompt?.status = .error
+            messages[updated].inputPrompt?.error = AppLocalization.string("Hermes did not receive that answer.")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Applies `request.cancel` for an approval server request. Only a card
+    /// still waiting on this user changes: an in-flight or settled answer
+    /// from this device already owns the card's outcome.
+    private func withdrawApproval(requestId: String, reason: String) {
+        guard let index = messages.lastIndex(where: { $0.approval?.requestId == requestId }),
+              let current = messages[index].approval,
+              current.status == .pending || current.status == .error else { return }
+        messages[index].approval?.status = .expired
+        messages[index].approval?.choice = nil
+        switch reason {
+        case "resolved":
+            messages[index].approval?.error = AppLocalization.string("This approval was answered elsewhere.")
+        case "timeout":
+            messages[index].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+        default:
+            messages[index].approval?.error = AppLocalization.string("This approval is no longer active.")
+        }
+        cacheMessagePresentation()
+    }
+
+    /// Only a timeout (or the legacy `clarify.expire`, which is always one)
+    /// may claim Hermes timed out; an interrupt or closed session must not.
+    private static func clarifyExpiredNotice(for questionCount: Int, reason: String?) -> String {
+        guard let reason, reason != "timeout" else { return clarifyExpiredNotice(for: questionCount) }
+        return questionCount > 1
+            ? AppLocalization.string("These questions are no longer active.")
+            : AppLocalization.string("This question is no longer active.")
     }
 
     private static func clarifyExpiredNotice(for questionCount: Int) -> String {
@@ -18921,10 +19139,15 @@ final class AppState: ObservableObject {
         performResponseHapticEffects(responseHaptics.registerTool(at: Date()))
     }
 
+    #if DEBUG
+    var responseAwaitsUserInputForTesting: Bool { responseAwaitsUserInput }
+    #endif
+
     private var responseAwaitsUserInput: Bool {
         messages.contains { message in
             message.clarify.map { $0.status == .pending || $0.status == .submitting } == true
                 || message.approval.map { $0.status == .pending || $0.status == .submitting } == true
+                || message.inputPrompt.map { $0.isAnswerable || $0.status == .submitting } == true
         }
     }
 
