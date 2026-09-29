@@ -76,13 +76,19 @@ gate_is_main_process() {
 # exist. `kill -0` alone cannot say that: for a process owned by ANOTHER local
 # user it fails with EPERM, which a shell cannot tell apart from ESRCH, so a
 # contender on a multi-account build Mac would judge a live gate dead and
-# steal its lock - two owners. When `kill -0` fails, `ps -p` (POSIX; exit
-# status 0 only when the pid exists, whoever owns it) has the last word.
-# (Exit status, not `-o pid=`: Git Bash's ps rejects -o. A ps that cannot run
-# at all reads as "no such process" - no worse than `kill -0` alone.)
+# steal its lock - two owners. When `kill -0` fails, `ps -p` has the last
+# word: the pid is alive only if ps lists a row for it, whoever owns it. The
+# row is matched rather than trusting ps's exit status (POSIX does not require
+# a nonzero status for "no such process"), and `-o pid=` is avoided because
+# Git Bash's ps rejects -o; its rows can carry a status letter before the
+# PID, hence the second field. A ps that cannot run at all reads as "no such
+# process" - no worse than `kill -0` alone.
 gate_pid_alive() { # $1 = numeric pid
+  case "${1:-}" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
   kill -0 "$1" 2>/dev/null && return 0
-  ps -p "$1" >/dev/null 2>&1
+  ps -p "$1" 2>/dev/null | awk -v p="$1" '$1 == p || $2 == p { found = 1 } END { exit !found }'
 }
 
 # Remove this process's steal marker - and only ours. The marker carries its

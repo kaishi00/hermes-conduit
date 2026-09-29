@@ -1114,8 +1114,10 @@ path it can run - but a stealer that is SIGKILLed mid-takeover cannot, and the
 marker it leaves makes that lock unstealable. Every later gate then refuses
 with "the gate lock at … has a dead owner (pid N), and another contender is
 taking it over (…/steal)". Once you have confirmed no gate is running on the
-Mac, remove the lock directory (`rm -rf "$GATE_ROOT/gate.lock"`) and rerun.
-The marker is deliberately never reclaimed automatically: removing another
+Mac, remove the lock directory and its siblings (`rm -rf "$GATE_ROOT"/gate.lock*`)
+and rerun: the same SIGKILL can also leave a half-built marker
+(`gate.lock.mark.<pid>`), a renamed-aside dead lock (`gate.lock.stale.<…>`) or
+a temporary lock (`gate.lock.new.<pid>`) next to it. The marker is deliberately never reclaimed automatically: removing another
 contender's claim on the strength of a liveness check is the same race the
 marker exists to close.
 
