@@ -1691,7 +1691,7 @@ private struct NotificationsSettingsDetail: View {
     private func saveRelay(_ value: String) {
         let value = trimmed(value)
         relayDraft = value
-        guard value != trimmed(customRelayURL) else { return }
+        guard value != customRelayURL else { return }
         customRelayURL = value
         Haptics.light()
         Task { await notifications.applyRelayChange() }
@@ -1887,7 +1887,9 @@ private struct NotificationsSettingsDetail: View {
                     .disabled(notifications.isWorking)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
                 }
-                if !trimmed(customRelayURL).isEmpty {
+                // Raw, not trimmed: a whitespace-only value saved by an
+                // older build can still be cleared.
+                if !customRelayURL.isEmpty {
                     Button {
                         saveRelay("")
                     } label: {

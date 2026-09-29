@@ -701,12 +701,14 @@ final class PushNotificationService: ObservableObject {
     /// issued it, then registers with the new one. With notifications off
     /// there is nothing to move; the next `enable()` uses the new relay.
     func applyRelayChange() async {
+        // A failure against the previous relay no longer describes the
+        // current setup, whether or not there is a registration to move.
+        lastError = nil
         guard let registration,
               registration.relayURL != configuredRelayURL.absoluteString else {
             await refreshMeta()
             return
         }
-        lastError = nil
         relayNotice = nil
         isWorking = true
         await revokeRegistration()
