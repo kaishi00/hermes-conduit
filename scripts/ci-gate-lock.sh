@@ -108,6 +108,7 @@ gate_lock_release() {
 #          1 could not create the temp directory.
 acquire_gate_lock() { # $1 = canonical lock dir
   local canonical="$1" temp holder
+  GATE_LOCK_OWNER=""
   GATE_LOCK_STEAL_BLOCKED=""
   temp="$canonical.new.$$"
   GATE_LOCK_TEMP="$temp"
@@ -188,8 +189,13 @@ acquire_gate_lock() { # $1 = canonical lock dir
       rmdir "$marker" 2>/dev/null || true
       GATE_LOCK_MARKER=""
       rm -rf "$temp"; GATE_LOCK_TEMP=""
-      GATE_LOCK_OWNER="$holder"
-      case "$holder" in ''|*[!0-9]*) GATE_LOCK_OWNER="" ;; esac
+      # Named as the running owner only while it is provably alive: a newer
+      # owner that has died since is stealable, not "another gate".
+      GATE_LOCK_OWNER=""
+      case "$holder" in
+        ''|*[!0-9]*) ;;
+        *) kill -0 "$holder" 2>/dev/null && GATE_LOCK_OWNER="$holder" ;;
+      esac
       return 2
     fi
     # Unique per attempt: a leftover aside from a killed steal must never be

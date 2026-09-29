@@ -362,6 +362,25 @@ assert_eq "and made no rename-aside" \
   "$(ls -d "$LOCK13".stale.* 2>/dev/null | wc -l | tr -d ' ')" "0"
 rm -rf "$LOCK13"
 
+# (b2) The same interleaving, but the newer owner has died by the re-read:
+# BUSY for this race, yet it must not be reported as a running gate.
+mkdir -p "$LOCK13"
+printf '999999999\n' > "$LOCK13/pid"
+DEAD_REPLACED_OWNER="$(
+  kill() {
+    if [ "$1" = "-0" ] && [ "$2" = "999999999" ]; then
+      printf '999999998\n' > "$LOCK13/pid"
+      return 1
+    fi
+    command kill "$@"
+  }
+  acquire_gate_lock "$LOCK13" 2>/dev/null
+  echo "rc=$? owner=${GATE_LOCK_OWNER:-none}"
+)"
+assert_eq "a dead newer owner is not reported as a running gate" \
+  "$DEAD_REPLACED_OWNER" "rc=2 owner=none"
+rm -rf "$LOCK13"
+
 # (c) An interrupt between taking the marker and renaming the dead lock
 # aside: the stealer's trap releases, and the marker must go with it -
 # otherwise the dead lock is unstealable forever. `mv` is overridden to
@@ -419,6 +438,10 @@ assert_eq "without BASHPID (bash 3.2), a top-level script is still main" \
   "$(bash -c '. "$1"; unset BASHPID; gate_is_main_process && echo main || echo sub' _ "$MOD")" "main"
 assert_eq "and a background subshell still is not" \
   "$(bash -c '. "$1"; unset BASHPID; ( gate_is_main_process && echo main || echo sub ) & wait' _ "$MOD")" "sub"
+# The probe path in a child: BASH_SUBSHELL is forced back to 0 so only the
+# PPID probe can tell the subshell from the top level.
+assert_eq "without BASHPID or BASH_SUBSHELL, the pid probe still spots a subshell" \
+  "$(bash -c '. "$1"; unset BASHPID; ( BASH_SUBSHELL=0; gate_is_main_process && echo main || echo sub )' _ "$MOD")" "sub"
 assert_eq "an unanswerable pid probe fails toward the teardown (main)" \
   "$(bash -c '. "$1"; unset BASHPID; PATH=/nonexistent; gate_is_main_process && echo main || echo sub' _ "$MOD" 2>/dev/null)" "main"
 
