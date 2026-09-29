@@ -2414,6 +2414,7 @@ struct InputPromptCard: View {
                 HStack(spacing: 8) {
                     Image(systemName: iconName(for: prompt.kind))
                         .foregroundStyle(statusColor(for: prompt.status))
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(statusTitle(for: prompt.status))
                             .font(.caption2.weight(.bold))
@@ -2435,9 +2436,12 @@ struct InputPromptCard: View {
                 }
 
                 if let detail = detail(for: prompt), !detail.isEmpty {
-                    Text(detail)
-                        .font(.system(.caption, design: .monospaced))
-                        .lineLimit(5)
+                    SelectableTextView(
+                        text: detail,
+                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                        textColor: .label,
+                        maximumNumberOfLines: 5
+                    )
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -2457,8 +2461,11 @@ struct InputPromptCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 case .pending, .submitting, .error:
+                    // No .textContentType(.password): it would offer to save
+                    // a sudo or password-manager master password to the
+                    // system keychain.
                     SecureField(placeholder(for: prompt.kind), text: $value)
-                        .textContentType(.password)
+                        .accessibilityLabel(prompt.title)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .focused($fieldFocused)
@@ -2497,9 +2504,10 @@ struct InputPromptCard: View {
             .padding(16)
             .conduitGlassSurface(cornerRadius: 22, tint: statusColor(for: prompt.status).opacity(0.08))
             .onChange(of: prompt.status) { _, status in
-                // Drop the typed value as soon as the card stops accepting
-                // it, whatever the outcome.
-                if status != .pending && status != .error { value = "" }
+                // Drop the typed value once the request is settled either
+                // way. A failed send (.error) keeps it so the user can retry
+                // without retyping; it never leaves this view's state.
+                if status == .submitted || status == .skipped || status == .expired { value = "" }
             }
         }
     }
@@ -2507,7 +2515,6 @@ struct InputPromptCard: View {
     private func submit(_ prompt: InputPromptActivity) {
         guard prompt.isAnswerable, !value.isEmpty else { return }
         let answer = value
-        value = ""
         fieldFocused = false
         Task { await appState.respondToInputPrompt(messageId: message.id, value: answer) }
     }

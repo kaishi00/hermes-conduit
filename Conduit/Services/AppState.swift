@@ -8010,7 +8010,10 @@ final class AppState: ObservableObject {
             let approvalPending = message.approval.map {
                 SessionPresentationCache.isPendingDecision($0.status)
             } ?? false
-            return clarifyPending || approvalPending
+            let inputPending = message.inputPrompt.map {
+                $0.isAnswerable || $0.status == .submitting
+            } ?? false
+            return clarifyPending || approvalPending || inputPending
         }
     }
 
@@ -18419,11 +18422,13 @@ final class AppState: ObservableObject {
     }
 
     /// Applies `request.cancel` for a masked input prompt: the gateway
-    /// stopped waiting, so the card stops offering input.
+    /// stopped waiting, so the card stops offering input. Like
+    /// `withdrawApproval`, an answer this device already has in flight owns
+    /// the card's outcome.
     private func expireInputPrompt(requestId: String) {
         guard let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == requestId }),
               var activity = messages[index].inputPrompt,
-              activity.isAnswerable || activity.status == .submitting else { return }
+              activity.isAnswerable else { return }
         activity.status = .expired
         activity.error = nil
         messages[index].inputPrompt = activity
@@ -18450,11 +18455,13 @@ final class AppState: ObservableObject {
         do {
             try await client.respondToInputPrompt(requestId: current.requestId, value: value ?? "")
             guard profile == activeProfile, self.client === client,
-                  let updated = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                  let updated = messages.firstIndex(where: { $0.id == messageId }),
+                  messages[updated].inputPrompt?.status == .submitting else { return }
             messages[updated].inputPrompt?.status = skipped ? .skipped : .submitted
         } catch {
             guard profile == activeProfile, self.client === client,
-                  let updated = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                  let updated = messages.firstIndex(where: { $0.id == messageId }),
+                  messages[updated].inputPrompt?.status == .submitting else { return }
             messages[updated].inputPrompt?.status = .error
             messages[updated].inputPrompt?.error = AppLocalization.string("Hermes did not receive that answer.")
             errorMessage = error.localizedDescription
@@ -19040,6 +19047,7 @@ final class AppState: ObservableObject {
         messages.contains { message in
             message.clarify.map { $0.status == .pending || $0.status == .submitting } == true
                 || message.approval.map { $0.status == .pending || $0.status == .submitting } == true
+                || message.inputPrompt.map { $0.status == .pending || $0.status == .submitting } == true
         }
     }
 
