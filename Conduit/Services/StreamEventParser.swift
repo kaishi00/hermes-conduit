@@ -151,7 +151,11 @@ enum StreamEventParser {
                 )
             }
             if InputPromptActivity.Kind(rawValue: method) != nil {
-                return .inputPromptExpire(sessionId: sessionId, requestId: requestId)
+                return .inputPromptExpire(
+                    sessionId: sessionId,
+                    requestId: requestId,
+                    reason: payload?["reason"]?.stringValue
+                )
             }
             return nil
 

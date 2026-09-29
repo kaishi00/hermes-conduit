@@ -420,8 +420,12 @@ final class ClarifyBatchStateTests: XCTestCase {
     func testInputPromptCancelExpiresOnlyAnAnswerableCard() throws {
         let (appState, _) = makeAppState()
         appState.messages = [try inputPromptMessage(status: .pending)]
-        appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001"))
+        appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001", reason: "interrupted"))
         XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .expired)
+        XCTAssertEqual(
+            appState.messages.first?.inputPrompt?.error, AppLocalization.string("This request is no longer active."),
+            "An interrupt must not claim Hermes carried on without the value"
+        )
 
         appState.messages = [try inputPromptMessage(status: .submitting)]
         appState.handleStreamEvent(.inputPromptExpire(sessionId: "stored-a", requestId: "srq-sudo00000001"))

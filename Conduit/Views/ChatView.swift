@@ -2405,6 +2405,10 @@ struct InputPromptCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @EnvironmentObject var appState: AppState
+    /// The typed secret. Deliberately view state only — never AppState, the
+    /// message model or any cache — even though a lazy transcript can drop
+    /// it if the row scrolls far away: retyping is the accepted cost of the
+    /// value never outliving this card.
     @State private var value = ""
     @FocusState private var fieldFocused: Bool
 
@@ -2457,7 +2461,9 @@ struct InputPromptCard: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                 case .expired:
-                    Text(AppLocalization.string("This request is no longer active — Hermes stopped waiting and continued."))
+                    Text(prompt.error?.isEmpty == false
+                         ? prompt.error!
+                         : AppLocalization.string("This request is no longer active."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 case .pending, .submitting, .error:
@@ -2465,7 +2471,7 @@ struct InputPromptCard: View {
                     // a sudo or password-manager master password to the
                     // system keychain.
                     SecureField(placeholder(for: prompt.kind), text: $value)
-                        .accessibilityLabel(prompt.title)
+                        .accessibilityLabel(placeholder(for: prompt.kind))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .focused($fieldFocused)

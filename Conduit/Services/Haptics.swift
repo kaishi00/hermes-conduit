@@ -136,7 +136,7 @@ enum ResponseHapticPolicy {
 
     static func signal(for event: StreamEvent) -> Signal? {
         switch event {
-        case .messageStart, .reasoningDelta, .clarify, .clarifyExpire, .approval, .inputPrompt, .inputPromptExpire:
+        case .messageStart, .reasoningDelta, .clarify, .clarifyExpire, .approval, .inputPrompt:
             return .activity(playsStart: false)
         case .messageDelta:
             return .activity(playsStart: true)

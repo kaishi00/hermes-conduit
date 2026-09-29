@@ -17728,7 +17728,7 @@ final class AppState: ObservableObject {
                 .toolStart(let sessionId, _, _, _),
                 .toolComplete(let sessionId, _, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _, _),
                 .approval(let sessionId, _), .approvalWithdrawn(let sessionId, _, _),
-                .inputPrompt(let sessionId, _), .inputPromptExpire(let sessionId, _),
+                .inputPrompt(let sessionId, _), .inputPromptExpire(let sessionId, _, _),
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
                 .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _):
@@ -17845,6 +17845,11 @@ final class AppState: ObservableObject {
             // authoritative state as the resume copy.
             if let pendingClarify = snapshot.pendingClarify {
                 applyClarifyActivity(pendingClarify, source: .authoritativeSnapshot)
+            }
+            // Empty from current Hermes (open requests ride session.resume
+            // only); applied for parity should a gateway include them.
+            for prompt in snapshot.pendingInputPrompts {
+                applyInputPromptActivity(prompt)
             }
             if let payload = snapshot.pendingApprovalPayload,
                let pendingApproval = MessageNormalizer.approvalActivity(
@@ -18045,8 +18050,8 @@ final class AppState: ObservableObject {
             applyInputPromptActivity(activity)
             setRunning(true)
 
-        case .inputPromptExpire(_, let requestId):
-            expireInputPrompt(requestId: requestId)
+        case .inputPromptExpire(_, let requestId, let reason):
+            expireInputPrompt(requestId: requestId, reason: reason)
 
         case .approvalWithdrawn(_, let requestId, let reason):
             withdrawApproval(requestId: requestId, reason: reason)
@@ -18425,12 +18430,16 @@ final class AppState: ObservableObject {
     /// stopped waiting, so the card stops offering input. Like
     /// `withdrawApproval`, an answer this device already has in flight owns
     /// the card's outcome.
-    private func expireInputPrompt(requestId: String) {
+    private func expireInputPrompt(requestId: String, reason: String? = nil) {
         guard let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == requestId }),
               var activity = messages[index].inputPrompt,
               activity.isAnswerable else { return }
         activity.status = .expired
-        activity.error = nil
+        // Only a timeout may claim Hermes stopped waiting and carried on; an
+        // interrupt or closed session gets neutral copy.
+        activity.error = reason == "timeout"
+            ? AppLocalization.string("This request is no longer active — Hermes stopped waiting and continued.")
+            : AppLocalization.string("This request is no longer active.")
         messages[index].inputPrompt = activity
     }
 

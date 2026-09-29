@@ -609,9 +609,10 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "sudo", "reason": "timeout"}}
         """#)
-        guard case .inputPromptExpire(let sessionId, let requestId) = event else {
+        guard case .inputPromptExpire(let sessionId, let requestId, let reason) = event else {
             return XCTFail("Expected inputPromptExpire")
         }
+        XCTAssertEqual(reason, "timeout")
         XCTAssertEqual(sessionId, "s1")
         XCTAssertEqual(requestId, "srq-0123456789ab")
     }

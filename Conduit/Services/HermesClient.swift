@@ -234,8 +234,9 @@ enum StreamEvent {
     case approval(sessionId: String, activity: ApprovalActivity)
     /// A `sudo` / `secret` / `vault.unlock_prompt` server request.
     case inputPrompt(sessionId: String, activity: InputPromptActivity)
-    /// `request.cancel` for one of those: the gateway withdrew it.
-    case inputPromptExpire(sessionId: String, requestId: String)
+    /// `request.cancel` for one of those: the gateway withdrew it, with its
+    /// `reason` (`timeout`, `interrupted`, `shutdown`, `session_closed`).
+    case inputPromptExpire(sessionId: String, requestId: String, reason: String? = nil)
     /// `request.cancel` for an approval server request, translated to the
     /// approval queue id the card is keyed by. `resolved` means a choice was
     /// committed — by this device or another surface.
@@ -299,7 +300,8 @@ struct SessionRuntimeSnapshot {
     /// the enclosing runtime session id when normalizing the card.
     let pendingApprovalPayload: [String: AnyCodable]?
     /// Unanswered sudo / secret / vault-unlock requests re-announced by
-    /// `session.resume` (`open_requests`), oldest first.
+    /// `session.resume` (`open_requests`), oldest first. Upstream never puts
+    /// `open_requests` in `session.info`, so a live snapshot parses none.
     let pendingInputPrompts: [InputPromptActivity]
 
     /// `session.resume` may include an in-flight or queued projection that is

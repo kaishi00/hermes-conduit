@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "This request is no longer active." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此请求已失效。"
+          }
+        }
+      }
+    },
     "Hermes did not receive that answer." : {
       "localizations" : {
         "zh-Hans" : {
