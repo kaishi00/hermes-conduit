@@ -419,18 +419,19 @@ final class PushNotificationService: ObservableObject {
     }
 
     /// Whether a Settings value can be saved: blank (the default relay) or
-    /// an absolute http(s) URL with a host. Anything else would silently
-    /// fall back to the default in `configuredRelayURL(from:)`.
+    /// a URL with a host that the transport policy accepts (HTTPS, or HTTP
+    /// to a loopback relay). Anything else would either silently fall back
+    /// to the default in `configuredRelayURL(from:)` or be refused later,
+    /// after it was already saved.
     nonisolated static func isValidRelayInput(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return true }
         guard let components = URLComponents(string: trimmed),
-              let scheme = components.scheme?.lowercased(),
-              scheme == "https" || scheme == "http",
-              let host = components.host, !host.isEmpty else {
+              let host = components.host, !host.isEmpty,
+              let url = components.url else {
             return false
         }
-        return true
+        return RelayTransportPolicy.allowsCredentialTransport(url)
     }
 
     /// The relay chosen in Settings > Notifications.
@@ -1111,8 +1112,18 @@ final class PushNotificationService: ObservableObject {
         return ClarifyQuestion(id: qid, question: question, choices: choices, multiSelect: multiSelect)
     }
 
-    private func requestDeviceToken() async throws -> String {
+    private func requestDeviceToken(timeout: Duration = .seconds(20)) async throws -> String {
         if let deviceToken { return deviceToken }
+        // APNs can stay silent. Without a timeout, callers that hold
+        // `isWorking` would keep the notification controls, including the
+        // relay field, disabled until relaunch.
+        let timeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled else { return }
+            // No-op if the token already arrived (continuation is nil).
+            self?.didFailToRegister(PushNotificationError.tokenTimeout)
+        }
+        defer { timeoutTask.cancel() }
         return try await withCheckedThrowingContinuation { continuation in
             tokenContinuation = continuation
             UIApplication.shared.registerForRemoteNotifications()
@@ -1225,10 +1236,12 @@ private struct RelayError: Decodable { let message: String? }
 
 private enum PushNotificationError: LocalizedError {
     case permissionDenied
+    case tokenTimeout
     case relay(String)
     var errorDescription: String? {
         switch self {
         case .permissionDenied: return "Allow notifications in Settings to continue."
+        case .tokenTimeout: return "Apple didn't return a push token in time. Check your connection and try again."
         case .relay(let message): return message
         }
     }

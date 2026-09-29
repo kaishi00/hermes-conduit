@@ -6712,12 +6712,12 @@
         }
       }
     },
-    "Enter a full relay URL, like https://push.example.com." : {
+    "Enter a full HTTPS relay URL, like https://push.example.com." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请输入完整的中继地址，例如 https://push.example.com。"
+            "value" : "请输入完整的 HTTPS 中继地址，例如 https://push.example.com。"
           }
         }
       }

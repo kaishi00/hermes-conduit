@@ -1678,7 +1678,9 @@ private struct NotificationsSettingsDetail: View {
     @ObservedObject private var notifications = PushNotificationService.shared
     @EnvironmentObject private var appState: AppState
     @AppStorage(PushNotificationService.relayURLDefaultsKey) private var customRelayURL: String = ""
-    @State private var relayDraft = ""
+    // Seeded from the saved value so the first render doesn't read as an
+    // unsaved edit (and flash Save or the re-pair warning).
+    @State private var relayDraft = UserDefaults.standard.string(forKey: PushNotificationService.relayURLDefaultsKey) ?? ""
     @State private var relayDraftInvalid = false
 
     private func trimmed(_ value: String) -> String {
@@ -1885,7 +1887,7 @@ private struct NotificationsSettingsDetail: View {
                     .onSubmit { saveRelay(relayDraft) }
                     .onChange(of: relayDraft) { _, _ in relayDraftInvalid = false }
                 if relayDraftInvalid {
-                    Label(AppLocalization.string("Enter a full relay URL, like https://push.example.com."), systemImage: "exclamationmark.triangle.fill")
+                    Label(AppLocalization.string("Enter a full HTTPS relay URL, like https://push.example.com."), systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
                         .foregroundStyle(.red)
                 }
@@ -1934,7 +1936,6 @@ private struct NotificationsSettingsDetail: View {
             }
         }
         .navigationTitle("Notifications")
-        .onAppear { relayDraft = customRelayURL }
         .task {
             await notifications.refresh()
             await notifications.refreshMeta()
