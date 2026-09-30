@@ -4955,8 +4955,9 @@ final class AppState: ObservableObject {
     /// active dashboard's own choice, so switching back to a dashboard lands
     /// on its profile instead of whichever one the outgoing dashboard used.
     private func persistActiveProfile(_ profile: String) {
-        // Per-dashboard entry first: cold launch only seeds it from the
-        // global key when missing, so it must never be the staler of the two.
+        // Per-dashboard entry first, global key last: cold launch opens the
+        // global key and mirrors it into the active dashboard's entry, so
+        // an interrupted write can only lose the change, never split them.
         if let dashboardID = activeDashboardID {
             rememberActiveProfile(profile, for: dashboardID)
         }
