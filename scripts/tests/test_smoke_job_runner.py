@@ -288,6 +288,20 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.assertEqual(len(self._invocations()), 2)
         self.assertEqual(self._invocations()[1].count("-only-testing:ConduitUITests/"), 2)
 
+    def test_ui_assertion_metadata_retries_only_the_failed_class(self):
+        doc = json.loads(self._result_doc(["ProfilePickerUITests"]))
+        failed_case = doc["testNodes"][0]["children"][0]["children"][1]["children"][0]
+        failed_case["children"] = [{"nodeType": "Failure Message", "name": "XCTAssertTrue failed",
+                                    "sourceLocation": {"filePath": "ProfilePickerUITests.swift", "lineNumber": 115}}]
+        proc = self._run_step(UI_STEP,
+                              UI_CLASSES="ConnectionSetupUITests,ProfilePickerUITests",
+                              STUB_FAIL_FIRST_N=1, STUB_RESULT_DOC=json.dumps(doc))
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(len(self._invocations()), 2)
+        self.assertIn("-only-testing:ConduitUITests/ProfilePickerUITests", self._invocations()[1])
+        self.assertNotIn("-only-testing:ConduitUITests/ConnectionSetupUITests", self._invocations()[1])
+        self.assertNotIn("retaining entire selection", proc.stderr)
+
     def test_lossy_extraction_retains_the_entire_retry_selection(self):
         for extra in (
             {"nodeType": "Test Case", "name": "System Failures", "result": "Failed"},

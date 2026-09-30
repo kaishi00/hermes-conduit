@@ -25,8 +25,19 @@ def extract_for_retry(data, label):
         if result is not None and result not in ("Passed", "Failed", "Skipped"):
             raise ValueError("unrecognized raw result status")
         if "test case" in kind:
-            if not in_bundle or not in_suite or children:
+            if not in_bundle or not in_suite:
                 raise ValueError("unattributable raw test case")
+            # xcresulttool attaches assertion diagnostics to failed cases.
+            # The normalizer intentionally ignores those leaves: their failure
+            # already belongs to this case. Still reject hidden cases, unknown
+            # metadata, or inconsistent diagnostics instead of dropping them.
+            for child in children:
+                if (result != "Failed" or not isinstance(child, dict)
+                        or child.get("nodeType") != "Failure Message"
+                        or not isinstance(child.get("name"), str) or not child["name"]
+                        or child.get("children") not in (None, [])
+                        or child.get("result") is not None):
+                    raise ValueError("unattributable raw test case child")
             return 1, result == "Failed"
         if "test bundle" in kind:
             in_bundle, in_suite = True, False

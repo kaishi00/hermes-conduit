@@ -187,6 +187,31 @@ excludes the passing connection class from the retry; they do not establish a
 hosted retry-time improvement. An exact-SHA local exhaustive gate remains
 required before a trusted merge.
 
+The next candidate run, [36688636230](https://github.com/kaishi00/hermes-conduit/actions/runs/36688636230),
+tested `1b1b84f5425bcbd2cf79947e06e8b4931bdf27d2` and passed the hosted gate,
+but took **27m32s** overall (2s initial queue): build 3m52s, unit smoke
+11m35s, UI smoke **23m12s**, and 38m39s total macOS job time. Linux groups
+took 18s, 3m45s and 7m21s. UI preparation took 3m06s (lookup 7s, shutdown
+1s, boot 4s, readiness 108s); unit preparation took 5m44s.
+
+All seven UI tests ran initially. The photo-picker assertion failed, and
+the retry guard rejected the result with `unattributable raw test case`.
+It therefore repeated all seven tests; they passed on the single retry.
+The initial attempt plus extraction took approximately 11m25s, and the
+retry took 7m58s. The repeated passing connection class alone consumed
+285.280s of test execution. This is an assertion failure absorbed by a
+retry, not proof that the original failure was an infrastructure problem.
+
+Investigation of a real failed Mac result showed that Xcode attaches leaf
+`Failure Message` nodes to failed test cases. The guard previously rejected
+every child node, including that ordinary diagnostic metadata. The
+follow-up accepts only those known leaves on failed cases; unknown,
+nested or inconsistent children still force the whole-selection fallback.
+Regressions cover class attribution and the actual workflow retry command.
+This correction has local evidence, but no hosted timing measurement yet.
+Neither candidate run demonstrates an overall wall-time improvement;
+the first UI attempt and simulator preparation remain substantial costs.
+
 `build` deliberately does **not** depend on `plan`: it consumes nothing the plan
 job produces, and waiting for it put a serial 1m45s in front of every run. The
 plan job still gates the verdict (`ci-gate` requires it) and both smoke jobs

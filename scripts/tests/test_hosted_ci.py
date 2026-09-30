@@ -29,6 +29,37 @@ class RetrySelectionTests(unittest.TestCase):
         self.detail["failures"].append({"class": "ConnectionSetupUITests"})
         self.assertEqual(self.retry.retry_classes(self.detail, self.selected), self.selected)
 
+    def _raw_result(self, children, result="Failed"):
+        # Real xcresulttool assertion failures carry diagnostic children on
+        # the Test Case, rather than another test attempt or an orphan failure.
+        return {"testNodes": [{"nodeType": "Test Plan", "children": [
+            {"nodeType": "Test Bundle", "name": "ConduitUITests", "children": [
+                {"nodeType": "Test Suite", "name": cls, "children": [
+                    {"nodeType": "Test Case", "name": "testFixture()",
+                     "result": result if cls == "ProfilePickerUITests" else "Passed",
+                     "children": children if cls == "ProfilePickerUITests" else []}]}
+                for cls in self.selected]}]}]}
+
+    def test_assertion_failure_metadata_preserves_failed_class_attribution(self):
+        doc = self._raw_result([
+            {"nodeType": "Failure Message", "name": "XCTAssertTrue failed",
+             "sourceLocation": {"filePath": "ProfilePickerUITests.swift", "lineNumber": 115}},
+            {"nodeType": "Failure Message", "name": "The photo picker must appear."}])
+        detail = self.retry.extract_for_retry(doc, "initial.xcresult")
+        self.assertEqual(detail["counts"]["cases"], 2)
+        self.assertEqual(self.retry.retry_classes(detail, self.selected), ["ProfilePickerUITests"])
+
+    def test_unknown_or_nested_case_children_cannot_narrow_retry(self):
+        for children, result in (
+            ([{"nodeType": "Test Case", "name": "testHidden()", "result": "Failed"}], "Failed"),
+            ([{"nodeType": "Future Diagnostic", "name": "unknown"}], "Failed"),
+            ([{"nodeType": "Failure Message", "name": "assertion", "children": [
+                {"nodeType": "Test Case", "name": "testHidden()", "result": "Failed"}]}], "Failed"),
+            ([{"nodeType": "Failure Message", "name": "assertion"}], "Passed"),
+        ):
+            with self.subTest(children=children, result=result), self.assertRaises(ValueError):
+                self.retry.extract_for_retry(self._raw_result(children, result), "initial.xcresult")
+
     def test_incomplete_unknown_or_synthetic_results_cannot_narrow_retry(self):
         for mutate in (
             lambda d: d["attempts"].pop(0),
