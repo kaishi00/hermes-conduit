@@ -237,6 +237,31 @@ class NightlyWorkflowTests(unittest.TestCase):
         self.assertNotIn("-retry-tests-on-failure", self.text)
 
 
+class WorkflowExpressionTests(unittest.TestCase):
+    """GitHub rejects a workflow file whose ${{ }} expressions don't parse, and
+    the run then fails before any job starts. Expressions have no arithmetic,
+    which is how `strategy.job-index + 1` in a job name broke both workflows."""
+
+    def test_no_arithmetic_inside_expressions(self):
+        import re
+        for name in ("ci.yml", "nightly.yml"):
+            path = os.path.join(REPO_ROOT, ".github", "workflows", name)
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            for expr in re.findall(r"\$\{\{(.*?)\}\}", text):
+                self.assertNotRegex(expr, r"[+/]|\s-\s",
+                                    f"{name}: arithmetic in expression '${{{{{expr}}}}}'")
+
+    def test_shard_matrices_carry_one_based_shard_numbers(self):
+        for name, output in (("ci.yml", "unit-shards"), ("nightly.yml", "ui-shards")):
+            path = os.path.join(REPO_ROOT, ".github", "workflows", name)
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertIn(f"include: ${{{{ fromJSON(needs.plan.outputs.{output}) }}}}", text)
+            self.assertIn("(shard ${{ matrix.shard }})", text)
+            self.assertIn("map({shard: (.key + 1), classes: .value})", text)
+
+
 class HostedSelectionTests(unittest.TestCase):
     """plan-tests.py hosted: every unit class lands in exactly one PR shard or
     the nightly list, and a stale nightly name fails the plan."""

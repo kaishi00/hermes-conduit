@@ -46,7 +46,9 @@ jobs:
           python3 scripts/plan-tests.py hosted --repo-root . \
             --suite scripts/hosted-suite.json --out ci-artifacts/hosted.json
           echo "timing-csv=$(jq -r '.nightly_unit_csv' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
-          echo "ui-shards=$(jq -c '.ui_shards' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
+          # Matrix include entries carry a 1-based shard number: expressions
+          # have no arithmetic, so a job name can't compute job-index + 1.
+          echo "ui-shards=$(jq -c '.ui_shards | to_entries | map({shard: (.key + 1), classes: .value})' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
 
   timing:
     # One job per repeat: a single pass of the timing families is ~15-20 min
@@ -102,14 +104,14 @@ jobs:
             "${args[@]}"
 
   ui:
-    name: UI suite (shard ${{ strategy.job-index + 1 }})
+    name: UI suite (shard ${{ matrix.shard }})
     needs: plan
     runs-on: macos-26
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        classes: ${{ fromJSON(needs.plan.outputs.ui-shards) }}
+        include: ${{ fromJSON(needs.plan.outputs.ui-shards) }}
     steps:
       - uses: actions/checkout@v7
 

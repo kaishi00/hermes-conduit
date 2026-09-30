@@ -100,7 +100,9 @@ jobs:
           mkdir -p ci-artifacts
           python3 scripts/plan-tests.py hosted --repo-root . \
             --suite scripts/hosted-suite.json --out ci-artifacts/hosted.json
-          echo "unit-shards=$(jq -c '.unit_shards' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
+          # Matrix include entries carry a 1-based shard number: expressions
+          # have no arithmetic, so a job name can't compute job-index + 1.
+          echo "unit-shards=$(jq -c '.unit_shards | to_entries | map({shard: (.key + 1), classes: .value})' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
           {
             echo "### Hosted unit shards"
             echo
@@ -147,14 +149,14 @@ jobs:
           python3 scripts/ci-self-test.py --group "${{ matrix.group }}"
 
   unit:
-    name: Unit tests (shard ${{ strategy.job-index + 1 }})
+    name: Unit tests (shard ${{ matrix.shard }})
     needs: plan
     runs-on: macos-26
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        classes: ${{ fromJSON(needs.plan.outputs.unit-shards) }}
+        include: ${{ fromJSON(needs.plan.outputs.unit-shards) }}
     steps:
       - uses: actions/checkout@v7
 
