@@ -20,6 +20,7 @@ final class DashboardSessionIsolationTests: XCTestCase {
     private var defaults: UserDefaults!
     private var backend: InMemoryKeychainBackend!
     private var createdDashboardIDs: [UUID] = []
+    private var webViews: [WKWebView] = []
 
     private let parentHostA = "https://a.example.com"
     private let parentHostB = "https://b.example.com"
@@ -40,10 +41,25 @@ final class DashboardSessionIsolationTests: XCTestCase {
             KeychainHelper.clearCloudflareAccess(dashboardID: id)
             KeychainHelper.clearDashboardCookies(dashboardID: id)
         }
+        webViews = []
         KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend())
         backend = nil
         defaults.removePersistentDomain(forName: defaultsSuite)
         super.tearDown()
+    }
+
+    /// Production attaches a dashboard's store to its bridge WKWebView before
+    /// restoring cookies into it (DashboardTicketBridge). A bare store with no
+    /// web view never answered setCookie on hosted CI simulators, so the live
+    /// cookie tests attach one the same way.
+    @discardableResult
+    private func attachWebView(to store: WKWebsiteDataStore) -> WKWebsiteDataStore {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = store
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.loadHTMLString("<html></html>", baseURL: nil)
+        webViews.append(webView)
+        return store
     }
 
     private func track(_ id: UUID) -> UUID {
@@ -98,8 +114,8 @@ final class DashboardSessionIsolationTests: XCTestCase {
     }
 
     func testWebKitCookieIsolationBetweenSiblingDashboards() async throws {
-        let storeA = DashboardCookiePersistence.webKitStore(for: UUID())
-        let storeB = DashboardCookiePersistence.webKitStore(for: UUID())
+        let storeA = attachWebView(to: DashboardCookiePersistence.webKitStore(for: UUID()))
+        let storeB = attachWebView(to: DashboardCookiePersistence.webKitStore(for: UUID()))
         let cookie = try parentDomainCookie(value: "a-session")
 
         try await awaitWebKit("setCookie on A") { await storeA.httpCookieStore.setCookie(cookie) }
@@ -144,7 +160,7 @@ final class DashboardSessionIsolationTests: XCTestCase {
 
         // B's bridge restores from B's (empty) jar: the parent-domain cookie
         // a.example.com holds for .example.com must NOT be imported.
-        let storeB = DashboardCookiePersistence.webKitStore(for: b)
+        let storeB = attachWebView(to: DashboardCookiePersistence.webKitStore(for: b))
         try await awaitWebKit("restore into B") {
             await DashboardCookiePersistence.restoreNativeCookies(
                 into: storeB.httpCookieStore,
@@ -156,7 +172,7 @@ final class DashboardSessionIsolationTests: XCTestCase {
         XCTAssertTrue(cookiesB.isEmpty, "no cross-dashboard import through the shared jar")
 
         // A's bridge restores its own parent-domain and host-only cookies.
-        let storeA = DashboardCookiePersistence.webKitStore(for: a)
+        let storeA = attachWebView(to: DashboardCookiePersistence.webKitStore(for: a))
         try await awaitWebKit("restore into A") {
             await DashboardCookiePersistence.restoreNativeCookies(
                 into: storeA.httpCookieStore,
