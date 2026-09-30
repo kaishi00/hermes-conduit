@@ -84,7 +84,7 @@ repeating nothing.
 
 | Job | Runner | Purpose |
 |---|---|---|
-| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, CI-tooling tests, and the **smoke selection** (`plan-tests.py smoke`). Cheap guard before any macOS minutes are spent. |
+| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, cheap CI-tooling tests, and the **smoke selection** (`plan-tests.py smoke`). Runs concurrently with the build; both gate the smoke jobs. |
 | `self-test` | ubuntu | CI-tooling regression suites (planner tests, lane-runner state machine, destination lookup, gate/contract tests) — concurrent with `build`, so the minutes-long bash state-machine suite never delays macOS work nor risks the plan job's timeout. |
 | `build` | macos-26 | `build-for-testing` exactly once; `.xctestrun` portability audit; uploads products. This is the compile gate for the whole app and every test target. |
 | `unit-smoke` | macos-26 | The curated unit classes as sequential `test-without-building` batches of at most `SMOKE_BATCH_SIZE` (7) classes. |
@@ -101,17 +101,28 @@ two-worker, merge-mode and per-worker-evidence cases, and ~900 s inside the
 gate's overlapped static phase alongside two live xcodebuild chains; the cap
 and the ceiling moved with it — the coverage is the point.)
 
-Both smoke jobs prepare the destination device the same way the build job and
-the lane runner do, through the shared `scripts/ci-lib.sh`: wait for
-CoreSimulator to settle its device pairs on a fresh runner, resolve
-`SIMULATOR_NAME` to a UDID (`-destination platform=iOS Simulator,id=…,arch=arm64`)
-instead of letting `xcodebuild` choose the first of several same-named devices,
-then boot that device before the session starts. The settle wait is fatal by
-design — it fails fast with the device inventory rather than letting `xcodebuild`
-report a misleading destination error — while the boot is best-effort with its
-own deadline: a boot hiccup leaves the destination UDID-pinned and lets
-`xcodebuild` boot the device itself. Only an unresolvable UDID falls back to the
-name-based destination.
+Both smoke jobs use `scripts/ci-prepare-smoke.sh`, a hosted-only wrapper around
+`ci-lib.sh`'s bounded operations. It disables automatic clipboard sync before
+boot, waits for the destination inventory, retains the selected `SIMULATOR_UDID`,
+and uses that ID for shutdown, boot, boot readiness and the test destination.
+This avoids re-resolving an already-selected device by an ambiguous name across
+multiple installed runtimes. Destination settlement remains fatal when no
+device appears; shutdown and boot remain best-effort, with the existing 60s
+command and 200s readiness budgets. Unresolvable IDs retain the existing
+name-based destination fallback. No device erase or additional retry is added.
+The shared library and local exhaustive gate are unchanged.
+
+`ci-lane/destination/preparation.json` and the job summary report device ID,
+runtime, boot confirmation, and separate lookup, shutdown, boot and readiness
+seconds. The existing three-second settling delay is additional. Runtime
+reporting is best-effort and outside those phase measurements.
+
+`scripts/ci-self-test.py --group fast|lane|local-gate` partitions full unittest
+discovery by module, rejects duplicate IDs and empty requested groups, and
+fails on discovery/import errors or a failing selected test. New modules join
+`fast` automatically. It removes the plan job's wrapper-skip flag before
+discovery; no slow suite is skipped in self-test. Standard full discovery,
+including the local gate's static checks, remains unchanged.
 
 ### Where the hosted wall clock goes
 
@@ -127,14 +138,34 @@ Measured on the 2026-09-24 main run (20m52s wall, critical path
 | `ci-gate` | 5s | the required check |
 | `self-test` | 9m19s | Linux, concurrent with the build — never on the critical path |
 
-The UI smoke job is the gate's critical path, and almost all of it is work that
-cannot be moved: a fresh hosted runner has to boot a simulator (~2m22s) and
-Xcode has to install/launch the test host before the first test (~2m50s), after
-which the two curated UI classes genuinely take 8m42s on a shared runner (the
-same classes take ~3 minutes total on our Mac). At this size the curated
-selection is one invocation, so the numbers ARE the floor: shrinking the
-selection further would mean dropping coverage, and splitting it across two
-runners would save ~1.5 minutes of wall clock for roughly +8 macOS minutes.
+The UI smoke job is the gate's critical path. These are observed costs on
+fresh hosted runners, not a proven minimum: startup and readiness overhead can
+vary, and retry scope can multiply the cost without adding initial coverage.
+The current optimization retains all selected classes and the existing three
+macOS jobs; it does not split UI work across additional runners.
+
+Recent **baseline**, before this overhead change (September 29, 2026 Eastern):
+
+| Run | Workflow wall, including queue | Build job | Unit job | UI job | Linux self-test | Total macOS job time |
+|---|---:|---:|---:|---:|---:|---:|
+| [36657424691](https://github.com/kaishi00/hermes-conduit/actions/runs/36657424691) | 19m47s | 3m28s | 8m31s | 14m35s | 11m01s | 26m34s |
+| [36654490026](https://github.com/kaishi00/hermes-conduit/actions/runs/36654490026) | 19m17s | 3m21s | 6m00s | 15m31s | 11m07s | 24m52s |
+| [36647665012](https://github.com/kaishi00/hermes-conduit/actions/runs/36647665012) | 28m04s | 3m06s | 9m28s | 22m04s | 11m01s | 34m38s |
+
+The first run queued 1m23s before its first job started. Its UI preparation
+was 2m23s and its test step 11m39s, including 7m28s of seven UI test cases.
+The third run failed one profile-picker test, then repeated both classes
+(all seven tests). The lane-runner and local-gate Linux integration suites
+were sequential at approximately 3m37s and 7m09s in the first run. Overlapping
+them is expected to lower the self-test duration toward the longest group,
+subject to queue and runner variability; this is not a hosted measurement.
+
+Candidate hosted measurements are pending. Compare queue delay, each preparation
+phase, initial test counts and execution duration, retry selection/time, total
+workflow wall and summed macOS job durations. Preserve complete initial smoke
+coverage and report infrastructure problems separately. Local stub regressions
+prove that a profile-picker-only failure excludes the already-passing connection
+class from the retry; they do not establish a hosted wall-time improvement.
 
 `build` deliberately does **not** depend on `plan`: it consumes nothing the plan
 job produces, and waiting for it put a serial 1m45s in front of every run. The
@@ -200,14 +231,24 @@ they caught. `SmokeSelectionTests` asserts they never re-enter the hosted set.
   A genuine assertion failure must fail the run — never be re-run until it
   agrees. (Contract-tested in `WorkflowContractTests`.) The one exception is the
   UI smoke job, which applies the lane runner's own rule for a failing UI batch:
-  **one** targeted retry of the curated classes, with the class that failed
-  reported as a runner-level flake, and a class that fails twice failing the job.
+  **one** targeted retry of the failed selected classes, with the original
+  failure and retry scope reported, and a class that fails twice failing the job.
+  Each invocation writes a separate result bundle. `smoke-retry-classes.py`
+  uses the existing result extractor's normalizer, with a hosted-only 30s read
+  deadline. Narrowing requires results for every selected class, recognized
+  passed/failed states, and consistent failure attribution. Missing, incomplete,
+  synthetic, unknown, skipped or unreadable evidence retains the whole selection.
+  The initial extraction and fallback reason are retained in `ui-retry.json`;
+  it cannot turn an empty result into an unfiltered test invocation.
   UI tests are the only part of the hosted gate with a measured flake rate on
   shared runners (over three runs of the introducing PR, two different UI tests
   failed — a photo picker that did not appear inside its 15 s wait, a wizard step
   that never advanced — and one run was green with nothing changed in between),
   and the unit classes are deterministic, so the retry exists there and nowhere
-  else. A red UI run therefore costs one extra invocation (~10 minutes).
+  else. A red UI run costs one extra invocation, but no longer repeats classes
+  already known to have passed when attribution is reliable. Compact initial
+  logs, retry evidence and preparation timings are uploaded as UI diagnostics;
+  large result bundles are not uploaded on the normal path.
 * **No timing history.** The EWMA cache + `update-timing-history.py` and the
   main-only job that wrote it are gone; the planner's `--history` input still
   exists for the Mac gate but nothing produces it any more.
@@ -218,7 +259,7 @@ they caught. `SmokeSelectionTests` asserts they never re-enter the hosted set.
 ### Cost
 
 Measured on the last full v2 run of main (18 jobs): **129.2 macOS minutes** per
-run, wall clock ~20–21 minutes, longest job 18.8 min. The v3 shape is 6 jobs:
+run, wall clock ~20–21 minutes, longest job 18.8 min. The original v3 shape was 6 jobs:
 `plan` + `self-test` + `ci-gate` on Linux (the same work as before), and three
 macOS jobs — the unchanged compile-everything `build`, plus one `unit-smoke`
 and one `ui-smoke` job.

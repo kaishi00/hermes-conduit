@@ -24,8 +24,8 @@ name: CI
 #                        (scripts/smoke-suite.json, validated against the
 #                        discovered inventory so a rename cannot silently
 #                        shrink hosted coverage).
-#   self-test  (ubuntu)  the CI-tooling regression suites, including the
-#                        minutes-long bash state machines.
+#   self-test  (ubuntu)  three fixed discovery groups in parallel, including
+#                        the minutes-long bash state machines.
 #   build      (macos)   build-for-testing exactly once; audit the .xctestrun
 #                        for absolute-path portability; upload the products.
 #   unit-smoke (macos)   the curated unit classes, as SEQUENTIAL xcodebuild
@@ -114,7 +114,11 @@ jobs:
             --selection ci-artifacts/smoke.json >> "$GITHUB_STEP_SUMMARY"
 
   self-test:
-    name: CI tooling self-test
+    name: CI tooling self-test (${{ matrix.group }})
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [fast, lane, local-gate]
     # No `needs`: the meta-suites test the CI tooling itself, not this run's
     # selection, so they start immediately and run CONCURRENTLY with the macOS
     # build instead of serially delaying it.
@@ -132,14 +136,14 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Run CI tooling regression suites
-        # Full discovery INCLUDING the bash state-machine suites. The timeout
+        # The three groups partition full discovery exactly once. The timeout
         # layering must hold: per-case synthetic-hang watchdogs (<= 6s) < each
         # wrapper's subprocess cap (1200s for the gate integration suite, 480s
         # for the lane-runner state machine) < this job ceiling (30m) - GitHub
         # must never be the first layer to kill a regression suite.
         run: |
           set -euo pipefail
-          python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+          python3 scripts/ci-self-test.py --group "${{ matrix.group }}"
 
   build:
     name: Build test products
@@ -222,29 +226,9 @@ jobs:
             --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
 
       - name: Prepare the pinned simulator destination
-        # The repo's own device handling (shared with the build job and the lane
-        # runner): wait for CoreSimulator to settle its device pairs on a fresh
-        # runner, pin the destination by UDID instead of letting xcodebuild pick
-        # the first of several devices with the same name, then boot that device
-        # before handing it to a test session. The wait is fatal by design - it
-        # fails fast with the device inventory when the destination never
-        # appears, instead of letting xcodebuild report a misleading destination
-        # error - while the boot is best-effort and every probe carries its own
-        # deadline.
-        #
-        # LOG_DIR is ci-lib.sh's territory: bounded_run writes its per-call log
-        # there, and without it every probe dies on an unbound variable (which
-        # is how the first version of this step failed).
-        run: |
-          set -euo pipefail
-          LOG_DIR="${LOG_DIR:-ci-lane/destination}"
-          mkdir -p "$LOG_DIR"
-          export LOG_DIR
-          source scripts/ci-lib.sh
-          wait_for_destination_device
-          build_destination
-          reset_and_boot_simulator 0
-          echo "DESTINATION=$DESTINATION" >> "$GITHUB_ENV"
+        # Hosted-only measured preparation, using ci-lib's bounded operations.
+        # Configure clipboard sync before boot, and retain the selected UDID.
+        run: bash scripts/ci-prepare-smoke.sh
 
       - name: Run the curated unit smoke suite
         # The curated classes run as SEQUENTIAL batches of at most
@@ -358,19 +342,9 @@ jobs:
             --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
 
       - name: Prepare the pinned simulator destination
-        # Same device handling as the unit smoke job: the UI classes are the
-        # most sensitive to which device xcodebuild picks and to a device that
-        # was never booted before the session started.
-        run: |
-          set -euo pipefail
-          LOG_DIR="${LOG_DIR:-ci-lane/destination}"
-          mkdir -p "$LOG_DIR"
-          export LOG_DIR
-          source scripts/ci-lib.sh
-          wait_for_destination_device
-          build_destination
-          reset_and_boot_simulator 0
-          echo "DESTINATION=$DESTINATION" >> "$GITHUB_ENV"
+        # Hosted-only measured preparation, using ci-lib's bounded operations.
+        # Configure clipboard sync before boot, and retain the selected UDID.
+        run: bash scripts/ci-prepare-smoke.sh
 
       - name: Run the curated UI smoke suite
         # Basic launch/navigation smoke only: the full UI suite is certified by
@@ -382,8 +356,9 @@ jobs:
         # did not appear inside its 15s wait; a wizard step that never advanced),
         # and one run had them green with no change. So the UI smoke job applies
         # the lane runner's own rule for a failing UI batch: ONE targeted retry
-        # of the curated classes, with the class that failed reported as a
-        # runner-level flake. A class that fails twice fails this job - this is
+        # of the failed selected classes, with whole-selection fallback when
+        # result attribution is uncertain, and the original failure reported.
+        # A class that fails twice fails this job - this is
         # deliberately not rerun-until-green, and no Xcode-native retry flags are
         # used anywhere. The unit smoke job gets no such retry: its classes are
         # deterministic.
@@ -407,7 +382,10 @@ jobs:
           UI_SMOKE_LOG="${UI_SMOKE_LOG:-ci-lane/ui-smoke.log}"
           mkdir -p "$(dirname "$UI_SMOKE_LOG")"
 
+          RESULT_DIR=$(mktemp -d "$(dirname "$UI_SMOKE_LOG")/ui-results.XXXXXX")
           run_classes() {
+            local result_bundle="$1"
+            shift
             local args=()
             local cls
             for cls in "$@"; do
@@ -417,24 +395,31 @@ jobs:
               -xctestrun "$XCRUN_FILE" \
               -destination "$DESTINATION" \
               -parallel-testing-enabled NO \
+              -resultBundlePath "$result_bundle" \
               "${args[@]}"
           }
 
           echo "UI smoke: ${#CLASSES[@]} classes"
           rc=0
-          run_classes "${CLASSES[@]}" 2>&1 | tee "$UI_SMOKE_LOG" || rc=$?
+          run_classes "$RESULT_DIR/initial.xcresult" "${CLASSES[@]}" 2>&1 | tee "$UI_SMOKE_LOG" || rc=$?
           if [ "$rc" -ne 0 ]; then
-            # `|| true`: a failure with no class-level line (the app died before
-            # any suite finished) must still reach the retry and its diagnostic,
-            # not abort this step on grep's non-zero status under pipefail.
-            flaked=$({ grep -oE "Test Suite '[A-Za-z0-9_]+' failed" "$UI_SMOKE_LOG" \
-              | sed -E "s/.*'([A-Za-z0-9_]+)'.*/\1/" | sort -u | tr '\n' ' '; } || true)
-            echo "::warning::UI smoke failed (${flaked:-no curated class named}); one targeted retry of the curated classes"
-            run_classes "${CLASSES[@]}" 2>&1 | tee -a "$UI_SMOKE_LOG" || {
-              echo "::error::the UI smoke classes failed again on the targeted retry - not a runner flake"
+            retry_csv=$(python3 scripts/smoke-retry-classes.py \
+              --classes "$UI_CLASSES" --xcresult "$RESULT_DIR/initial.xcresult" \
+              --out "$(dirname "$UI_SMOKE_LOG")/ui-retry.json") || retry_csv="$UI_CLASSES"
+            # The extractor falls back to the entire selection for incomplete,
+            # synthetic, unknown, or unreadable results; never an empty filter.
+            retry_csv="${retry_csv:-$UI_CLASSES}"
+            IFS=',' read -r -a RETRY_CLASSES <<< "$retry_csv"
+            echo "::warning::UI smoke failed; one targeted retry of: $retry_csv"
+            if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+              printf '### Hosted UI retry\n\nInitial classes: `%s`. Retry classes: `%s`.\n' \
+                "$UI_CLASSES" "$retry_csv" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            run_classes "$RESULT_DIR/retry.xcresult" "${RETRY_CLASSES[@]}" 2>&1 | tee -a "$UI_SMOKE_LOG" || {
+              echo "::error::the UI smoke classes failed again on the targeted retry - the failure persists"
               exit 1
             }
-            echo "::warning::runner-level flake absorbed: ${flaked:-a curated class} failed, then the targeted retry passed"
+            echo "::warning::runner-level flake absorbed: $retry_csv failed, then the targeted retry passed"
           fi
 
       - name: Dump simulator state (failure diagnostics)
@@ -442,6 +427,18 @@ jobs:
         run: |
           xcrun simctl list runtimes available || true
           xcrun simctl list devices available
+
+      - name: Upload hosted UI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke-diagnostics
+          path: |
+            ci-lane/destination/preparation.json
+            ci-lane/ui-smoke.log
+            ci-lane/ui-retry.json
+          retention-days: 3
+          if-no-files-found: ignore
 
   # Single stable branch-protection check. The smoke jobs are the safety net;
   # the exhaustive verdict for a release comes from the Mac local gate, which
