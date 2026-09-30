@@ -178,7 +178,10 @@ final class ConnectionSetupUITests: XCTestCase {
         let label = labels.firstMatch
         let deadline = Date().addingTimeInterval(10)
         while Date() < deadline {
-            if labels.count == 1, label.label == expected { return }
+            if labels.count == 1 {
+                let only = labels.element(boundBy: 0)
+                if only.exists, only.label == expected { return }
+            }
             Thread.sleep(forTimeInterval: 0.1)
         }
         XCTFail("Expected step '\(expected)', saw '\(label.exists ? label.label : "none")'. Tree:\n\(app.debugDescription)")

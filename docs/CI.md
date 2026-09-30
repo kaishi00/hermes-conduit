@@ -31,7 +31,10 @@ Unit shards run their classes as sequential `test-without-building` batches of
 at most `UNIT_BATCH_SIZE` (35) classes on the one booted simulator. A failing
 batch does not stop the shard: every batch runs, and the job fails at the end
 listing the failed batches. `-test-timeouts-enabled YES` with a 180s allowance
-kills a hung test instead of letting it burn the job ceiling.
+kills a hung test instead of letting it burn the job ceiling. UI smoke uses a
+480s allowance (`UI_TEST_ALLOWANCE_S`; the slowest passing hosted UI test took
+246s), so a hung launch or idle-wait stall ends and the targeted retry still
+runs inside the job timeout.
 
 Why 35 and not 7: the 7-class cap came from hosted stalls in PRs #178-#183.
 Since then the hosted hangs we have traced were test bugs, for example the

@@ -224,19 +224,22 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     /// Polls until the wizard's step label names `expected`, failing with
     /// the tree if it never does. Polling (not a single assert) matters
     /// because during the wizard's push/pop transitions both steps can be
-    /// mounted, so the first snapshot may still describe the outgoing step —
-    /// the same contract as ConnectionSetupUITests.stepLabel.
+    /// mounted, so the first snapshot may still describe the outgoing step.
+    /// It also waits for the outgoing label to leave, since a tap before the
+    /// transition ends is swallowed — the same contract as
+    /// ConnectionSetupUITests.stepLabel.
     private func waitForStep(
         _ app: XCUIApplication,
         _ expected: String,
         timeout: TimeInterval = 5
     ) {
-        let label = app.staticTexts[Identity.stepLabel]
+        let labels = app.staticTexts.matching(identifier: Identity.stepLabel)
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
-            if label.exists, label.label == expected {
-                return
+            if labels.count == 1 {
+                let label = labels.element(boundBy: 0)
+                if label.exists, label.label == expected { return }
             }
 
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))

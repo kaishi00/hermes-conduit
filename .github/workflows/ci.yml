@@ -329,6 +329,7 @@ jobs:
         env:
           UI_CLASSES: "${{ needs.plan.outputs.ui-csv }}"
           UI_SMOKE_LOG: ci-lane/ui-smoke.log
+          UI_TEST_ALLOWANCE_S: "480"
         run: |
           set -euo pipefail
           # Fail closed: an empty list would expand to no -only-testing filter,
@@ -365,7 +366,7 @@ jobs:
               -parallel-testing-enabled NO \
               -collect-test-diagnostics never \
               -test-timeouts-enabled YES \
-              -default-test-execution-time-allowance 480 \
+              -default-test-execution-time-allowance "${UI_TEST_ALLOWANCE_S:-480}" \
               -resultBundlePath "$result_bundle" \
               "${args[@]}"
           }
