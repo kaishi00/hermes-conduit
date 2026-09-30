@@ -138,7 +138,23 @@ class HostedPreparationTests(unittest.TestCase):
     def test_clipboard_failure_warns_and_still_prepares_the_simulator(self):
         self._assert_preparation(clipboard_exit=1)
 
-    def _assert_preparation(self, clipboard_exit=0):
+    def test_runtime_reporting_never_queries_after_boot(self):
+        self._assert_preparation(forbid_post_boot=True)
+
+    def test_failed_inventory_cache_does_not_change_the_destination(self):
+        self._assert_preparation(cache_failure=True)
+
+    def test_summary_failure_does_not_fail_prepared_destination(self):
+        self._assert_preparation(summary_failure=True)
+
+    def test_delayed_inventory_keeps_destination_wait_and_runtime_identity(self):
+        self._assert_preparation(delayed_inventory=True)
+
+    def test_existing_pin_does_not_trigger_reporting_lookup_or_reuse_stale_metadata(self):
+        self._assert_preparation(existing_pin=True)
+
+    def _assert_preparation(self, clipboard_exit=0, forbid_post_boot=False,
+                            cache_failure=False, summary_failure=False, delayed_inventory=False, existing_pin=False):
         self.assertTrue(os.path.isfile(os.path.join(SCRIPTS_DIR, "ci-prepare-smoke.sh")))
         with tempfile.TemporaryDirectory() as tmp:
             bindir = os.path.join(tmp, "bin")
@@ -152,8 +168,16 @@ class HostedPreparationTests(unittest.TestCase):
             for name, body in {
                 "defaults": 'echo "clipboard|$*" >> "$CALLS"\nexit ' + str(clipboard_exit),
                 "xcrun": 'echo "xcrun|$*" >> "$CALLS"\n'
+                         'if [ "$*" = "simctl boot PINNED" ]; then touch "$BOOTED"; fi\n'
                          'if [ "$*" = "simctl list devices available -j" ]; then\n'
+                         'if [ "$FORBID_POST_BOOT" = 1 ] && [ -f "$BOOTED" ]; then exit 42; fi\n'
+                         'if [ "$DELAYED_INVENTORY" = 1 ] && [ ! -f "$FIRST_LOOKUP" ]; then\n'
+                         'touch "$FIRST_LOOKUP"; echo \'{"devices":{}}\'; exit 0; fi\n'
+                         'if [ "$CACHE_FAILURE" = 1 ] && [ -n "${SIMULATOR_INVENTORY_CACHE:-}" ]; then\n'
+                         'if [ -f "$SIMULATOR_INVENTORY_CACHE" ]; then\n'
+                         'rm -f "$SIMULATOR_INVENTORY_CACHE"; mkdir "$SIMULATOR_INVENTORY_CACHE"; fi; fi\n'
                          "cat <<'JSON'\n" + json.dumps(inventory) + "\nJSON\nfi",
+                "sleep": 'if [ "$1" = 10 ]; then exit 0; fi\n/bin/sleep "$@"',
             }.items():
                 path = os.path.join(bindir, name)
                 with open(path, "w") as fh:
@@ -163,13 +187,26 @@ class HostedPreparationTests(unittest.TestCase):
                        CALLS=calls, SIMULATOR_NAME="iPhone 17 Pro", GATE_SLEEP_SCALE="0",
                        GITHUB_ENV=os.path.join(tmp, "env"),
                        GITHUB_STEP_SUMMARY=os.path.join(tmp, "summary"),
-                       LOG_DIR=os.path.join(tmp, "logs"))
+                       LOG_DIR=os.path.join(tmp, "logs"), BOOTED=os.path.join(tmp, "booted"),
+                       FIRST_LOOKUP=os.path.join(tmp, "first_lookup"),
+                       FORBID_POST_BOOT=str(int(forbid_post_boot)),
+                       CACHE_FAILURE=str(int(cache_failure)), DELAYED_INVENTORY=str(int(delayed_inventory)))
             env.pop("SIMULATOR_UDID", None)
+            env.pop("SIMULATOR_INVENTORY_CACHE", None)
+            if existing_pin:
+                env["SIMULATOR_UDID"] = "PINNED"
+                os.mkdir(env["LOG_DIR"])
+                with open(os.path.join(env["LOG_DIR"], "devices.json"), "w") as fh:
+                    json.dump({"devices": {"STALE-RUNTIME": [{"udid": "PINNED"}]}}, fh)
+            if summary_failure:
+                os.mkdir(env["GITHUB_STEP_SUMMARY"])
             proc = subprocess.run(["bash", os.path.join(SCRIPTS_DIR, "ci-prepare-smoke.sh")],
                                   env=env, capture_output=True, text=True, timeout=20)
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
             if clipboard_exit:
                 self.assertIn("::warning::could not disable pasteboard sync", proc.stdout)
+            if cache_failure:
+                self.assertIn("::warning::simulator inventory cache unavailable", proc.stderr)
             with open(calls) as fh:
                 operations = fh.read().splitlines()
             self.assertTrue(operations[0].startswith("clipboard|"), operations)
@@ -177,12 +214,22 @@ class HostedPreparationTests(unittest.TestCase):
             self.assertIn("xcrun|simctl boot PINNED", operations)
             self.assertIn("xcrun|simctl bootstatus PINNED -b", operations)
             self.assertFalse(any("OTHER" in op or "erase" in op for op in operations))
+            boot_index = operations.index("xcrun|simctl boot PINNED")
+            self.assertFalse(any("simctl list devices" in op for op in operations[boot_index:]),
+                             "diagnostic reporting must not add a post-boot inventory probe")
+            if delayed_inventory:
+                self.assertGreaterEqual(operations.count("xcrun|simctl list devices available -j"), 3)
+            if existing_pin:
+                self.assertFalse(any("simctl list devices" in op for op in operations))
             with open(env["GITHUB_ENV"]) as fh:
                 self.assertIn("DESTINATION=platform=iOS Simulator,id=PINNED,arch=arm64", fh.read())
             with open(os.path.join(env["LOG_DIR"], "preparation.json")) as fh:
                 doc = json.load(fh)
             self.assertEqual(doc["udid"], "PINNED")
-            self.assertEqual(doc["runtime"], "com.apple.CoreSimulator.SimRuntime.iOS-26-5")
+            self.assertEqual(doc["runtime"], "unknown" if cache_failure or existing_pin else "com.apple.CoreSimulator.SimRuntime.iOS-26-5")
             self.assertEqual(set(doc["seconds"]), {"lookup", "shutdown", "boot", "boot_readiness"})
-            with open(env["GITHUB_STEP_SUMMARY"]) as fh:
-                self.assertIn("PINNED", fh.read())
+            if summary_failure:
+                self.assertIn("::warning::simulator preparation reporting unavailable", proc.stdout)
+            else:
+                with open(env["GITHUB_STEP_SUMMARY"]) as fh:
+                    self.assertIn("PINNED", fh.read())

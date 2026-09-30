@@ -111,12 +111,19 @@ multiple installed runtimes. Destination settlement remains fatal when no
 device appears; shutdown and boot remain best-effort, with the existing 60s
 command and 200s readiness budgets. Unresolvable IDs retain the existing
 name-based destination fallback. No device erase or additional retry is added.
-The shared library and local exhaustive gate are unchanged.
+The local exhaustive gate is unchanged. The shared library has an optional
+`SIMULATOR_INVENTORY_CACHE` diagnostic sink, enabled only by hosted preparation:
+successful live device lookups retain their inventory without affecting which
+device is selected. Cache-write failures warn and preserve the lookup result.
 
 `ci-lane/destination/preparation.json` and the job summary report device ID,
 runtime, boot confirmation, and separate lookup, shutdown, boot and readiness
 seconds. The existing three-second settling delay is additional. Runtime
-reporting is best-effort and outside those phase measurements.
+reporting reuses that retained pre-boot inventory; it never adds a post-boot
+`simctl list` probe. Each preparation gets a fresh diagnostic file so an existing
+UDID pin cannot reuse stale metadata. Missing diagnostics report runtime unknown.
+Summary/report failures warn and continue; exporting the destination to the next
+step remains required. Reporting is outside those phase measurements.
 
 `scripts/ci-self-test.py --group fast|lane|local-gate` partitions full unittest
 discovery by module, rejects duplicate IDs and empty requested groups, and
@@ -211,6 +218,22 @@ Regressions cover class attribution and the actual workflow retry command.
 This correction has local evidence, but no hosted timing measurement yet.
 Neither candidate run demonstrates an overall wall-time improvement;
 the first UI attempt and simulator preparation remain substantial costs.
+
+[Run 36692669488](https://github.com/kaishi00/hermes-conduit/actions/runs/36692669488)
+tested `3a24f6ae8946b438ff98ab5325e23332e09270d3` and passed with all 391 unit
+tests and seven UI tests on their first attempt. Workflow wall was **18m29s**
+(3s initial queue), with build 2m44s, unit smoke 8m12s, UI smoke 15m19s and
+26m15s summed macOS job time. Linux groups took 17s, 3m45s and 7m22s. A
+retry-free run does not exercise the assertion-attribution correction, and
+one sample below recent green baselines does not establish its cause.
+
+UI preparation took 3m17s: lookup/shutdown/boot/readiness were 8s/0s/5s/118s.
+Its post-boot runtime-reporting query hit the 60s bound and reported runtime
+unknown, despite confirmed boot and completed tests. The UI test step took
+11m28s, with 464.260s of test execution and approximately 2m18s before the first
+test and 1m29s after the last. The inventory-cache follow-up removes that proven
+extra reporting query; its hosted saving remains unmeasured. Readiness waits,
+coverage, retry policy and simulator ownership rules remain intact.
 
 `build` deliberately does **not** depend on `plan`: it consumes nothing the plan
 job produces, and waiting for it put a serial 1m45s in front of every run. The

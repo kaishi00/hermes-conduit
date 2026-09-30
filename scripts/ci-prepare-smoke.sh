@@ -7,6 +7,14 @@ mkdir -p "$LOG_DIR"
 export LOG_DIR
 source "$SCRIPT_DIR/ci-lib.sh"
 
+# A fresh diagnostic file avoids stale runtime metadata when resolution falls
+# back. Only successful destination lookups write it; no post-boot probe runs.
+if ! SIMULATOR_INVENTORY_CACHE=$(mktemp "$LOG_DIR/devices.XXXXXX"); then
+  SIMULATOR_INVENTORY_CACHE=""
+  echo "::warning::simulator inventory cache unavailable - runtime reporting may be unknown"
+fi
+export SIMULATOR_INVENTORY_CACHE
+
 disable_pasteboard_sync || echo "::warning::could not disable pasteboard sync - continuing best-effort"
 started=$(date +%s)
 wait_for_destination_device
@@ -44,17 +52,14 @@ fi
 printf 'DESTINATION=%s\n' "$DESTINATION" >> "$GITHUB_ENV"
 printf 'SIMULATOR_UDID=%s\n' "${SIMULATOR_UDID:-}" >> "$GITHUB_ENV"
 # Reporting is best-effort and is outside the four measured preparation phases.
-if bounded_run 60 xcrun simctl list devices available -j; then
-  printf '%s\n' "$BOUNDED_OUTPUT" > "$LOG_DIR/devices.json"
-fi
-python3 - "$LOG_DIR" "${SIMULATOR_UDID:-}" "$lookup_s" "$shutdown_s" "$boot_s" "$readiness_s" "$boot_confirmed" <<'PY'
+python3 - "$LOG_DIR" "${SIMULATOR_UDID:-}" "$lookup_s" "$shutdown_s" "$boot_s" "$readiness_s" "$boot_confirmed" "$SIMULATOR_INVENTORY_CACHE" <<'PY' || echo "::warning::simulator preparation reporting unavailable - destination remains prepared"
 import json
 import os
 import sys
 log_dir, udid = sys.argv[1:3]
 runtime = "unknown"
 try:
-    with open(os.path.join(log_dir, "devices.json")) as fh:
+    with open(sys.argv[8]) as fh:
         devices = json.load(fh)["devices"]
     runtime = next((rt for rt, rows in devices.items() if any(row.get("udid") == udid for row in rows)), runtime)
 except (OSError, ValueError, KeyError, TypeError):
