@@ -533,7 +533,13 @@ final class AppState: ObservableObject {
     /// dashboard the user last chose — set at switch intent, kept on failed
     /// switches, so a selected target never silently falls back to another
     /// server.
-    @Published private(set) var savedDashboardRegistry: SavedDashboardRegistry
+    @Published private(set) var savedDashboardRegistry: SavedDashboardRegistry {
+        didSet {
+            if oldValue.activeDashboardID != savedDashboardRegistry.activeDashboardID {
+                reloadDashboardScopedPresentation()
+            }
+        }
+    }
     /// The dashboard a connection currently belongs to (the selected target).
     var activeDashboardID: UUID? { savedDashboardRegistry.activeDashboardID }
     @Published private(set) var defaultProfileName: String
@@ -2538,6 +2544,14 @@ final class AppState: ObservableObject {
     private let sessionFilterOrderKey = "conduit.sessionFilterOrder.v1"
     private let reviewSummaryCacheKey = "conduit.reviewSummaryCache.v1"
     private let knownProfilesKey = "conduit.knownProfiles.v1"
+    /// Per-dashboard copies of profile-level presentation choices (#148).
+    /// Profile names repeat across Hermes servers ("default" everywhere), so
+    /// these are keyed by dashboard UUID. The pre-scoping global values were
+    /// adopted by the registry's first dashboard.
+    private let activeProfileByDashboardKey = "conduit.activeProfileByDashboard.v1"
+    private let profileOrderByDashboardKey = "conduit.profileOrderByDashboard.v1"
+    private let modelVisibilityByDashboardKey = "conduit.modelVisibilityByDashboard.v1"
+    private let profileAppearanceStore: ProfileAppearanceStore
     /// Shared with the saved-dashboard migration (which relabels a legacy
     /// URL identity to the dashboard UUID), so it is a static.
     static let chatResumeServerIdentityKey = "conduit.chatResumeServerIdentity.v1"
@@ -2663,6 +2677,7 @@ final class AppState: ObservableObject {
         offlineChatCache: OfflineChatCacheStore? = nil,
         sessionYoloStore: SessionYoloStore? = nil,
         conversationIdentityIndex: ConversationIdentityIndex? = nil,
+        profileAppearanceStore: ProfileAppearanceStore? = nil,
         presentationCacheDebounceSuspension: (@Sendable (Duration) async throws -> Void)? = nil
     ) {
         self.presentationCacheDebounceSuspension =
@@ -2671,8 +2686,10 @@ final class AppState: ObservableObject {
         self.defaults = defaults
         // The registry (and its legacy migration) loads before any connection
         // hydration: scoped auth records are meaningless without it.
-        self.savedDashboardRegistry = preloadedRegistry
+        let initialRegistry = preloadedRegistry
             ?? SavedDashboardMigrator.loadRegistry(defaults: defaults)
+        self.savedDashboardRegistry = initialRegistry
+        self.profileAppearanceStore = profileAppearanceStore ?? ProfileAppearanceStore(defaults: defaults)
         self.sessionPresentationCache = sessionPresentationCache
         self.offlineChatCache = offlineChatCache ?? Self.makeDefaultOfflineChatCache()
         self.sessionYoloStore = sessionYoloStore ?? SessionYoloStore(defaults: defaults)
@@ -2696,22 +2713,29 @@ final class AppState: ObservableObject {
         chatResumeBehavior = self.chatResumeCoordinator.behavior
         chatReturnSurface = defaults.string(forKey: Self.chatReturnSurfaceKey)
             .flatMap(ChatReturnSurface.init(rawValue:)) ?? .conversation
-        defaultProfileName = ProfileAppearanceStore.loadDefaultName()
-        profileAvatarURLs = ProfileAppearanceStore.loadAvatarURLs()
+        let initialDashboardID = initialRegistry.activeDashboardID
+        if let primaryDashboardID = initialRegistry.dashboards.first?.id {
+            self.profileAppearanceStore.adoptLegacyAppearance(into: primaryDashboardID)
+        }
+        defaultProfileName = self.profileAppearanceStore.loadDefaultName(dashboardID: initialDashboardID)
+        profileAvatarURLs = self.profileAppearanceStore.loadAvatarURLs(dashboardID: initialDashboardID)
         appIconChoice = UIApplication.shared.alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
         themePreference = ThemePreference(
             rawValue: defaults.string(forKey: themePreferenceKey) ?? ""
         ) ?? .dark
-        if let data = defaults.data(forKey: modelVisibilityKey),
-           let stored = try? JSONDecoder().decode(ModelVisibility.self, from: data) {
-            modelVisibility = stored
-        }
+        adoptLegacyProfilePreferences()
+        modelVisibility = scopedModelVisibility(dashboardID: initialDashboardID)
         if let savedFilterOrder = defaults.stringArray(forKey: sessionFilterOrderKey) {
             sessionFilterOrder = normalizedSessionFilterOrder(savedFilterOrder)
         }
         activeProfile = defaults.string(forKey: activeProfileKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "default"
         if activeProfile.isEmpty { activeProfile = "default" }
+        // The global key always holds the active dashboard's profile; seed
+        // the per-dashboard memory from it (upgrade from pre-scoping builds).
+        if let initialDashboardID, rememberedActiveProfile(for: initialDashboardID) == nil {
+            rememberActiveProfile(activeProfile, for: initialDashboardID)
+        }
         activeSessionTitlesByProfile = defaults.dictionary(forKey: activeSessionTitlesByProfileKey) as? [String: String] ?? [:]
         if let data = defaults.data(forKey: pinnedSessionIDsByProfileKey),
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
@@ -4800,7 +4824,7 @@ final class AppState: ObservableObject {
     }
 
     func saveDefaultProfileName(_ name: String) {
-        defaultProfileName = ProfileAppearanceStore.saveDefaultName(name)
+        defaultProfileName = profileAppearanceStore.saveDefaultName(name, dashboardID: activeDashboardID)
     }
 
     func selectAppIcon(_ choice: AppIconChoice) async -> Bool {
@@ -4826,19 +4850,126 @@ final class AppState: ObservableObject {
     }
 
     func saveProfileAvatar(_ data: Data, for profile: String) throws {
-        profileAvatarURLs[profile] = try ProfileAppearanceStore.saveAvatar(data, for: profile)
+        profileAvatarURLs[profile] = try profileAppearanceStore.saveAvatar(data, for: profile, dashboardID: activeDashboardID)
     }
 
     func removeProfileAvatar(for profile: String) {
-        ProfileAppearanceStore.removeAvatar(for: profile)
+        profileAppearanceStore.removeAvatar(for: profile, dashboardID: activeDashboardID)
         profileAvatarURLs.removeValue(forKey: profile)
     }
 
-    /// Profile order is only a device-local presentation preference.
+    /// Profile order is only a device-local presentation preference, kept
+    /// per dashboard.
     func moveProfile(from index: Int, to destination: Int) {
         guard profiles.indices.contains(index), profiles.indices.contains(destination), index != destination else { return }
         profiles.swapAt(index, destination)
-        defaults.set(profiles, forKey: profileOrderKey)
+        var orders = defaults.dictionary(forKey: profileOrderByDashboardKey) as? [String: [String]] ?? [:]
+        orders[Self.dashboardPreferenceBucket(activeDashboardID)] = profiles
+        defaults.set(orders, forKey: profileOrderByDashboardKey)
+    }
+
+    // MARK: - Dashboard-scoped presentation (#148)
+
+    private static func dashboardPreferenceBucket(_ dashboardID: UUID?) -> String {
+        dashboardID?.uuidString ?? "unscoped"
+    }
+
+    /// Re-reads everything profile-presentational for the newly selected
+    /// dashboard. Runs whenever the selection changes (switch intent,
+    /// adoption, removal), so dashboard B never renders A's label, photos,
+    /// or hidden models, even while B is still connecting.
+    private func reloadDashboardScopedPresentation() {
+        let dashboardID = activeDashboardID
+        defaultProfileName = profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
+        profileAvatarURLs = profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)
+        modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
+    }
+
+    /// One-time move of the pre-scoping global profile order and model
+    /// visibility into the registry's first dashboard (the one they were set
+    /// on). A later dashboard starts from its own defaults.
+    private func adoptLegacyProfilePreferences() {
+        guard let primary = savedDashboardRegistry.dashboards.first?.id else { return }
+        let bucket = Self.dashboardPreferenceBucket(primary)
+        if let legacyOrder = defaults.stringArray(forKey: profileOrderKey) {
+            var orders = defaults.dictionary(forKey: profileOrderByDashboardKey) as? [String: [String]] ?? [:]
+            if orders[bucket] == nil {
+                orders[bucket] = legacyOrder
+                defaults.set(orders, forKey: profileOrderByDashboardKey)
+            }
+            defaults.removeObject(forKey: profileOrderKey)
+        }
+        if let data = defaults.data(forKey: modelVisibilityKey) {
+            if let legacy = try? JSONDecoder().decode(ModelVisibility.self, from: data) {
+                var visibilities = storedModelVisibilities()
+                if visibilities[bucket] == nil {
+                    visibilities[bucket] = legacy
+                    persistModelVisibilities(visibilities)
+                }
+            }
+            defaults.removeObject(forKey: modelVisibilityKey)
+        }
+    }
+
+    private func storedModelVisibilities() -> [String: ModelVisibility] {
+        guard let data = defaults.data(forKey: modelVisibilityByDashboardKey),
+              let stored = try? JSONDecoder().decode([String: ModelVisibility].self, from: data) else { return [:] }
+        return stored
+    }
+
+    private func persistModelVisibilities(_ visibilities: [String: ModelVisibility]) {
+        if let data = try? JSONEncoder().encode(visibilities) {
+            defaults.set(data, forKey: modelVisibilityByDashboardKey)
+        }
+    }
+
+    private func scopedModelVisibility(dashboardID: UUID?) -> ModelVisibility {
+        storedModelVisibilities()[Self.dashboardPreferenceBucket(dashboardID)] ?? ModelVisibility()
+    }
+
+    private func rememberedActiveProfile(for dashboardID: UUID) -> String? {
+        let map = defaults.dictionary(forKey: activeProfileByDashboardKey) as? [String: String] ?? [:]
+        guard let profile = map[dashboardID.uuidString]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !profile.isEmpty else { return nil }
+        return profile
+    }
+
+    private func rememberActiveProfile(_ profile: String, for dashboardID: UUID) {
+        var map = defaults.dictionary(forKey: activeProfileByDashboardKey) as? [String: String] ?? [:]
+        map[dashboardID.uuidString] = profile
+        defaults.set(map, forKey: activeProfileByDashboardKey)
+    }
+
+    private func forgetActiveProfile(for dashboardID: UUID) {
+        var map = defaults.dictionary(forKey: activeProfileByDashboardKey) as? [String: String] ?? [:]
+        guard map.removeValue(forKey: dashboardID.uuidString) != nil else { return }
+        defaults.set(map, forKey: activeProfileByDashboardKey)
+    }
+
+    /// Records the active profile both as the cold-launch value and as the
+    /// active dashboard's own choice, so switching back to a dashboard lands
+    /// on its profile instead of whichever one the outgoing dashboard used.
+    private func persistActiveProfile(_ profile: String) {
+        defaults.set(profile, forKey: activeProfileKey)
+        if let dashboardID = activeDashboardID {
+            rememberActiveProfile(profile, for: dashboardID)
+        }
+    }
+
+    /// Drops every dashboard-scoped presentation choice of a removed
+    /// dashboard.
+    private func removeDashboardScopedPresentation(_ id: UUID) {
+        profileAppearanceStore.removeAll(dashboardID: id)
+        forgetActiveProfile(for: id)
+        let bucket = Self.dashboardPreferenceBucket(id)
+        var orders = defaults.dictionary(forKey: profileOrderByDashboardKey) as? [String: [String]] ?? [:]
+        if orders.removeValue(forKey: bucket) != nil {
+            defaults.set(orders, forKey: profileOrderByDashboardKey)
+        }
+        var visibilities = storedModelVisibilities()
+        if visibilities.removeValue(forKey: bucket) != nil {
+            persistModelVisibilities(visibilities)
+        }
     }
 
     /// The All pill stays fixed; the remaining session categories are local UI preference.
@@ -4865,9 +4996,9 @@ final class AppState: ObservableObject {
             hiddenModels: Array(Set(visibility.hiddenModels.filter { !$0.isEmpty })).sorted()
         )
         modelVisibility = normalized
-        if let data = try? JSONEncoder().encode(normalized) {
-            defaults.set(data, forKey: modelVisibilityKey)
-        }
+        var visibilities = storedModelVisibilities()
+        visibilities[Self.dashboardPreferenceBucket(activeDashboardID)] = normalized
+        persistModelVisibilities(visibilities)
     }
 
     // MARK: - Connection management
@@ -5109,7 +5240,7 @@ final class AppState: ObservableObject {
         setActiveProfile(profile)
         restoreActiveSessionState(for: profile)
         restorePinnedSessions(for: profile)
-        defaults.set(profile, forKey: activeProfileKey)
+        persistActiveProfile(profile)
         turnState = .synchronizing
         prepareDashboardBridge(for: conn.baseUrl)
 
@@ -5569,6 +5700,7 @@ final class AppState: ObservableObject {
         pinnedSessionIDsByProfile = [:]
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeProfileKey)
+        if let signingOutDashboardID { forgetActiveProfile(for: signingOutDashboardID) }
         clearDashboardWebSession(dashboardID: signingOutDashboardID, baseURL: dashboardBaseURL)
     }
 
@@ -5625,9 +5757,16 @@ final class AppState: ObservableObject {
         var registry = savedDashboardRegistry
         let id = UUID()
         let label = SavedDashboardLabel.derive(from: normalized, existingLabels: registry.dashboards.map(\.label))
+        let isFirstDashboard = registry.dashboards.isEmpty
         registry.dashboards.append(SavedDashboard(id: id, label: label, normalizedURL: normalized))
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
+        if isFirstDashboard {
+            // Pre-scoping appearance/preferences with no dashboard to own
+            // them yet belong to the first one (same rule as launch).
+            profileAppearanceStore.adoptLegacyAppearance(into: id)
+            adoptLegacyProfilePreferences()
+        }
         return id
     }
 
@@ -5699,8 +5838,19 @@ final class AppState: ObservableObject {
         let generation = dashboardSwitchGeneration
         selectDashboardTarget(id)
         rememberDashboardURL(dashboard.normalizedURL)
-        _ = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
+        let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
         retireConnectionRuntimeForDashboardSwitch()
+        if crossedServer {
+            // Resume on the target's own profile, not the outgoing
+            // dashboard's: profile names are not shared between servers.
+            // The boundary above already retired the outgoing profile's
+            // speech, transcript, and catalogs.
+            let targetProfile = rememberedActiveProfile(for: id) ?? "default"
+            setActiveProfile(targetProfile)
+            defaults.set(targetProfile, forKey: activeProfileKey)
+            restoreActiveSessionState(for: targetProfile)
+            restorePinnedSessions(for: targetProfile)
+        }
         // Mirrors cold launch. A switch to a DIFFERENT server already wiped
         // every saved copy above (prepareChatResumeForConnection), so this
         // only finds one when re-selecting the same server.
@@ -5828,6 +5978,7 @@ final class AppState: ObservableObject {
         if registry.activeDashboardID == id { registry.activeDashboardID = nil }
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
+        removeDashboardScopedPresentation(id)
         if wasActive {
             showLogin = true
         }
@@ -16287,7 +16438,7 @@ final class AppState: ObservableObject {
             if let dashboardID = activeDashboardID {
                 KeychainHelper.saveConnection(freshConnection, dashboardID: dashboardID)
             }
-            defaults.set(target, forKey: activeProfileKey)
+            persistActiveProfile(target)
 
             await syncSession(
                 purpose: .preserveCurrent,
@@ -16502,7 +16653,7 @@ final class AppState: ObservableObject {
         setActiveProfile(fallback)
         restoreActiveSessionState(for: fallback)
         restorePinnedSessions(for: fallback)
-        defaults.set(fallback, forKey: activeProfileKey)
+        persistActiveProfile(fallback)
     }
 
     /// Hermes blocks a clarify/approval prompt for only ~5 minutes server-side
@@ -16776,7 +16927,8 @@ final class AppState: ObservableObject {
         let discovered = Array(Set(values.map {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
         }.filter { !$0.isEmpty }))
-        let savedOrder = defaults.stringArray(forKey: profileOrderKey) ?? []
+        let orders = defaults.dictionary(forKey: profileOrderByDashboardKey) as? [String: [String]] ?? [:]
+        let savedOrder = orders[Self.dashboardPreferenceBucket(activeDashboardID)] ?? []
         let knownOrder = savedOrder.filter { discovered.contains($0) }
         let unordered = discovered
             .filter { !knownOrder.contains($0) }
