@@ -17829,9 +17829,14 @@ final class AppState: ObservableObject {
     /// after the agent's log prefix, e.g. "Session compressed N times") or
     /// info notices (`ℹ`, the Codex auto-raise notice). Real compaction
     /// progress lines lead with `🗜️`, `📦` or `💤` and never carry either.
+    ///
+    /// Matched on Unicode scalars, not Characters: upstream often sends the
+    /// emoji presentation ("⚠️", "ℹ️", with U+FE0F), which is a different
+    /// Character from the bare sign, so `contains("⚠")` would miss it.
     static func isCompressionDiagnosticStatus(_ text: String?) -> Bool {
         guard let body = text?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
-        return body.contains("⚠") || body.hasPrefix("ℹ")
+        let scalars = body.unicodeScalars
+        return scalars.contains("\u{26A0}") || scalars.first == "\u{2139}"
     }
 
     /// Compaction runs synchronously inside the agent loop, and a manual
