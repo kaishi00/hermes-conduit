@@ -1801,10 +1801,19 @@ final class AppState: ObservableObject {
             // classic voice chat) it came from.
             let parentID = self.voiceCallRecorder?.sessionID ?? (self.showVoiceSheet ? self.activeSessionId : nil)
             self.tagVoiceSessions(sessionIDs, kind: .job, parentID: parentID)
-            if let recorder = self.voiceCallRecorder,
-               let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }) {
-                self.captureVoiceCall()
-                recorder.note(AppLocalization.string("Started a background job: \(job.title)."))
+            if let recorder = self.voiceCallRecorder {
+                if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }) {
+                    self.captureVoiceCall()
+                    recorder.note(AppLocalization.string("Started a background job: \(job.title)."))
+                }
+                if recorder.sessionID == nil {
+                    // The call has no row yet: save it now, then link the job.
+                    Task { [weak self] in
+                        await recorder.flush()
+                        guard let self, let callRow = recorder.sessionID else { return }
+                        self.tagVoiceSessions(sessionIDs, kind: .job, parentID: callRow)
+                    }
+                }
             }
             self.voiceJobSessionListRefreshTask?.cancel()
             self.voiceJobSessionListRefreshTask = Task { [weak self] in
