@@ -318,6 +318,15 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(block.contains("wait for the user to speak first"))
         XCTAssertEqual(VoiceResumeContext(summary: nil, recent: []).instructionBlock, "")
 
+        // GPT-Live seeds the turns as history, so its block leaves them out.
+        let summaryOnly = context.summaryInstructionBlock
+        XCTAssertTrue(summaryOnly.contains("meals."))
+        XCTAssertFalse(summaryOnly.contains("Tacos?"))
+        let turnsOnly = VoiceResumeContext(summary: nil, recent: context.recent).summaryInstructionBlock
+        XCTAssertTrue(turnsOnly.contains("wait for the user to speak first"))
+        XCTAssertFalse(turnsOnly.contains("<previous_conversation>"))
+        XCTAssertFalse(turnsOnly.contains("Tacos?"))
+
         let history = context.gptLiveHistory
         XCTAssertEqual(history.count, 2)
         XCTAssertEqual(history[0]["role"] as? String, "user")

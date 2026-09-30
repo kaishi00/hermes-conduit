@@ -1632,7 +1632,7 @@ final class AppState: ObservableObject {
                     history: self?.liveVoiceResumeContext?.gptLiveHistory ?? [],
                     voice: self?.gptLiveVoice,
                     briefing: GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
-                        + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
+                        + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                 )
             },
             availability: { [weak self] in
@@ -1645,7 +1645,7 @@ final class AppState: ObservableObject {
             },
             briefing: { [weak self] in
                 GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
-                    + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
+                    + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
             },
             supervisor: self.voiceBackgroundJobSupervisor,
             // The same "End conversation" phrases as the other voice modes.
@@ -1800,7 +1800,7 @@ final class AppState: ObservableObject {
             // Filed under Voice Jobs on every device, with the call (or the
             // classic voice chat) it came from.
             let parentID = self.voiceCallRecorder?.sessionID ?? (self.showVoiceSheet ? self.activeSessionId : nil)
-            self.tagVoiceSessions(sessionIDs, kind: .job, parentID: parentID)
+            self.tagVoiceSessions(sessionIDs, kind: .job, parentID: parentID, parentTitle: self.voiceJobParentTitle(parentID))
             if let recorder = self.voiceCallRecorder {
                 if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }) {
                     self.captureVoiceCall()
@@ -1811,7 +1811,7 @@ final class AppState: ObservableObject {
                     Task { [weak self] in
                         await recorder.flush()
                         guard let self, let callRow = recorder.sessionID else { return }
-                        self.tagVoiceSessions(sessionIDs, kind: .job, parentID: callRow)
+                        self.tagVoiceSessions(sessionIDs, kind: .job, parentID: callRow, parentTitle: self.voiceJobParentTitle(callRow))
                     }
                 }
             }
@@ -2977,23 +2977,33 @@ final class AppState: ObservableObject {
 
     /// Files sessions under Voice or Voice Jobs, here at once and on the
     /// host for every device.
-    private func tagVoiceSessions(_ ids: [String], kind: VoiceSessionTag.Kind, parentID: String? = nil) {
+    private func tagVoiceSessions(_ ids: [String], kind: VoiceSessionTag.Kind, parentID: String? = nil, parentTitle: String? = nil) {
         let ids = Array(Set(ids.filter { !$0.isEmpty }))
         guard !ids.isEmpty else { return }
         let profile = activeProfile
         let key = voiceHistoryKey(profile: profile)
         for id in ids {
-            voiceSessionTagsByKey[key, default: [:]][id] = VoiceSessionTag(kind: kind, parentID: parentID)
+            voiceSessionTagsByKey[key, default: [:]][id] = VoiceSessionTag(kind: kind, parentID: parentID, parentTitle: parentTitle)
         }
         Task { [weak self] in
             for id in ids {
                 do {
-                    try await self?.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, profile: profile)
+                    try await self?.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, parentTitle: parentTitle, profile: profile)
                 } catch {
                     Self.voiceHistoryLog.debug("Tagging a voice session failed: \(String(describing: error), privacy: .public)")
                 }
             }
         }
+    }
+
+    /// The title a job's parent shows on devices whose list lacks the parent:
+    /// the listed row's, else the title the call's new row was given.
+    private func voiceJobParentTitle(_ parentID: String?) -> String? {
+        guard let parentID else { return nil }
+        if let parent = activeProfileSessions.first(where: { ([$0.id, $0.storedSessionId].compactMap { $0 } + $0.alternateIds).contains(parentID) }) {
+            return parent.title
+        }
+        return voiceCallRecorder?.sessionID == parentID ? voiceCallRecorder?.newRowTitle : nil
     }
 
     /// Starts saving the live call that is about to connect. A pending
@@ -3110,15 +3120,19 @@ final class AppState: ObservableObject {
 
     /// Retries the saves queued for this dashboard and profile, oldest first.
     private func drainVoiceTranscriptOutbox(profile: String, key: String) async {
-        var outbox = VoiceTranscriptOutbox.load(from: defaults)
-        outbox.prune(now: Date())
+        var snapshot = VoiceTranscriptOutbox.load(from: defaults)
+        snapshot.prune(now: Date())
         let dashboard = activeDashboardID?.uuidString ?? "-"
-        for entry in outbox.entries where entry.dashboard == dashboard && entry.profile == profile
+        // Saves await, and a call can be queued meanwhile: record each entry
+        // as read with what replaces it, then apply that to a fresh read.
+        // An entry changed meanwhile no longer matches and stays as it is.
+        var settled: [(old: VoiceTranscriptOutbox.Entry, new: VoiceTranscriptOutbox.Entry?)] = []
+        for entry in snapshot.entries where entry.dashboard == dashboard && entry.profile == profile
             && !voiceTranscriptsSaving.contains(entry.request.callID) {
             var request = entry.request
             do {
                 let result = try await voiceHistoryClient.save(request, profile: profile)
-                outbox.entries.removeAll { $0.request.callID == request.callID }
+                settled.append((entry, nil))
                 if let sessionID = result.sessionID, voiceSessionTagsByKey[key]?[sessionID] == nil {
                     voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: request.engine.rawValue)
                 }
@@ -3130,13 +3144,18 @@ final class AppState: ObservableObject {
                 request.turns = request.turns.enumerated().map { offset, turn in
                     VoiceTranscriptTurn(index: offset, role: turn.role, text: turn.text, at: turn.at)
                 }
-                outbox.entries.removeAll { $0.request.callID == entry.request.callID }
-                outbox.add(.init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt))
+                settled.append((entry, .init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt)))
             } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.unsupported {
-                outbox.entries.removeAll { $0.request.callID == request.callID }
+                settled.append((entry, nil))
             } catch {
                 break
             }
+        }
+        var outbox = VoiceTranscriptOutbox.load(from: defaults)
+        outbox.prune(now: Date())
+        for (old, new) in settled where outbox.entries.contains(old) {
+            outbox.entries.removeAll { $0 == old }
+            if let new { outbox.add(new) }
         }
         outbox.store(in: defaults)
     }
@@ -3279,7 +3298,10 @@ final class AppState: ObservableObject {
             // below the size asked for without saying so.
             if result.rows.isEmpty { return (rows, true) }
         }
-        return (rows, false)
+        // The budget ran out: the row is whole only if nothing is left.
+        let probe = "?limit=1&offset=\(offset)&order=latest&include_compacted=true&inline_images=false"
+        let rest = await fetch(probe)
+        return (rows, rest?.rows.isEmpty == true)
     }
 
     private func persistVoiceJobSessions() {
