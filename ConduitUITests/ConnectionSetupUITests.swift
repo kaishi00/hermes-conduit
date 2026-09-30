@@ -29,8 +29,11 @@ final class ConnectionSetupUITests: XCTestCase {
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "success"]
         app.launch()
         openSetup(app)
+        stepLabel(app, "Step 1 of 3")
         tapVisible(app.buttons[Identity.answerYes], in: app)
+        stepLabel(app, "Step 2 of 3")
         tapVisible(app.buttons[Identity.answerYes], in: app)
+        stepLabel(app, "Step 3 of 3")
         tapVisible(app.buttons["setup.method-lan"], in: app)
         tapVisible(app.buttons["setup.details-ready"], in: app)
         let host = app.textFields["setup.host"]
@@ -100,8 +103,11 @@ final class ConnectionSetupUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         openSetup(app)
+        stepLabel(app, "Step 1 of 3")
         tapVisible(app.buttons[Identity.answerYes], in: app)
+        stepLabel(app, "Step 2 of 3")
         tapVisible(app.buttons[Identity.answerYes], in: app)
+        stepLabel(app, "Step 3 of 3")
         tapVisible(app.buttons[Identity.methodTailscale], in: app)
         tapVisible(app.buttons["setup.details-ready"], in: app)
         let host = app.textFields["setup.host"]
@@ -121,7 +127,26 @@ final class ConnectionSetupUITests: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(element.isHittable)
+        waitUntilSettled(element)
         element.tap()
+    }
+
+    /// On slow hosted runners the next screen's control exists and is hittable
+    /// before a NavigationStack push finishes sliding in. In each hosted
+    /// failure of this class a tap was synthesized right after a transition
+    /// and the wizard never advanced (no next step label, `details-ready` or
+    /// `host`), which fits a tap swallowed mid-transition (inferred from the
+    /// logs, not reproduced). Wait until the element's frame stops moving.
+    private func waitUntilSettled(_ element: XCUIElement, timeout: TimeInterval = 5) {
+        let deadline = Date().addingTimeInterval(timeout)
+        var last = element.frame
+        var stablePolls = 0
+        while Date() < deadline, stablePolls < 3 {
+            Thread.sleep(forTimeInterval: 0.15)
+            let frame = element.frame
+            stablePolls = frame == last ? stablePolls + 1 : 0
+            last = frame
+        }
     }
 
     /// Tap the keyboard toolbar's Done control when present, so a Continue
@@ -147,10 +172,13 @@ final class ConnectionSetupUITests: XCTestCase {
         // Poll rather than assert once: during the NavigationStack push/pop
         // transition both steps can be mounted, so the first snapshot may
         // still show the outgoing label.
-        let label = app.staticTexts[Identity.stepLabel]
-        let deadline = Date().addingTimeInterval(5)
+        // Both labels are mounted until the transition ends, so also wait for
+        // the outgoing one to leave: a tap before that is swallowed.
+        let labels = app.staticTexts.matching(identifier: Identity.stepLabel)
+        let label = labels.firstMatch
+        let deadline = Date().addingTimeInterval(10)
         while Date() < deadline {
-            if label.exists, label.label == expected { return }
+            if labels.count == 1, label.label == expected { return }
             Thread.sleep(forTimeInterval: 0.1)
         }
         XCTFail("Expected step '\(expected)', saw '\(label.exists ? label.label : "none")'. Tree:\n\(app.debugDescription)")
@@ -322,6 +350,7 @@ final class ConnectionSetupUITests: XCTestCase {
             if card.frame.midY > bounds.midY { app.swipeUp() } else { app.swipeDown() }
         }
         XCTAssertTrue(card.isHittable, "Card was never reachable. Tree:\n\(app.debugDescription)")
+        waitUntilSettled(card)
         let frame = card.frame
         XCTAssertFalse(frame.isEmpty, "Card has no frame. Tree:\n\(app.debugDescription)")
         let x = side == .leading ? frame.minX + 8 : frame.maxX - 8

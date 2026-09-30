@@ -347,6 +347,10 @@ jobs:
           mkdir -p "$(dirname "$UI_SMOKE_LOG")"
 
           RESULT_DIR=$(mktemp -d "$(dirname "$UI_SMOKE_LOG")/ui-results.XXXXXX")
+          # The 480s per-test allowance ends a hung UI test (seen: an app launch
+          # that hung 25 min, and a 621s idle-wait stall) so the targeted retry
+          # still runs inside the job timeout. The slowest passing hosted test
+          # took 246s.
           run_classes() {
             local result_bundle="$1"
             shift
@@ -360,6 +364,8 @@ jobs:
               -destination "$DESTINATION" \
               -parallel-testing-enabled NO \
               -collect-test-diagnostics never \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance 480 \
               -resultBundlePath "$result_bundle" \
               "${args[@]}"
           }
