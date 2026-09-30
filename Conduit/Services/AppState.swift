@@ -2830,7 +2830,7 @@ final class AppState: ObservableObject {
     /// badge). Matches every id the session answers to.
     func isVoiceJobSession(_ session: SessionSummary) -> Bool {
         guard let remembered = voiceJobSessionIDsByProfile[activeProfile], !remembered.isEmpty else { return false }
-        let ids = Set([session.id] + session.alternateIds)
+        let ids = Set([session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds)
         return remembered.contains { ids.contains($0) }
     }
 
@@ -3150,8 +3150,12 @@ final class AppState: ObservableObject {
                 if let sessionID = result.sessionID, voiceSessionTagsByKey[key]?[sessionID] == nil {
                     voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: request.engine.rawValue)
                 }
+            } catch VoiceHistoryError.rowUnavailable where request.sessionID != nil && (request.turns.first?.index ?? 0) > 0 {
+                // The row is gone with this call's earlier turns; the rest
+                // alone would pass for the whole call.
+                settled.append((entry, nil))
             } catch VoiceHistoryError.rowUnavailable where request.sessionID != nil {
-                // The row is gone: keep the turns as a new row next time.
+                // The row is gone: keep the call's turns as a new row next time.
                 request.sessionID = nil
                 request.callID = UUID().uuidString
                 request.title = Self.fallbackVoiceCallTitle(at: entry.queuedAt)
