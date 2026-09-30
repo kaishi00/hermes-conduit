@@ -2,8 +2,8 @@ name: Nightly
 
 # The half of hosted CI that never gates a merge (docs/CI.md, CI v4):
 #   timing     the timing/performance/dormancy families from
-#              scripts/hosted-suite.json, repeated $TIMING_REPEATS times as
-#              separate invocations (what the retired Mac gate's release mode did)
+#              scripts/hosted-suite.json, three passes as three jobs (what the
+#              retired Mac gate's release mode did)
 #   ui         the COMPLETE UI suite, split into balanced shards, with no retry,
 #              so a flaky UI test shows up here instead of hiding in a PR run
 #
@@ -49,10 +49,18 @@ jobs:
           echo "ui-shards=$(jq -c '.ui_shards' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
 
   timing:
-    name: Timing families (x3)
+    # One job per repeat: a single pass of the timing families is ~15-20 min
+    # on a hosted runner (MarkdownRichContentHostedTests alone is 810s in
+    # scripts/test-timings.json), so three passes in one job would not fit
+    # a sane ceiling, and a cancelled job loses which pass failed.
+    name: Timing families (repeat ${{ matrix.repeat }})
     needs: plan
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        repeat: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
 
@@ -73,7 +81,6 @@ jobs:
       - name: Run the timing families
         env:
           TIMING_CLASSES: "${{ needs.plan.outputs.timing-csv }}"
-          TIMING_REPEATS: "3"
         run: |
           set -euo pipefail
           if [ -z "$TIMING_CLASSES" ]; then
@@ -85,28 +92,15 @@ jobs:
           for cls in "${CLASSES[@]}"; do
             args+=("-only-testing:ConduitTests/${cls}")
           done
-          failed=0
-          for attempt in $(seq 1 "$TIMING_REPEATS"); do
-            echo "::group::timing families, repeat $attempt of $TIMING_REPEATS"
-            if ! xcodebuild test-without-building \
-              -xctestrun "$XCRUN_FILE" \
-              -destination "$DESTINATION" \
-              -parallel-testing-enabled NO \
-              "${args[@]}"; then
-              echo "::endgroup::"
-              echo "::error::timing families failed on repeat $attempt"
-              failed=$((failed + 1))
-              continue
-            fi
-            echo "::endgroup::"
-          done
-          if [ "$failed" -gt 0 ]; then
-            echo "::error::timing families failed $failed of $TIMING_REPEATS repeats"
-            exit 1
-          fi
+          xcodebuild test-without-building \
+            -xctestrun "$XCRUN_FILE" \
+            -destination "$DESTINATION" \
+            -parallel-testing-enabled NO \
+            -collect-test-diagnostics never \
+            "${args[@]}"
 
   ui:
-    name: UI suite (shard ${{ strategy.job-index }})
+    name: UI suite (shard ${{ strategy.job-index + 1 }})
     needs: plan
     runs-on: macos-26
     timeout-minutes: 60
@@ -150,4 +144,5 @@ jobs:
             -xctestrun "$XCRUN_FILE" \
             -destination "$DESTINATION" \
             -parallel-testing-enabled NO \
+            -collect-test-diagnostics never \
             "${args[@]}"

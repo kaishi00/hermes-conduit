@@ -129,6 +129,15 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn("refusing to run unfiltered", self._job_text(job),
                           f"{job} must refuse an empty selection")
 
+    def test_every_hosted_invocation_skips_failure_diagnostics(self):
+        # Xcode's on-failure default gathers a simulator payload under its own
+        # 600s timeout (docs/CI.md): ten minutes of dead time per failed batch.
+        for job in ("unit", "ui-smoke"):
+            text = self._job_text(job)
+            self.assertEqual(
+                text.count("xcodebuild test-without-building"),
+                text.count("-collect-test-diagnostics never \\"), job)
+
     def test_unit_job_runs_in_bounded_sequential_batches(self):
         self.assertIn("UNIT_BATCH_SIZE", self._job_text("unit"))
 
@@ -221,7 +230,9 @@ class NightlyWorkflowTests(unittest.TestCase):
         self.assertIn("plan-tests.py hosted", self.text)
         self.assertIn("nightly_unit_csv", self.text)
         self.assertIn("fromJSON(needs.plan.outputs.ui-shards)", self.text)
-        self.assertIn("TIMING_REPEATS", self.text)
+        self.assertIn("repeat: [1, 2, 3]", self.text,
+                      "each timing pass is its own job, so one never outgrows its ceiling")
+        self.assertIn("-collect-test-diagnostics never", self.text)
         self.assertIn("refusing to run unfiltered", self.text)
         self.assertNotIn("-retry-tests-on-failure", self.text)
 
@@ -271,6 +282,14 @@ class HostedSelectionTests(unittest.TestCase):
             proc = self._run(self._write(tmp, suite))
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("NoSuchClassTests", proc.stdout)
+
+    def test_an_unknown_schema_version_fails_the_selection(self):
+        with open(self.HOSTED_SUITE, encoding="utf-8") as fh:
+            suite = json.load(fh)
+        suite["schema_version"] = 2
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = self._run(self._write(tmp, suite))
+        self.assertNotEqual(proc.returncode, 0)
 
     def test_a_non_positive_shard_count_fails_the_selection(self):
         with open(self.HOSTED_SUITE, encoding="utf-8") as fh:

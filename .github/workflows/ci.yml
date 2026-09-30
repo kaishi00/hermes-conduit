@@ -91,7 +91,6 @@ jobs:
           mkdir -p ci-artifacts
           python3 scripts/plan-tests.py smoke --repo-root . \
             --suite scripts/smoke-suite.json --out ci-artifacts/smoke.json
-          echo "unit-csv=$(jq -r '.unit_csv' ci-artifacts/smoke.json)" >> "$GITHUB_OUTPUT"
           echo "ui-csv=$(jq -r '.ui_csv' ci-artifacts/smoke.json)" >> "$GITHUB_OUTPUT"
 
       - name: Select the hosted unit shards
@@ -102,6 +101,12 @@ jobs:
           python3 scripts/plan-tests.py hosted --repo-root . \
             --suite scripts/hosted-suite.json --out ci-artifacts/hosted.json
           echo "unit-shards=$(jq -c '.unit_shards' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Hosted unit shards"
+            echo
+            jq -r '.unit_shards | to_entries[] | "- shard \(.key + 1): \(.value | split(",") | length) classes"' ci-artifacts/hosted.json
+            echo "- nightly only: $(jq -r '.nightly_unit_csv' ci-artifacts/hosted.json)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke selection summary
         run: |
@@ -142,7 +147,7 @@ jobs:
           python3 scripts/ci-self-test.py --group "${{ matrix.group }}"
 
   unit:
-    name: Unit tests (shard ${{ strategy.job-index }})
+    name: Unit tests (shard ${{ strategy.job-index + 1 }})
     needs: plan
     runs-on: macos-26
     timeout-minutes: 45
@@ -180,6 +185,11 @@ jobs:
         #
         # -test-timeouts-enabled bounds a hung test: XCTest kills it after the
         # allowance and reports it, instead of the job burning its ceiling.
+        # -collect-test-diagnostics never: Xcode's on-failure default gathers a
+        # simulator payload under its own 600s timeout (docs/CI.md).
+        # Accepted tradeoff: there is no wall-clock watchdog around a whole
+        # invocation, so a wedged xcodebuild or simulator (not a hung test)
+        # runs to the job ceiling and reads as "cancelled".
         env:
           UNIT_CLASSES: "${{ matrix.classes }}"
           UNIT_BATCH_SIZE: "35"
@@ -230,6 +240,7 @@ jobs:
               -xctestrun "$XCRUN_FILE" \
               -destination "$DESTINATION" \
               -parallel-testing-enabled NO \
+              -collect-test-diagnostics never \
               -test-timeouts-enabled YES \
               -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
               "${batch_args[@]}"; then
@@ -344,6 +355,7 @@ jobs:
               -xctestrun "$XCRUN_FILE" \
               -destination "$DESTINATION" \
               -parallel-testing-enabled NO \
+              -collect-test-diagnostics never \
               -resultBundlePath "$result_bundle" \
               "${args[@]}"
           }

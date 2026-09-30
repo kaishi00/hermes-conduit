@@ -1104,13 +1104,16 @@ def cmd_smoke(args) -> int:
 def load_hosted_suite(path: str) -> dict:
     """Read the hosted CI shape (scripts/hosted-suite.json).
 
-    Fails closed: shard counts must be positive integers and the nightly-only
-    list must name plain Swift classes.
+    Fails closed: the schema version must be 1, shard counts must be positive
+    integers and the nightly-only list must name plain Swift classes.
     """
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
     if not isinstance(data, dict):
         raise ValueError("hosted suite must be a JSON object")
+    if data.get("schema_version") != 1:
+        raise ValueError("hosted suite schema_version must be 1, got {0!r}".format(
+            data.get("schema_version")))
     for key in ("unit_shards", "nightly_ui_shards"):
         value = data.get(key)
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
