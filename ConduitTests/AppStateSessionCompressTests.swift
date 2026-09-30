@@ -919,6 +919,15 @@ final class AppStateSessionCompressTests: XCTestCase {
         ))
         XCTAssertFalse(harness.appState.isCompressingActiveSession)
 
+        for diagnostic in [
+            "[subagent] ⚠️  Session compressed 3 times — accuracy may degrade. Consider /new to start fresh.",
+            "⚠ Compression model aux (x) context is 32,000 tokens, but the main model main's compression threshold was 64,000 tokens.",
+            "ℹ Codex gpt-5.5 caps context at 272K, so auto-compaction was raised to 90% (from 80%)."
+        ] {
+            harness.appState.handleStreamEvent(.statusUpdate(sessionId: origin.id, kind: .compacting, text: diagnostic))
+            XCTAssertFalse(harness.appState.isCompressingActiveSession, diagnostic)
+        }
+
         // Real progress still claims.
         harness.appState.handleStreamEvent(.statusUpdate(
             sessionId: origin.id,
@@ -948,6 +957,26 @@ final class AppStateSessionCompressTests: XCTestCase {
             ["composer-destination"],
             "Another conversation's claim is untouched"
         )
+    }
+
+    func testEveryAgentOutputEventReleasesCompactionClaim() async throws {
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations())
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        let events: [StreamEvent] = [
+            .messageStart(sessionId: origin.id),
+            .messageDelta(sessionId: origin.id, text: "Hi"),
+            .toolStart(sessionId: origin.id, toolName: "terminal", toolInput: nil),
+            .messageComplete(sessionId: origin.id, messageId: nil, content: "Hi", reasoning: nil)
+        ]
+        for event in events {
+            harness.appState.handleStreamEvent(.statusUpdate(sessionId: origin.id, kind: .compacting, text: nil))
+            XCTAssertTrue(harness.appState.isCompressingActiveSession)
+            harness.appState.handleStreamEvent(event)
+            XCTAssertFalse(harness.appState.isCompressingActiveSession, "\(event)")
+        }
     }
 
     // MARK: - Compression identity
