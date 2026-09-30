@@ -47,8 +47,8 @@ env:
   SIMULATOR_NAME: "iPhone 17 Pro"
   # Workspace-anchored DerivedData: GITHUB_WORKSPACE is byte-identical across
   # GitHub-hosted runners for this repo (/Users/runner/work/<repo>/<repo>),
-  # so absolute paths inside the .xctestrun stay valid after the artifact
-  # round-trip - no path rewriting involved.
+  # so absolute paths inside the .xctestrun are stable from run to run - no
+  # path rewriting involved.
   DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
 
 jobs:
@@ -223,6 +223,8 @@ jobs:
           fi
           UNIT_BATCH_SIZE=$((10#$UNIT_BATCH_SIZE))
           echo "unit shard: ${#CLASSES[@]} classes, batches of at most $UNIT_BATCH_SIZE"
+          printf '### Unit shard classes (%s)\n\n`%s`\n' "${#CLASSES[@]}" "$UNIT_CLASSES" \
+            >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
           failed_batches=()
           run_batch() {
@@ -307,8 +309,8 @@ jobs:
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the curated UI smoke suite
-        # Basic launch/navigation smoke only: the full UI suite is certified by
-        # the Mac local gate.
+        # Basic launch/navigation smoke only: the full UI suite runs in the
+        # nightly workflow (nightly.yml).
         #
         # UI classes are the one part of this gate with a measured flake rate on
         # shared runners: over three runs of this PR, two different UI tests
@@ -320,8 +322,8 @@ jobs:
         # result attribution is uncertain, and the original failure reported.
         # A class that fails twice fails this job - this is
         # deliberately not rerun-until-green, and no Xcode-native retry flags are
-        # used anywhere. The unit smoke job gets no such retry: its classes are
-        # deterministic.
+        # used anywhere. The unit shards get no such retry: a unit failure is a
+        # test bug to fix, not runner noise.
         env:
           UI_CLASSES: "${{ needs.plan.outputs.ui-csv }}"
           UI_SMOKE_LOG: ci-lane/ui-smoke.log

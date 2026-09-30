@@ -46,6 +46,9 @@ The repository is public, so standard hosted runners cost nothing, but GitHub
 allows **5 concurrent macOS jobs** per account. A PR run uses 3 (2 unit shards
 + UI smoke), and `cancel-in-progress` retires superseded runs, which leaves
 room for the next push. Raise `unit_shards` only with that ceiling in mind.
+A nightly run schedules up to 6 macOS jobs (3 timing repeats + 3 UI shards),
+so one of them queues behind the ceiling, and a nightly that overlaps a PR run
+slows both. That is accepted: nightly results are not time-critical.
 
 ---
 

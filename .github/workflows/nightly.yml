@@ -97,6 +97,8 @@ jobs:
             -destination "$DESTINATION" \
             -parallel-testing-enabled NO \
             -collect-test-diagnostics never \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 900 \
             "${args[@]}"
 
   ui:
