@@ -576,9 +576,16 @@ final class ConnectionRepairTests: XCTestCase {
 
     func testColdStartNativeGrantMintsTicketBeforeSavedPasswordRestore() async throws {
         let connected = expectation(description: "native token connection activated")
+        // The app state can reconnect again after this test's assertions (for
+        // example a late automatic retry). Fulfilling on every connect then
+        // over-fulfills the expectation and crashes whichever test runs next.
+        let connectCount = RepairConnectCount()
         var mintedBaseURL: String?
         let lifecycle = ChatResumeLifecycleOperations(
-            connectClient: { _ in connected.fulfill() },
+            connectClient: { _ in
+                connectCount.value += 1
+                if connectCount.value == 1 { connected.fulfill() }
+            },
             loadCatalog: { _, _ in [self.session("stored-a")] },
             mintTicket: { baseURL in
                 mintedBaseURL = baseURL
