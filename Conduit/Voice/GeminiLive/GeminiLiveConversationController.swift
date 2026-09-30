@@ -817,4 +817,10 @@ final class GeminiLiveConversationController: ObservableObject {
         exchangeUserEntry = nil
         openAssistantEntry = nil
     }
+
+    /// Entries Gemini is still streaming into: a saved transcript waits for
+    /// them to settle.
+    var unsettledTranscriptEntryIDs: Set<UUID> {
+        Set([openUserEntry, openAssistantEntry].compactMap { $0 })
+    }
 }

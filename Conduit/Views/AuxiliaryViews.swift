@@ -560,7 +560,9 @@ struct SettingsView: View {
                         memory: appState.geminiLiveMemoryEnabled,
                         setMemory: { appState.setGeminiLiveMemoryEnabled($0) },
                         personality: appState.geminiLivePersonalityEnabled,
-                        setPersonality: { appState.setGeminiLivePersonalityEnabled($0) }
+                        setPersonality: { appState.setGeminiLivePersonalityEnabled($0) },
+                        saveCalls: appState.voiceCallSavingEnabled,
+                        setSaveCalls: { appState.setVoiceCallSavingEnabled($0) }
                     ),
                     gptLive: GPTLiveSettingsModel(
                         enabled: appState.isGPTLiveEnabled,
@@ -577,7 +579,9 @@ struct SettingsView: View {
                         memory: appState.gptLiveMemoryEnabled,
                         setMemory: { appState.setGPTLiveMemoryEnabled($0) },
                         personality: appState.gptLivePersonalityEnabled,
-                        setPersonality: { appState.setGPTLivePersonalityEnabled($0) }
+                        setPersonality: { appState.setGPTLivePersonalityEnabled($0) },
+                        saveCalls: appState.voiceCallSavingEnabled,
+                        setSaveCalls: { appState.setVoiceCallSavingEnabled($0) }
                     ),
                     voiceJobs: VoiceJobModelSettingsModel(
                         provider: voicePreferences.voiceJobProvider,

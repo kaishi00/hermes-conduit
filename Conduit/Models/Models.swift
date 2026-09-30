@@ -27,6 +27,11 @@ enum MessageRole: String, Codable, Equatable {
 
 enum SessionSource: String, Codable, CaseIterable {
     case chat
+    /// Saved live voice calls and chats classic Voice started. Never a
+    /// Hermes source: Conduit files tagged rows here (see VoiceSessionTag).
+    case voice
+    /// Background jobs a voice conversation started (tagged, as above).
+    case voiceJob = "voice_job"
     case discord
     case telegram
     case api
@@ -37,6 +42,8 @@ enum SessionSource: String, Codable, CaseIterable {
     var label: String {
         switch self {
         case .chat: return AppLocalization.string("Chat")
+        case .voice: return AppLocalization.string("Voice")
+        case .voiceJob: return AppLocalization.string("Voice Jobs")
         case .discord: return "Discord"
         case .telegram: return "Telegram"
         case .api: return "API"
@@ -49,6 +56,8 @@ enum SessionSource: String, Codable, CaseIterable {
     var iconName: String {
         switch self {
         case .chat: return "bubble.left.fill"
+        case .voice: return "waveform"
+        case .voiceJob: return "bolt.horizontal.circle.fill"
         case .discord: return "person.2.fill"
         case .telegram: return "paperplane.fill"
         case .api: return "globe"
@@ -61,6 +70,8 @@ enum SessionSource: String, Codable, CaseIterable {
     var color: Color {
         switch self {
         case .chat: return .blue
+        case .voice: return .teal
+        case .voiceJob: return .indigo
         case .discord: return .purple
         case .telegram: return .cyan
         case .api: return .green

@@ -788,7 +788,40 @@ struct ComposerBar: View {
         }
     }
 
+    @ViewBuilder
     private var voiceButton: some View {
+        if let callID = appState.activeVoiceCallSessionID, appState.canResumeVoiceCall {
+            resumeVoiceCallButton(callID)
+        } else {
+            startVoiceButton
+        }
+    }
+
+    /// A saved live call: pick it up with a new live call that continues
+    /// the same row.
+    private func resumeVoiceCallButton(_ callID: String) -> some View {
+        Button {
+            dismissComposer()
+            Haptics.selection()
+            Task { await appState.resumeVoiceCall(sessionID: callID) }
+        } label: {
+            Group {
+                if appState.isPreparingVoiceResume {
+                    ProgressView()
+                } else {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 18, weight: .semibold))
+                }
+            }
+            .frame(width: 44, height: 44)
+        }
+        .disabled(appState.isPreparingVoiceResume || appState.isBusy)
+        .conduitGlassControl(cornerRadius: 22, tint: .conduitAura.opacity(0.14), interactive: true)
+        .accessibilityLabel(AppLocalization.string("Resume voice call"))
+        .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
+    }
+
+    private var startVoiceButton: some View {
         Button {
             dismissComposer()
             Haptics.selection()
