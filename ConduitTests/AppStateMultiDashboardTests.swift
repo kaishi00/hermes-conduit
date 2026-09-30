@@ -9,6 +9,7 @@
 //  focus is AppState behavior.
 //
 
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -19,9 +20,15 @@ final class AppStateMultiDashboardTests: XCTestCase {
     private var defaults: UserDefaults!
     private var backend: InMemoryKeychainBackend!
     private var createdDashboardIDs: [UUID] = []
+    private var avatarsRoot: URL!
+    private var legacyAvatarsDirectory: URL!
 
     override func setUp() {
         super.setUp()
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AppStateMultiDashboardTests.\(UUID().uuidString)", isDirectory: true)
+        avatarsRoot = scratch.appendingPathComponent("profile-avatars", isDirectory: true)
+        legacyAvatarsDirectory = scratch.appendingPathComponent("ProfileAvatars", isDirectory: true)
         defaultsSuite = "AppStateMultiDashboardTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: defaultsSuite)!
         backend = InMemoryKeychainBackend()
@@ -39,6 +46,7 @@ final class AppStateMultiDashboardTests: XCTestCase {
         KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend())
         backend = nil
         defaults.removePersistentDomain(forName: defaultsSuite)
+        try? FileManager.default.removeItem(at: avatarsRoot.deletingLastPathComponent())
         super.tearDown()
     }
 
@@ -53,8 +61,24 @@ final class AppStateMultiDashboardTests: XCTestCase {
             loadSavedConnection: false,
             dashboardRegistry: registry,
             clearSessionPresentationCache: {},
-            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            profileAppearanceStore: makeAppearanceStore()
         )
+    }
+
+    private func makeAppearanceStore() -> ProfileAppearanceStore {
+        ProfileAppearanceStore(
+            defaults: defaults,
+            avatarsRoot: avatarsRoot,
+            legacyAvatarDirectories: [avatarsRoot, legacyAvatarsDirectory]
+        )
+    }
+
+    private func photoData() -> Data {
+        UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }.pngData()!
     }
 
     private func dashboard(_ label: String, _ url: String) -> SavedDashboard {
@@ -410,5 +434,110 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(appState.isConnected)
         // All three dashboards remain saved.
         XCTAssertEqual(appState.savedDashboardRegistry.dashboards.count, 3)
+    }
+
+    // MARK: - Dashboard-scoped profile presentation (profile bleed)
+
+    func testDefaultProfileNameAndPhotoDoNotFollowADashboardSwitch() throws {
+        // Every Hermes server has a "default" profile. The label and photo
+        // chosen for it on the primary dashboard must not appear on another.
+        let primary = dashboard("Primary", "https://mac.tailnet.ts.net")
+        let review = dashboard("Review", "https://review.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: primary.id, dashboards: [primary, review]))
+        appState.saveDefaultProfileName("Atlas")
+        try appState.saveProfileAvatar(photoData(), for: "default")
+        XCTAssertEqual(appState.profileDisplayName("default"), "Atlas")
+        XCTAssertNotNil(appState.profileAvatarURL(for: "default"))
+
+        appState.selectDashboardTarget(review.id)
+
+        XCTAssertEqual(appState.defaultProfileName, ProfileAppearanceStore.defaultName)
+        XCTAssertEqual(appState.profileDisplayName("default"), ProfileAppearanceStore.defaultName)
+        XCTAssertNil(appState.profileAvatarURL(for: "default"))
+
+        appState.saveDefaultProfileName("Reviewer")
+        appState.selectDashboardTarget(primary.id)
+
+        XCTAssertEqual(appState.defaultProfileName, "Atlas")
+        XCTAssertNotNil(appState.profileAvatarURL(for: "default"))
+        // A fresh launch reads the same per-dashboard state back.
+        let relaunched = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: review.id, dashboards: [primary, review]))
+        XCTAssertEqual(relaunched.defaultProfileName, "Reviewer")
+        XCTAssertNil(relaunched.profileAvatarURL(for: "default"))
+    }
+
+    func testLegacyGlobalAppearanceIsAdoptedByTheFirstDashboardOnly() throws {
+        let primary = dashboard("Primary", "https://mac.tailnet.ts.net")
+        let review = dashboard("Review", "https://review.example.com")
+        defaults.set("Atlas", forKey: ProfileAppearanceStore.legacyDefaultNameKey)
+        try FileManager.default.createDirectory(at: avatarsRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: legacyAvatarsDirectory, withIntermediateDirectories: true)
+        try photoData().write(to: avatarsRoot.appendingPathComponent(ProfileAppearanceStore.fileName(for: "default")))
+        try photoData().write(to: legacyAvatarsDirectory.appendingPathComponent(ProfileAppearanceStore.fileName(for: "coder")))
+
+        // Upgrade launch while the second dashboard is selected: the legacy
+        // values still belong to the first one.
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: review.id, dashboards: [primary, review]))
+
+        XCTAssertEqual(appState.defaultProfileName, ProfileAppearanceStore.defaultName)
+        XCTAssertTrue(appState.profileAvatarURLs.isEmpty)
+        XCTAssertNil(defaults.object(forKey: ProfileAppearanceStore.legacyDefaultNameKey))
+
+        appState.selectDashboardTarget(primary.id)
+
+        XCTAssertEqual(appState.defaultProfileName, "Atlas")
+        XCTAssertEqual(Set(appState.profileAvatarURLs.keys), ["default", "coder"])
+        // Loose legacy files were moved, so later loads cannot rediscover
+        // them for another dashboard.
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: avatarsRoot.appendingPathComponent(ProfileAppearanceStore.fileName(for: "default")).path
+        ))
+    }
+
+    func testHiddenModelsAreRememberedPerDashboard() {
+        let primary = dashboard("Primary", "https://mac.tailnet.ts.net")
+        let review = dashboard("Review", "https://review.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: primary.id, dashboards: [primary, review]))
+        appState.saveModelVisibility(ModelVisibility(hiddenProviders: ["openrouter"], hiddenModels: []))
+
+        appState.selectDashboardTarget(review.id)
+        XCTAssertEqual(appState.modelVisibility, ModelVisibility())
+
+        appState.selectDashboardTarget(primary.id)
+        XCTAssertEqual(appState.modelVisibility.hiddenProviders, ["openrouter"])
+    }
+
+    func testSwitchLandsOnTheTargetDashboardsOwnProfile() async {
+        let primary = dashboard("Primary", "https://mac.tailnet.ts.net")
+        let review = dashboard("Review", "https://review.example.com")
+        defaults.set("work", forKey: "conduit.activeProfile")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: primary.id, dashboards: [primary, review]))
+        appState.prepareChatResumeForConnection(to: primary.normalizedURL, dashboardID: primary.id)
+        XCTAssertEqual(appState.activeProfile, "work")
+
+        await appState.switchDashboard(to: review.id)
+
+        // The review server was never used with "work": it starts on default.
+        XCTAssertEqual(appState.activeDashboardID, review.id)
+        XCTAssertEqual(appState.activeProfile, "default")
+        XCTAssertEqual(defaults.string(forKey: "conduit.activeProfile"), "default")
+
+        await appState.switchDashboard(to: primary.id)
+
+        XCTAssertEqual(appState.activeProfile, "work")
+    }
+
+    func testRemovingADashboardDropsItsAppearance() throws {
+        let primary = dashboard("Primary", "https://mac.tailnet.ts.net")
+        let review = dashboard("Review", "https://review.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: review.id, dashboards: [primary, review]))
+        appState.saveDefaultProfileName("Reviewer")
+        try appState.saveProfileAvatar(photoData(), for: "default")
+
+        appState.removeDashboard(review.id)
+
+        let store = makeAppearanceStore()
+        XCTAssertEqual(store.loadDefaultName(dashboardID: review.id), ProfileAppearanceStore.defaultName)
+        XCTAssertTrue(store.loadAvatarURLs(dashboardID: review.id).isEmpty)
     }
 }
