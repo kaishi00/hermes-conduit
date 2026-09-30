@@ -228,6 +228,8 @@ final class VoiceTranscriptRecorder {
     private let title: @MainActor (_ turns: [VoiceTranscriptTurn]) async -> String
     private let now: () -> Date
     private var flushChain: Task<Void, Never>?
+    /// A new row's title, asked for once and reused if its save is retried.
+    private var newRowTitle: String?
 
     init(
         engine: VoiceCallEngine,
@@ -280,6 +282,7 @@ final class VoiceTranscriptRecorder {
         }
         flushChain = task
         await task.value
+        if flushChain == task { flushChain = nil }
     }
 
     private func performFlush() async {
@@ -290,7 +293,11 @@ final class VoiceTranscriptRecorder {
         let pending = unsavedTurns
         guard !pending.isEmpty else { return }
         let creating = sessionID == nil
-        let rowTitle: String? = creating ? await title(turns) : nil
+        var rowTitle: String?
+        if creating {
+            if newRowTitle == nil { newRowTitle = await title(turns) }
+            rowTitle = newRowTitle
+        }
         let request = VoiceTranscriptSaveRequest(
             callID: callID,
             engine: engine,
@@ -434,30 +441,23 @@ enum VoiceResumePlan: Equatable {
         return collapsed.count <= turnCharacterLimit ? collapsed : String(collapsed.prefix(turnCharacterLimit - 1)) + "…"
     }
 
-    /// The row's text turns from `/api/sessions/{id}/messages` rows: user
-    /// and assistant text only. Tool calls, tool output and reasoning never
-    /// reach the voice provider.
-    static func turns(fromMessageRows rows: [[String: Any]]) -> [VoiceResumeTurn] {
-        rows.compactMap { row in
+    /// The row's text turns from raw `/api/sessions/{id}/messages` rows,
+    /// read through the app's own normalizer so wrapped rows unwrap and
+    /// hidden scaffolding (compaction handoffs, checkpoints) is dropped.
+    /// User and assistant text only: tool calls, tool output, reasoning and
+    /// system rows never reach the voice provider.
+    static func turns(fromMessageRows rows: [Any]) -> [VoiceResumeTurn] {
+        MessageNormalizer.normalizeMessages(rows.map(AnyCodable.from)).compactMap { message in
+            guard message.tool == nil else { return nil }
             let speaker: VoiceConversationTranscriptEntry.Speaker
-            switch row["role"] as? String {
-            case "user": speaker = .user
-            case "assistant": speaker = .assistant
+            switch message.role {
+            case .user: speaker = .user
+            case .assistant: speaker = .assistant
             default: return nil
             }
-            let text = messageText(row["content"]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? nil : VoiceResumeTurn(speaker: speaker, text: text)
         }
-    }
-
-    private static func messageText(_ content: Any?) -> String {
-        if let text = content as? String { return text }
-        // Multi-part content: its text parts only.
-        guard let parts = content as? [[String: Any]] else { return "" }
-        return parts.compactMap { part -> String? in
-            guard (part["type"] as? String).map({ $0 == "text" || $0 == "input_text" || $0 == "output_text" }) ?? true else { return nil }
-            return part["text"] as? String
-        }.joined(separator: "\n")
     }
 
     /// Instructions for the one-shot summary. Written for the model, not
@@ -499,12 +499,6 @@ struct VoiceResumeContext: Equatable {
 
     /// GPT-Live's seeded history (the Codex frameless `initial_items`).
     var gptLiveHistory: [[String: Any]] {
-        recent.map { turn in
-            [
-                "type": "message",
-                "role": turn.speaker == .user ? "user" : "assistant",
-                "content": [["type": turn.speaker == .user ? "input_text" : "output_text", "text": turn.text]]
-            ]
-        }
+        recent.map { GPTLiveProtocol.historyItem(role: $0.speaker == .user ? "user" : "assistant", text: $0.text) }
     }
 }

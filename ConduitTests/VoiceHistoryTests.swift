@@ -281,16 +281,28 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testResumeTurnsKeepOnlyUserAndAssistantText() {
-        let rows: [[String: Any]] = [
-            ["role": "user", "content": "Add milk"],
-            ["role": "assistant", "content": [["type": "text", "text": "Added."], ["type": "image_url", "image_url": "x"]]],
-            ["role": "tool", "content": "{\"secret\": 1}"],
-            ["role": "assistant", "content": "   "],
-            ["role": "system", "content": "rules"]
+        let rows: [Any] = [
+            ["id": 1, "role": "user", "content": "Add milk"],
+            ["id": 2, "role": "assistant", "content": [["type": "text", "text": "Added."]]],
+            ["id": 3, "role": "tool", "tool_call_id": "t1", "content": "{\"secret\": 1}"],
+            ["id": 4, "role": "assistant", "content": "   "],
+            ["id": 5, "role": "system", "content": "rules"]
         ]
         XCTAssertEqual(VoiceResumePlan.turns(fromMessageRows: rows), [
             VoiceResumeTurn(speaker: .user, text: "Add milk"),
             VoiceResumeTurn(speaker: .assistant, text: "Added.")
+        ])
+    }
+
+    func testResumeTurnsUnwrapEnvelopesAndDropHiddenScaffolding() {
+        let rows: [Any] = [
+            ["id": 1, "message": ["role": "user", "content": "Plan dinner"]],
+            ["id": 2, "role": "user", "display_kind": "hidden", "content": "Compaction handoff: secret scaffolding"],
+            ["id": 3, "payload": ["type": "assistant", "content": "Tacos on Friday."]]
+        ]
+        XCTAssertEqual(VoiceResumePlan.turns(fromMessageRows: rows), [
+            VoiceResumeTurn(speaker: .user, text: "Plan dinner"),
+            VoiceResumeTurn(speaker: .assistant, text: "Tacos on Friday.")
         ])
     }
 

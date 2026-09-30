@@ -2872,6 +2872,9 @@ final class AppState: ObservableObject {
     static let voiceCallFlushInterval: Duration = .seconds(60)
     /// A saved call the next live call continues (Resume Call).
     private var pendingVoiceResume: (sessionID: String, context: VoiceResumeContext)?
+    /// Calls whose closing save is still running, so the outbox doesn't
+    /// save the same turns alongside it (possibly into a second new row).
+    private var voiceTranscriptsSaving: Set<String> = []
     /// What the live call now connecting continues, read by its session
     /// builders (reconnects included) until the call closes.
     private(set) var liveVoiceResumeContext: VoiceResumeContext?
@@ -3051,9 +3054,21 @@ final class AppState: ObservableObject {
         voiceCallRecorder = nil
         let key = voiceHistoryKey(profile: recorder.profile)
         let dashboard = activeDashboardID?.uuidString ?? "-"
+        // Queued before the final save starts, so the turns survive the app
+        // being suspended or closed mid-save; the save then settles it.
+        let queuedCallID = recorder.outboxRequest?.callID
+        if let request = recorder.outboxRequest {
+            queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile)
+            // The outbox leaves it alone while the save below is running.
+            voiceTranscriptsSaving.insert(request.callID)
+        }
         Task { [weak self] in
             await recorder.flush()
             guard let self else { return }
+            if let queuedCallID {
+                self.voiceTranscriptsSaving.remove(queuedCallID)
+                self.dequeueVoiceTranscript(callID: queuedCallID)
+            }
             if let request = recorder.outboxRequest {
                 self.queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile)
             }
@@ -3070,8 +3085,17 @@ final class AppState: ObservableObject {
     // MARK: Outbox
 
     private func queueVoiceTranscript(_ request: VoiceTranscriptSaveRequest, dashboard: String, profile: String) {
+        var request = request
+        // A retry that creates the row can't wait on a title from Hermes.
+        if request.sessionID == nil, request.title == nil { request.title = Self.fallbackVoiceCallTitle() }
         var outbox = VoiceTranscriptOutbox.load(from: defaults)
         outbox.add(.init(dashboard: dashboard, profile: profile, request: request, queuedAt: Date()))
+        outbox.store(in: defaults)
+    }
+
+    private func dequeueVoiceTranscript(callID: String) {
+        var outbox = VoiceTranscriptOutbox.load(from: defaults)
+        outbox.entries.removeAll { $0.request.callID == callID }
         outbox.store(in: defaults)
     }
 
@@ -3080,7 +3104,8 @@ final class AppState: ObservableObject {
         var outbox = VoiceTranscriptOutbox.load(from: defaults)
         outbox.prune(now: Date())
         let dashboard = activeDashboardID?.uuidString ?? "-"
-        for entry in outbox.entries where entry.dashboard == dashboard && entry.profile == profile {
+        for entry in outbox.entries where entry.dashboard == dashboard && entry.profile == profile
+            && !voiceTranscriptsSaving.contains(entry.request.callID) {
             var request = entry.request
             do {
                 let result = try await voiceHistoryClient.save(request, profile: profile)
@@ -3163,6 +3188,9 @@ final class AppState: ObservableObject {
         } else {
             openGPTLiveConversation()
         }
+        // Starting the call took it; a call already running didn't, and a
+        // later unrelated call must not.
+        pendingVoiceResume = nil
     }
 
     /// What a resumed call gets from the row. A long row's older turns are
@@ -3172,7 +3200,7 @@ final class AppState: ObservableObject {
     func voiceResumeContext(sessionID: String, profile: String) async -> VoiceResumeContext? {
         guard let rows = await voiceRowMessages(sessionID: sessionID, profile: profile) else { return nil }
         let turns = VoiceResumePlan.turns(fromMessageRows: rows)
-        let stored = (try? await voiceHistoryClient.summary(sessionID: sessionID, profile: profile)) ?? nil
+        let stored = try? await voiceHistoryClient.summary(sessionID: sessionID, profile: profile)
         switch VoiceResumePlan.plan(turns: turns, stored: stored) {
         case .verbatim(let recent):
             return VoiceResumeContext(summary: nil, recent: recent)
@@ -3199,19 +3227,31 @@ final class AppState: ObservableObject {
     static let voiceRowPageSize = 500
     static let voiceRowMaximumPages = 4
 
-    /// The row's messages, oldest first, through the dashboard (no images).
-    private func voiceRowMessages(sessionID: String, profile: String) async -> [[String: Any]]? {
+    /// The row's newest raw messages, oldest first, through the dashboard:
+    /// tail-anchored pages like the transcript's own, with compaction-
+    /// preserved rows. A resume only needs the latest turns plus a summary,
+    /// so older rows past the page budget are left out. A dashboard that
+    /// doesn't page from the newest end gets the legacy one-shot read.
+    private func voiceRowMessages(sessionID: String, profile: String) async -> [Any]? {
         guard let bridge = dashboardTicketBridge else { return nil }
-        var rows: [[String: Any]] = []
-        for page in 0..<Self.voiceRowMaximumPages {
-            let query = "?limit=\(Self.voiceRowPageSize)&offset=\(page * Self.voiceRowPageSize)&order=oldest&inline_images=false"
+        func fetch(_ query: String) async -> (rows: [Any], page: PersistedTranscriptPagination.PageInfo?)? {
             guard let response = try? await bridge.requestJSON(
                 path: Self.sessionMessagesPath(sessionId: sessionID, profile: profile, query: query)
-            ), let messages = response["messages"] as? [[String: Any]] else {
-                return page == 0 ? nil : rows
+            ), let rows = Self.persistedMessageRows(in: response) else { return nil }
+            return (rows, PersistedTranscriptPagination.parse(response, rawRowCount: rows.count))
+        }
+        var rows: [Any] = []
+        for page in 0..<Self.voiceRowMaximumPages {
+            let query = "?limit=\(Self.voiceRowPageSize)&offset=\(page * Self.voiceRowPageSize)"
+                + "&order=latest&include_compacted=true&inline_images=false"
+            guard let result = await fetch(query) else { return page == 0 ? nil : rows }
+            guard let info = result.page, info.honorsTailContract else {
+                // Not tail-anchored: take the whole transcript in one read.
+                guard page == 0 else { return rows }
+                return await fetch(PersistedTranscriptPagination.legacyQuery)?.rows
             }
-            rows += messages
-            if messages.count < Self.voiceRowPageSize { break }
+            rows = result.rows + rows
+            if !info.mayHaveOlderRows(fetchedRowCount: result.rows.count) { break }
         }
         return rows
     }
