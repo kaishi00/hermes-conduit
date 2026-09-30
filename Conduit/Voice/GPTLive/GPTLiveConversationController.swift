@@ -565,4 +565,11 @@ final class GPTLiveConversationController: ObservableObject {
         userTurnEntries = []
         assistantTurnEntries = []
     }
+
+    /// Entries still taking fragments or waiting for their turn's
+    /// `turn.done` (which can rewrite them): a saved transcript waits for
+    /// them to settle.
+    var unsettledTranscriptEntryIDs: Set<UUID> {
+        Set([openUserEntry, openAssistantEntry].compactMap { $0 } + userTurnEntries + assistantTurnEntries)
+    }
 }

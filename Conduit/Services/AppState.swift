@@ -506,7 +506,8 @@ final class AppState: ObservableObject {
     @Published var isConnected = false
     @Published var isConnecting = false
     @Published var profiles: [String] = []
-    @Published private(set) var sessionFilterOrder: [SessionSource] = [.chat, .discord, .telegram, .api, .webhook, .other]
+    @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
+    static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .other]
     /// Stable per-profile gateway-media resolver for settled row content.
     /// Created lazily on first read and reused while the active profile is
     /// unchanged, so ChatView's first body pass already has a resolver
@@ -1404,7 +1405,7 @@ final class AppState: ObservableObject {
                         search: search,
                         memory: memory,
                         personality: self?.geminiLivePersonality
-                    ),
+                    ) + (self?.liveVoiceResumeContext?.instructionBlock ?? ""),
                     functions: GeminiLiveToolBridge.declarations(webSearch: search == .hermes, memoryRecall: memory?.canRecall == true),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
@@ -1447,6 +1448,7 @@ final class AppState: ObservableObject {
         showSidebar = false
         showGeminiLiveSheet = true
         if !geminiLiveController.isActive {
+            beginVoiceCallRecording(engine: .geminiLive)
             Task { await geminiLiveController.start() }
         }
         return true
@@ -1460,6 +1462,7 @@ final class AppState: ObservableObject {
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
         guard !geminiLiveController.isActive else { return }
+        beginVoiceCallRecording(engine: .geminiLive)
         await geminiLiveController.start()
     }
 
@@ -1480,6 +1483,7 @@ final class AppState: ObservableObject {
         if geminiLiveControllerCreated { geminiLiveController.stop() }
         showGeminiLiveSheet = false
         dropGeminiLiveHostContext()
+        if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
     }
 
     /// Personal text (the host's memory and persona) isn't kept around
@@ -1625,8 +1629,10 @@ final class AppState: ObservableObject {
             makeSession: { [weak self] in
                 GPTLiveSession(
                     client: client,
+                    history: self?.liveVoiceResumeContext?.gptLiveHistory ?? [],
                     voice: self?.gptLiveVoice,
                     briefing: GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
+                        + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                 )
             },
             availability: { [weak self] in
@@ -1639,6 +1645,7 @@ final class AppState: ObservableObject {
             },
             briefing: { [weak self] in
                 GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
+                    + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
             },
             supervisor: self.voiceBackgroundJobSupervisor,
             // The same "End conversation" phrases as the other voice modes.
@@ -1663,6 +1670,7 @@ final class AppState: ObservableObject {
         showSidebar = false
         showGPTLiveSheet = true
         if !gptLiveController.isActive {
+            beginVoiceCallRecording(engine: .gptLive)
             Task { await gptLiveController.start() }
         }
         return true
@@ -1677,6 +1685,7 @@ final class AppState: ObservableObject {
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
         stopGeminiLiveConversation()
         guard !gptLiveController.isActive else { return }
+        beginVoiceCallRecording(engine: .gptLive)
         await gptLiveController.start()
     }
 
@@ -1697,6 +1706,7 @@ final class AppState: ObservableObject {
         if gptLiveControllerCreated { gptLiveController.stop() }
         showGPTLiveSheet = false
         dropGPTLiveHostContext()
+        if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
     }
 
     /// Personal text (the host's memory and persona) isn't kept around
@@ -1787,6 +1797,15 @@ final class AppState: ObservableObject {
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
             self.rememberVoiceJobSessions(sessionIDs)
+            // Filed under Voice Jobs on every device, with the call (or the
+            // classic voice chat) it came from.
+            let parentID = self.voiceCallRecorder?.sessionID ?? (self.showVoiceSheet ? self.activeSessionId : nil)
+            self.tagVoiceSessions(sessionIDs, kind: .job, parentID: parentID)
+            if let recorder = self.voiceCallRecorder,
+               let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }) {
+                self.captureVoiceCall()
+                recorder.note(AppLocalization.string("Started a background job: \(job.title)."))
+            }
             self.voiceJobSessionListRefreshTask?.cancel()
             self.voiceJobSessionListRefreshTask = Task { [weak self] in
                 await self?.loadSessions(forceRefresh: true)
@@ -2726,7 +2745,7 @@ final class AppState: ObservableObject {
         adoptLegacyProfilePreferences()
         modelVisibility = scopedModelVisibility(dashboardID: initialDashboardID)
         if let savedFilterOrder = defaults.stringArray(forKey: sessionFilterOrderKey) {
-            sessionFilterOrder = normalizedSessionFilterOrder(savedFilterOrder)
+            sessionFilterOrder = Self.normalizedSessionFilterOrder(savedFilterOrder)
         }
         activeProfile = defaults.string(forKey: activeProfileKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "default"
@@ -2825,6 +2844,376 @@ final class AppState: ObservableObject {
         voiceBackgroundJobSupervisor.reset()
         voiceJobSessionListRefreshTask?.cancel()
         voiceJobSessionListRefreshTask = nil
+    }
+
+    // MARK: - Voice history
+    //
+    // Saved Gemini Live / GPT-Live calls and the Voice / Voice Jobs filters.
+    // The conduit_push plugin writes a call's turns into the host's session
+    // history (no agent turn) and keeps the voice tags; see VoiceHistory.swift.
+
+    lazy var voiceHistoryClient = VoiceHistoryClient(request: { [weak self] path, method, body in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body)
+    })
+
+    /// Voice tags from the Hermes host, keyed by `voiceHistoryKey`, then by
+    /// session id.
+    @Published private(set) var voiceSessionTagsByKey: [String: [String: VoiceSessionTag]] = [:]
+    private var voiceTagsFetchedAt: [String: Date] = [:]
+    private var voiceTagRefreshTask: Task<Void, Never>?
+    static let voiceTagRefreshInterval: TimeInterval = 15
+
+    /// The call being saved: set when a live call starts, cleared when it
+    /// closes.
+    private var voiceCallRecorder: VoiceTranscriptRecorder?
+    private var voiceCallFlushTask: Task<Void, Never>?
+    private var voiceCallTranscriptSubscription: AnyCancellable?
+    static let voiceCallFlushInterval: Duration = .seconds(60)
+    /// A saved call the next live call continues (Resume Call).
+    private var pendingVoiceResume: (sessionID: String, context: VoiceResumeContext)?
+    /// What the live call now connecting continues, read by its session
+    /// builders (reconnects included) until the call closes.
+    private(set) var liveVoiceResumeContext: VoiceResumeContext?
+    @Published private(set) var isPreparingVoiceResume = false
+
+    /// Profile names repeat across Hermes servers, so voice state is keyed
+    /// by dashboard too.
+    private func voiceHistoryKey(profile: String) -> String {
+        "\(activeDashboardID?.uuidString ?? "-")|\(profile)"
+    }
+
+    /// Whether Gemini Live and GPT-Live calls are saved on this profile.
+    var voiceCallSavingEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).saveVoiceCalls ?? true
+    }
+
+    /// Applies from the next call.
+    func setVoiceCallSavingEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? nil : false
+        guard preferences.saveVoiceCalls != stored else { return }
+        objectWillChange.send()
+        preferences.saveVoiceCalls = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The row's voice tag, matched through every id the row answers to.
+    func voiceSessionTag(for session: SessionSummary) -> (id: String, tag: VoiceSessionTag)? {
+        guard let tags = voiceSessionTagsByKey[voiceHistoryKey(profile: activeProfile)], !tags.isEmpty else { return nil }
+        for id in [session.id, session.storedSessionId].compactMap({ $0 }) + session.alternateIds {
+            if let tag = tags[id] { return (id, tag) }
+        }
+        return nil
+    }
+
+    /// The Sessions filter a row is filed under: its voice tag's, else a
+    /// voice job this device remembers starting, else its Hermes source.
+    func sessionCategory(for session: SessionSummary) -> SessionSource {
+        if let tagged = voiceSessionTag(for: session) { return tagged.tag.category }
+        if isVoiceJobSession(session) { return .voiceJob }
+        return session.source
+    }
+
+    /// The row's second line when voice says more than the model: the
+    /// engine of a saved call, or the call a voice job came from.
+    func voiceSessionDetail(for session: SessionSummary) -> String? {
+        guard let tag = voiceSessionTag(for: session)?.tag else { return nil }
+        switch tag.kind {
+        case .call:
+            switch tag.engine.flatMap(VoiceCallEngine.init(rawValue:)) {
+            case .geminiLive?: return AppLocalization.string("Gemini Live")
+            case .gptLive?: return AppLocalization.string("GPT-Live")
+            case nil: return AppLocalization.string("Voice call")
+            }
+        case .job:
+            if let parentID = tag.parentID,
+               let parent = activeProfileSessions.first(where: { ([$0.id, $0.storedSessionId].compactMap { $0 } + $0.alternateIds).contains(parentID) }) {
+                return AppLocalization.string("From \(parent.title)")
+            }
+            return tag.parentTitle.map { AppLocalization.string("From \($0)") }
+        case .classic:
+            return nil
+        }
+    }
+
+    /// Reads the profile's voice tags, at most every few seconds unless
+    /// forced, and retries saves a closed call couldn't finish.
+    func refreshVoiceSessionTags(force: Bool = false) {
+        let profile = activeProfile
+        let key = voiceHistoryKey(profile: profile)
+        if !force, let last = voiceTagsFetchedAt[key], Date().timeIntervalSince(last) < Self.voiceTagRefreshInterval { return }
+        guard voiceTagRefreshTask == nil, dashboardTicketBridge != nil else { return }
+        voiceTagsFetchedAt[key] = Date()
+        voiceTagRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let tags = try await self.voiceHistoryClient.tags(profile: profile)
+                // Tags this device just wrote may not have reached the host's
+                // listing yet; the host's own win where both exist.
+                self.voiceSessionTagsByKey[key] = (self.voiceSessionTagsByKey[key] ?? [:]).merging(tags) { _, host in host }
+            } catch {
+                // An older plugin has no tags: rows stay under their source.
+                Self.voiceHistoryLog.debug("Voice tags unavailable: \(String(describing: error), privacy: .public)")
+            }
+            await self.drainVoiceTranscriptOutbox(profile: profile, key: key)
+            self.voiceTagRefreshTask = nil
+        }
+    }
+
+    private static let voiceHistoryLog = Logger(subsystem: "com.milim.relay", category: "VoiceHistory")
+
+    /// Files sessions under Voice or Voice Jobs, here at once and on the
+    /// host for every device.
+    private func tagVoiceSessions(_ ids: [String], kind: VoiceSessionTag.Kind, parentID: String? = nil) {
+        let ids = Array(Set(ids.filter { !$0.isEmpty }))
+        guard !ids.isEmpty else { return }
+        let profile = activeProfile
+        let key = voiceHistoryKey(profile: profile)
+        for id in ids {
+            voiceSessionTagsByKey[key, default: [:]][id] = VoiceSessionTag(kind: kind, parentID: parentID)
+        }
+        Task { [weak self] in
+            for id in ids {
+                do {
+                    try await self?.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, profile: profile)
+                } catch {
+                    Self.voiceHistoryLog.debug("Tagging a voice session failed: \(String(describing: error), privacy: .public)")
+                }
+            }
+        }
+    }
+
+    /// Starts saving the live call that is about to connect. A pending
+    /// Resume Call makes it continue that row.
+    private func beginVoiceCallRecording(engine: VoiceCallEngine) {
+        finishVoiceCallRecording()
+        let resume = pendingVoiceResume
+        pendingVoiceResume = nil
+        liveVoiceResumeContext = resume?.context
+        guard voiceCallSavingEnabled else { return }
+        let profile = activeProfile
+        let recorder = VoiceTranscriptRecorder(
+            engine: engine,
+            profile: profile,
+            resumingSessionID: resume?.sessionID,
+            save: { [weak self] request in
+                guard let self else { throw VoiceHistoryError.pluginMissing }
+                return try await self.voiceHistoryClient.save(request, profile: profile)
+            },
+            title: { [weak self] turns in
+                await self?.voiceCallTitle(turns: turns, profile: profile) ?? Self.fallbackVoiceCallTitle()
+            }
+        )
+        if resume != nil { recorder.note(AppLocalization.string("Voice call resumed")) }
+        voiceCallRecorder = recorder
+        let transcript: AnyPublisher<Void, Never>
+        switch engine {
+        case .geminiLive: transcript = geminiLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
+        case .gptLive: transcript = gptLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
+        }
+        // @Published fires before the change lands: read it on the next turn.
+        voiceCallTranscriptSubscription = transcript
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.captureVoiceCall() }
+        voiceCallFlushTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.voiceCallFlushInterval)
+                guard !Task.isCancelled, let self, let recorder = self.voiceCallRecorder else { return }
+                self.captureVoiceCall()
+                await recorder.flush()
+            }
+        }
+    }
+
+    private func captureVoiceCall() {
+        guard let recorder = voiceCallRecorder else { return }
+        switch recorder.engine {
+        case .geminiLive:
+            guard geminiLiveControllerCreated else { return }
+            recorder.capture(geminiLiveController.transcript, unsettled: geminiLiveController.unsettledTranscriptEntryIDs)
+        case .gptLive:
+            guard gptLiveControllerCreated else { return }
+            recorder.capture(gptLiveController.transcript, unsettled: gptLiveController.unsettledTranscriptEntryIDs)
+        }
+    }
+
+    /// The call closed (its controller already stopped, so every turn is
+    /// settled): save the rest, keep what can't be saved for later, and
+    /// prepare the summary a resume would need.
+    private func finishVoiceCallRecording() {
+        voiceCallFlushTask?.cancel()
+        voiceCallFlushTask = nil
+        liveVoiceResumeContext = nil
+        guard let recorder = voiceCallRecorder else { return }
+        captureVoiceCall()
+        voiceCallTranscriptSubscription = nil
+        voiceCallRecorder = nil
+        let key = voiceHistoryKey(profile: recorder.profile)
+        let dashboard = activeDashboardID?.uuidString ?? "-"
+        Task { [weak self] in
+            await recorder.flush()
+            guard let self else { return }
+            if let request = recorder.outboxRequest {
+                self.queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile)
+            }
+            guard let sessionID = recorder.sessionID else { return }
+            if self.voiceSessionTagsByKey[key]?[sessionID] == nil {
+                self.voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: recorder.engine.rawValue)
+            }
+            guard self.voiceHistoryKey(profile: self.activeProfile) == key else { return }
+            await self.loadSessions(forceRefresh: true)
+            _ = await self.voiceResumeContext(sessionID: sessionID, profile: recorder.profile)
+        }
+    }
+
+    // MARK: Outbox
+
+    private func queueVoiceTranscript(_ request: VoiceTranscriptSaveRequest, dashboard: String, profile: String) {
+        var outbox = VoiceTranscriptOutbox.load(from: defaults)
+        outbox.add(.init(dashboard: dashboard, profile: profile, request: request, queuedAt: Date()))
+        outbox.store(in: defaults)
+    }
+
+    /// Retries the saves queued for this dashboard and profile, oldest first.
+    private func drainVoiceTranscriptOutbox(profile: String, key: String) async {
+        var outbox = VoiceTranscriptOutbox.load(from: defaults)
+        outbox.prune(now: Date())
+        let dashboard = activeDashboardID?.uuidString ?? "-"
+        for entry in outbox.entries where entry.dashboard == dashboard && entry.profile == profile {
+            var request = entry.request
+            do {
+                let result = try await voiceHistoryClient.save(request, profile: profile)
+                outbox.entries.removeAll { $0.request.callID == request.callID }
+                if let sessionID = result.sessionID, voiceSessionTagsByKey[key]?[sessionID] == nil {
+                    voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: request.engine.rawValue)
+                }
+            } catch VoiceHistoryError.rowUnavailable where request.sessionID != nil {
+                // The row is gone: keep the turns as a new row next time.
+                request.sessionID = nil
+                request.callID = UUID().uuidString
+                request.title = Self.fallbackVoiceCallTitle(at: entry.queuedAt)
+                request.turns = request.turns.enumerated().map { offset, turn in
+                    VoiceTranscriptTurn(index: offset, role: turn.role, text: turn.text, at: turn.at)
+                }
+                outbox.entries.removeAll { $0.request.callID == entry.request.callID }
+                outbox.add(.init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt))
+            } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.unsupported {
+                outbox.entries.removeAll { $0.request.callID == request.callID }
+            } catch {
+                break
+            }
+        }
+        outbox.store(in: defaults)
+    }
+
+    // MARK: Titles
+
+    static func fallbackVoiceCallTitle(at date: Date = Date()) -> String {
+        AppLocalization.string("Voice call · \(date.formatted(date: .abbreviated, time: .shortened))")
+    }
+
+    /// A short title from the call's opening, like a chat's; the time-stamped
+    /// fallback when Hermes can't make one.
+    private func voiceCallTitle(turns: [VoiceTranscriptTurn], profile: String) async -> String {
+        let opening = turns.prefix(6).map { ($0.role == .user ? "User: " : "Assistant: ") + String($0.text.prefix(300)) }.joined(separator: "\n")
+        guard let client, !opening.isEmpty,
+              let title = try? await client.oneshot(
+                task: "title_generation",
+                instructions: "Generate a short, descriptive title (3-7 words) for a voice conversation that starts with the following exchange. Write it in the language the user speaks. Return ONLY the title text, nothing else. No quotes, no punctuation at the end, no prefixes.",
+                input: opening,
+                profile: profile,
+                maxTokens: 60
+              ) else { return Self.fallbackVoiceCallTitle() }
+        let cleaned = title.trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”‘’ ").union(.whitespacesAndNewlines))
+        return cleaned.isEmpty ? Self.fallbackVoiceCallTitle() : String(cleaned.prefix(80))
+    }
+
+    // MARK: Resume
+
+    /// The open chat's id as a saved live call, when it is one.
+    var activeVoiceCallSessionID: String? {
+        guard let activeSessionId else { return nil }
+        let ids = knownSessionIDs(for: activeSessionId)
+        guard let session = activeProfileSessions.first(where: { row in
+            !ids.isDisjoint(with: [row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
+        }), let tagged = voiceSessionTag(for: session), tagged.tag.kind == .call else { return nil }
+        return tagged.id
+    }
+
+    /// Whether Resume Call has a live voice mode to resume with.
+    var canResumeVoiceCall: Bool {
+        isConnected && (isGeminiLiveEnabled || isGPTLiveEnabled)
+    }
+
+    /// Continues a saved call with a new live call on the selected engine.
+    /// It is seeded with the row (a summary when it's long) and appends to
+    /// the same row.
+    func resumeVoiceCall(sessionID: String) async {
+        guard canResumeVoiceCall, !isPreparingVoiceResume else { return }
+        isPreparingVoiceResume = true
+        defer { isPreparingVoiceResume = false }
+        let profile = activeProfile
+        let context = await voiceResumeContext(sessionID: sessionID, profile: profile)
+        guard profile == activeProfile, canResumeVoiceCall else { return }
+        // Without the saved turns the call still continues the row.
+        pendingVoiceResume = (sessionID, context ?? VoiceResumeContext(summary: nil, recent: []))
+        if isGeminiLiveEnabled {
+            openGeminiLiveConversation()
+        } else {
+            openGPTLiveConversation()
+        }
+    }
+
+    /// What a resumed call gets from the row. A long row's older turns are
+    /// summarized once and the summary kept on the host; nil when the row
+    /// can't be read.
+    @discardableResult
+    func voiceResumeContext(sessionID: String, profile: String) async -> VoiceResumeContext? {
+        guard let rows = await voiceRowMessages(sessionID: sessionID, profile: profile) else { return nil }
+        let turns = VoiceResumePlan.turns(fromMessageRows: rows)
+        let stored = (try? await voiceHistoryClient.summary(sessionID: sessionID, profile: profile)) ?? nil
+        switch VoiceResumePlan.plan(turns: turns, stored: stored) {
+        case .verbatim(let recent):
+            return VoiceResumeContext(summary: nil, recent: recent)
+        case .summarized(let summary, let recent):
+            return VoiceResumeContext(summary: summary, recent: recent)
+        case .needsSummary(let older, let covers, let recent):
+            guard let client,
+                  let text = try? await client.oneshot(
+                    task: "compression",
+                    instructions: VoiceResumePlan.summaryInstructions,
+                    input: VoiceResumePlan.summaryInput(older),
+                    profile: profile,
+                    maxTokens: 600
+                  ) else {
+                // The latest turns alone still carry the thread.
+                return VoiceResumeContext(summary: nil, recent: recent)
+            }
+            let summary = VoiceResumeSummary(text: text, covers: covers)
+            try? await voiceHistoryClient.storeSummary(summary, sessionID: sessionID, profile: profile)
+            return VoiceResumeContext(summary: text, recent: recent)
+        }
+    }
+
+    static let voiceRowPageSize = 500
+    static let voiceRowMaximumPages = 4
+
+    /// The row's messages, oldest first, through the dashboard (no images).
+    private func voiceRowMessages(sessionID: String, profile: String) async -> [[String: Any]]? {
+        guard let bridge = dashboardTicketBridge else { return nil }
+        var rows: [[String: Any]] = []
+        for page in 0..<Self.voiceRowMaximumPages {
+            let query = "?limit=\(Self.voiceRowPageSize)&offset=\(page * Self.voiceRowPageSize)&order=oldest&inline_images=false"
+            guard let response = try? await bridge.requestJSON(
+                path: Self.sessionMessagesPath(sessionId: sessionID, profile: profile, query: query)
+            ), let messages = response["messages"] as? [[String: Any]] else {
+                return page == 0 ? nil : rows
+            }
+            rows += messages
+            if messages.count < Self.voiceRowPageSize { break }
+        }
+        return rows
     }
 
     private func persistVoiceJobSessions() {
@@ -6459,6 +6848,7 @@ final class AppState: ObservableObject {
             }
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
+            refreshVoiceSessionTags()
             // Reported per call: whether THIS sync reached the catalog is
             // independent of its outcome, which is also `.completed` for a
             // failed catalog load and `.superseded` after a published one.
@@ -10794,6 +11184,7 @@ final class AppState: ObservableObject {
             )
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
+            refreshVoiceSessionTags()
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
             conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
@@ -16962,15 +17353,22 @@ final class AppState: ObservableObject {
         return knownOrder + unordered
     }
 
-    private func normalizedSessionFilterOrder(_ values: [String]) -> [SessionSource] {
-        let defaults: [SessionSource] = [.chat, .discord, .telegram, .api, .webhook, .other]
+    static func normalizedSessionFilterOrder(_ values: [String]) -> [SessionSource] {
+        let defaults = Self.defaultSessionFilterOrder
         let requested = values.compactMap(SessionSource.init(rawValue:))
-        let unique = requested.reduce(into: [SessionSource]()) { result, source in
+        var unique = requested.reduce(into: [SessionSource]()) { result, source in
             if !result.contains(source), defaults.contains(source) {
                 result.append(source)
             }
         }
-        return unique + defaults.filter { !unique.contains($0) }
+        // Filters a saved order predates (Voice, Voice Jobs) take their
+        // default place after the one before them, not the end of the row.
+        for (position, source) in defaults.enumerated() where !unique.contains(source) {
+            let after = defaults[..<position].last { unique.contains($0) }
+            let index = after.flatMap { unique.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
+            unique.insert(source, at: index)
+        }
+        return unique
     }
 
     // MARK: - Capabilities
@@ -19877,6 +20275,11 @@ final class AppState: ObservableObject {
             if startsFreshConversation, activeSessionId == previousSessionID {
                 errorMessage = AppLocalization.string("Hermes could not create the requested voice conversation.")
                 return .failed(AppLocalization.string("Hermes could not create the requested voice conversation."))
+            }
+            // A chat voice started is filed under Voice; one the user spoke
+            // into partway stays a chat.
+            if let created = activeSessionId, created != previousSessionID {
+                tagVoiceSessions(Array(knownSessionIDs(for: created)), kind: .classic)
             }
         }
         guard let sessionID = activeSessionId, let gateway = makeVoiceGateway() else {

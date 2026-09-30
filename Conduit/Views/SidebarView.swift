@@ -384,14 +384,14 @@ struct SessionList: View {
     private var allSessions: [SessionSummary] {
         let nonArchived = appState.activeProfileSessions.filter { !$0.isArchived }
         guard let selectedSource else { return nonArchived }
-        return nonArchived.filter { $0.source == selectedSource }
+        return nonArchived.filter { appState.sessionCategory(for: $0) == selectedSource }
     }
 
     private var displayedSessions: [SessionSummary] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return allSessions }
         return allSessions.filter { session in
-            [session.title, session.model, session.id, session.source.label]
+            [session.title, session.model, session.id, appState.sessionCategory(for: session).label]
                 .contains { $0.localizedCaseInsensitiveContains(query) }
         }
     }
@@ -442,7 +442,7 @@ struct SessionList: View {
 
     private var availableSources: [SessionSource] {
         appState.sessionFilterOrder.filter { source in
-            appState.activeProfileSessions.contains { !$0.isArchived && $0.source == source }
+            appState.activeProfileSessions.contains { !$0.isArchived && appState.sessionCategory(for: $0) == source }
         }
     }
 
@@ -459,7 +459,7 @@ struct SessionList: View {
             HStack(spacing: 8) {
                 sourceFilter(title: AppLocalization.string("All"), count: appState.activeProfileSessions.filter { !$0.isArchived }.count, source: nil)
                 ForEach(availableSources, id: \.self) { source in
-                    sourceFilter(title: source.label, count: appState.activeProfileSessions.filter { !$0.isArchived && $0.source == source }.count, source: source)
+                    sourceFilter(title: source.label, count: appState.activeProfileSessions.filter { !$0.isArchived && appState.sessionCategory(for: $0) == source }.count, source: source)
                 }
             }
             .padding(.horizontal, 4)
@@ -516,7 +516,9 @@ struct SessionList: View {
                 session: session,
                 isSelected: session.id == appState.activeSessionId,
                 isPinned: appState.isSessionPinned(session),
-                isVoiceJob: appState.isVoiceJobSession(session)
+                isVoiceJob: appState.isVoiceJobSession(session),
+                category: appState.sessionCategory(for: session),
+                detail: appState.voiceSessionDetail(for: session)
             )
             .contentShape(Rectangle())
         }
@@ -654,6 +656,8 @@ private struct ArchivedSessionsSheet: View {
                                 SessionRow(
                                     session: session,
                                     isVoiceJob: appState.isVoiceJobSession(session),
+                                    category: appState.sessionCategory(for: session),
+                                    detail: appState.voiceSessionDetail(for: session),
                                     showsDisclosureIndicator: false
                                 )
 
@@ -721,7 +725,7 @@ private struct ArchivedSessionsSheet: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return appState.archivedSessions }
         return appState.archivedSessions.filter { session in
-            [session.title, session.model, session.id, session.source.label]
+            [session.title, session.model, session.id, appState.sessionCategory(for: session).label]
                 .contains { $0.localizedCaseInsensitiveContains(query) }
         }
     }
@@ -739,22 +743,29 @@ struct SessionRow: View {
     var isPinned = false
     /// Started as a Voice background job (issue #163).
     var isVoiceJob = false
+    /// The filter the row is filed under (a voice tag's, else its source).
+    var category: SessionSource? = nil
+    /// Replaces the model on the second line (a saved call's engine, the
+    /// call a voice job came from).
+    var detail: String? = nil
     var showsDisclosureIndicator = true
+
+    private var icon: SessionSource { category ?? session.source }
 
     var body: some View {
         HStack(spacing: 11) {
-            Image(systemName: session.source.iconName)
+            Image(systemName: icon.iconName)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(session.source.color)
+                .foregroundStyle(icon.color)
                 .frame(width: 30, height: 30)
-                .background(session.source.color.opacity(0.13), in: Circle())
+                .background(icon.color.opacity(0.13), in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.title)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                 HStack(spacing: 5) {
-                    Text(session.model)
+                    Text(detail ?? session.model)
                     Text("•")
                     Text(session.updatedLabel)
                 }
@@ -763,7 +774,7 @@ struct SessionRow: View {
             }
 
             Spacer(minLength: 0)
-            if isVoiceJob {
+            if isVoiceJob, icon != .voiceJob {
                 Image(systemName: "waveform")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(Color.conduitAura)
@@ -866,7 +877,9 @@ private struct ProjectSessionsSheet: View {
                                         SessionRow(
                                             session: session,
                                             isSelected: session.id == appState.activeSessionId,
-                                            isVoiceJob: appState.isVoiceJobSession(session)
+                                            isVoiceJob: appState.isVoiceJobSession(session),
+                                            category: appState.sessionCategory(for: session),
+                                            detail: appState.voiceSessionDetail(for: session)
                                         )
                                             .contentShape(Rectangle())
                                     }

@@ -22,6 +22,9 @@ struct GeminiLiveSettingsModel {
     var setMemory: (Bool) -> Void = { _ in }
     var personality: Bool = false
     var setPersonality: (Bool) -> Void = { _ in }
+    /// Save calls to the Hermes host's session history (Sessions > Voice).
+    var saveCalls: Bool = true
+    var setSaveCalls: (Bool) -> Void = { _ in }
 }
 
 struct GeminiLiveSettingsSection: View {
@@ -32,6 +35,7 @@ struct GeminiLiveSettingsSection: View {
     @State private var voice: String
     @State private var memory: Bool
     @State private var personality: Bool
+    @State private var saveCalls: Bool
     @State private var status: String?
     @State private var isAvailable: Bool?
     @State private var isChecking = false
@@ -43,6 +47,7 @@ struct GeminiLiveSettingsSection: View {
         _voice = State(initialValue: model.voice ?? "")
         _memory = State(initialValue: model.memory)
         _personality = State(initialValue: model.personality)
+        _saveCalls = State(initialValue: model.saveCalls)
     }
 
     var body: some View {
@@ -135,6 +140,16 @@ struct GeminiLiveSettingsSection: View {
                 Text("Gemini talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to Google with the conversation. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("Save calls to Sessions", isOn: Binding(
+                    get: { saveCalls },
+                    set: { requested in
+                        saveCalls = requested
+                        model.setSaveCalls(requested)
+                    }
+                ))
+                Text("Each call's transcript is saved to your Hermes server's history and shows under Voice in Sessions, where you can read it or resume the call. Needs an up-to-date Hermes notifier plugin. Shared with Gemini Live and GPT-Live. Applies to the next conversation.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .task { if enabled { await check() } }
@@ -144,6 +159,7 @@ struct GeminiLiveSettingsSection: View {
         .onChange(of: model.voice) { _, newValue in voice = newValue ?? "" }
         .onChange(of: model.memory) { _, newValue in memory = newValue }
         .onChange(of: model.personality) { _, newValue in personality = newValue }
+        .onChange(of: model.saveCalls) { _, newValue in saveCalls = newValue }
     }
 
     private func check() async {

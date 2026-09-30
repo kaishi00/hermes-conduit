@@ -170,6 +170,9 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// Reasoning effort for voice jobs ("none", "low", …). Nil keeps the
     /// profile default.
     var voiceJobReasoningEffort: String? = nil
+    /// Whether Gemini Live and GPT-Live calls are saved to the Hermes
+    /// host's session history. Nil is on.
+    var saveVoiceCalls: Bool? = nil
 
     var resolvedTranscriptionMode: VoiceTranscriptionMode {
         transcriptionMode ?? .hermes
@@ -221,6 +224,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)
+        saveVoiceCalls = (try? container.decodeIfPresent(Bool.self, forKey: .saveVoiceCalls)) ?? nil
     }
 
     /// What a voice job's `session.create` asks for: the chosen voice-job

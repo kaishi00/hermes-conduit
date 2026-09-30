@@ -1674,6 +1674,29 @@ final class HermesClient: ObservableObject {
         return (title?.isEmpty == false) ? title : nil
     }
 
+    /// A stateless one-shot request on the profile's `task` backend (no
+    /// session lends its model, nothing is added to any history). Used for
+    /// saved voice calls' titles and resume summaries.
+    func oneshot(
+        task: String,
+        instructions: String,
+        input: String,
+        profile: String?,
+        maxTokens: Int = 500
+    ) async throws -> String? {
+        var params: [String: Any] = [
+            "task": task,
+            "instructions": instructions,
+            "input": input,
+            "max_tokens": maxTokens,
+            "temperature": 0.3
+        ]
+        if let profile, !profile.isEmpty { params["profile"] = profile }
+        let result = try await rpc("llm.oneshot", params: params, timeout: Self.titleGenerationTimeout)
+        let text = result.objectValue?["text"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (text?.isEmpty == false) ? text : nil
+    }
+
     /// Hermes' one-shot endpoint uses the configured title-capable model but
     /// does not add a message to the conversation history.
     func generateSessionTitle(
