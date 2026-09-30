@@ -1,11 +1,57 @@
-# CI — a hosted smoke gate and a Mac exhaustive gate
+# CI — GitHub-hosted CI is the merge gate (CI v4)
 
-Conduit is tested by two gates with deliberately different jobs. **The split is
-the design**: GitHub-hosted CI is a clean-machine broad safety net that must
-stay cheap enough to run on every PR (including public and fork PRs), and the
-Mac local gate is the exhaustive correctness gate a release is certified with.
-Nothing is skipped overall — every test class runs somewhere, and the class
-inventory is validated on both paths.
+**As of 2026-09-30, GitHub-hosted CI is the only merge gate.** The Mac local
+gate described further down is being retired. Its scripts stay in the tree
+until the hosted shape has run clean for a week, but no merge or release
+needs a Mac result any more.
+
+## CI v4 at a glance
+
+| Workflow | When | What runs | Gates a merge? |
+|---|---|---|---|
+| `.github/workflows/ci.yml` | every PR and every push to `main` | the Linux validation and CI-tooling self-test, **every unit class** except the nightly-only timing families (split into `unit_shards` balanced jobs), and the curated UI smoke classes | yes, through the single `CI Gate` check |
+| `.github/workflows/nightly.yml` | nightly on `main`, and on demand (Actions > Nightly > Run workflow) | the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, with no retry | no; a failed scheduled run emails the owner. Run it on a release branch before a TestFlight upload. |
+
+`scripts/hosted-suite.json` owns the shape: the shard counts and the
+`nightly_only_unit` list. `plan-tests.py hosted` validates it against the
+discovered inventory on every run, so every unit class lands in exactly one PR
+shard or the nightly list, and a renamed class fails the plan job.
+`scripts/smoke-suite.json` still owns the UI smoke classes.
+
+### How a macOS test job spends its time
+
+Each macOS job (`unit` shard, `ui-smoke`, and the nightly jobs) runs
+`scripts/ci-hosted-build.sh`. It starts `ci-prepare-smoke.sh` (the pinned
+simulator's lookup, boot and `bootstatus`) in the background, compiles the test
+products with `ci-build-for-testing.sh` on the same runner, then waits for the
+boot. On the v3 runs, boot readiness was a serial ~2.5 minutes after a separate
+build job and an artifact hop; now it hides behind the ~3 minute build.
+
+Unit shards run their classes as sequential `test-without-building` batches of
+at most `UNIT_BATCH_SIZE` (35) classes on the one booted simulator. A failing
+batch does not stop the shard: every batch runs, and the job fails at the end
+listing the failed batches. `-test-timeouts-enabled YES` with a 180s allowance
+kills a hung test instead of letting it burn the job ceiling.
+
+Why 35 and not 7: the 7-class cap came from hosted stalls in PRs #178-#183.
+Since then the hosted hangs we have traced were test bugs, for example the
+scene-phase fixtures fixed in #272/#273 and the dropped fake-socket frames
+fixed in #274. Every invocation costs minutes of fixed hosted overhead, so
+fewer, larger batches are what make the full suite affordable per PR. If a
+stall reappears, lower `UNIT_BATCH_SIZE` in `ci.yml` and root-cause the test.
+
+### Budget
+
+The repository is public, so standard hosted runners cost nothing, but GitHub
+allows **5 concurrent macOS jobs** per account. A PR run uses 3 (2 unit shards
++ UI smoke), and `cancel-in-progress` retires superseded runs, which leaves
+room for the next push. Raise `unit_shards` only with that ceiling in mind.
+
+---
+
+The rest of this document describes the CI v3 shape and the Mac local gate.
+It is kept for the history of the measurements until the Mac gate tooling is
+deleted.
 
 ## Two gates, two jobs
 

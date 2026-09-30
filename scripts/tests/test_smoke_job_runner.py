@@ -26,9 +26,8 @@ from _util import SCRIPTS_DIR
 REPO_ROOT = os.path.dirname(SCRIPTS_DIR)
 WORKFLOW = os.path.join(REPO_ROOT, ".github", "workflows", "ci.yml")
 
-UNIT_STEP = "Run the curated unit smoke suite"
+UNIT_STEP = "Run this shard's unit classes"
 UI_STEP = "Run the curated UI smoke suite"
-PREPARE_STEP = "Prepare the pinned simulator destination"
 
 # Records every invocation, and can be told to fail from the Nth one on.
 STUB = """#!/usr/bin/env bash
@@ -127,7 +126,7 @@ class SmokeJobRunnerTests(unittest.TestCase):
         env = dict(os.environ)
         # Nothing from the developer's shell may leak into the step: the
         # "unset" case must actually be unset.
-        for name in ("SMOKE_BATCH_SIZE", "STUB_FAIL_AT", "STUB_FAIL_FIRST_N",
+        for name in ("UNIT_BATCH_SIZE", "STUB_FAIL_AT", "STUB_FAIL_FIRST_N",
                      "STUB_FLAKE_CLASS", "STUB_SILENT_FAIL", "UNIT_CLASSES",
                      "UI_CLASSES", "STUB_RESULT_DOC"):
             env.pop(name, None)
@@ -171,7 +170,7 @@ class SmokeJobRunnerTests(unittest.TestCase):
 
     def test_unit_smoke_splits_into_batches_of_the_configured_size(self):
         proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 32),
-                              SMOKE_BATCH_SIZE=8)
+                              UNIT_BATCH_SIZE=8)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         invocations = self._invocations()
         self.assertEqual(len(invocations), 4, invocations)
@@ -182,39 +181,42 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.assertEqual(proc.stdout.count("::group::"), proc.stdout.count("::endgroup::"))
 
     def test_unit_smoke_defaults_the_batch_size_when_unset(self):
-        # The workflow always sets SMOKE_BATCH_SIZE; the default exists so a
-        # future edit that forgets it degrades to the measured-safe batch size,
+        # The workflow always sets UNIT_BATCH_SIZE; the default exists so a
+        # future edit that forgets it degrades to the shipped batch size,
         # not to `set -u` and not to an unbounded invocation.
-        proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 32))
+        proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 72))
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertEqual(len(self._invocations()), 5, "32 classes / 7 per batch")
-        self.assertIn("batches of at most 7", proc.stdout)
+        self.assertEqual(len(self._invocations()), 3, "72 classes / 35 per batch")
+        self.assertIn("batches of at most 35", proc.stdout)
 
     def test_unit_smoke_keeps_the_remainder_batch(self):
         proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 20),
-                              SMOKE_BATCH_SIZE=8)
+                              UNIT_BATCH_SIZE=8)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         sized = [i.count("-only-testing:ConduitTests/") for i in self._invocations()]
         self.assertEqual(sized, [8, 8, 4], sized)
 
     def test_unit_smoke_runs_a_single_class_in_one_batch(self):
         proc = self._run_step(UNIT_STEP, UNIT_CLASSES="OnlyOneTests",
-                              SMOKE_BATCH_SIZE=8)
+                              UNIT_BATCH_SIZE=8)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertEqual(len(self._invocations()), 1)
 
-    def test_unit_smoke_fails_fast_when_a_batch_fails(self):
+    def test_unit_shard_runs_every_batch_and_fails_when_one_fails(self):
+        # A failing batch must fail the job, but must not hide the batches
+        # after it: the shard is the whole suite's coverage for its classes.
         proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 20),
-                              SMOKE_BATCH_SIZE=8, STUB_FAIL_AT=2)
+                              UNIT_BATCH_SIZE=8, STUB_FAIL_FIRST_N=2)
         self.assertNotEqual(proc.returncode, 0,
                             "a failing batch must fail the job")
         invocations = self._invocations()
-        self.assertEqual(len(invocations), 2, invocations)
+        self.assertEqual(len(invocations), 3, invocations)
+        self.assertIn("2 of 3 batch invocation(s) failed (batches 1 2)", proc.stdout)
         self.assertEqual(proc.stdout.count("::group::"), proc.stdout.count("::endgroup::"),
                          "every opened log group must be closed, including on failure")
 
     def test_unit_smoke_refuses_an_empty_selection(self):
-        proc = self._run_step(UNIT_STEP, UNIT_CLASSES="", SMOKE_BATCH_SIZE=8)
+        proc = self._run_step(UNIT_STEP, UNIT_CLASSES="", UNIT_BATCH_SIZE=8)
         self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(self._invocations(), [],
                          "nothing may be invoked without a class filter")
@@ -223,7 +225,7 @@ class SmokeJobRunnerTests(unittest.TestCase):
     def test_unit_smoke_rejects_a_malformed_batch_size(self):
         for bad in ("", "0", "many", "00", " "):
             proc = self._run_step(UNIT_STEP, UNIT_CLASSES="SomeTests",
-                                  SMOKE_BATCH_SIZE=bad)
+                                  UNIT_BATCH_SIZE=bad)
             self.assertNotEqual(proc.returncode, 0, "batch size {0!r}".format(bad))
             self.assertEqual(self._invocations(), [], "batch size {0!r}".format(bad))
 
@@ -231,10 +233,10 @@ class SmokeJobRunnerTests(unittest.TestCase):
         # `10#` is load-bearing: without it bash would read "08" as an invalid
         # octal and the step would die instead of batching.
         proc = self._run_step(UNIT_STEP, UNIT_CLASSES=self._classes("Unit", 8),
-                              SMOKE_BATCH_SIZE="08")
+                              UNIT_BATCH_SIZE="08")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertEqual(len(self._invocations()), 1)
-        self.assertIn("batches of at most 08", proc.stdout)
+        self.assertIn("batches of at most 8", proc.stdout)
 
     # --- UI smoke: one invocation, same guards ------------------------------
 
@@ -359,7 +361,7 @@ class SmokeJobRunnerTests(unittest.TestCase):
         """
         path = os.path.join(self.tmp, "prepare.sh")
         with open(path, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(_step_script(PREPARE_STEP))
+            fh.write("bash scripts/ci-prepare-smoke.sh\n")
         gh_env = os.path.join(self.tmp, "github_env")
         env = self._env(SIMULATOR_NAME="iPhone 17 Pro",
                         DESTINATION_SETTLE_TIMEOUT_S="5")
@@ -386,7 +388,7 @@ class SmokeJobRunnerTests(unittest.TestCase):
     def test_extracted_unit_step_reads_its_classes_from_the_plan_output(self):
         script = _step_script(UNIT_STEP)
         self.assertIn('"$UNIT_CLASSES"', script)
-        self.assertIn("SMOKE_BATCH_SIZE", script)
+        self.assertIn("UNIT_BATCH_SIZE", script)
         self.assertIn('-destination "$DESTINATION"', script,
                       "the destination must be the one the prepare step pinned")
         self.assertNotIn("-test-iterations", script)

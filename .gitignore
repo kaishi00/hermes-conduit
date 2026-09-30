@@ -43,5 +43,5 @@ AGENTS.md
 .ios-test.json
 .dsh/
 .zcode/
-workflows/
+/workflows/
 .test-runs/
