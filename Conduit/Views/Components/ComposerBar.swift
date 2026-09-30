@@ -817,7 +817,7 @@ struct ComposerBar: View {
         }
         .disabled(appState.isPreparingVoiceResume || appState.isBusy)
         .conduitGlassControl(cornerRadius: 22, tint: .conduitAura.opacity(0.14), interactive: true)
-        .accessibilityLabel("Resume voice call")
+        .accessibilityLabel(AppLocalization.string("Resume voice call"))
         .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
     }
 

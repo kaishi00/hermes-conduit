@@ -3326,7 +3326,11 @@ final class AppState: ObservableObject {
                 guard page == 0 else { return (rows, false) }
                 return await fetch(PersistedTranscriptPagination.legacyQuery).map { ($0.rows, true) }
             }
-            rows = result.rows + rows
+            // A row written between pages shifts the tail's origin, so pages
+            // can overlap: drop rows already read, by durable id.
+            let seen = Set(rows.compactMap(Self.durablePersistedRowID(from:)))
+            let fresh = result.rows.filter { Self.durablePersistedRowID(from: $0).map { !seen.contains($0) } ?? true }
+            rows = fresh + rows
             offset += result.rows.count
             // Only an empty page ends the row: a dashboard may cap the page
             // below the size asked for without saying so.
