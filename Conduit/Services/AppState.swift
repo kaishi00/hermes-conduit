@@ -3250,7 +3250,17 @@ final class AppState: ObservableObject {
     func voiceResumeContext(sessionID: String, profile: String) async -> VoiceResumeContext? {
         guard let read = await voiceRowMessages(sessionID: sessionID, profile: profile) else { return nil }
         let turns = VoiceResumePlan.turns(fromMessageRows: read.rows)
-        let stored = try? await voiceHistoryClient.summary(sessionID: sessionID, profile: profile)
+        // A failed read isn't "no summary": a summary made now mustn't
+        // overwrite one that may be valid.
+        let stored: VoiceResumeSummary?
+        let summaryReadFailed: Bool
+        do {
+            stored = try await voiceHistoryClient.summary(sessionID: sessionID, profile: profile)
+            summaryReadFailed = false
+        } catch {
+            stored = nil
+            summaryReadFailed = true
+        }
         // A stored summary counts turns from the row's start. When only the
         // newest rows were read, local positions can't be checked against
         // it: the stored summary is used as is (the older turns it covers
@@ -3279,8 +3289,10 @@ final class AppState: ObservableObject {
                 // The latest turns alone still carry the thread.
                 return VoiceResumeContext(summary: nil, recent: recent)
             }
-            let summary = VoiceResumeSummary(text: text, covers: covers)
-            try? await voiceHistoryClient.storeSummary(summary, sessionID: sessionID, profile: profile)
+            if !summaryReadFailed {
+                let summary = VoiceResumeSummary(text: text, covers: covers)
+                try? await voiceHistoryClient.storeSummary(summary, sessionID: sessionID, profile: profile)
+            }
             return VoiceResumeContext(summary: text, recent: recent)
         }
     }
