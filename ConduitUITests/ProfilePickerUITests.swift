@@ -111,8 +111,13 @@ final class ProfilePickerUITests: XCTestCase {
         // library's permission alert can appear on a fresh simulator and would
         // otherwise block the picker the test waits for.
         allowPhotoAccessIfAsked(app)
+        // The library UI runs out of process, and its first launch on a cold
+        // hosted simulator is slow: in passing hosted runs Cancel appeared about
+        // 17s after the tap, and all 8 failures of the old 15s wait (about 20s
+        // after the tap) showed the picker sheet presented but its remote
+        // content not yet loaded. Wait long enough for that cold start.
         let cancel = app.buttons["Cancel"]
-        XCTAssertTrue(cancel.waitForExistence(timeout: 15), "The photo picker must appear. Tree:\n\(app.debugDescription)")
+        XCTAssertTrue(cancel.waitForExistence(timeout: 60), "The photo picker must appear. Tree:\n\(app.debugDescription)")
         cancel.tap()
 
         // The invariant: nothing selected behind it, so the picker is still
