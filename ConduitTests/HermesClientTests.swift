@@ -2454,7 +2454,15 @@ private final class FakeSocket: HermesWebSocket {
     /// JSON-RPC request before answering it.
     var onSend: (() -> Void)?
 
+    /// Guards `receiveContinuation` and `bufferedFrames`: the client parks
+    /// `receive()` on the main actor while async test bodies call `deliver`
+    /// from the cooperative pool.
+    private let lock = NSLock()
     private var receiveContinuation: CheckedContinuation<URLSessionWebSocketTask.Message, Error>?
+    /// Frames delivered while the receive loop was not parked. A real socket
+    /// queues inbound frames, so the next `receive()` takes them in order
+    /// instead of the test silently losing a response and timing out.
+    private var bufferedFrames: [URLSessionWebSocketTask.Message] = []
 
     func resume() {
         resumed = true
@@ -2469,7 +2477,12 @@ private final class FakeSocket: HermesWebSocket {
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         self.closeCode = closeCode
         cancelled = true
-        if cancelErrorsReceive { failReceive(URLError(.networkConnectionLost)) }
+        if cancelErrorsReceive {
+            lock.lock()
+            bufferedFrames.removeAll()
+            lock.unlock()
+            failReceive(URLError(.networkConnectionLost))
+        }
     }
 
     func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping @Sendable (Error?) -> Void) {
@@ -2482,23 +2495,45 @@ private final class FakeSocket: HermesWebSocket {
 
     func receive() async throws -> URLSessionWebSocketTask.Message {
         try await withCheckedThrowingContinuation { continuation in
+            lock.lock()
+            if !bufferedFrames.isEmpty {
+                let frame = bufferedFrames.removeFirst()
+                lock.unlock()
+                continuation.resume(returning: frame)
+                return
+            }
             receiveContinuation = continuation
+            lock.unlock()
             onReceivePending?()
         }
     }
 
     /// True while the receive loop is suspended waiting for a frame.
-    var isReceivePending: Bool { receiveContinuation != nil }
+    var isReceivePending: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return receiveContinuation != nil
+    }
 
     // Test hooks
     func deliver(_ text: String) {
-        receiveContinuation?.resume(returning: .string(text))
+        lock.lock()
+        guard let continuation = receiveContinuation else {
+            bufferedFrames.append(.string(text))
+            lock.unlock()
+            return
+        }
         receiveContinuation = nil
+        lock.unlock()
+        continuation.resume(returning: .string(text))
     }
 
     func failReceive(_ error: Error) {
-        receiveContinuation?.resume(throwing: error)
+        lock.lock()
+        let continuation = receiveContinuation
         receiveContinuation = nil
+        lock.unlock()
+        continuation?.resume(throwing: error)
     }
 }
 
