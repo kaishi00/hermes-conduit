@@ -2977,6 +2977,8 @@ final class AppState: ObservableObject {
 
     /// Files sessions under Voice or Voice Jobs, here at once and on the
     /// host for every device.
+    private var voiceTagChain: Task<Void, Never>?
+
     private func tagVoiceSessions(_ ids: [String], kind: VoiceSessionTag.Kind, parentID: String? = nil, parentTitle: String? = nil) {
         let ids = Array(Set(ids.filter { !$0.isEmpty }))
         guard !ids.isEmpty else { return }
@@ -2985,7 +2987,10 @@ final class AppState: ObservableObject {
         for id in ids {
             voiceSessionTagsByKey[key, default: [:]][id] = VoiceSessionTag(kind: kind, parentID: parentID, parentTitle: parentTitle)
         }
-        Task { [weak self] in
+        // In order, so a job's later tag with its call's row lands last.
+        let previous = voiceTagChain
+        voiceTagChain = Task { [weak self] in
+            await previous?.value
             for id in ids {
                 do {
                     try await self?.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, parentTitle: parentTitle, profile: profile)
@@ -2997,13 +3002,15 @@ final class AppState: ObservableObject {
     }
 
     /// The title a job's parent shows on devices whose list lacks the parent:
-    /// the listed row's, else the title the call's new row was given.
+    /// the listed row's, else the call's new-row title or the open chat's.
     private func voiceJobParentTitle(_ parentID: String?) -> String? {
         guard let parentID else { return nil }
         if let parent = activeProfileSessions.first(where: { ([$0.id, $0.storedSessionId].compactMap { $0 } + $0.alternateIds).contains(parentID) }) {
             return parent.title
         }
-        return voiceCallRecorder?.sessionID == parentID ? voiceCallRecorder?.newRowTitle : nil
+        if voiceCallRecorder?.sessionID == parentID { return voiceCallRecorder?.newRowTitle }
+        // A classic Voice chat is the open one.
+        return parentID == activeSessionId && activeSessionTitle != AppLocalization.string("New conversation") ? activeSessionTitle : nil
     }
 
     /// Starts saving the live call that is about to connect. A pending
@@ -3243,8 +3250,10 @@ final class AppState: ObservableObject {
         case .summarized(let summary, let recent):
             return VoiceResumeContext(summary: summary, recent: recent)
         case .needsSummary(let older, let covers, let recent):
-            if !read.isComplete, let stored {
-                return VoiceResumeContext(summary: stored.text, recent: recent)
+            if !read.isComplete {
+                // The row's opening wasn't read, so a summary of this window
+                // would pass a middle stretch off as the earlier conversation.
+                return VoiceResumeContext(summary: stored?.text, recent: recent)
             }
             guard let client,
                   let text = try? await client.oneshot(
@@ -3257,16 +3266,16 @@ final class AppState: ObservableObject {
                 // The latest turns alone still carry the thread.
                 return VoiceResumeContext(summary: nil, recent: recent)
             }
-            if read.isComplete {
-                let summary = VoiceResumeSummary(text: text, covers: covers)
-                try? await voiceHistoryClient.storeSummary(summary, sessionID: sessionID, profile: profile)
-            }
+            let summary = VoiceResumeSummary(text: text, covers: covers)
+            try? await voiceHistoryClient.storeSummary(summary, sessionID: sessionID, profile: profile)
             return VoiceResumeContext(summary: text, recent: recent)
         }
     }
 
-    static let voiceRowPageSize = 500
-    static let voiceRowMaximumPages = 4
+    /// The transcript's own page size, which keeps a page under the bridge's
+    /// response cap.
+    static let voiceRowPageSize = PersistedTranscriptPagination.pageSize
+    static let voiceRowMaximumPages = 16
 
     /// The row's newest raw messages, oldest first, through the dashboard:
     /// tail-anchored pages like the transcript's own, with compaction-
