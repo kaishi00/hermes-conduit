@@ -214,6 +214,12 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
             DormancyHarnessEnvironment.applying(
                 ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
                     .environmentObject(appState)
+                    // A bare UIHostingController has no Scene, so scenePhase
+                    // defaults to .background and ChatView pauses its scroll
+                    // engine: the transcript never pins to the bottom and an
+                    // appended row is never mounted. Production's WindowGroup
+                    // supplies .active.
+                    .environment(\.scenePhase, .active)
             )
         }
     }
