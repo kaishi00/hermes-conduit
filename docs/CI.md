@@ -102,8 +102,9 @@ gate's overlapped static phase alongside two live xcodebuild chains; the cap
 and the ceiling moved with it — the coverage is the point.)
 
 Both smoke jobs use `scripts/ci-prepare-smoke.sh`, a hosted-only wrapper around
-`ci-lib.sh`'s bounded operations. It disables automatic clipboard sync before
-boot, waits for the destination inventory, retains the selected `SIMULATOR_UDID`,
+`ci-lib.sh`'s bounded operations. It attempts to disable automatic clipboard
+sync before boot, warning and continuing if the preference cannot be written.
+It waits for the destination inventory, retains the selected `SIMULATOR_UDID`,
 and uses that ID for shutdown, boot, boot readiness and the test destination.
 This avoids re-resolving an already-selected device by an ambiguous name across
 multiple installed runtimes. Destination settlement remains fatal when no
@@ -160,12 +161,31 @@ were sequential at approximately 3m37s and 7m09s in the first run. Overlapping
 them is expected to lower the self-test duration toward the longest group,
 subject to queue and runner variability; this is not a hosted measurement.
 
-Candidate hosted measurements are pending. Compare queue delay, each preparation
-phase, initial test counts and execution duration, retry selection/time, total
-workflow wall and summed macOS job durations. Preserve complete initial smoke
-coverage and report infrastructure problems separately. Local stub regressions
-prove that a profile-picker-only failure excludes the already-passing connection
-class from the retry; they do not establish a hosted wall-time improvement.
+The first candidate run, [36661715262](https://github.com/kaishi00/hermes-conduit/actions/runs/36661715262),
+tested `470f30ec9f1e781d40a82ba8b89483867339f47f` and passed every hosted check.
+It queued 3s and completed in **19m25s**: build 2m30s, unit smoke 8m10s, UI smoke
+16m30s, and 27m10s total macOS job time. The three Linux groups took 18s,
+3m44s and **7m13s**. This confirms the overlap removes the earlier approximately
+11-minute serial self-test path, but one sample does **not** demonstrate an
+overall wall-time improvement: it remains within the baseline range and its UI
+job was slower than the two baseline runs without retries.
+
+Initial coverage was unchanged: 391 unit tests and seven UI tests, with no
+failures and no UI retry. UI preparation took 2m37s; its recorded lookup,
+shutdown, boot and readiness phases were 31s, 1s, 5s and 107s respectively.
+Unit preparation took 3m17s; those phases were 6s, 0s, 5s and 129s. The phase
+measurements omit clipboard configuration, the three-second settle delay,
+runtime-reporting probes and report writing, so they do not sum to the step
+duration. Further startup savings remain unproven, and narrowed retry savings
+were not exercised by this green hosted run.
+
+These measurements precede the clipboard best-effort follow-up and apply only
+to the SHA above. Compare subsequent heads separately, including queue delay,
+preparation phases, initial coverage, retry scope/time, total wall and macOS
+job durations. Local stub regressions prove that a profile-picker-only failure
+excludes the passing connection class from the retry; they do not establish a
+hosted retry-time improvement. An exact-SHA local exhaustive gate remains
+required before a trusted merge.
 
 `build` deliberately does **not** depend on `plan`: it consumes nothing the plan
 job produces, and waiting for it put a serial 1m45s in front of every run. The

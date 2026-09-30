@@ -7,7 +7,7 @@ mkdir -p "$LOG_DIR"
 export LOG_DIR
 source "$SCRIPT_DIR/ci-lib.sh"
 
-disable_pasteboard_sync
+disable_pasteboard_sync || echo "::warning::could not disable pasteboard sync - continuing best-effort"
 started=$(date +%s)
 wait_for_destination_device
 if udid=$(resolve_own_udid) && [ -n "$udid" ]; then

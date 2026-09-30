@@ -102,6 +102,12 @@ class SelfTestGroupsTests(unittest.TestCase):
 @unittest.skipUnless(os.name == "posix", "requires POSIX shell execution")
 class HostedPreparationTests(unittest.TestCase):
     def test_preparation_pins_identity_and_records_each_phase(self):
+        self._assert_preparation()
+
+    def test_clipboard_failure_warns_and_still_prepares_the_simulator(self):
+        self._assert_preparation(clipboard_exit=1)
+
+    def _assert_preparation(self, clipboard_exit=0):
         self.assertTrue(os.path.isfile(os.path.join(SCRIPTS_DIR, "ci-prepare-smoke.sh")))
         with tempfile.TemporaryDirectory() as tmp:
             bindir = os.path.join(tmp, "bin")
@@ -113,7 +119,7 @@ class HostedPreparationTests(unittest.TestCase):
                 "com.apple.CoreSimulator.SimRuntime.iOS-26-4": [
                     {"name": "iPhone 17 Pro", "udid": "OTHER", "isAvailable": True}]}}
             for name, body in {
-                "defaults": 'echo "clipboard|$*" >> "$CALLS"',
+                "defaults": 'echo "clipboard|$*" >> "$CALLS"\nexit ' + str(clipboard_exit),
                 "xcrun": 'echo "xcrun|$*" >> "$CALLS"\n'
                          'if [ "$*" = "simctl list devices available -j" ]; then\n'
                          "cat <<'JSON'\n" + json.dumps(inventory) + "\nJSON\nfi",
@@ -131,6 +137,8 @@ class HostedPreparationTests(unittest.TestCase):
             proc = subprocess.run(["bash", os.path.join(SCRIPTS_DIR, "ci-prepare-smoke.sh")],
                                   env=env, capture_output=True, text=True, timeout=20)
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            if clipboard_exit:
+                self.assertIn("::warning::could not disable pasteboard sync", proc.stdout)
             with open(calls) as fh:
                 operations = fh.read().splitlines()
             self.assertTrue(operations[0].startswith("clipboard|"), operations)
