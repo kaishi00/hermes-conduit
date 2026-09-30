@@ -401,6 +401,18 @@ enum TranscriptPerf {
         #endif
     }
 
+    /// Whether a settled-Markdown source matching `predicate` was first
+    /// rendered inside the current measurement window. Lets a fixture wait
+    /// for ONE specific row instead of any settled evaluation, which an
+    /// unrelated row's re-render would also satisfy. DEBUG-only.
+    static func settledMarkdownRenderedInWindow(where predicate: (String) -> Bool) -> Bool {
+        #if DEBUG
+        return storage.settledMarkdownWindowSources.contains(where: predicate)
+        #else
+        return false
+        #endif
+    }
+
     // MARK: - Control
 
     /// Reset all counters and open a fresh measurement window. Sources

@@ -35,6 +35,12 @@ enum DormancyHarnessEnvironment {
 
     /// Apply the harness environment to `view`. The ONLY sanctioned way to
     /// mount a dormancy-fixture hierarchy.
+    ///
+    /// Also pins `\.scenePhase` to `.active`: a harness window belongs to no
+    /// Scene, so SwiftUI reports `.background`, and ChatView pauses its
+    /// scroll engine in the background. The transcript then never pins to
+    /// the bottom, and an appended row is never mounted. The chat is only
+    /// ever on screen in an active scene (production's WindowGroup).
     static func applying<V: View>(
         _ view: V,
         sizeCategory: ContentSizeCategory = DormancyHarnessEnvironment.pinnedSizeCategory,
@@ -43,5 +49,6 @@ enum DormancyHarnessEnvironment {
         view
             .environment(\.sizeCategory, sizeCategory)
             .environment(\.chatTextSize, chatTextSize)
+            .environment(\.scenePhase, .active)
     }
 }
