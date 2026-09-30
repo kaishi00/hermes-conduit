@@ -2962,8 +2962,11 @@ final class AppState: ObservableObject {
             do {
                 let tags = try await self.voiceHistoryClient.tags(profile: profile)
                 // Tags this device just wrote may not have reached the host's
-                // listing yet; the host's own win where both exist.
-                self.voiceSessionTagsByKey[key] = (self.voiceSessionTagsByKey[key] ?? [:]).merging(tags) { _, host in host }
+                // listing yet; the host's own win where both exist, except
+                // that a local parent link beats a host tag still lacking it.
+                self.voiceSessionTagsByKey[key] = (self.voiceSessionTagsByKey[key] ?? [:]).merging(tags) { local, host in
+                    host.parentID == nil && local.parentID != nil && host.kind == local.kind ? local : host
+                }
             } catch {
                 // An older plugin has no tags: rows stay under their source.
                 Self.voiceHistoryLog.debug("Voice tags unavailable: \(String(describing: error), privacy: .public)")
@@ -2978,6 +2981,7 @@ final class AppState: ObservableObject {
     /// Files sessions under Voice or Voice Jobs, here at once and on the
     /// host for every device.
     private var voiceTagChain: Task<Void, Never>?
+    private var voiceTagGeneration = 0
 
     private func tagVoiceSessions(_ ids: [String], kind: VoiceSessionTag.Kind, parentID: String? = nil, parentTitle: String? = nil) {
         let ids = Array(Set(ids.filter { !$0.isEmpty }))
@@ -2989,8 +2993,11 @@ final class AppState: ObservableObject {
         }
         // In order, so a job's later tag with its call's row lands last.
         let previous = voiceTagChain
+        voiceTagGeneration += 1
+        let generation = voiceTagGeneration
         voiceTagChain = Task { [weak self] in
             await previous?.value
+            defer { if self?.voiceTagGeneration == generation { self?.voiceTagChain = nil } }
             for id in ids {
                 do {
                     try await self?.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, parentTitle: parentTitle, profile: profile)
@@ -3203,7 +3210,8 @@ final class AppState: ObservableObject {
 
     /// Whether Resume Call has a live voice mode to resume with.
     var canResumeVoiceCall: Bool {
-        isConnected && (isGeminiLiveEnabled || isGPTLiveEnabled) && !isLiveVoiceCallActive
+        // With saving off, a resumed call couldn't add to the row.
+        isConnected && voiceCallSavingEnabled && (isGeminiLiveEnabled || isGPTLiveEnabled) && !isLiveVoiceCallActive
     }
 
     /// A live call is already running; opening another would only surface it.
@@ -3246,7 +3254,8 @@ final class AppState: ObservableObject {
         // partial read.
         switch VoiceResumePlan.plan(turns: turns, stored: read.isComplete ? stored : nil) {
         case .verbatim(let recent):
-            return VoiceResumeContext(summary: nil, recent: recent)
+            // A partial read's turns never reach the row's opening.
+            return VoiceResumeContext(summary: read.isComplete ? nil : stored?.text, recent: recent)
         case .summarized(let summary, let recent):
             return VoiceResumeContext(summary: summary, recent: recent)
         case .needsSummary(let older, let covers, let recent):
