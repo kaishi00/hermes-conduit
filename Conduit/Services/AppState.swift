@@ -17791,6 +17791,7 @@ final class AppState: ObservableObject {
             applyStatusUpdate(sessionId: sessionId, kind: kind, text: text)
             return
         }
+        releaseServerCompactionClaimOnAgentOutput(event)
         if bufferIfReconciling(event) { return }
         applyStreamEvent(event)
     }
@@ -17804,6 +17805,12 @@ final class AppState: ObservableObject {
         // is driven by the kind, not by gateway copy.
         switch kind {
         case .compacting:
+            // Upstream re-tags every `lifecycle` line mentioning compression
+            // as `compacting`, including one-shot diagnostics (compression
+            // feasibility notices, "Session compressed N times") replayed at
+            // the start of a turn. Those are warnings, not a running
+            // compaction, and no `compacted` edge ever follows them.
+            if Self.isCompressionDiagnosticStatus(text) { return }
             establishServerCompactionClaim(
                 sessionId: sessionId,
                 generation: terminalServerCompactionGeneration(for: sessionId)
@@ -17815,6 +17822,60 @@ final class AppState: ObservableObject {
             applyCompactionCompleted(sessionId: sessionId)
         case .other:
             break
+        }
+    }
+
+    /// Upstream one-shot compression diagnostics are warnings (`⚠`, possibly
+    /// after the agent's log prefix, e.g. "Session compressed N times") or
+    /// info notices (`ℹ`, the Codex auto-raise notice). Real compaction
+    /// progress lines lead with `🗜️`, `📦` or `💤` and never carry either.
+    static func isCompressionDiagnosticStatus(_ text: String?) -> Bool {
+        guard let body = text?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        return body.contains("⚠") || body.hasPrefix("ℹ")
+    }
+
+    /// Compaction runs synchronously inside the agent loop, and a manual
+    /// compression still running on the host holds the session's
+    /// compression lock, so the agent producing output for a conversation
+    /// proves its compaction (if any) is over. A `compacting` edge that never
+    /// gets its `compacted` partner (a misclassified status line, a skipped
+    /// idle pass) must not keep "Compressing…" up while the reply streams.
+    private func releaseServerCompactionClaimOnAgentOutput(_ event: StreamEvent) {
+        let sessionId: String
+        switch event {
+        case .messageStart(let id):
+            sessionId = id
+        case .messageDelta(let id, _), .reasoningDelta(let id, _):
+            sessionId = id
+        case .messageComplete(let id, _, _, _):
+            sessionId = id
+        case .toolStart(let id, _, _, _):
+            sessionId = id
+        default:
+            return
+        }
+        guard !sessionId.isEmpty,
+              serverCompactingSessionIDs.contains(where: { composerSessionIDsAreEquivalent($0, sessionId) })
+        else { return }
+        // Not terminal: the generation stays, so this is no compaction
+        // completion signal for any pending-continuation bookkeeping.
+        dropServerCompactionClaims(equivalentTo: sessionId)
+    }
+
+    /// Removes the live claim, its expiry tasks and its spinner entry for
+    /// every runtime alias of `sessionId`.
+    private func dropServerCompactionClaims(equivalentTo sessionId: String) {
+        for (taskKey, task) in serverCompactionClaimExpiryTasks
+        where composerSessionIDsAreEquivalent(taskKey, sessionId) {
+            task.cancel()
+            serverCompactionClaimExpiryTasks.removeValue(forKey: taskKey)
+        }
+        let cleared = serverCompactingSessionIDs.filter {
+            composerSessionIDsAreEquivalent($0, sessionId)
+        }
+        serverCompactingSessionIDs.subtract(cleared)
+        serverCompactionClaims = serverCompactionClaims.filter {
+            !composerSessionIDsAreEquivalent($0.key, sessionId)
         }
     }
 
@@ -17857,20 +17918,9 @@ final class AppState: ObservableObject {
     private func clearServerCompactionClaim(sessionId: String) {
         let key = serverCompactionGenerationKey(for: sessionId)
         serverCompactionTerminalGenerations[key, default: 0] += 1
-        // Cancel expiry tasks for every equivalent alias, not just the
-        // addressed id — a re-homed runtime's task is inert after this.
-        for (taskKey, task) in serverCompactionClaimExpiryTasks
-        where composerSessionIDsAreEquivalent(taskKey, sessionId) {
-            task.cancel()
-            serverCompactionClaimExpiryTasks.removeValue(forKey: taskKey)
-        }
-        let cleared = serverCompactingSessionIDs.filter {
-            composerSessionIDsAreEquivalent($0, sessionId)
-        }
-        serverCompactingSessionIDs.subtract(cleared)
-        serverCompactionClaims = serverCompactionClaims.filter {
-            !composerSessionIDsAreEquivalent($0.key, sessionId)
-        }
+        // Every equivalent alias, not just the addressed id — a re-homed
+        // runtime's expiry task is inert after this.
+        dropServerCompactionClaims(equivalentTo: sessionId)
     }
 
     /// Establishes (or refreshes) the server-side claim for `sessionId`.
