@@ -17791,6 +17791,7 @@ final class AppState: ObservableObject {
             applyStatusUpdate(sessionId: sessionId, kind: kind, text: text)
             return
         }
+        releaseServerCompactionClaimOnAgentOutput(event)
         if bufferIfReconciling(event) { return }
         applyStreamEvent(event)
     }
@@ -17804,6 +17805,12 @@ final class AppState: ObservableObject {
         // is driven by the kind, not by gateway copy.
         switch kind {
         case .compacting:
+            // Upstream re-tags every `lifecycle` line mentioning compression
+            // as `compacting`, including one-shot diagnostics (compression
+            // feasibility notices, "Session compressed N times") replayed at
+            // the start of a turn. Those are warnings, not a running
+            // compaction, and no `compacted` edge ever follows them.
+            if Self.isCompressionDiagnosticStatus(text) { return }
             establishServerCompactionClaim(
                 sessionId: sessionId,
                 generation: terminalServerCompactionGeneration(for: sessionId)
@@ -17815,6 +17822,49 @@ final class AppState: ObservableObject {
             applyCompactionCompleted(sessionId: sessionId)
         case .other:
             break
+        }
+    }
+
+    /// Diagnostic warnings share upstream's warning glyph; real compaction
+    /// progress lines (`🗜️ Compacting context…`, idle/preflight notices)
+    /// never lead with it.
+    static func isCompressionDiagnosticStatus(_ text: String?) -> Bool {
+        guard let body = text?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        return body.hasPrefix("⚠")
+    }
+
+    /// Compaction runs synchronously inside the agent loop, so the agent
+    /// producing output for a conversation proves its compaction (if any)
+    /// is over. A `compacting` edge that never gets its `compacted`
+    /// partner (a misclassified status line, a skipped idle pass) must not
+    /// keep "Compressing…" up while the reply streams. Only the live claim
+    /// drops; the terminal generation is untouched so a genuinely pending
+    /// manual continuation keeps its own bookkeeping.
+    private func releaseServerCompactionClaimOnAgentOutput(_ event: StreamEvent) {
+        let sessionId: String
+        switch event {
+        case .messageDelta(let id, _), .reasoningDelta(let id, _):
+            sessionId = id
+        case .messageComplete(let id, _, _, _):
+            sessionId = id
+        case .toolStart(let id, _, _, _):
+            sessionId = id
+        default:
+            return
+        }
+        guard !sessionId.isEmpty,
+              serverCompactingSessionIDs.contains(where: { composerSessionIDsAreEquivalent($0, sessionId) })
+        else { return }
+        for (taskKey, task) in serverCompactionClaimExpiryTasks
+        where composerSessionIDsAreEquivalent(taskKey, sessionId) {
+            task.cancel()
+            serverCompactionClaimExpiryTasks.removeValue(forKey: taskKey)
+        }
+        serverCompactingSessionIDs = serverCompactingSessionIDs.filter {
+            !composerSessionIDsAreEquivalent($0, sessionId)
+        }
+        serverCompactionClaims = serverCompactionClaims.filter {
+            !composerSessionIDsAreEquivalent($0.key, sessionId)
         }
     }
 

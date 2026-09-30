@@ -904,6 +904,52 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages, messagesBefore)
     }
 
+    func testCompressionDiagnosticWarningDoesNotStartSpinner() async throws {
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations())
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        // Upstream re-tags a turn-start compression warning as `compacting`;
+        // it is a diagnostic, not a running compaction.
+        harness.appState.handleStreamEvent(.statusUpdate(
+            sessionId: origin.id,
+            kind: .compacting,
+            text: "⚠ Configured auxiliary compression provider 'x' is unavailable"
+        ))
+        XCTAssertFalse(harness.appState.isCompressingActiveSession)
+
+        // Real progress still claims.
+        harness.appState.handleStreamEvent(.statusUpdate(
+            sessionId: origin.id,
+            kind: .compacting,
+            text: "🗜️ Compacting context — summarizing earlier conversation so I can continue..."
+        ))
+        XCTAssertTrue(harness.appState.isCompressingActiveSession)
+    }
+
+    func testAgentOutputReleasesUnterminatedCompactionClaim() async throws {
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations())
+        let origin = session("composer-origin")
+        let destination = session("composer-destination")
+        harness.appState.sessions = [origin, destination]
+        harness.appState.activeSessionId = origin.id
+
+        harness.appState.handleStreamEvent(.statusUpdate(sessionId: origin.id, kind: .compacting, text: nil))
+        harness.appState.handleStreamEvent(.statusUpdate(sessionId: destination.id, kind: .compacting, text: nil))
+        XCTAssertTrue(harness.appState.isCompressingActiveSession)
+
+        // No `compacted` edge arrives, but the agent is now responding:
+        // compaction runs inside the agent loop, so it must be over.
+        harness.appState.handleStreamEvent(.reasoningDelta(sessionId: origin.id, text: "Thinking"))
+        XCTAssertFalse(harness.appState.isCompressingActiveSession)
+        XCTAssertEqual(
+            harness.appState.serverCompactingSessionIDs,
+            ["composer-destination"],
+            "Another conversation's claim is untouched"
+        )
+    }
+
     // MARK: - Compression identity
 
     func testSpinnerSurvivesRuntimeAliasRebind() async throws {
