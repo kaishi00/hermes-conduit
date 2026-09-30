@@ -4877,12 +4877,14 @@ final class AppState: ObservableObject {
     /// Re-reads everything profile-presentational for the newly selected
     /// dashboard. Runs whenever the selection changes (switch intent,
     /// adoption, removal), so dashboard B never renders A's label, photos,
-    /// or hidden models, even while B is still connecting.
+    /// hidden models, or profile order, even while B is still connecting.
+    /// The photo scan lists one small per-dashboard folder.
     private func reloadDashboardScopedPresentation() {
         let dashboardID = activeDashboardID
         defaultProfileName = profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
         profileAvatarURLs = profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)
         modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
+        profiles = orderedProfiles(profiles)
     }
 
     /// One-time move of the pre-scoping global profile order and model
@@ -5836,18 +5838,21 @@ final class AppState: ObservableObject {
         }
         dashboardSwitchGeneration &+= 1
         let generation = dashboardSwitchGeneration
+        let previousDashboardID = activeDashboardID
         selectDashboardTarget(id)
         rememberDashboardURL(dashboard.normalizedURL)
         let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
         retireConnectionRuntimeForDashboardSwitch()
-        if crossedServer {
+        if crossedServer || previousDashboardID != id {
             // Resume on the target's own profile, not the outgoing
             // dashboard's: profile names are not shared between servers.
             // The boundary above already retired the outgoing profile's
-            // speech, transcript, and catalogs.
+            // speech, transcript, and catalogs. Checked against the
+            // selection too: with no stored server identity (first switch
+            // after a fresh install) the boundary reports no change.
             let targetProfile = rememberedActiveProfile(for: id) ?? "default"
             setActiveProfile(targetProfile)
-            defaults.set(targetProfile, forKey: activeProfileKey)
+            persistActiveProfile(targetProfile)
             restoreActiveSessionState(for: targetProfile)
             restorePinnedSessions(for: targetProfile)
         }

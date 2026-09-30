@@ -109,7 +109,9 @@ final class ProfileAppearanceStore {
     /// One-time move of the pre-scoping name and photos into `dashboardID`
     /// (the registry's first dashboard: the one they were chosen on).
     /// Idempotent: once the legacy key and files are gone this is a no-op,
-    /// and it never overwrites a value the dashboard already has.
+    /// and it never overwrites a name the dashboard already has. Photos are
+    /// moved, not copied; when two copies exist for the same profile, the
+    /// most recently written one is kept.
     func adoptLegacyAppearance(into dashboardID: UUID) {
         if let legacyName = defaults.string(forKey: Self.legacyDefaultNameKey) {
             var names = defaultNames()
@@ -130,7 +132,11 @@ final class ProfileAppearanceStore {
         for file in legacyFiles {
             let destination = target.appendingPathComponent(file.url.lastPathComponent)
             if manager.fileExists(atPath: destination.path) {
-                try? manager.removeItem(at: file.url)
+                if Self.modificationDate(file.url) > Self.modificationDate(destination) {
+                    _ = try? manager.replaceItemAt(destination, withItemAt: file.url)
+                } else {
+                    try? manager.removeItem(at: file.url)
+                }
             } else {
                 try? manager.moveItem(at: file.url, to: destination)
             }
@@ -188,6 +194,10 @@ final class ProfileAppearanceStore {
                   let profile = profileName(from: url) else { return nil }
             return (profile, url)
         }
+    }
+
+    private static func modificationDate(_ url: URL) -> Date {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
     }
 
     static func fileName(for profile: String) -> String {
