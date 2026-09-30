@@ -214,12 +214,6 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
             DormancyHarnessEnvironment.applying(
                 ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
                     .environmentObject(appState)
-                    // A bare UIHostingController has no Scene, so scenePhase
-                    // defaults to .background and ChatView pauses its scroll
-                    // engine: the transcript never pins to the bottom and an
-                    // appended row is never mounted. Production's WindowGroup
-                    // supplies .active.
-                    .environment(\.scenePhase, .active)
             )
         }
     }
@@ -686,12 +680,12 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
             appendFingerprinted,
             "the append never reached the scroll-target cache on this runner"
         )
-        // Rendering the new row is a hosting update, not model work: on a
-        // loaded gate lane a bare run-loop turn can leave that commit
-        // deferred past the cap even though the append was fingerprinted,
-        // so pump layout until the row renders.
+        // Wait for the appended row itself, not any settled evaluation: a
+        // re-render of an existing row also moves the settled counter, and
+        // that is how this test once passed while the new row was never
+        // mounted. Rendering it is a hosting update, so pump layout.
         let newMessageRendered = PerformanceFixtureWait.eventually(pumpingLayoutOf: host.view) {
-            TranscriptPerf.settledMarkdownTextBodyEvaluations > 0
+            TranscriptPerf.settledMarkdownRenderedInWindow { $0.contains("A genuinely new message") }
         }
         XCTAssertTrue(
             newMessageRendered,

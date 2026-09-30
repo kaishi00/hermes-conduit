@@ -65,11 +65,6 @@ final class ChatScrollHostedTests: XCTestCase {
                 ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
                     .environmentObject(appState)
             )
-            // This window belongs to no scene, so SwiftUI reports the scene
-            // phase as background, and ChatView pauses its scroll engine in
-            // the background: nothing would ever pin or follow. The chat is
-            // only ever on screen in an active scene.
-            .environment(\.scenePhase, .active)
         )
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
