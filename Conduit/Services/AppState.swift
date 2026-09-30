@@ -18269,7 +18269,9 @@ final class AppState: ObservableObject {
     /// progress lines lead with `🗜️`, `📦` or `💤` and never carry either.
     static func isCompressionDiagnosticStatus(_ text: String?) -> Bool {
         guard let body = text?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
-        return body.contains("⚠") || body.hasPrefix("ℹ")
+        // Compare scalars, not Characters: "⚠️" (with VS16) is a different
+        // grapheme from a bare "⚠", so String.contains would miss it.
+        return body.unicodeScalars.contains("\u{26A0}") || body.unicodeScalars.first == "\u{2139}"
     }
 
     /// Compaction runs synchronously inside the agent loop, and a manual
