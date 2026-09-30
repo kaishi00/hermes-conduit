@@ -330,7 +330,10 @@ final class VoiceTranscriptRecorder {
         guard !isDisabled, hasUserSpeech else { return nil }
         let pending = unsavedTurns
         guard !pending.isEmpty else { return nil }
-        return VoiceTranscriptSaveRequest(callID: callID, engine: engine, sessionID: sessionID, title: nil, turns: pending)
+        return VoiceTranscriptSaveRequest(
+            callID: callID, engine: engine, sessionID: sessionID,
+            title: sessionID == nil ? newRowTitle : nil, turns: pending
+        )
     }
 }
 

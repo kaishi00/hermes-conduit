@@ -3168,8 +3168,11 @@ final class AppState: ObservableObject {
 
     /// Whether Resume Call has a live voice mode to resume with.
     var canResumeVoiceCall: Bool {
-        isConnected && (isGeminiLiveEnabled || isGPTLiveEnabled)
+        isConnected && (isGeminiLiveEnabled || isGPTLiveEnabled) && !isLiveVoiceCallActive
     }
+
+    /// A live call is already running; opening another would only surface it.
+    private var isLiveVoiceCallActive: Bool { isGeminiLiveActive || isGPTLiveActive }
 
     /// Continues a saved call with a new live call on the selected engine.
     /// It is seeded with the row (a summary when it's long) and appends to
@@ -3198,15 +3201,23 @@ final class AppState: ObservableObject {
     /// can't be read.
     @discardableResult
     func voiceResumeContext(sessionID: String, profile: String) async -> VoiceResumeContext? {
-        guard let rows = await voiceRowMessages(sessionID: sessionID, profile: profile) else { return nil }
-        let turns = VoiceResumePlan.turns(fromMessageRows: rows)
+        guard let read = await voiceRowMessages(sessionID: sessionID, profile: profile) else { return nil }
+        let turns = VoiceResumePlan.turns(fromMessageRows: read.rows)
         let stored = try? await voiceHistoryClient.summary(sessionID: sessionID, profile: profile)
-        switch VoiceResumePlan.plan(turns: turns, stored: stored) {
+        // A stored summary counts turns from the row's start. When only the
+        // newest rows were read, local positions can't be checked against
+        // it: the stored summary is used as is (the older turns it covers
+        // are the ones not read) and never replaced by a summary of the
+        // partial read.
+        switch VoiceResumePlan.plan(turns: turns, stored: read.isComplete ? stored : nil) {
         case .verbatim(let recent):
             return VoiceResumeContext(summary: nil, recent: recent)
         case .summarized(let summary, let recent):
             return VoiceResumeContext(summary: summary, recent: recent)
         case .needsSummary(let older, let covers, let recent):
+            if !read.isComplete, let stored {
+                return VoiceResumeContext(summary: stored.text, recent: recent)
+            }
             guard let client,
                   let text = try? await client.oneshot(
                     task: "compression",
@@ -3218,8 +3229,10 @@ final class AppState: ObservableObject {
                 // The latest turns alone still carry the thread.
                 return VoiceResumeContext(summary: nil, recent: recent)
             }
-            let summary = VoiceResumeSummary(text: text, covers: covers)
-            try? await voiceHistoryClient.storeSummary(summary, sessionID: sessionID, profile: profile)
+            if read.isComplete {
+                let summary = VoiceResumeSummary(text: text, covers: covers)
+                try? await voiceHistoryClient.storeSummary(summary, sessionID: sessionID, profile: profile)
+            }
             return VoiceResumeContext(summary: text, recent: recent)
         }
     }
@@ -3232,7 +3245,7 @@ final class AppState: ObservableObject {
     /// preserved rows. A resume only needs the latest turns plus a summary,
     /// so older rows past the page budget are left out. A dashboard that
     /// doesn't page from the newest end gets the legacy one-shot read.
-    private func voiceRowMessages(sessionID: String, profile: String) async -> [Any]? {
+    private func voiceRowMessages(sessionID: String, profile: String) async -> (rows: [Any], isComplete: Bool)? {
         guard let bridge = dashboardTicketBridge else { return nil }
         func fetch(_ query: String) async -> (rows: [Any], page: PersistedTranscriptPagination.PageInfo?)? {
             guard let response = try? await bridge.requestJSON(
@@ -3241,19 +3254,23 @@ final class AppState: ObservableObject {
             return (rows, PersistedTranscriptPagination.parse(response, rawRowCount: rows.count))
         }
         var rows: [Any] = []
+        var offset = 0
         for page in 0..<Self.voiceRowMaximumPages {
-            let query = "?limit=\(Self.voiceRowPageSize)&offset=\(page * Self.voiceRowPageSize)"
+            let query = "?limit=\(Self.voiceRowPageSize)&offset=\(offset)"
                 + "&order=latest&include_compacted=true&inline_images=false"
-            guard let result = await fetch(query) else { return page == 0 ? nil : rows }
+            guard let result = await fetch(query) else { return page == 0 ? nil : (rows, false) }
             guard let info = result.page, info.honorsTailContract else {
                 // Not tail-anchored: take the whole transcript in one read.
-                guard page == 0 else { return rows }
-                return await fetch(PersistedTranscriptPagination.legacyQuery)?.rows
+                guard page == 0 else { return (rows, false) }
+                return await fetch(PersistedTranscriptPagination.legacyQuery).map { ($0.rows, true) }
             }
             rows = result.rows + rows
-            if !info.mayHaveOlderRows(fetchedRowCount: result.rows.count) { break }
+            offset += result.rows.count
+            // Only an empty page ends the row: a dashboard may cap the page
+            // below the size asked for without saying so.
+            if result.rows.isEmpty { return (rows, true) }
         }
-        return rows
+        return (rows, false)
     }
 
     private func persistVoiceJobSessions() {
