@@ -2731,9 +2731,11 @@ final class AppState: ObservableObject {
         activeProfile = defaults.string(forKey: activeProfileKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "default"
         if activeProfile.isEmpty { activeProfile = "default" }
-        // The global key always holds the active dashboard's profile; seed
-        // the per-dashboard memory from it (upgrade from pre-scoping builds).
-        if let initialDashboardID, rememberedActiveProfile(for: initialDashboardID) == nil {
+        // The global key is what cold launch opens (the resume state and
+        // tests key off it). Mirror it into the active dashboard's entry so
+        // the two can never disagree after launch; this also seeds the entry
+        // on upgrade from pre-scoping builds.
+        if let initialDashboardID {
             rememberActiveProfile(activeProfile, for: initialDashboardID)
         }
         activeSessionTitlesByProfile = defaults.dictionary(forKey: activeSessionTitlesByProfileKey) as? [String: String] ?? [:]
@@ -5546,6 +5548,16 @@ final class AppState: ObservableObject {
         prepareDashboardBridge(for: baseURL)
     }
 
+    /// The profile a repaired connection opens. A repair that moves to an
+    /// address belonging to a DIFFERENT saved dashboard (or to a new one)
+    /// opens that dashboard's own remembered profile, never the outgoing
+    /// dashboard's: profile names are not shared between servers.
+    private func repairTargetProfile(for baseURL: String) -> String {
+        let targetID = resolveDashboardID(forURL: baseURL, registerIfMissing: false)
+        guard let current = activeDashboardID, targetID != current else { return activeProfile }
+        return targetID.flatMap(rememberedActiveProfile(for:)) ?? "default"
+    }
+
     /// The authoritative activation step. A test success is not a guarantee
     /// the world is unchanged; if the websocket activation fails, the
     /// failure is classified, the reconnect `connect` armed is cancelled (no
@@ -5561,7 +5573,7 @@ final class AppState: ObservableObject {
         let rememberedURL = defaults.string(forKey: dashboardURLKey)
         await connect(
             with: conn,
-            profile: activeProfile,
+            profile: repairTargetProfile(for: conn.baseUrl),
             syncPurpose: .preserveCurrent,
             cancelsResumeRestoration: false
         )
@@ -5771,6 +5783,7 @@ final class AppState: ObservableObject {
             // them yet belong to the first one (same rule as launch).
             profileAppearanceStore.adoptLegacyAppearance(into: id)
             adoptLegacyProfilePreferences()
+            reloadDashboardScopedPresentation()
         }
         return id
     }

@@ -16,6 +16,9 @@
 import Foundation
 import UIKit
 
+/// Main-actor isolated: its read-modify-write of the defaults maps relies
+/// on a single caller context (AppState).
+@MainActor
 final class ProfileAppearanceStore {
     static let defaultName = "Hermes"
     /// Pre-scoping keys. Their values belonged to the only dashboard that
