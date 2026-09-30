@@ -4877,14 +4877,15 @@ final class AppState: ObservableObject {
     /// Re-reads everything profile-presentational for the newly selected
     /// dashboard. Runs whenever the selection changes (switch intent,
     /// adoption, removal), so dashboard B never renders A's label, photos,
-    /// hidden models, or profile order, even while B is still connecting.
-    /// The photo scan lists one small per-dashboard folder.
+    /// or hidden models, even while B is still connecting. Profile order is
+    /// applied by `orderedProfiles` when B's profiles are discovered. The
+    /// photo scan lists one small per-dashboard folder, only on a deliberate
+    /// selection change.
     private func reloadDashboardScopedPresentation() {
         let dashboardID = activeDashboardID
         defaultProfileName = profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
         profileAvatarURLs = profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)
         modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
-        profiles = orderedProfiles(profiles)
     }
 
     /// One-time move of the pre-scoping global profile order and model
@@ -4952,10 +4953,12 @@ final class AppState: ObservableObject {
     /// active dashboard's own choice, so switching back to a dashboard lands
     /// on its profile instead of whichever one the outgoing dashboard used.
     private func persistActiveProfile(_ profile: String) {
-        defaults.set(profile, forKey: activeProfileKey)
+        // Per-dashboard entry first: cold launch only seeds it from the
+        // global key when missing, so it must never be the staler of the two.
         if let dashboardID = activeDashboardID {
             rememberActiveProfile(profile, for: dashboardID)
         }
+        defaults.set(profile, forKey: activeProfileKey)
     }
 
     /// Drops every dashboard-scoped presentation choice of a removed

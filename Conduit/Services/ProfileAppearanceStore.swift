@@ -133,7 +133,12 @@ final class ProfileAppearanceStore {
             let destination = target.appendingPathComponent(file.url.lastPathComponent)
             if manager.fileExists(atPath: destination.path) {
                 if Self.modificationDate(file.url) > Self.modificationDate(destination) {
-                    _ = try? manager.replaceItemAt(destination, withItemAt: file.url)
+                    do {
+                        _ = try manager.replaceItemAt(destination, withItemAt: file.url)
+                    } catch {
+                        try? manager.removeItem(at: destination)
+                        try? manager.moveItem(at: file.url, to: destination)
+                    }
                 } else {
                     try? manager.removeItem(at: file.url)
                 }
