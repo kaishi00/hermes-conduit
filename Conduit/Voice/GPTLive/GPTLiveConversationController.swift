@@ -23,6 +23,10 @@ protocol GPTLiveSessionControlling: AnyObject {
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)? { get set }
     var onStateChange: (@MainActor (GPTLiveSession.State) -> Void)? { get set }
     var isReady: Bool { get }
+    /// Set when the host didn't use the voice the user chose.
+    var voiceNote: String? { get }
+    /// True when the host already gave the model the briefing.
+    var briefingApplied: Bool { get }
     func start()
     /// Ends the call (telling GPT-Live, when it can hear it).
     func stop()
@@ -49,9 +53,10 @@ final class GPTLiveConversationController: ObservableObject {
         case failed(String)
     }
 
-    /// Conduit's rules for the live model, sent as session context when the
-    /// call starts (the host sets GPT-Live's own instructions). Written for
-    /// the model, not shown as UI copy, so not localized.
+    /// Conduit's rules for the live model. They travel with the session
+    /// request and the host adds them to GPT-Live's instructions; a host
+    /// that doesn't take them gets them as session context when the call
+    /// starts. Written for the model, not shown as UI copy, so not localized.
     static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil) -> String {
         var text = """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. Keep replies short and conversational.
@@ -86,6 +91,8 @@ final class GPTLiveConversationController: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false
+    /// Why the chosen voice isn't the one speaking, when the host didn't use it.
+    @Published private(set) var voiceNote: String?
 
     /// A turn `turn.done` just completed, with its final text: what
     /// VoiceOver announces (the streamed fragments before it aren't).
@@ -172,6 +179,7 @@ final class GPTLiveConversationController: ObservableObject {
         // A mute belongs to the call it was set in: a new call (one started
         // from CarPlay, which has no mute control, included) is heard.
         isMicrophoneMuted = false
+        voiceNote = nil
         endTask?.cancel()
         endTask = nil
         endRequestedAt = nil
@@ -289,9 +297,14 @@ final class GPTLiveConversationController: ObservableObject {
     private func sessionStateChanged(_ state: GPTLiveSession.State) {
         switch state {
         case .ready:
+            voiceNote = session?.voiceNote
             session?.setMicrophoneEnabled(!isMicrophoneMuted && endRequestedAt == nil)
+            // Given with the call when the host takes it there: appended after
+            // the call starts, the model answers each piece out loud.
+            if session?.briefingApplied != true {
+                session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
+            }
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
-            session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
             if endRequestedAt == nil { deliverPendingJobUpdates() }
             scheduleIdleFlush()
         case .failed(let message):
@@ -497,6 +510,7 @@ final class GPTLiveConversationController: ObservableObject {
     private func retireSession() {
         guard let old = session else { return }
         session = nil
+        voiceNote = nil
         old.onEvent = nil
         old.onStateChange = nil
         old.stop()
@@ -507,7 +521,10 @@ final class GPTLiveConversationController: ObservableObject {
     private func appendTranscript(_ text: String, speaker: VoiceConversationTranscriptEntry.Speaker) {
         let openID = speaker == .user ? openUserEntry : openAssistantEntry
         if let openID, let index = transcript.firstIndex(where: { $0.id == openID }) {
-            transcript[index].text = GeminiLiveConversationController.joinTranscriptChunk(transcript[index].text, text)
+            // GPT-Live's fragments carry their own spaces, and may split a
+            // word: joined as they come (Gemini's space repair would add
+            // spaces inside words).
+            transcript[index].text += text
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespaces)

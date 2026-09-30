@@ -172,6 +172,9 @@ struct GPTLiveVoiceSheet: View {
             .onChange(of: controller.phase) { _, _ in
                 AccessibilityNotification.Announcement(statusText).post()
             }
+            .onChange(of: controller.voiceNote) { _, note in
+                if let note { AccessibilityNotification.Announcement(note).post() }
+            }
             // Each turn once, with its final text (not the first fragment).
             .onChange(of: controller.finishedTurn) { _, turn in
                 guard let turn else { return }
@@ -196,6 +199,12 @@ struct GPTLiveVoiceSheet: View {
             Text(statusText)
                 .font(.headline)
                 .multilineTextAlignment(.center)
+            if let note = controller.voiceNote {
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)

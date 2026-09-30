@@ -1616,7 +1616,13 @@ final class AppState: ObservableObject {
         // Memory and persona come from the same host routes Gemini Live reads.
         let hostContext = geminiLiveTokenClient
         let controller = GPTLiveConversationController(
-            makeSession: { [weak self] in GPTLiveSession(client: client, voice: self?.gptLiveVoice) },
+            makeSession: { [weak self] in
+                GPTLiveSession(
+                    client: client,
+                    voice: self?.gptLiveVoice,
+                    briefing: GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
+                )
+            },
             availability: { [weak self] in
                 let status = try await client.availability()
                 if status.isAvailable, let self {
