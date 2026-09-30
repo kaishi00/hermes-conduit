@@ -1,44 +1,31 @@
 name: CI
 
-# CI v3 - two gates, one purpose each (see docs/CI.md):
+# CI v4 - GitHub-hosted CI is the only merge gate (see docs/CI.md):
 #
-#   GitHub-hosted (this file)     clean-machine BROAD SMOKE safety net for every
-#                                 PR, including public/fork PRs: compile the
-#                                 whole app and all test targets, run the cheap
-#                                 Linux validation, then a curated
-#                                 representative slice of unit and UI classes on
-#                                 macOS. It answers "does this build, and is
-#                                 anything obviously broken?" and nothing else.
-#
-#   Mac local exhaustive gate     TRUSTED-HEAD correctness gate for a release
-#                                 or a risky merge: the COMPLETE unit and UI
-#                                 suites, the timing/performance/dormancy
-#                                 families with unconditional repeats, and
-#                                 bounded infrastructure recovery.
-#                                 `scripts/local-ci-gate.sh` - never GitHub
-#                                 runners.
+#   PR / push (this file)   compile the whole app and all test targets, the
+#                           cheap Linux validation, EVERY unit class except the
+#                           nightly-only timing families (split into balanced
+#                           shards), and the curated UI smoke classes.
+#   Nightly (nightly.yml)   the timing/performance/dormancy families with
+#                           repeats, and the complete UI suite.
 #
 # Jobs:
 #   plan       (ubuntu)  inventory/planner validation, localization coverage,
-#                        CI-tooling tests, and the smoke SELECTION
-#                        (scripts/smoke-suite.json, validated against the
-#                        discovered inventory so a rename cannot silently
-#                        shrink hosted coverage).
-#   self-test  (ubuntu)  three fixed discovery groups in parallel, including
-#                        the minutes-long bash state machines.
-#   build      (macos)   build-for-testing exactly once; audit the .xctestrun
-#                        for absolute-path portability; upload the products.
-#   unit-smoke (macos)   the curated unit classes, as SEQUENTIAL xcodebuild
-#                        batches of at most $SMOKE_BATCH_SIZE (7) classes -
-#                        never one giant invocation.
-#   ui-smoke   (macos)   the curated UI classes, ONE invocation.
+#                        CI-tooling tests, the UI smoke selection
+#                        (scripts/smoke-suite.json) and the unit shards
+#                        (scripts/hosted-suite.json), both validated against
+#                        the discovered inventory.
+#   self-test  (ubuntu)  three fixed discovery groups in parallel.
+#   unit       (macos)   one job per unit shard. Each job builds its own test
+#                        products while its simulator boots in the background,
+#                        then runs its classes as sequential xcodebuild batches
+#                        of at most $UNIT_BATCH_SIZE classes, continuing past a
+#                        failed batch so one failure never hides the rest.
+#   ui-smoke   (macos)   the curated UI classes, one invocation, same build.
 #   ci-gate    (ubuntu)  the single stable branch-protection check.
 #
-# Deliberately NOT here: dynamic lane fanout, timing-history EWMA machinery and
-# Xcode-native flake retry (-test-iterations). The smoke suite is small enough
-# that per-batch watchdogs and lane balancing buy nothing, and a genuine
-# assertion must fail the run rather than be re-run until it agrees. The Mac
-# gate owns repeats, recovery and the timing families.
+# Three macOS jobs per run: GitHub allows 5 concurrent macOS jobs per account,
+# and superseded runs are cancelled, so a run must leave room for the next.
 
 on:
   push:
@@ -60,8 +47,8 @@ env:
   SIMULATOR_NAME: "iPhone 17 Pro"
   # Workspace-anchored DerivedData: GITHUB_WORKSPACE is byte-identical across
   # GitHub-hosted runners for this repo (/Users/runner/work/<repo>/<repo>),
-  # so absolute paths inside the .xctestrun stay valid after the artifact
-  # round-trip - no path rewriting involved.
+  # so absolute paths inside the .xctestrun are stable from run to run - no
+  # path rewriting involved.
   DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
 
 jobs:
@@ -70,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      unit-csv: "${{ steps.smoke.outputs.unit-csv }}"
+      unit-shards: "${{ steps.hosted.outputs.unit-shards }}"
       ui-csv: "${{ steps.smoke.outputs.ui-csv }}"
     steps:
       - uses: actions/checkout@v7
@@ -104,8 +91,24 @@ jobs:
           mkdir -p ci-artifacts
           python3 scripts/plan-tests.py smoke --repo-root . \
             --suite scripts/smoke-suite.json --out ci-artifacts/smoke.json
-          echo "unit-csv=$(jq -r '.unit_csv' ci-artifacts/smoke.json)" >> "$GITHUB_OUTPUT"
           echo "ui-csv=$(jq -r '.ui_csv' ci-artifacts/smoke.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Select the hosted unit shards
+        id: hosted
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+          python3 scripts/plan-tests.py hosted --repo-root . \
+            --suite scripts/hosted-suite.json --out ci-artifacts/hosted.json
+          # Matrix include entries carry a 1-based shard number: expressions
+          # have no arithmetic, so a job name can't compute job-index + 1.
+          echo "unit-shards=$(jq -c '.unit_shards | to_entries | map({shard: (.key + 1), classes: .value})' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Hosted unit shards"
+            echo
+            jq -r '.unit_shards | to_entries[] | "- shard \(.key + 1): \(.value | split(",") | length) classes"' ci-artifacts/hosted.json
+            echo "- nightly only: $(jq -r '.nightly_unit_csv' ci-artifacts/hosted.json)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke selection summary
         run: |
@@ -145,18 +148,15 @@ jobs:
           set -euo pipefail
           python3 scripts/ci-self-test.py --group "${{ matrix.group }}"
 
-  build:
-    name: Build test products
-    # NO `needs: plan`: this job compiles the tree and audits the .xctestrun,
-    # and consumes nothing the plan job produces. Waiting for it put a serial
-    # 1m45s in front of every run (measured on the 2026-09-24 runs). The plan
-    # job still gates the VERDICT - `ci-gate` requires it - and both smoke jobs
-    # still require BOTH, so a broken selection cannot produce a green gate.
-    # The only cost of the overlap is that a run whose inventory is broken
-    # spends its ~3 macOS build minutes before the plan job fails, which is the
-    # cheap direction to be wrong in.
+  unit:
+    name: Unit tests (shard ${{ matrix.shard }})
+    needs: plan
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.unit-shards) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -169,107 +169,66 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build for testing (exactly once)
+      - name: Build and boot the simulator in parallel
+        # ci-prepare-smoke.sh (bounded device lookup, boot and bootstatus) runs
+        # in the background while this runner compiles, so the ~2.5 min boot
+        # hides behind the build. Exports XCRUN_FILE, DESTINATION and
+        # SIMULATOR_UDID for the steps below.
         env:
           BUILD_TIMEOUT_SECS: 900
-        run: bash scripts/ci-build-for-testing.sh
+        run: bash scripts/ci-hosted-build.sh
 
-      - name: Audit .xctestrun portability
-        run: |
-          set -euo pipefail
-          XCRUN_FILE=$(ls -t "$DERIVED_DATA_PATH"/Build/Products/*.xctestrun | head -n 1)
-          python3 scripts/plan-tests.py audit-xctestrun \
-            --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
-
-      - name: Prune intermediates from the products tree
-        run: |
-          set -euo pipefail
-          rm -rf "$DERIVED_DATA_PATH/Build/Intermediates.noindex" \
-                 "$DERIVED_DATA_PATH/Index" \
-                 "$DERIVED_DATA_PATH/Logs"
-
-      - name: Upload build products (consumed by both smoke jobs)
-        # Relative path (relative to the source root, where the build script
-        # wrote it); the artifact keeps the Build/... structure, and the smoke
-        # jobs restore it under $DERIVED_DATA_PATH/Build so the .xctestrun's
-        # absolute paths hold.
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-products
-          path: ci-derived-data/Build
-          retention-days: 1
-          if-no-files-found: error
-
-  unit-smoke:
-    name: Unit smoke
-    needs: [plan, build]
-    runs-on: macos-26
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
-
-      - name: Download shared build products
-        uses: actions/download-artifact@v4
-        with:
-          name: build-products
-          path: "${{ env.DERIVED_DATA_PATH }}/Build"
-
-      - name: Verify restored .xctestrun paths
-        run: |
-          set -euo pipefail
-          XCRUN_FILE=$(ls -t "$DERIVED_DATA_PATH"/Build/Products/*.xctestrun | head -n 1)
-          echo "XCRUN_FILE=$XCRUN_FILE" >> "$GITHUB_ENV"
-          python3 scripts/plan-tests.py audit-xctestrun \
-            --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
-
-      - name: Prepare the pinned simulator destination
-        # Hosted-only measured preparation, using ci-lib's bounded operations.
-        # Configure clipboard sync before boot, and retain the selected UDID.
-        run: bash scripts/ci-prepare-smoke.sh
-
-      - name: Run the curated unit smoke suite
-        # The curated classes run as SEQUENTIAL batches of at most
-        # $SMOKE_BATCH_SIZE inside this one job, never as a single invocation:
-        # large single invocations repeatedly watchdog-stalled on hosted
-        # macos-26 (docs/CI.md, "Sequential unit batches"), which is why the lane
-        # runner batches too. No native flake retry and no recovery here - a
-        # genuine assertion must fail this job; repeats and bounded recovery are
-        # the Mac gate's business.
+      - name: Run this shard's unit classes
+        # The shard's classes run as SEQUENTIAL batches of at most
+        # $UNIT_BATCH_SIZE classes, each a fresh xcodebuild on the same booted
+        # simulator. A failing batch does not stop the shard: every batch runs,
+        # the failed ones are listed, and the job fails at the end. No native
+        # flake retry - a genuine assertion must fail the run.
+        #
+        # -test-timeouts-enabled bounds a hung test: XCTest kills it after the
+        # allowance and reports it, instead of the job burning its ceiling.
+        # -collect-test-diagnostics never: Xcode's on-failure default gathers a
+        # simulator payload under its own 600s timeout (docs/CI.md).
+        # Accepted tradeoff: there is no wall-clock watchdog around a whole
+        # invocation, so a wedged xcodebuild or simulator (not a hung test)
+        # runs to the job ceiling and reads as "cancelled".
         env:
-          UNIT_CLASSES: "${{ needs.plan.outputs.unit-csv }}"
-          SMOKE_BATCH_SIZE: "7"
+          UNIT_CLASSES: "${{ matrix.classes }}"
+          UNIT_BATCH_SIZE: "35"
+          UNIT_TEST_ALLOWANCE_S: "180"
         run: |
           set -euo pipefail
           # Fail closed: an empty list would expand to no -only-testing filter,
           # and a bare xcodebuild would run the ENTIRE suite instead of nothing.
           if [ -z "$UNIT_CLASSES" ]; then
-            echo "::error::unit smoke selection is empty - refusing to run unfiltered"
+            echo "::error::unit shard selection is empty - refusing to run unfiltered"
             exit 1
           fi
           if [ -z "${DESTINATION:-}" ]; then
-            echo "::error::DESTINATION is empty - the prepare step did not pin a simulator destination"
+            echo "::error::DESTINATION is empty - the build step did not pin a simulator destination"
             exit 1
           fi
           IFS=',' read -r -a CLASSES <<< "$UNIT_CLASSES"
           # Default only when UNSET: an explicitly empty value is malformed, not
           # a request for the default.
-          SMOKE_BATCH_SIZE="${SMOKE_BATCH_SIZE-7}"
-          case "$SMOKE_BATCH_SIZE" in
+          UNIT_BATCH_SIZE="${UNIT_BATCH_SIZE-35}"
+          case "$UNIT_BATCH_SIZE" in
             ''|*[!0-9]*)
-              echo "::error::SMOKE_BATCH_SIZE must be a positive integer, got '$SMOKE_BATCH_SIZE'"
+              echo "::error::UNIT_BATCH_SIZE must be a positive integer, got '$UNIT_BATCH_SIZE'"
               exit 1
               ;;
           esac
           # 10# forces base 10, so "00" and "08" are not read as octal.
-          if [ "$((10#$SMOKE_BATCH_SIZE))" -lt 1 ]; then
-            echo "::error::SMOKE_BATCH_SIZE must be greater than zero, got '$SMOKE_BATCH_SIZE'"
+          if [ "$((10#$UNIT_BATCH_SIZE))" -lt 1 ]; then
+            echo "::error::UNIT_BATCH_SIZE must be greater than zero, got '$UNIT_BATCH_SIZE'"
             exit 1
           fi
-          echo "unit smoke: ${#CLASSES[@]} classes, batches of at most $SMOKE_BATCH_SIZE"
+          UNIT_BATCH_SIZE=$((10#$UNIT_BATCH_SIZE))
+          echo "unit shard: ${#CLASSES[@]} classes, batches of at most $UNIT_BATCH_SIZE"
+          printf '### Unit shard classes (%s)\n\n`%s`\n' "${#CLASSES[@]}" "$UNIT_CLASSES" \
+            >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
+          failed_batches=()
           run_batch() {
             batch_no="$1"
             shift
@@ -280,16 +239,19 @@ jobs:
             for cls in "$@"; do
               batch_args+=("-only-testing:ConduitTests/${cls}")
             done
-            echo "::group::unit smoke batch $batch_no ($# classes)"
-            # Close the log group on both paths: a failing batch aborts the
-            # script (set -e), so the group must be closed before returning.
+            echo "::group::unit batch $batch_no ($# classes)"
             if ! xcodebuild test-without-building \
               -xctestrun "$XCRUN_FILE" \
               -destination "$DESTINATION" \
               -parallel-testing-enabled NO \
+              -collect-test-diagnostics never \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
               "${batch_args[@]}"; then
               echo "::endgroup::"
-              return 1
+              echo "::error::unit batch $batch_no failed: $*"
+              failed_batches+=("$batch_no")
+              return 0
             fi
             echo "::endgroup::"
           }
@@ -298,7 +260,7 @@ jobs:
           group=()
           for cls in "${CLASSES[@]}"; do
             group+=("$cls")
-            if [ "${#group[@]}" -ge "$SMOKE_BATCH_SIZE" ]; then
+            if [ "${#group[@]}" -ge "$UNIT_BATCH_SIZE" ]; then
               batch=$((batch + 1))
               run_batch "$batch" "${group[@]}"
               group=()
@@ -308,7 +270,11 @@ jobs:
             batch=$((batch + 1))
             run_batch "$batch" "${group[@]}"
           fi
-          echo "unit smoke: $batch batch invocation(s) completed"
+          if [ "${#failed_batches[@]}" -gt 0 ]; then
+            echo "::error::unit shard: ${#failed_batches[@]} of $batch batch invocation(s) failed (batches ${failed_batches[*]})"
+            exit 1
+          fi
+          echo "unit shard: $batch batch invocation(s) completed"
 
       - name: Dump simulator state (failure diagnostics)
         if: failure()
@@ -318,37 +284,35 @@ jobs:
 
   ui-smoke:
     name: UI smoke
-    needs: [plan, build]
+    needs: plan
     runs-on: macos-26
-    timeout-minutes: 30
+    # 45, not 30: a stalled first attempt plus the one targeted retry has run
+    # past 30 minutes, which GitHub reports as "cancelled" instead of a failure.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
-      - name: Download shared build products
-        uses: actions/download-artifact@v4
-        with:
-          name: build-products
-          path: "${{ env.DERIVED_DATA_PATH }}/Build"
+      - name: Install xcodegen
+        run: brew install xcodegen
 
-      - name: Verify restored .xctestrun paths
-        run: |
-          set -euo pipefail
-          XCRUN_FILE=$(ls -t "$DERIVED_DATA_PATH"/Build/Products/*.xctestrun | head -n 1)
-          echo "XCRUN_FILE=$XCRUN_FILE" >> "$GITHUB_ENV"
-          python3 scripts/plan-tests.py audit-xctestrun \
-            --xctestrun "$XCRUN_FILE" --workspace-root "$GITHUB_WORKSPACE"
+      - name: Generate Xcode project
+        run: xcodegen generate
 
-      - name: Prepare the pinned simulator destination
-        # Hosted-only measured preparation, using ci-lib's bounded operations.
-        # Configure clipboard sync before boot, and retain the selected UDID.
-        run: bash scripts/ci-prepare-smoke.sh
+      - name: Build and boot the simulator in parallel
+        # ci-prepare-smoke.sh (bounded device lookup, boot and bootstatus) runs
+        # in the background while this runner compiles, so the ~2.5 min boot
+        # hides behind the build. Exports XCRUN_FILE, DESTINATION and
+        # SIMULATOR_UDID for the steps below.
+        env:
+          BUILD_TIMEOUT_SECS: 900
+        run: bash scripts/ci-hosted-build.sh
 
       - name: Run the curated UI smoke suite
-        # Basic launch/navigation smoke only: the full UI suite is certified by
-        # the Mac local gate.
+        # Basic launch/navigation smoke only: the full UI suite runs in the
+        # nightly workflow (nightly.yml).
         #
         # UI classes are the one part of this gate with a measured flake rate on
         # shared runners: over three runs of this PR, two different UI tests
@@ -360,8 +324,8 @@ jobs:
         # result attribution is uncertain, and the original failure reported.
         # A class that fails twice fails this job - this is
         # deliberately not rerun-until-green, and no Xcode-native retry flags are
-        # used anywhere. The unit smoke job gets no such retry: its classes are
-        # deterministic.
+        # used anywhere. The unit shards get no such retry: a unit failure is a
+        # test bug to fix, not runner noise.
         env:
           UI_CLASSES: "${{ needs.plan.outputs.ui-csv }}"
           UI_SMOKE_LOG: ci-lane/ui-smoke.log
@@ -395,6 +359,7 @@ jobs:
               -xctestrun "$XCRUN_FILE" \
               -destination "$DESTINATION" \
               -parallel-testing-enabled NO \
+              -collect-test-diagnostics never \
               -resultBundlePath "$result_bundle" \
               "${args[@]}"
           }
@@ -440,12 +405,10 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
-  # Single stable branch-protection check. The smoke jobs are the safety net;
-  # the exhaustive verdict for a release comes from the Mac local gate, which
-  # never runs on GitHub runners.
+  # Single stable branch-protection check: every hosted job must succeed.
   ci-gate:
     name: CI Gate
-    needs: [plan, build, unit-smoke, ui-smoke, self-test]
+    needs: [plan, unit, ui-smoke, self-test]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -456,7 +419,6 @@ jobs:
         run: |
           python3 scripts/ci-gate.py \
             --plan "${{ needs.plan.result }}" \
-            --build "${{ needs.build.result }}" \
-            --unit-smoke "${{ needs.unit-smoke.result }}" \
+            --unit "${{ needs.unit.result }}" \
             --ui-smoke "${{ needs.ui-smoke.result }}" \
             --self-test "${{ needs.self-test.result }}"

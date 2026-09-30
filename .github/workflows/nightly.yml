@@ -1,0 +1,157 @@
+name: Nightly
+
+# The half of hosted CI that never gates a merge (docs/CI.md, CI v4):
+#   timing     the timing/performance/dormancy families from
+#              scripts/hosted-suite.json, three passes as three jobs (what the
+#              retired Mac gate's release mode did)
+#   ui         the COMPLETE UI suite, split into balanced shards, with no retry,
+#              so a flaky UI test shows up here instead of hiding in a PR run
+#
+# Runs on main every night and on demand (Actions > Nightly > Run workflow),
+# e.g. against a release branch before a TestFlight upload. A failed scheduled
+# run emails the repository owner.
+
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SIMULATOR_NAME: "iPhone 17 Pro"
+  DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      timing-csv: "${{ steps.hosted.outputs.timing-csv }}"
+      ui-shards: "${{ steps.hosted.outputs.ui-shards }}"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select the nightly classes
+        id: hosted
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+          python3 scripts/plan-tests.py hosted --repo-root . \
+            --suite scripts/hosted-suite.json --out ci-artifacts/hosted.json
+          echo "timing-csv=$(jq -r '.nightly_unit_csv' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
+          # Matrix include entries carry a 1-based shard number: expressions
+          # have no arithmetic, so a job name can't compute job-index + 1.
+          echo "ui-shards=$(jq -c '.ui_shards | to_entries | map({shard: (.key + 1), classes: .value})' ci-artifacts/hosted.json)" >> "$GITHUB_OUTPUT"
+
+  timing:
+    # One job per repeat: a single pass of the timing families is ~15-20 min
+    # on a hosted runner (MarkdownRichContentHostedTests alone is 810s in
+    # scripts/test-timings.json), so three passes in one job would not fit
+    # a sane ceiling, and a cancelled job loses which pass failed.
+    name: Timing families (repeat ${{ matrix.repeat }})
+    needs: plan
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        repeat: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build and boot the simulator in parallel
+        env:
+          BUILD_TIMEOUT_SECS: 900
+        run: bash scripts/ci-hosted-build.sh
+
+      - name: Run the timing families
+        env:
+          TIMING_CLASSES: "${{ needs.plan.outputs.timing-csv }}"
+        run: |
+          set -euo pipefail
+          if [ -z "$TIMING_CLASSES" ]; then
+            echo "::error::timing selection is empty - refusing to run unfiltered"
+            exit 1
+          fi
+          IFS=',' read -r -a CLASSES <<< "$TIMING_CLASSES"
+          args=()
+          for cls in "${CLASSES[@]}"; do
+            args+=("-only-testing:ConduitTests/${cls}")
+          done
+          # Per-test allowance only, no wall-clock watchdog: a hang past the
+          # allowance is killed by xcodebuild, and a wedged simulator ends at
+          # the job timeout. Same accepted tradeoff as the PR unit shards.
+          xcodebuild test-without-building \
+            -xctestrun "$XCRUN_FILE" \
+            -destination "$DESTINATION" \
+            -parallel-testing-enabled NO \
+            -collect-test-diagnostics never \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 900 \
+            "${args[@]}"
+
+  ui:
+    name: UI suite (shard ${{ matrix.shard }})
+    needs: plan
+    runs-on: macos-26
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.ui-shards) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build and boot the simulator in parallel
+        env:
+          BUILD_TIMEOUT_SECS: 900
+        run: bash scripts/ci-hosted-build.sh
+
+      - name: Run this shard's UI classes
+        # No retry here on purpose: this run exists to surface UI flakes.
+        env:
+          UI_CLASSES: "${{ matrix.classes }}"
+        run: |
+          set -euo pipefail
+          if [ -z "$UI_CLASSES" ]; then
+            echo "::error::UI shard selection is empty - refusing to run unfiltered"
+            exit 1
+          fi
+          IFS=',' read -r -a CLASSES <<< "$UI_CLASSES"
+          args=()
+          for cls in "${CLASSES[@]}"; do
+            args+=("-only-testing:ConduitUITests/${cls}")
+          done
+          xcodebuild test-without-building \
+            -xctestrun "$XCRUN_FILE" \
+            -destination "$DESTINATION" \
+            -parallel-testing-enabled NO \
+            -collect-test-diagnostics never \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 600 \
+            "${args[@]}"

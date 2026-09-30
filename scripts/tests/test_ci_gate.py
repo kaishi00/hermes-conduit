@@ -16,96 +16,91 @@ SPEC.loader.exec_module(ci_gate)
 class VerdictTests(unittest.TestCase):
     def test_all_success_passes(self):
         passed, _reason = ci_gate.verdict(
-            "success", "success", "success", "success", "success")
+            "success", "success", "success", "success")
         self.assertTrue(passed)
 
     def test_ui_skipped_fails_gate(self):
         # No hosted job has a legitimate skip path any more: the plan job fails
-        # closed on an empty curated selection and both smoke jobs refuse to run
+        # closed on an empty curated selection and every test job refuses to run
         # unfiltered, so a skipped ui-smoke is an upstream failure cascade.
         passed, reason = ci_gate.verdict(
-            "success", "success", "success", "skipped", "success")
+            "success", "success", "skipped", "success")
         self.assertFalse(passed)
         self.assertIn("ui-smoke", reason)
 
     def test_unit_failure_fails_gate(self):
         passed, reason = ci_gate.verdict(
-            "success", "success", "failure", "success", "success")
+            "success", "failure", "success", "success")
         self.assertFalse(passed)
         self.assertIn("unit", reason)
 
-    def test_build_failure_fails_gate(self):
-        passed, _reason = ci_gate.verdict(
-            "success", "failure", "skipped", "skipped", "skipped")
-        self.assertFalse(passed)
-
     def test_plan_failure_fails_gate(self):
         passed, _reason = ci_gate.verdict(
-            "failure", "skipped", "skipped", "skipped", "skipped")
+            "failure", "skipped", "skipped", "skipped")
         self.assertFalse(passed)
 
     def test_plan_cancelled_fails_gate(self):
         passed, _reason = ci_gate.verdict(
-            "cancelled", "success", "success", "success", "success")
+            "cancelled", "success", "success", "success")
         self.assertFalse(passed)
 
     def test_unit_cancelled_fails_gate(self):
         passed, _reason = ci_gate.verdict(
-            "success", "success", "cancelled", "success", "success")
+            "success", "cancelled", "success", "success")
         self.assertFalse(passed)
 
     def test_ui_cancelled_fails_gate(self):
         passed, _reason = ci_gate.verdict(
-            "success", "success", "success", "cancelled", "success")
+            "success", "success", "cancelled", "success")
         self.assertFalse(passed)
 
     def test_self_test_failure_fails_gate(self):
         passed, reason = ci_gate.verdict(
-            "success", "success", "success", "success", "failure")
+            "success", "success", "success", "failure")
         self.assertFalse(passed)
         self.assertIn("self-test", reason)
 
     def test_self_test_cancelled_fails_gate(self):
         passed, _reason = ci_gate.verdict(
-            "success", "success", "success", "success", "cancelled")
+            "success", "success", "success", "cancelled")
         self.assertFalse(passed)
 
     def test_self_test_skipped_fails_gate(self):
         # The CI-tooling suites have no legitimate skip path: a skip means
         # an upstream failure suppressed them, which is not a success.
         passed, reason = ci_gate.verdict(
-            "success", "success", "success", "success", "skipped")
+            "success", "success", "success", "skipped")
         self.assertFalse(passed)
         self.assertIn("self-test", reason)
 
     def test_missing_upstream_results_fail_gate(self):
         # A skip because an upstream job failed is still not a success.
         passed, _reason = ci_gate.verdict(
-            "success", "success", "skipped", "skipped", "skipped")
+            "success", "skipped", "skipped", "skipped")
         self.assertFalse(passed)
 
 
 class CliTests(unittest.TestCase):
-    def _run(self, plan, build, unit, ui, self_test="success"):
+    def _run(self, plan, unit, ui, self_test="success"):
         return subprocess.run(
             [sys.executable, os.path.join(SCRIPTS_DIR, "ci-gate.py"),
-             "--plan", plan, "--build", build,
-             "--unit-smoke", unit, "--ui-smoke", ui,
+             "--plan", plan,
+             "--unit", unit, "--ui-smoke", ui,
              "--self-test", self_test],
             capture_output=True, text=True)
 
     def test_cli_exit_codes(self):
         self.assertEqual(
-            self._run("success", "success", "success", "success").returncode, 0)
+            self._run("success", "success", "success").returncode, 0)
         self.assertNotEqual(
-            self._run("success", "success", "success", "skipped").returncode, 0,
-            "a skipped smoke job must not read as a passing gate")
+            self._run("success", "success", "skipped").returncode, 0,
+            "a skipped UI job must not read as a passing gate")
         self.assertNotEqual(
-            self._run("success", "failure", "skipped", "skipped").returncode, 0)
+            self._run("failure", "skipped", "skipped").returncode, 0)
         self.assertNotEqual(
-            self._run("success", "success", "failure", "success").returncode, 0)
+            self._run("success", "failure", "success").returncode, 0)
         self.assertNotEqual(
-            self._run("success", "success", "success", "success",
+            self._run("success", "success", "success",
                       self_test="failure").returncode, 0)
 
 

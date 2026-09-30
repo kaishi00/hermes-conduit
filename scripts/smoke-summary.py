@@ -3,8 +3,8 @@
 Markdown for the GitHub step summary.
 
 Kept as a script rather than inline YAML so the wording and the split between
-hosted smoke coverage and Mac-gate-owned coverage are reviewable, and so the
-summary can be asserted in the CI-tooling tests.
+PR coverage and nightly coverage are reviewable, and so the summary can be
+asserted in the CI-tooling tests.
 """
 
 from __future__ import annotations
@@ -23,20 +23,15 @@ def render(selection: dict) -> str:
     unit = list(selection.get("unit") or [])
     ui = list(selection.get("ui") or [])
     lines = [
-        "### Hosted smoke gate",
+        "### Hosted CI selection",
         "",
-        "This run exercises the curated smoke slice. The exhaustive unit/UI",
-        "suites and the timing/performance/dormancy families are certified by",
-        "the Mac local gate (`scripts/local-ci-gate.sh`) for a trusted head;",
-        "they are deliberately not run here.",
+        "Every unit class except the nightly-only timing families runs in the",
+        "unit shard jobs (`scripts/hosted-suite.json`). UI tests run the curated",
+        "smoke classes below; the complete UI suite and the timing families run",
+        "in the nightly workflow.",
         "",
-        f"- unit smoke classes: **{len(unit)}** of {_count(selection.get('inventory_unit'))}",
         f"- UI smoke classes: **{len(ui)}** of {_count(selection.get('inventory_ui'))}",
-        "- delegated to the Mac exhaustive gate: "
-        f"{_count(selection.get('delegated_unit'))} unit + "
-        f"{_count(selection.get('delegated_ui'))} UI classes",
-        "",
-        "unit: " + ", ".join(unit),
+        f"- UI classes left to the nightly run: {_count(selection.get('delegated_ui'))}",
         "",
         "UI: " + ", ".join(ui),
         "",

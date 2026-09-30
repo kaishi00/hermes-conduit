@@ -1077,9 +1077,9 @@ def cmd_smoke(args) -> int:
     delegated_unit = len(discovery["unit"]) - len(unit)
     delegated_ui = len(discovery["ui"]) - len(ui)
     print(f"smoke selection: {len(unit)} unit + {len(ui)} UI classes")
-    print(f"delegated to the Mac local gate: {delegated_unit} unit + "
-          f"{delegated_ui} UI classes (exhaustive coverage, repeats and the "
-          f"timing-sensitive families)")
+    print(f"not in the UI smoke set: {delegated_unit} unit + "
+          f"{delegated_ui} UI classes (unit classes run in the hosted shards; the "
+          f"full UI suite and timing families run nightly)")
 
     if args.out:
         payload = {
@@ -1098,6 +1098,126 @@ def cmd_smoke(args) -> int:
             fh.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
         print(f"smoke selection written: {args.out}")
     print("smoke selection OK")
+    return 0
+
+
+def load_hosted_suite(path: str) -> dict:
+    """Read the hosted CI shape (scripts/hosted-suite.json).
+
+    Fails closed: the schema version must be 1, shard counts must be positive
+    integers and the nightly-only list must name plain Swift classes.
+    """
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    if not isinstance(data, dict):
+        raise ValueError("hosted suite must be a JSON object")
+    if data.get("schema_version") != 1:
+        raise ValueError("hosted suite schema_version must be 1, got {0!r}".format(
+            data.get("schema_version")))
+    for key in ("unit_shards", "nightly_ui_shards"):
+        value = data.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ValueError("hosted suite {0!r} must be a positive integer".format(key))
+    names = data.get("nightly_only_unit")
+    if not isinstance(names, list):
+        raise ValueError("hosted suite must declare a 'nightly_only_unit' list")
+    for name in names:
+        if not isinstance(name, str) or not _CLASS_NAME_RE.match(name):
+            raise ValueError(
+                "hosted suite 'nightly_only_unit' names an invalid class: {0!r}".format(name))
+    return data
+
+
+def split_lpt(names: list, estimates: dict, shards: int) -> list:
+    """Longest-processing-time split of `names` into `shards` lists.
+
+    Each shard keeps its classes in assignment order (longest first), and ties
+    break by name, so the same inventory always produces the same shards.
+    """
+    buckets = [[] for _ in range(shards)]
+    totals = [0.0] * shards
+    ordered = sorted(names, key=lambda n: (-estimates.get(n, DEFAULT_ESTIMATE_S), n))
+    for name in ordered:
+        i = min(range(shards), key=lambda k: (totals[k], k))
+        buckets[i].append(name)
+        totals[i] += estimates.get(name, DEFAULT_ESTIMATE_S)
+    return [b for b in buckets if b]
+
+
+def cmd_hosted(args) -> int:
+    """Split the discovered inventory for the hosted CI v4 jobs.
+
+    PR runs: every unit class except the nightly-only timing families, split
+    into `unit_shards` balanced shards. Nightly runs: those families, plus the
+    whole UI suite split into `nightly_ui_shards` shards. Every discovered class
+    lands in exactly one PR or nightly list, so nothing is silently unrun.
+    """
+    discovery = discover_test_classes(args.repo_root)
+    for w in discovery["warnings"]:
+        warn(w)
+    if discovery["errors"]:
+        for e in discovery["errors"]:
+            print(f"::error::{e}")
+        return 1
+    try:
+        suite = load_hosted_suite(args.suite)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"::error::hosted suite unreadable: {exc}")
+        return 1
+
+    unit_names = [entry["name"] for entry in discovery["unit"]]
+    ui_names = [entry["name"] for entry in discovery["ui"]]
+    nightly = list(suite["nightly_only_unit"])
+    problems = []
+    seen = set()
+    for name in nightly:
+        if name in seen:
+            problems.append(f"hosted suite lists {name!r} twice in nightly_only_unit")
+        seen.add(name)
+        if name not in unit_names:
+            problems.append(
+                f"hosted suite lists {name!r} in nightly_only_unit, but it is not a unit test class")
+    for e in problems:
+        print(f"::error::{e}")
+    if problems:
+        print("hosted selection FAILED")
+        return 1
+
+    baseline = args.baseline
+    if baseline and not os.path.isabs(baseline):
+        baseline = os.path.join(args.repo_root, baseline)
+    estimates, ewarns = load_estimates(baseline, "baseline") if baseline else ({}, [])
+    for w in ewarns:
+        warn(w)
+
+    pr_unit = [n for n in unit_names if n not in seen]
+    unit_shards = split_lpt(pr_unit, estimates, suite["unit_shards"])
+    ui_shards = split_lpt(ui_names, estimates, suite["nightly_ui_shards"])
+    if not unit_shards:
+        print("::error::hosted selection has no unit classes for PR runs")
+        return 1
+    if not ui_shards:
+        print("::error::hosted selection has no UI classes for the nightly run")
+        return 1
+
+    print("hosted selection: {0} unit classes in {1} PR shards ({2}), "
+          "{3} nightly-only unit classes, {4} UI classes in {5} nightly shards".format(
+              len(pr_unit), len(unit_shards), "/".join(str(len(s)) for s in unit_shards),
+              len(nightly), len(ui_names), len(ui_shards)))
+    if args.out:
+        payload = {
+            "schema_version": 1,
+            "unit_shards": [",".join(s) for s in unit_shards],
+            "nightly_unit_csv": ",".join(nightly),
+            "ui_shards": [",".join(s) for s in ui_shards],
+            "inventory_unit": len(unit_names),
+            "inventory_ui": len(ui_names),
+        }
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        print(f"hosted selection written: {args.out}")
+    print("hosted selection OK")
     return 0
 
 
@@ -1147,10 +1267,18 @@ def main(argv=None) -> int:
     p.add_argument("--suite", default=os.path.join("scripts", "smoke-suite.json"))
     p.add_argument("--out", default="")
 
+    p = sub.add_parser("hosted")
+    p.add_argument("--repo-root", default=".")
+    p.add_argument("--suite", default=os.path.join("scripts", "hosted-suite.json"))
+    p.add_argument("--baseline", default=os.path.join("scripts", "test-timings.json"))
+    p.add_argument("--out", default="")
+
     a = parser.parse_args(argv)
 
     if a.cmd == "smoke":
         return cmd_smoke(a)
+    if a.cmd == "hosted":
+        return cmd_hosted(a)
 
     if a.cmd == "audit-xctestrun":
         violations, checked = audit_xctestrun(a.xctestrun, a.workspace_root)

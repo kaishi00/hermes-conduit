@@ -405,6 +405,13 @@ enum Haptics {
             return engine
         }
 #endif
+        // No haptic hardware (the Simulator, most iPads): the UIKit fallback
+        // covers it. Constructing an engine anyway still spins up audio I/O,
+        // which on a headless CI simulator can deadlock AURemoteIO and abort
+        // the whole test host ("RPC timeout. Apparently deadlocked").
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
+            throw CoreHapticsUnavailable()
+        }
         // Deliberately the session-free initializer: binding this engine to
         // AVAudioSession.sharedInstance() re-introduces the issue #140
         // media interruption (the engine activates the shared session on
@@ -480,3 +487,7 @@ enum Haptics {
         lifecyclePatternEndsAt = .distantPast
     }
 }
+
+/// Thrown instead of constructing a Core Haptics engine on hardware without
+/// haptics; `responseStarted` then plays the UIKit fallback.
+private struct CoreHapticsUnavailable: Error {}

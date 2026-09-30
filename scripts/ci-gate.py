@@ -1,31 +1,23 @@
 #!/usr/bin/env python3
 """CI Gate: the single stable branch-protection verdict for Hermes Conduit.
 
-The hosted jobs are a broad smoke gate (docs/CI.md): they must never be
-required individually, so this job aggregates them into one stable status
+GitHub-hosted CI is the merge gate (docs/CI.md, CI v4). Its jobs must never
+be required individually, so this job aggregates them into one stable status
 context ("CI Gate").
 
 Policy:
   plan        must be success
-  build       must be success
-  unit-smoke  must be success
+  unit        must be success (the aggregate of every unit shard)
   ui-smoke    must be success
-  self-test   must be success (the CI-tooling regression suites - planner,
-              lane-runner state machine, destination lookup, gate/contract
-              tests - run as their own job so the expensive bash state-machine
-              suite never delays or outlives planning)
+  self-test   must be success (the CI-tooling regression suites)
 
-No hosted job is ever legitimately skipped: `plan-tests.py smoke` fails closed
-on an empty curated selection and both smoke jobs refuse to run unfiltered, so
-`skipped` here always means an upstream failure cascade - which fails the gate
-anyway.
+No hosted job is ever legitimately skipped: the plan job fails closed on an
+empty selection and every test job refuses to run unfiltered, so `skipped`
+here always means an upstream failure cascade - which fails the gate anyway.
 
 Anything else - failure, cancelled, skipped upstream of a failure - fails the
-gate.
-
-This verdict covers the HOSTED smoke gate only. A release additionally needs
-the Mac local exhaustive gate (scripts/local-ci-gate.sh) on the exact head;
-that result is never produced by, and cannot be substituted by, this job.
+gate. The nightly workflow (nightly.yml) reports the timing families and the
+complete UI suite separately; it never gates a merge.
 """
 
 from __future__ import annotations
@@ -33,14 +25,13 @@ from __future__ import annotations
 import argparse
 import sys
 
-REQUIRED_SUCCESS = ("plan", "build", "unit-smoke", "ui-smoke", "self-test")
+REQUIRED_SUCCESS = ("plan", "unit", "ui-smoke", "self-test")
 
 
-def verdict(plan: str, build: str, unit_smoke: str, ui_smoke: str,
-            self_test: str) -> tuple:
+def verdict(plan: str, unit: str, ui_smoke: str, self_test: str) -> tuple:
     """Return (passed, reason). Reason lists every violated expectation."""
-    results = {"plan": plan, "build": build, "unit-smoke": unit_smoke,
-               "ui-smoke": ui_smoke, "self-test": self_test}
+    results = {"plan": plan, "unit": unit, "ui-smoke": ui_smoke,
+               "self-test": self_test}
     failures = []
     for name in REQUIRED_SUCCESS:
         if results[name] != "success":
@@ -51,17 +42,15 @@ def verdict(plan: str, build: str, unit_smoke: str, ui_smoke: str,
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", required=True)
-    parser.add_argument("--build", required=True)
-    parser.add_argument("--unit-smoke", required=True, dest="unit_smoke")
+    parser.add_argument("--unit", required=True)
     parser.add_argument("--ui-smoke", required=True, dest="ui_smoke")
     parser.add_argument("--self-test", required=True)
     args = parser.parse_args(argv)
 
-    passed, reason = verdict(args.plan, args.build, args.unit_smoke,
-                             args.ui_smoke, args.self_test)
+    passed, reason = verdict(args.plan, args.unit, args.ui_smoke,
+                             args.self_test)
     if passed:
-        print("CI Gate: PASS (plan/build/unit-smoke/ui-smoke/self-test all "
-              "succeeded)")
+        print("CI Gate: PASS (plan/unit/ui-smoke/self-test all succeeded)")
         return 0
     print(f"CI Gate: FAIL - {reason}")
     print("::error::CI Gate failed: " + reason)

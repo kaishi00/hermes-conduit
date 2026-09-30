@@ -20,6 +20,7 @@ final class DashboardSessionIsolationTests: XCTestCase {
     private var defaults: UserDefaults!
     private var backend: InMemoryKeychainBackend!
     private var createdDashboardIDs: [UUID] = []
+    private var webViews: [WKWebView] = []
 
     private let parentHostA = "https://a.example.com"
     private let parentHostB = "https://b.example.com"
@@ -40,10 +41,25 @@ final class DashboardSessionIsolationTests: XCTestCase {
             KeychainHelper.clearCloudflareAccess(dashboardID: id)
             KeychainHelper.clearDashboardCookies(dashboardID: id)
         }
+        webViews = []
         KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend())
         backend = nil
         defaults.removePersistentDomain(forName: defaultsSuite)
         super.tearDown()
+    }
+
+    /// Production attaches a dashboard's store to its bridge WKWebView before
+    /// restoring cookies into it (DashboardTicketBridge). A bare store with no
+    /// web view never answered setCookie on hosted CI simulators, so the live
+    /// cookie tests attach one the same way.
+    @discardableResult
+    private func attachWebView(to store: WKWebsiteDataStore) -> WKWebsiteDataStore {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = store
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.loadHTMLString("<html></html>", baseURL: nil)
+        webViews.append(webView)
+        return store
     }
 
     private func track(_ id: UUID) -> UUID {
@@ -98,20 +114,20 @@ final class DashboardSessionIsolationTests: XCTestCase {
     }
 
     func testWebKitCookieIsolationBetweenSiblingDashboards() async throws {
-        let storeA = DashboardCookiePersistence.webKitStore(for: UUID())
-        let storeB = DashboardCookiePersistence.webKitStore(for: UUID())
+        let storeA = attachWebView(to: DashboardCookiePersistence.webKitStore(for: UUID()))
+        let storeB = attachWebView(to: DashboardCookiePersistence.webKitStore(for: UUID()))
         let cookie = try parentDomainCookie(value: "a-session")
 
-        await storeA.httpCookieStore.setCookie(cookie)
+        try await awaitWebKit("setCookie on A") { await storeA.httpCookieStore.setCookie(cookie) }
         // Give WebKit a beat to settle the write.
         try await Task.sleep(for: .milliseconds(50))
 
-        let cookiesB = await storeB.httpCookieStore.allCookies()
+        let cookiesB = try await awaitWebKit("allCookies on B") { await storeB.httpCookieStore.allCookies() }
         XCTAssertFalse(
             cookiesB.contains { $0.name == "session" && $0.value == "a-session" },
             "dashboard A's WebKit cookie must never appear in dashboard B's store"
         )
-        let cookiesA = await storeA.httpCookieStore.allCookies()
+        let cookiesA = try await awaitWebKit("allCookies on A") { await storeA.httpCookieStore.allCookies() }
         XCTAssertTrue(cookiesA.contains { $0.name == "session" && $0.value == "a-session" })
     }
 
@@ -144,23 +160,27 @@ final class DashboardSessionIsolationTests: XCTestCase {
 
         // B's bridge restores from B's (empty) jar: the parent-domain cookie
         // a.example.com holds for .example.com must NOT be imported.
-        let storeB = DashboardCookiePersistence.webKitStore(for: b)
-        await DashboardCookiePersistence.restoreNativeCookies(
-            into: storeB.httpCookieStore,
-            for: parentHostB,
-            dashboardID: b
-        )
-        let cookiesB = await storeB.httpCookieStore.allCookies()
+        let storeB = attachWebView(to: DashboardCookiePersistence.webKitStore(for: b))
+        try await awaitWebKit("restore into B") {
+            await DashboardCookiePersistence.restoreNativeCookies(
+                into: storeB.httpCookieStore,
+                for: self.parentHostB,
+                dashboardID: b
+            )
+        }
+        let cookiesB = try await awaitWebKit("allCookies on B") { await storeB.httpCookieStore.allCookies() }
         XCTAssertTrue(cookiesB.isEmpty, "no cross-dashboard import through the shared jar")
 
         // A's bridge restores its own parent-domain and host-only cookies.
-        let storeA = DashboardCookiePersistence.webKitStore(for: a)
-        await DashboardCookiePersistence.restoreNativeCookies(
-            into: storeA.httpCookieStore,
-            for: parentHostA,
-            dashboardID: a
-        )
-        let cookiesA = await storeA.httpCookieStore.allCookies()
+        let storeA = attachWebView(to: DashboardCookiePersistence.webKitStore(for: a))
+        try await awaitWebKit("restore into A") {
+            await DashboardCookiePersistence.restoreNativeCookies(
+                into: storeA.httpCookieStore,
+                for: self.parentHostA,
+                dashboardID: a
+            )
+        }
+        let cookiesA = try await awaitWebKit("allCookies on A") { await storeA.httpCookieStore.allCookies() }
         XCTAssertTrue(cookiesA.contains { $0.value == "a-login" })
         XCTAssertTrue(cookiesA.contains { $0.value == "a-host" })
     }
@@ -293,4 +313,48 @@ final class DashboardSessionIsolationTests: XCTestCase {
         XCTAssertNil(KeychainHelper.loadConnection(dashboardID: b), "B's scoped record was never touched by A's renewal")
         XCTAssertNil(appStateWithMint.dashboardTicketBridge, "the switch's retirement holds; the stale renewal did not rebuild a bridge")
     }
+}
+
+// MARK: - Bounded WebKit cookie-store calls
+
+/// WKHTTPCookieStore answers over IPC from WebKit's network process. On a
+/// hosted CI simulator that reply has been seen never to arrive (2026-09-30:
+/// testRestoreNativeCookiesOnlyImportsTheOwningDashboardJar sat for the full
+/// 3-minute allowance, then xcodebuild restarted the test host). Bounding each
+/// call turns such a hang into a named failure within seconds.
+@MainActor
+private final class WebKitCallRace {
+    var finished = false
+}
+
+private struct WebKitCookieStoreTimeout: Error {}
+
+@MainActor
+private func awaitWebKit<T>(
+    _ what: String,
+    timeout: Duration = .seconds(20),
+    file: StaticString = #filePath,
+    line: UInt = #line,
+    _ operation: @escaping @MainActor () async -> T
+) async throws -> T {
+    let race = WebKitCallRace()
+    let result: T? = await withCheckedContinuation { continuation in
+        Task { @MainActor in
+            let value = await operation()
+            guard !race.finished else { return }
+            race.finished = true
+            continuation.resume(returning: value)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: timeout)
+            guard !race.finished else { return }
+            race.finished = true
+            continuation.resume(returning: nil)
+        }
+    }
+    guard let result else {
+        XCTFail("WebKit cookie store did not answer \(what) within \(timeout)", file: file, line: line)
+        throw WebKitCookieStoreTimeout()
+    }
+    return result
 }

@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "The GitHub-hosted CI shape (CI v4, docs/CI.md).",
+    "",
+    "PR runs execute every unit class EXCEPT nightly_only_unit, split into",
+    "unit_shards balanced jobs, plus the UI smoke classes from smoke-suite.json.",
+    "The nightly workflow runs nightly_only_unit with repeats and the whole UI",
+    "suite in nightly_ui_shards jobs. scripts/plan-tests.py hosted validates this",
+    "file against the discovered inventory, so a renamed class fails the plan.",
+    "",
+    "nightly_only_unit holds the timing/performance/dormancy families: they",
+    "measure scheduling and rendering behaviour, so they run with repeats off",
+    "the PR path instead of blocking every merge on a shared runner."
+  ],
+  "schema_version": 1,
+  "unit_shards": 2,
+  "nightly_ui_shards": 3,
+  "nightly_only_unit": [
+    "TranscriptPerformanceFixtureTests",
+    "TranscriptPerfLedgerContractTests",
+    "LongContextScalingFixtureTests",
+    "SettledMessageIsolationTests",
+    "MarkdownRichContentHostedTests"
+  ]
+}
