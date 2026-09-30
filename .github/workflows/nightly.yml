@@ -94,6 +94,9 @@ jobs:
           for cls in "${CLASSES[@]}"; do
             args+=("-only-testing:ConduitTests/${cls}")
           done
+          # Per-test allowance only, no wall-clock watchdog: a hang past the
+          # allowance is killed by xcodebuild, and a wedged simulator ends at
+          # the job timeout. Same accepted tradeoff as the PR unit shards.
           xcodebuild test-without-building \
             -xctestrun "$XCRUN_FILE" \
             -destination "$DESTINATION" \
@@ -149,4 +152,6 @@ jobs:
             -destination "$DESTINATION" \
             -parallel-testing-enabled NO \
             -collect-test-diagnostics never \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 600 \
             "${args[@]}"

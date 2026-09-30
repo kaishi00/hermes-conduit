@@ -1196,6 +1196,9 @@ def cmd_hosted(args) -> int:
     if not unit_shards:
         print("::error::hosted selection has no unit classes for PR runs")
         return 1
+    if not ui_shards:
+        print("::error::hosted selection has no UI classes for the nightly run")
+        return 1
 
     print("hosted selection: {0} unit classes in {1} PR shards ({2}), "
           "{3} nightly-only unit classes, {4} UI classes in {5} nightly shards".format(
