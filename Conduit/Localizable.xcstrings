@@ -17711,6 +17711,96 @@
           }
         }
       }
+    },
+    "Each call's transcript is saved to your Hermes server's history and shows under Voice in Sessions, where you can read it or resume the call. Needs an up-to-date Hermes notifier plugin. Shared with Gemini Live and GPT-Live. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次通话的文字记录都会保存到 Hermes 服务器的历史记录中，并显示在“会话”的“语音”下，你可以在那里查看或继续通话。需要最新版本的 Hermes notifier 插件。Gemini Live 和 GPT-Live 共用此设置。从下一次对话开始生效。"
+          }
+        }
+      }
+    },
+    "From %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来自 %@"
+          }
+        }
+      }
+    },
+    "Resume voice call" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续语音通话"
+          }
+        }
+      }
+    },
+    "Save calls to Sessions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将通话保存到会话"
+          }
+        }
+      }
+    },
+    "Starts a new live call that continues this one" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始一个新的实时通话，接着这次通话继续"
+          }
+        }
+      }
+    },
+    "Voice Jobs" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音任务"
+          }
+        }
+      }
+    },
+    "Voice call" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音通话"
+          }
+        }
+      }
+    },
+    "Voice call resumed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音通话已继续"
+          }
+        }
+      }
+    },
+    "Voice call · %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音通话 · %@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
