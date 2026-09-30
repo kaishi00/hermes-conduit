@@ -141,16 +141,27 @@ class WorkflowContractTests(unittest.TestCase):
         # ci-lib.sh helpers exist for exactly that, and the build job uses them.
         for job in ("unit-smoke", "ui-smoke"):
             text = self._job_text(job)
-            self.assertIn("source scripts/ci-lib.sh", text, job)
-            self.assertIn("wait_for_destination_device", text, job)
-            self.assertIn("build_destination", text, job)
-            self.assertIn("reset_and_boot_simulator", text, job)
-            self.assertIn("LOG_DIR=", text,
+            self.assertIn("bash scripts/ci-prepare-smoke.sh", text, job)
+            with open(os.path.join(SCRIPTS_DIR, "ci-prepare-smoke.sh"), encoding="utf-8") as fh:
+                preparation = fh.read()
+            self.assertIn("ci-lib.sh", preparation, job)
+            self.assertIn("wait_for_destination_device", preparation, job)
+            self.assertIn("build_destination", preparation, job)
+            self.assertIn("shutdown_own_simulator", preparation, job)
+            self.assertIn("LOG_DIR=", preparation,
                           f"{job} must ASSIGN ci-lib.sh's LOG_DIR before probing")
-            self.assertIn("export LOG_DIR", text, f"{job} must export LOG_DIR")
+            self.assertIn("export LOG_DIR", preparation, f"{job} must export LOG_DIR")
             self.assertIn('-destination "$DESTINATION"', text, job)
             self.assertNotIn("platform=iOS Simulator,name=", text,
                              f"{job} must not hand xcodebuild an unpinned destination")
+
+    def test_all_self_test_groups_remain_required_and_run_after_a_failure(self):
+        text = self._job_text("self-test")
+        self.assertIn("group: [fast, lane, local-gate]", text)
+        self.assertIn("fail-fast: false", text)
+        self.assertIn('python3 scripts/ci-self-test.py --group "${{ matrix.group }}"', text)
+        self.assertIn("self-test]", self._job_text("ci-gate"))
+        self.assertIn('--self-test "${{ needs.self-test.result }}"', self._job_text("ci-gate"))
 
     def test_no_write_only_build_metadata_artifact(self):
         self.assertNotIn("name: build-meta", self._workflow_text(),

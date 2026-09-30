@@ -54,6 +54,10 @@ exit 0
 # step resolves a destination instead of waiting out its settle budget. The run
 # steps' stub is separate: they are invoked through xcodebuild.
 STUB_XCRUN = """#!/usr/bin/env bash
+if [ "${1:-}" = "xcresulttool" ]; then
+  printf '%s\\n' "${STUB_RESULT_DOC:-unreadable-result}"
+  exit 0
+fi
 if [ "${1:-}" = "simctl" ] && [ "${2:-}" = "list" ] && [ "${3:-}" = "devices" ]; then
   printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-5":[{"name":"%s","udid":"STUB-DEVICE-0000-0000","isAvailable":true}]}}\\n' "${SIMULATOR_NAME:-iPhone 17 Pro}"
 fi
@@ -79,6 +83,9 @@ def _step_script(step_name):
             break
     if run_at is None:
         raise AssertionError("step {0!r} has no run block".format(step_name))
+    inline = lines[run_at].strip()[len("run:"):].strip()
+    if inline != "|":
+        return inline + "\n"
     run_indent = len(lines[run_at]) - len(lines[run_at].lstrip(" "))
     body = []
     for line in lines[run_at + 1:]:
@@ -104,7 +111,8 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.bin = os.path.join(self.tmp, "bin")
         os.makedirs(self.bin)
         self.log = os.path.join(self.tmp, "calls.log")
-        for name, body in (("xcodebuild", STUB), ("xcrun", STUB_XCRUN)):
+        for name, body in (("xcodebuild", STUB), ("xcrun", STUB_XCRUN),
+                           ("defaults", "#!/usr/bin/env bash\nexit 0\n")):
             path = os.path.join(self.bin, name)
             with open(path, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(body)
@@ -121,7 +129,7 @@ class SmokeJobRunnerTests(unittest.TestCase):
         # "unset" case must actually be unset.
         for name in ("SMOKE_BATCH_SIZE", "STUB_FAIL_AT", "STUB_FAIL_FIRST_N",
                      "STUB_FLAKE_CLASS", "STUB_SILENT_FAIL", "UNIT_CLASSES",
-                     "UI_CLASSES"):
+                     "UI_CLASSES", "STUB_RESULT_DOC"):
             env.pop(name, None)
         env["PATH"] = self.bin + os.pathsep + env.get("PATH", "")
         env["STUB_LOG"] = self.log
@@ -250,6 +258,66 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.assertIn("runner-level flake absorbed", proc.stdout)
         self.assertIn("ConnectionSetupUITests", proc.stdout)
 
+    @staticmethod
+    def _result_doc(failed):
+        return json.dumps({"testNodes": [{"children": [{"nodeType": "Test Bundle",
+            "name": "ConduitUITests", "children": [
+                {"nodeType": "Test Suite", "name": cls, "children": [
+                    {"nodeType": "Test Case", "name": "testFixture()",
+                     "result": "Failed" if cls in failed else "Passed"}]}
+                for cls in ("ConnectionSetupUITests", "ProfilePickerUITests")]}]}]})
+
+    def test_ui_retry_excludes_the_class_that_already_passed(self):
+        proc = self._run_step(UI_STEP,
+                              UI_CLASSES="ConnectionSetupUITests,ProfilePickerUITests",
+                              STUB_FAIL_FIRST_N=1,
+                              STUB_RESULT_DOC=self._result_doc(["ProfilePickerUITests"]))
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        invocations = self._invocations()
+        self.assertEqual(len(invocations), 2)
+        self.assertIn("-only-testing:ConduitUITests/ConnectionSetupUITests", invocations[0])
+        self.assertIn("-only-testing:ConduitUITests/ProfilePickerUITests", invocations[1])
+        self.assertNotIn("-only-testing:ConduitUITests/ConnectionSetupUITests", invocations[1])
+
+    def test_ui_retry_includes_multiple_failed_classes_once(self):
+        proc = self._run_step(UI_STEP,
+                              UI_CLASSES="ConnectionSetupUITests,ProfilePickerUITests",
+                              STUB_FAIL_FIRST_N=1,
+                              STUB_RESULT_DOC=self._result_doc(["ConnectionSetupUITests", "ProfilePickerUITests"]))
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(len(self._invocations()), 2)
+        self.assertEqual(self._invocations()[1].count("-only-testing:ConduitUITests/"), 2)
+
+    def test_ui_assertion_metadata_retries_only_the_failed_class(self):
+        doc = json.loads(self._result_doc(["ProfilePickerUITests"]))
+        failed_case = doc["testNodes"][0]["children"][0]["children"][1]["children"][0]
+        failed_case["children"] = [{"nodeType": "Failure Message", "name": "XCTAssertTrue failed",
+                                    "sourceLocation": {"filePath": "ProfilePickerUITests.swift", "lineNumber": 115}}]
+        proc = self._run_step(UI_STEP,
+                              UI_CLASSES="ConnectionSetupUITests,ProfilePickerUITests",
+                              STUB_FAIL_FIRST_N=1, STUB_RESULT_DOC=json.dumps(doc))
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(len(self._invocations()), 2)
+        self.assertIn("-only-testing:ConduitUITests/ProfilePickerUITests", self._invocations()[1])
+        self.assertNotIn("-only-testing:ConduitUITests/ConnectionSetupUITests", self._invocations()[1])
+        self.assertNotIn("retaining entire selection", proc.stderr)
+
+    def test_lossy_extraction_retains_the_entire_retry_selection(self):
+        for extra in (
+            {"nodeType": "Test Case", "name": "System Failures", "result": "Failed"},
+            {"nodeType": "Runner Failure", "name": "Unattributed", "result": "Failed"},
+            {"nodeType": "Test Suite", "name": "System Failures", "result": "Failed", "children": []},
+        ):
+            doc = json.loads(self._result_doc(["ProfilePickerUITests"]))
+            doc["testNodes"][0]["children"][0]["children"].append(extra)
+            proc = self._run_step(UI_STEP,
+                                  UI_CLASSES="ConnectionSetupUITests,ProfilePickerUITests",
+                                  STUB_FAIL_FIRST_N=1, STUB_RESULT_DOC=json.dumps(doc))
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertEqual(self._invocations()[1].count("-only-testing:ConduitUITests/"), 2,
+                             "unknown/orphan failures may not disappear into a narrowed retry")
+            self.assertIn("retaining entire selection", proc.stderr)
+
     def test_ui_smoke_still_retries_when_no_class_level_line_was_logged(self):
         # The failure can happen before any suite finishes (the app dies at
         # launch). The step must still reach the retry and its diagnostic
@@ -259,7 +327,7 @@ class SmokeJobRunnerTests(unittest.TestCase):
                               STUB_FAIL_FIRST_N=1, STUB_SILENT_FAIL=1)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertEqual(len(self._invocations()), 2, "the retry must still run")
-        self.assertIn("no curated class named", proc.stdout)
+        self.assertEqual(self._invocations()[1].count("-only-testing:ConduitUITests/"), 2)
 
     def test_ui_smoke_fails_when_the_targeted_retry_also_fails(self):
         proc = self._run_step(UI_STEP,

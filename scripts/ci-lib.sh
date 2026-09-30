@@ -251,6 +251,13 @@ simulator_udid() {
     udid=$(printf '%s\n' "$json" | jq -r --arg rt "$runtime" --arg n "$SIMULATOR_NAME" \
       '.devices[$rt][]? | select(.name == $n) | .udid' | head -n 1)
     if [ -n "$udid" ]; then
+      # Hosted preparation may retain this already-read inventory for runtime
+      # reporting. The local gate leaves this opt-in unset. Cache failures must
+      # never affect device selection or cause another simulator probe.
+      if [ -n "${SIMULATOR_INVENTORY_CACHE:-}" ]; then
+        (printf '%s\n' "$json" > "$SIMULATOR_INVENTORY_CACHE") 2>/dev/null \
+          || echo "::warning::simulator inventory cache unavailable - runtime reporting may be unknown" >&2
+      fi
       printf '%s\n' "$udid"
       return 0
     fi
