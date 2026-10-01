@@ -858,11 +858,16 @@ private struct ProjectSessionsSheet: View {
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                     } else if let detail, detail.lanes.isEmpty {
-                        ContentUnavailableView(
-                            "No Conversations",
-                            systemImage: "tray",
-                            description: Text("This project does not have any conversations yet.")
-                        )
+                        ContentUnavailableView {
+                            Label("No Conversations", systemImage: "tray")
+                        } description: {
+                            Text("This project does not have any conversations yet.")
+                        } actions: {
+                            if newConversationPath != nil {
+                                Button("New Conversation", action: startNewConversation)
+                                    .buttonStyle(.borderedProminent)
+                            }
+                        }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     } else if let detail {
@@ -898,13 +903,9 @@ private struct ProjectSessionsSheet: View {
             .navigationTitle(project.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if let path = project.primaryPath, !path.isEmpty {
+                if newConversationPath != nil {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            appState.dismissSidebarDrawer()
-                            dismiss()
-                            Task { await appState.createNewSession(cwd: path) }
-                        } label: {
+                        Button(action: startNewConversation) {
                             Image(systemName: "plus.bubble")
                         }
                         .accessibilityLabel("New conversation in \(project.title)")
@@ -920,6 +921,19 @@ private struct ProjectSessionsSheet: View {
             detail = await appState.loadProjectSessions(project)
             isLoading = false
         }
+    }
+
+    private var newConversationPath: String? {
+        guard let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty else { return nil }
+        return path
+    }
+
+    private func startNewConversation() {
+        guard let path = newConversationPath else { return }
+        appState.dismissSidebarDrawer()
+        dismiss()
+        Task { await appState.createNewSession(cwd: path) }
     }
 }
 

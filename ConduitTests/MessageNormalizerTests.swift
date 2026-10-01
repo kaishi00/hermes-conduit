@@ -824,6 +824,59 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(projects[0].previewSessions.map(\.title), ["Plan the trip"])
     }
 
+    func testProjectWithoutPrimaryPathAnchorsAtFirstRepoRoot() {
+        // `projects.tree` emits `path: null` for an explicit project whose
+        // primary_path was never set, but still seeds its folders as repos.
+        let projects = MessageNormalizer.normalizeProjects(
+            .object([
+                "projects": .array([
+                    .object([
+                        "id": .string("p_multi"),
+                        "label": .string("Multi"),
+                        "path": .null,
+                        "isNoProject": .bool(false),
+                        "sessionCount": .number(0),
+                        "repos": .array([
+                            .object(["id": .string("r0"), "label": .string("none"), "path": .null]),
+                            .object(["id": .string("r1"), "label": .string("app"), "path": .string("/work/app")])
+                        ]),
+                        "previewSessions": .array([])
+                    ]),
+                    .object([
+                        "id": .string("__no_project__"),
+                        "label": .string("Home"),
+                        "path": .null,
+                        "isNoProject": .bool(true),
+                        "repos": .array([
+                            .object(["id": .string("__no_project__"), "path": .string("/should/not/use")])
+                        ])
+                    ])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        XCTAssertEqual(projects.map(\.id), ["p_multi", "__no_project__"])
+        XCTAssertEqual(projects[0].primaryPath, "/work/app")
+        XCTAssertNil(projects[1].primaryPath)
+    }
+
+    func testProjectPrimaryPathWinsOverRepoRoots() {
+        let project = MessageNormalizer.normalizeProject(
+            .object([
+                "id": .string("p_app"),
+                "label": .string("App"),
+                "path": .string("/work/primary"),
+                "repos": .array([
+                    .object(["path": .string("/work/other")])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        XCTAssertEqual(project?.primaryPath, "/work/primary")
+    }
+
     func testProjectSessionNormalizationKeepsWorkspaceLanes() {
         let detail = MessageNormalizer.normalizeProjectSessions(
             .object([
