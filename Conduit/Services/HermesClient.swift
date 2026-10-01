@@ -2497,7 +2497,12 @@ enum MessageNormalizer {
             ?? object["previewSessions"]?.arrayValue
             ?? []
         let isHome = object["isNoProject"]?.boolValue ?? object["is_no_project"]?.boolValue ?? false
-        let isAuto = object["isAuto"]?.boolValue ?? object["is_auto"]?.boolValue ?? false
+        // Auto-discovered repos have no projects.db row and use their root path
+        // as the id (created projects are `p_<hex>`), so a path-shaped id also
+        // marks one when a gateway omits the flag.
+        let isAuto = object["isAuto"]?.boolValue
+            ?? object["is_auto"]?.boolValue
+            ?? (id.contains("/") || id.contains("\\"))
         let folderPath = firstNonEmptyString(
             object["folders"]?.arrayValue?.compactMap { $0.objectValue?["path"]?.stringValue }.map(AnyCodable.string) ?? []
         )

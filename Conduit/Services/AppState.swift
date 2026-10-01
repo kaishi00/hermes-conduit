@@ -17894,7 +17894,12 @@ final class AppState: ObservableObject {
             return true
         } catch {
             guard profile == activeProfile, self.client === client else { return false }
-            errorMessage = AppLocalization.string("Could not rename \(project.title): \(error.localizedDescription)")
+            if isProjectsUnavailable(error) {
+                projects = []
+                supportsProjects = false
+            } else {
+                errorMessage = AppLocalization.string("Could not rename \(project.title): \(error.localizedDescription)")
+            }
             return false
         }
     }
@@ -17911,7 +17916,12 @@ final class AppState: ObservableObject {
             return true
         } catch {
             guard profile == activeProfile, self.client === client else { return false }
-            errorMessage = AppLocalization.string("Could not delete \(project.title): \(error.localizedDescription)")
+            if isProjectsUnavailable(error) {
+                projects = []
+                supportsProjects = false
+            } else {
+                errorMessage = AppLocalization.string("Could not delete \(project.title): \(error.localizedDescription)")
+            }
             return false
         }
     }

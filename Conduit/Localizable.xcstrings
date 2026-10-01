@@ -5578,6 +5578,16 @@
         }
       }
     },
+    "Opens the conversations in this project. Swipe or touch and hold to rename or delete it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开此项目中的对话。轻扫或长按可重命名或删除它。"
+          }
+        }
+      }
+    },
     "Could not create the project: %@" : {
       "localizations" : {
         "zh-Hans" : {

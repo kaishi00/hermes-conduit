@@ -838,6 +838,22 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(projects.map(\.isAuto), [false, true])
     }
 
+    func testPathShapedProjectIDCountsAsAutoWhenTheFlagIsMissing() {
+        // Auto-discovered repos use their root path as the id; created
+        // projects are `p_<hex>`. Without the flag, editability fails closed.
+        let projects = MessageNormalizer.normalizeProjects(
+            .object([
+                "projects": .array([
+                    .object(["id": .string("p_1a2b3c4d"), "label": .string("Skunkworks")]),
+                    .object(["id": .string("/srv/repos/conduit"), "label": .string("conduit")])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        XCTAssertEqual(projects.map(\.isAuto), [false, true])
+    }
+
     func testProjectWithoutPrimaryPathAnchorsAtFirstRepoRoot() {
         // `projects.tree` emits `path: null` for an explicit project whose
         // primary_path was never set, but still seeds its folders as repos.

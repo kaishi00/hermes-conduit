@@ -453,22 +453,22 @@ struct SessionList: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Opens the conversations in this project.")
-                    .contextMenu {
-                        if appState.isProjectEditable(project) {
-                            Button {
-                                Haptics.selection()
-                                projectRenameTitle = project.title
-                                projectPendingRename = project
-                            } label: {
-                                Label("Rename…", systemImage: "pencil")
-                            }
-                            Button(role: .destructive) {
-                                Haptics.warning()
-                                projectPendingDeletion = project
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
+                    .accessibilityHint(appState.isProjectEditable(project)
+                        ? AppLocalization.string("Opens the conversations in this project. Swipe or touch and hold to rename or delete it.")
+                        : AppLocalization.string("Opens the conversations in this project."))
+                    .projectActionsMenu(isEnabled: appState.isProjectEditable(project)) {
+                        Button {
+                            Haptics.selection()
+                            projectRenameTitle = project.title
+                            projectPendingRename = project
+                        } label: {
+                            Label("Rename…", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            Haptics.warning()
+                            projectPendingDeletion = project
+                        } label: {
+                            Label("Delete", systemImage: "trash")
                         }
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -847,6 +847,23 @@ struct SessionRow: View {
     }
 }
 
+private extension View {
+    /// Attaches a context menu only when there is something in it, so a
+    /// row with no actions (Home, auto-discovered repos) gets no empty
+    /// long-press preview.
+    @ViewBuilder
+    func projectActionsMenu<MenuItems: View>(
+        isEnabled: Bool,
+        @ViewBuilder menuItems: () -> MenuItems
+    ) -> some View {
+        if isEnabled {
+            contextMenu(menuItems: menuItems)
+        } else {
+            self
+        }
+    }
+}
+
 /// A conversation's touch-and-hold actions, shared by the main session list
 /// and a project's conversation list so both offer the same menu. Rename and
 /// Delete need a host-owned alert, so the host supplies those two actions.
@@ -1010,6 +1027,7 @@ private struct ProjectSessionsSheet: View {
                                         SessionRow(
                                             session: session,
                                             isSelected: session.id == appState.activeSessionId,
+                                            isPinned: appState.isSessionPinned(session),
                                             isVoiceJob: appState.isVoiceJobSession(session),
                                             category: appState.sessionCategory(for: session),
                                             detail: appState.voiceSessionDetail(for: session)
