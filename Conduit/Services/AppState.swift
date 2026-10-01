@@ -1844,7 +1844,7 @@ final class AppState: ObservableObject {
                 self.rememberVoiceJobSessions(sessionIDs, profile: targetProfile)
                 if let recorder = self.voiceCallRecorder {
                     self.captureVoiceCall()
-                    recorder.note(AppLocalization.string("Started a background job on \(targetProfile): \(job.title)."))
+                    recorder.note(AppLocalization.string("Started a background job on \(job.profileLabel ?? targetProfile): \(job.title)."))
                 }
                 return
             }
@@ -2925,7 +2925,10 @@ final class AppState: ObservableObject {
             match = profile
         } else if profilesMatch(name, defaultProfileName) {
             match = "default"
-        } else if let bot = botRoster.first(where: { profilesMatch($0.displayLabel, name) || profilesMatch($0.name, name) }) {
+        } else if let bot = botRoster.first(where: { bot in
+            profilesMatch(bot.displayLabel, name) || profilesMatch(bot.name, name)
+                || bot.previousNames.contains { profilesMatch($0, name) }
+        }) {
             match = bot.name
         }
         guard let match else { return .unknown }

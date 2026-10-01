@@ -103,6 +103,8 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     let instructions: String
     /// The Hermes profile (or bot) the job runs in; nil is the active one.
     var profile: String? = nil
+    /// The profile as the user named it, for spoken confirmations.
+    var profileLabel: String? = nil
     var runtimeSessionID: String?
     var storedSessionID: String?
     var status: Status
@@ -234,12 +236,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         var instructions = instructions
         var profile: String?
+        var profileLabel: String?
         if let spokenProfile = spokenProfile?.trimmingCharacters(in: .whitespacesAndNewlines), !spokenProfile.isEmpty {
             switch backend.resolveProfile(spokenProfile) {
             case .active:
                 break
             case .other(let name):
                 profile = name
+                profileLabel = spokenProfile
             case .unknown:
                 // A named target that isn't a known profile is never guessed at.
                 return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
@@ -249,7 +253,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 instructions = target.remainder
             }
         } else if let target = Self.leadingTarget(in: instructions, resolve: backend.resolveProfile) {
-            if case .other(let name) = target.target { profile = name }
+            if case .other(let name) = target.target {
+                profile = name
+                profileLabel = target.name
+            }
             instructions = target.remainder
         }
         let job = VoiceBackgroundJob(
@@ -257,6 +264,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             title: Self.title(for: instructions),
             instructions: instructions,
             profile: profile,
+            profileLabel: profileLabel,
             status: .starting,
             startedAt: Date()
         )
@@ -323,24 +331,25 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     private func startedReply(_ job: VoiceBackgroundJob) -> String {
-        if let profile = job.profile {
+        if let profile = job.profileLabel ?? job.profile {
             return AppLocalization.string("Started a background job on \(profile): \(job.title).")
         }
         return AppLocalization.string("Started a background job: \(job.title).")
     }
 
     /// "for Fam, check the router" → (Fam, "check the router").
-    /// Only a leading "for/on/to/with <name>" whose name (up to three words)
+    /// Only a leading "for/on/with <name>" whose name (up to three words)
     /// is a known profile (this one included) counts; anything else stays
     /// the task.
     static func leadingTarget(
         in instructions: String,
         resolve: @MainActor (String) -> VoiceJobProfileTarget
-    ) -> (target: VoiceJobProfileTarget, remainder: String)? {
+    ) -> (target: VoiceJobProfileTarget, name: String, remainder: String)? {
         let separators = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
         let words = instructions.split(whereSeparator: { $0 == " " || $0 == "\n" })
         guard words.count >= 3,
-              ["for", "on", "to", "with"].contains(words[0].lowercased()) else { return nil }
+              // Not "to": it usually starts a verb ("to check the router").
+              ["for", "on", "with"].contains(words[0].lowercased()) else { return nil }
         for length in stride(from: min(3, words.count - 2), through: 1, by: -1) {
             let nameWords = words[1...length]
             let name = nameWords.joined(separator: " ").trimmingCharacters(in: separators)
@@ -350,7 +359,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let remainder = words[(length + 1)...].joined(separator: " ")
                 .trimmingCharacters(in: separators)
             guard !remainder.isEmpty else { return nil }
-            return (target, remainder)
+            return (target, name, remainder)
         }
         return nil
     }

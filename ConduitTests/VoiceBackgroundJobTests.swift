@@ -161,7 +161,17 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.first?.profile, "fam")
         XCTAssertEqual(supervisor.jobs.first?.title, "check the router", "the target is not part of the task")
         XCTAssertTrue(fake.submissions.first?.1.hasSuffix("check the router") == true)
-        XCTAssertTrue(reply.contains("fam"), "the confirmation names the profile")
+        XCTAssertTrue(reply.contains("Fam"), "the confirmation names the profile as it was said")
+    }
+
+    func testToBeforeAVerbNeverNamesAProfile() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["check": .other("check")]
+
+        _ = await supervisor.performVoiceCommand(.start(instructions: "to check the router"))
+
+        XCTAssertEqual(fake.createdProfiles, [nil])
+        XCTAssertEqual(supervisor.jobs.first?.instructions, "to check the router")
     }
 
     func testOrdinaryLeadingWordsStayPartOfTheTask() async {
