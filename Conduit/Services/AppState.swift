@@ -17519,6 +17519,53 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Projects a conversation can be moved into: every project with a root
+    /// folder except Home, which has no folder to move into. Mirrors the
+    /// Hermes Desktop "Move to project" submenu.
+    var projectMoveTargets: [ProjectSummary] {
+        guard supportsProjects else { return [] }
+        return projects.filter { project in
+            !project.isHome
+                && project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+    }
+
+    /// Moves a conversation into `project` by re-homing its workspace at the
+    /// project's root folder (`session.workspace.move`). Hermes derives
+    /// project membership from the session's folder, so the project tree is
+    /// reloaded afterwards instead of patched locally.
+    @discardableResult
+    func moveSession(_ session: SessionSummary, to project: ProjectSummary) async -> Bool {
+        guard let client,
+              supportsProjects,
+              !project.isHome,
+              let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty,
+              sessionMutationID == nil,
+              sessionBelongsToProfile(session, profile: activeProfile) else { return false }
+
+        let profile = activeProfile
+        sessionMutationID = session.id
+        defer { sessionMutationID = nil }
+        do {
+            try await client.moveSessionWorkspace(session.id, cwd: path)
+            guard profile == activeProfile, self.client === client else { return false }
+            await loadProjects(using: client, profile: profile)
+            return true
+        } catch {
+            guard profile == activeProfile, self.client === client else { return false }
+            if let rpcError = error as? RpcError,
+               rpcError.code == -32601
+                || rpcError.message.lowercased().contains("method not found")
+                || rpcError.message.lowercased().contains("unknown method") {
+                errorMessage = AppLocalization.string("Update Hermes to move conversations between projects.")
+            } else {
+                errorMessage = AppLocalization.string("Could not move this conversation to \(project.title): \(error.localizedDescription)")
+            }
+            return false
+        }
+    }
+
     /// The project folder picker starts at the same live workspace the chat
     /// browser uses. Folder paths are selected from Hermes' filesystem listing,
     /// not entered as arbitrary strings by the phone.

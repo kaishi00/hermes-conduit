@@ -1436,6 +1436,22 @@ final class HermesClient: ObservableObject {
         return MessageNormalizer.normalizeProject(project, profile: profile)
     }
 
+    /// Re-homes a stored session's workspace into `cwd`, the same RPC Hermes
+    /// Desktop's "Move to project" uses. Project membership follows the
+    /// session's folder, so moving the folder is moving the session; the
+    /// gateway also re-anchors a live agent bound to the row. Returns the
+    /// folder the gateway actually stored.
+    @discardableResult
+    func moveSessionWorkspace(_ sessionKey: String, cwd: String) async throws -> String {
+        let result = try await rpc("session.workspace.move", params: [
+            "session_key": sessionKey,
+            "cwd": cwd
+        ])
+        let moved = result.objectValue?["cwd"]?.stringValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return moved.isEmpty ? cwd : moved
+    }
+
     func healthCheck() async throws {
         _ = try await rpc("session.list", params: nil, timeout: Self.livenessProbeTimeout)
     }

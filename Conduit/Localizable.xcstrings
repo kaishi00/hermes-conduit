@@ -5428,6 +5428,36 @@
         }
       }
     },
+    "Move to Project" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至项目"
+          }
+        }
+      }
+    },
+    "Update Hermes to move conversations between projects." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 以在项目之间移动对话。"
+          }
+        }
+      }
+    },
+    "Could not move this conversation to %@: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将此对话移至 %@：%@"
+          }
+        }
+      }
+    },
     "Could not create the project: %@" : {
       "localizations" : {
         "zh-Hans" : {
