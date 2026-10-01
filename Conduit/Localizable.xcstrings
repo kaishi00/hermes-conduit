@@ -5428,6 +5428,66 @@
         }
       }
     },
+    "Move to Project" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至项目"
+          }
+        }
+      }
+    },
+    "Update Hermes to move conversations between projects." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 以在项目之间移动对话。"
+          }
+        }
+      }
+    },
+    "Could not move this conversation to %@: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将此对话移至 %@：%@"
+          }
+        }
+      }
+    },
+    "Wait for the current conversation change to finish, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请等待当前对话更改完成后再试。"
+          }
+        }
+      }
+    },
+    "Reconnect to Hermes to move this conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请重新连接 Hermes 以移动此对话。"
+          }
+        }
+      }
+    },
+    "This conversation can't be moved to %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将此对话移至 %@。"
+          }
+        }
+      }
+    },
     "Could not create the project: %@" : {
       "localizations" : {
         "zh-Hans" : {

@@ -400,6 +400,43 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testMoveSessionWorkspaceSendsStoredKeyAndProjectFolder() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let moveTask = Task<String, Error> {
+            try await client.moveSessionWorkspace("stored-1", cwd: "/work/skunkworks")
+        }
+        try await sent.wait("the workspace move to be sent")
+
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(request["method"] as? String, "session.workspace.move")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["session_key"] as? String, "stored-1")
+        XCTAssertEqual(params["cwd"] as? String, "/work/skunkworks")
+
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": ["cwd": "/srv/work/skunkworks", "branch": "main", "git_repo_root": "/srv/work/skunkworks"]
+        ]
+        socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+
+        let moved = try await awaitResult(of: moveTask, "the workspace move response")
+        XCTAssertEqual(moved, "/srv/work/skunkworks", "the gateway's resolved folder wins")
+        client.disconnect()
+    }
+
     func testSetSessionTitleCarriesExplicitProfileWhenGiven() async throws {
         let transport = FakeTransport()
         let socket = FakeSocket()

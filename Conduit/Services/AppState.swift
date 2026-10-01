@@ -560,6 +560,19 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var projects: [ProjectSummary] = []
     @Published private(set) var supportsProjects = false
+    /// The client whose gateway rejected `session.workspace.move` as an
+    /// unknown method. Scoped to that client so any new connection (a
+    /// reconnect, or a gateway upgraded in place) probes the RPC again.
+    private weak var workspaceMoveUnsupportedClient: HermesClient? {
+        willSet { objectWillChange.send() }
+    }
+
+    /// False once the current connection's gateway rejected
+    /// `session.workspace.move`, so "Move to Project" stops being offered.
+    var supportsSessionWorkspaceMove: Bool {
+        guard let client, isConnected else { return false }
+        return client !== workspaceMoveUnsupportedClient
+    }
     @Published private(set) var projectsLoading = false
     @Published private(set) var archivedSessions: [SessionSummary] = []
     @Published private(set) var pinnedSessionIDs: [String] = []
@@ -17457,10 +17470,16 @@ final class AppState: ObservableObject {
     private func isProjectsUnavailable(_ error: Error) -> Bool {
         guard let rpcError = error as? RpcError else { return false }
         let message = rpcError.message.lowercased()
+        return isMethodUnavailable(error)
+            || message.contains("projects.tree") && message.contains("not found")
+    }
+
+    private func isMethodUnavailable(_ error: Error) -> Bool {
+        guard let rpcError = error as? RpcError else { return false }
+        let message = rpcError.message.lowercased()
         return rpcError.code == -32601
             || message.contains("method not found")
             || message.contains("unknown method")
-            || message.contains("projects.tree") && message.contains("not found")
     }
 
     func loadProjectSessions(_ project: ProjectSummary) async -> ProjectSessionDetail? {
@@ -17514,6 +17533,80 @@ final class AppState: ObservableObject {
                 supportsProjects = false
             } else {
                 errorMessage = AppLocalization.string("Could not create the project: \(error.localizedDescription)")
+            }
+            return false
+        }
+    }
+
+    /// Projects a conversation can be moved into: every project with a root
+    /// folder except Home, which has no folder to move into. Mirrors the
+    /// Hermes Desktop "Move to project" submenu.
+    var projectMoveTargets: [ProjectSummary] {
+        guard supportsProjects, supportsSessionWorkspaceMove else { return [] }
+        return projects.filter { project in
+            !project.isHome
+                && project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+    }
+
+    /// The project a conversation is known to live in, from the tree's
+    /// preview rows. The session catalog carries no folder, so this is only a
+    /// best-effort hint for hiding the no-op "move here" target; nil means
+    /// unknown, not "in no project".
+    func knownProjectID(for session: SessionSummary) -> String? {
+        let ids = Set([session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds)
+        return projects.first { project in
+            !project.isHome && project.previewSessions.contains { preview in
+                ids.contains(preview.id) || preview.storedSessionId.map(ids.contains) == true
+            }
+        }?.id
+    }
+
+    /// Moves a conversation into `project` by re-homing its workspace at the
+    /// project's root folder (`session.workspace.move`). Hermes derives
+    /// project membership from the session's folder, so the project tree is
+    /// reloaded afterwards instead of patched locally.
+    @discardableResult
+    func moveSession(_ session: SessionSummary, to project: ProjectSummary) async -> Bool {
+        if sessionMutationID != nil {
+            errorMessage = AppLocalization.string("Wait for the current conversation change to finish, then try again.")
+            return false
+        }
+        guard client != nil, isConnected else {
+            errorMessage = AppLocalization.string("Reconnect to Hermes to move this conversation.")
+            return false
+        }
+        guard let client,
+              supportsProjects,
+              supportsSessionWorkspaceMove,
+              !project.isHome,
+              let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty,
+              sessionBelongsToProfile(session, profile: activeProfile) else {
+            errorMessage = AppLocalization.string("This conversation can't be moved to \(project.title).")
+            return false
+        }
+
+        let profile = activeProfile
+        sessionMutationID = session.id
+        defer { sessionMutationID = nil }
+        do {
+            // `session_key` is the DURABLE stored key: a live catalog row's
+            // `id` is its runtime session id, which the gateway's state.db
+            // lookup would not find.
+            try await client.moveSessionWorkspace(session.storedSessionId ?? session.id, cwd: path)
+            guard profile == activeProfile, self.client === client else { return false }
+            await loadProjects(using: client, profile: profile)
+            return true
+        } catch {
+            guard profile == activeProfile, self.client === client else { return false }
+            if isMethodUnavailable(error) {
+                // The project tree still works on this gateway; only the
+                // move is missing, so hide the action instead of projects.
+                workspaceMoveUnsupportedClient = client
+                errorMessage = AppLocalization.string("Update Hermes to move conversations between projects.")
+            } else {
+                errorMessage = AppLocalization.string("Could not move this conversation to \(project.title): \(error.localizedDescription)")
             }
             return false
         }

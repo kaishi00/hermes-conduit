@@ -541,6 +541,8 @@ struct SessionList: View {
                 Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
             }
 
+            MoveToProjectMenu(session: session)
+
             Button {
                 Task {
                     Haptics.mutationCompleted(await appState.archiveSession(session))
@@ -805,6 +807,38 @@ struct SessionRow: View {
     }
 }
 
+/// The session row's "Move to Project" submenu. Hidden when the gateway has
+/// no projects capability or no project with a folder to move into.
+private struct MoveToProjectMenu: View {
+    @EnvironmentObject private var appState: AppState
+    let session: SessionSummary
+    var excludingProjectID: String? = nil
+    var onMoved: () -> Void = {}
+
+    var body: some View {
+        let currentProjectID = excludingProjectID ?? appState.knownProjectID(for: session)
+        let targets = appState.projectMoveTargets.filter { $0.id != currentProjectID }
+        if !targets.isEmpty {
+            Menu {
+                ForEach(targets) { project in
+                    Button(project.title) {
+                        Haptics.selection()
+                        Task {
+                            let moved = await appState.moveSession(session, to: project)
+                            Haptics.mutationCompleted(moved)
+                            if moved { onMoved() }
+                        }
+                    }
+                }
+            } label: {
+                Label(AppLocalization.string("Move to Project"), systemImage: "folder")
+            }
+            // `moveSession` refuses while ANY conversation mutation runs.
+            .disabled(appState.sessionMutationID != nil)
+        }
+    }
+}
+
 private struct ProjectRow: View {
     let project: ProjectSummary
 
@@ -889,6 +923,13 @@ private struct ProjectSessionsSheet: View {
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
+                                    .contextMenu {
+                                        MoveToProjectMenu(
+                                            session: session,
+                                            excludingProjectID: project.id,
+                                            onMoved: reloadDetail
+                                        )
+                                    }
                                     .listRowBackground(Color.clear)
                                     .listRowSeparator(.hidden)
                                     .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
@@ -921,6 +962,10 @@ private struct ProjectSessionsSheet: View {
             detail = await appState.loadProjectSessions(project)
             isLoading = false
         }
+    }
+
+    private func reloadDetail() {
+        Task { detail = await appState.loadProjectSessions(project) }
     }
 
     private var newConversationPath: String? {
