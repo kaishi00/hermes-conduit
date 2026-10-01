@@ -51,6 +51,7 @@ extension AppStateDecisionFenceTests {
         let connectTask = Task { try await client.connect() }
         transport.open(socket)
         _ = try await connectTask.value
+        appState.isConnected = true
         return client
     }
 

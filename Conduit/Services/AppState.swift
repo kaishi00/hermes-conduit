@@ -568,7 +568,7 @@ final class AppState: ObservableObject {
     /// False once the current connection's gateway rejected
     /// `session.workspace.move`, so "Move to Project" stops being offered.
     var supportsSessionWorkspaceMove: Bool {
-        guard let client else { return true }
+        guard let client, isConnected else { return false }
         return client !== workspaceMoveUnsupportedClient
     }
     @Published private(set) var projectsLoading = false
@@ -17555,6 +17555,10 @@ final class AppState: ObservableObject {
     func moveSession(_ session: SessionSummary, to project: ProjectSummary) async -> Bool {
         if sessionMutationID != nil {
             errorMessage = AppLocalization.string("Wait for the current conversation change to finish, then try again.")
+            return false
+        }
+        guard client != nil, isConnected else {
+            errorMessage = AppLocalization.string("Reconnect to Hermes to move this conversation.")
             return false
         }
         guard let client,

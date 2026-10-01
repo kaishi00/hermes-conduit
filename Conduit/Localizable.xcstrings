@@ -5468,6 +5468,16 @@
         }
       }
     },
+    "Reconnect to Hermes to move this conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请重新连接 Hermes 以移动此对话。"
+          }
+        }
+      }
+    },
     "Could not create the project: %@" : {
       "localizations" : {
         "zh-Hans" : {
