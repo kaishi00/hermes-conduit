@@ -560,6 +560,9 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var projects: [ProjectSummary] = []
     @Published private(set) var supportsProjects = false
+    /// Cleared when the gateway rejects `session.workspace.move` as an unknown
+    /// method, so "Move to Project" stops being offered on that connection.
+    @Published private(set) var supportsSessionWorkspaceMove = true
     @Published private(set) var projectsLoading = false
     @Published private(set) var archivedSessions: [SessionSummary] = []
     @Published private(set) var pinnedSessionIDs: [String] = []
@@ -4349,6 +4352,7 @@ final class AppState: ObservableObject {
         archivedSessions = []
         projects = []
         supportsProjects = false
+        supportsSessionWorkspaceMove = true
         projectsLoading = false
         profiles = []
         clearPendingDecisionRestorationGuard()
@@ -6913,6 +6917,7 @@ final class AppState: ObservableObject {
         showVoiceSheet = false
         projects = []
         supportsProjects = false
+        supportsSessionWorkspaceMove = true
         projectsLoading = false
         if let dashboardID = activeDashboardID {
             // Forced sign-out is scoped like Disconnect: only the active
@@ -17266,6 +17271,7 @@ final class AppState: ObservableObject {
         archivedSessions = []
         projects = []
         supportsProjects = false
+        supportsSessionWorkspaceMove = true
         projectsLoading = false
         slashCommands = Self.builtInSlashCommands
         messages = []
@@ -17457,10 +17463,16 @@ final class AppState: ObservableObject {
     private func isProjectsUnavailable(_ error: Error) -> Bool {
         guard let rpcError = error as? RpcError else { return false }
         let message = rpcError.message.lowercased()
+        return isMethodUnavailable(error)
+            || message.contains("projects.tree") && message.contains("not found")
+    }
+
+    private func isMethodUnavailable(_ error: Error) -> Bool {
+        guard let rpcError = error as? RpcError else { return false }
+        let message = rpcError.message.lowercased()
         return rpcError.code == -32601
             || message.contains("method not found")
             || message.contains("unknown method")
-            || message.contains("projects.tree") && message.contains("not found")
     }
 
     func loadProjectSessions(_ project: ProjectSummary) async -> ProjectSessionDetail? {
@@ -17523,7 +17535,7 @@ final class AppState: ObservableObject {
     /// folder except Home, which has no folder to move into. Mirrors the
     /// Hermes Desktop "Move to project" submenu.
     var projectMoveTargets: [ProjectSummary] {
-        guard supportsProjects else { return [] }
+        guard supportsProjects, supportsSessionWorkspaceMove else { return [] }
         return projects.filter { project in
             !project.isHome
                 && project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
@@ -17538,6 +17550,7 @@ final class AppState: ObservableObject {
     func moveSession(_ session: SessionSummary, to project: ProjectSummary) async -> Bool {
         guard let client,
               supportsProjects,
+              supportsSessionWorkspaceMove,
               !project.isHome,
               let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
               !path.isEmpty,
@@ -17548,16 +17561,19 @@ final class AppState: ObservableObject {
         sessionMutationID = session.id
         defer { sessionMutationID = nil }
         do {
-            try await client.moveSessionWorkspace(session.id, cwd: path)
+            // `session_key` is the DURABLE stored key: a live catalog row's
+            // `id` is its runtime session id, which the gateway's state.db
+            // lookup would not find.
+            try await client.moveSessionWorkspace(session.storedSessionId ?? session.id, cwd: path)
             guard profile == activeProfile, self.client === client else { return false }
             await loadProjects(using: client, profile: profile)
             return true
         } catch {
             guard profile == activeProfile, self.client === client else { return false }
-            if let rpcError = error as? RpcError,
-               rpcError.code == -32601
-                || rpcError.message.lowercased().contains("method not found")
-                || rpcError.message.lowercased().contains("unknown method") {
+            if isMethodUnavailable(error) {
+                // The project tree still works on this gateway; only the
+                // move is missing, so hide the action instead of projects.
+                supportsSessionWorkspaceMove = false
                 errorMessage = AppLocalization.string("Update Hermes to move conversations between projects.")
             } else {
                 errorMessage = AppLocalization.string("Could not move this conversation to \(project.title): \(error.localizedDescription)")

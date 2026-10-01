@@ -832,7 +832,8 @@ private struct MoveToProjectMenu: View {
             } label: {
                 Label("Move to Project", systemImage: "folder")
             }
-            .disabled(appState.isSessionMutationInFlight(session))
+            // `moveSession` refuses while ANY conversation mutation runs.
+            .disabled(appState.sessionMutationID != nil)
         }
     }
 }
