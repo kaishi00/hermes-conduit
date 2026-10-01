@@ -2466,9 +2466,20 @@ enum MessageNormalizer {
         let previews = object["preview_sessions"]?.arrayValue
             ?? object["previewSessions"]?.arrayValue
             ?? []
-        let folderPath = object["folders"]?.arrayValue?
-            .compactMap { $0.objectValue?["path"]?.stringValue }
-            .first
+        let isHome = object["isNoProject"]?.boolValue ?? object["is_no_project"]?.boolValue ?? false
+        let folderPath = firstNonEmptyString(
+            object["folders"]?.arrayValue?.compactMap { $0.objectValue?["path"]?.stringValue }.map(AnyCodable.string) ?? []
+        )
+        // `projects.tree` emits the project's `primary_path` as `path`, which
+        // is null for an explicit project that never had one assigned or
+        // whose primary folder was removed. The tree still seeds every
+        // declared folder as a repo node, so anchor new conversations at the
+        // first repo root, as Hermes Desktop does. Home is excluded from this
+        // fallback only: a repo node there must not turn detached sessions
+        // into folder-anchored ones.
+        let repoPath = isHome ? nil : firstNonEmptyString(
+            object["repos"]?.arrayValue?.compactMap { $0.objectValue?["path"]?.stringValue }.map(AnyCodable.string) ?? []
+        )
         let count = object["session_count"]?.intValue
             ?? object["sessionCount"]?.intValue
             ?? object["session_count"]?.stringValue.flatMap(Int.init)
@@ -2476,10 +2487,12 @@ enum MessageNormalizer {
         return ProjectSummary(
             id: id,
             title: title,
-            primaryPath: firstNonEmptyString([object["path"], object["primary_path"], object["primaryPath"]]) ?? folderPath,
+            primaryPath: firstNonEmptyString([object["path"], object["primary_path"], object["primaryPath"]])
+                ?? folderPath
+                ?? repoPath,
             icon: object["icon"]?.stringValue,
             colorHex: object["color"]?.stringValue,
-            isHome: object["isNoProject"]?.boolValue ?? object["is_no_project"]?.boolValue ?? false,
+            isHome: isHome,
             sessionCount: count,
             previewSessions: normalizeSessions(.array(previews), profile: profile)
         )
