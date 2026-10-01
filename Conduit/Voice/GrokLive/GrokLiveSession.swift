@@ -122,8 +122,18 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
                 // Delivered only once the model was asked to answer too (or
                 // the request is queued behind the running response): a
                 // turn whose response.create was lost is reported failed.
-                if wantsResponse, let self, let create = self.takeResponseRequest(on: id) {
-                    try await socket.send(create)
+                if wantsResponse {
+                    switch self?.takeResponseRequest(on: id) {
+                    case .send(let create)?:
+                        try await socket.send(create)
+                    case .queued?:
+                        break
+                    case .connectionGone?, nil:
+                        // The connection was replaced or ended while this
+                        // turn was going out: nothing will answer it here.
+                        onFailure?()
+                        return
+                    }
                 }
                 onSent?()
             } catch {
@@ -135,20 +145,28 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
 
     // MARK: Responses
 
-    /// Asks the model to answer: the response.create to send now, or nil
-    /// when it waits for the current response to end.
-    private func takeResponseRequest(on id: UUID) -> String? {
-        guard id == connectionID, state == .ready else { return nil }
+    private enum ResponseRequest {
+        /// Send this response.create now.
+        case send(String)
+        /// Sent once the running response ends.
+        case queued
+        /// The connection the turn went out on is no longer the session's.
+        case connectionGone
+    }
+
+    /// Asks the model to answer, now or once the current response ends.
+    private func takeResponseRequest(on id: UUID) -> ResponseRequest {
+        guard id == connectionID, state == .ready else { return .connectionGone }
         guard !responseActive else {
             responseRequested = true
-            return nil
+            return .queued
         }
-        guard let text = try? GrokLiveProtocol.encode(GrokLiveProtocol.responseCreate) else { return nil }
+        guard let text = try? GrokLiveProtocol.encode(GrokLiveProtocol.responseCreate) else { return .connectionGone }
         responseRequested = false
         // Counted as running from now: a second request waits for this one.
         responseActive = true
         responseConfirmed = false
-        return text
+        return .send(text)
     }
 
     private func sendResponseCreate() {
