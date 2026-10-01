@@ -244,8 +244,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // A named target that isn't a known profile is never guessed at.
                 return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
             }
+            // The model may also leave "for Fam, …" in the task itself.
+            if let target = Self.leadingTarget(in: instructions, resolve: backend.resolveProfile) {
+                instructions = target.remainder
+            }
         } else if let target = Self.leadingTarget(in: instructions, resolve: backend.resolveProfile) {
-            profile = target.profile
+            if case .other(let name) = target.target { profile = name }
             instructions = target.remainder
         }
         let job = VoiceBackgroundJob(
@@ -325,13 +329,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return AppLocalization.string("Started a background job: \(job.title).")
     }
 
-    /// "for Fam, check the router" → (Fam's profile, "check the router").
+    /// "for Fam, check the router" → (Fam, "check the router").
     /// Only a leading "for/on/to/with <name>" whose name (up to three words)
-    /// is another known profile counts; anything else stays the task.
+    /// is a known profile (this one included) counts; anything else stays
+    /// the task.
     static func leadingTarget(
         in instructions: String,
         resolve: @MainActor (String) -> VoiceJobProfileTarget
-    ) -> (profile: String, remainder: String)? {
+    ) -> (target: VoiceJobProfileTarget, remainder: String)? {
         let separators = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
         let words = instructions.split(whereSeparator: { $0 == " " || $0 == "\n" })
         guard words.count >= 3,
@@ -339,11 +344,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         for length in stride(from: min(3, words.count - 2), through: 1, by: -1) {
             let nameWords = words[1...length]
             let name = nameWords.joined(separator: " ").trimmingCharacters(in: separators)
-            guard !name.isEmpty, case .other(let profile) = resolve(name) else { continue }
+            guard !name.isEmpty else { continue }
+            let target = resolve(name)
+            guard target != .unknown else { continue }
             let remainder = words[(length + 1)...].joined(separator: " ")
                 .trimmingCharacters(in: separators)
             guard !remainder.isEmpty else { return nil }
-            return (profile, remainder)
+            return (target, remainder)
         }
         return nil
     }
@@ -634,8 +641,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         var rowsByProfile: [String?: [LiveSessionStatus]] = [:]
         for profile in profiles {
-            guard let rows = try? await backend.liveSessions(profile), generation == self.generation else { return }
-            rowsByProfile[profile] = rows
+            // One profile's failed read only skips that profile's jobs.
+            let rows = try? await backend.liveSessions(profile)
+            guard generation == self.generation else { return }
+            if let rows { rowsByProfile[profile] = rows }
         }
         var changed = false
         for index in jobs.indices where jobs[index].status == .running || jobs[index].status == .needsInput {

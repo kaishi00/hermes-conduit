@@ -74,6 +74,8 @@ final class FakeVoiceJobBackend {
     private(set) var polledProfiles: [String?] = []
     /// Spoken names the fake resolves; anything else is unknown.
     var profileTargets: [String: VoiceJobProfileTarget] = [:]
+    /// Profiles whose liveSessions read throws.
+    var failingLiveProfiles: Set<String> = []
     private(set) var titles: [(String, String)] = []
     private(set) var submissions: [(String, String)] = []
     private(set) var cancelled: [String] = []
@@ -109,6 +111,7 @@ final class FakeVoiceJobBackend {
             },
             liveSessions: { [self] profile in
                 self.polledProfiles.append(profile)
+                if let profile, self.failingLiveProfiles.contains(profile) { throw URLError(.timedOut) }
                 return self.liveRows
             },
             resolveProfile: { [self] name in self.profileTargets[name.lowercased()] ?? .unknown }
@@ -182,6 +185,17 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.jobs.first?.profile)
     }
 
+    func testALeadingActiveProfileNameIsDroppedFromTheTask() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["default": .active, "fam": .other("fam")]
+
+        _ = await supervisor.performVoiceCommand(.start(instructions: "for Default, check the router"))
+        _ = await supervisor.startJob(instructions: "for Fam, check the lights", profile: "fam")
+
+        XCTAssertEqual(fake.createdProfiles, [nil, "fam"])
+        XCTAssertEqual(supervisor.jobs.map(\.instructions), ["check the router", "check the lights"])
+    }
+
     func testAnUnknownNamedProfileStartsNothing() async {
         let (supervisor, fake) = makeSupervisor()
 
@@ -202,6 +216,21 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(Set(fake.polledProfiles.map { $0 ?? "-" }), ["-", "fam"])
         XCTAssertEqual(fake.polledProfiles.count, 2)
+    }
+
+    func testOneProfilesFailedReadStillJudgesTheOthers() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["fam": .other("fam")]
+        _ = await supervisor.startJob(instructions: "check the router", profile: "fam")
+        _ = await supervisor.startJob(instructions: "check the server")
+        fake.failingLiveProfiles = ["fam"]
+
+        // The active profile lists nothing twice: its job settles.
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first { $0.profile == nil }?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first { $0.profile == "fam" }?.status, .running, "no read is not absence")
     }
 
     func testFinishedJobIsHandedBackOnceWithItsResult() async {
