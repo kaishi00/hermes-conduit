@@ -397,6 +397,8 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         case .responseDone:
             responseActive = false
             responseWatchdog?.cancel()
+            // A response that ended without ever starting answered nothing.
+            failUnconfirmedTurns()
             if responseRequested { sendResponseCreate() }
         case .outputTranscriptDone(let text):
             if !responseHadTranscript { onEvent?(.outputTranscription(text)) }

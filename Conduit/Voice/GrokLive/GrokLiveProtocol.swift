@@ -126,6 +126,8 @@ enum GrokLiveProtocol {
     /// 16 kHz capture as 24 kHz PCM16 (little-endian), by linear
     /// interpolation: three output samples for every two captured.
     static func upsampledForInput(_ pcm16: Data) -> Data {
+        // The interpolation below is the fixed 3:2 step from the capture rate.
+        assert(inputSampleRate == GeminiLiveProtocol.inputSampleRate * 3 / 2, "Grok Live upsampling assumes 16 kHz capture and 24 kHz input")
         let bytes = [UInt8](pcm16)
         let count = bytes.count / 2
         guard count > 0 else { return Data() }

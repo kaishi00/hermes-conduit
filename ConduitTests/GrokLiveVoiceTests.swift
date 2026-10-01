@@ -173,8 +173,9 @@ extension HermesVoiceGatewayTimeoutTests {
 @MainActor
 extension VoiceConversationControllerTests {
     private func makeGrokSession(
-        connection: FakeGrokLiveConnection = FakeGrokLiveConnection()
+        connection: FakeGrokLiveConnection? = nil
     ) -> (GrokLiveSession, () -> [FakeGeminiLiveSocket]) {
+        let connection = connection ?? FakeGrokLiveConnection()
         var sockets: [FakeGeminiLiveSocket] = []
         let session = GrokLiveSession(
             client: connection,
