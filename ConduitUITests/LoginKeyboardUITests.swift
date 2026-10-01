@@ -82,12 +82,13 @@ final class LoginKeyboardUITests: XCTestCase {
         // compact keyboard-obscured layout.
         let connect = app.buttons[Identity.connect]
         XCTAssertTrue(connect.waitForExistence(timeout: 5))
+        let beforeSwipe = "connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame)"
         if !connect.isHittable {
             app.swipeUp()
         }
         XCTAssertTrue(
             pollHittability(of: connect, timeout: 5),
-            "Connect must remain reachable with the keyboard visible"
+            "Connect must remain reachable with the keyboard visible. Before swipe: \(beforeSwipe). After: connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame). Tree:\n\(app.debugDescription)"
         )
     }
 
