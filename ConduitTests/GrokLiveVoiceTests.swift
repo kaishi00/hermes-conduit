@@ -284,6 +284,68 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(sockets.allSatisfy(\.closed))
     }
 
+    func testGrokLiveTurnQueuedBehindAResponseIsDeliveredOnlyWithItsRequest() async throws {
+        let (session, sockets) = makeGrokSession()
+        session.start()
+        await grokSettle()
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        await grokSettle()
+        session.send(.textTurn("first"))
+        await grokSettle()
+        socket.deliver(["type": "response.created"])
+        await grokSettle()
+
+        var outcome: [String] = []
+        session.send(.textTurn("second"), onSent: { outcome.append("sent") }, onFailure: { outcome.append("failed") })
+        await grokSettle()
+        XCTAssertEqual(outcome, [], "queued behind the running response: not delivered yet")
+        socket.deliver(["type": "response.done"])
+        await grokSettle()
+        XCTAssertEqual(outcome, ["sent"])
+
+        socket.deliver(["type": "response.created"])
+        await grokSettle()
+        var lost: [String] = []
+        session.send(.textTurn("third"), onSent: { lost.append("sent") }, onFailure: { lost.append("failed") })
+        await grokSettle()
+        socket.serverClose(nil)
+        await grokSettle(120)
+        XCTAssertEqual(lost, ["failed"], "the connection ended before its request went out")
+        session.stop()
+    }
+
+    func testGrokLiveStalledResponseStopsHoldingLaterTurns() async throws {
+        var sockets: [FakeGeminiLiveSocket] = []
+        let session = GrokLiveSession(
+            client: FakeGrokLiveConnection(),
+            instructions: "test",
+            functions: [],
+            openSocket: { request in
+                let socket = FakeGeminiLiveSocket(url: request.url!)
+                sockets.append(socket)
+                return socket
+            },
+            responseTimeout: .zero,
+            reconnectDelay: { _ in }
+        )
+        session.start()
+        await grokSettle()
+        let socket = try XCTUnwrap(sockets.first)
+        socket.deliver(["type": "session.updated"])
+        await grokSettle()
+        session.send(.textTurn("first"))
+        await grokSettle()
+        socket.deliver(["type": "response.created"])
+        await grokSettle(40)
+
+        session.send(.textTurn("second"))
+        await grokSettle(40)
+        XCTAssertEqual(socket.sent.filter { $0["type"] as? String == "response.create" }.count, 2,
+                       "a response that never finished no longer holds the next one")
+        session.stop()
+    }
+
     func testGrokLiveShowsTheFinalTranscriptOnlyWhenNoDeltasCarriedIt() async throws {
         let (session, sockets) = makeGrokSession()
         var heard: [GeminiLiveProtocol.ServerEvent] = []

@@ -61,6 +61,13 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     /// running. An error before that means it refused the request, and no
     /// response.done will follow to clear it.
     private var responseConfirmed = false
+    /// Turns sent while a response ran: delivered once their response.create
+    /// goes out, failed if the connection ends first.
+    private var queuedTurns: [(sent: (@MainActor () -> Void)?, failed: (@MainActor () -> Void)?)] = []
+    /// How long a running response may go without any event before it
+    /// counts as lost, so a missing response.done can't silence the call.
+    private let responseTimeout: Duration
+    private var responseWatchdog: Task<Void, Never>?
     /// How long a connection may wait for session.updated before it counts
     /// as a failed attempt.
     private let setupTimeout: Duration
@@ -76,6 +83,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         voice: String? = nil,
         openSocket: @escaping @MainActor (URLRequest) -> GeminiLiveSocket = { URLSessionGeminiLiveSocket(request: $0) },
         setupTimeout: Duration = .seconds(15),
+        responseTimeout: Duration = .seconds(30),
         reconnectDelay: @escaping @Sendable (Int) async throws -> Void = { attempt in
             try await Task.sleep(for: .seconds(min(8, 1 << attempt)))
         }
@@ -86,6 +94,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         self.voice = voice
         self.openSocket = openSocket
         self.setupTimeout = setupTimeout
+        self.responseTimeout = responseTimeout
         self.reconnectDelay = reconnectDelay
     }
 
@@ -123,11 +132,12 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
                 // the request is queued behind the running response): a
                 // turn whose response.create was lost is reported failed.
                 if wantsResponse {
-                    switch self?.takeResponseRequest(on: id) {
+                    switch self?.takeResponseRequest(on: id, onSent: onSent, onFailure: onFailure) {
                     case .send(let create)?:
                         try await socket.send(create)
                     case .queued?:
-                        break
+                        // Reported once its response.create goes out.
+                        return
                     case .connectionGone?, nil:
                         // The connection was replaced or ended while this
                         // turn was going out: nothing will answer it here.
@@ -155,10 +165,15 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     }
 
     /// Asks the model to answer, now or once the current response ends.
-    private func takeResponseRequest(on id: UUID) -> ResponseRequest {
+    private func takeResponseRequest(
+        on id: UUID,
+        onSent: (@MainActor () -> Void)?,
+        onFailure: (@MainActor () -> Void)?
+    ) -> ResponseRequest {
         guard id == connectionID, state == .ready else { return .connectionGone }
         guard !responseActive else {
             responseRequested = true
+            queuedTurns.append((sent: onSent, failed: onFailure))
             return .queued
         }
         guard let text = try? GrokLiveProtocol.encode(GrokLiveProtocol.responseCreate) else { return .connectionGone }
@@ -166,23 +181,56 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         // Counted as running from now: a second request waits for this one.
         responseActive = true
         responseConfirmed = false
+        armResponseWatchdog()
         return .send(text)
     }
 
+    /// Sends the queued request, settling the turns that waited on it.
     private func sendResponseCreate() {
         guard let socket, let text = try? GrokLiveProtocol.encode(GrokLiveProtocol.responseCreate) else { return }
         responseRequested = false
         // Counted as running from now: a second request waits for this one.
         responseActive = true
         responseConfirmed = false
+        armResponseWatchdog()
+        let turns = queuedTurns
+        queuedTurns = []
         let id = connectionID
         Task { [weak self] in
             do {
                 try await socket.send(text)
+                for turn in turns { turn.sent?() }
             } catch {
+                for turn in turns { turn.failed?() }
                 self?.connectionFailed(id, error: error)
             }
         }
+    }
+
+    /// (Re)starts the wait for the running response's next event.
+    private func armResponseWatchdog() {
+        responseWatchdog?.cancel()
+        let id = connectionID
+        let timeout = responseTimeout
+        responseWatchdog = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled, let self, id == self.connectionID, self.responseActive else { return }
+            grokLiveLogger.error("Grok Live response stalled; no longer waiting for it")
+            self.responseActive = false
+            if self.responseRequested { self.sendResponseCreate() }
+        }
+    }
+
+    /// The connection ended: nothing runs on it, and turns still waiting on
+    /// a response.create were never answered.
+    private func dropResponseState() {
+        responseWatchdog?.cancel()
+        responseWatchdog = nil
+        responseActive = false
+        responseRequested = false
+        let turns = queuedTurns
+        queuedTurns = []
+        for turn in turns { turn.failed?() }
     }
 
     // MARK: Connection
@@ -208,8 +256,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         socket?.close()
         socket = nil
         connectionID = UUID()
-        responseActive = false
-        responseRequested = false
+        dropResponseState()
     }
 
     private func connect(attempt: Int) async {
@@ -314,14 +361,17 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
                 // The request that was counted as running was refused: no
                 // response.done will clear it, so later turns would wait forever.
                 responseActive = false
+                responseWatchdog?.cancel()
                 if responseRequested { sendResponseCreate() }
             }
         case .responseStarted:
             responseActive = true
             responseConfirmed = true
             responseHadTranscript = false
+            armResponseWatchdog()
         case .responseDone:
             responseActive = false
+            responseWatchdog?.cancel()
             if responseRequested { sendResponseCreate() }
         case .outputTranscriptDone(let text):
             if !responseHadTranscript { onEvent?(.outputTranscription(text)) }
@@ -331,6 +381,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
                 // The server cancels the response; its response.done follows.
                 responseHadTranscript = false
             }
+            if responseActive { armResponseWatchdog() }
             onEvent?(event)
         }
     }
@@ -350,8 +401,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         setupTimeoutTask?.cancel()
         setupTimeoutTask = nil
         connectionID = UUID()
-        responseActive = false
-        responseRequested = false
+        dropResponseState()
         if let serverClose, Self.isRefusal(serverClose) {
             fail(Self.refusalMessage(serverClose))
             return
