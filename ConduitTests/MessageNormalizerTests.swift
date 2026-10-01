@@ -838,20 +838,21 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(projects.map(\.isAuto), [false, true])
     }
 
-    func testPathShapedProjectIDCountsAsAutoWhenTheFlagIsMissing() {
-        // Auto-discovered repos use their root path as the id; created
-        // projects are `p_<hex>`. Without the flag, editability fails closed.
+    func testOnlyCreatedProjectIDsAreEditableWhenTheFlagIsMissing() {
+        // Created projects are `p_<hex>`; without the flag, any other id
+        // counts as auto so editability fails closed.
         let projects = MessageNormalizer.normalizeProjects(
             .object([
                 "projects": .array([
                     .object(["id": .string("p_1a2b3c4d"), "label": .string("Skunkworks")]),
-                    .object(["id": .string("/srv/repos/conduit"), "label": .string("conduit")])
+                    .object(["id": .string("/srv/repos/conduit"), "label": .string("conduit")]),
+                    .object(["id": .string("auto:repo"), "label": .string("repo")])
                 ])
             ]),
             profile: "default"
         )
 
-        XCTAssertEqual(projects.map(\.isAuto), [false, true])
+        XCTAssertEqual(projects.map(\.isAuto), [false, true, true])
     }
 
     func testProjectWithoutPrimaryPathAnchorsAtFirstRepoRoot() {

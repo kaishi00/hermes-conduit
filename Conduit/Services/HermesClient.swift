@@ -2497,12 +2497,13 @@ enum MessageNormalizer {
             ?? object["previewSessions"]?.arrayValue
             ?? []
         let isHome = object["isNoProject"]?.boolValue ?? object["is_no_project"]?.boolValue ?? false
-        // Auto-discovered repos have no projects.db row and use their root path
-        // as the id (created projects are `p_<hex>`), so a path-shaped id also
-        // marks one when a gateway omits the flag.
+        // Only projects created in Hermes have a projects.db row, and their ids
+        // are `p_<hex>` (auto-discovered repos use their root path). When a
+        // gateway omits the flag, anything else is treated as auto so rename
+        // and delete fail closed.
         let isAuto = object["isAuto"]?.boolValue
             ?? object["is_auto"]?.boolValue
-            ?? (id.contains("/") || id.contains("\\"))
+            ?? !id.hasPrefix("p_")
         let folderPath = firstNonEmptyString(
             object["folders"]?.arrayValue?.compactMap { $0.objectValue?["path"]?.stringValue }.map(AnyCodable.string) ?? []
         )
