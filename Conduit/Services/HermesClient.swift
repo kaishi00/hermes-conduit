@@ -2503,7 +2503,7 @@ enum MessageNormalizer {
         // and delete fail closed.
         let isAuto = object["isAuto"]?.boolValue
             ?? object["is_auto"]?.boolValue
-            ?? !id.hasPrefix("p_")
+            ?? (!isHome && !id.hasPrefix("p_"))
         let folderPath = firstNonEmptyString(
             object["folders"]?.arrayValue?.compactMap { $0.objectValue?["path"]?.stringValue }.map(AnyCodable.string) ?? []
         )

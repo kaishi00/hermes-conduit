@@ -846,13 +846,14 @@ final class MessageNormalizerTests: XCTestCase {
                 "projects": .array([
                     .object(["id": .string("p_1a2b3c4d"), "label": .string("Skunkworks")]),
                     .object(["id": .string("/srv/repos/conduit"), "label": .string("conduit")]),
-                    .object(["id": .string("auto:repo"), "label": .string("repo")])
+                    .object(["id": .string("auto:repo"), "label": .string("repo")]),
+                    .object(["id": .string("__no_project__"), "label": .string("Home"), "is_no_project": .bool(true)])
                 ])
             ]),
             profile: "default"
         )
 
-        XCTAssertEqual(projects.map(\.isAuto), [false, true, true])
+        XCTAssertEqual(projects.map(\.isAuto), [false, true, true, false], "Home is not an auto repo")
     }
 
     func testProjectWithoutPrimaryPathAnchorsAtFirstRepoRoot() {

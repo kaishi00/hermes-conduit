@@ -17882,14 +17882,22 @@ final class AppState: ObservableObject {
         supportsProjects && isConnected && !project.isHome && !project.isAuto
     }
 
+    /// The project a rename or delete is running for; a second one waits.
+    @Published private(set) var projectMutationID: String?
+
     @discardableResult
     func renameProject(_ project: ProjectSummary, to name: String) async -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let client, isProjectEditable(project), !trimmed.isEmpty else { return false }
+        guard let client, isProjectEditable(project), !trimmed.isEmpty, projectMutationID == nil else { return false }
         let profile = activeProfile
+        projectMutationID = project.id
+        defer { projectMutationID = nil }
         do {
             try await client.renameProject(project.id, name: trimmed)
             guard profile == activeProfile, self.client === client else { return false }
+            if let index = projects.firstIndex(where: { $0.id == project.id }) {
+                projects[index].title = trimmed
+            }
             await loadProjects(using: client, profile: profile)
             return true
         } catch {
@@ -17906,8 +17914,10 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func deleteProject(_ project: ProjectSummary) async -> Bool {
-        guard let client, isProjectEditable(project) else { return false }
+        guard let client, isProjectEditable(project), projectMutationID == nil else { return false }
         let profile = activeProfile
+        projectMutationID = project.id
+        defer { projectMutationID = nil }
         do {
             try await client.deleteProject(project.id)
             guard profile == activeProfile, self.client === client else { return false }
