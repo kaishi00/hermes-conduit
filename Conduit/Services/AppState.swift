@@ -3065,12 +3065,17 @@ final class AppState: ObservableObject {
             engine: engine,
             profile: profile,
             resumingSessionID: resume?.sessionID,
+            // Nothing reaches the host while a live call runs: a closing
+            // save that meets a newer call leaves its turns to the outbox,
+            // which retries once no call is running.
             save: { [weak self] request in
                 guard let self else { throw VoiceHistoryError.pluginMissing }
+                guard !self.isLiveVoiceCallActive else { throw VoiceHistoryError.busy }
                 return try await self.voiceHistoryClient.save(request, profile: profile)
             },
             title: { [weak self] turns in
-                await self?.voiceCallTitle(turns: turns, profile: profile) ?? Self.fallbackVoiceCallTitle()
+                guard let self, !self.isLiveVoiceCallActive else { return Self.fallbackVoiceCallTitle() }
+                return await self.voiceCallTitle(turns: turns, profile: profile)
             }
         )
         if resume != nil { recorder.note(AppLocalization.string("Voice call resumed")) }
