@@ -5568,12 +5568,12 @@
         }
       }
     },
-    "This removes the project from Hermes. Its folders, files and conversations are kept." : {
+    "This removes %@ from Hermes. Its folders, files and conversations are kept." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这会从 Hermes 中移除该项目。其文件夹、文件和对话都会保留。"
+            "value" : "这会从 Hermes 中移除“%@”。其文件夹、文件和对话都会保留。"
           }
         }
       }

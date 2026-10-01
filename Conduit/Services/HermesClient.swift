@@ -2498,9 +2498,8 @@ enum MessageNormalizer {
             ?? []
         let isHome = object["isNoProject"]?.boolValue ?? object["is_no_project"]?.boolValue ?? false
         // Only projects created in Hermes have a projects.db row, and their ids
-        // are `p_<hex>` (auto-discovered repos use their root path). When a
-        // gateway omits the flag, anything else is treated as auto so rename
-        // and delete fail closed.
+        // are `p_<hex>`. When a gateway omits the flag, any non-Home id without
+        // that prefix is treated as auto, so rename and delete fail closed.
         let isAuto = object["isAuto"]?.boolValue
             ?? object["is_auto"]?.boolValue
             ?? (!isHome && !id.hasPrefix("p_"))

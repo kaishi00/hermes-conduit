@@ -374,7 +374,7 @@ struct SessionList: View {
             }
             Button("Cancel", role: .cancel) { projectPendingDeletion = nil }
         } message: {
-            Text("This removes the project from Hermes. Its folders, files and conversations are kept.")
+            Text(AppLocalization.string("This removes \(projectPendingDeletion?.title ?? "") from Hermes. Its folders, files and conversations are kept."))
         }
         .alert("Delete conversation?", isPresented: Binding(
             get: { sessionPendingDeletion != nil },
@@ -464,12 +464,14 @@ struct SessionList: View {
                         } label: {
                             Label("Rename…", systemImage: "pencil")
                         }
+                        .disabled(appState.isProjectMutationInFlight)
                         Button(role: .destructive) {
                             Haptics.warning()
                             projectPendingDeletion = project
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
+                        .disabled(appState.isProjectMutationInFlight)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         if appState.isProjectEditable(project) {
@@ -479,6 +481,7 @@ struct SessionList: View {
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
+                            .disabled(appState.isProjectMutationInFlight)
                             Button {
                                 Haptics.selection()
                                 projectRenameTitle = project.title
@@ -487,6 +490,7 @@ struct SessionList: View {
                                 Label("Rename…", systemImage: "pencil")
                             }
                             .tint(.conduitAccent)
+                            .disabled(appState.isProjectMutationInFlight)
                         }
                     }
                     .listRowBackground(Color.clear)

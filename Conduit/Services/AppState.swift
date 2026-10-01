@@ -17885,6 +17885,9 @@ final class AppState: ObservableObject {
     /// The project a rename or delete is running for; a second one waits.
     @Published private(set) var projectMutationID: String?
 
+    /// Project rename and delete controls stay disabled while one runs.
+    var isProjectMutationInFlight: Bool { projectMutationID != nil }
+
     @discardableResult
     func renameProject(_ project: ProjectSummary, to name: String) async -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
