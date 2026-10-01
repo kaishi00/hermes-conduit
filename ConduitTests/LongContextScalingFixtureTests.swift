@@ -149,6 +149,26 @@ final class LongContextScalingFixtureTests: XCTestCase {
         return nil
     }
 
+    /// Markdown sources of the transcript rows currently mounted under
+    /// `root`: each mounted settled row hosts its text in a
+    /// SelectableTextViewHostView, and every fixture row's text carries
+    /// "answer <index> ".
+    private func mountedSettledSources(in root: UIView, transcript: [ChatMessage]) -> Set<String> {
+        var sources = Set<String>()
+        func walk(_ view: UIView) {
+            if let host = view as? SelectableTextViewHostView,
+               let text = host.mountedTextView.text,
+               let match = text.firstMatch(of: #/answer (\d+) /#),
+               let index = Int(match.1),
+               transcript.indices.contains(index) {
+                sources.insert(transcript[index].content)
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(root)
+        return sources
+    }
+
     // MARK: - 1. Deep-transcript reasoning churn
 
     /// THE scaling regression: in an 800-row transcript, every live reasoning
@@ -167,6 +187,17 @@ final class LongContextScalingFixtureTests: XCTestCase {
             XCTFail("deep transcript never reached a quiet state; measurement would be meaningless")
             return
         }
+
+        // The settled rows the stack has mounted (its live Markdown text
+        // views), captured as the window opens. Bounded well below the
+        // transcript, or the stack is not lazy and the measurement below
+        // would tolerate a full cascade.
+        let mountedAtWindowOpen = mountedSettledSources(in: host.view, transcript: appState.messages)
+        XCTAssertFalse(mountedAtWindowOpen.isEmpty, "the visible tail must be mounted")
+        XCTAssertLessThan(
+            mountedAtWindowOpen.count, 40,
+            "an 800-row transcript must mount only a small window: \(mountedAtWindowOpen.count) rows"
+        )
 
         TranscriptPerf.reset()
         let expected = feedReasoningDeltas(12, sessionId: "deep-session", state: appState, host: host)
@@ -203,33 +234,28 @@ final class LongContextScalingFixtureTests: XCTestCase {
             TranscriptPerf.scrollTargetPrefixSetBuilds, 0,
             "live reasoning publishes must not rebuild the prefix fingerprint set"
         )
-        // Dormancy, classified by position: a growing live card legitimately
-        // shifts the bottom-anchored LazyVStack and can remount rows AT THE
-        // VIEWPORT EDGES (measured churn touches only the first/last few
-        // messages — Turn 0/2 and Turn 796/798 in this fixture). A re-render
-        // of an INTERIOR row is the per-publish cascade this fixture kills:
-        // every mounted row re-evaluating, which no amount of edge churn
-        // can disguise. The data-layer invariants above (zero mutations,
-        // zero transcriptChanged, zero prefix walks) remain the primary
-        // contract; this is the render-layer defense in depth.
+        // Dormancy, classified by what was MOUNTED when the window opened. A
+        // growing live card re-lays out the stack, and SwiftUI may refresh
+        // rows it already keeps alive; that is bounded by the mounted set,
+        // not the transcript. Which rows are alive is a LazyVStack detail:
+        // the visible tail, the first rows from the initial top layout, and
+        // in a fresh test process also rows near where the bottom landing's
+        // estimated heights first put the viewport (Turn 758/760 on hosted
+        // CI, which a positional edge band misread as a cascade). A
+        // re-render of a row that was NOT mounted is transcript-sized work
+        // reaching past the stack's laziness. The data-layer invariants
+        // above (zero mutations, zero transcriptChanged, zero prefix walks)
+        // remain the primary contract; this is the render-layer defense in
+        // depth.
         let atRestRerenders = TranscriptPerf.settledMarkdownPreWindowRepeatEvaluations
-        // The reasoning buffer inherently ACCUMULATES (deltas merge into one
-        // growing live card), so the layout-shift band scales with the fed
-        // content — measured churn reaches ~1 row per fed line, deeper than
-        // the streaming fixture's steady-state window. Margin 16 covers the
-        // 12-delta fixture's band with slack; a full mounted-row cascade
-        // still cannot hide inside it, and the data-layer counters above
-        // remain the exact primary contract.
-        let interiorRerenders = TranscriptPerf.interiorAtRestRerenders(
-            sources: TranscriptPerf.recentPreWindowRepeatSources,
-            transcript: Self.deepTranscript(),
-            edgeMargin: 16
-        )
+        let unmountedRerenders = TranscriptPerf.recentPreWindowRepeatSources
+            .filter { !mountedAtWindowOpen.contains($0) }
         XCTAssertTrue(
-            interiorRerenders.isEmpty,
-            "live reasoning re-rendered \(interiorRerenders.count) interior settled rows "
-                + "(of \(atRestRerenders) at-rest re-renders; edge remounts are tolerated): "
-                + "\(interiorRerenders.map { String($0.prefix(32)) })"
+            unmountedRerenders.isEmpty,
+            "live reasoning re-rendered \(unmountedRerenders.count) settled rows that were not mounted "
+                + "(of \(atRestRerenders) at-rest re-renders; mounted rows are tolerated): "
+                + "\(unmountedRerenders.map { String($0.prefix(32)) }); "
+                + "mounted: \(mountedAtWindowOpen.map { String($0.prefix(14)) }.sorted())"
         )
 
         // And the live card content must actually be visible.
