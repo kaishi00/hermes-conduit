@@ -1650,6 +1650,9 @@ extension VoiceConversationControllerTests {
 
     func testGeminiLiveGoodbyeTranscriptThatArrivesAfterTheReplyStillEnds() async {
         let (controller, session, input, output, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
+        let closed = EndCounter()
+        controller.onEndConversation = { closed.count += 1 }
+        controller.lateEndPhraseDelay = 0.01
         await controller.start()
         session.becomeReady()
 
@@ -1657,18 +1660,30 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
         session.onEvent?(.outputTranscription("Bye!"))
         session.onEvent?(.turnComplete)
-        session.onEvent?(.inputTranscription("Goodbye."))
+        session.onEvent?(.inputTranscription("Good"))
+        session.onEvent?(.inputTranscription("bye."))
         XCTAssertFalse(controller.isEnding, "the transcript may still be going")
 
-        // Still playing the reply: not checked yet.
-        controller.endIfUnansweredGoodbye()
-        XCTAssertFalse(controller.isEnding)
-
-        // Quiet, and no reply is coming: the late goodbye ends the call.
-        output.isPlaying = false
-        controller.endIfUnansweredGoodbye()
+        // Once it goes quiet, the late goodbye ends the call, even while the
+        // reply is still playing; the close waits for it.
+        try? await Task.sleep(for: .milliseconds(200))
         XCTAssertTrue(controller.isEnding)
         XCTAssertFalse(input.running)
+        XCTAssertFalse(controller.finishEndIfDrained(), "the reply is still playing")
+        XCTAssertEqual(closed.count, 0)
+        output.isPlaying = false
+        controller.stop()
+    }
+
+    func testGeminiLiveGoodbyeTheModelHasNotAnsweredIsLeftToItsTurn() async {
+        let (controller, session, _, _, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+
+        // No reply yet: ending now could cut off the goodbye still to come.
+        session.onEvent?(.inputTranscription("Goodbye."))
+        controller.endIfUnansweredGoodbye()
+        XCTAssertFalse(controller.isEnding)
         controller.stop()
     }
 
