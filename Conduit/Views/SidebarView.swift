@@ -864,7 +864,7 @@ private struct ProjectSessionsSheet: View {
                             Text("This project does not have any conversations yet.")
                         } actions: {
                             if newConversationPath != nil {
-                                Button("New Conversation", action: startNewConversation)
+                                Button("New conversation", action: startNewConversation)
                                     .buttonStyle(.borderedProminent)
                             }
                         }
