@@ -1677,13 +1677,25 @@ extension VoiceConversationControllerTests {
 
     func testGeminiLiveGoodbyeTheModelHasNotAnsweredIsLeftToItsTurn() async {
         let (controller, session, _, _, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
+        controller.lateEndPhraseDelay = 0.01
         await controller.start()
         session.becomeReady()
 
-        // No reply yet: ending now could cut off the goodbye still to come.
+        // A normal exchange: the user's transcript came with the reply.
+        session.onEvent?(.inputTranscription("What's the weather?"))
+        session.onEvent?(.outputTranscription("Sunny."))
+        session.onEvent?(.turnComplete)
+
+        // A fresh goodbye right after it, not answered yet: ending now could
+        // cut off the goodbye still to come.
         session.onEvent?(.inputTranscription("Goodbye."))
-        controller.endIfUnansweredGoodbye()
+        try? await Task.sleep(for: .milliseconds(200))
         XCTAssertFalse(controller.isEnding)
+
+        // The model's reply decides.
+        session.onEvent?(.outputTranscription("Bye!"))
+        session.onEvent?(.turnComplete)
+        XCTAssertTrue(controller.isEnding)
         controller.stop()
     }
 
