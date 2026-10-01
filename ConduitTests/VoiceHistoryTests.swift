@@ -243,6 +243,25 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(defaults.data(forKey: VoiceTranscriptOutbox.storageKey))
     }
 
+    func testOutboxKeepsACallsJobsAndReadsEntriesWithout() throws {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        let turn = VoiceTranscriptTurn(index: 0, role: .user, text: "hi", at: now)
+        let request = VoiceTranscriptSaveRequest(callID: "c1", engine: .geminiLive, sessionID: nil, title: nil, turns: [turn])
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(dashboard: "d", profile: "p", request: request, queuedAt: now))
+        // Saved before entries had jobs: the field is simply absent.
+        let data = try JSONEncoder().encode(outbox)
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("jobSessionIDs"))
+        outbox = try JSONDecoder().decode(VoiceTranscriptOutbox.self, from: data)
+        XCTAssertNil(outbox.entries.first?.jobSessionIDs)
+
+        outbox.addJobs(["j1"], toCall: "c1")
+        outbox.addJobs(["j1", "j2"], toCall: "c1")
+        outbox.addJobs(["j3"], toCall: "other")
+        XCTAssertEqual(Set(outbox.entries.first?.jobSessionIDs ?? []), ["j1", "j2"])
+        XCTAssertEqual(outbox.entries.count, 1)
+    }
+
     // MARK: Resume
 
     private func resumeTurns(_ count: Int, length: Int = 10) -> [VoiceResumeTurn] {

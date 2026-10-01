@@ -1810,7 +1810,8 @@ final class AppState: ObservableObject {
                 self.captureVoiceCall()
                 recorder.note(AppLocalization.string("Started a background job: \(job.title)."))
             }
-            let closing = self.closingVoiceCallUntil.map { Date() < $0 } == true ? self.closingVoiceCallRecorder : nil
+            // A job while the classic Voice sheet is up is that chat's.
+            let closing = self.closingVoiceCallUntil.map { Date() < $0 } == true && !self.showVoiceSheet ? self.closingVoiceCallRecorder : nil
             if let recorder = self.voiceCallRecorder ?? closing {
                 // Nothing reaches the host while the call runs: the job is
                 // tagged with the call's row once the call ends, and kept
@@ -2900,6 +2901,7 @@ final class AppState: ObservableObject {
     private var voiceCallCheckpointTask: Task<Void, Never>?
     private var voiceCallTranscriptSubscription: AnyCancellable?
     static let voiceCallCheckpointInterval: Duration = .seconds(60)
+    private var voiceCallCheckpointedTurns = 0
     /// The call whose closing save is still running: a job it started that
     /// reports in now is still tagged with its row.
     private weak var closingVoiceCallRecorder: VoiceTranscriptRecorder?
@@ -3054,6 +3056,7 @@ final class AppState: ObservableObject {
         pendingVoiceResume = nil
         liveVoiceResumeContext = resume?.context
         guard voiceCallSavingEnabled else { return }
+        voiceCallCheckpointedTurns = 0
         let profile = activeProfile
         let recorder = VoiceTranscriptRecorder(
             engine: engine,
@@ -3077,7 +3080,15 @@ final class AppState: ObservableObject {
         // @Published fires before the change lands: read it on the next turn.
         voiceCallTranscriptSubscription = transcript
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.captureVoiceCall() }
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.captureVoiceCall()
+                // Each newly settled turn is kept on the device at once.
+                if let recorder = self.voiceCallRecorder, recorder.turns.count != self.voiceCallCheckpointedTurns {
+                    self.voiceCallCheckpointedTurns = recorder.turns.count
+                    self.checkpointVoiceCall(recorder)
+                }
+            }
         voiceCallCheckpointTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.voiceCallCheckpointInterval)
