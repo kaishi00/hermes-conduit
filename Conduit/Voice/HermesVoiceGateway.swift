@@ -95,9 +95,9 @@ final class HermesVoiceGateway: VoiceGatewayService {
     }
 
     /// The speak-stream upgrade request. Behind Cloudflare Access the
-    /// upgrade must carry the service-token headers like every other native
-    /// request to the host; without them Access refuses the handshake and
-    /// only a still-valid CF_Authorization cookie lets the stream through.
+    /// upgrade must carry the service-token headers like the dashboard's
+    /// REST requests; without them Access refuses the handshake and only a
+    /// still-valid CF_Authorization cookie lets the stream through.
     static func speechStreamRequest(
         baseURL: String,
         ticket: String,
@@ -130,9 +130,19 @@ final class HermesVoiceGateway: VoiceGatewayService {
     }
 }
 
+/// The slice of `URLSessionWebSocketTask` the speech stream uses, so tests
+/// can inject a socket whose handshake is refused.
+protocol HermesSpeechSocket: AnyObject {
+    func send(_ message: URLSessionWebSocketTask.Message) async throws
+    func receive() async throws -> URLSessionWebSocketTask.Message
+    func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?)
+}
+
+extension URLSessionWebSocketTask: HermesSpeechSocket {}
+
 @MainActor
-private final class HermesSpeechStream: VoiceSpeechStream {
-    private let task: URLSessionWebSocketTask
+final class HermesSpeechStream: VoiceSpeechStream {
+    private let task: any HermesSpeechSocket
     private let fallback: @MainActor (String) async throws -> Data
     private let onStart: @MainActor (Double) throws -> Void
     private let onPCM16: @MainActor (Data, Double) throws -> Void
@@ -153,7 +163,7 @@ private final class HermesSpeechStream: VoiceSpeechStream {
     private var finishSendTask: Task<Void, Never>?
 
     init(
-        task: URLSessionWebSocketTask,
+        task: any HermesSpeechSocket,
         fallback: @escaping @MainActor (String) async throws -> Data,
         onStart: @escaping @MainActor (Double) throws -> Void,
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void,

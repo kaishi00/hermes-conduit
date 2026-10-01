@@ -1224,6 +1224,31 @@ final class KanbanV3DTests: XCTestCase {
         let parkedOutcome = await raced({ try await gate.awaitRelease() })
         XCTAssertNil(parkedOutcome, "without a pre-release, awaitRelease() parks as usual")
     }
+
+    // MARK: - Live socket upgrade
+
+    func testLiveSocketUpgradeCarriesCloudflareAccessHeaders() throws {
+        let url = try XCTUnwrap(URL(string: "wss://hermes.example/api/plugins/kanban/events?ticket=abc"))
+        let request = URLSessionKanbanEventSocket.upgradeRequest(
+            url: url,
+            cloudflareAccess: CloudflareAccessCredentials(clientID: "test-client-id", clientSecret: "test-client-secret")
+        )
+        XCTAssertEqual(request.url, url)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Id"), "test-client-id")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "test-client-secret")
+
+        let bare = URLSessionKanbanEventSocket.upgradeRequest(url: url, cloudflareAccess: nil)
+        XCTAssertNil(bare.value(forHTTPHeaderField: "CF-Access-Client-Id"))
+
+        // Cleartext LAN sockets never carry the long-lived service token.
+        let cleartextURL = try XCTUnwrap(URL(string: "ws://192.168.1.20:9119/api/plugins/kanban/events?ticket=abc"))
+        let cleartext = URLSessionKanbanEventSocket.upgradeRequest(
+            url: cleartextURL,
+            cloudflareAccess: CloudflareAccessCredentials(clientID: "test-client-id", clientSecret: "test-client-secret")
+        )
+        XCTAssertNil(cleartext.value(forHTTPHeaderField: "CF-Access-Client-Id"))
+        XCTAssertNil(cleartext.value(forHTTPHeaderField: "CF-Access-Client-Secret"))
+    }
 }
 
 // MARK: - Test doubles
