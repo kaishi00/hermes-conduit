@@ -40,7 +40,7 @@ struct VoiceAudioSessionConfiguration: Equatable {
     static let wakeListening = Self(
         category: .playAndRecord,
         mode: .default,
-        options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP],
+        options: [.mixWithOthers, .allowBluetoothA2DP],
         outputSampleRate: 16_000,
         outputChannelCount: 1
     )

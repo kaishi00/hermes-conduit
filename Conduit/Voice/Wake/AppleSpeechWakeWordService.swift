@@ -48,6 +48,8 @@ final class AppleSpeechWakeWordService: WakeWordService {
     private var recoveryTask: Task<Void, Never>?
     private var cycleGeneration: UInt64 = 0
     private var consecutiveFailures = 0
+    /// A system interruption (a call, Siri) is in progress.
+    private var isInterrupted = false
     private var observers: [NSObjectProtocol] = []
 
     private static let maximumConsecutiveFailures = 5
@@ -158,12 +160,46 @@ final class AppleSpeechWakeWordService: WakeWordService {
     private func observeAudioDisruptions() {
         removeObservers()
         let center = NotificationCenter.default
-        // A route change or another app taking the session reconfigures the
-        // engine and stops it; an interruption (a phone call) does the same.
-        for name in [Notification.Name.AVAudioEngineConfigurationChange, AVAudioSession.interruptionNotification] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.scheduleAudioRecovery() }
-            })
+        // A route change reconfigures the engine and stops it: rebuild it.
+        observers.append(center.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.scheduleAudioRecovery() }
+        })
+        // A phone call, Siri or an alarm is not a Conduit audio owner: stop
+        // listening for its whole duration and only resume once it ends.
+        observers.append(center.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let type = rawType.flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+            Task { @MainActor [weak self] in self?.handleInterruption(type) }
+        })
+    }
+
+    private func handleInterruption(_ type: AVAudioSession.InterruptionType?) {
+        guard isArmed else { return }
+        switch type {
+        case .began:
+            isInterrupted = true
+            recoveryTask?.cancel()
+            recoveryTask = nil
+            cycleGeneration &+= 1
+            cycleTask?.cancel()
+            cycleTask = nil
+            audioSink.replace(with: nil)
+            recognitionTask?.cancel()
+            recognitionTask = nil
+            stopAudio()
+        case .ended:
+            isInterrupted = false
+            scheduleAudioRecovery()
+        default:
+            break
         }
     }
 
@@ -175,12 +211,12 @@ final class AppleSpeechWakeWordService: WakeWordService {
     }
 
     private func scheduleAudioRecovery() {
-        guard isArmed, recoveryTask == nil else { return }
+        guard isArmed, !isInterrupted, recoveryTask == nil else { return }
         recoveryTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
             guard let self, !Task.isCancelled else { return }
             self.recoveryTask = nil
-            guard self.isArmed else { return }
+            guard self.isArmed, !self.isInterrupted else { return }
             // Another owner (a call, Read Aloud) has the session: AppState
             // disarms the listener for it, so do not fight over the route.
             guard !self.audioCoordinator.hasOwnersOtherThanWakeListening else { return }
@@ -263,6 +299,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
 
     private func stopEverything() {
         isArmed = false
+        isInterrupted = false
         cycleGeneration &+= 1
         cycleTask?.cancel()
         cycleTask = nil
@@ -286,18 +323,18 @@ private final class WakeAudioSink: @unchecked Sendable {
     private let lock = NSLock()
     private var request: SFSpeechAudioBufferRecognitionRequest?
 
+    /// Both calls hold the lock for the whole operation, so a render-thread
+    /// append never runs concurrently with endAudio on the same request.
     func replace(with newRequest: SFSpeechAudioBufferRecognitionRequest?) {
         lock.lock()
-        let old = request
+        defer { lock.unlock() }
+        request?.endAudio()
         request = newRequest
-        lock.unlock()
-        old?.endAudio()
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
         lock.lock()
-        let current = request
-        lock.unlock()
-        current?.append(buffer)
+        defer { lock.unlock() }
+        request?.append(buffer)
     }
 }

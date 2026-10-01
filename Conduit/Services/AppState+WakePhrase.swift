@@ -106,10 +106,9 @@ extension AppState {
     private func handleWakeDetection(_ binding: WakePhraseBinding) {
         lastAppliedWakeSnapshot = nil
         Haptics.medium()
-        PendingVoiceIntentStore.shared.enqueue(PendingVoiceIntent(
+        PendingVoiceIntentStore.shared.enqueue(PendingVoiceLaunchPolicy.makeWakePhrasePendingIntent(
             profile: binding.key.profileID,
-            startsFreshConversation: binding.startsFreshConversation,
-            source: .wakePhrase
+            startsFreshConversation: binding.startsFreshConversation
         ))
     }
 

@@ -2194,8 +2194,9 @@ final class AppState: ObservableObject {
     lazy var wakeConfiguration = WakeConfigurationStore(defaults: defaults)
     lazy var wakeWordService = AppleSpeechWakeWordService()
     lazy var wakeLifecycle = WakeLifecycleCoordinator(service: wakeWordService)
-    /// Bumped whenever wake settings change, so views and the lifecycle
-    /// re-read the store.
+    /// The store is not observable: this publish is what re-renders Voice
+    /// settings and wakes the lifecycle (via objectWillChange) after a
+    /// wake setting changes.
     @Published var wakeSettingsRevision: UInt64 = 0
     /// Why foreground wake listening last stopped or could not start.
     @Published var wakeListeningFailure: String?

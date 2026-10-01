@@ -106,6 +106,7 @@ final class VoiceAudioSessionCoordinator {
     private let session: VoiceAudioSessionControlling
     private var leases: [UUID: VoiceAudioIntent] = [:]
 
+    /// Single consumer: AppState's wake lifecycle.
     /// Called on the next main-actor turn after the set of owners changed,
     /// so the wake listener can step aside for any other audio owner without
     /// re-entering the coordinator mid-transition.

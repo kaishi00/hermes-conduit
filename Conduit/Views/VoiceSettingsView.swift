@@ -546,7 +546,10 @@ struct VoiceSettingsView: View {
     @ViewBuilder
     private var wakeSection: some View {
         if let wake {
+            // Keyed by profile: the section's state is seeded from the
+            // model once, so another profile must get a fresh section.
             WakePhraseSettingsSection(model: wake)
+                .id(service.profile)
         }
     }
 
@@ -683,6 +686,8 @@ private struct WakePhraseSettingsSection: View {
     let model: WakePhraseSettingsModel
     @State private var phrases: [String]
     @State private var startsFresh: Bool
+    /// Optimistic: stays on while the permission prompt is up.
+    @State private var isEnabled: Bool
     @State private var isRequestingPermission = false
     @State private var permissionDenied = false
 
@@ -690,13 +695,15 @@ private struct WakePhraseSettingsSection: View {
         self.model = model
         _phrases = State(initialValue: model.phrases)
         _startsFresh = State(initialValue: model.startsFreshConversation)
+        _isEnabled = State(initialValue: !model.phrases.isEmpty)
     }
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Wake phrase"), symbol: "ear.and.waveform", tint: .conduitAura) {
             Toggle("Listen for a wake phrase", isOn: Binding(
-                get: { !phrases.isEmpty },
+                get: { isEnabled },
                 set: { enabled in
+                    isEnabled = enabled
                     if enabled { enable() } else { save([]) }
                 }
             ))
@@ -747,7 +754,10 @@ private struct WakePhraseSettingsSection: View {
             let granted = await AppleSpeechWakeWordService.requestPermissions()
             isRequestingPermission = false
             permissionDenied = !granted
-            guard granted else { return }
+            guard granted else {
+                isEnabled = false
+                return
+            }
             save([model.suggestedPhrase])
         }
     }
@@ -755,6 +765,7 @@ private struct WakePhraseSettingsSection: View {
     private func save(_ updated: [String]) {
         let canonical = VoiceSpokenCommands.canonicalizedPhraseList(updated)
         phrases = canonical
+        isEnabled = !canonical.isEmpty
         model.save(canonical, startsFresh)
     }
 }
