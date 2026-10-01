@@ -824,6 +824,20 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(projects[0].previewSessions.map(\.title), ["Plan the trip"])
     }
 
+    func testProjectTreeMarksAutoDiscoveredReposAsNotEditable() {
+        let projects = MessageNormalizer.normalizeProjects(
+            .object([
+                "projects": .array([
+                    .object(["id": .string("p1"), "label": .string("Skunkworks"), "isAuto": .bool(false)]),
+                    .object(["id": .string("auto:repo"), "label": .string("repo"), "isAuto": .bool(true)])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        XCTAssertEqual(projects.map(\.isAuto), [false, true])
+    }
+
     func testProjectWithoutPrimaryPathAnchorsAtFirstRepoRoot() {
         // `projects.tree` emits `path: null` for an explicit project whose
         // primary_path was never set, but still seeds its folders as repos.

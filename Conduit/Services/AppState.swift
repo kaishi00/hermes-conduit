@@ -17876,6 +17876,46 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Only projects someone created can be renamed or deleted: Home is
+    /// immutable, and auto-discovered repos have no project record.
+    func isProjectEditable(_ project: ProjectSummary) -> Bool {
+        supportsProjects && isConnected && !project.isHome && !project.isAuto
+    }
+
+    @discardableResult
+    func renameProject(_ project: ProjectSummary, to name: String) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let client, isProjectEditable(project), !trimmed.isEmpty else { return false }
+        let profile = activeProfile
+        do {
+            try await client.renameProject(project.id, name: trimmed)
+            guard profile == activeProfile, self.client === client else { return false }
+            await loadProjects(using: client, profile: profile)
+            return true
+        } catch {
+            guard profile == activeProfile, self.client === client else { return false }
+            errorMessage = AppLocalization.string("Could not rename \(project.title): \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteProject(_ project: ProjectSummary) async -> Bool {
+        guard let client, isProjectEditable(project) else { return false }
+        let profile = activeProfile
+        do {
+            try await client.deleteProject(project.id)
+            guard profile == activeProfile, self.client === client else { return false }
+            projects.removeAll { $0.id == project.id }
+            await loadProjects(using: client, profile: profile)
+            return true
+        } catch {
+            guard profile == activeProfile, self.client === client else { return false }
+            errorMessage = AppLocalization.string("Could not delete \(project.title): \(error.localizedDescription)")
+            return false
+        }
+    }
+
     /// Projects a conversation can be moved into: every project with a root
     /// folder except Home, which has no folder to move into. Mirrors the
     /// Hermes Desktop "Move to project" submenu.
