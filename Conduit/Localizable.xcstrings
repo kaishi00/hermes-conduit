@@ -5458,6 +5458,16 @@
         }
       }
     },
+    "Wait for the current conversation change to finish, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请等待当前对话更改完成后再试。"
+          }
+        }
+      }
+    },
     "Could not create the project: %@" : {
       "localizations" : {
         "zh-Hans" : {

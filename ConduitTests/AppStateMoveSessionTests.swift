@@ -164,4 +164,31 @@ extension AppStateDecisionFenceTests {
         XCTAssertTrue(appState.projectMoveTargets.isEmpty, "the action is no longer offered")
         XCTAssertNotNil(appState.errorMessage)
     }
+
+    func testNewConnectionProbesTheMoveRPCAgain() async throws {
+        let appState = makeMoveAppState()
+        let socket = ClarifyFakeSocket()
+        let transport = ClarifyFakeTransport()
+        let first = try await installMoveClient(appState, socket: socket, transport: transport)
+        try await loadMoveProjects(appState, socket: socket)
+        let target = try XCTUnwrap(appState.projectMoveTargets.first)
+
+        var move: Task<Bool, Never>?
+        let request = try await nextRequest(on: socket, "the workspace move request") {
+            move = Task { await appState.moveSession(self.liveSession(), to: target) }
+        }
+        try respond(on: socket, to: request, with: [
+            "error": ["code": -32601, "message": "Method not found: session.workspace.move"]
+        ])
+        _ = await move?.value
+        XCTAssertFalse(appState.supportsSessionWorkspaceMove)
+
+        // A reconnect builds a new client; the gateway behind it may have
+        // been upgraded in place, so the suppression must not carry over.
+        let second = try await installMoveClient(appState, socket: ClarifyFakeSocket(), transport: ClarifyFakeTransport())
+        first.disconnect()
+        XCTAssertTrue(appState.supportsSessionWorkspaceMove)
+        XCTAssertEqual(appState.projectMoveTargets.map(\.id), ["p1"])
+        second.disconnect()
+    }
 }

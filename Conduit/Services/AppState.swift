@@ -17553,6 +17553,10 @@ final class AppState: ObservableObject {
     /// reloaded afterwards instead of patched locally.
     @discardableResult
     func moveSession(_ session: SessionSummary, to project: ProjectSummary) async -> Bool {
+        if sessionMutationID != nil {
+            errorMessage = AppLocalization.string("Wait for the current conversation change to finish, then try again.")
+            return false
+        }
         guard let client,
               supportsProjects,
               supportsSessionWorkspaceMove,
