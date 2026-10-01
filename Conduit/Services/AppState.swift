@@ -563,7 +563,9 @@ final class AppState: ObservableObject {
     /// The client whose gateway rejected `session.workspace.move` as an
     /// unknown method. Scoped to that client so any new connection (a
     /// reconnect, or a gateway upgraded in place) probes the RPC again.
-    private weak var workspaceMoveUnsupportedClient: HermesClient?
+    private weak var workspaceMoveUnsupportedClient: HermesClient? {
+        willSet { objectWillChange.send() }
+    }
 
     /// False once the current connection's gateway rejected
     /// `session.workspace.move`, so "Move to Project" stops being offered.
@@ -17580,8 +17582,10 @@ final class AppState: ObservableObject {
               !project.isHome,
               let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
               !path.isEmpty,
-              sessionMutationID == nil,
-              sessionBelongsToProfile(session, profile: activeProfile) else { return false }
+              sessionBelongsToProfile(session, profile: activeProfile) else {
+            errorMessage = AppLocalization.string("This conversation can't be moved to \(project.title).")
+            return false
+        }
 
         let profile = activeProfile
         sessionMutationID = session.id
@@ -17599,7 +17603,6 @@ final class AppState: ObservableObject {
             if isMethodUnavailable(error) {
                 // The project tree still works on this gateway; only the
                 // move is missing, so hide the action instead of projects.
-                objectWillChange.send()
                 workspaceMoveUnsupportedClient = client
                 errorMessage = AppLocalization.string("Update Hermes to move conversations between projects.")
             } else {

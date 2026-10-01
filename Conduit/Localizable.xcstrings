@@ -5478,6 +5478,16 @@
         }
       }
     },
+    "This conversation can't be moved to %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将此对话移至 %@。"
+          }
+        }
+      }
+    },
     "Could not create the project: %@" : {
       "localizations" : {
         "zh-Hans" : {
