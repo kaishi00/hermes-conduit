@@ -137,7 +137,9 @@ enum VoiceSpokenCommands {
         let spoken = words.joined()
         guard !spoken.isEmpty else { return false }
         return phrases.contains { phrase in
-            let key = commandWords(phrase).joined()
+            var phraseWords = commandWords(phrase)
+            stripCourtesies(&phraseWords)
+            let key = phraseWords.joined()
             guard !key.isEmpty else { return false }
             return (1...3).contains { spoken == String(repeating: key, count: $0) }
         }

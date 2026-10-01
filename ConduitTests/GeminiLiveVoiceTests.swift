@@ -1675,6 +1675,19 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGeminiLivePauseMidSentenceNeverEndsTheCall() async {
+        let (controller, session, _, _, _) = makeGeminiController(endPhrases: ["bye"], clock: Date.init)
+        controller.lateEndPhraseDelay = 0.01
+        await controller.start()
+        session.becomeReady()
+
+        // "By the way, …" with a pause after the first word.
+        session.onEvent?(.inputTranscription("By"))
+        try? await Task.sleep(for: .milliseconds(200))
+        XCTAssertFalse(controller.isEnding, "an unfinished utterance is never an end")
+        controller.stop()
+    }
+
     func testGeminiLiveSeparateUtterancesNeverCombineIntoAnEndPhrase() async {
         let (controller, session, _, _, _) = makeGeminiController(endPhrases: ["end conversation"], clock: Date.init)
         controller.lateEndPhraseDelay = 0.01
@@ -1684,7 +1697,7 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.inputTranscription("End"))
         session.onEvent?(.outputTranscription("End what?"))
         session.onEvent?(.turnComplete)
-        session.onEvent?(.inputTranscription("conversation"))
+        session.onEvent?(.inputTranscription("conversation."))
         try? await Task.sleep(for: .milliseconds(200))
         XCTAssertFalse(controller.isEnding)
         controller.stop()

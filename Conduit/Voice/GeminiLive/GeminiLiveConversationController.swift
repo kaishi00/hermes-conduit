@@ -526,8 +526,17 @@ final class GeminiLiveConversationController: ObservableObject {
     func endIfUnansweredGoodbye() {
         guard isActive, endRequestedAt == nil, !modelTurnActive,
               let exchangeUserEntry, let entry = transcript.first(where: { $0.id == exchangeUserEntry }),
+              Self.endsAnUtterance(entry.text),
               VoiceSpokenCommands.matchesSpokenCommand(entry.text, phrases: activeEndPhrases) else { return }
         requestEnd(awaitingReply: true)
+    }
+
+    /// Gemini closes a finished utterance's transcript with sentence
+    /// punctuation; a chunk that stops without it ("By" of "By the way…")
+    /// may be a pause mid-sentence, which must never end the call.
+    nonisolated static func endsAnUtterance(_ text: String) -> Bool {
+        guard let last = text.trimmingCharacters(in: .whitespacesAndNewlines).last else { return false }
+        return ".!?。！？".contains(last)
     }
 
     /// An audio interruption stopped the microphone. Restart it once the

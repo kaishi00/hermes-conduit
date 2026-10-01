@@ -54,6 +54,12 @@ final class VoiceSpokenCommandMatchingTests: XCTestCase {
         }
     }
 
+    func testSpokenCommandMatchingHandlesConfiguredPhrasesWithCourtesies() {
+        XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand("Okay, bye.", phrases: ["okay bye"]))
+        XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand("Bye.", phrases: ["okay bye"]))
+        XCTAssertFalse(VoiceSpokenCommands.matchesSpokenCommand("Okay.", phrases: ["okay bye"]))
+    }
+
     func testUtteranceCasePunctuationAndWhitespaceNormalizeToMatch() {
         let phrases = ["goodbye"]
         XCTAssertTrue(VoiceSpokenCommands.matches("Goodbye.", phrases: phrases))
