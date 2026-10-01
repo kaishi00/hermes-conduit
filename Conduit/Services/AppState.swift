@@ -3066,8 +3066,28 @@ final class AppState: ObservableObject {
                 try? await Task.sleep(for: Self.voiceCallCheckpointInterval)
                 guard !Task.isCancelled, let self, let recorder = self.voiceCallRecorder else { return }
                 self.captureVoiceCall()
-                self.checkpointVoiceCall(recorder)
+                if self.isLiveVoiceCallActive {
+                    self.checkpointVoiceCall(recorder)
+                } else {
+                    // The call failed and its sheet is still open: nothing
+                    // is left to stall, so save it as before.
+                    await self.saveIdleVoiceCall(recorder)
+                }
             }
+        }
+    }
+
+    private func saveIdleVoiceCall(_ recorder: VoiceTranscriptRecorder) async {
+        let dashboard = activeDashboardID?.uuidString ?? "-"
+        let checkpointed = recorder.callID
+        await recorder.flush()
+        // Closed meanwhile: the closing save owns the outbox entry now.
+        guard voiceCallRecorder === recorder else { return }
+        voiceTranscriptsSaving.remove(checkpointed)
+        dequeueVoiceTranscript(callID: checkpointed)
+        if let request = recorder.outboxRequest {
+            queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile)
+            voiceTranscriptsSaving.insert(request.callID)
         }
     }
 
@@ -3236,10 +3256,11 @@ final class AppState: ObservableObject {
         // Opening a saved row resumes it under a new runtime id the catalog
         // row may not list yet: match every identity the open chat has.
         guard let ids = offlineChatIdentities() else { return nil }
-        guard let session = activeProfileSessions.first(where: { row in
-            !ids.isDisjoint(with: [row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
-        }), let tagged = voiceSessionTag(for: session), tagged.tag.kind == .call else { return nil }
-        return tagged.id
+        for row in activeProfileSessions
+        where !ids.isDisjoint(with: [row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds) {
+            if let tagged = voiceSessionTag(for: row), tagged.tag.kind == .call { return tagged.id }
+        }
+        return nil
     }
 
     /// Whether Resume Call has a live voice mode to resume with.

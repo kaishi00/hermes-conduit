@@ -810,6 +810,7 @@ struct ComposerBar: View {
                 }
                 Text(AppLocalization.string("Resume call"))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             .font(.footnote.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
