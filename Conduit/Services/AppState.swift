@@ -1423,14 +1423,12 @@ final class AppState: ObservableObject {
                 async let memory = wantsMemory ? tokens.memoryContext() : nil
                 async let personality = wantsPersonality ? tokens.personality() : nil
                 let status = try await tokens.availability()
-                let resolvedSearch = await search
-                let resolvedMemory = await memory
-                let resolvedPersonality = await personality
-                if status.isAvailable {
-                    self.geminiLiveSearchSource = resolvedSearch
-                    self.geminiLiveMemoryContext = resolvedMemory
-                    self.geminiLivePersonality = resolvedPersonality
-                }
+                // Unavailable: return now; leaving scope cancels the other
+                // calls instead of waiting on them.
+                guard status.isAvailable else { return status }
+                self.geminiLiveSearchSource = await search
+                self.geminiLiveMemoryContext = await memory
+                self.geminiLivePersonality = await personality
                 return status
             },
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens),

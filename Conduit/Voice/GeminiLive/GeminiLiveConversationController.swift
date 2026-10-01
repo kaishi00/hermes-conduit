@@ -359,7 +359,16 @@ final class GeminiLiveConversationController: ObservableObject {
         let session = makeSession()
         session.onEvent = { [weak self] in self?.handle($0) }
         session.onStateChange = { [weak self] in self?.sessionStateChanged($0) }
-        session.onConnectionReplaced = { [weak self] in self?.tools.connectionReplaced() }
+        session.onConnectionReplaced = { [weak self] in
+            guard let self else { return }
+            // Ending: outcomes stay pending for Hermes to report, so a
+            // GoAway handoff during the goodbye must not clear that.
+            if self.endRequestedAt == nil {
+                self.tools.connectionReplaced()
+            } else {
+                self.tools.beginEnding()
+            }
+        }
         self.session = session
         input.onChunk = { [weak self] chunk in self?.microphoneChunk(chunk) }
         input.onInterrupted = { [weak self] in self?.captureInterrupted() }
@@ -552,6 +561,10 @@ final class GeminiLiveConversationController: ObservableObject {
             if endRequestedAt == nil { phase = .listening }
             scheduleIdleFlush()
         case .toolCall(let calls):
+            // Which connection the calls arrived on, read now: a handoff
+            // can complete before the tasks below first run.
+            let calledOn = session
+            let generation = calledOn?.connectionGeneration
             for call in calls {
                 Task { [weak self] in
                     guard let self else { return }
@@ -559,8 +572,6 @@ final class GeminiLiveConversationController: ObservableObject {
                     // any speech since the user's request counts.
                     let calledAt = self.now()
                     let requestedAt = min(calledAt, self.lastUserSpeechAt ?? calledAt)
-                    let calledOn = self.session
-                    let generation = calledOn?.connectionGeneration
                     let outgoing = await self.tools.handle(call)
                     // A new connection took over while this ran (a GoAway
                     // handoff during a lookup): the call is gone with the

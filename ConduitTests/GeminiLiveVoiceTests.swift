@@ -1747,6 +1747,24 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGeminiLiveLookupCallReadsItsConnectionWhenItArrives() async {
+        let search = ParkedGeminiLiveWebSearch()
+        let (controller, session, _, _, _) = makeGeminiController(webSearch: search, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        // The handoff completes before the call's task first runs.
+        session.onEvent?(.toolCall([.init(id: "s1", name: "web_search", arguments: ["query": "weather"])]))
+        session.connectionGeneration += 1
+        session.onConnectionReplaced?()
+        await settle(40)
+        search.finish([GeminiLiveWebResult(title: "Toronto", url: "https://example.com", snippet: "Sunny")])
+        await settle(40)
+
+        XCTAssertTrue(session.sent.allSatisfy { $0["toolResponse"] == nil }, "The old connection's call is never answered on the new one")
+        XCTAssertEqual(controller.pendingTextTurnCountForTesting, 1)
+        controller.stop()
+    }
+
     func testGeminiLiveLookupOnTheSameConnectionIsAnsweredOnItsCall() async {
         let search = ParkedGeminiLiveWebSearch()
         let (controller, session, _, _, _) = makeGeminiController(webSearch: search, clock: Date.init)
