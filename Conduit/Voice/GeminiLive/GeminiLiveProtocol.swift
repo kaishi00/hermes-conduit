@@ -9,6 +9,19 @@
 
 import Foundation
 
+/// What a live voice conversation sends, in no provider's wire format: each
+/// session encodes it for its own server (Gemini Live, Grok Live).
+enum LiveVoiceClientMessage: Equatable {
+    /// 16 kHz PCM16 mono microphone audio.
+    case audio(Data)
+    /// The microphone was muted mid-utterance: end the user's turn now.
+    case audioStreamEnd
+    /// A text turn from the client (a background-job update).
+    case textTurn(String)
+    /// The answer to a function call.
+    case toolResponse(id: String, name: String, result: [String: String], scheduling: GeminiLiveProtocol.Scheduling?)
+}
+
 enum GeminiLiveProtocol {
     static let model = "models/gemini-3.8-live"
     static let inputSampleRate: Double = 16_000
@@ -154,6 +167,17 @@ enum GeminiLiveProtocol {
                 ],
             ],
         ]
+    }
+
+    /// The Gemini Live frame for a client message.
+    static func message(for message: LiveVoiceClientMessage) -> [String: Any] {
+        switch message {
+        case .audio(let pcm16): return audioMessage(pcm16: pcm16)
+        case .audioStreamEnd: return audioStreamEndMessage()
+        case .textTurn(let text): return textTurnMessage(text)
+        case .toolResponse(let id, let name, let result, let scheduling):
+            return toolResponseMessage(id: id, name: name, result: result, scheduling: scheduling)
+        }
     }
 
     static func encode(_ message: [String: Any]) throws -> String {

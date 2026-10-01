@@ -118,7 +118,7 @@ struct MainView: View {
             of: VoiceScreenAwake.holdsScreenAwake(
                 enabled: keepScreenAwake,
                 voiceSheetShown: appState.showVoiceSheet,
-                liveSheetShown: appState.showGeminiLiveSheet || appState.showGPTLiveSheet
+                liveSheetShown: appState.showGeminiLiveSheet || appState.showGPTLiveSheet || appState.showGrokLiveSheet
             ),
             initial: true
         ) { _, holds in
@@ -131,6 +131,16 @@ struct MainView: View {
                 controller: appState.geminiLiveController,
                 onClose: appState.closeGeminiLiveConversation,
                 onRetry: { Task { await appState.geminiLiveController.start() } }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $appState.showGrokLiveSheet, onDismiss: appState.closeGrokLiveConversation) {
+            GeminiLiveVoiceSheet(
+                controller: appState.grokLiveController,
+                engine: .grok,
+                onClose: appState.closeGrokLiveConversation,
+                onRetry: { Task { await appState.grokLiveController.start() } }
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)

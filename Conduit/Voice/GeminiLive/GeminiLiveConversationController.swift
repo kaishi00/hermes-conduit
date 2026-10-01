@@ -30,13 +30,13 @@ protocol GeminiLiveSessionControlling: AnyObject {
     func stop()
     /// `onSent` runs once the socket took the message; `onFailure` when it
     /// never reached the socket.
-    func send(_ message: [String: Any], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?)
+    func send(_ message: LiveVoiceClientMessage, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?)
 }
 
 extension GeminiLiveSessionControlling {
     var connectionGeneration: Int { 0 }
-    func send(_ message: [String: Any]) { send(message, onSent: nil, onFailure: nil) }
-    func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?) {
+    func send(_ message: LiveVoiceClientMessage) { send(message, onSent: nil, onFailure: nil) }
+    func send(_ message: LiveVoiceClientMessage, onFailure: (@MainActor () -> Void)?) {
         send(message, onSent: nil, onFailure: onFailure)
     }
 }
@@ -424,7 +424,7 @@ final class GeminiLiveConversationController: ObservableObject {
         if muted {
             stopInput()
             // End the user's turn now instead of waiting for more audio.
-            if session?.isReady == true { session?.send(GeminiLiveProtocol.audioStreamEndMessage()) }
+            if session?.isReady == true { session?.send(.audioStreamEnd) }
         } else if session?.isReady == true {
             startInput()
         }
@@ -662,7 +662,7 @@ final class GeminiLiveConversationController: ObservableObject {
     private func microphoneChunk(_ chunk: Data) {
         guard !isMicrophoneMuted, let session, session.isReady else { return }
         guard !isMicrophoneGatedForSpeaker else { return }
-        session.send(GeminiLiveProtocol.audioMessage(pcm16: chunk))
+        session.send(.audio(chunk))
     }
 
     /// On an open speaker (no headset), the model's own voice reaches the
@@ -728,7 +728,7 @@ final class GeminiLiveConversationController: ObservableObject {
                         self.scheduleIdleFlush()
                     }
                 }
-                session?.send(GeminiLiveProtocol.toolResponseMessage(
+                session?.send(.toolResponse(
                     id: id,
                     name: name,
                     result: result,
@@ -763,7 +763,7 @@ final class GeminiLiveConversationController: ObservableObject {
         // An update that never reached the socket waits for the next
         // connection instead of being lost; a job notice whose conversation
         // is gone goes back to the supervisor.
-        session.send(GeminiLiveProtocol.textTurnMessage(text), onSent: { [weak self] in
+        session.send(.textTurn(text), onSent: { [weak self] in
             self?.tools.textUpdateDelivered(jobID: noticeJobID)
         }, onFailure: { [weak self, weak session] in
             guard let self else { return }

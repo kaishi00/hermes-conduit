@@ -17871,6 +17871,236 @@
           }
         }
       }
+    },
+    "Available (%@, via %@)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用（%1$@，通过 %2$@）"
+          }
+        }
+      }
+    },
+    "Available (%@, voice %@, via %@)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用（%1$@，声音 %2$@，通过 %3$@）"
+          }
+        }
+      }
+    },
+    "Check Grok Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查 Grok Live"
+          }
+        }
+      }
+    },
+    "Connecting to Grok Live…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在连接 Grok Live…"
+          }
+        }
+      }
+    },
+    "Could not open the Grok Live connection." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开 Grok Live 连接。"
+          }
+        }
+      }
+    },
+    "Couldn't connect to Grok Live." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到 Grok Live。"
+          }
+        }
+      }
+    },
+    "Couldn't connect to Grok Live: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到 Grok Live：%@"
+          }
+        }
+      }
+    },
+    "Each call's transcript is saved to your Hermes server's history and shows under Voice in Sessions, where you can read it or resume the call. Needs an up-to-date Hermes notifier plugin. Shared by every live voice mode. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次通话的转写会保存到你的 Hermes 服务器历史记录中，并显示在“会话”的“语音”下，你可以在那里阅读或继续通话。需要最新的 Hermes 通知插件。所有实时语音模式共用此设置。将在下一次对话中生效。"
+          }
+        }
+      }
+    },
+    "Grok Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live"
+          }
+        }
+      }
+    },
+    "Grok Live gets what your Hermes agent remembers about you. That memory is sent to xAI with the conversation. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live 会获得你的 Hermes 智能体记住的关于你的信息。这些记忆会随对话发送给 xAI。将在下一次对话中生效。"
+          }
+        }
+      }
+    },
+    "Grok Live is not available on this Hermes server." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器上无法使用 Grok Live。"
+          }
+        }
+      }
+    },
+    "Grok Live is not available on this Hermes server: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器上无法使用 Grok Live：%@"
+          }
+        }
+      }
+    },
+    "Grok Live refused the connection." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live 拒绝了连接。"
+          }
+        }
+      }
+    },
+    "Grok Live refused the connection: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live 拒绝了连接：%@"
+          }
+        }
+      }
+    },
+    "Grok Live talks with the personality in this profile's SOUL.md. SOUL.md is sent to xAI with the conversation. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live 会以此配置文件 SOUL.md 中的个性说话。SOUL.md 会随对话发送给 xAI。将在下一次对话中生效。"
+          }
+        }
+      }
+    },
+    "Grok: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok：%@"
+          }
+        }
+      }
+    },
+    "Set up Grok Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置 Grok Live"
+          }
+        }
+      }
+    },
+    "Sign in to SuperGrok" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录 SuperGrok"
+          }
+        }
+      }
+    },
+    "Sign in with your SuperGrok or X Premium+ account, or set XAI_API_KEY in the active Hermes profile’s .env file instead. The sign-in stays on your Hermes server." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用你的 SuperGrok 或 X Premium+ 账户登录，或者改为在当前 Hermes 配置文件的 .env 文件中设置 XAI_API_KEY。登录信息会保留在你的 Hermes 服务器上。"
+          }
+        }
+      }
+    },
+    "Talk with GPT-Live on the ChatGPT subscription your Hermes server is signed in to, instead of the Hermes speech pipeline. Hermes still does the work: GPT-Live hands requests to background jobs on this profile. The sign-in stays on your Hermes server, and it never falls back to API billing. Turning this on turns Gemini Live and Grok Live off." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用你的 Hermes 服务器已登录的 ChatGPT 订阅与 GPT-Live 对话，而不是使用 Hermes 语音流程。工作仍由 Hermes 完成：GPT-Live 会把请求交给此配置文件上的后台任务。登录信息会保留在你的 Hermes 服务器上，并且绝不会改用 API 计费。开启此项会关闭 Gemini Live 和 Grok Live。"
+          }
+        }
+      }
+    },
+    "Talk with Grok Live, xAI's realtime voice model, instead of the Hermes speech pipeline. Hermes still does the work: Grok hands requests to background jobs on this profile. Your Hermes server connects to xAI with its SuperGrok sign-in (or its XAI_API_KEY), which stays on the server. Turning this on turns Gemini Live and GPT-Live off." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 xAI 的实时语音模型 Grok Live 对话，而不是使用 Hermes 语音流程。工作仍由 Hermes 完成：Grok 会把请求交给此配置文件上的后台任务。你的 Hermes 服务器会使用其 SuperGrok 登录（或其 XAI_API_KEY）连接 xAI，这些凭据会保留在服务器上。开启此项会关闭 Gemini Live 和 GPT-Live。"
+          }
+        }
+      }
+    },
+    "The voice and model are set on your Hermes server (voice.grok_live in the profile's config)." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "声音和模型在你的 Hermes 服务器上设置（配置文件中的 voice.grok_live）。"
+          }
+        }
+      }
+    },
+    "Use Grok Live for voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Grok Live 进行语音对话"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -45,11 +45,13 @@ enum CarPlayVoiceMode: Equatable {
     case classic
     case geminiLive
     case gptLive
+    case grokLive
 
     @MainActor
     static func current(in appState: AppState) -> CarPlayVoiceMode {
         if appState.isGeminiLiveEnabled { return .geminiLive }
         if appState.isGPTLiveEnabled { return .gptLive }
+        if appState.isGrokLiveEnabled { return .grokLive }
         return .classic
     }
 }
@@ -58,11 +60,13 @@ enum CarPlayVoiceMode: Equatable {
 enum CarPlayLiveVoiceMode: Equatable {
     case geminiLive
     case gptLive
+    case grokLive
 
     var voiceMode: CarPlayVoiceMode {
         switch self {
         case .geminiLive: return .geminiLive
         case .gptLive: return .gptLive
+        case .grokLive: return .grokLive
         }
     }
 }
@@ -191,6 +195,7 @@ final class CarPlayVoiceCoordinator {
         appState.handleCarPlayVoiceSurfaceRemoved()
         appState.releaseCarPlayGeminiLive()
         appState.releaseCarPlayGPTLive()
+        appState.releaseCarPlayGrokLive()
     }
 
     // MARK: - Template
@@ -247,6 +252,8 @@ final class CarPlayVoiceCoordinator {
         case .classic: beginObservingController(appState.voiceConversationController)
         case .geminiLive: beginObservingGeminiLive(appState.geminiLiveController)
         case .gptLive: beginObservingGPTLive(appState.gptLiveController)
+        // Grok Live runs on Gemini Live's controller, so its phases map the same.
+        case .grokLive: beginObservingGeminiLive(appState.grokLiveController)
         }
     }
 
@@ -264,7 +271,7 @@ final class CarPlayVoiceCoordinator {
             }
     }
 
-    /// Gemini Live mode: CarPlay shows the Gemini conversation's phase
+    /// Gemini Live and Grok Live mode: CarPlay shows the conversation's phase
     /// instead of the classic controller's state.
     private func beginObservingGeminiLive(_ controller: GeminiLiveConversationController) {
         stateObservation?.cancel()
@@ -342,6 +349,14 @@ final class CarPlayVoiceCoordinator {
             case .nothing: break
             }
             return
+        case .grokLive:
+            let grok = appState.grokLiveController
+            switch CarPlayGeminiLiveListenAction.forPhase(grok.phase) {
+            case .start: await establishLiveVoice(.grokLive, appState: appState, generation: generation)
+            case .interrupt: grok.interruptSpeaking()
+            case .nothing: break
+            }
+            return
         }
         let controller = appState.voiceConversationController
         var outcome = AppState.VoiceConversationPrepareOutcome.handled
@@ -367,6 +382,7 @@ final class CarPlayVoiceCoordinator {
         case .classic: appState.closeVoiceConversation()
         case .geminiLive: appState.closeGeminiLiveConversation()
         case .gptLive: appState.closeGPTLiveConversation()
+        case .grokLive: appState.closeGrokLiveConversation()
         }
     }
 
@@ -403,6 +419,15 @@ final class CarPlayVoiceCoordinator {
             }
             await establishLiveVoice(.gptLive, appState: appState, generation: generation)
             return
+        case .grokLive:
+            let grok = appState.grokLiveController
+            guard !grok.isActive else {
+                // Shown, not restarted; the car has no mute control, as with GPT-Live.
+                grok.setMicrophoneMuted(false)
+                return
+            }
+            await establishLiveVoice(.grokLive, appState: appState, generation: generation)
+            return
         }
         let controller = appState.voiceConversationController
         if controller.hasLiveVoiceSession {
@@ -416,7 +441,7 @@ final class CarPlayVoiceCoordinator {
         await completeVoiceEstablishment(generation: generation, outcome: outcome)
     }
 
-    /// Starts a live mode (Gemini Live or GPT-Live) for this CarPlay surface
+    /// Starts a live mode (Gemini Live, GPT-Live or Grok Live) for this CarPlay surface
     /// once Hermes is connected (both start through the host), waiting the
     /// same bounded time as the classic prepare path.
     func establishLiveVoice(_ mode: CarPlayLiveVoiceMode, appState: AppState, generation: UInt64) async {
@@ -452,6 +477,11 @@ final class CarPlayVoiceCoordinator {
             await appState.startGPTLiveForCarPlay()
             if !isCurrent(generation) || !isConnected {
                 appState.releaseCarPlayGPTLive()
+            }
+        case .grokLive:
+            await appState.startGrokLiveForCarPlay()
+            if !isCurrent(generation) || !isConnected {
+                appState.releaseCarPlayGrokLive()
             }
         }
     }

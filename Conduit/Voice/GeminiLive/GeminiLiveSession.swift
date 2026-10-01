@@ -115,10 +115,16 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
     private let session: URLSession
     private let delegate = GeminiLiveSocketDelegate()
 
-    init(url: URL) {
+    convenience init(url: URL) {
+        self.init(request: URLRequest(url: url))
+    }
+
+    /// `request` carries any headers the upgrade needs (Cloudflare Access
+    /// in front of the Hermes dashboard, for Grok Live's relay).
+    init(request: URLRequest) {
         // A session of its own, so its delegate hears this socket's close.
         session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        task = session.webSocketTask(with: url)
+        task = session.webSocketTask(with: request)
         // Model audio frames are larger than URLSession's 1 MB default.
         task.maximumMessageSize = 16 * 1024 * 1024
         task.resume()
@@ -312,8 +318,8 @@ final class GeminiLiveSession {
         handoffID = nil
     }
 
-    func send(_ message: [String: Any], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
-        guard state == .ready, let socket, let text = try? GeminiLiveProtocol.encode(message) else {
+    func send(_ message: LiveVoiceClientMessage, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
+        guard state == .ready, let socket, let text = try? GeminiLiveProtocol.encode(GeminiLiveProtocol.message(for: message)) else {
             onFailure?()
             return
         }

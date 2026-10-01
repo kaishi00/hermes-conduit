@@ -583,6 +583,23 @@ struct SettingsView: View {
                         saveCalls: appState.voiceCallSavingEnabled,
                         setSaveCalls: { appState.setVoiceCallSavingEnabled($0) }
                     ),
+                    grokLive: GrokLiveSettingsModel(
+                        enabled: appState.isGrokLiveEnabled,
+                        setEnabled: { appState.setGrokLiveEnabled($0) },
+                        checkAvailability: {
+                            do {
+                                return .success(try await appState.grokLiveClient.availability())
+                            } catch {
+                                return .failure(error)
+                            }
+                        },
+                        memory: appState.grokLiveMemoryEnabled,
+                        setMemory: { appState.setGrokLiveMemoryEnabled($0) },
+                        personality: appState.grokLivePersonalityEnabled,
+                        setPersonality: { appState.setGrokLivePersonalityEnabled($0) },
+                        saveCalls: appState.voiceCallSavingEnabled,
+                        setSaveCalls: { appState.setVoiceCallSavingEnabled($0) }
+                    ),
                     voiceJobs: VoiceJobModelSettingsModel(
                         provider: voicePreferences.voiceJobProvider,
                         model: voicePreferences.voiceJobModel,

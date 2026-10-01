@@ -1001,19 +1001,24 @@ extension AppStateVoiceCapabilityTests {
 
     func testCarPlayGoingAwayDropsTheHostTextOfACallThatAlreadyFailed() {
         let appState = makeGPTLiveAppState()
-        let all = ["geminiMemory", "geminiPersona", "gptMemory", "gptPersona"]
+        let all = ["geminiMemory", "geminiPersona", "gptMemory", "gptPersona", "grokMemory", "grokPersona"]
         appState.installLiveVoiceHostContextForTesting()
 
         appState.showGPTLiveSheet = true
         appState.showGeminiLiveSheet = true
+        appState.showGrokLiveSheet = true
         appState.releaseCarPlayGPTLive()
         appState.releaseCarPlayGeminiLive()
+        appState.releaseCarPlayGrokLive()
         XCTAssertEqual(appState.liveVoiceHostContextForTesting, all, "the phone's sheets still present them")
 
         appState.showGPTLiveSheet = false
         appState.showGeminiLiveSheet = false
+        appState.showGrokLiveSheet = false
         appState.releaseCarPlayGPTLive()
-        XCTAssertEqual(appState.liveVoiceHostContextForTesting, ["geminiMemory", "geminiPersona"], "nothing presents a failed CarPlay call, so its memory and persona go")
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting, ["geminiMemory", "geminiPersona", "grokMemory", "grokPersona"], "nothing presents a failed CarPlay call, so its memory and persona go")
+        appState.releaseCarPlayGrokLive()
+        XCTAssertEqual(appState.liveVoiceHostContextForTesting, ["geminiMemory", "geminiPersona"])
         appState.releaseCarPlayGeminiLive()
         XCTAssertEqual(appState.liveVoiceHostContextForTesting, [])
     }
