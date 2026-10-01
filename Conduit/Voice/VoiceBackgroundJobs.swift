@@ -120,6 +120,10 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// Consecutive liveness polls that found no registry row for the job.
     /// One miss can be transient; two settle it.
     var consecutiveMissedPolls = 0
+    /// Whether a liveness read has listed this job. For a job on another
+    /// profile, that proves the scoped read really is that profile's
+    /// registry, so a later absence can be trusted.
+    var listedByLivenessPoll = false
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
@@ -665,13 +669,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let row = rows.first { job.owns(sessionID: $0.runtimeSessionId) || job.owns(sessionID: $0.storedSessionId) }
             if let row {
                 jobs[index].consecutiveMissedPolls = 0
+                jobs[index].listedByLivenessPoll = true
                 // A listed, idle runtime is positive evidence the turn ended.
                 if row.isRunning || row.status == "starting" { continue }
             } else {
-                // Another profile's registry read is only trusted when it
-                // lists the job: a gateway that ignored the profile would
-                // otherwise "finish" a job that is still running there.
-                if job.profile != nil { continue }
+                // Another profile's registry is only trusted about absence
+                // once it has listed the job: a gateway that ignored the
+                // profile would otherwise "finish" a job still running there.
+                if job.profile != nil, !job.listedByLivenessPoll { continue }
                 // Absence is only trusted when it repeats: a row missing
                 // from one read must not discard the real completion.
                 jobs[index].consecutiveMissedPolls += 1

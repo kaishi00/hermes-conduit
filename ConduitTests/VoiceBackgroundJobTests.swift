@@ -252,7 +252,16 @@ extension VoiceConversationControllerTests {
         await supervisor.pollOnce()
         await supervisor.pollOnce()
 
-        XCTAssertEqual(supervisor.jobs.first?.status, .running, "only a listed idle row settles it")
+        XCTAssertEqual(supervisor.jobs.first?.status, .running, "a registry that never listed it can't prove it ended")
+
+        // Once that profile's registry has listed the job, its absence counts.
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "working")]
+        await supervisor.pollOnce()
+        fake.liveRows = []
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
     }
 
     func testAMismatchedLeadingTargetStaysInTheTask() async {
