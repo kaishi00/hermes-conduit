@@ -525,40 +525,14 @@ struct SessionList: View {
         .buttonStyle(.plain)
         .accessibilityHint("Swipe or touch and hold for conversation actions.")
         .contextMenu {
-            Button {
-                Haptics.selection()
-                sessionRenameTitle = session.title
-                sessionPendingRename = session
-            } label: {
-                Label("Rename…", systemImage: "pencil")
-            }
-            .disabled(appState.isSessionMutationInFlight(session))
-
-            Button {
-                Haptics.light()
-                appState.toggleSessionPinned(session)
-            } label: {
-                Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
-            }
-
-            MoveToProjectMenu(session: session)
-
-            Button {
-                Task {
-                    Haptics.mutationCompleted(await appState.archiveSession(session))
-                }
-            } label: {
-                Label("Archive", systemImage: "archivebox")
-            }
-            .disabled(appState.isSessionMutationInFlight(session))
-
-            Button(role: .destructive) {
-                Haptics.warning()
-                sessionPendingDeletion = session
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            .disabled(appState.isSessionMutationInFlight(session))
+            SessionActionMenuItems(
+                session: session,
+                onRename: {
+                    sessionRenameTitle = session.title
+                    sessionPendingRename = session
+                },
+                onDelete: { sessionPendingDeletion = session }
+            )
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
@@ -807,6 +781,57 @@ struct SessionRow: View {
     }
 }
 
+/// A conversation's touch-and-hold actions, shared by the main session list
+/// and a project's conversation list so both offer the same menu. Rename and
+/// Delete need a host-owned alert, so the host supplies those two actions.
+private struct SessionActionMenuItems: View {
+    @EnvironmentObject private var appState: AppState
+    let session: SessionSummary
+    var excludingProjectID: String? = nil
+    let onRename: () -> Void
+    let onDelete: () -> Void
+    /// Runs after a mutation that changes which list the row belongs in.
+    var onChanged: () -> Void = {}
+
+    var body: some View {
+        Button {
+            Haptics.selection()
+            onRename()
+        } label: {
+            Label("Rename…", systemImage: "pencil")
+        }
+        .disabled(appState.isSessionMutationInFlight(session))
+
+        Button {
+            Haptics.light()
+            appState.toggleSessionPinned(session)
+        } label: {
+            Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
+        }
+
+        MoveToProjectMenu(session: session, excludingProjectID: excludingProjectID, onMoved: onChanged)
+
+        Button {
+            Task {
+                let archived = await appState.archiveSession(session)
+                Haptics.mutationCompleted(archived)
+                if archived { onChanged() }
+            }
+        } label: {
+            Label("Archive", systemImage: "archivebox")
+        }
+        .disabled(appState.isSessionMutationInFlight(session))
+
+        Button(role: .destructive) {
+            Haptics.warning()
+            onDelete()
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+        .disabled(appState.isSessionMutationInFlight(session))
+    }
+}
+
 /// The session row's "Move to Project" submenu. Hidden when the gateway has
 /// no projects capability or no project with a folder to move into.
 private struct MoveToProjectMenu: View {
@@ -880,6 +905,9 @@ private struct ProjectSessionsSheet: View {
     let project: ProjectSummary
     @State private var detail: ProjectSessionDetail?
     @State private var isLoading = true
+    @State private var sessionPendingDeletion: SessionSummary?
+    @State private var sessionPendingRename: SessionSummary?
+    @State private var sessionRenameTitle = ""
 
     var body: some View {
         NavigationStack {
@@ -924,10 +952,15 @@ private struct ProjectSessionsSheet: View {
                                     }
                                     .buttonStyle(.plain)
                                     .contextMenu {
-                                        MoveToProjectMenu(
+                                        SessionActionMenuItems(
                                             session: session,
                                             excludingProjectID: project.id,
-                                            onMoved: reloadDetail
+                                            onRename: {
+                                                sessionRenameTitle = session.title
+                                                sessionPendingRename = session
+                                            },
+                                            onDelete: { sessionPendingDeletion = session },
+                                            onChanged: reloadDetail
                                         )
                                     }
                                     .listRowBackground(Color.clear)
@@ -961,6 +994,43 @@ private struct ProjectSessionsSheet: View {
             isLoading = true
             detail = await appState.loadProjectSessions(project)
             isLoading = false
+        }
+        .alert("Delete conversation?", isPresented: Binding(
+            get: { sessionPendingDeletion != nil },
+            set: { if !$0 { sessionPendingDeletion = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                guard let session = sessionPendingDeletion else { return }
+                sessionPendingDeletion = nil
+                Task {
+                    if await appState.deleteSession(session) { reloadDetail() }
+                }
+            }
+            Button("Cancel", role: .cancel) { sessionPendingDeletion = nil }
+        } message: {
+            Text("This permanently deletes the conversation and cannot be undone.")
+        }
+        .alert("Rename conversation", isPresented: Binding(
+            get: { sessionPendingRename != nil },
+            set: { if !$0 { sessionPendingRename = nil } }
+        )) {
+            TextField("Conversation title", text: $sessionRenameTitle)
+            Button("Rename") {
+                guard let session = sessionPendingRename,
+                      let title = SessionRenameOperation.normalizedTitle(
+                          sessionRenameTitle,
+                          currentTitle: session.title
+                      ) else { return }
+                sessionPendingRename = nil
+                Task {
+                    if await appState.renameSession(session, to: title) { reloadDetail() }
+                }
+            }
+            .disabled(SessionRenameOperation.normalizedTitle(
+                sessionRenameTitle,
+                currentTitle: sessionPendingRename?.title ?? ""
+            ) == nil)
+            Button("Cancel", role: .cancel) { sessionPendingRename = nil }
         }
     }
 
