@@ -23,6 +23,9 @@ protocol GeminiLiveSessionControlling: AnyObject {
     var onStateChange: (@MainActor (GeminiLiveSession.State) -> Void)? { get set }
     var onConnectionReplaced: (@MainActor () -> Void)? { get set }
     var isReady: Bool { get }
+    /// Changes whenever a new connection takes over; calls made before
+    /// the change can't be answered after it.
+    var connectionGeneration: Int { get }
     func start()
     func stop()
     /// `onSent` runs once the socket took the message; `onFailure` when it
@@ -31,6 +34,7 @@ protocol GeminiLiveSessionControlling: AnyObject {
 }
 
 extension GeminiLiveSessionControlling {
+    var connectionGeneration: Int { 0 }
     func send(_ message: [String: Any]) { send(message, onSent: nil, onFailure: nil) }
     func send(_ message: [String: Any], onFailure: (@MainActor () -> Void)?) {
         send(message, onSent: nil, onFailure: onFailure)
@@ -150,7 +154,7 @@ final class GeminiLiveConversationController: ObservableObject {
         case .google:
             lookups = "For weather, news, sports, prices, and other quick facts from the web, use Google Search and answer directly."
         case .hermes:
-            lookups = "For weather, news, sports, prices, and other quick facts from the web, call web_search and answer directly from its results."
+            lookups = "For weather, news, sports, prices, and other quick facts from the web, call web_search and answer directly from its results. A lookup takes a few seconds and you can't speak while it runs, so first say two or three words out loud, like \"Let me check.\", then call it."
         case .none:
             lookups = "You have no web search. A question that needs current information from the web (weather, news, prices) is work for Hermes: offer to start a job for it."
         }
@@ -355,7 +359,16 @@ final class GeminiLiveConversationController: ObservableObject {
         let session = makeSession()
         session.onEvent = { [weak self] in self?.handle($0) }
         session.onStateChange = { [weak self] in self?.sessionStateChanged($0) }
-        session.onConnectionReplaced = { [weak self] in self?.tools.connectionReplaced() }
+        session.onConnectionReplaced = { [weak self] in
+            guard let self else { return }
+            // Ending: outcomes stay pending for Hermes to report, so a
+            // GoAway handoff during the goodbye must not clear that.
+            if self.endRequestedAt == nil {
+                self.tools.connectionReplaced()
+            } else {
+                self.tools.beginEnding()
+            }
+        }
         self.session = session
         input.onChunk = { [weak self] chunk in self?.microphoneChunk(chunk) }
         input.onInterrupted = { [weak self] in self?.captureInterrupted() }
@@ -548,6 +561,10 @@ final class GeminiLiveConversationController: ObservableObject {
             if endRequestedAt == nil { phase = .listening }
             scheduleIdleFlush()
         case .toolCall(let calls):
+            // Which connection the calls arrived on, read now: a handoff
+            // can complete before the tasks below first run.
+            let calledOn = session
+            let generation = calledOn?.connectionGeneration
             for call in calls {
                 Task { [weak self] in
                     guard let self else { return }
@@ -556,7 +573,11 @@ final class GeminiLiveConversationController: ObservableObject {
                     let calledAt = self.now()
                     let requestedAt = min(calledAt, self.lastUserSpeechAt ?? calledAt)
                     let outgoing = await self.tools.handle(call)
-                    self.dispatch(outgoing)
+                    // A new connection took over while this ran (a GoAway
+                    // handoff during a lookup): the call is gone with the
+                    // old one, so its answer goes out as a text update.
+                    let replaced = self.session !== calledOn || self.session?.connectionGeneration != generation
+                    self.dispatch(outgoing, unanswerable: replaced ? [call.id] : [])
                     // A start_job its own call didn't answer is running
                     // (other jobs may settle in the same batch): make sure
                     // the user heard that it was taken.
@@ -619,19 +640,20 @@ final class GeminiLiveConversationController: ObservableObject {
 
     // MARK: Outgoing
 
-    private func dispatch(_ outgoing: [GeminiLiveToolBridge.Outgoing]) {
+    private func dispatch(_ outgoing: [GeminiLiveToolBridge.Outgoing], unanswerable: Set<String> = []) {
         for item in outgoing {
             switch item {
-            case .toolResponse(_, _, let result, let scheduling) where session?.isReady != true:
-                // The connection dropped while this was being prepared: the
-                // call can't be answered any more, so the outcome is kept as
-                // a text update rather than lost. A silent one stays silent.
-                if scheduling != .silent, let text = Self.fallbackText(for: result) { pendingTextTurns.append(text) }
+            case .toolResponse(let id, let name, let result, let scheduling) where session?.isReady != true || unanswerable.contains(id):
+                // The connection dropped or was replaced while this was being
+                // prepared: the call can't be answered any more, so the
+                // outcome is kept as a text update rather than lost. A silent
+                // one stays silent.
+                if scheduling != .silent, let text = Self.fallbackText(for: result, name: name) { pendingTextTurns.append(text) }
             case .toolResponse(let id, let name, let result, let scheduling):
                 // The outcome is already marked delivered, so a send that
                 // fails keeps it as a text update for the next connection.
                 var onFailure: (@MainActor () -> Void)?
-                if scheduling != .silent, let text = Self.fallbackText(for: result), let sentOn = session {
+                if scheduling != .silent, let text = Self.fallbackText(for: result, name: name), let sentOn = session {
                     onFailure = { [weak self, weak sentOn] in
                         // Only for the conversation that sent it, not one
                         // started since.
@@ -707,15 +729,32 @@ final class GeminiLiveConversationController: ObservableObject {
 
     var pendingTextTurnCountForTesting: Int { pendingTextTurns.count }
 
-    /// A job outcome that can no longer go back on its call, as a text turn.
-    /// Nil for answers only meaningful to the call (list_jobs, errors).
-    static func fallbackText(for result: [String: String]) -> String? {
+    /// A job outcome or lookup answer that can no longer go back on its
+    /// call, as a text turn. Nil for answers only meaningful to the call
+    /// (list_jobs, cancel_job, errors).
+    static func fallbackText(for result: [String: String], name: String? = nil) -> String? {
+        if name == GeminiLiveToolBridge.Tool.webSearch.rawValue || name == GeminiLiveToolBridge.Tool.recallMemory.rawValue {
+            return lookupFallbackText(for: result)
+        }
         guard let title = result["title"], let status = result["status"] else { return nil }
         if let outcome = result["result"] {
             return VoiceBackgroundJobSupervisor.completionPrompt(title: title, result: outcome)
         }
         let detail = result["error"].map { " (\($0))" } ?? ""
         return GeminiLiveToolBridge.relayPrompt("The background job \"\(title)\" is \(status)\(detail).")
+    }
+
+    /// A web_search or recall_memory answer whose call was lost with its
+    /// connection: the model asked for it and is waiting to answer from it.
+    /// Not UI copy (written for the model), so not localized.
+    static func lookupFallbackText(for result: [String: String]) -> String? {
+        if let results = result["results"], !results.isEmpty {
+            return "[The lookup you just made returned this. Answer the user's question from it now, briefly; don't look it up again:\n\(results)]"
+        }
+        if let error = result["error"], !error.isEmpty {
+            return "[The lookup you just made failed (\(error)). Tell the user in one short sentence.]"
+        }
+        return nil
     }
 
     // MARK: Audio input

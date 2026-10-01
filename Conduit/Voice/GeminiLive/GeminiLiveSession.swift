@@ -5,7 +5,9 @@
 //  One logical Gemini Live conversation over one or more WebSockets. Every
 //  connection gets a fresh single-use token from Hermes. A GoAway or a lost
 //  socket reconnects with the latest session-resumption handle, so the
-//  conversation (and its context-window compression) carries over.
+//  conversation (and its context-window compression) carries over. On a
+//  GoAway the old connection keeps carrying the conversation, both ways,
+//  until the new one is set up: the handoff is not heard as a dropout.
 //
 
 import Foundation
@@ -178,7 +180,9 @@ final class GeminiLiveSession {
         case idle
         case connecting
         case ready
-        /// Switching to a new connection (GoAway or a dropped socket).
+        /// Switching to a new connection after the old one dropped. A GoAway
+        /// handoff stays `ready`: the old connection serves until the new
+        /// one takes over.
         case reconnecting
         case failed(String)
         case stopped
@@ -199,6 +203,9 @@ final class GeminiLiveSession {
     /// A new connection took over. Function calls opened on the previous
     /// connection can no longer be answered on this one.
     var onConnectionReplaced: (@MainActor () -> Void)?
+    /// Counts connections that took over: a function call made under one
+    /// value can't be answered once it changes.
+    private(set) var connectionGeneration = 0
 
     private let tokens: GeminiLiveTokenProviding
     private let openSocket: @MainActor (URL) -> GeminiLiveSocket
@@ -216,10 +223,14 @@ final class GeminiLiveSession {
     /// other connection are ignored.
     private var connectionID = UUID()
     private var receiveTask: Task<Void, Never>?
-    /// The connection being replaced during a GoAway handoff, closed once
-    /// the new one is ready.
-    private var retiringSocket: GeminiLiveSocket?
-    private var retiringReceiveTask: Task<Void, Never>?
+    /// A GoAway handoff is under way: the current connection keeps serving
+    /// while the next one fetches its token and sets up.
+    private var isHandingOff = false
+    /// The connection taking over in a GoAway handoff, until its
+    /// setupComplete makes it the current one.
+    private var handoffSocket: GeminiLiveSocket?
+    private var handoffID: UUID?
+    private var handoffReceiveTask: Task<Void, Never>?
     private var connectTask: Task<Void, Never>?
     private var hasConnectedOnce = false
     /// The connection still waiting for setupComplete, and which attempt it
@@ -285,13 +296,20 @@ final class GeminiLiveSession {
         awaitingSetup = nil
         receiveTask?.cancel()
         receiveTask = nil
-        retiringReceiveTask?.cancel()
-        retiringReceiveTask = nil
         socket?.close()
         socket = nil
-        retiringSocket?.close()
-        retiringSocket = nil
+        dropHandoff()
         connectionID = UUID()
+    }
+
+    /// Abandons the connection a GoAway handoff was setting up.
+    private func dropHandoff() {
+        isHandingOff = false
+        handoffReceiveTask?.cancel()
+        handoffReceiveTask = nil
+        handoffSocket?.close()
+        handoffSocket = nil
+        handoffID = nil
     }
 
     func send(_ message: [String: Any], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
@@ -362,15 +380,23 @@ final class GeminiLiveSession {
             socket.close()
             return
         }
-        // The previous connection (if any) keeps serving until this one is
-        // set up: a GoAway still gives it `timeLeft` to finish.
-        if let current = self.socket {
-            retiringSocket = current
-            retiringReceiveTask = receiveTask
+        awaitingSetup = (id, attempt)
+        if isHandingOff, self.socket != nil {
+            // The current connection keeps carrying the conversation (a
+            // GoAway still gives it `timeLeft`) until this one is set up.
+            handoffSocket?.close()
+            handoffReceiveTask?.cancel()
+            handoffSocket = socket
+            handoffID = id
+            handoffReceiveTask = Task { [weak self] in await self?.receiveLoop(socket, id: id) }
+            return
         }
+        // No live connection left to hand off from.
+        isHandingOff = false
+        receiveTask?.cancel()
+        self.socket?.close()
         self.socket = socket
         connectionID = id
-        awaitingSetup = (id, attempt)
         receiveTask = Task { [weak self] in await self?.receiveLoop(socket, id: id) }
     }
 
@@ -388,8 +414,10 @@ final class GeminiLiveSession {
                 connectionFailed(id, error: error, serverClose: close)
                 return
             }
-            guard id == connectionID else { return }
+            guard id == connectionID || id == handoffID else { return }
             for event in GeminiLiveProtocol.decode(data) {
+                // An event can retire this connection mid-frame.
+                guard id == connectionID || id == handoffID else { return }
                 handle(event, connection: id)
             }
         }
@@ -398,23 +426,42 @@ final class GeminiLiveSession {
     private func handle(_ event: GeminiLiveProtocol.ServerEvent, connection id: UUID) {
         switch event {
         case .setupComplete:
+            if id == handoffID, let next = handoffSocket {
+                // The handoff connection takes over; the old one closes.
+                receiveTask?.cancel()
+                socket?.close()
+                socket = next
+                receiveTask = handoffReceiveTask
+                connectionID = id
+                handoffSocket = nil
+                handoffReceiveTask = nil
+                handoffID = nil
+            }
+            isHandingOff = false
             let replaced = hasConnectedOnce
             hasConnectedOnce = true
             awaitingSetup = nil
             lastSetupClose = nil
-            retiringReceiveTask?.cancel()
-            retiringReceiveTask = nil
-            retiringSocket?.close()
-            retiringSocket = nil
             // Calls opened on the previous connection are gone before anyone
             // sees `.ready` and starts answering on this one.
-            if replaced { onConnectionReplaced?() }
-            state = .ready
+            if replaced {
+                connectionGeneration += 1
+                onConnectionReplaced?()
+            }
+            if state == .ready {
+                // A handoff never left `ready`; say it again so listeners
+                // treat the new connection as freshly ready.
+                onStateChange?(.ready)
+            } else {
+                state = .ready
+            }
         case .resumptionUpdate(let handle, let resumable):
             if resumable, let handle { resumptionHandle = handle }
         case .goAway(let timeLeft):
+            // Only the current connection's GoAway starts a handoff.
+            guard id == connectionID else { return }
             geminiLiveLogger.notice("GoAway received (timeLeft=\(timeLeft ?? -1, privacy: .public)s); reconnecting with resumption")
-            beginReconnect()
+            beginHandoff()
             return
         default:
             break
@@ -422,15 +469,21 @@ final class GeminiLiveSession {
         onEvent?(event)
     }
 
-    private func beginReconnect() {
-        guard state != .stopped, state != .reconnecting else { return }
-        state = .reconnecting
+    /// Sets up the next connection while the current one keeps serving.
+    private func beginHandoff() {
+        guard state == .ready, !isHandingOff else { return }
+        isHandingOff = true
         connectTask?.cancel()
         connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
     }
 
     private func connectionFailed(_ id: UUID, error: Error, serverClose: GeminiLiveServerClose? = nil) {
-        guard id == connectionID, state != .stopped, !isFailed else { return }
+        guard state != .stopped, !isFailed else { return }
+        if id == handoffID {
+            handoffFailed(error: error, serverClose: serverClose)
+            return
+        }
+        guard id == connectionID else { return }
         // Never the error's description: it can carry the connection URL,
         // whose access_token is a live credential. Google's close reason
         // names the problem (a rejected model or token), not the token.
@@ -441,24 +494,64 @@ final class GeminiLiveSession {
         receiveTask = nil
         connectionID = UUID()
         let pendingSetup = awaitingSetup?.id == id ? awaitingSetup : nil
-        awaitingSetup = nil
-        connectTask?.cancel()
+        if pendingSetup != nil { awaitingSetup = nil }
         // A refusal before setup won't change on retry. On a live
         // connection only a spent quota is handled that way; other closes
         // reconnect with resumption as before.
         if let serverClose, pendingSetup != nil ? serverClose.isRefusal : serverClose.isQuotaExhausted {
+            dropHandoff()
+            connectTask?.cancel()
             refused(serverClose, attempt: pendingSetup?.attempt ?? 0)
             return
         }
         guard let pendingSetup else {
             state = .reconnecting
+            // The connection a GoAway handoff is already setting up carries
+            // on and takes over once ready.
+            guard !isHandingOff else { return }
+            connectTask?.cancel()
             connectTask = Task { [weak self] in await self?.connect(attempt: 0) }
             return
         }
+        connectTask?.cancel()
         // Closed before setupComplete: a failed attempt, not a lost
         // connection. The most recent explained close is the one worth naming.
         if let serverClose { lastSetupClose = serverClose }
         connectTask = Task { [weak self] in await self?.retry(after: pendingSetup.attempt, error: error) }
+    }
+
+    /// The connection a GoAway handoff was setting up closed before its
+    /// setupComplete: a failed attempt. The current connection keeps
+    /// serving while the next attempt runs.
+    private func handoffFailed(error: Error, serverClose: GeminiLiveServerClose?) {
+        let nsError = error as NSError
+        geminiLiveLogger.error("Gemini Live handoff connection lost: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) closeCode=\(serverClose?.code ?? 0, privacy: .public) closeReason=\(serverClose?.reason ?? "", privacy: .private)")
+        let attempt = awaitingSetup?.id == handoffID ? awaitingSetup?.attempt ?? 0 : 0
+        awaitingSetup = nil
+        handoffReceiveTask = nil
+        handoffSocket?.close()
+        handoffSocket = nil
+        handoffID = nil
+        connectTask?.cancel()
+        if let serverClose, serverClose.isQuotaExhausted, googleSearch {
+            // Search's own quota, as in `refused`: the next attempt goes
+            // without it, still handing off from the current connection.
+            geminiLiveLogger.notice("Gemini Live handoff refused for quota; retrying without Google Search")
+            googleSearch = false
+            let delay = reconnectDelay
+            connectTask = Task { [weak self] in
+                do { try await delay(attempt) } catch { return }
+                guard let self, !Task.isCancelled, self.state != .stopped, !self.isFailed else { return }
+                await self.connect(attempt: attempt)
+            }
+            return
+        }
+        if let serverClose, serverClose.isRefusal {
+            fail(AppLocalization.string("Gemini Live refused the connection: \(serverClose.summary)"))
+            return
+        }
+        if let serverClose { lastSetupClose = serverClose }
+        connectTask = Task { [weak self] in await self?.retry(after: attempt, error: error) }
     }
 
     /// Google refused the connection. A spent quota while Search is on is
@@ -491,7 +584,8 @@ final class GeminiLiveSession {
             }
             return
         }
-        if state != .connecting { state = .reconnecting }
+        // A handoff's current connection is still serving: stay ready.
+        if state != .connecting, !(isHandingOff && socket != nil) { state = .reconnecting }
         do {
             try await reconnectDelay(attempt)
         } catch {

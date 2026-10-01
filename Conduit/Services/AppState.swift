@@ -1378,9 +1378,9 @@ final class AppState: ObservableObject {
     /// through whichever dashboard bridge is current at call time.
     lazy var geminiLiveTokenClient = GeminiLiveTokenClient(profile: { [weak self] in
         self?.activeProfile ?? "default"
-    }, request: { [weak self] path, method, body in
+    }, request: { [weak self] path, method, body, timeout in
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body)
+        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
     })
 
     /// Built on first use only: boundaries that merely check whether Gemini
@@ -1412,14 +1412,23 @@ final class AppState: ObservableObject {
                 )
             },
             availability: { [weak self] in
-                let status = try await tokens.availability()
+                guard let self else { return try await tokens.availability() }
                 // Resolved before each conversation, so a changed setting or
                 // a newly configured host backend applies on the next one.
-                if status.isAvailable, let self {
-                    self.geminiLiveSearchSource = await self.resolveGeminiLiveSearchSource()
-                    self.geminiLiveMemoryContext = self.geminiLiveMemoryEnabled ? await tokens.memoryContext() : nil
-                    self.geminiLivePersonality = self.geminiLivePersonalityEnabled ? await tokens.personality() : nil
-                }
+                // The host calls run together: one after another they
+                // stacked four round trips in front of every connection.
+                let wantsMemory = self.geminiLiveMemoryEnabled
+                let wantsPersonality = self.geminiLivePersonalityEnabled
+                async let search = self.resolveGeminiLiveSearchSource()
+                async let memory = wantsMemory ? tokens.memoryContext() : nil
+                async let personality = wantsPersonality ? tokens.personality() : nil
+                let status = try await tokens.availability()
+                // Unavailable: return now; leaving scope cancels the other
+                // calls instead of waiting on them.
+                guard status.isAvailable else { return status }
+                self.geminiLiveSearchSource = await search
+                self.geminiLiveMemoryContext = await memory
+                self.geminiLivePersonality = await personality
                 return status
             },
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens),

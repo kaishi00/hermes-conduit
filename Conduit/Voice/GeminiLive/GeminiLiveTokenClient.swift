@@ -143,10 +143,18 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     static let personalityPath = "/api/plugins/conduit_push/personality"
     /// Results a lookup asks for: enough to answer, short enough to read.
     static let webSearchLimit = 3
+    /// How long the dashboard requests wait by default.
+    static let defaultTimeoutMilliseconds = 12_000
+    /// A lookup waits past the host's own 20 s search timeout, so a slow
+    /// backend ends in the host's answer (a 504 the model can explain)
+    /// rather than the phone giving up first with a bare abort.
+    static let webSearchTimeoutMilliseconds = 25_000
+    /// Past the host's 12 s bound on a memory recall, for the same reason.
+    static let memoryRecallTimeoutMilliseconds = 15_000
 
     /// The authenticated dashboard request, injected so tests can script
     /// responses. Production binds it to `DashboardTicketBridge.requestJSON`.
-    typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
+    typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?, _ timeoutMilliseconds: Int) async throws -> [String: Any]
 
     private let request: Request
     /// The Hermes profile whose key the host should use, read at call time
@@ -159,10 +167,19 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     }
 
     convenience init(bridge: DashboardTicketBridge, profile: @escaping @MainActor () -> String) {
-        self.init(profile: profile, request: { [weak bridge] path, method, body in
+        self.init(profile: profile, request: { [weak bridge] path, method, body, timeout in
             guard let bridge else { throw DashboardTicketBridgeError.notReady }
-            return try await bridge.requestJSON(path: path, method: method, body: body)
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
         })
+    }
+
+    private func fetch(
+        _ path: String,
+        _ method: String,
+        _ body: [String: Any]?,
+        timeoutMilliseconds: Int = GeminiLiveTokenClient.defaultTimeoutMilliseconds
+    ) async throws -> [String: Any] {
+        try await request(path, method, body, timeoutMilliseconds)
     }
 
     private func scoped(_ path: String) -> String {
@@ -172,7 +189,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     func availability() async throws -> GeminiLiveAvailability {
         let response: [String: Any]
         do {
-            response = try await request(scoped(Self.statusPath), "GET", nil)
+            response = try await fetch(scoped(Self.statusPath), "GET", nil)
         } catch let error as DashboardTicketBridgeError {
             if Self.isMissingRoute(error) { return .pluginMissing }
             throw error
@@ -183,7 +200,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     func freshToken() async throws -> GeminiLiveToken {
         let response: [String: Any]
         do {
-            response = try await request(scoped(Self.tokenPath), "POST", [:])
+            response = try await fetch(scoped(Self.tokenPath), "POST", [:])
         } catch let error as DashboardTicketBridgeError {
             if Self.isMissingRoute(error) { throw GeminiLiveTokenError.unavailable(.pluginMissing) }
             throw error
@@ -194,12 +211,17 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     /// Whether the host can answer quick lookups with its own backend. Any
     /// failure (an older plugin without the route, no backend) is false.
     func webSearchAvailable() async -> Bool {
-        guard let response = try? await request(scoped(Self.webSearchStatusPath), "GET", nil) else { return false }
+        guard let response = try? await fetch(scoped(Self.webSearchStatusPath), "GET", nil) else { return false }
         return response["ok"] as? Bool == true && response["available"] as? Bool == true
     }
 
     func webSearch(query: String) async throws -> [GeminiLiveWebResult] {
-        let response = try await request(scoped(Self.webSearchPath), "POST", ["query": query, "limit": Self.webSearchLimit])
+        let response = try await fetch(
+            scoped(Self.webSearchPath),
+            "POST",
+            ["query": query, "limit": Self.webSearchLimit],
+            timeoutMilliseconds: Self.webSearchTimeoutMilliseconds
+        )
         return try Self.webResults(from: response)
     }
 
@@ -207,7 +229,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     /// or the plugin predates the route: the conversation goes on without.
     func memoryContext() async -> GeminiLiveMemoryContext? {
         do {
-            let response = try await request(scoped(Self.memoryContextPath), "GET", nil)
+            let response = try await fetch(scoped(Self.memoryContextPath), "GET", nil)
             return Self.memoryContext(from: response)
         } catch let error as DashboardTicketBridgeError where Self.isMissingRoute(error) {
             geminiLiveMemoryLogger.notice("Hermes plugin has no memory route; Gemini Live starts without memory")
@@ -224,7 +246,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     /// has none or the plugin predates the route.
     func personality() async -> String? {
         do {
-            let response = try await request(scoped(Self.personalityPath), "GET", nil)
+            let response = try await fetch(scoped(Self.personalityPath), "GET", nil)
             return Self.personality(from: response)
         } catch let error as DashboardTicketBridgeError where Self.isMissingRoute(error) {
             geminiLiveMemoryLogger.notice("Hermes plugin has no personality route; Gemini Live starts without a persona")
@@ -236,7 +258,12 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     }
 
     func recallMemory(query: String) async throws -> String {
-        let response = try await request(scoped(Self.memoryRecallPath), "POST", ["query": query])
+        let response = try await fetch(
+            scoped(Self.memoryRecallPath),
+            "POST",
+            ["query": query],
+            timeoutMilliseconds: Self.memoryRecallTimeoutMilliseconds
+        )
         return try Self.memoryRecall(from: response)
     }
 
