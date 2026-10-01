@@ -3233,8 +3233,9 @@ final class AppState: ObservableObject {
 
     /// The open chat's id as a saved live call, when it is one.
     var activeVoiceCallSessionID: String? {
-        guard let activeSessionId else { return nil }
-        let ids = knownSessionIDs(for: activeSessionId)
+        // Opening a saved row resumes it under a new runtime id the catalog
+        // row may not list yet: match every identity the open chat has.
+        guard let ids = offlineChatIdentities() else { return nil }
         guard let session = activeProfileSessions.first(where: { row in
             !ids.isDisjoint(with: [row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
         }), let tagged = voiceSessionTag(for: session), tagged.tag.kind == .call else { return nil }
