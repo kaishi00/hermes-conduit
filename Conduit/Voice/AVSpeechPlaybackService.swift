@@ -142,6 +142,10 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             destination[0].assign(from: base.assumingMemoryBound(to: Int16.self), count: Int(frames))
         }
         pendingBuffers += 1
+        // A stream stays started across drains (Gemini Live keeps it open
+        // for the whole conversation), so every scheduled chunk marks it
+        // playing again, not just the one that started it.
+        isPlaying = true
         scheduledSeconds += Double(frames) / format.sampleRate
         let generation = playbackGeneration
         player.scheduleBuffer(

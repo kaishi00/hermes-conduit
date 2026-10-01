@@ -324,6 +324,28 @@ extension VoiceAudioSessionCoordinatorTests {
         service.bufferDidDrain(generation: service.playbackGeneration)
         XCTAssertEqual(service.pendingBuffers, 1)
     }
+
+    /// Gemini Live keeps one stream open across turns. After the first
+    /// reply drains, the next reply's chunks must report playing again, or
+    /// a hands-free end closes the call over the goodbye still queued.
+    func testChunkAfterADrainReportsPlayingAgain() throws {
+        let service = AVSpeechPlaybackService(coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()))
+        defer { service.stop() }
+        let chunk = Data(count: 480)
+        do {
+            _ = try service.enqueuePCM16(chunk, sampleRate: 24_000)
+        } catch {
+            throw XCTSkip("no audio output available: \(error)")
+        }
+        XCTAssertTrue(service.isPlaying)
+
+        // The first reply finished rendering; the stream stays open.
+        service.bufferDidDrain(generation: service.playbackGeneration)
+        XCTAssertFalse(service.isPlaying)
+
+        _ = try service.enqueuePCM16(chunk, sampleRate: 24_000)
+        XCTAssertTrue(service.isPlaying, "the next reply's audio is playing")
+    }
 }
 
 @MainActor
