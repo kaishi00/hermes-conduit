@@ -192,4 +192,43 @@ extension AppStateDecisionFenceTests {
         XCTAssertEqual(appState.projectMoveTargets.map(\.id), ["p1"])
         second.disconnect()
     }
+
+    func testDisconnectedAppOffersNoMoveTargets() async throws {
+        let appState = makeMoveAppState()
+        let socket = ClarifyFakeSocket()
+        let transport = ClarifyFakeTransport()
+        let client = try await installMoveClient(appState, socket: socket, transport: transport)
+        try await loadMoveProjects(appState, socket: socket)
+        XCTAssertFalse(appState.projectMoveTargets.isEmpty)
+        let target = try XCTUnwrap(appState.projectMoveTargets.first)
+
+        appState.isConnected = false
+        XCTAssertFalse(appState.supportsSessionWorkspaceMove)
+        XCTAssertTrue(appState.projectMoveTargets.isEmpty, "a stale project list must not offer a move")
+        let moved = await appState.moveSession(liveSession(), to: target)
+        XCTAssertFalse(moved)
+        XCTAssertNotNil(appState.errorMessage, "a refused move is explained")
+        client.disconnect()
+    }
+
+    func testKnownProjectComesFromTreePreviews() async throws {
+        let appState = makeMoveAppState()
+        let socket = ClarifyFakeSocket()
+        let transport = ClarifyFakeTransport()
+        let client = try await installMoveClient(appState, socket: socket, transport: transport)
+        var tree = projectTree
+        tree["projects"] = [
+            ["id": "p1", "label": "Skunkworks", "path": "/work/skunkworks", "session_count": 1,
+             "preview_sessions": [["id": "stored-1", "title": "Wrong folder"]]]
+        ]
+        var refresh: Task<Void, Never>?
+        let request = try await nextRequest(on: socket, "the projects.tree request") {
+            refresh = Task { await appState.refreshProjects() }
+        }
+        try respond(on: socket, to: request, with: ["result": tree])
+        await refresh?.value
+
+        XCTAssertEqual(appState.knownProjectID(for: liveSession()), "p1")
+        client.disconnect()
+    }
 }

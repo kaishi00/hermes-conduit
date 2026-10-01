@@ -816,7 +816,8 @@ private struct MoveToProjectMenu: View {
     var onMoved: () -> Void = {}
 
     var body: some View {
-        let targets = appState.projectMoveTargets.filter { $0.id != excludingProjectID }
+        let currentProjectID = excludingProjectID ?? appState.knownProjectID(for: session)
+        let targets = appState.projectMoveTargets.filter { $0.id != currentProjectID }
         if !targets.isEmpty {
             Menu {
                 ForEach(targets) { project in

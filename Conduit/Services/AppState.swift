@@ -17547,6 +17547,19 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The project a conversation is known to live in, from the tree's
+    /// preview rows. The session catalog carries no folder, so this is only a
+    /// best-effort hint for hiding the no-op "move here" target; nil means
+    /// unknown, not "in no project".
+    func knownProjectID(for session: SessionSummary) -> String? {
+        let ids = Set([session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds)
+        return projects.first { project in
+            !project.isHome && project.previewSessions.contains { preview in
+                ids.contains(preview.id) || preview.storedSessionId.map(ids.contains) == true
+            }
+        }?.id
+    }
+
     /// Moves a conversation into `project` by re-homing its workspace at the
     /// project's root folder (`session.workspace.move`). Hermes derives
     /// project membership from the session's folder, so the project tree is
