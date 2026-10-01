@@ -1,6 +1,96 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Allow Microphone and Speech Recognition for Conduit in Settings to use a wake phrase." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在“设置”中允许 Conduit 使用麦克风和语音识别，以便使用唤醒词。"
+          }
+        }
+      }
+    },
+    "Hey %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "嘿，%@"
+          }
+        }
+      }
+    },
+    "Listen for a wake phrase" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "监听唤醒词"
+          }
+        }
+      }
+    },
+    "Phrases with a single word are ignored." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有一个词的唤醒词会被忽略。"
+          }
+        }
+      }
+    },
+    "Say the phrase while Conduit is open to start voice on this profile, in whichever voice mode it uses. Listening runs on this iPhone, stops during calls and in the background, and the microphone indicator stays on while it listens." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Conduit 打开时说出唤醒词，即可按此配置文件当前使用的语音模式开始语音对话。监听在此 iPhone 上进行，通话期间和后台时会停止，监听时麦克风指示灯会保持亮起。"
+          }
+        }
+      }
+    },
+    "The microphone is not available right now." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风当前不可用。"
+          }
+        }
+      }
+    },
+    "Use at least two words, such as \"%@\". Add a second spelling if Conduit mishears a name." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请至少使用两个词，例如“%@”。如果 Conduit 听错了名字，可以再添加一种拼写。"
+          }
+        }
+      }
+    },
+    "Wake phrases" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "唤醒词列表"
+          }
+        }
+      }
+    },
+    "Wake phrases need microphone and speech recognition access." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "唤醒词需要麦克风和语音识别权限。"
+          }
+        }
+      }
+    },
     "I don't know a profile or bot called %@, so I didn't start the job." : {
       "localizations" : {
         "zh-Hans" : {

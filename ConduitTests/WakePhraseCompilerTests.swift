@@ -48,3 +48,45 @@ final class WakePhraseCompilerTests: XCTestCase {
         }
     }
 }
+
+extension WakePhraseCompilerTests {
+    private func binding(_ phrase: String, profile: String = "default") -> WakePhraseBinding {
+        WakePhraseBinding(
+            key: WakeProfileKey(gatewayID: "dashboard", profileID: profile),
+            phrase: phrase,
+            startsFreshConversation: true
+        )
+    }
+
+    func testMatcherFindsWholeWordPhraseInsideTranscript() {
+        let fam = binding("hey fam", profile: "fam")
+        XCTAssertEqual(WakePhraseMatcher.match(transcript: "Okay, hey Fam! What's up", bindings: [fam]), fam)
+        XCTAssertEqual(WakePhraseMatcher.match(transcript: "HEY   FAM", bindings: [fam]), fam)
+        XCTAssertNil(WakePhraseMatcher.match(transcript: "hey family dinner", bindings: [fam]))
+        XCTAssertNil(WakePhraseMatcher.match(transcript: "fam hey", bindings: [fam]))
+        XCTAssertNil(WakePhraseMatcher.match(transcript: "", bindings: [fam]))
+    }
+
+    func testMatcherPrefersTheMostSpecificPhrase() {
+        let fam = binding("hey fam", profile: "fam")
+        let famWork = binding("hey fam work", profile: "work")
+        XCTAssertEqual(WakePhraseMatcher.match(transcript: "hey fam work please", bindings: [fam, famWork]), famWork)
+        XCTAssertEqual(WakePhraseMatcher.match(transcript: "hey fam please", bindings: [fam, famWork]), fam)
+    }
+
+    func testMatcherFoldsAccentsAndMatchesUnspacedScripts() {
+        let accented = binding("hola zoë")
+        XCTAssertEqual(WakePhraseMatcher.match(transcript: "Hola Zoe", bindings: [accented]), accented)
+        let chinese = binding("小爱同学")
+        XCTAssertEqual(WakePhraseMatcher.match(transcript: "嗯小爱同学你好", bindings: [chinese]), chinese)
+    }
+
+    func testMatcherIgnoresSingleWordPhrases() {
+        XCTAssertFalse(WakePhraseMatcher.isUsable("conduit"))
+        XCTAssertFalse(WakePhraseMatcher.isUsable("  !! "))
+        XCTAssertTrue(WakePhraseMatcher.isUsable("hey conduit"))
+        XCTAssertFalse(WakePhraseMatcher.isUsable("爱"))
+        XCTAssertTrue(WakePhraseMatcher.isUsable("小爱"))
+        XCTAssertNil(WakePhraseMatcher.match(transcript: "conduit", bindings: [binding("conduit")]))
+    }
+}

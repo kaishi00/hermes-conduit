@@ -27,6 +27,7 @@ struct VoiceSettingsRoute: View {
     let gptLive: GPTLiveSettingsModel?
     let grokLive: GrokLiveSettingsModel?
     let voiceJobs: VoiceJobModelSettingsModel?
+    let wake: WakePhraseSettingsModel?
 
     init(
         bridge: DashboardTicketBridge,
@@ -47,12 +48,14 @@ struct VoiceSettingsRoute: View {
         geminiLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
-        voiceJobs: VoiceJobModelSettingsModel? = nil
+        voiceJobs: VoiceJobModelSettingsModel? = nil,
+        wake: WakePhraseSettingsModel? = nil
     ) {
         self.geminiLive = geminiLive
         self.gptLive = gptLive
         self.grokLive = grokLive
         self.voiceJobs = voiceJobs
+        self.wake = wake
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
@@ -88,7 +91,8 @@ struct VoiceSettingsRoute: View {
             geminiLive: geminiLive,
             gptLive: gptLive,
             grokLive: grokLive,
-            voiceJobs: voiceJobs
+            voiceJobs: voiceJobs,
+            wake: wake
         )
     }
 }
@@ -140,6 +144,7 @@ struct VoiceSettingsView: View {
     var gptLive: GPTLiveSettingsModel?
     var grokLive: GrokLiveSettingsModel?
     var voiceJobs: VoiceJobModelSettingsModel?
+    var wake: WakePhraseSettingsModel?
 
     init(
         service: HermesVoiceConfigurationService,
@@ -159,12 +164,14 @@ struct VoiceSettingsView: View {
         geminiLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
-        voiceJobs: VoiceJobModelSettingsModel? = nil
+        voiceJobs: VoiceJobModelSettingsModel? = nil,
+        wake: WakePhraseSettingsModel? = nil
     ) {
         self.geminiLive = geminiLive
         self.gptLive = gptLive
         self.grokLive = grokLive
         self.voiceJobs = voiceJobs
+        self.wake = wake
         self.service = service
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
@@ -536,14 +543,10 @@ struct VoiceSettingsView: View {
         }
     }
 
+    @ViewBuilder
     private var wakeSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Wake phrase"), symbol: "ear.and.waveform", tint: .conduitAura) {
-            Text("The bundled bilingual wake model is not active yet. Its redistribution terms and checksums must be reviewed before it can be included in Conduit.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Text("Siri remains the supported way to begin a voice conversation from the Lock Screen.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        if let wake {
+            WakePhraseSettingsSection(model: wake)
         }
     }
 
@@ -665,6 +668,97 @@ struct VoiceSettingsView: View {
 /// that command category — defaults are not forced back). Every save
 /// canonicalizes through `VoiceSpokenCommands` so duplicates and blanks never
 /// reach persistence.
+struct WakePhraseSettingsModel {
+    var phrases: [String]
+    var suggestedPhrase: String
+    var startsFreshConversation: Bool
+    var failure: String?
+    var save: (_ phrases: [String], _ startsFreshConversation: Bool) -> Void
+}
+
+/// Foreground wake phrase for this profile (#174). Device-local: phrases
+/// are stored per dashboard and profile on this iPhone only.
+private struct WakePhraseSettingsSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let model: WakePhraseSettingsModel
+    @State private var phrases: [String]
+    @State private var startsFresh: Bool
+    @State private var isRequestingPermission = false
+    @State private var permissionDenied = false
+
+    init(model: WakePhraseSettingsModel) {
+        self.model = model
+        _phrases = State(initialValue: model.phrases)
+        _startsFresh = State(initialValue: model.startsFreshConversation)
+    }
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Wake phrase"), symbol: "ear.and.waveform", tint: .conduitAura) {
+            Toggle("Listen for a wake phrase", isOn: Binding(
+                get: { !phrases.isEmpty },
+                set: { enabled in
+                    if enabled { enable() } else { save([]) }
+                }
+            ))
+            .disabled(isRequestingPermission)
+            Text("Say the phrase while Conduit is open to start voice on this profile, in whichever voice mode it uses. Listening runs on this iPhone, stops during calls and in the background, and the microphone indicator stays on while it listens.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if permissionDenied {
+                Label("Allow Microphone and Speech Recognition for Conduit in Settings to use a wake phrase.", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if !phrases.isEmpty {
+                SpokenPhraseListEditor(
+                    title: AppLocalization.string("Wake phrases"),
+                    purposeText: AppLocalization.string("Use at least two words, such as \"\(model.suggestedPhrase)\". Add a second spelling if Conduit mishears a name."),
+                    initialPhrases: phrases,
+                    onChange: { save($0) }
+                )
+                .id(phrases)
+                if phrases.contains(where: { !WakePhraseMatcher.isUsable($0) }) {
+                    Label("Phrases with a single word are ignored.", systemImage: "exclamationmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Toggle("Start a new conversation", isOn: Binding(
+                    get: { startsFresh },
+                    set: { value in
+                        startsFresh = value
+                        model.save(phrases, value)
+                    }
+                ))
+                if let failure = model.failure {
+                    Label(failure, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+            Text("Siri remains the supported way to begin a voice conversation from the Lock Screen.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func enable() {
+        isRequestingPermission = true
+        Task { @MainActor in
+            let granted = await AppleSpeechWakeWordService.requestPermissions()
+            isRequestingPermission = false
+            permissionDenied = !granted
+            guard granted else { return }
+            save([model.suggestedPhrase])
+        }
+    }
+
+    private func save(_ updated: [String]) {
+        let canonical = VoiceSpokenCommands.canonicalizedPhraseList(updated)
+        phrases = canonical
+        model.save(canonical, startsFresh)
+    }
+}
+
 private struct SpokenPhraseListEditor: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let title: String

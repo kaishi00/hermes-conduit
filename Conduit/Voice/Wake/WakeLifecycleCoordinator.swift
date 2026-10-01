@@ -10,10 +10,16 @@ struct WakeLifecycleSnapshot: Equatable {
     var isAuthenticated: Bool
     var isGatewayConnected: Bool
     var microphonePermitted: Bool
-    var voiceState: VoiceConversationState
+    /// No voice surface of any engine (classic sheet, Gemini / GPT / Grok
+    /// Live, CarPlay), no voice launch in flight, and no other audio owner
+    /// (Read Aloud, a provider test). The listener never shares the
+    /// microphone with a conversation.
+    var isVoiceIdle: Bool
+    /// At least one usable wake phrase is bound on the current gateway.
+    var hasWakePhrases: Bool
 
     var canArm: Bool {
-        isForegroundActive && isAuthenticated && isGatewayConnected && microphonePermitted && voiceState == .idle
+        isForegroundActive && isAuthenticated && isGatewayConnected && microphonePermitted && isVoiceIdle && hasWakePhrases
     }
 }
 

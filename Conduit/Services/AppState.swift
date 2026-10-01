@@ -2188,6 +2188,24 @@ final class AppState: ObservableObject {
     /// the now-active profile's blob.
     internal(set) var voiceControllerSessionProfile: String?
 
+    // MARK: - Wake phrase (#174)
+
+    /// Device-local wake phrase bindings, keyed by dashboard and profile.
+    lazy var wakeConfiguration = WakeConfigurationStore(defaults: defaults)
+    lazy var wakeWordService = AppleSpeechWakeWordService()
+    lazy var wakeLifecycle = WakeLifecycleCoordinator(service: wakeWordService)
+    /// Bumped whenever wake settings change, so views and the lifecycle
+    /// re-read the store.
+    @Published var wakeSettingsRevision: UInt64 = 0
+    /// Why foreground wake listening last stopped or could not start.
+    @Published var wakeListeningFailure: String?
+    /// Voice launches between a wake/Siri request and the sheet appearing:
+    /// the listener must stay off across a profile switch in that gap.
+    var voiceLaunchesInFlight = 0
+    var lastAppliedWakeSnapshot: WakeLifecycleSnapshot?
+    var wakeObservations: [AnyCancellable] = []
+    var isWakeRefreshScheduled = false
+
     /// Whether the CarPlay scene currently presents the shared Voice
     /// conversation. Pure surface bookkeeping: CarPlay is another Voice
     /// presentation surface over the same runtime, never a second owner.
@@ -2500,7 +2518,7 @@ final class AppState: ObservableObject {
     /// startup. `.inactive` is treated like `.background` on purpose — it
     /// immediately precedes backgrounding on home-press, and a socket that
     /// dies under a system overlay is recovered by the `.active` scene task.
-    private var isSceneActive = true
+    private(set) var isSceneActive = true
     /// Whether transport recovery (reconnect cycles and the post-connect
     /// sync they drive) may run. The phone scene being active is one such
     /// surface; a connected CarPlay Voice surface is another. In a car the
@@ -10200,6 +10218,7 @@ final class AppState: ObservableObject {
         switch phase {
         case .active:
             isSceneActive = true
+            scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
             // while the app-foreground gate is true — that pair is exactly
@@ -10347,6 +10366,7 @@ final class AppState: ObservableObject {
 
         case .background:
             isSceneActive = false
+            disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
             // The socket can die while suspended and turn edges can be missed,
             // so the local turn state must be re-confirmed against the
@@ -10415,6 +10435,7 @@ final class AppState: ObservableObject {
 
         case .inactive:
             isSceneActive = false
+            disarmWakeListeningForBackground()
             // Same reasoning as .background: a dip through Control Center or a
             // system overlay can miss turn edges. This never causes a resume —
             // the foreground path treats staleness as a read-only probe.
@@ -20803,6 +20824,11 @@ final class AppState: ObservableObject {
     @discardableResult
     func openVoiceConversation(_ intent: PendingVoiceIntent) async -> Bool {
         guard isConnected else { return false }
+        voiceLaunchesInFlight += 1
+        defer {
+            voiceLaunchesInFlight -= 1
+            scheduleWakeRefresh()
+        }
         // The mode is the requested profile's (Siri may name another one).
         let requestedProfile = intent.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let targetProfile = requestedProfile.isEmpty ? activeProfile : requestedProfile
