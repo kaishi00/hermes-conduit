@@ -248,8 +248,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // A named target that isn't a known profile is never guessed at.
                 return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
             }
-            // The model may also leave "for Fam, …" in the task itself.
-            if let target = Self.leadingTarget(in: instructions, resolve: backend.resolveProfile) {
+            // The model may also leave "for Fam, …" in the task itself; it
+            // is trimmed only when it names the same profile.
+            if let target = Self.leadingTarget(in: instructions, resolve: backend.resolveProfile),
+               target.target == (profile.map { VoiceJobProfileTarget.other($0) } ?? .active) {
                 instructions = target.remainder
             }
         } else if let target = Self.leadingTarget(in: instructions, resolve: backend.resolveProfile) {
@@ -666,6 +668,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // A listed, idle runtime is positive evidence the turn ended.
                 if row.isRunning || row.status == "starting" { continue }
             } else {
+                // Another profile's registry read is only trusted when it
+                // lists the job: a gateway that ignored the profile would
+                // otherwise "finish" a job that is still running there.
+                if job.profile != nil { continue }
                 // Absence is only trusted when it repeats: a row missing
                 // from one read must not discard the real completion.
                 jobs[index].consecutiveMissedPolls += 1

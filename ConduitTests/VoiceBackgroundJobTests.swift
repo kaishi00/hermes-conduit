@@ -243,6 +243,28 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.first { $0.profile == "fam" }?.status, .running, "no read is not absence")
     }
 
+    func testAnotherProfilesJobIsNeverSettledByAbsence() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["fam": .other("fam")]
+        _ = await supervisor.startJob(instructions: "check the router", profile: "fam")
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .running, "only a listed idle row settles it")
+    }
+
+    func testAMismatchedLeadingTargetStaysInTheTask() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["fam": .other("fam"), "work": .other("work")]
+
+        _ = await supervisor.startJob(instructions: "for Work, check the lights", profile: "fam")
+
+        XCTAssertEqual(fake.createdProfiles, ["fam"])
+        XCTAssertEqual(supervisor.jobs.first?.instructions, "for Work, check the lights")
+    }
+
     func testFinishedJobIsHandedBackOnceWithItsResult() async {
         let (supervisor, _) = makeSupervisor()
         var pendingSignals = 0
