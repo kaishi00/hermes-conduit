@@ -14,10 +14,9 @@ import Foundation
 
 enum GrokLiveProtocol {
     static let defaultModel = "grok-voice-latest"
-    /// Conduit's microphone stream (the same capture Gemini Live uses).
-    static let captureSampleRate: Double = 16_000
-    /// What the session declares and xAI's own voice clients send: the
-    /// capture is upsampled to it.
+    /// What the session declares and xAI's own voice clients send. The
+    /// microphone stream is Gemini Live's 16 kHz capture
+    /// (`GeminiLiveProtocol.inputSampleRate`), upsampled to it.
     static let inputSampleRate: Double = 24_000
     static let outputSampleRate: Double = 24_000
     /// The transcription model xAI's own voice clients use.
@@ -134,7 +133,7 @@ enum GrokLiveProtocol {
         let outputCount = count * 3 / 2
         var output = Data(capacity: outputCount * 2)
         for index in 0..<outputCount {
-            // Position in the captured stream: index * 2/3.
+            // Position in the captured stream: index * 2/3 (24 kHz from 16).
             let numerator = index * 2
             let lower = numerator / 3
             let fraction = Double(numerator % 3) / 3

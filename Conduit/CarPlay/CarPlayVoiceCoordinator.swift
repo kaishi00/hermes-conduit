@@ -271,7 +271,7 @@ final class CarPlayVoiceCoordinator {
             }
     }
 
-    /// Gemini Live mode: CarPlay shows the Gemini conversation's phase
+    /// Gemini Live and Grok Live mode: CarPlay shows the conversation's phase
     /// instead of the classic controller's state.
     private func beginObservingGeminiLive(_ controller: GeminiLiveConversationController) {
         stateObservation?.cancel()
@@ -441,7 +441,7 @@ final class CarPlayVoiceCoordinator {
         await completeVoiceEstablishment(generation: generation, outcome: outcome)
     }
 
-    /// Starts a live mode (Gemini Live or GPT-Live) for this CarPlay surface
+    /// Starts a live mode (Gemini Live, GPT-Live or Grok Live) for this CarPlay surface
     /// once Hermes is connected (both start through the host), waiting the
     /// same bounded time as the classic prepare path.
     func establishLiveVoice(_ mode: CarPlayLiveVoiceMode, appState: AppState, generation: UInt64) async {

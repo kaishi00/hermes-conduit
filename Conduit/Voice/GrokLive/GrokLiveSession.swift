@@ -61,9 +61,11 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     /// running. An error before that means it refused the request, and no
     /// response.done will follow to clear it.
     private var responseConfirmed = false
-    /// Turns sent while a response ran: delivered once their response.create
-    /// goes out, failed if the connection ends first.
-    private var queuedTurns: [(sent: (@MainActor () -> Void)?, failed: (@MainActor () -> Void)?)] = []
+    /// Turns sent while a response ran, waiting for their response.create.
+    private var queuedTurns: [Turn] = []
+    /// Turns whose response.create went out, until xAI starts the response
+    /// (delivered) or refuses it (failed, so they are sent again).
+    private var unconfirmedTurns: [Turn] = []
     /// How long a running response may go without any event before it
     /// counts as lost, so a missing response.done can't silence the call.
     private let responseTimeout: Duration
@@ -128,32 +130,40 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         Task { [weak self] in
             do {
                 for text in texts { try await socket.send(text) }
-                // Delivered only once the model was asked to answer too (or
-                // the request is queued behind the running response): a
-                // turn whose response.create was lost is reported failed.
-                if wantsResponse {
-                    switch self?.takeResponseRequest(on: id, onSent: onSent, onFailure: onFailure) {
-                    case .send(let create)?:
-                        try await socket.send(create)
-                    case .queued?:
-                        // Reported once its response.create goes out.
-                        return
-                    case .connectionGone?, nil:
-                        // The connection was replaced or ended while this
-                        // turn was going out: nothing will answer it here.
-                        onFailure?()
-                        return
-                    }
-                }
-                onSent?()
             } catch {
                 onFailure?()
                 self?.connectionFailed(id, error: error)
+                return
+            }
+            guard wantsResponse else {
+                onSent?()
+                return
+            }
+            // A turn the model should answer is delivered once xAI confirms
+            // the response (response.created); a refused request, a stall
+            // or a lost connection before that reports it failed, so its
+            // update is requeued instead of dropped.
+            switch self?.takeResponseRequest(on: id, turn: (sent: onSent, failed: onFailure)) {
+            case .send(let create)?:
+                do {
+                    try await socket.send(create)
+                } catch {
+                    // Settles the turn with the rest of the connection's.
+                    self?.connectionFailed(id, error: error)
+                }
+            case .queued?:
+                break
+            case .connectionGone?, nil:
+                // The connection was replaced or ended while this turn was
+                // going out: nothing will answer it here.
+                onFailure?()
             }
         }
     }
 
     // MARK: Responses
+
+    private typealias Turn = (sent: (@MainActor () -> Void)?, failed: (@MainActor () -> Void)?)
 
     private enum ResponseRequest {
         /// Send this response.create now.
@@ -165,46 +175,58 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     }
 
     /// Asks the model to answer, now or once the current response ends.
-    private func takeResponseRequest(
-        on id: UUID,
-        onSent: (@MainActor () -> Void)?,
-        onFailure: (@MainActor () -> Void)?
-    ) -> ResponseRequest {
-        guard id == connectionID, state == .ready else { return .connectionGone }
+    private func takeResponseRequest(on id: UUID, turn: Turn) -> ResponseRequest {
+        guard id == connectionID, state == .ready,
+              let text = try? GrokLiveProtocol.encode(GrokLiveProtocol.responseCreate) else { return .connectionGone }
         guard !responseActive else {
             responseRequested = true
-            queuedTurns.append((sent: onSent, failed: onFailure))
+            queuedTurns.append(turn)
             return .queued
         }
-        guard let text = try? GrokLiveProtocol.encode(GrokLiveProtocol.responseCreate) else { return .connectionGone }
-        responseRequested = false
-        // Counted as running from now: a second request waits for this one.
-        responseActive = true
-        responseConfirmed = false
-        armResponseWatchdog()
+        beginRequest(with: [turn])
         return .send(text)
     }
 
-    /// Sends the queued request, settling the turns that waited on it.
-    private func sendResponseCreate() {
-        guard let socket, let text = try? GrokLiveProtocol.encode(GrokLiveProtocol.responseCreate) else { return }
+    /// Counts a response as running from its request on, so a second
+    /// request waits for it; `turns` are settled when xAI answers.
+    private func beginRequest(with turns: [Turn]) {
         responseRequested = false
-        // Counted as running from now: a second request waits for this one.
         responseActive = true
         responseConfirmed = false
+        unconfirmedTurns += turns
         armResponseWatchdog()
+    }
+
+    /// Sends the queued request for the turns that waited on it.
+    private func sendResponseCreate() {
+        guard let socket, let text = try? GrokLiveProtocol.encode(GrokLiveProtocol.responseCreate) else { return }
         let turns = queuedTurns
         queuedTurns = []
+        beginRequest(with: turns)
         let id = connectionID
         Task { [weak self] in
             do {
                 try await socket.send(text)
-                for turn in turns { turn.sent?() }
             } catch {
-                for turn in turns { turn.failed?() }
                 self?.connectionFailed(id, error: error)
             }
         }
+    }
+
+    /// xAI started the requested response: its turns were delivered.
+    private func confirmRequest() {
+        responseConfirmed = true
+        let turns = unconfirmedTurns
+        unconfirmedTurns = []
+        for turn in turns { turn.sent?() }
+    }
+
+    /// The request got no response (refused, or stalled before starting):
+    /// its turns go back to be sent again.
+    private func failUnconfirmedTurns() {
+        let turns = unconfirmedTurns
+        unconfirmedTurns = []
+        for turn in turns { turn.failed?() }
     }
 
     /// (Re)starts the wait for the running response's next event.
@@ -217,17 +239,19 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             guard !Task.isCancelled, let self, id == self.connectionID, self.responseActive else { return }
             grokLiveLogger.error("Grok Live response stalled; no longer waiting for it")
             self.responseActive = false
+            self.failUnconfirmedTurns()
             if self.responseRequested { self.sendResponseCreate() }
         }
     }
 
-    /// The connection ended: nothing runs on it, and turns still waiting on
-    /// a response.create were never answered.
+    /// The connection ended: nothing runs on it, and turns not yet answered
+    /// on it never will be.
     private func dropResponseState() {
         responseWatchdog?.cancel()
         responseWatchdog = nil
         responseActive = false
         responseRequested = false
+        failUnconfirmedTurns()
         let turns = queuedTurns
         queuedTurns = []
         for turn in turns { turn.failed?() }
@@ -362,11 +386,12 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
                 // response.done will clear it, so later turns would wait forever.
                 responseActive = false
                 responseWatchdog?.cancel()
+                failUnconfirmedTurns()
                 if responseRequested { sendResponseCreate() }
             }
         case .responseStarted:
             responseActive = true
-            responseConfirmed = true
+            confirmRequest()
             responseHadTranscript = false
             armResponseWatchdog()
         case .responseDone:
@@ -377,10 +402,6 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             if !responseHadTranscript { onEvent?(.outputTranscription(text)) }
         case .event(let event):
             if case .outputTranscription = event { responseHadTranscript = true }
-            if case .interrupted = event {
-                // The server cancels the response; its response.done follows.
-                responseHadTranscript = false
-            }
             if responseActive { armResponseWatchdog() }
             onEvent?(event)
         }

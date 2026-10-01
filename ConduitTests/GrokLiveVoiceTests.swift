@@ -302,16 +302,35 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(outcome, [], "queued behind the running response: not delivered yet")
         socket.deliver(["type": "response.done"])
         await grokSettle()
-        XCTAssertEqual(outcome, ["sent"])
-
+        XCTAssertEqual(outcome, [], "its request went out, but xAI hasn't started the response")
         socket.deliver(["type": "response.created"])
         await grokSettle()
+        XCTAssertEqual(outcome, ["sent"])
+
         var lost: [String] = []
         session.send(.textTurn("third"), onSent: { lost.append("sent") }, onFailure: { lost.append("failed") })
         await grokSettle()
         socket.serverClose(nil)
         await grokSettle(120)
         XCTAssertEqual(lost, ["failed"], "the connection ended before its request went out")
+        session.stop()
+    }
+
+    func testGrokLiveTurnWhoseRequestXAIRefusesIsReportedFailed() async throws {
+        let (session, sockets) = makeGrokSession()
+        session.start()
+        await grokSettle()
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        await grokSettle()
+
+        var outcome: [String] = []
+        session.send(.textTurn("hello"), onSent: { outcome.append("sent") }, onFailure: { outcome.append("failed") })
+        await grokSettle()
+        XCTAssertEqual(outcome, [])
+        socket.deliver(["type": "error", "error": ["message": "conversation already has an active response"]])
+        await grokSettle()
+        XCTAssertEqual(outcome, ["failed"], "refused before it started: sent again later, not dropped")
         session.stop()
     }
 
