@@ -1799,21 +1799,17 @@ final class AppState: ObservableObject {
             self.rememberVoiceJobSessions(sessionIDs)
             // Filed under Voice Jobs on every device, with the call (or the
             // classic voice chat) it came from.
-            let parentID = self.voiceCallRecorder?.sessionID ?? (self.showVoiceSheet ? self.activeSessionId : nil)
-            self.tagVoiceSessions(sessionIDs, kind: .job, parentID: parentID, parentTitle: self.voiceJobParentTitle(parentID))
             if let recorder = self.voiceCallRecorder {
                 if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }) {
                     self.captureVoiceCall()
                     recorder.note(AppLocalization.string("Started a background job: \(job.title)."))
                 }
-                if recorder.sessionID == nil {
-                    // The call has no row yet: save it now, then link the job.
-                    Task { [weak self] in
-                        await recorder.flush()
-                        guard let self, let callRow = recorder.sessionID else { return }
-                        self.tagVoiceSessions(sessionIDs, kind: .job, parentID: callRow, parentTitle: self.voiceJobParentTitle(callRow))
-                    }
-                }
+                // Nothing reaches the host while the call runs: the job is
+                // tagged with the call's row once the call ends.
+                self.voiceCallUnlinkedJobSessionIDs += sessionIDs
+            } else {
+                let parentID = self.showVoiceSheet ? self.activeSessionId : nil
+                self.tagVoiceSessions(sessionIDs, kind: .job, parentID: parentID, parentTitle: self.voiceJobParentTitle(parentID))
             }
             self.voiceJobSessionListRefreshTask?.cancel()
             self.voiceJobSessionListRefreshTask = Task { [weak self] in
@@ -2874,11 +2870,16 @@ final class AppState: ObservableObject {
     static let voiceTagRefreshInterval: TimeInterval = 15
 
     /// The call being saved: set when a live call starts, cleared when it
-    /// closes.
+    /// closes. Nothing reaches the host until the call ends: a save while
+    /// the call runs stalled it, so the call is only checkpointed on the
+    /// device meanwhile.
     private var voiceCallRecorder: VoiceTranscriptRecorder?
-    private var voiceCallFlushTask: Task<Void, Never>?
+    private var voiceCallCheckpointTask: Task<Void, Never>?
     private var voiceCallTranscriptSubscription: AnyCancellable?
-    static let voiceCallFlushInterval: Duration = .seconds(60)
+    static let voiceCallCheckpointInterval: Duration = .seconds(60)
+    /// Jobs the running call started: tagged with the call's row once the
+    /// call ends and its save has the row.
+    private var voiceCallUnlinkedJobSessionIDs: [String] = []
     /// A saved call the next live call continues (Resume Call).
     private var pendingVoiceResume: (sessionID: String, context: VoiceResumeContext)?
     /// Calls whose closing save is still running, so the outbox doesn't
@@ -3052,14 +3053,23 @@ final class AppState: ObservableObject {
         voiceCallTranscriptSubscription = transcript
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.captureVoiceCall() }
-        voiceCallFlushTask = Task { [weak self] in
+        voiceCallCheckpointTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: Self.voiceCallFlushInterval)
+                try? await Task.sleep(for: Self.voiceCallCheckpointInterval)
                 guard !Task.isCancelled, let self, let recorder = self.voiceCallRecorder else { return }
                 self.captureVoiceCall()
-                await recorder.flush()
+                self.checkpointVoiceCall(recorder)
             }
         }
+    }
+
+    /// Keeps the running call's unsaved turns in the on-device outbox, so
+    /// they survive the app being closed mid-call. The outbox leaves the
+    /// entry alone while the call runs; the closing save settles it.
+    private func checkpointVoiceCall(_ recorder: VoiceTranscriptRecorder) {
+        guard let request = recorder.outboxRequest else { return }
+        queueVoiceTranscript(request, dashboard: activeDashboardID?.uuidString ?? "-", profile: recorder.profile)
+        voiceTranscriptsSaving.insert(request.callID)
     }
 
     private func captureVoiceCall() {
@@ -3078,9 +3088,11 @@ final class AppState: ObservableObject {
     /// settled): save the rest, keep what can't be saved for later, and
     /// prepare the summary a resume would need.
     private func finishVoiceCallRecording() {
-        voiceCallFlushTask?.cancel()
-        voiceCallFlushTask = nil
+        voiceCallCheckpointTask?.cancel()
+        voiceCallCheckpointTask = nil
         liveVoiceResumeContext = nil
+        let unlinkedJobs = voiceCallUnlinkedJobSessionIDs
+        voiceCallUnlinkedJobSessionIDs = []
         guard let recorder = voiceCallRecorder else { return }
         captureVoiceCall()
         voiceCallTranscriptSubscription = nil
@@ -3110,6 +3122,9 @@ final class AppState: ObservableObject {
                 self.voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: recorder.engine.rawValue)
             }
             guard self.voiceHistoryKey(profile: self.activeProfile) == key else { return }
+            if !unlinkedJobs.isEmpty {
+                self.tagVoiceSessions(unlinkedJobs, kind: .job, parentID: sessionID, parentTitle: recorder.newRowTitle ?? self.voiceJobParentTitle(sessionID))
+            }
             await self.loadSessions(forceRefresh: true)
             _ = await self.voiceResumeContext(sessionID: sessionID, profile: recorder.profile)
         }
@@ -3134,6 +3149,8 @@ final class AppState: ObservableObject {
 
     /// Retries the saves queued for this dashboard and profile, oldest first.
     private func drainVoiceTranscriptOutbox(profile: String, key: String) async {
+        // A save while a live call runs stalls it: wait for the call to end.
+        guard voiceCallRecorder == nil else { return }
         var snapshot = VoiceTranscriptOutbox.load(from: defaults)
         snapshot.prune(now: Date())
         let dashboard = activeDashboardID?.uuidString ?? "-"
