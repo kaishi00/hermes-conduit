@@ -230,6 +230,9 @@ final class VoiceTranscriptRecorder {
     private var flushChain: Task<Void, Never>?
     /// A new row's title, asked for once and reused if its save is retried.
     private(set) var newRowTitle: String?
+    /// Background jobs this call started, tagged with its row once the
+    /// call ends: nothing reaches the host while the call runs.
+    var jobSessionIDs: [String] = []
 
     init(
         engine: VoiceCallEngine,
