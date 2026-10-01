@@ -112,6 +112,7 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     var onStateChange: (@MainActor (GeminiLiveSession.State) -> Void)?
     var onConnectionReplaced: (@MainActor () -> Void)?
     var isReady = false
+    var connectionGeneration = 0
     private(set) var started = 0
     private(set) var stopped = 0
     private(set) var sent: [[String: Any]] = []
@@ -264,7 +265,7 @@ extension HermesVoiceGatewayTimeoutTests {
         // host reads that profile's key.
         var paths: [String] = []
         var profile = "default"
-        let scoped = GeminiLiveTokenClient(profile: { profile }, request: { path, _, _ in
+        let scoped = GeminiLiveTokenClient(profile: { profile }, request: { path, _, _, _ in
             paths.append(path)
             return ["ok": true, "available": true, "model": "gemini-3.8-live"]
         })
@@ -274,7 +275,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(paths, [GeminiLiveTokenClient.statusPath, GeminiLiveTokenClient.statusPath + "?profile=work"])
 
         // The plugin not being installed is reported, never papered over.
-        let missing = GeminiLiveTokenClient(request: { _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found") })
+        let missing = GeminiLiveTokenClient(request: { _, _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found") })
         let status = try await missing.availability()
         XCTAssertEqual(status, .pluginMissing)
         XCTAssertNotNil(status.userFacingReason)
@@ -325,7 +326,7 @@ extension HermesVoiceGatewayTimeoutTests {
             }
         }
 
-        let missing = GeminiLiveTokenClient(request: { _, _, _ in
+        let missing = GeminiLiveTokenClient(request: { _, _, _, _ in
             throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
         })
 
@@ -402,12 +403,79 @@ extension VoiceConversationControllerTests {
         let setup = second.sent.first?["setup"] as? [String: Any]
         XCTAssertEqual((setup?["sessionResumption"] as? [String: Any])?["handle"] as? String, "h-1")
         XCTAssertFalse(first.closed, "The old connection serves until the new one is ready")
+        XCTAssertEqual(session.state, .ready, "A handoff is not heard as a reconnect")
+        XCTAssertEqual(session.connectionGeneration, 0)
+
+        // Both ways: the user's audio still goes out, the model's still arrives.
+        var heard: [GeminiLiveProtocol.ServerEvent] = []
+        session.onEvent = { heard.append($0) }
+        let sentBefore = first.sent.count
+        session.send(GeminiLiveProtocol.audioMessage(pcm16: Data([1, 2])))
+        await settle()
+        XCTAssertEqual(first.sent.count, sentBefore + 1)
+        XCTAssertEqual(second.sent.count, 1, "Only the setup goes to the connection still setting up")
+        first.deliver(["serverContent": ["turnComplete": true]])
+        await settle()
+        XCTAssertEqual(heard, [.turnComplete])
 
         second.deliver(["setupComplete": [String: Any]()])
         await settle()
         XCTAssertTrue(first.closed)
         XCTAssertEqual(session.state, .ready)
         XCTAssertEqual(replaced, 1)
+        XCTAssertEqual(session.connectionGeneration, 1)
+        session.send(GeminiLiveProtocol.audioMessage(pcm16: Data([3, 4])))
+        await settle()
+        XCTAssertEqual(second.sent.count, 2, "The new connection carries the conversation once set up")
+        session.stop()
+    }
+
+    func testGeminiLiveConnectionLostDuringAHandoffIsTakenOverByTheHandoffConnection() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await settle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["setupComplete": [String: Any]()])
+        first.deliver(["sessionResumptionUpdate": ["newHandle": "h-1", "resumable": true]])
+        first.deliver(["goAway": ["timeLeft": "1s"]])
+        await settle(40)
+        XCTAssertEqual(sockets().count, 2)
+
+        // timeLeft runs out before the new connection is set up.
+        first.serverClose(nil)
+        await settle(80)
+        XCTAssertEqual(session.state, .reconnecting)
+        XCTAssertEqual(sockets().count, 2, "The handoff connection already under way takes over; no third one")
+
+        sockets()[1].deliver(["setupComplete": [String: Any]()])
+        await settle()
+        XCTAssertEqual(session.state, .ready)
+        session.send(GeminiLiveProtocol.audioMessage(pcm16: Data([1])))
+        await settle()
+        XCTAssertEqual(sockets()[1].sent.count, 2)
+        session.stop()
+    }
+
+    func testGeminiLiveHandoffConnectionThatFailsSetupRetriesWhileTheOldOneServes() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await settle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["setupComplete": [String: Any]()])
+        first.deliver(["goAway": ["timeLeft": "5s"]])
+        await settle(40)
+        sockets()[1].serverClose(nil)
+        await settle(80)
+
+        XCTAssertEqual(sockets().count, 3, "A failed handoff attempt is retried")
+        XCTAssertEqual(session.state, .ready, "The old connection still serves")
+        XCTAssertFalse(first.closed)
+        sockets()[2].deliver(["setupComplete": [String: Any]()])
+        await settle()
+        XCTAssertTrue(first.closed)
+        XCTAssertEqual(session.state, .ready)
         session.stop()
     }
 
@@ -653,6 +721,7 @@ extension VoiceConversationControllerTests {
         tokens providedTokens: FakeGeminiLiveTokens? = nil,
         route: VoiceBargeInRoutePolicy = .fullDuplex,
         endPhrases: [String] = [],
+        webSearch: GeminiLiveWebSearching? = nil,
         clock: @escaping () -> Date
     ) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl, FakeGeminiLiveInput, FakeGeminiLiveOutput, VoiceBackgroundJobSupervisor) {
         let tokens = providedTokens ?? FakeGeminiLiveTokens()
@@ -663,7 +732,7 @@ extension VoiceConversationControllerTests {
         let controller = GeminiLiveConversationController(
             makeSession: { session },
             availability: { try await tokens.availability() },
-            tools: GeminiLiveToolBridge(supervisor: supervisor),
+            tools: GeminiLiveToolBridge(supervisor: supervisor, webSearch: webSearch),
             input: input,
             output: output,
             now: clock,
@@ -1094,6 +1163,22 @@ extension VoiceConversationControllerTests {
 // MARK: - Web lookups
 
 @MainActor
+final class ParkedGeminiLiveWebSearch: GeminiLiveWebSearching {
+    private var waiter: CheckedContinuation<[GeminiLiveWebResult], Error>?
+    private(set) var queries: [String] = []
+
+    func webSearch(query: String) async throws -> [GeminiLiveWebResult] {
+        queries.append(query)
+        return try await withCheckedThrowingContinuation { waiter = $0 }
+    }
+
+    func finish(_ results: [GeminiLiveWebResult]) {
+        waiter?.resume(returning: results)
+        waiter = nil
+    }
+}
+
+@MainActor
 final class FakeGeminiLiveWebSearch: GeminiLiveWebSearching {
     var results: [GeminiLiveWebResult] = []
     var error: Error?
@@ -1230,7 +1315,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testGeminiLiveWebSearchClientParsesResultsAndRequestsTheProfilesBackend() async throws {
         var requests: [(String, String, [String: Any]?)] = []
-        let client = GeminiLiveTokenClient(profile: { "work" }, request: { path, method, body in
+        let client = GeminiLiveTokenClient(profile: { "work" }, request: { path, method, body, _ in
             requests.append((path, method, body))
             if path.contains("/web-search/status") { return ["ok": true, "available": true, "backend": "searxng"] }
             return ["ok": true, "query": "news", "results": [
@@ -1252,7 +1337,7 @@ extension HermesVoiceGatewayTimeoutTests {
             XCTAssertEqual(error.localizedDescription, "No web search provider configured.")
         }
 
-        let older = GeminiLiveTokenClient(request: { _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "") })
+        let older = GeminiLiveTokenClient(request: { _, _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "") })
         let olderAvailable = await older.webSearchAvailable()
         XCTAssertFalse(olderAvailable, "a plugin without the route means no Hermes search")
     }
@@ -1282,7 +1367,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testGeminiLiveMemoryClientReadsTheProfilesContextAndRecall() async throws {
         var requests: [(String, String, [String: Any]?)] = []
-        let client = GeminiLiveTokenClient(profile: { "work" }, request: { path, method, body in
+        let client = GeminiLiveTokenClient(profile: { "work" }, request: { path, method, body, _ in
             requests.append((path, method, body))
             if path.contains("/memory/context") {
                 return ["ok": true, "available": true, "provider": "honcho", "recall": true, "context": "  Prefers metric units.  "]
@@ -1310,7 +1395,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let longRecall = try GeminiLiveTokenClient.memoryRecall(from: ["ok": true, "results": String(repeating: "b", count: 5000)])
         XCTAssertEqual(longRecall.count, GeminiLiveTokenClient.memoryRecallLimit)
 
-        let older = GeminiLiveTokenClient(request: { _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "") })
+        let older = GeminiLiveTokenClient(request: { _, _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "") })
         let olderContext = await older.memoryContext()
         XCTAssertNil(olderContext, "a plugin without the route means no memory, not a failed conversation")
     }
@@ -1382,7 +1467,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testGeminiLivePersonalityClientAndInstructions() async throws {
         var paths: [String] = []
-        let client = GeminiLiveTokenClient(profile: { "work" }, request: { path, _, _ in
+        let client = GeminiLiveTokenClient(profile: { "work" }, request: { path, _, _, _ in
             paths.append(path)
             return ["ok": true, "available": true, "text": "  You are Judge Hermes. You speak like a courtroom judge.  "]
         })
@@ -1396,7 +1481,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(GeminiLiveTokenClient.personality(from: ["ok": true, "available": true, "text": "  "]))
         let long = GeminiLiveTokenClient.personality(from: ["ok": true, "available": true, "text": String(repeating: "a", count: 9000)])
         XCTAssertEqual(long?.count, GeminiLiveTokenClient.personalityLimit)
-        let older = GeminiLiveTokenClient(request: { _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "") })
+        let older = GeminiLiveTokenClient(request: { _, _, _, _ in throw DashboardTicketBridgeError.http(status: 404, detail: "") })
         let olderPersonality = await older.personality()
         XCTAssertNil(olderPersonality, "a plugin without the route means no persona, not a failed conversation")
 
@@ -1633,5 +1718,75 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: false, liveSheetShown: false))
         XCTAssertTrue(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: true, liveSheetShown: false))
         XCTAssertTrue(VoiceScreenAwake.holdsScreenAwake(enabled: true, voiceSheetShown: false, liveSheetShown: true))
+    }
+}
+
+// MARK: - Lag and handoff
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testGeminiLiveLookupAnsweredAfterAHandoffGoesOutAsATextUpdate() async {
+        let search = ParkedGeminiLiveWebSearch()
+        let (controller, session, _, _, _) = makeGeminiController(webSearch: search, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "s1", name: "web_search", arguments: ["query": "weather"])]))
+        await settle(40)
+        XCTAssertEqual(search.queries, ["weather"])
+
+        // A GoAway handoff completes while the lookup runs.
+        session.connectionGeneration += 1
+        session.onConnectionReplaced?()
+        search.finish([GeminiLiveWebResult(title: "Toronto", url: "https://example.com", snippet: "Sunny, 21°C")])
+        await settle(40)
+
+        XCTAssertTrue(session.sent.allSatisfy { $0["toolResponse"] == nil }, "The old call can't be answered on the new connection")
+        XCTAssertEqual(controller.pendingTextTurnCountForTesting, 1)
+        controller.flushPendingTextIfIdle()
+        XCTAssertTrue(session.textTurns.first?.contains("Sunny, 21°C") == true)
+        controller.stop()
+    }
+
+    func testGeminiLiveLookupOnTheSameConnectionIsAnsweredOnItsCall() async {
+        let search = ParkedGeminiLiveWebSearch()
+        let (controller, session, _, _, _) = makeGeminiController(webSearch: search, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "s1", name: "web_search", arguments: ["query": "weather"])]))
+        await settle(40)
+        search.finish([GeminiLiveWebResult(title: "Toronto", url: "https://example.com", snippet: "Sunny")])
+        await settle(40)
+
+        let response = session.sent.compactMap { ($0["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]] }.first?.first
+        XCTAssertEqual(response?["id"] as? String, "s1")
+        XCTAssertEqual(controller.pendingTextTurnCountForTesting, 0)
+        controller.stop()
+    }
+
+    func testGeminiLiveLookupFallbackTextCarriesResultsOrTheFailure() {
+        let found = GeminiLiveConversationController.fallbackText(for: ["results": "1. A: b (https://a)"], name: "web_search")
+        XCTAssertTrue(found?.contains("1. A: b") == true)
+        let failed = GeminiLiveConversationController.fallbackText(for: ["error": "Web search timed out"], name: "recall_memory")
+        XCTAssertTrue(failed?.contains("Web search timed out") == true)
+        XCTAssertNil(GeminiLiveConversationController.fallbackText(for: ["summary": "No jobs."], name: "list_jobs"))
+    }
+
+    func testGeminiLiveLookupsWaitPastTheHostsOwnTimeouts() async throws {
+        var timeouts: [String: Int] = [:]
+        let client = GeminiLiveTokenClient(request: { path, _, _, timeout in
+            timeouts[String(path.split(separator: "?").first ?? "")] = timeout
+            if path.contains("/memory/recall") { return ["ok": true, "results": "likes tea"] }
+            if path.contains("/web-search/status") { return ["ok": true, "available": true] }
+            return ["ok": true, "results": [[String: Any]]()]
+        })
+        _ = try await client.webSearch(query: "news")
+        _ = try await client.recallMemory(query: "tea")
+        _ = await client.webSearchAvailable()
+
+        // The host gives a search 20 s and a recall 12 s before answering
+        // with its own error; the phone must not give up first.
+        XCTAssertGreaterThan(try XCTUnwrap(timeouts[GeminiLiveTokenClient.webSearchPath]), 20_000)
+        XCTAssertGreaterThan(try XCTUnwrap(timeouts[GeminiLiveTokenClient.memoryRecallPath]), 12_000)
+        XCTAssertEqual(timeouts[GeminiLiveTokenClient.webSearchStatusPath], GeminiLiveTokenClient.defaultTimeoutMilliseconds)
     }
 }
