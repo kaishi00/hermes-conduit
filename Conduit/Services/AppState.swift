@@ -4381,6 +4381,7 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
         defaults.removeObject(forKey: reviewSummaryCacheKey)
         defaults.removeObject(forKey: knownProfilesKey)
+        refreshSiriProfileShortcuts()
         clearSessionPresentationCache()
         wipeOfflineChatCache(dashboardID: nil)
         // Identity evidence and per-session overrides are keyed only by
@@ -17188,7 +17189,7 @@ final class AppState: ObservableObject {
                 ? orderedProfiles(profiles + [activeProfile, "default"])
                 : orderedProfiles(names + ["default"])
             profiles = nextProfiles
-            defaults.set(nextProfiles, forKey: knownProfilesKey)
+            persistKnownProfiles(nextProfiles)
             // A non-empty response is authoritative: if the server no longer
             // knows the active profile (deleted externally), re-home onto a
             // valid fallback instead of leaving `activeProfile ∉ profiles` —
@@ -17225,7 +17226,23 @@ final class AppState: ObservableObject {
             // no-op write when the cache is already complete).
             let merged = orderedProfiles(profiles + [activeProfile, "default"])
             profiles = merged
-            defaults.set(merged, forKey: knownProfilesKey)
+            persistKnownProfiles(merged)
+        }
+    }
+
+    /// Caches the profile list and, when it changed, tells Siri so the
+    /// "Start <profile> voice in Conduit" phrases can match the new names.
+    private func persistKnownProfiles(_ names: [String]) {
+        guard defaults.stringArray(forKey: knownProfilesKey) != names else { return }
+        defaults.set(names, forKey: knownProfilesKey)
+        refreshSiriProfileShortcuts()
+    }
+
+    /// Siri re-reads the cached profile list in a later task; discovery and
+    /// the server-switch wipe never wait on it.
+    private func refreshSiriProfileShortcuts() {
+        Task {
+            ConduitVoiceShortcuts.updateAppShortcutParameters()
         }
     }
 

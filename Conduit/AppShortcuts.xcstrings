@@ -18,6 +18,23 @@
         }
       }
     },
+    "${applicationName} voice with ${profile}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName} voice with ${profile}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用${profile}开始${applicationName}语音"
+          }
+        }
+      }
+    },
     "Start ${applicationName} voice" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -31,6 +48,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "启动${applicationName}语音"
+          }
+        }
+      }
+    },
+    "Start ${profile} voice in ${applicationName}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start ${profile} voice in ${applicationName}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在${applicationName}中启动${profile}语音"
           }
         }
       }
