@@ -951,6 +951,7 @@ private struct ProjectSessionsSheet: View {
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
+                                    .accessibilityHint("Touch and hold for conversation actions.")
                                     .contextMenu {
                                         SessionActionMenuItems(
                                             session: session,
