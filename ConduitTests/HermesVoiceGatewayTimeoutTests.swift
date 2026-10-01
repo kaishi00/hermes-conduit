@@ -135,8 +135,7 @@ final class HermesVoiceGatewayTimeoutTests: XCTestCase {
     }
 
     func testSendFailureAfterAudioStillFails() async throws {
-        let socket = FakeSpeechSocket()
-        socket.pendingPCM = [Data(count: 4)]
+        let socket = FakeSpeechSocket(pendingPCM: [Data(count: 4)])
         let recorder = SpeechStreamRecorder()
         let stream = recorder.makeStream(socket: socket)
 
@@ -174,30 +173,50 @@ final class HermesVoiceGatewayTimeoutTests: XCTestCase {
 
 /// A speak-stream socket whose handshake was refused: every send fails, and
 /// receive delivers any queued PCM, then parks until the socket is cancelled.
-@MainActor
-private final class FakeSpeechSocket: HermesSpeechSocket {
-    var pendingPCM: [Data] = []
-    private(set) var sendCount = 0
-    private(set) var cancelCount = 0
-    private var parked: CheckedContinuation<URLSessionWebSocketTask.Message, Error>?
+/// Nonisolated like `HermesSpeechSocket` (its synchronous `cancel` must be),
+/// so its state is lock-guarded.
+private final class FakeSpeechSocket: HermesSpeechSocket, @unchecked Sendable {
+    private let lock = NSLock()
+    private var queuedPCM: [Data]
+    private var sends = 0
+    private var cancels = 0
     private var cancelled = false
+    private var parked: CheckedContinuation<URLSessionWebSocketTask.Message, Error>?
+
+    init(pendingPCM: [Data] = []) {
+        queuedPCM = pendingPCM
+    }
+
+    var sendCount: Int { lock.withLock { sends } }
+    var cancelCount: Int { lock.withLock { cancels } }
 
     func send(_ message: URLSessionWebSocketTask.Message) async throws {
-        sendCount += 1
+        lock.withLock { sends += 1 }
         throw URLError(.badServerResponse)
     }
 
     func receive() async throws -> URLSessionWebSocketTask.Message {
-        if !pendingPCM.isEmpty { return .data(pendingPCM.removeFirst()) }
-        if cancelled { throw URLError(.cancelled) }
-        return try await withCheckedThrowingContinuation { parked = $0 }
+        let next: Data? = lock.withLock { queuedPCM.isEmpty ? nil : queuedPCM.removeFirst() }
+        if let next { return .data(next) }
+        return try await withCheckedThrowingContinuation { continuation in
+            let alreadyCancelled: Bool = lock.withLock {
+                if cancelled { return true }
+                parked = continuation
+                return false
+            }
+            if alreadyCancelled { continuation.resume(throwing: URLError(.cancelled)) }
+        }
     }
 
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        cancelCount += 1
-        cancelled = true
-        parked?.resume(throwing: URLError(.cancelled))
-        parked = nil
+        let waiting: CheckedContinuation<URLSessionWebSocketTask.Message, Error>? = lock.withLock {
+            cancels += 1
+            cancelled = true
+            let waiting = parked
+            parked = nil
+            return waiting
+        }
+        waiting?.resume(throwing: URLError(.cancelled))
     }
 }
 
