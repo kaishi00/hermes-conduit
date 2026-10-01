@@ -1476,6 +1476,7 @@ final class AppState: ObservableObject {
             closeGeminiLiveConversation()
         } else {
             dropGeminiLiveHostContext()
+            if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
         }
     }
 
@@ -1500,6 +1501,8 @@ final class AppState: ObservableObject {
         // to close, but its host text still goes at the boundary.
         guard showGeminiLiveSheet || isGeminiLiveActive else {
             dropGeminiLiveHostContext()
+            // Its recording still closes, so the call is saved.
+            if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
             return
         }
         closeGeminiLiveConversation()
@@ -1699,6 +1702,7 @@ final class AppState: ObservableObject {
             closeGPTLiveConversation()
         } else {
             dropGPTLiveHostContext()
+            if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
         }
     }
 
@@ -1723,6 +1727,8 @@ final class AppState: ObservableObject {
         // to close, but its host text still goes at the boundary.
         guard showGPTLiveSheet || isGPTLiveActive else {
             dropGPTLiveHostContext()
+            // Its recording still closes, so the call is saved.
+            if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
             return
         }
         closeGPTLiveConversation()
@@ -3077,28 +3083,8 @@ final class AppState: ObservableObject {
                 try? await Task.sleep(for: Self.voiceCallCheckpointInterval)
                 guard !Task.isCancelled, let self, let recorder = self.voiceCallRecorder else { return }
                 self.captureVoiceCall()
-                if self.isLiveVoiceCallActive {
-                    self.checkpointVoiceCall(recorder)
-                } else {
-                    // The call failed and its sheet is still open: nothing
-                    // is left to stall, so save it as before.
-                    await self.saveIdleVoiceCall(recorder)
-                }
+                self.checkpointVoiceCall(recorder)
             }
-        }
-    }
-
-    private func saveIdleVoiceCall(_ recorder: VoiceTranscriptRecorder) async {
-        let dashboard = activeDashboardID?.uuidString ?? "-"
-        let checkpointed = recorder.callID
-        await recorder.flush()
-        // Closed meanwhile: the closing save owns the outbox entry now.
-        guard voiceCallRecorder === recorder else { return }
-        voiceTranscriptsSaving.remove(checkpointed)
-        dequeueVoiceTranscript(callID: checkpointed)
-        if let request = recorder.outboxRequest {
-            queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs)
-            voiceTranscriptsSaving.insert(request.callID)
         }
     }
 
