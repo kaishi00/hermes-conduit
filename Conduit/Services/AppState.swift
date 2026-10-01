@@ -2900,8 +2900,10 @@ final class AppState: ObservableObject {
     private var voiceCallRecorder: VoiceTranscriptRecorder?
     private var voiceCallCheckpointTask: Task<Void, Never>?
     private var voiceCallTranscriptSubscription: AnyCancellable?
-    static let voiceCallCheckpointInterval: Duration = .seconds(60)
+    static let voiceCallCheckpointInterval: Duration = .seconds(15)
     private var voiceCallCheckpointedTurns = 0
+    private var voiceCallCheckpointedAt = Date.distantPast
+    static let voiceCallTurnCheckpointSpacing: TimeInterval = 10
     /// The call whose closing save is still running: a job it started that
     /// reports in now is still tagged with its row.
     private weak var closingVoiceCallRecorder: VoiceTranscriptRecorder?
@@ -3057,6 +3059,7 @@ final class AppState: ObservableObject {
         liveVoiceResumeContext = resume?.context
         guard voiceCallSavingEnabled else { return }
         voiceCallCheckpointedTurns = 0
+        voiceCallCheckpointedAt = .distantPast
         let profile = activeProfile
         let recorder = VoiceTranscriptRecorder(
             engine: engine,
@@ -3083,9 +3086,10 @@ final class AppState: ObservableObject {
             .sink { [weak self] _ in
                 guard let self else { return }
                 self.captureVoiceCall()
-                // Each newly settled turn is kept on the device at once.
-                if let recorder = self.voiceCallRecorder, recorder.turns.count != self.voiceCallCheckpointedTurns {
-                    self.voiceCallCheckpointedTurns = recorder.turns.count
+                // Newly settled turns are kept on the device within seconds;
+                // the outbox is rewritten whole, so not on every turn.
+                if let recorder = self.voiceCallRecorder, recorder.turns.count != self.voiceCallCheckpointedTurns,
+                   Date().timeIntervalSince(self.voiceCallCheckpointedAt) >= Self.voiceCallTurnCheckpointSpacing {
                     self.checkpointVoiceCall(recorder)
                 }
             }
@@ -3103,6 +3107,8 @@ final class AppState: ObservableObject {
     /// they survive the app being closed mid-call. The outbox leaves the
     /// entry alone while the call runs; the closing save settles it.
     private func checkpointVoiceCall(_ recorder: VoiceTranscriptRecorder) {
+        voiceCallCheckpointedTurns = recorder.turns.count
+        voiceCallCheckpointedAt = Date()
         guard let request = recorder.outboxRequest else { return }
         queueVoiceTranscript(request, dashboard: activeDashboardID?.uuidString ?? "-", profile: recorder.profile, jobs: recorder.jobSessionIDs)
         voiceTranscriptsSaving.insert(request.callID)
@@ -3174,6 +3180,9 @@ final class AppState: ObservableObject {
             }
             guard self.voiceHistoryKey(profile: self.activeProfile) == key else { return }
             await self.loadSessions(forceRefresh: true)
+            // The summary is a model turn on the host: not while a new call
+            // runs. Resume Call makes it then if it's still missing.
+            guard !self.isLiveVoiceCallActive else { return }
             _ = await self.voiceResumeContext(sessionID: sessionID, profile: recorder.profile)
         }
     }
