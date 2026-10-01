@@ -43,6 +43,23 @@ final class VoiceSpokenCommandMatchingTests: XCTestCase {
         XCTAssertEqual(preferences.resolvedTranscriptionMode, .hermes)
     }
 
+    func testSpokenCommandMatchingAllowsHowLiveModelsTranscribeAGoodbye() {
+        let phrases = VoiceSpokenCommands.defaultEndConversationPhrases
+        for utterance in ["Goodbye.", " Good bye.", "Good-bye!", "Okay, goodbye.", "Alright, bye bye!",
+                          "Bye, thanks!", "Thank you, goodbye.", "Bye for now.", "That\u{2019}s all, thanks.", "好的，再见。"] {
+            XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand(utterance, phrases: phrases), utterance)
+        }
+        for utterance in ["goodbye to the old server", "say goodbye to Sam", "Thanks.", "Okay.", "bye the way, one more thing", ""] {
+            XCTAssertFalse(VoiceSpokenCommands.matchesSpokenCommand(utterance, phrases: phrases), utterance)
+        }
+    }
+
+    func testSpokenCommandMatchingHandlesConfiguredPhrasesWithCourtesies() {
+        XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand("Okay, bye.", phrases: ["okay bye"]))
+        XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand("Bye.", phrases: ["okay bye"]))
+        XCTAssertFalse(VoiceSpokenCommands.matchesSpokenCommand("Okay.", phrases: ["okay bye"]))
+    }
+
     func testUtteranceCasePunctuationAndWhitespaceNormalizeToMatch() {
         let phrases = ["goodbye"]
         XCTAssertTrue(VoiceSpokenCommands.matches("Goodbye.", phrases: phrases))

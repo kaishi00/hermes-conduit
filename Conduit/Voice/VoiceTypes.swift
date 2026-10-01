@@ -112,6 +112,64 @@ enum VoiceSpokenCommands {
         return phrases.contains { canonicalized($0) == normalized }
     }
 
+    /// Spoken courtesies around an end phrase ("okay, goodbye", "bye,
+    /// thanks"). Pairs are written as one entry, ahead of their single
+    /// words so "for now" goes as a whole.
+    private static let leadingCourtesies: [[String]] = [
+        ["all", "right"], ["thank", "you"],
+        ["ok"], ["okay"], ["alright"], ["thanks"], ["cool"], ["great"], ["well"], ["so"], ["好的"], ["好"], ["谢谢"],
+    ]
+    private static let trailingCourtesies: [[String]] = [
+        ["for", "now"], ["thank", "you"],
+        ["thanks"], ["now"], ["then"], ["谢谢"],
+    ]
+
+    /// Like `matches`, but for how a live model transcribes speech: inner
+    /// spaces and punctuation don't count ("Good bye." is "goodbye"), a
+    /// phrase may be repeated ("bye bye"), and courtesies around it are
+    /// allowed ("Okay, goodbye.", "Bye, thanks!"). Anything else in the
+    /// utterance still means it isn't a command ("goodbye to the old
+    /// server" never matches).
+    static func matchesSpokenCommand(_ utterance: String, phrases: [String]) -> Bool {
+        if matches(utterance, phrases: phrases) { return true }
+        var words = commandWords(utterance)
+        stripCourtesies(&words)
+        let spoken = words.joined()
+        guard !spoken.isEmpty else { return false }
+        return phrases.contains { phrase in
+            var phraseWords = commandWords(phrase)
+            stripCourtesies(&phraseWords)
+            let key = phraseWords.joined()
+            guard !key.isEmpty else { return false }
+            return (1...3).contains { spoken == String(repeating: key, count: $0) }
+        }
+    }
+
+    private static func commandWords(_ text: String) -> [String] {
+        let separators = CharacterSet.whitespacesAndNewlines
+            .union(.punctuationCharacters)
+            .subtracting(CharacterSet(charactersIn: "'"))
+        return canonicalized(text)
+            .components(separatedBy: separators)
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "'")) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func stripCourtesies(_ words: inout [String]) {
+        var changed = true
+        while changed {
+            changed = false
+            for courtesy in leadingCourtesies where words.count > courtesy.count && Array(words.prefix(courtesy.count)) == courtesy {
+                words.removeFirst(courtesy.count)
+                changed = true
+            }
+            for courtesy in trailingCourtesies where words.count > courtesy.count && Array(words.suffix(courtesy.count)) == courtesy {
+                words.removeLast(courtesy.count)
+                changed = true
+            }
+        }
+    }
+
     /// Save-time canonicalization for a phrase list: trim each entry, drop
     /// entries that canonicalize to empty, and de-duplicate by the same
     /// canonical form used at runtime — keeping the first occurrence's
