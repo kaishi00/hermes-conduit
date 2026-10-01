@@ -216,7 +216,8 @@ final class GeminiLiveConversationController: ObservableObject {
     /// still talking.
     static let endTimeout: TimeInterval = 8
     /// A transcript that starts this soon after a model turn that answered
-    /// speech with no transcript yet is that speech's late transcript.
+    /// speech with no transcript yet is that speech's late transcript
+    /// (one that starts while the reply is still playing always is).
     static let lateTranscriptWindow: TimeInterval = 3
 
     @Published private(set) var phase: Phase = .idle
@@ -273,14 +274,18 @@ final class GeminiLiveConversationController: ObservableObject {
     private var endRequestedAt: Date?
     private var endTask: Task<Void, Never>?
     private var lateEndPhraseTask: Task<Void, Never>?
-    /// When the latest user utterance's transcript started arriving.
-    private var exchangeUserEntryStartedAt: Date?
+    /// The user utterance the last completed model turn answered.
+    private var answeredUserEntry: UUID?
+    /// A user utterance whose transcript (or its end) arrived only after the
+    /// model's reply to it completed: no turnComplete will check it.
+    private var lateUserEntry: UUID?
     /// Conduit started the current model turn (a text turn or a job
     /// update), so it isn't an answer to the user.
     private var clientPromptedTurn = false
     /// When the last model turn completed that answered the user without
     /// their transcript having arrived: Gemini heard them, the transcript
-    /// is late. Nil once another turn starts.
+    /// is late. Spent by the next user transcript; nil once another turn
+    /// starts.
     private var unheardReplyEndedAt: Date?
     /// Gemini sometimes sends the user's transcript after the model's reply
     /// has finished, so no turnComplete follows to check it for an end
@@ -315,6 +320,8 @@ final class GeminiLiveConversationController: ObservableObject {
         output.interrupt()
         suppressingModelTurn = true
         modelTurnActive = false
+        clientPromptedTurn = false
+        clearLateTranscriptState()
         lastModelTurnEndedAt = now()
         lastPlaybackAt = nil
         openAssistantEntry = nil
@@ -341,7 +348,7 @@ final class GeminiLiveConversationController: ObservableObject {
         lateEndPhraseTask?.cancel()
         lateEndPhraseTask = nil
         clientPromptedTurn = false
-        unheardReplyEndedAt = nil
+        clearLateTranscriptState()
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
         // Nothing from a previous attempt may gate or attach to this one.
@@ -406,7 +413,7 @@ final class GeminiLiveConversationController: ObservableObject {
         lateEndPhraseTask?.cancel()
         lateEndPhraseTask = nil
         clientPromptedTurn = false
-        unheardReplyEndedAt = nil
+        clearLateTranscriptState()
         session?.stop()
         session = nil
         stopInput()
@@ -522,11 +529,25 @@ final class GeminiLiveConversationController: ObservableObject {
     /// the model is answering, or hasn't answered yet, is left to
     /// turnComplete, so the end never starts before the model's goodbye.
     func endIfUnansweredGoodbye() {
-        guard isActive, !modelTurnActive,
-              let exchangeUserEntry, let startedAt = exchangeUserEntryStartedAt,
-              let replyEndedAt = unheardReplyEndedAt, startedAt >= replyEndedAt,
-              startedAt.timeIntervalSince(replyEndedAt) <= Self.lateTranscriptWindow else { return }
-        endIfUserSaidGoodbye(exchangeUserEntry)
+        guard isActive, endRequestedAt == nil, !modelTurnActive,
+              let late = lateUserEntry, late == exchangeUserEntry,
+              let entry = transcript.first(where: { $0.id == late }) else { return }
+        var spoken = [entry.text]
+        // It may be the rest of the utterance the model answered ("Good" …
+        // "bye."), split across the reply.
+        if let answered = answeredUserEntry, let previous = transcript.first(where: { $0.id == answered }) {
+            spoken.append(previous.text + entry.text)
+        }
+        guard spoken.contains(where: { VoiceSpokenCommands.matchesSpokenCommand($0, phrases: activeEndPhrases) }) else { return }
+        requestEnd()
+    }
+
+    /// A new model turn (or an interruption) ends the window in which a
+    /// transcript can trail the previous reply.
+    private func clearLateTranscriptState() {
+        unheardReplyEndedAt = nil
+        answeredUserEntry = nil
+        lateUserEntry = nil
     }
 
     /// An audio interruption stopped the microphone. Restart it once the
@@ -579,7 +600,7 @@ final class GeminiLiveConversationController: ObservableObject {
         switch event {
         case .audio(let pcm, let sampleRate):
             guard !suppressingModelTurn else { return }
-            if !modelTurnActive { unheardReplyEndedAt = nil }
+            if !modelTurnActive { clearLateTranscriptState() }
             modelTurnActive = true
             lastModelAudioAt = now()
             if endRequestedAt == nil { phase = .speaking }
@@ -590,7 +611,7 @@ final class GeminiLiveConversationController: ObservableObject {
             }
         case .outputTranscription(let text):
             guard !suppressingModelTurn else { return }
-            if !modelTurnActive { unheardReplyEndedAt = nil }
+            if !modelTurnActive { clearLateTranscriptState() }
             modelTurnActive = true
             appendTranscript(text, speaker: .assistant)
         case .inputTranscription(let text):
@@ -603,7 +624,7 @@ final class GeminiLiveConversationController: ObservableObject {
             suppressingModelTurn = false
             modelTurnActive = false
             clientPromptedTurn = false
-            unheardReplyEndedAt = nil
+            clearLateTranscriptState()
             lastModelTurnEndedAt = now()
             openAssistantEntry = nil
             // Ending: the microphone is closed, so it isn't listening.
@@ -615,6 +636,8 @@ final class GeminiLiveConversationController: ObservableObject {
             // A reply with no user transcript yet answered speech whose
             // transcript is still to come.
             unheardReplyEndedAt = exchangeUserEntry == nil && !clientPromptedTurn ? now() : nil
+            answeredUserEntry = exchangeUserEntry
+            lateUserEntry = nil
             clientPromptedTurn = false
             if let exchangeUserEntry { endIfUserSaidGoodbye(exchangeUserEntry) }
             exchangeUserEntry = nil
@@ -758,7 +781,7 @@ final class GeminiLiveConversationController: ObservableObject {
         let text = pendingTextTurns.removeFirst()
         let noticeJobID = tools.textUpdateSending(text)
         modelTurnActive = true
-        unheardReplyEndedAt = nil
+        clearLateTranscriptState()
         clientPromptedTurn = true
         // An update that never reached the socket waits for the next
         // connection instead of being lost; a job notice whose conversation
@@ -869,12 +892,22 @@ final class GeminiLiveConversationController: ObservableObject {
                 : transcript[index].text + text
             return
         }
+        // A user transcript that starts after the model's reply completed,
+        // while that reply is still playing or right after a reply to
+        // speech Gemini hadn't transcribed yet, belongs to speech from
+        // before the reply: no turnComplete will check it.
+        var trailsReply = false
+        if speaker == .user, !modelTurnActive {
+            let unheard = unheardReplyEndedAt.map { now().timeIntervalSince($0) <= Self.lateTranscriptWindow } ?? false
+            trailsReply = unheard || (answeredUserEntry != nil && output.isPlaying)
+            unheardReplyEndedAt = nil
+        }
         let entry = VoiceConversationTranscriptEntry(speaker: speaker, text: text.trimmingCharacters(in: .whitespaces))
         transcript.append(entry)
         if speaker == .user {
             openUserEntry = entry.id
             exchangeUserEntry = entry.id
-            exchangeUserEntryStartedAt = now()
+            lateUserEntry = trailsReply ? entry.id : nil
             // The user speaking starts a new exchange.
             openAssistantEntry = nil
         } else {
@@ -921,7 +954,6 @@ final class GeminiLiveConversationController: ObservableObject {
     private func closeOpenEntries() {
         openUserEntry = nil
         exchangeUserEntry = nil
-        exchangeUserEntryStartedAt = nil
         openAssistantEntry = nil
     }
 

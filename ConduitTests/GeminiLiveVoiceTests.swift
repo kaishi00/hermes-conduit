@@ -1675,6 +1675,25 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGeminiLiveGoodbyeSplitAcrossTheReplyStillEnds() async {
+        let (controller, session, _, output, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
+        controller.lateEndPhraseDelay = 0.01
+        await controller.start()
+        session.becomeReady()
+
+        // Part of the transcript came with the reply, the rest after it,
+        // while the reply is still playing.
+        session.onEvent?(.inputTranscription("Good"))
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.turnComplete)
+        XCTAssertFalse(controller.isEnding, "\"Good\" alone isn't an end phrase")
+        XCTAssertTrue(output.isPlaying)
+        session.onEvent?(.inputTranscription("bye."))
+        try? await Task.sleep(for: .milliseconds(200))
+        XCTAssertTrue(controller.isEnding)
+        controller.stop()
+    }
+
     func testGeminiLiveGoodbyeTheModelHasNotAnsweredIsLeftToItsTurn() async {
         let (controller, session, _, _, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
         controller.lateEndPhraseDelay = 0.01
