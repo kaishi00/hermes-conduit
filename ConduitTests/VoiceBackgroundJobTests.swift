@@ -68,6 +68,14 @@ final class FakeVoiceJobBackend {
     private var parkedCreate: CheckedContinuation<Void, Never>?
     var liveRows: [LiveSessionStatus] = []
     private(set) var created = 0
+    /// The profile each createSession was asked for (nil: the active one).
+    private(set) var createdProfiles: [String?] = []
+    /// The profile each liveSessions read was scoped to.
+    private(set) var polledProfiles: [String?] = []
+    /// Spoken names the fake resolves; anything else is unknown.
+    var profileTargets: [String: VoiceJobProfileTarget] = [:]
+    /// Profiles whose liveSessions read throws.
+    var failingLiveProfiles: Set<String> = []
     private(set) var titles: [(String, String)] = []
     private(set) var submissions: [(String, String)] = []
     private(set) var cancelled: [String] = []
@@ -78,7 +86,8 @@ final class FakeVoiceJobBackend {
     /// back, so there is no cycle.
     var backend: VoiceBackgroundJobBackend {
         VoiceBackgroundJobBackend(
-            createSession: { [self] in
+            createSession: { [self] profile in
+                self.createdProfiles.append(profile)
                 if let error = self.createError { throw error }
                 if self.parksCreate {
                     self.parksCreate = false
@@ -100,7 +109,12 @@ final class FakeVoiceJobBackend {
                 if let cancelError = self.cancelError { throw cancelError }
                 self.cancelled.append(id)
             },
-            liveSessions: { [self] in self.liveRows }
+            liveSessions: { [self] profile in
+                self.polledProfiles.append(profile)
+                if let profile, self.failingLiveProfiles.contains(profile) { throw URLError(.timedOut) }
+                return self.liveRows
+            },
+            resolveProfile: { [self] name in self.profileTargets[name.lowercased()] ?? .unknown }
         )
     }
 
@@ -135,6 +149,129 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(fake.submissions.first?.1.hasSuffix("check why my server went down") == true)
         XCTAssertEqual(supervisor.jobs.map(\.status), [.running])
         XCTAssertNil(supervisor.takePendingNotice(), "a running job has nothing to hand back")
+    }
+
+    func testLeadingProfileNameRoutesTheJobToThatProfile() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["fam": .other("fam")]
+
+        let reply = await supervisor.performVoiceCommand(.start(instructions: "for Fam, check the router"))
+
+        XCTAssertEqual(fake.createdProfiles, ["fam"])
+        XCTAssertEqual(supervisor.jobs.first?.profile, "fam")
+        XCTAssertEqual(supervisor.jobs.first?.title, "check the router", "the target is not part of the task")
+        XCTAssertTrue(fake.submissions.first?.1.hasSuffix("check the router") == true)
+        XCTAssertTrue(reply.contains("Fam"), "the confirmation names the profile as it was said")
+    }
+
+    func testToBeforeAVerbNeverNamesAProfile() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["check": .other("check")]
+
+        _ = await supervisor.performVoiceCommand(.start(instructions: "to check the router"))
+
+        XCTAssertEqual(fake.createdProfiles, [nil])
+        XCTAssertEqual(supervisor.jobs.first?.instructions, "to check the router")
+    }
+
+    func testOrdinaryLeadingWordsStayPartOfTheTask() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["fam": .other("fam")]
+
+        _ = await supervisor.performVoiceCommand(.start(instructions: "for the report, check last week's numbers"))
+
+        XCTAssertEqual(fake.createdProfiles, [nil])
+        XCTAssertNil(supervisor.jobs.first?.profile)
+        XCTAssertEqual(supervisor.jobs.first?.instructions, "for the report, check last week's numbers")
+    }
+
+    func testNamingTheActiveProfileRunsTheJobHere() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["default": .active]
+
+        _ = await supervisor.startJob(instructions: "check the server", profile: "Default")
+
+        XCTAssertEqual(fake.createdProfiles, [nil])
+        XCTAssertNil(supervisor.jobs.first?.profile)
+    }
+
+    func testALeadingActiveProfileNameIsDroppedFromTheTask() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["default": .active, "fam": .other("fam")]
+
+        _ = await supervisor.performVoiceCommand(.start(instructions: "for Default, check the router"))
+        _ = await supervisor.startJob(instructions: "for Fam, check the lights", profile: "fam")
+
+        XCTAssertEqual(fake.createdProfiles, [nil, "fam"])
+        XCTAssertEqual(supervisor.jobs.map(\.instructions), ["check the router", "check the lights"])
+    }
+
+    func testAnUnknownNamedProfileStartsNothing() async {
+        let (supervisor, fake) = makeSupervisor()
+
+        let reply = await supervisor.startJob(instructions: "check the server", profile: "Nobody")
+
+        XCTAssertTrue(fake.createdProfiles.isEmpty)
+        XCTAssertTrue(supervisor.jobs.isEmpty)
+        XCTAssertTrue(reply.contains("Nobody"))
+    }
+
+    func testLivenessPollReadsEachJobsOwnProfile() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["fam": .other("fam")]
+        _ = await supervisor.startJob(instructions: "check the server")
+        _ = await supervisor.startJob(instructions: "check the router", profile: "fam")
+
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(Set(fake.polledProfiles.map { $0 ?? "-" }), ["-", "fam"])
+        XCTAssertEqual(fake.polledProfiles.count, 2)
+    }
+
+    func testOneProfilesFailedReadStillJudgesTheOthers() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["fam": .other("fam")]
+        _ = await supervisor.startJob(instructions: "check the router", profile: "fam")
+        _ = await supervisor.startJob(instructions: "check the server")
+        fake.failingLiveProfiles = ["fam"]
+
+        // The active profile lists nothing twice: its job settles.
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first { $0.profile == nil }?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first { $0.profile == "fam" }?.status, .running, "no read is not absence")
+    }
+
+    func testAnotherProfilesJobIsNeverSettledByAbsence() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["fam": .other("fam")]
+        _ = await supervisor.startJob(instructions: "check the router", profile: "fam")
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .running, "a registry that never listed it can't prove it ended")
+
+        // Once that profile's registry has listed the job, its absence counts.
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "working")]
+        await supervisor.pollOnce()
+        fake.liveRows = []
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+    }
+
+    func testAMismatchedLeadingTargetStaysInTheTask() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["fam": .other("fam"), "work": .other("work")]
+
+        _ = await supervisor.startJob(instructions: "for Work, check the lights", profile: "fam")
+
+        XCTAssertEqual(fake.createdProfiles, ["fam"])
+        XCTAssertEqual(supervisor.jobs.first?.instructions, "for Work, check the lights")
     }
 
     func testFinishedJobIsHandedBackOnceWithItsResult() async {

@@ -2036,8 +2036,17 @@ final class AppState: ObservableObject {
     /// finished result is handed back to the Voice conversation.
     lazy var voiceBackgroundJobSupervisor: VoiceBackgroundJobSupervisor = {
         let supervisor = VoiceBackgroundJobSupervisor(backend: VoiceBackgroundJobBackend(
-            createSession: { [weak self] in
+            createSession: { [weak self] targetProfile in
                 guard let self, let client = self.client else { throw HermesError.notConnected }
+                if let targetProfile {
+                    // A job on another profile or bot runs on that profile's
+                    // own model: this profile's voice-job model is not its.
+                    let created = try await client.createSession(inProfile: targetProfile)
+                    if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, targetProfile) {
+                        throw HermesError.invalidResponse
+                    }
+                    return (created.sessionId, created.storedSessionId)
+                }
                 // Same model/provider as a composer-created chat, and the
                 // same refusal when Hermes lands it in another profile.
                 let profile = self.activeProfile
@@ -2068,9 +2077,12 @@ final class AppState: ObservableObject {
                 guard let client = self?.client else { throw HermesError.notConnected }
                 try await client.cancel(sessionID)
             },
-            liveSessions: { [weak self] in
+            liveSessions: { [weak self] targetProfile in
                 guard let client = self?.client else { throw HermesError.notConnected }
-                return try await client.activeSessions()
+                return try await client.activeSessions(inProfile: targetProfile)
+            },
+            resolveProfile: { [weak self] spokenName in
+                self?.voiceJobProfileTarget(named: spokenName) ?? .unknown
             }
         ))
         supervisor.onNoticePending = { [weak self] in
@@ -2087,6 +2099,18 @@ final class AppState: ObservableObject {
         }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
+            if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }),
+               let targetProfile = job.profile {
+                // A job on another profile is that profile's chat: badged
+                // there, and noted in the call. Voice tags live in the
+                // calling profile's history, so it carries none.
+                self.rememberVoiceJobSessions(sessionIDs, profile: targetProfile)
+                if let recorder = self.voiceCallRecorder {
+                    self.captureVoiceCall()
+                    recorder.note(AppLocalization.string("Started a background job on \(job.profileLabel ?? targetProfile): \(job.title)."))
+                }
+                return
+            }
             self.rememberVoiceJobSessions(sessionIDs)
             // Filed under Voice Jobs on every device, with the call (or the
             // classic voice chat) it came from.
@@ -3139,17 +3163,39 @@ final class AppState: ObservableObject {
         return remembered.contains { ids.contains($0) }
     }
 
-    func rememberVoiceJobSessions(_ sessionIDs: [String]) {
+    func rememberVoiceJobSessions(_ sessionIDs: [String], profile: String? = nil) {
         let fresh = sessionIDs.filter { !$0.isEmpty }
         guard !fresh.isEmpty else { return }
-        var remembered = voiceJobSessionIDsByProfile[activeProfile] ?? []
+        let profile = profile ?? activeProfile
+        var remembered = voiceJobSessionIDsByProfile[profile] ?? []
         remembered.removeAll { fresh.contains($0) }
         remembered.append(contentsOf: fresh)
         if remembered.count > Self.maximumRememberedVoiceJobSessions {
             remembered.removeFirst(remembered.count - Self.maximumRememberedVoiceJobSessions)
         }
-        voiceJobSessionIDsByProfile[activeProfile] = remembered
+        voiceJobSessionIDsByProfile[profile] = remembered
         persistVoiceJobSessions()
+    }
+
+    /// Resolves a profile or bot name spoken for a voice job against the
+    /// server's profiles and the bot roster (profile name, bot title or
+    /// display name, case-insensitive).
+    func voiceJobProfileTarget(named spokenName: String) -> VoiceJobProfileTarget {
+        let name = spokenName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return .unknown }
+        var match: String?
+        if let profile = profiles.first(where: { profilesMatch($0, name) }) {
+            match = profile
+        } else if profilesMatch(name, defaultProfileName) {
+            match = "default"
+        } else if let bot = botRoster.first(where: { bot in
+            profilesMatch(bot.displayLabel, name) || profilesMatch(bot.name, name)
+                || bot.previousNames.contains { profilesMatch($0, name) }
+        }) {
+            match = bot.name
+        }
+        guard let match else { return .unknown }
+        return profilesMatch(match, activeProfile) ? .active : .other(match)
     }
 
     /// Stops following Voice background jobs at a server, profile, or
@@ -17516,7 +17562,7 @@ final class AppState: ObservableObject {
     /// the server-switch wipe never wait on it.
     private func refreshSiriProfileShortcuts() {
         Task {
-            ConduitVoiceShortcuts.updateAppShortcutParameters()
+            SiriProfileShortcuts.refresh()
         }
     }
 

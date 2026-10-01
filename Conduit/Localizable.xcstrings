@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "I don't know a profile or bot called %@, so I didn't start the job." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我不知道名为 %@ 的配置或机器人，所以没有启动任务。"
+          }
+        }
+      }
+    },
+    "Started a background job on %@: %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在 %1$@ 上启动后台任务：%2$@。"
+          }
+        }
+      }
+    },
     "Send gives Hermes this value. Skip lets it continue without one." : {
       "localizations" : {
         "zh-Hans" : {

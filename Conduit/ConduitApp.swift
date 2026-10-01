@@ -113,7 +113,7 @@ struct ConduitApp: App {
             .tint(.conduitAccent)
             .task { await PushNotificationService.shared.refresh() }
             // Siri learns the cached profile names for its profile phrases.
-            .task { ConduitVoiceShortcuts.updateAppShortcutParameters() }
+            .task { SiriProfileShortcuts.refresh() }
             .task(id: notificationRouteKey) {
                 guard appState.isConnected, let target = notifications.pendingTarget else { return }
                 if await appState.openNotificationTarget(target) {

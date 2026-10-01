@@ -1604,7 +1604,9 @@ final class HermesClient: ObservableObject {
         _ = try await rpc("config.set", params: ["key": "busy", "value": mode.rawValue])
     }
 
-    func createSession(model: String? = nil, provider: String? = nil, reasoningEffort: String? = nil, fast: Bool? = nil, cwd: String? = nil) async throws -> (sessionId: String, storedSessionId: String?, profile: String?) {
+    /// `inProfile` creates the session in another profile on the same
+    /// gateway (a voice job addressed to a bot); nil uses the client's own.
+    func createSession(model: String? = nil, provider: String? = nil, reasoningEffort: String? = nil, fast: Bool? = nil, cwd: String? = nil, inProfile: String? = nil) async throws -> (sessionId: String, storedSessionId: String?, profile: String?) {
         var params: [String: Any] = [
             "cols": 96,
             "source": "desktop"
@@ -1612,7 +1614,7 @@ final class HermesClient: ObservableObject {
         // Keep this explicit instead of relying solely on the generic RPC
         // scope. Hermes Desktop does the same: a global gateway can otherwise
         // create an unscoped session in its launch/default profile.
-        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if let profile = inProfile ?? profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             params["profile"] = profile
         }
         if let model {
@@ -1772,10 +1774,12 @@ final class HermesClient: ObservableObject {
     /// under the default profile (non-default profiles add only the gateway
     /// `profile` context). Older gateways without the method throw `RpcError`;
     /// callers degrade to resume-based recovery.
-    func activeSessions() async throws -> [LiveSessionStatus] {
+    func activeSessions(inProfile: String? = nil) async throws -> [LiveSessionStatus] {
+        // An explicit profile reads another profile's registry (a voice job
+        // running on a bot); the client's own scope still applies otherwise.
         let result = try await rpc(
             "session.active_list",
-            params: [:],
+            params: inProfile.map { ["profile": $0] as [String: Any] } ?? [:],
             timeout: Self.livenessProbeTimeout
         )
         let rows = result.objectValue?["sessions"]?.arrayValue ?? []
