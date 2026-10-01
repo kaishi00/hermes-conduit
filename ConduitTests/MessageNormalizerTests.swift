@@ -838,6 +838,7 @@ final class MessageNormalizerTests: XCTestCase {
                         "sessionCount": .number(0),
                         "repos": .array([
                             .object(["id": .string("r0"), "label": .string("none"), "path": .null]),
+                            .object(["id": .string("rn"), "label": .string("bad"), "path": .number(7)]),
                             .object(["id": .string("r1"), "label": .string("app"), "path": .string("/work/app")])
                         ]),
                         "previewSessions": .array([])
