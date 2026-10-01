@@ -3289,8 +3289,13 @@ final class AppState: ObservableObject {
     /// The open chat's id as a saved live call, when it is one.
     var activeVoiceCallSessionID: String? {
         // Opening a saved row resumes it under a new runtime id the catalog
-        // row may not list yet: match every identity the open chat has.
-        guard let ids = offlineChatIdentities() else { return nil }
+        // row may not list yet: match the open chat's own ids and its
+        // canonical id. Not the scroll identity's wider alias set, which
+        // can still carry the chat open before this one.
+        guard let activeSessionId else { return nil }
+        var ids = knownSessionIDs(for: activeSessionId)
+        ids.insert(activeSessionId)
+        if let canonical = canonicalSessionID(for: activeSessionId) { ids.insert(canonical) }
         for row in activeProfileSessions
         where !ids.isDisjoint(with: [row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds) {
             if let tagged = voiceSessionTag(for: row), tagged.tag.kind == .call { return tagged.id }
