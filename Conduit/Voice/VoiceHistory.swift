@@ -230,6 +230,9 @@ final class VoiceTranscriptRecorder {
     private var flushChain: Task<Void, Never>?
     /// A new row's title, asked for once and reused if its save is retried.
     private(set) var newRowTitle: String?
+    /// Background jobs this call started, tagged with its row once the
+    /// call ends: nothing reaches the host while the call runs.
+    var jobSessionIDs: [String] = []
 
     init(
         engine: VoiceCallEngine,
@@ -348,6 +351,9 @@ struct VoiceTranscriptOutbox: Codable, Equatable {
         var profile: String
         var request: VoiceTranscriptSaveRequest
         var queuedAt: Date
+        /// Background jobs the call started, tagged with its row once the
+        /// save has one.
+        var jobSessionIDs: [String]? = nil
     }
 
     static let storageKey = "conduit.voiceTranscriptOutbox.v1"
@@ -361,6 +367,12 @@ struct VoiceTranscriptOutbox: Codable, Equatable {
         entries.removeAll { $0.request.callID == entry.request.callID }
         entries.append(entry)
         if entries.count > Self.maximumEntries { entries.removeFirst(entries.count - Self.maximumEntries) }
+    }
+
+    /// Records jobs a call started on its queued save, if it has one.
+    mutating func addJobs(_ ids: [String], toCall callID: String) {
+        guard let index = entries.firstIndex(where: { $0.request.callID == callID }) else { return }
+        entries[index].jobSessionIDs = Array(Set((entries[index].jobSessionIDs ?? []) + ids))
     }
 
     mutating func prune(now: Date) {

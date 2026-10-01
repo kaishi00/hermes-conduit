@@ -696,6 +696,10 @@ struct ComposerBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel(modelAccessibilityLabel)
 
+            if let callID = appState.activeVoiceCallSessionID, appState.canResumeVoiceCall {
+                resumeVoiceCallButton(callID)
+            }
+
             Button {
                 Haptics.selection()
                 appState.showContextSheet = true
@@ -788,40 +792,39 @@ struct ComposerBar: View {
         }
     }
 
-    @ViewBuilder
-    private var voiceButton: some View {
-        if let callID = appState.activeVoiceCallSessionID, appState.canResumeVoiceCall {
-            resumeVoiceCallButton(callID)
-        } else {
-            startVoiceButton
-        }
-    }
-
     /// A saved live call: pick it up with a new live call that continues
-    /// the same row.
+    /// the same row. Labeled, beside the model, so it isn't mistaken for
+    /// the mic, which always starts a new call.
     private func resumeVoiceCallButton(_ callID: String) -> some View {
         Button {
             dismissComposer()
             Haptics.selection()
             Task { await appState.resumeVoiceCall(sessionID: callID) }
         } label: {
-            Group {
+            HStack(spacing: 6) {
                 if appState.isPreparingVoiceResume {
                     ProgressView()
+                        .controlSize(.small)
                 } else {
                     Image(systemName: "waveform")
-                        .font(.system(size: 18, weight: .semibold))
                 }
+                Text(AppLocalization.string("Resume call"))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
-            .frame(width: 44, height: 44)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.conduitAccent)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 36)
         }
+        .buttonStyle(.plain)
         .disabled(appState.isPreparingVoiceResume || appState.isBusy)
-        .conduitGlassControl(cornerRadius: 22, tint: .conduitAura.opacity(0.14), interactive: true)
-        .accessibilityLabel(AppLocalization.string("Resume voice call"))
+        .conduitGlassControl(cornerRadius: 18, tint: .conduitAura.opacity(0.14), interactive: true)
+        .accessibilityLabel(AppLocalization.string("Resume call"))
         .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
     }
 
-    private var startVoiceButton: some View {
+    private var voiceButton: some View {
         Button {
             dismissComposer()
             Haptics.selection()
