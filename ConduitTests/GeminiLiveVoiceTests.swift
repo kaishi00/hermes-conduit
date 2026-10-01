@@ -1681,41 +1681,63 @@ extension VoiceConversationControllerTests {
         await controller.start()
         session.becomeReady()
 
-        // Part of the transcript came with the reply, the rest after it,
-        // while the reply is still playing.
+        // Part of the transcript came with the reply, the rest after it.
         session.onEvent?(.inputTranscription("Good"))
         session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
         session.onEvent?(.turnComplete)
         XCTAssertFalse(controller.isEnding, "\"Good\" alone isn't an end phrase")
-        XCTAssertTrue(output.isPlaying)
+        output.isPlaying = false
         session.onEvent?(.inputTranscription("bye."))
         try? await Task.sleep(for: .milliseconds(200))
         XCTAssertTrue(controller.isEnding)
         controller.stop()
     }
 
-    func testGeminiLiveGoodbyeTheModelHasNotAnsweredIsLeftToItsTurn() async {
-        let (controller, session, _, _, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
+    func testGeminiLiveUnansweredGoodbyeWaitsForTheModelsGoodbyeBeforeClosing() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, output, _) = makeGeminiController(endPhrases: ["goodbye"], clock: { current })
+        let closed = EndCounter()
+        controller.onEndConversation = { closed.count += 1 }
         controller.lateEndPhraseDelay = 0.01
         await controller.start()
         session.becomeReady()
 
-        // A normal exchange: the user's transcript came with the reply.
+        // A normal exchange, then a goodbye the model hasn't answered yet.
         session.onEvent?(.inputTranscription("What's the weather?"))
         session.onEvent?(.outputTranscription("Sunny."))
         session.onEvent?(.turnComplete)
-
-        // A fresh goodbye right after it, not answered yet: ending now could
-        // cut off the goodbye still to come.
         session.onEvent?(.inputTranscription("Goodbye."))
         try? await Task.sleep(for: .milliseconds(200))
-        XCTAssertFalse(controller.isEnding)
-
-        // The model's reply decides.
-        session.onEvent?(.outputTranscription("Bye!"))
-        session.onEvent?(.turnComplete)
         XCTAssertTrue(controller.isEnding)
-        controller.stop()
+
+        // Its goodbye may still be coming: a second of silence isn't enough.
+        current += GeminiLiveConversationController.endGrace + 0.1
+        XCTAssertFalse(controller.finishEndIfDrained())
+
+        // It answers; the close waits for that goodbye to play.
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        XCTAssertFalse(controller.finishEndIfDrained())
+        output.isPlaying = false
+        current += GeminiLiveConversationController.endGrace + 0.1
+        XCTAssertTrue(controller.finishEndIfDrained())
+        XCTAssertEqual(closed.count, 1)
+    }
+
+    func testGeminiLiveGoodbyeTheModelNeverAnswersStillCloses() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, _) = makeGeminiController(endPhrases: ["goodbye"], clock: { current })
+        let closed = EndCounter()
+        controller.onEndConversation = { closed.count += 1 }
+        controller.lateEndPhraseDelay = 0.01
+        await controller.start()
+        session.becomeReady()
+
+        session.onEvent?(.inputTranscription("Okay, goodbye."))
+        try? await Task.sleep(for: .milliseconds(200))
+        XCTAssertTrue(controller.isEnding)
+        current += GeminiLiveConversationController.endReplyGrace + 0.1
+        XCTAssertTrue(controller.finishEndIfDrained())
+        XCTAssertEqual(closed.count, 1)
     }
 
     func testGeminiLiveGoodbyeTheModelIsAnsweringWaitsForItsTurnToComplete() async {
