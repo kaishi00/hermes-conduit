@@ -4381,6 +4381,7 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
         defaults.removeObject(forKey: reviewSummaryCacheKey)
         defaults.removeObject(forKey: knownProfilesKey)
+        refreshSiriProfileShortcuts()
         clearSessionPresentationCache()
         wipeOfflineChatCache(dashboardID: nil)
         // Identity evidence and per-session overrides are keyed only by
@@ -17234,7 +17235,15 @@ final class AppState: ObservableObject {
     private func persistKnownProfiles(_ names: [String]) {
         guard defaults.stringArray(forKey: knownProfilesKey) != names else { return }
         defaults.set(names, forKey: knownProfilesKey)
-        ConduitVoiceShortcuts.updateAppShortcutParameters()
+        refreshSiriProfileShortcuts()
+    }
+
+    /// Siri re-reads the cached profile list in a later task; discovery and
+    /// the server-switch wipe never wait on it.
+    private func refreshSiriProfileShortcuts() {
+        Task {
+            ConduitVoiceShortcuts.updateAppShortcutParameters()
+        }
     }
 
     /// Authoritative discovery reported a server that no longer contains the
