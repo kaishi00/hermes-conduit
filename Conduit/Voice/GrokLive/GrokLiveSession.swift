@@ -119,8 +119,13 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         Task { [weak self] in
             do {
                 for text in texts { try await socket.send(text) }
+                // Delivered only once the model was asked to answer too (or
+                // the request is queued behind the running response): a
+                // turn whose response.create was lost is reported failed.
+                if wantsResponse, let self, let create = self.takeResponseRequest(on: id) {
+                    try await socket.send(create)
+                }
                 onSent?()
-                if wantsResponse { self?.requestResponse(on: id) }
             } catch {
                 onFailure?()
                 self?.connectionFailed(id, error: error)
@@ -130,14 +135,20 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
 
     // MARK: Responses
 
-    /// Asks the model to answer, now or once its current response ends.
-    private func requestResponse(on id: UUID) {
-        guard id == connectionID, state == .ready else { return }
+    /// Asks the model to answer: the response.create to send now, or nil
+    /// when it waits for the current response to end.
+    private func takeResponseRequest(on id: UUID) -> String? {
+        guard id == connectionID, state == .ready else { return nil }
         guard !responseActive else {
             responseRequested = true
-            return
+            return nil
         }
-        sendResponseCreate()
+        guard let text = try? GrokLiveProtocol.encode(GrokLiveProtocol.responseCreate) else { return nil }
+        responseRequested = false
+        // Counted as running from now: a second request waits for this one.
+        responseActive = true
+        responseConfirmed = false
+        return text
     }
 
     private func sendResponseCreate() {
