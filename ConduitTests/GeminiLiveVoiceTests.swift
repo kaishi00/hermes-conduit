@@ -1648,6 +1648,46 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(closed.count, 1)
     }
 
+    func testGeminiLiveGoodbyeTranscriptThatArrivesAfterTheReplyStillEnds() async {
+        let (controller, session, input, output, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+
+        // The model answers before Gemini sends what the user said.
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.outputTranscription("Bye!"))
+        session.onEvent?(.turnComplete)
+        session.onEvent?(.inputTranscription("Goodbye."))
+        XCTAssertFalse(controller.isEnding, "the transcript may still be going")
+
+        // Still playing the reply: not checked yet.
+        controller.endIfUnansweredGoodbye()
+        XCTAssertFalse(controller.isEnding)
+
+        // Quiet, and no reply is coming: the late goodbye ends the call.
+        output.isPlaying = false
+        controller.endIfUnansweredGoodbye()
+        XCTAssertTrue(controller.isEnding)
+        XCTAssertFalse(input.running)
+        controller.stop()
+    }
+
+    func testGeminiLiveGoodbyeTheModelIsAnsweringWaitsForItsTurnToComplete() async {
+        let (controller, session, _, output, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+
+        session.onEvent?(.inputTranscription("Goodbye."))
+        session.onEvent?(.outputTranscription("Bye"))
+        output.isPlaying = false
+        controller.endIfUnansweredGoodbye()
+        XCTAssertFalse(controller.isEnding, "the model is still answering; turnComplete decides")
+
+        session.onEvent?(.turnComplete)
+        XCTAssertTrue(controller.isEnding)
+        controller.stop()
+    }
+
     func testGeminiLiveEndingHoldsJobUpdatesAndKeepsTheMicrophoneClosed() async {
         let (controller, session, input, _, supervisor) = makeGeminiController(clock: Date.init)
         await controller.start()

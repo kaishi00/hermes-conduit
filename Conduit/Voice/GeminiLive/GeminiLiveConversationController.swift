@@ -215,6 +215,11 @@ final class GeminiLiveConversationController: ObservableObject {
     /// An end closes the conversation after this long even if the model is
     /// still talking.
     static let endTimeout: TimeInterval = 8
+    /// Gemini sometimes sends the user's transcript after the model's reply
+    /// has finished, so no turnComplete follows to check it for an end
+    /// phrase. Once the transcript has been quiet this long with the model
+    /// silent, it is checked on its own.
+    static let lateEndPhraseDelay: TimeInterval = 1.5
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
@@ -269,6 +274,7 @@ final class GeminiLiveConversationController: ObservableObject {
     /// the model's goodbye has played.
     private var endRequestedAt: Date?
     private var endTask: Task<Void, Never>?
+    private var lateEndPhraseTask: Task<Void, Never>?
 
     init(
         makeSession: @escaping @MainActor () -> GeminiLiveSessionControlling,
@@ -320,6 +326,8 @@ final class GeminiLiveConversationController: ObservableObject {
         endTask?.cancel()
         endTask = nil
         endRequestedAt = nil
+        lateEndPhraseTask?.cancel()
+        lateEndPhraseTask = nil
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
         // Nothing from a previous attempt may gate or attach to this one.
@@ -381,6 +389,8 @@ final class GeminiLiveConversationController: ObservableObject {
         endTask?.cancel()
         endTask = nil
         endRequestedAt = nil
+        lateEndPhraseTask?.cancel()
+        lateEndPhraseTask = nil
         session?.stop()
         session = nil
         stopInput()
@@ -476,6 +486,27 @@ final class GeminiLiveConversationController: ObservableObject {
         requestEnd()
     }
 
+    private func scheduleLateEndPhraseCheck() {
+        lateEndPhraseTask?.cancel()
+        lateEndPhraseTask = nil
+        guard endRequestedAt == nil, !activeEndPhrases.isEmpty else { return }
+        lateEndPhraseTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.lateEndPhraseDelay))
+            guard let self, !Task.isCancelled else { return }
+            self.lateEndPhraseTask = nil
+            self.endIfUnansweredGoodbye()
+        }
+    }
+
+    /// The user's latest utterance, once its transcript went quiet: if the
+    /// model isn't answering it (its reply already finished before the
+    /// transcript arrived), an end phrase ends the conversation here. While
+    /// the model answers, turnComplete checks it instead.
+    func endIfUnansweredGoodbye() {
+        guard isActive, !modelTurnActive, !output.isPlaying, let exchangeUserEntry else { return }
+        endIfUserSaidGoodbye(exchangeUserEntry)
+    }
+
     /// An audio interruption stopped the microphone. Restart it once the
     /// system lets go; if it can't, say so instead of showing "Listening".
     private func captureInterrupted() {
@@ -541,6 +572,7 @@ final class GeminiLiveConversationController: ObservableObject {
         case .inputTranscription(let text):
             lastUserSpeechAt = now()
             appendTranscript(text, speaker: .user)
+            scheduleLateEndPhraseCheck()
         case .interrupted:
             // The user started speaking: the model must stop immediately.
             output.interrupt()
