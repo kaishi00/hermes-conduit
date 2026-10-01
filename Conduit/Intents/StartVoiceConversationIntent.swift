@@ -100,7 +100,12 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
                 "Voice chat in \(.applicationName)",
                 "Start a voice conversation in \(.applicationName)",
                 "\(.applicationName) voice",
-                "Talk to \(.applicationName)"
+                "Talk to \(.applicationName)",
+                // Profile phrases ("Start Fam voice in Conduit"). Siri can
+                // only match profiles it has been told about, so AppState
+                // calls updateAppShortcutParameters() when the list changes.
+                "Start \(\.$profile) voice in \(.applicationName)",
+                "\(.applicationName) voice with \(\.$profile)"
             ],
             shortTitle: "Talk to Conduit",
             systemImageName: "mic.fill"
