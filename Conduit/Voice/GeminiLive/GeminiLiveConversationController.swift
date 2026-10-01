@@ -482,7 +482,7 @@ final class GeminiLiveConversationController: ObservableObject {
     /// end_conversation.
     private func endIfUserSaidGoodbye(_ entryID: UUID) {
         guard endRequestedAt == nil, let entry = transcript.first(where: { $0.id == entryID }) else { return }
-        guard VoiceSpokenCommands.matches(entry.text, phrases: activeEndPhrases) else { return }
+        guard VoiceSpokenCommands.matchesSpokenCommand(entry.text, phrases: activeEndPhrases) else { return }
         requestEnd()
     }
 
