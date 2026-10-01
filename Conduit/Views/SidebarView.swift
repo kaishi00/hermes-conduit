@@ -830,7 +830,7 @@ private struct MoveToProjectMenu: View {
                     }
                 }
             } label: {
-                Label("Move to Project", systemImage: "folder")
+                Label(AppLocalization.string("Move to Project"), systemImage: "folder")
             }
             // `moveSession` refuses while ANY conversation mutation runs.
             .disabled(appState.sessionMutationID != nil)

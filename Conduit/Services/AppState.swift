@@ -560,9 +560,17 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var projects: [ProjectSummary] = []
     @Published private(set) var supportsProjects = false
-    /// Cleared when the gateway rejects `session.workspace.move` as an unknown
-    /// method, so "Move to Project" stops being offered on that connection.
-    @Published private(set) var supportsSessionWorkspaceMove = true
+    /// The client whose gateway rejected `session.workspace.move` as an
+    /// unknown method. Scoped to that client so any new connection (a
+    /// reconnect, or a gateway upgraded in place) probes the RPC again.
+    private weak var workspaceMoveUnsupportedClient: HermesClient?
+
+    /// False once the current connection's gateway rejected
+    /// `session.workspace.move`, so "Move to Project" stops being offered.
+    var supportsSessionWorkspaceMove: Bool {
+        guard let client else { return true }
+        return client !== workspaceMoveUnsupportedClient
+    }
     @Published private(set) var projectsLoading = false
     @Published private(set) var archivedSessions: [SessionSummary] = []
     @Published private(set) var pinnedSessionIDs: [String] = []
@@ -4352,7 +4360,6 @@ final class AppState: ObservableObject {
         archivedSessions = []
         projects = []
         supportsProjects = false
-        supportsSessionWorkspaceMove = true
         projectsLoading = false
         profiles = []
         clearPendingDecisionRestorationGuard()
@@ -6917,7 +6924,6 @@ final class AppState: ObservableObject {
         showVoiceSheet = false
         projects = []
         supportsProjects = false
-        supportsSessionWorkspaceMove = true
         projectsLoading = false
         if let dashboardID = activeDashboardID {
             // Forced sign-out is scoped like Disconnect: only the active
@@ -17271,7 +17277,6 @@ final class AppState: ObservableObject {
         archivedSessions = []
         projects = []
         supportsProjects = false
-        supportsSessionWorkspaceMove = true
         projectsLoading = false
         slashCommands = Self.builtInSlashCommands
         messages = []
@@ -17573,7 +17578,8 @@ final class AppState: ObservableObject {
             if isMethodUnavailable(error) {
                 // The project tree still works on this gateway; only the
                 // move is missing, so hide the action instead of projects.
-                supportsSessionWorkspaceMove = false
+                objectWillChange.send()
+                workspaceMoveUnsupportedClient = client
                 errorMessage = AppLocalization.string("Update Hermes to move conversations between projects.")
             } else {
                 errorMessage = AppLocalization.string("Could not move this conversation to \(project.title): \(error.localizedDescription)")
