@@ -573,6 +573,13 @@ final class AppState: ObservableObject {
         guard let client, isConnected else { return false }
         return client !== workspaceMoveUnsupportedClient
     }
+
+    /// The client whose gateway rejected `projects.update` or
+    /// `projects.delete`; project rename and delete stop being offered for
+    /// it while the project list itself stays.
+    private weak var projectEditingUnsupportedClient: HermesClient? {
+        willSet { objectWillChange.send() }
+    }
     @Published private(set) var projectsLoading = false
     @Published private(set) var archivedSessions: [SessionSummary] = []
     @Published private(set) var pinnedSessionIDs: [String] = []
@@ -17879,7 +17886,9 @@ final class AppState: ObservableObject {
     /// Only projects someone created can be renamed or deleted: Home is
     /// immutable, and auto-discovered repos have no project record.
     func isProjectEditable(_ project: ProjectSummary) -> Bool {
-        supportsProjects && isConnected && !project.isHome && !project.isAuto
+        guard let client, supportsProjects, isConnected,
+              client !== projectEditingUnsupportedClient else { return false }
+        return !project.isHome && !project.isAuto
     }
 
     /// The project a rename or delete is running for; a second one waits.
@@ -17891,7 +17900,11 @@ final class AppState: ObservableObject {
     @discardableResult
     func renameProject(_ project: ProjectSummary, to name: String) async -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let client, isProjectEditable(project), !trimmed.isEmpty, projectMutationID == nil else { return false }
+        guard !trimmed.isEmpty, projectMutationID == nil else { return false }
+        guard let client, isProjectEditable(project) else {
+            errorMessage = AppLocalization.string("Could not rename \(project.title): Conduit is not connected to Hermes.")
+            return false
+        }
         let profile = activeProfile
         projectMutationID = project.id
         defer { projectMutationID = nil }
@@ -17905,9 +17918,10 @@ final class AppState: ObservableObject {
             return true
         } catch {
             guard profile == activeProfile, self.client === client else { return false }
-            if isProjectsUnavailable(error) {
-                projects = []
-                supportsProjects = false
+            if isMethodUnavailable(error) {
+                // Only this action is missing; keep the project list.
+                projectEditingUnsupportedClient = client
+                errorMessage = AppLocalization.string("This Hermes version can't rename or delete projects.")
             } else {
                 errorMessage = AppLocalization.string("Could not rename \(project.title): \(error.localizedDescription)")
             }
@@ -17917,7 +17931,11 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func deleteProject(_ project: ProjectSummary) async -> Bool {
-        guard let client, isProjectEditable(project), projectMutationID == nil else { return false }
+        guard projectMutationID == nil else { return false }
+        guard let client, isProjectEditable(project) else {
+            errorMessage = AppLocalization.string("Could not delete \(project.title): Conduit is not connected to Hermes.")
+            return false
+        }
         let profile = activeProfile
         projectMutationID = project.id
         defer { projectMutationID = nil }
@@ -17929,9 +17947,10 @@ final class AppState: ObservableObject {
             return true
         } catch {
             guard profile == activeProfile, self.client === client else { return false }
-            if isProjectsUnavailable(error) {
-                projects = []
-                supportsProjects = false
+            if isMethodUnavailable(error) {
+                // Only this action is missing; keep the project list.
+                projectEditingUnsupportedClient = client
+                errorMessage = AppLocalization.string("This Hermes version can't rename or delete projects.")
             } else {
                 errorMessage = AppLocalization.string("Could not delete \(project.title): \(error.localizedDescription)")
             }

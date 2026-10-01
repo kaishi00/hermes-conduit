@@ -5588,6 +5588,36 @@
         }
       }
     },
+    "Could not delete %@: Conduit is not connected to Hermes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法删除 %@：Conduit 未连接到 Hermes。"
+          }
+        }
+      }
+    },
+    "Could not rename %@: Conduit is not connected to Hermes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法重命名 %@：Conduit 未连接到 Hermes。"
+          }
+        }
+      }
+    },
+    "This Hermes version can't rename or delete projects." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 版本无法重命名或删除项目。"
+          }
+        }
+      }
+    },
     "Could not create the project: %@" : {
       "localizations" : {
         "zh-Hans" : {
