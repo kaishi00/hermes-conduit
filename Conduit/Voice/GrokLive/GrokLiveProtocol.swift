@@ -15,7 +15,10 @@ import Foundation
 enum GrokLiveProtocol {
     static let defaultModel = "grok-voice-latest"
     /// Conduit's microphone stream (the same capture Gemini Live uses).
-    static let inputSampleRate: Double = 16_000
+    static let captureSampleRate: Double = 16_000
+    /// What the session declares and xAI's own voice clients send: the
+    /// capture is upsampled to it.
+    static let inputSampleRate: Double = 24_000
     static let outputSampleRate: Double = 24_000
     /// The transcription model xAI's own voice clients use.
     static let transcriptionModel = "grok-transcribe"
@@ -88,7 +91,8 @@ enum GrokLiveProtocol {
     static func frames(for message: LiveVoiceClientMessage) -> (frames: [[String: Any]], wantsResponse: Bool) {
         switch message {
         case .audio(let pcm16):
-            return ([["type": "input_audio_buffer.append", "audio": pcm16.base64EncodedString()]], false)
+            let audio = upsampledForInput(pcm16).base64EncodedString()
+            return ([["type": "input_audio_buffer.append", "audio": audio]], false)
         case .audioStreamEnd:
             // Server turn detection ends a turn on silence, and a muted
             // microphone sends none: a short silence closes the turn now.
@@ -116,9 +120,32 @@ enum GrokLiveProtocol {
 
     static let responseCreate: [String: Any] = ["type": "response.create"]
 
-    /// 0.8 s of 16 kHz PCM16 silence: longer than the turn detector's
-    /// silence window.
+    /// 0.8 s of PCM16 silence at the input rate: longer than the turn
+    /// detector's silence window.
     static let silence = Data(count: Int(inputSampleRate * 0.8) * 2)
+
+    /// 16 kHz capture as 24 kHz PCM16 (little-endian), by linear
+    /// interpolation: three output samples for every two captured.
+    static func upsampledForInput(_ pcm16: Data) -> Data {
+        let bytes = [UInt8](pcm16)
+        let count = bytes.count / 2
+        guard count > 0 else { return Data() }
+        let samples = (0..<count).map { Int16(bitPattern: UInt16(bytes[2 * $0]) | UInt16(bytes[2 * $0 + 1]) << 8) }
+        let outputCount = count * 3 / 2
+        var output = Data(capacity: outputCount * 2)
+        for index in 0..<outputCount {
+            // Position in the captured stream: index * 2/3.
+            let numerator = index * 2
+            let lower = numerator / 3
+            let fraction = Double(numerator % 3) / 3
+            let a = Double(samples[lower])
+            let b = Double(samples[min(lower + 1, count - 1)])
+            let value = UInt16(bitPattern: Int16(clamping: Int((a + (b - a) * fraction).rounded())))
+            output.append(UInt8(value & 0xFF))
+            output.append(UInt8(value >> 8))
+        }
+        return output
+    }
 
     static func encode(_ message: [String: Any]) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: message, options: [])

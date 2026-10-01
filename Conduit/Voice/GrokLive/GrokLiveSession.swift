@@ -57,6 +57,14 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     /// runs is refused, so it waits for the running one to finish.
     private var responseActive = false
     private var responseRequested = false
+    /// Whether xAI confirmed (response.created) the response counted as
+    /// running. An error before that means it refused the request, and no
+    /// response.done will follow to clear it.
+    private var responseConfirmed = false
+    /// How long a connection may wait for session.updated before it counts
+    /// as a failed attempt.
+    private let setupTimeout: Duration
+    private var setupTimeoutTask: Task<Void, Never>?
     /// Whether the current response's transcript came as deltas; if not,
     /// its final transcript is shown instead.
     private var responseHadTranscript = false
@@ -67,6 +75,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         functions: [GeminiLiveProtocol.FunctionDeclaration],
         voice: String? = nil,
         openSocket: @escaping @MainActor (URLRequest) -> GeminiLiveSocket = { URLSessionGeminiLiveSocket(request: $0) },
+        setupTimeout: Duration = .seconds(15),
         reconnectDelay: @escaping @Sendable (Int) async throws -> Void = { attempt in
             try await Task.sleep(for: .seconds(min(8, 1 << attempt)))
         }
@@ -76,6 +85,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         self.functions = functions
         self.voice = voice
         self.openSocket = openSocket
+        self.setupTimeout = setupTimeout
         self.reconnectDelay = reconnectDelay
     }
 
@@ -135,6 +145,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         responseRequested = false
         // Counted as running from now: a second request waits for this one.
         responseActive = true
+        responseConfirmed = false
         let id = connectionID
         Task { [weak self] in
             do {
@@ -161,6 +172,8 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         connectTask?.cancel()
         connectTask = nil
         awaitingSetup = nil
+        setupTimeoutTask?.cancel()
+        setupTimeoutTask = nil
         receiveTask?.cancel()
         receiveTask = nil
         socket?.close()
@@ -210,6 +223,16 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         responseActive = false
         responseRequested = false
         receiveTask = Task { [weak self] in await self?.receiveLoop(socket, id: id) }
+        // A server that neither confirms the session nor closes would leave
+        // the call connecting forever.
+        let timeout = setupTimeout
+        setupTimeoutTask?.cancel()
+        setupTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled, let self, self.awaitingSetup?.id == id else { return }
+            grokLiveLogger.error("Grok Live session setup timed out")
+            self.connectionFailed(id, error: URLError(.timedOut))
+        }
     }
 
     private func receiveLoop(_ socket: GeminiLiveSocket, id: UUID) async {
@@ -236,6 +259,8 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         case .sessionUpdated:
             guard awaitingSetup?.id == id else { return }
             awaitingSetup = nil
+            setupTimeoutTask?.cancel()
+            setupTimeoutTask = nil
             lastSetupClose = nil
             let replaced = hasConnectedOnce
             hasConnectedOnce = true
@@ -256,8 +281,15 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             }
             // A refused response.create or similar: the conversation goes on.
             grokLiveLogger.notice("Grok Live error event: \(message, privacy: .private)")
+            if responseActive, !responseConfirmed {
+                // The request that was counted as running was refused: no
+                // response.done will clear it, so later turns would wait forever.
+                responseActive = false
+                if responseRequested { sendResponseCreate() }
+            }
         case .responseStarted:
             responseActive = true
+            responseConfirmed = true
             responseHadTranscript = false
         case .responseDone:
             responseActive = false
@@ -283,8 +315,11 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         let pendingSetup = awaitingSetup?.id == id ? awaitingSetup : nil
         socket?.close()
         socket = nil
+        receiveTask?.cancel()
         receiveTask = nil
         awaitingSetup = nil
+        setupTimeoutTask?.cancel()
+        setupTimeoutTask = nil
         connectionID = UUID()
         responseActive = false
         responseRequested = false

@@ -47,7 +47,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(session["voice"] as? String, "eve")
         XCTAssertEqual((session["turn_detection"] as? [String: Any])?["type"] as? String, "server_vad")
         let input = try XCTUnwrap((session["audio"] as? [String: Any])?["input"] as? [String: Any])
-        XCTAssertEqual((input["format"] as? [String: Any])?["rate"] as? Int, 16_000)
+        XCTAssertEqual((input["format"] as? [String: Any])?["rate"] as? Int, 24_000)
 
         let tools = try XCTUnwrap(session["tools"] as? [[String: Any]])
         XCTAssertEqual(tools.count, GeminiLiveToolBridge.functionDeclarations.count)
@@ -63,10 +63,14 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testGrokLiveClientMessagesMapToRealtimeEvents() throws {
-        let audio = GrokLiveProtocol.frames(for: .audio(Data([1, 2, 3])))
+        // Samples 1 and 3 at 16 kHz become 1, 2, 3 at 24 kHz.
+        let audio = GrokLiveProtocol.frames(for: .audio(Data([1, 0, 3, 0])))
         XCTAssertEqual(audio.frames.first?["type"] as? String, "input_audio_buffer.append")
-        XCTAssertEqual(audio.frames.first?["audio"] as? String, Data([1, 2, 3]).base64EncodedString())
+        XCTAssertEqual(audio.frames.first?["audio"] as? String, Data([1, 0, 2, 0, 3, 0]).base64EncodedString())
         XCTAssertFalse(audio.wantsResponse)
+        XCTAssertEqual(GrokLiveProtocol.upsampledForInput(Data(count: 3_200)).count, 4_800, "100 ms of capture is 100 ms at 24 kHz")
+        XCTAssertEqual(GrokLiveProtocol.upsampledForInput(Data([0x00, 0x80, 0xFF, 0x7F])), Data([0x00, 0x80, 0xAA, 0x2A, 0xFF, 0x7F]), "full-scale samples interpolate without overflow")
+        XCTAssertEqual(GrokLiveProtocol.upsampledForInput(Data()), Data())
 
         let end = GrokLiveProtocol.frames(for: .audioStreamEnd)
         XCTAssertEqual(end.frames.first?["audio"] as? String, GrokLiveProtocol.silence.base64EncodedString(), "a short silence closes the turn")
@@ -232,6 +236,52 @@ extension VoiceConversationControllerTests {
         await grokSettle()
         XCTAssertEqual(creates(), 2, "the waiting request goes out once the response ends")
         session.stop()
+    }
+
+    func testGrokLiveARefusedResponseRequestDoesNotBlockLaterTurns() async throws {
+        let (session, sockets) = makeGrokSession()
+        session.start()
+        await grokSettle()
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        await grokSettle()
+        let creates = { socket.sent.filter { $0["type"] as? String == "response.create" }.count }
+
+        session.send(.textTurn("first"))
+        await grokSettle()
+        XCTAssertEqual(creates(), 1)
+        socket.deliver(["type": "error", "error": ["message": "conversation already has an active response"]])
+        await grokSettle()
+        XCTAssertEqual(session.state, .ready, "an error after setup doesn't end the call")
+
+        session.send(.textTurn("second"))
+        await grokSettle()
+        XCTAssertEqual(creates(), 2, "the refused request no longer counts as running")
+        session.stop()
+    }
+
+    func testGrokLiveSetupThatNeverCompletesIsRetriedThenFails() async throws {
+        var sockets: [FakeGeminiLiveSocket] = []
+        let session = GrokLiveSession(
+            client: FakeGrokLiveConnection(),
+            instructions: "test",
+            functions: [],
+            openSocket: { request in
+                let socket = FakeGeminiLiveSocket(url: request.url!)
+                sockets.append(socket)
+                return socket
+            },
+            setupTimeout: .zero,
+            reconnectDelay: { _ in }
+        )
+        session.start()
+        for _ in 0..<50 {
+            await grokSettle(20)
+            if case .failed = session.state { break }
+        }
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("Couldn't connect to Grok Live.")))
+        XCTAssertEqual(sockets.count, 1 + GrokLiveSession.maximumReconnectAttempts)
+        XCTAssertTrue(sockets.allSatisfy(\.closed))
     }
 
     func testGrokLiveShowsTheFinalTranscriptOnlyWhenNoDeltasCarriedIt() async throws {

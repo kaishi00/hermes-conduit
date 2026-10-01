@@ -1492,6 +1492,7 @@ final class AppState: ObservableObject {
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopGPTLiveConversation()
         stopGrokLiveConversation()
         guard !geminiLiveController.isActive else { return }
         beginVoiceCallRecording(engine: .geminiLive)

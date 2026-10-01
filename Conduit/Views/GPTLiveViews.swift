@@ -130,7 +130,7 @@ struct GPTLiveSettingsSection: View {
                         model.setSaveCalls(requested)
                     }
                 ))
-                Text("Each call's transcript is saved to your Hermes server's history and shows under Voice in Sessions, where you can read it or resume the call. Needs an up-to-date Hermes notifier plugin. Shared with Gemini Live and GPT-Live. Applies to the next conversation.")
+                Text("Each call's transcript is saved to your Hermes server's history and shows under Voice in Sessions, where you can read it or resume the call. Needs an up-to-date Hermes notifier plugin. Shared by every live voice mode. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
