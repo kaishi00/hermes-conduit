@@ -22,7 +22,7 @@ import Foundation
 @MainActor
 protocol GeminiLiveJobSupervising: AnyObject {
     var jobs: [VoiceBackgroundJob] { get }
-    func startJob(instructions: String, onJobCreated: (@MainActor (UUID) -> Void)?) async -> String
+    func startJob(instructions: String, profile: String?, onJobCreated: (@MainActor (UUID) -> Void)?) async -> String
     func statusSummary() -> String
     func cancelAll() async -> String
     func cancel(jobID: UUID) async -> String?
@@ -114,6 +114,10 @@ final class GeminiLiveToolBridge {
                         "type": "STRING",
                         "description": "The complete task for Hermes, in the user's words plus any needed context.",
                     ],
+                    "profile": [
+                        "type": "STRING",
+                        "description": "Only when the user asks for the job to run on another of their Hermes profiles or bots: that profile or bot name, as the user said it. Omit it otherwise.",
+                    ],
                 ],
                 "required": ["instructions"],
             ],
@@ -176,7 +180,7 @@ final class GeminiLiveToolBridge {
             var createdJobID: UUID?
             // The call is registered the moment the job exists, so a
             // withdrawal arriving during Hermes' session setup is honored.
-            let reply = await supervisor.startJob(instructions: instructions) { [weak self] jobID in
+            let reply = await supervisor.startJob(instructions: instructions, profile: call.arguments["profile"]) { [weak self] jobID in
                 createdJobID = jobID
                 guard self?.isEnding == false else { return }
                 self?.openCalls[jobID] = call.id

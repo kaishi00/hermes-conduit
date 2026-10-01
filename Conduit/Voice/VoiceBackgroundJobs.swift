@@ -101,6 +101,8 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     let id: UUID
     let title: String
     let instructions: String
+    /// The Hermes profile (or bot) the job runs in; nil is the active one.
+    var profile: String? = nil
     var runtimeSessionID: String?
     var storedSessionID: String?
     var status: Status
@@ -137,11 +139,24 @@ enum VoiceBackgroundJobNotice: Equatable {
 /// AppState can bind them to whichever client is current at call time and
 /// tests can script them.
 struct VoiceBackgroundJobBackend {
-    var createSession: @MainActor () async throws -> (runtimeID: String, storedID: String?)
+    /// `profile` nil creates the job in the active profile.
+    var createSession: @MainActor (_ profile: String?) async throws -> (runtimeID: String, storedID: String?)
     var setTitle: @MainActor (_ sessionID: String, _ title: String) async -> Void
     var submit: @MainActor (_ sessionID: String, _ text: String) async throws -> Void
     var cancel: @MainActor (_ sessionID: String) async throws -> Void
-    var liveSessions: @MainActor () async throws -> [LiveSessionStatus]
+    /// The live runtimes of `profile` (nil: the active profile).
+    var liveSessions: @MainActor (_ profile: String?) async throws -> [LiveSessionStatus]
+    /// Maps a spoken profile or bot name to the profile it names.
+    var resolveProfile: @MainActor (_ spokenName: String) -> VoiceJobProfileTarget = { _ in .unknown }
+}
+
+/// What a profile or bot name spoken for a job refers to.
+enum VoiceJobProfileTarget: Equatable {
+    /// The profile the call is already on.
+    case active
+    /// Another profile (or bot) on the same Hermes server.
+    case other(String)
+    case unknown
 }
 
 /// Seam the Voice controller uses for spoken job commands and hand-backs.
@@ -205,18 +220,39 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// `onJobCreated` receives the ledger id as soon as the job is admitted
     /// (before any Hermes round trip), so a caller can correlate the job's
     /// later outcome with its own request (Gemini Live's open tool call).
+    ///
+    /// `profile` is the profile or bot the user named for the job. Without
+    /// one, a leading "for <profile>, …" in the instructions names it.
     func startJob(
         instructions: String,
+        profile spokenProfile: String? = nil,
         onJobCreated: (@MainActor (UUID) -> Void)? = nil
     ) async -> String {
         let activeCount = activeJobCount
         guard activeCount < Self.maximumActiveJobs else {
             return AppLocalization.string("You already have \(activeCount) background jobs running. Cancel them before starting another.")
         }
+        var instructions = instructions
+        var profile: String?
+        if let spokenProfile = spokenProfile?.trimmingCharacters(in: .whitespacesAndNewlines), !spokenProfile.isEmpty {
+            switch backend.resolveProfile(spokenProfile) {
+            case .active:
+                break
+            case .other(let name):
+                profile = name
+            case .unknown:
+                // A named target that isn't a known profile is never guessed at.
+                return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
+            }
+        } else if let target = Self.leadingTarget(in: instructions, resolve: backend.resolveProfile) {
+            profile = target.profile
+            instructions = target.remainder
+        }
         let job = VoiceBackgroundJob(
             id: UUID(),
             title: Self.title(for: instructions),
             instructions: instructions,
+            profile: profile,
             status: .starting,
             startedAt: Date()
         )
@@ -225,7 +261,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let generation = generation
         var createdSessionID: String?
         do {
-            let ids = try await backend.createSession()
+            let ids = try await backend.createSession(profile)
             createdSessionID = ids.runtimeID.isEmpty ? nil : ids.runtimeID
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: createdSessionID, generation: generation)
@@ -257,7 +293,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 update(job.id) { $0.status = .running }
             }
             startPollingIfNeeded()
-            return AppLocalization.string("Started a background job: \(job.title).")
+            return startedReply(job)
         } catch {
             guard generation == self.generation, self.job(job.id)?.status != .cancelled else {
                 return await abandonStart(job, sessionID: createdSessionID, generation: generation)
@@ -267,7 +303,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             switch self.job(job.id)?.status {
             case .running?, .needsInput?, .finished?:
                 startPollingIfNeeded()
-                return AppLocalization.string("Started a background job: \(job.title).")
+                return startedReply(job)
             case .failed?:
                 break
             default:
@@ -280,6 +316,36 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             return failedStartReply(job.id)
         }
+    }
+
+    private func startedReply(_ job: VoiceBackgroundJob) -> String {
+        if let profile = job.profile {
+            return AppLocalization.string("Started a background job on \(profile): \(job.title).")
+        }
+        return AppLocalization.string("Started a background job: \(job.title).")
+    }
+
+    /// "for Fam, check the router" → (Fam's profile, "check the router").
+    /// Only a leading "for/on/to/with <name>" whose name (up to three words)
+    /// is another known profile counts; anything else stays the task.
+    static func leadingTarget(
+        in instructions: String,
+        resolve: @MainActor (String) -> VoiceJobProfileTarget
+    ) -> (profile: String, remainder: String)? {
+        let separators = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+        let words = instructions.split(whereSeparator: { $0 == " " || $0 == "\n" })
+        guard words.count >= 3,
+              ["for", "on", "to", "with"].contains(words[0].lowercased()) else { return nil }
+        for length in stride(from: min(3, words.count - 2), through: 1, by: -1) {
+            let nameWords = words[1...length]
+            let name = nameWords.joined(separator: " ").trimmingCharacters(in: separators)
+            guard !name.isEmpty, case .other(let profile) = resolve(name) else { continue }
+            let remainder = words[(length + 1)...].joined(separator: " ")
+                .trimmingCharacters(in: separators)
+            guard !remainder.isEmpty else { return nil }
+            return (profile, remainder)
+        }
+        return nil
     }
 
     /// The start failed (or Hermes failed the turn before submit returned):
@@ -560,10 +626,22 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     func pollOnce() async {
         let generation = generation
-        guard let rows = try? await backend.liveSessions(), generation == self.generation else { return }
+        // Each profile lists only its own runtimes, so a job is judged
+        // against its own profile's registry.
+        var profiles: [String?] = []
+        for job in jobs where job.status == .running || job.status == .needsInput {
+            if !profiles.contains(job.profile) { profiles.append(job.profile) }
+        }
+        var rowsByProfile: [String?: [LiveSessionStatus]] = [:]
+        for profile in profiles {
+            guard let rows = try? await backend.liveSessions(profile), generation == self.generation else { return }
+            rowsByProfile[profile] = rows
+        }
         var changed = false
         for index in jobs.indices where jobs[index].status == .running || jobs[index].status == .needsInput {
             let job = jobs[index]
+            // A job that went active while the reads awaited is judged next time.
+            guard let rows = rowsByProfile[job.profile] else { continue }
             let row = rows.first { job.owns(sessionID: $0.runtimeSessionId) || job.owns(sessionID: $0.storedSessionId) }
             if let row {
                 jobs[index].consecutiveMissedPolls = 0

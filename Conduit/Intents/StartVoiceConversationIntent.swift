@@ -112,3 +112,11 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
         )
     }
 }
+
+/// Tells Siri the profile list changed. Lives here so callers need not
+/// import AppIntents for the provider's static method.
+enum SiriProfileShortcuts {
+    static func refresh() {
+        ConduitVoiceShortcuts.updateAppShortcutParameters()
+    }
+}

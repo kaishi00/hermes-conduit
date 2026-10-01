@@ -57,7 +57,8 @@ final class GPTLiveDelegationBridge {
         // A call that ends while Hermes creates the job must not leave this
         // delegation in the next call's table.
         let call = callGeneration
-        let reply = await supervisor.startJob(instructions: instructions) { [weak self] jobID in
+        // The delegation is free text: "for Fam, …" names another profile.
+        let reply = await supervisor.startJob(instructions: instructions, profile: nil) { [weak self] jobID in
             createdJobID = jobID
             guard let self, !self.isEnding, self.callGeneration == call else { return }
             self.openDelegations[jobID] = id
