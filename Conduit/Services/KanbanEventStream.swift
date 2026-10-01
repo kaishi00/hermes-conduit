@@ -40,6 +40,20 @@ final class URLSessionKanbanEventSocket: KanbanEventSocket {
         self.task = task
     }
 
+    /// Opens the live-update socket. Behind Cloudflare Access the upgrade
+    /// must carry the service-token headers like the dashboard's REST
+    /// requests, or Access refuses the handshake and Kanban drops to polling.
+    static func open(url: URL, cloudflareAccess: CloudflareAccessCredentials?) -> URLSessionKanbanEventSocket {
+        let task = URLSession.shared.webSocketTask(with: upgradeRequest(url: url, cloudflareAccess: cloudflareAccess))
+        task.resume()
+        return URLSessionKanbanEventSocket(task: task)
+    }
+
+    static func upgradeRequest(url: URL, cloudflareAccess: CloudflareAccessCredentials?) -> URLRequest {
+        let request = URLRequest(url: url)
+        return cloudflareAccess?.applying(to: request) ?? request
+    }
+
     func receive() async throws -> KanbanEventSocketMessage {
         let message = try await task.receive()
         switch message {

@@ -65,10 +65,8 @@ final class HermesVoiceGatewayTimeoutTests: XCTestCase {
 
     // MARK: - Speech stream request
     //
-    // Kept in this class rather than a new one: the test planner's lane
-    // budget is full. The speak-stream upgrade must carry the Cloudflare
-    // Access service-token headers like every other native request to the
-    // host, or Access refuses the handshake whenever no CF_Authorization
+    // The speak-stream upgrade must carry the Cloudflare Access service-token
+    // headers, or Access refuses the handshake whenever no CF_Authorization
     // cookie happens to be cached.
 
     private var speechStreamCredentials: CloudflareAccessCredentials {
@@ -112,5 +110,113 @@ final class HermesVoiceGatewayTimeoutTests: XCTestCase {
         XCTAssertEqual(request.url?.scheme, "ws")
         XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Id"))
         XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"))
+    }
+
+    // MARK: - Speech stream fallback
+    //
+    // A refused speak-stream handshake surfaces as a failed send. Before any
+    // audio has arrived that must switch to the one-shot fallback instead of
+    // failing the spoken reply.
+
+    func testSendFailureBeforeAudioPlaysTheFallback() async throws {
+        let socket = FakeSpeechSocket()
+        let recorder = SpeechStreamRecorder()
+        let stream = recorder.makeStream(socket: socket)
+
+        try await stream.append("Hello ")
+        try await stream.append("world")
+        let streamed = try await stream.finish()
+
+        XCTAssertFalse(streamed)
+        XCTAssertEqual(recorder.fallbackText, "Hello world")
+        XCTAssertEqual(recorder.encodedAudio, Data([1, 2, 3]))
+        XCTAssertEqual(socket.sendCount, 1, "after the failed send the text is held for the fallback")
+        XCTAssertGreaterThanOrEqual(socket.cancelCount, 1)
+    }
+
+    func testSendFailureAfterAudioStillFails() async throws {
+        let socket = FakeSpeechSocket()
+        socket.pendingPCM = [Data(count: 4)]
+        let recorder = SpeechStreamRecorder()
+        let stream = recorder.makeStream(socket: socket)
+
+        for _ in 0..<1_000 where !recorder.receivedPCM { await Task.yield() }
+        XCTAssertTrue(recorder.receivedPCM)
+
+        do {
+            try await stream.append("more")
+            XCTFail("a send failure after audio arrived must surface")
+        } catch {
+            XCTAssertFalse(error is CancellationError)
+        }
+        XCTAssertNil(recorder.fallbackText)
+        stream.cancel()
+    }
+
+    func testAppendAfterClientCancelThrowsCancellation() async {
+        let socket = FakeSpeechSocket()
+        let recorder = SpeechStreamRecorder()
+        let stream = recorder.makeStream(socket: socket)
+
+        stream.cancel()
+        do {
+            try await stream.append("late")
+            XCTFail("append after cancel must throw")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertEqual(socket.sendCount, 0)
+        XCTAssertNil(recorder.fallbackText)
+    }
+}
+
+// MARK: - Speech stream test doubles
+
+/// A speak-stream socket whose handshake was refused: every send fails, and
+/// receive delivers any queued PCM, then parks until the socket is cancelled.
+@MainActor
+private final class FakeSpeechSocket: HermesSpeechSocket {
+    var pendingPCM: [Data] = []
+    private(set) var sendCount = 0
+    private(set) var cancelCount = 0
+    private var parked: CheckedContinuation<URLSessionWebSocketTask.Message, Error>?
+    private var cancelled = false
+
+    func send(_ message: URLSessionWebSocketTask.Message) async throws {
+        sendCount += 1
+        throw URLError(.badServerResponse)
+    }
+
+    func receive() async throws -> URLSessionWebSocketTask.Message {
+        if !pendingPCM.isEmpty { return .data(pendingPCM.removeFirst()) }
+        if cancelled { throw URLError(.cancelled) }
+        return try await withCheckedThrowingContinuation { parked = $0 }
+    }
+
+    func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        cancelCount += 1
+        cancelled = true
+        parked?.resume(throwing: URLError(.cancelled))
+        parked = nil
+    }
+}
+
+@MainActor
+private final class SpeechStreamRecorder {
+    var fallbackText: String?
+    var encodedAudio: Data?
+    var receivedPCM = false
+
+    func makeStream(socket: FakeSpeechSocket) -> HermesSpeechStream {
+        HermesSpeechStream(
+            task: socket,
+            fallback: { [weak self] text in
+                self?.fallbackText = text
+                return Data([1, 2, 3])
+            },
+            onStart: { _ in },
+            onPCM16: { [weak self] _, _ in self?.receivedPCM = true },
+            onEncodedAudio: { [weak self] data in self?.encodedAudio = data }
+        )
     }
 }
