@@ -17732,12 +17732,12 @@
         }
       }
     },
-    "Resume voice call" : {
+    "Resume call" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "继续语音通话"
+            "value" : "继续通话"
           }
         }
       }
