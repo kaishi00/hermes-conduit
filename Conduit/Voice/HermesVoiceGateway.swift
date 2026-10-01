@@ -70,17 +70,18 @@ final class HermesVoiceGateway: VoiceGatewayService {
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) async throws -> VoiceSpeechStream {
         let ticket = try await bridge.mintTicket()
-        let url: URL
+        let request: URLRequest
         do {
-            url = try ConnectionURLPolicy.webSocketURL(
+            request = try Self.speechStreamRequest(
                 baseURL: baseURL,
-                path: "/api/audio/speak-stream",
-                queryItems: [URLQueryItem(name: "ticket", value: ticket), URLQueryItem(name: "profile", value: profile)]
+                ticket: ticket,
+                profile: profile,
+                cloudflareAccess: bridge.cloudflareAccess
             )
         } catch {
             throw VoiceAudioError.unavailable(AppLocalization.string("Could not open the speech stream."))
         }
-        let task = URLSession.shared.webSocketTask(with: url)
+        let task = URLSession.shared.webSocketTask(with: request)
         task.resume()
         return HermesSpeechStream(
             task: task,
@@ -91,6 +92,25 @@ final class HermesVoiceGateway: VoiceGatewayService {
             onPCM16: onPCM16,
             onEncodedAudio: onEncodedAudio
         )
+    }
+
+    /// The speak-stream upgrade request. Behind Cloudflare Access the
+    /// upgrade must carry the service-token headers like every other native
+    /// request to the host; without them Access refuses the handshake and
+    /// only a still-valid CF_Authorization cookie lets the stream through.
+    static func speechStreamRequest(
+        baseURL: String,
+        ticket: String,
+        profile: String,
+        cloudflareAccess: CloudflareAccessCredentials?
+    ) throws -> URLRequest {
+        let url = try ConnectionURLPolicy.webSocketURL(
+            baseURL: baseURL,
+            path: "/api/audio/speak-stream",
+            queryItems: [URLQueryItem(name: "ticket", value: ticket), URLQueryItem(name: "profile", value: profile)]
+        )
+        let request = URLRequest(url: url)
+        return cloudflareAccess?.applying(to: request) ?? request
     }
 
     private static func loadFallbackAudio(bridge: DashboardTicketBridge, profile: String, text: String) async throws -> Data {
@@ -159,7 +179,20 @@ private final class HermesSpeechStream: VoiceSpeechStream {
         guard !text.isEmpty else { return }
         allText += text
         if fallbackMode { return }
-        try await sendJSON(["text": text])
+        do {
+            try await sendJSON(["text": text])
+        } catch {
+            if cancelledByClient { throw CancellationError() }
+            if terminal { throw terminalError ?? error }
+            if receivedPCM { throw error }
+            // The socket never carried speech (a refused handshake or an
+            // early drop). The text is already in allText, so finish() plays
+            // the one-shot /api/audio/speak fallback instead of failing the
+            // turn. The receive loop races this same failure, so whichever
+            // side sees it first, the result is fallback mode.
+            fallbackMode = true
+            task.cancel(with: .goingAway, reason: nil)
+        }
     }
 
     func finish() async throws -> Bool {

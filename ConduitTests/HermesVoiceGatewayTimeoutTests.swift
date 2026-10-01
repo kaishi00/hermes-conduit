@@ -62,4 +62,55 @@ final class HermesVoiceGatewayTimeoutTests: XCTestCase {
             180_000
         )
     }
+
+    // MARK: - Speech stream request
+    //
+    // Kept in this class rather than a new one: the test planner's lane
+    // budget is full. The speak-stream upgrade must carry the Cloudflare
+    // Access service-token headers like every other native request to the
+    // host, or Access refuses the handshake whenever no CF_Authorization
+    // cookie happens to be cached.
+
+    private var speechStreamCredentials: CloudflareAccessCredentials {
+        CloudflareAccessCredentials(clientID: "test-client-id", clientSecret: "test-client-secret")
+    }
+
+    func testSecureSpeechStreamCarriesCloudflareAccessHeaders() throws {
+        let request = try HermesVoiceGateway.speechStreamRequest(
+            baseURL: "https://hermes.example/",
+            ticket: "abc",
+            profile: "default",
+            cloudflareAccess: speechStreamCredentials
+        )
+        XCTAssertEqual(request.url?.scheme, "wss")
+        XCTAssertEqual(request.url?.path, "/api/audio/speak-stream")
+        let query = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(query.first { $0.name == "ticket" }?.value, "abc")
+        XCTAssertEqual(query.first { $0.name == "profile" }?.value, "default")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Id"), "test-client-id")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "test-client-secret")
+    }
+
+    func testSpeechStreamWithoutCloudflareAccessHasNoAccessHeaders() throws {
+        let request = try HermesVoiceGateway.speechStreamRequest(
+            baseURL: "https://hermes.example",
+            ticket: "abc",
+            profile: "default",
+            cloudflareAccess: nil
+        )
+        XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Id"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"))
+    }
+
+    func testCleartextSpeechStreamNeverCarriesTheServiceToken() throws {
+        let request = try HermesVoiceGateway.speechStreamRequest(
+            baseURL: "http://192.168.1.20:9119",
+            ticket: "abc",
+            profile: "default",
+            cloudflareAccess: speechStreamCredentials
+        )
+        XCTAssertEqual(request.url?.scheme, "ws")
+        XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Id"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"))
+    }
 }
