@@ -180,8 +180,16 @@ struct GeminiLiveSettingsSection: View {
     }
 }
 
+/// Gemini Live's sheet, which Grok Live shares: they run on the same
+/// conversation controller.
 struct GeminiLiveVoiceSheet: View {
+    enum Engine {
+        case gemini
+        case grok
+    }
+
     @ObservedObject var controller: GeminiLiveConversationController
+    var engine: Engine = .gemini
     let onClose: () -> Void
     let onRetry: () -> Void
 
@@ -196,7 +204,7 @@ struct GeminiLiveVoiceSheet: View {
                 }
                 .padding(16)
             }
-            .navigationTitle("Gemini Live")
+            .navigationTitle(engine == .grok ? "Grok Live" : "Gemini Live")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -231,7 +239,7 @@ struct GeminiLiveVoiceSheet: View {
                         // Color and alignment alone don't tell VoiceOver who spoke.
                         .accessibilityLabel(entry.speaker == .user
                             ? AppLocalization.string("You: \(entry.text)")
-                            : AppLocalization.string("Gemini: \(entry.text)"))
+                            : speakerLabel(entry.text))
                 }
             }
         }
@@ -275,6 +283,10 @@ struct GeminiLiveVoiceSheet: View {
         }
     }
 
+    private func speakerLabel(_ text: String) -> String {
+        engine == .grok ? AppLocalization.string("Grok: \(text)") : AppLocalization.string("Gemini: \(text)")
+    }
+
     private var statusSymbol: String {
         switch controller.phase {
         case .idle, .connecting, .reconnecting: return "antenna.radiowaves.left.and.right"
@@ -288,7 +300,10 @@ struct GeminiLiveVoiceSheet: View {
     private var statusText: String {
         switch controller.phase {
         case .idle: return AppLocalization.string("Not connected")
-        case .connecting: return AppLocalization.string("Connecting to Gemini Live…")
+        case .connecting:
+            return engine == .grok
+                ? AppLocalization.string("Connecting to Grok Live…")
+                : AppLocalization.string("Connecting to Gemini Live…")
         case .reconnecting: return AppLocalization.string("Reconnecting…")
         case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
         case .speaking: return AppLocalization.string("Speaking")

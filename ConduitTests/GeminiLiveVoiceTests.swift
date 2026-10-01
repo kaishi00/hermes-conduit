@@ -122,8 +122,9 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     /// When set, sends are recorded but reported as failed.
     var failSends = false
 
-    func send(_ message: [String: Any], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
-        sent.append(message)
+    func send(_ message: LiveVoiceClientMessage, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
+        // Recorded as Gemini frames, so assertions read the wire shape.
+        sent.append(GeminiLiveProtocol.message(for: message))
         if failSends { onFailure?() } else { onSent?() }
     }
 
@@ -370,14 +371,14 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(URLComponents(url: socket.url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "access_token" }?.value, "tok-1")
         XCTAssertNotNil(socket.sent.first?["setup"])
 
-        session.send(GeminiLiveProtocol.audioMessage(pcm16: Data([1, 2])))
+        session.send(.audio(Data([1, 2])))
         await settle()
         XCTAssertEqual(socket.sent.count, 1, "Audio before setupComplete is dropped")
 
         socket.deliver(["setupComplete": [String: Any]()])
         await settle()
         XCTAssertEqual(session.state, .ready)
-        session.send(GeminiLiveProtocol.audioMessage(pcm16: Data([1, 2])))
+        session.send(.audio(Data([1, 2])))
         await settle()
         XCTAssertEqual(socket.sent.count, 2)
         session.stop()
@@ -410,7 +411,7 @@ extension VoiceConversationControllerTests {
         var heard: [GeminiLiveProtocol.ServerEvent] = []
         session.onEvent = { heard.append($0) }
         let sentBefore = first.sent.count
-        session.send(GeminiLiveProtocol.audioMessage(pcm16: Data([1, 2])))
+        session.send(.audio(Data([1, 2])))
         await settle()
         XCTAssertEqual(first.sent.count, sentBefore + 1)
         XCTAssertEqual(second.sent.count, 1, "Only the setup goes to the connection still setting up")
@@ -424,7 +425,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.state, .ready)
         XCTAssertEqual(replaced, 1)
         XCTAssertEqual(session.connectionGeneration, 1)
-        session.send(GeminiLiveProtocol.audioMessage(pcm16: Data([3, 4])))
+        session.send(.audio(Data([3, 4])))
         await settle()
         XCTAssertEqual(second.sent.count, 2, "The new connection carries the conversation once set up")
         session.stop()
@@ -451,7 +452,7 @@ extension VoiceConversationControllerTests {
         sockets()[1].deliver(["setupComplete": [String: Any]()])
         await settle()
         XCTAssertEqual(session.state, .ready)
-        session.send(GeminiLiveProtocol.audioMessage(pcm16: Data([1])))
+        session.send(.audio(Data([1])))
         await settle()
         XCTAssertEqual(sockets()[1].sent.count, 2)
         session.stop()

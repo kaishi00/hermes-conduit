@@ -53,6 +53,7 @@ struct VoiceSessionTag: Equatable {
 enum VoiceCallEngine: String, Equatable, Codable {
     case geminiLive = "gemini-live"
     case gptLive = "gpt-live"
+    case grokLive = "grok-live"
 }
 
 /// One settled turn of a call, numbered from 0 within the call.

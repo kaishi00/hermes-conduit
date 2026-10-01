@@ -221,6 +221,13 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var gptLiveMemory: Bool? = nil
     /// Whether GPT-Live speaks as the profile's SOUL.md persona. Nil is off.
     var gptLivePersonality: Bool? = nil
+    /// Opt-in Grok Live voice mode through the host's SuperGrok sign-in (off
+    /// by default; older blobs decode off). Never on with another live mode.
+    var grokLiveEnabled: Bool = false
+    /// Whether Grok Live gets the Hermes host's memory. Nil is off.
+    var grokLiveMemory: Bool? = nil
+    /// Whether Grok Live speaks as the profile's SOUL.md persona. Nil is off.
+    var grokLivePersonality: Bool? = nil
     /// Model for the Hermes sessions voice background jobs create. Nil keeps
     /// the profile's current model (the pre-existing behavior).
     var voiceJobModel: String? = nil
@@ -228,7 +235,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// Reasoning effort for voice jobs ("none", "low", …). Nil keeps the
     /// profile default.
     var voiceJobReasoningEffort: String? = nil
-    /// Whether Gemini Live and GPT-Live calls are saved to the Hermes
+    /// Whether live voice calls (Gemini Live, GPT-Live, Grok Live) are saved to the Hermes
     /// host's session history. Nil is on.
     var saveVoiceCalls: Bool? = nil
 
@@ -279,6 +286,9 @@ struct VoiceProfilePreferences: Codable, Equatable {
         gptLiveVoice = (try? container.decodeIfPresent(String.self, forKey: .gptLiveVoice)) ?? nil
         gptLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .gptLiveMemory)) ?? nil
         gptLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .gptLivePersonality)) ?? nil
+        grokLiveEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .grokLiveEnabled)) ?? false
+        grokLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .grokLiveMemory)) ?? nil
+        grokLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .grokLivePersonality)) ?? nil
         voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)

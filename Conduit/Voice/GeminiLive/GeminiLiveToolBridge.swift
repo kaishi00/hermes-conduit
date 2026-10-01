@@ -16,6 +16,10 @@
 //  web_search (offered only when lookups run on the Hermes host) is
 //  BLOCKING: a quick lookup the model answers from as soon as it returns.
 //
+//  Grok Live has no NON_BLOCKING calls, so its bridge answers start_job
+//  as soon as the job is running (`holdsJobCalls` false); the outcome
+//  arrives later as a text update, like a withdrawn call's.
+//
 
 import Foundation
 
@@ -150,15 +154,25 @@ final class GeminiLiveToolBridge {
     private let supervisor: GeminiLiveJobSupervising
     private let webSearch: GeminiLiveWebSearching?
     private let memory: GeminiLiveMemoryRecalling?
+    /// Whether a start_job call stays open until its job settles (Gemini's
+    /// NON_BLOCKING calls). Without it the call is answered once the job
+    /// runs, and the outcome goes out as a text update.
+    private let holdsJobCalls: Bool
     /// Open start_job calls, keyed by the job they started.
     private var openCalls: [UUID: String] = [:]
     /// Calls the model withdrew before their start_job finished starting.
     private var withdrawnCallIDs: Set<String> = []
 
-    init(supervisor: GeminiLiveJobSupervising, webSearch: GeminiLiveWebSearching? = nil, memory: GeminiLiveMemoryRecalling? = nil) {
+    init(
+        supervisor: GeminiLiveJobSupervising,
+        webSearch: GeminiLiveWebSearching? = nil,
+        memory: GeminiLiveMemoryRecalling? = nil,
+        holdsJobCalls: Bool = true
+    ) {
         self.supervisor = supervisor
         self.webSearch = webSearch
         self.memory = memory
+        self.holdsJobCalls = holdsJobCalls
     }
 
     var openCallCount: Int { openCalls.count }
@@ -196,10 +210,20 @@ final class GeminiLiveToolBridge {
                 if openCalls[jobID] == call.id { openCalls[jobID] = nil }
                 return []
             }
-            // Still running: the call stays open. Already settled (it failed,
-            // or even finished, while starting): settleOpenCalls answers it
-            // with the full outcome, result included.
-            return settleOpenCalls()
+            // Already settled (it failed, or even finished, while starting):
+            // settleOpenCalls answers it with the full outcome, result
+            // included. Still running: the call stays open, or, without
+            // held calls, is answered now and the outcome follows as text.
+            let settled = settleOpenCalls()
+            guard !holdsJobCalls, openCalls[jobID] == call.id else { return settled }
+            openCalls[jobID] = nil
+            let title = supervisor.jobs.first(where: { $0.id == jobID })?.title ?? ""
+            return settled + [.toolResponse(id: call.id, name: call.name, result: [
+                "job_id": jobID.uuidString,
+                "title": title,
+                "status": "started",
+                "message": "The job is running on Hermes. Its result will arrive later as a message; don't wait for it.",
+            ], scheduling: nil)]
         case .listJobs:
             return [.toolResponse(id: call.id, name: call.name, result: listResult(), scheduling: nil)]
         case .cancelJob:

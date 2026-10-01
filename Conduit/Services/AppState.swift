@@ -1380,10 +1380,18 @@ final class AppState: ObservableObject {
         guard preferences.geminiLiveEnabled != enabled else { return }
         objectWillChange.send()
         preferences.geminiLiveEnabled = enabled
-        // One live voice engine per profile: turning Gemini on turns GPT-Live off.
-        if enabled { preferences.gptLiveEnabled = false }
+        // One live voice engine per profile: turning Gemini on turns the others off.
+        if enabled {
+            preferences.gptLiveEnabled = false
+            preferences.grokLiveEnabled = false
+        }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
-        if enabled { closeGPTLiveConversation() } else { closeGeminiLiveConversation() }
+        if enabled {
+            closeGPTLiveConversation()
+            closeGrokLiveConversation()
+        } else {
+            closeGeminiLiveConversation()
+        }
         CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
     }
 
@@ -1467,6 +1475,7 @@ final class AppState: ObservableObject {
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
         stopGPTLiveConversation()
+        stopGrokLiveConversation()
         showSidebar = false
         showGeminiLiveSheet = true
         if !geminiLiveController.isActive {
@@ -1483,6 +1492,7 @@ final class AppState: ObservableObject {
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopGrokLiveConversation()
         guard !geminiLiveController.isActive else { return }
         beginVoiceCallRecording(engine: .geminiLive)
         await geminiLiveController.start()
@@ -1548,10 +1558,18 @@ final class AppState: ObservableObject {
         guard preferences.gptLiveEnabled != enabled || (enabled && preferences.geminiLiveEnabled) else { return }
         objectWillChange.send()
         preferences.gptLiveEnabled = enabled
-        // One live voice engine per profile: turning GPT-Live on turns Gemini off.
-        if enabled { preferences.geminiLiveEnabled = false }
+        // One live voice engine per profile: turning GPT-Live on turns the others off.
+        if enabled {
+            preferences.geminiLiveEnabled = false
+            preferences.grokLiveEnabled = false
+        }
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
-        if enabled { closeGeminiLiveConversation() } else { closeGPTLiveConversation() }
+        if enabled {
+            closeGeminiLiveConversation()
+            closeGrokLiveConversation()
+        } else {
+            closeGPTLiveConversation()
+        }
         CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
     }
 
@@ -1616,6 +1634,8 @@ final class AppState: ObservableObject {
             geminiLivePersonality != nil ? "geminiPersona" : nil,
             gptLiveMemoryContext != nil ? "gptMemory" : nil,
             gptLivePersonality != nil ? "gptPersona" : nil,
+            grokLiveMemoryContext != nil ? "grokMemory" : nil,
+            grokLivePersonality != nil ? "grokPersona" : nil,
         ].compactMap { $0 }
     }
 
@@ -1626,6 +1646,8 @@ final class AppState: ObservableObject {
         geminiLivePersonality = "persona"
         gptLiveMemoryContext = memory
         gptLivePersonality = "persona"
+        grokLiveMemoryContext = memory
+        grokLivePersonality = "persona"
     }
 
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
@@ -1692,6 +1714,7 @@ final class AppState: ObservableObject {
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
         stopGeminiLiveConversation()
+        stopGrokLiveConversation()
         showSidebar = false
         showGPTLiveSheet = true
         if !gptLiveController.isActive {
@@ -1709,6 +1732,7 @@ final class AppState: ObservableObject {
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
         stopGeminiLiveConversation()
+        stopGrokLiveConversation()
         guard !gptLiveController.isActive else { return }
         beginVoiceCallRecording(engine: .gptLive)
         await gptLiveController.start()
@@ -1754,6 +1778,242 @@ final class AppState: ObservableObject {
             return
         }
         closeGPTLiveConversation()
+    }
+
+    // MARK: Grok Live voice mode
+
+    /// Presents the Grok Live sheet. Separate from the other voice sheets:
+    /// no two voice modes run at once.
+    @Published var showGrokLiveSheet = false
+
+    /// Grok Live through the host's SuperGrok sign-in: an opt-in, per-profile
+    /// Voice mode (off by default), never on together with another live mode.
+    var isGrokLiveEnabled: Bool {
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        return preferences.grokLiveEnabled && !preferences.geminiLiveEnabled && !preferences.gptLiveEnabled
+    }
+
+    func setGrokLiveEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let othersOn = preferences.geminiLiveEnabled || preferences.gptLiveEnabled
+        guard preferences.grokLiveEnabled != enabled || (enabled && othersOn) else { return }
+        objectWillChange.send()
+        preferences.grokLiveEnabled = enabled
+        // One live voice engine per profile: turning Grok Live on turns the others off.
+        if enabled {
+            preferences.geminiLiveEnabled = false
+            preferences.gptLiveEnabled = false
+        }
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        if enabled {
+            closeGeminiLiveConversation()
+            closeGPTLiveConversation()
+        } else {
+            closeGrokLiveConversation()
+        }
+        CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
+    }
+
+    /// Whether Grok Live gets the Hermes host's memory on this profile. Off
+    /// until the user turns it on: it sends that memory to xAI.
+    var grokLiveMemoryEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).grokLiveMemory ?? false
+    }
+
+    /// Applies from the next Grok Live conversation.
+    func setGrokLiveMemoryEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? true : nil
+        guard preferences.grokLiveMemory != stored else { return }
+        objectWillChange.send()
+        preferences.grokLiveMemory = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// Whether Grok Live speaks as the profile's SOUL.md persona. Off until
+    /// the user turns it on: it sends SOUL.md to xAI.
+    var grokLivePersonalityEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).grokLivePersonality ?? false
+    }
+
+    /// Applies from the next Grok Live conversation.
+    func setGrokLivePersonalityEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? true : nil
+        guard preferences.grokLivePersonality != stored else { return }
+        objectWillChange.send()
+        preferences.grokLivePersonality = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// What the next Grok Live call starts with, read when it starts and
+    /// dropped when it closes: the host's memory and persona, whether its
+    /// web search answers lookups, and the voice its config names.
+    private var grokLivePersonality: String?
+    private var grokLiveMemoryContext: GeminiLiveMemoryContext?
+    private var grokLiveSearchSource: GeminiLiveSearchSource = .none
+    private var grokLiveVoice: String?
+
+    /// Grok Live's relay socket and status on the Hermes host (the
+    /// conduit_push plugin), through whichever dashboard bridge is current
+    /// at call time.
+    lazy var grokLiveClient = GrokLiveClient(profile: { [weak self] in
+        self?.activeProfile ?? "default"
+    }, request: { [weak self] path, method, body, timeout in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+    }, mintTicket: { [weak self] in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.mintTicket()
+    }, socketRequest: { [weak self] path, queryItems in
+        guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
+            throw DashboardTicketBridgeError.notReady
+        }
+        let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
+        // Behind Cloudflare Access the upgrade needs the service-token
+        // headers, like the speech stream's.
+        let request = URLRequest(url: url)
+        return bridge.cloudflareAccess?.applying(to: request) ?? request
+    })
+
+    /// Built on first use only, like Gemini Live's.
+    private var grokLiveControllerCreated = false
+
+    /// Whether a Grok Live conversation is running, without creating one.
+    private var isGrokLiveActive: Bool {
+        grokLiveControllerCreated && grokLiveController.isActive
+    }
+
+    /// Grok Live runs on Gemini Live's conversation controller: only the
+    /// session (xAI's events over the host's relay) differs.
+    lazy var grokLiveController: GeminiLiveConversationController = {
+        grokLiveControllerCreated = true
+        let client = grokLiveClient
+        // Memory, persona and web search come from the host routes Gemini Live reads.
+        let hostContext = geminiLiveTokenClient
+        let controller = GeminiLiveConversationController(
+            makeSession: { [weak self] in
+                let search = self?.grokLiveSearchSource ?? GeminiLiveSearchSource.none
+                let memory = self?.grokLiveMemoryContext
+                return GrokLiveSession(
+                    client: client,
+                    instructions: GeminiLiveConversationController.instructions(
+                        search: search,
+                        memory: memory,
+                        personality: self?.grokLivePersonality
+                    ) + (self?.liveVoiceResumeContext?.instructionBlock ?? ""),
+                    functions: GeminiLiveToolBridge.declarations(webSearch: search == .hermes, memoryRecall: memory?.canRecall == true),
+                    voice: self?.grokLiveVoice
+                )
+            },
+            availability: { [weak self] in
+                guard let self else { throw GrokLiveClientError.socketUnavailable }
+                let wantsMemory = self.grokLiveMemoryEnabled
+                let wantsPersonality = self.grokLivePersonalityEnabled
+                // The host calls run together, as Gemini Live's do.
+                async let search = hostContext.webSearchAvailable()
+                async let memory = wantsMemory ? hostContext.memoryContext() : nil
+                async let personality = wantsPersonality ? hostContext.personality() : nil
+                let status = try await client.availability()
+                // The controller shows a thrown reason as it is; Grok Live's
+                // names Grok Live.
+                guard case .available(let model, let voice, _) = status else {
+                    throw GrokLiveClientError.unavailable(status)
+                }
+                self.grokLiveSearchSource = await search ? .hermes : .none
+                self.grokLiveMemoryContext = await memory
+                self.grokLivePersonality = await personality
+                self.grokLiveVoice = voice
+                return .available(model: model)
+            },
+            // xAI has no non-blocking calls: start_job is answered once the
+            // job runs, and its outcome follows as a text update.
+            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false),
+            input: CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
+            output: PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService()),
+            // The same "End conversation" phrases as the other voice modes.
+            endConversationPhrases: { [weak self] in
+                guard let self else { return [] }
+                return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
+            }
+        )
+        // A hands-free goodbye closes the sheet like the Close button.
+        controller.onEndConversation = { [weak self] in self?.closeGrokLiveConversation() }
+        return controller
+    }()
+
+    /// Opens Grok Live instead of the other voice modes, which (with Read
+    /// Aloud) are closed first so they never share the audio session.
+    @discardableResult
+    func openGrokLiveConversation() -> Bool {
+        guard isConnected else { return false }
+        messageReadAloudController.stop()
+        if showVoiceSheet { closeVoiceConversation() }
+        stopGeminiLiveConversation()
+        stopGPTLiveConversation()
+        showSidebar = false
+        showGrokLiveSheet = true
+        if !grokLiveController.isActive {
+            beginVoiceCallRecording(engine: .grokLive)
+            Task { await grokLiveController.start() }
+        }
+        return true
+    }
+
+    /// Starts Grok Live for the CarPlay surface. CarPlay presents it, so no
+    /// phone sheet opens; the other voice modes and read aloud stop first,
+    /// as on the phone.
+    func startGrokLiveForCarPlay() async {
+        guard isConnected else { return }
+        messageReadAloudController.stop()
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopGeminiLiveConversation()
+        stopGPTLiveConversation()
+        guard !grokLiveController.isActive else { return }
+        beginVoiceCallRecording(engine: .grokLive)
+        await grokLiveController.start()
+    }
+
+    /// CarPlay went away. A Grok Live call only CarPlay was presenting ends;
+    /// one the phone's sheet shows keeps going. A call that already failed
+    /// drops its memory and persona too: nothing presents it, so nothing
+    /// would close it.
+    func releaseCarPlayGrokLive() {
+        guard !(isSceneActive && showGrokLiveSheet) else { return }
+        if isGrokLiveActive {
+            closeGrokLiveConversation()
+        } else {
+            dropGrokLiveHostContext()
+            if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
+        }
+    }
+
+    func closeGrokLiveConversation() {
+        if grokLiveControllerCreated { grokLiveController.stop() }
+        showGrokLiveSheet = false
+        dropGrokLiveHostContext()
+        if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
+    }
+
+    /// Personal text (the host's memory and persona) isn't kept around
+    /// between conversations, nor once nothing presents one.
+    private func dropGrokLiveHostContext() {
+        grokLiveMemoryContext = nil
+        grokLivePersonality = nil
+    }
+
+    /// Boundary teardown (disconnect, server/profile change, sign-out, or
+    /// another voice mode taking over).
+    private func stopGrokLiveConversation() {
+        // A conversation that already failed with no sheet up has nothing
+        // to close, but its host text still goes at the boundary.
+        guard showGrokLiveSheet || isGrokLiveActive else {
+            dropGrokLiveHostContext()
+            // Its recording still closes, so the call is saved.
+            if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
+            return
+        }
+        closeGrokLiveConversation()
     }
 
     lazy var voiceConversationController = VoiceConversationController(
@@ -1818,6 +2078,8 @@ final class AppState: ObservableObject {
                 self.geminiLiveController.deliverPendingJobUpdates()
             } else if self.isGPTLiveActive {
                 self.gptLiveController.deliverPendingJobUpdates()
+            } else if self.isGrokLiveActive {
+                self.grokLiveController.deliverPendingJobUpdates()
             } else {
                 self.voiceConversationController.deliverPendingBackgroundJobNoticeIfIdle()
             }
@@ -2988,6 +3250,7 @@ final class AppState: ObservableObject {
             switch tag.engine.flatMap(VoiceCallEngine.init(rawValue:)) {
             case .geminiLive?: return AppLocalization.string("Gemini Live")
             case .gptLive?: return AppLocalization.string("GPT-Live")
+            case .grokLive?: return AppLocalization.string("Grok Live")
             case nil: return AppLocalization.string("Voice call")
             }
         case .job:
@@ -3106,6 +3369,7 @@ final class AppState: ObservableObject {
         switch engine {
         case .geminiLive: transcript = geminiLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
         case .gptLive: transcript = gptLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
+        case .grokLive: transcript = grokLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
         }
         // @Published fires before the change lands: read it on the next turn.
         voiceCallTranscriptSubscription = transcript
@@ -3150,6 +3414,9 @@ final class AppState: ObservableObject {
         case .gptLive:
             guard gptLiveControllerCreated else { return }
             recorder.capture(gptLiveController.transcript, unsettled: gptLiveController.unsettledTranscriptEntryIDs)
+        case .grokLive:
+            guard grokLiveControllerCreated else { return }
+            recorder.capture(grokLiveController.transcript, unsettled: grokLiveController.unsettledTranscriptEntryIDs)
         }
     }
 
@@ -3328,11 +3595,11 @@ final class AppState: ObservableObject {
     /// Whether Resume Call has a live voice mode to resume with.
     var canResumeVoiceCall: Bool {
         // With saving off, a resumed call couldn't add to the row.
-        isConnected && voiceCallSavingEnabled && (isGeminiLiveEnabled || isGPTLiveEnabled) && !isLiveVoiceCallActive
+        isConnected && voiceCallSavingEnabled && (isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled) && !isLiveVoiceCallActive
     }
 
     /// A live call is already running; opening another would only surface it.
-    private var isLiveVoiceCallActive: Bool { isGeminiLiveActive || isGPTLiveActive }
+    private var isLiveVoiceCallActive: Bool { isGeminiLiveActive || isGPTLiveActive || isGrokLiveActive }
 
     /// Continues a saved call with a new live call on the selected engine.
     /// It is seeded with the row (a summary when it's long) and appends to
@@ -3348,6 +3615,8 @@ final class AppState: ObservableObject {
         pendingVoiceResume = (sessionID, context ?? VoiceResumeContext(summary: nil, recent: []))
         if isGeminiLiveEnabled {
             openGeminiLiveConversation()
+        } else if isGrokLiveEnabled {
+            openGrokLiveConversation()
         } else {
             openGPTLiveConversation()
         }
@@ -3735,7 +4004,7 @@ final class AppState: ObservableObject {
     /// over the preferred return surface.
     var isModalSheetPresented: Bool {
         showModelPicker || showContextSheet || showWorkspaceSheet || showGatewaySheet
-            || showAgentsSheet || showVoiceSheet || showGeminiLiveSheet || showGPTLiveSheet || isSettingsSheetPresented
+            || showAgentsSheet || showVoiceSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || isSettingsSheetPresented
     }
 
     /// True when an explicit destination exists but has not been routed yet
@@ -5261,6 +5530,7 @@ final class AppState: ObservableObject {
         voiceConversationController.stop()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
+        stopGrokLiveConversation()
         retireVoiceBackgroundJobs()
         // Read Aloud teardown flows through the controller's own pinned
         // Option-A semantics: replacing a non-nil gateway performs the single
@@ -6308,6 +6578,7 @@ final class AppState: ObservableObject {
         voiceConversationController.stop()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
+        stopGrokLiveConversation()
         messageReadAloudController.stop()
         // The bridge is invalidated above; a gateway built against it can
         // never open a stream again, so it must not survive the re-login.
@@ -6923,6 +7194,7 @@ final class AppState: ObservableObject {
         voiceConversationController.stop()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
+        stopGrokLiveConversation()
         showVoiceSheet = false
         projects = []
         supportsProjects = false
@@ -17058,6 +17330,7 @@ final class AppState: ObservableObject {
             voiceConversationController.stop()
             stopGeminiLiveConversation()
             stopGPTLiveConversation()
+            stopGrokLiveConversation()
             retireVoiceBackgroundJobs()
             showVoiceSheet = false
             suspendedVoiceConversation = nil
@@ -17268,6 +17541,7 @@ final class AppState: ObservableObject {
         voiceConversationController.stop()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
+        stopGrokLiveConversation()
         retireVoiceBackgroundJobs()
         showVoiceSheet = false
         suspendedVoiceConversation = nil
@@ -20253,7 +20527,7 @@ final class AppState: ObservableObject {
     /// own; classic-only surfaces (suspension restore, provider tests) keep
     /// `voiceUnavailableReason`.
     var phoneVoiceUnavailableReason: String? {
-        if isGeminiLiveEnabled || isGPTLiveEnabled {
+        if isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled {
             return isConnected ? nil : "Connect to Hermes before starting voice."
         }
         return voiceUnavailableReason
@@ -20275,7 +20549,7 @@ final class AppState: ObservableObject {
     /// ride `activeProfile` and the `isVoiceEnabled` publish in
     /// `setVoiceEnabled`, the only writer of the persisted key.
     var showsComposerVoiceButton: Bool {
-        defaults.bool(forKey: voiceEnabledPreferenceKey(profile: activeProfile)) || isGeminiLiveEnabled || isGPTLiveEnabled
+        defaults.bool(forKey: voiceEnabledPreferenceKey(profile: activeProfile)) || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled
     }
 
     /// TTS-only availability for read aloud: a connected gateway with voice
@@ -20490,6 +20764,17 @@ final class AppState: ObservableObject {
             }
             return openGPTLiveConversation()
         }
+        if loadVoiceProfilePreferences(profile: targetProfile).grokLiveEnabled {
+            if targetProfile != activeProfile {
+                await switchProfile(to: targetProfile)
+                guard targetProfile == activeProfile else {
+                    errorMessage = AppLocalization.string("Conduit could not open the requested voice profile.")
+                    return true
+                }
+                guard isConnected else { return false }
+            }
+            return openGrokLiveConversation()
+        }
         // Mutual exclusion: the voice conversation owns playback while its
         // sheet is open, so a read aloud started before must not continue.
         messageReadAloudController.stop()
@@ -20554,6 +20839,7 @@ final class AppState: ObservableObject {
         // Live: the two voice modes never run at once.
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
+        stopGrokLiveConversation()
         if let rawProfile = profile {
             let requestedProfile = rawProfile.trimmingCharacters(in: .whitespacesAndNewlines)
             if !requestedProfile.isEmpty, requestedProfile != activeProfile {
