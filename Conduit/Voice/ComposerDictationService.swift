@@ -19,6 +19,9 @@ final class ComposerDictationService: ObservableObject {
     @Published private(set) var isDictating = false
     /// Permission or the microphone is still coming up.
     @Published private(set) var isStarting = false
+    /// The microphone is open. A dictation still settling its last words
+    /// after the release is dictating but no longer capturing.
+    @Published private(set) var isCapturing = false
 
     /// The whole transcript of this dictation so far, each time it changes.
     /// Cleared when the dictation ends: the view that set it is captured.
@@ -38,9 +41,6 @@ final class ComposerDictationService: ObservableObject {
     /// Bumped by `cancel()` so a reserved start that hasn't run, or is
     /// still awaiting permission, gives up.
     private var startToken: UInt64 = 0
-    /// The microphone is open (a dictation still settling its last words
-    /// is not capturing).
-    private var isCapturing = false
 
     init(audioCoordinator: VoiceAudioSessionCoordinator? = nil) {
         self.audioCoordinator = audioCoordinator ?? .shared

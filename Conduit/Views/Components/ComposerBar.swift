@@ -734,7 +734,7 @@ struct ComposerBar: View {
         let control = Self.trailingControl(
             action: action,
             showsVoiceButton: appState.showsComposerVoiceButton,
-            isDictating: dictation.isDictating || isHoldingMic
+            isDictating: dictation.isCapturing || isHoldingMic
         )
         if #available(iOS 26.0, *) {
             trailingControlButton(control)
@@ -959,7 +959,9 @@ struct ComposerBar: View {
     private var voiceButton: some View {
         let canOpenVoice = appState.canStartPhoneVoiceConversation && !appState.isBusy && appState.composerIsEnabled
         let canDictate = appState.composerIsEnabled && !appState.isVoiceInUse
-        let isDictating = dictation.isDictating
+        // Capturing only: once the finger lifts, the mic is a mic again and
+        // Send comes back while the last words settle.
+        let isDictating = dictation.isCapturing
         return Image(systemName: isDictating ? "waveform" : (appState.canStartPhoneVoiceConversation ? "mic.fill" : "mic.slash"))
             .font(.system(size: 18, weight: .semibold))
             .foregroundStyle(isDictating ? Color.red : (canOpenVoice || canDictate ? Color.accentColor : Color.secondary))
@@ -980,8 +982,8 @@ struct ComposerBar: View {
             .overlay(alignment: .topTrailing) { dictationTip(canDictate: canDictate) }
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(isDictating ? Text("Stop dictation") : Text("Start voice conversation"))
-            .accessibilityHint(isDictating
+            .accessibilityLabel(isDictating || dictation.isStarting ? Text("Stop dictation") : Text("Start voice conversation"))
+            .accessibilityHint(isDictating || dictation.isStarting
                 ? AppLocalization.string("Stops dictating; the words stay in the message")
                 : appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Opens voice controls over this conversation"))
             .accessibilityAction {
