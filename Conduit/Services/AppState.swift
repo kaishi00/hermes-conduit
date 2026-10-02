@@ -887,6 +887,21 @@ final class AppState: ObservableObject {
         didSet { invalidateBotOwnershipCache() }
     }
     @Published private(set) var isRefreshingBotRoster = false
+    /// Bot avatars from each profile's gateway asset store (the same pictures
+    /// Hermes Desktop shows), keyed by profile name. Runtime-only, fenced by
+    /// the roster epoch, cleared at the server-identity boundary.
+    @Published private(set) var botAvatarImages: [String: UIImage] = [:]
+    /// Bumped by an explicit roster reload so rows re-fetch their avatar
+    /// (another client may have changed it; the roster carries no version).
+    @Published private(set) var botAvatarGeneration = 0
+    private var botAvatarFetchedGeneration: [String: Int] = [:]
+    /// Name to the generation its in-flight fetch serves, so a newer
+    /// generation can start its own fetch instead of being deduped away.
+    private var botAvatarFetchInflight: [String: Int] = [:]
+    /// `profiles.list` `bot_mode_protocol`: the backend teaches bots the
+    /// teammate-messaging protocol itself, so a new bot's SOUL stays
+    /// identity-only.
+    private var botRosterSupportsProtocol = false
     /// Bumped at every server-identity boundary; responses captured under an
     /// older epoch are dropped, so a stale async roster can never overwrite
     /// the state of a different dashboard/profile.
@@ -4865,6 +4880,10 @@ final class AppState: ObservableObject {
         botChatSessionLabels.removeAll()
         botChatOpenFlights.removeAll()
         botRoster = []
+        botAvatarImages = [:]
+        botAvatarFetchedGeneration.removeAll()
+        botAvatarFetchInflight.removeAll()
+        botRosterSupportsProtocol = false
         botRosterRefreshToken = nil
         // The in-flight refresh, if any, still completes but its epoch guard
         // discards the stale snapshot; drop the join handle so the next
@@ -12231,6 +12250,10 @@ final class AppState: ObservableObject {
         replacement: ChatResumeConversationReplacement
     ) {
         guard sessionMatchesActiveSession(session) else { return }
+        clearActiveConversation(replacement: replacement)
+    }
+
+    private func clearActiveConversation(replacement: ChatResumeConversationReplacement) {
         let transitionGeneration = acceptChatResumeConversationReplacement(replacement)
         markChatViewportReplacement()
         setActiveSessionState(id: nil, title: AppLocalization.string("New conversation"))
@@ -12340,6 +12363,7 @@ final class AppState: ObservableObject {
             // the roster VIEW hides meta-hidden rows for display only.
             botRoster = BotProfile.displayOrder(snapshot.bots)
             desktopGroupChats = snapshot.desktopGroups
+            botRosterSupportsProtocol = snapshot.supportsBotProtocol
             botModePhase = .available
             botRosterVerifiedForCurrentConnection = true
         } catch {
@@ -12369,6 +12393,356 @@ final class AppState: ObservableObject {
         // dashboard fence it; the dashboard's own profile selection is
         // irrelevant to a profiles.list answer.
         epoch == botRosterEpoch && dashboardID == activeDashboardID
+    }
+
+    // MARK: - Bot management (create / edit / delete / avatars)
+
+    /// Pull-to-refresh: the roster plus every avatar. The roster carries no
+    /// avatar version, and another client (Desktop) may have changed one.
+    func reloadBotRoster() async {
+        botAvatarGeneration &+= 1
+        await refreshBotRoster()
+    }
+
+    func botAvatarImage(for bot: BotProfile) -> UIImage? {
+        bot.hasAvatar ? botAvatarImages[bot.name] : nil
+    }
+
+    /// Fetches the bot's picture from its profile's asset store once per
+    /// avatar generation. `has_avatar` on the roster row gates the call, so
+    /// a bot without a picture costs nothing.
+    func loadBotAvatarIfNeeded(_ bot: BotProfile) async {
+        let name = bot.name
+        guard bot.hasAvatar else {
+            if botAvatarImages[name] != nil { botAvatarImages[name] = nil }
+            botAvatarFetchedGeneration[name] = nil
+            return
+        }
+        let generation = botAvatarGeneration
+        guard botAvatarFetchedGeneration[name] != generation,
+              botAvatarFetchInflight[name] != generation,
+              let client, isConnected else { return }
+        let epoch = botRosterEpoch
+        botAvatarFetchInflight[name] = generation
+        defer {
+            if epoch == botRosterEpoch, botAvatarFetchInflight[name] == generation {
+                botAvatarFetchInflight[name] = nil
+            }
+        }
+        do {
+            let data = try await client.botAvatar(name: name)
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return }
+            // An older generation's fetch landing late never replaces a newer one.
+            if let fetched = botAvatarFetchedGeneration[name], fetched > generation { return }
+            botAvatarFetchedGeneration[name] = generation
+            botAvatarImages[name] = data.flatMap { UIImage(data: $0) }
+        } catch {
+            // Not pinned to the generation: a failed fetch retries on the
+            // row's next appearance, keeping whatever picture is shown.
+            // (`has_avatar` and `profiles.get_asset` ship together, so a
+            // gateway without the method never sends rows that call it.)
+        }
+    }
+
+    /// `profiles.describe` for the edit sheet: the description and SOUL.md.
+    func loadBotDetails(_ bot: BotProfile) async -> BotProfileDetails? {
+        guard let client, isConnected else { return nil }
+        return try? await client.describeBotProfile(name: bot.name)
+    }
+
+    /// The profile id a new bot named `name` gets, and whether it is free.
+    func newBotSlug(for name: String) -> (slug: String, isValid: Bool, isTaken: Bool) {
+        let slug = BotProfileSlug.slug(from: name)
+        let taken = botRoster.contains { $0.name.caseInsensitiveCompare(slug) == .orderedSame }
+            || profiles.contains { $0.caseInsensitiveCompare(slug) == .orderedSame }
+        return (slug, BotProfileSlug.isValid(slug), taken)
+    }
+
+    /// Creates a bot the way Desktop's New Bot dialog does: the profile
+    /// (`profiles.create`, with a composed SOUL), then its look in ui_meta
+    /// and its picture in the asset store. The look and picture are
+    /// best-effort — the bot exists either way and Edit can finish the job —
+    /// so their failures come back as a warning, not a failure.
+    func createBot(_ draft: BotEditorDraft) async -> BotSaveResult {
+        guard let client, isConnected else {
+            return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
+        }
+        let identity = newBotSlug(for: draft.name)
+        guard identity.isValid else {
+            return .failed(AppLocalization.string("Give the bot a name with at least one letter or number."))
+        }
+        guard !identity.isTaken else {
+            return .failed(AppLocalization.string("A profile named \(identity.slug) already exists."))
+        }
+        let slug = identity.slug
+        let title = BotProfileSlug.title(forName: draft.name)
+        let description = draft.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let soul = BotSoul.compose(
+            name: slug,
+            title: title,
+            description: description,
+            customSoul: draft.soul,
+            serverInjectsProtocol: botRosterSupportsProtocol,
+            roster: botRoster
+        )
+        let epoch = botRosterEpoch
+        do {
+            try await client.createBotProfile(name: slug, description: description, soul: soul)
+        } catch {
+            return .failed(AppLocalization.string("Could not create the bot: \(error.localizedDescription)"))
+        }
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+            // The server changed mid-save: the bot exists, its look and
+            // picture were never written.
+            return .saved(warning: AppLocalization.string(
+                "The bot was created, but its picture or look was not saved. Edit the bot to try again."
+            ))
+        }
+
+        var meta: [String: Any] = ["created": Int(Date().timeIntervalSince1970 * 1000)]
+        if !title.isEmpty { meta["title"] = title }
+        if let color = draft.color {
+            meta["color"] = color
+            meta["custom"] = true
+        }
+        if draft.newAvatarPNG != nil {
+            meta["imageKind"] = "photo"
+            meta["custom"] = true
+        }
+        var lookSaved = true
+        do {
+            let result = try await client.configureBotProfile(name: slug, botMeta: meta)
+            lookSaved = BotMetaWriteOutcome(configureResult: result) != .failed
+        } catch {
+            lookSaved = false
+        }
+        var photoSaved = true
+        if let png = draft.newAvatarPNG {
+            photoSaved = await storeBotAvatar(png, for: slug, client: client, epoch: epoch)
+        }
+        await refreshBotRosterAfterWrite()
+        await loadProfiles()
+        if !lookSaved || !photoSaved {
+            return .saved(warning: AppLocalization.string(
+                "The bot was created, but its picture or look was not saved. Edit the bot to try again."
+            ))
+        }
+        return .saved(warning: nil)
+    }
+
+    /// Saves the edit sheet: ui_meta (title, color, picture kind) as a
+    /// compare-and-swap against the roster snapshot, the description and
+    /// SOUL only when they changed, and the picture through the asset store.
+    func updateBot(
+        _ bot: BotProfile,
+        draft: BotEditorDraft,
+        loadedDetails: BotProfileDetails?
+    ) async -> BotSaveResult {
+        guard let client, isConnected else {
+            return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
+        }
+        let epoch = botRosterEpoch
+        var patch: [String: Any?] = [:]
+        let title = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title != (bot.botTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines) {
+            patch.updateValue(title.isEmpty ? nil : title, forKey: "title")
+        }
+        if draft.color != bot.appearanceColor {
+            patch.updateValue(draft.color, forKey: "color")
+            patch["custom"] = true
+        }
+        if draft.newAvatarPNG != nil {
+            patch["imageKind"] = "photo"
+            patch["custom"] = true
+        } else if draft.removesAvatar {
+            patch["imageKind"] = "shape"
+        }
+        let originalDescription = loadedDetails?.description ?? bot.profileDescription
+        let description = draft.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let descriptionChanged = description != originalDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        // SOUL is only editable once `profiles.describe` answered, so an
+        // unloaded editor can never blank a bot's personality.
+        let soulChanged = loadedDetails.map { draft.soul != $0.soul } ?? false
+
+        var problems: [String] = []
+        if !patch.isEmpty || descriptionChanged || soulChanged {
+            do {
+                let result = try await client.configureBotProfile(
+                    name: bot.name,
+                    botMeta: patch.isEmpty ? nil : BotMetaPatch.merged(existing: bot.botMeta, patch: patch),
+                    expectedMetaRevision: patch.isEmpty ? nil : bot.botMetaRevision,
+                    description: descriptionChanged ? description : nil,
+                    soul: soulChanged ? draft.soul : nil
+                )
+                guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+                    // The server changed mid-save; a pending picture change never ran.
+                    if draft.newAvatarPNG != nil {
+                        return .saved(warning: AppLocalization.string("The picture was not saved."))
+                    }
+                    if draft.removesAvatar {
+                        return .saved(warning: AppLocalization.string("The picture was not removed."))
+                    }
+                    return .saved(warning: nil)
+                }
+                var sections: [String] = []
+                if descriptionChanged { sections.append("description") }
+                if soulChanged { sections.append("soul") }
+                if !BotConfigureSections.failed(in: result, among: sections).isEmpty {
+                    problems.append(AppLocalization.string("The description or personality was not saved."))
+                }
+                if !patch.isEmpty {
+                    var outcome = BotMetaWriteOutcome(configureResult: result)
+                    if outcome == .conflict {
+                        outcome = await retryBotMetaWrite(bot.name, patch: patch, client: client, epoch: epoch)
+                    }
+                    if outcome == .failed || outcome == .conflict {
+                        problems.append(AppLocalization.string("The name or color was not saved."))
+                    }
+                }
+            } catch {
+                return .failed(AppLocalization.string("Could not save the bot: \(error.localizedDescription)"))
+            }
+        }
+        if let png = draft.newAvatarPNG {
+            let stored = await storeBotAvatar(png, for: bot.name, client: client, epoch: epoch)
+            if !stored {
+                problems.append(AppLocalization.string("The picture was not saved."))
+            }
+        } else if draft.removesAvatar {
+            do {
+                try await client.setBotAvatar(name: bot.name, png: nil)
+                if botOpenFenceIsCurrent(epoch: epoch, client: client) {
+                    botAvatarImages[bot.name] = nil
+                    botAvatarFetchedGeneration[bot.name] = nil
+                }
+            } catch {
+                problems.append(AppLocalization.string("The picture was not removed."))
+            }
+        }
+        await refreshBotRosterAfterWrite()
+        return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
+    }
+
+    /// Pins or unpins a bot (ui_meta `pinned`, shared with Desktop).
+    func setBotPinned(_ bot: BotProfile, pinned: Bool) async -> String? {
+        guard let client, isConnected else {
+            return AppLocalization.string("Connect to Hermes to manage bots.")
+        }
+        let epoch = botRosterEpoch
+        let patch: [String: Any?] = ["pinned": pinned]
+        do {
+            let result = try await client.configureBotProfile(
+                name: bot.name,
+                botMeta: BotMetaPatch.merged(existing: bot.botMeta, patch: patch),
+                expectedMetaRevision: bot.botMetaRevision
+            )
+            var outcome = BotMetaWriteOutcome(configureResult: result)
+            if outcome == .conflict {
+                outcome = await retryBotMetaWrite(bot.name, patch: patch, client: client, epoch: epoch)
+            }
+            await refreshBotRosterAfterWrite()
+            return outcome == .failed || outcome == .conflict
+                ? AppLocalization.string("Could not update \(bot.displayLabel).")
+                : nil
+        } catch {
+            return AppLocalization.string("Could not update \(bot.displayLabel).")
+        }
+    }
+
+    /// Whether Conduit lets this bot be deleted: never the gateway's primary
+    /// profile, and never the profile this dashboard is working in.
+    func canDeleteBot(_ bot: BotProfile) -> Bool {
+        bot.isDeletable && bot.name.caseInsensitiveCompare(activeProfile) != .orderedSame
+    }
+
+    /// Permanently deletes the bot's Hermes profile through the dashboard
+    /// (`DELETE /api/profiles/{name}`, the route Desktop's delete uses),
+    /// leaving its Bot Chat first if that is the open conversation.
+    func deleteBot(_ bot: BotProfile) async -> String? {
+        guard canDeleteBot(bot) else {
+            return AppLocalization.string("This profile can't be deleted from here.")
+        }
+        guard let bridge = dashboardTicketBridge, isConnected else {
+            return AppLocalization.string("Connect to Hermes to manage bots.")
+        }
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-_.~")
+        let encodedName = bot.name.addingPercentEncoding(withAllowedCharacters: allowed) ?? bot.name
+        do {
+            // The gateway waits up to 10 s for a running profile gateway to
+            // stop before removing the directory.
+            _ = try await bridge.requestJSON(
+                path: "/api/profiles/\(encodedName)",
+                method: "DELETE",
+                timeoutMilliseconds: 30_000
+            )
+        } catch {
+            return AppLocalization.string("Could not delete \(bot.displayLabel): \(error.localizedDescription)")
+        }
+        guard dashboardTicketBridge === bridge else { return nil }
+        if let sessionId = activeSessionId,
+           let owner = botChatSessionProfiles[sessionId],
+           owner.caseInsensitiveCompare(bot.name) == .orderedSame {
+            clearActiveConversation(replacement: .delete)
+        }
+        botAvatarImages[bot.name] = nil
+        botAvatarFetchedGeneration[bot.name] = nil
+        await refreshBotRosterAfterWrite()
+        await loadProfiles()
+        return nil
+    }
+
+    private func storeBotAvatar(_ png: Data, for name: String, client: HermesClient, epoch: Int) async -> Bool {
+        // The generation the write belongs to: a reload that starts while it
+        // is in flight must still refetch, in case it read the older asset.
+        let generation = botAvatarGeneration
+        do {
+            try await client.setBotAvatar(name: name, png: png)
+        } catch {
+            return false
+        }
+        if botOpenFenceIsCurrent(epoch: epoch, client: client), let image = UIImage(data: png) {
+            botAvatarImages[name] = image
+            botAvatarFetchedGeneration[name] = generation
+        }
+        return true
+    }
+
+    /// One retry of a ui_meta write that lost its compare-and-swap: re-read
+    /// the roster so the merge starts from the other client's write, then
+    /// apply the same patch on top of it.
+    private func retryBotMetaWrite(
+        _ name: String,
+        patch: [String: Any?],
+        client: HermesClient,
+        epoch: Int
+    ) async -> BotMetaWriteOutcome {
+        await refreshBotRosterAfterWrite()
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client),
+              let fresh = botRoster.first(where: { $0.name == name }) else { return .failed }
+        do {
+            let result = try await client.configureBotProfile(
+                name: name,
+                botMeta: BotMetaPatch.merged(existing: fresh.botMeta, patch: patch),
+                expectedMetaRevision: fresh.botMetaRevision
+            )
+            return BotMetaWriteOutcome(configureResult: result)
+        } catch {
+            return .failed
+        }
+    }
+
+    /// A roster refresh guaranteed to START after the caller's write: an
+    /// in-flight refresh may have read the gateway before it, so it is
+    /// waited out and released instead of joined.
+    private func refreshBotRosterAfterWrite() async {
+        if let running = botRosterRefreshFlight {
+            await running.task.value
+            if botRosterRefreshFlight === running {
+                botRosterRefreshFlight = nil
+            }
+        }
+        await refreshBotRoster()
     }
 
     /// Opens a bot's canonical Bot Chat: consult the name-identity registry,
