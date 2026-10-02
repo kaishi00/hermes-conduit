@@ -346,7 +346,7 @@ final class MockCapture: AudioCaptureService {
     }
     func beginBargeInMonitoring() throws { didBeginMonitoring = true }
     func holdForPlayback() {
-        guard !mockPaused else { return }
+        guard !mockPaused, !isHeldForPlayback else { return }
         holdCount += 1
         isHeldForPlayback = true
     }
