@@ -558,26 +558,25 @@ private struct BotRosterRow: View {
 
     @ViewBuilder
     private var subtitleText: some View {
+        Text(subtitleString)
+    }
+
+    /// The latest preview, else the description, else the canonical chat's
+    /// literal title (a wire identity, never localized).
+    private var subtitleString: String {
         let detail = bot.profileDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         let preview = bot.canonicalSession?.preview
             ?? bot.lastPreview?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !preview.isEmpty {
-            Text(preview)
-        } else if !detail.isEmpty {
-            Text(detail)
-        } else {
-            // The canonical chat's literal title — a wire identity, never
-            // localized.
-            Text(BotMode.canonicalChatTitle)
-        }
+        if !preview.isEmpty { return preview }
+        if !detail.isEmpty { return detail }
+        return BotMode.canonicalChatTitle
     }
 
-    /// The pin badge and the description, spoken after the name; the
-    /// label alone would leave both visual-only.
+    /// The pin badge and the subtitle, spoken after the name; the label
+    /// alone would leave both visual-only.
     private var accessibilityValue: String {
-        let detail = bot.profileDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parts = [bot.isPinned ? AppLocalization.string("Pinned") : "", detail]
+        let parts = [bot.isPinned ? AppLocalization.string("Pinned") : "", subtitleString]
         return parts.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 }

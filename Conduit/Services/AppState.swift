@@ -895,7 +895,9 @@ final class AppState: ObservableObject {
     /// (another client may have changed it; the roster carries no version).
     @Published private(set) var botAvatarGeneration = 0
     private var botAvatarFetchedGeneration: [String: Int] = [:]
-    private var botAvatarFetchInflight: Set<String> = []
+    /// Name to the generation its in-flight fetch serves, so a newer
+    /// generation can start its own fetch instead of being deduped away.
+    private var botAvatarFetchInflight: [String: Int] = [:]
     /// `profiles.list` `bot_mode_protocol`: the backend teaches bots the
     /// teammate-messaging protocol itself, so a new bot's SOUL stays
     /// identity-only.
@@ -12401,16 +12403,20 @@ final class AppState: ObservableObject {
         }
         let generation = botAvatarGeneration
         guard botAvatarFetchedGeneration[name] != generation,
-              !botAvatarFetchInflight.contains(name),
+              botAvatarFetchInflight[name] != generation,
               let client, isConnected else { return }
         let epoch = botRosterEpoch
-        botAvatarFetchInflight.insert(name)
+        botAvatarFetchInflight[name] = generation
         defer {
-            if epoch == botRosterEpoch { botAvatarFetchInflight.remove(name) }
+            if epoch == botRosterEpoch, botAvatarFetchInflight[name] == generation {
+                botAvatarFetchInflight[name] = nil
+            }
         }
         do {
             let data = try await client.botAvatar(name: name)
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return }
+            // An older generation's fetch landing late never replaces a newer one.
+            if let fetched = botAvatarFetchedGeneration[name], fetched > generation { return }
             botAvatarFetchedGeneration[name] = generation
             botAvatarImages[name] = data.flatMap { UIImage(data: $0) }
         } catch {
@@ -12468,7 +12474,13 @@ final class AppState: ObservableObject {
         } catch {
             return .failed(AppLocalization.string("Could not create the bot: \(error.localizedDescription)"))
         }
-        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return .saved(warning: nil) }
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+            // The server changed mid-save: the bot exists, its look and
+            // picture were never written.
+            return .saved(warning: AppLocalization.string(
+                "The bot was created, but its picture or look was not saved. Edit the bot to try again."
+            ))
+        }
 
         var meta: [String: Any] = ["created": Int(Date().timeIntervalSince1970 * 1000)]
         if !title.isEmpty { meta["title"] = title }
@@ -12545,7 +12557,16 @@ final class AppState: ObservableObject {
                     description: descriptionChanged ? description : nil,
                     soul: soulChanged ? draft.soul : nil
                 )
-                guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return .saved(warning: nil) }
+                guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+                    // The server changed mid-save; a pending picture change never ran.
+                    if draft.newAvatarPNG != nil {
+                        return .saved(warning: AppLocalization.string("The picture was not saved."))
+                    }
+                    if draft.removesAvatar {
+                        return .saved(warning: AppLocalization.string("The picture was not removed."))
+                    }
+                    return .saved(warning: nil)
+                }
                 var sections: [String] = []
                 if descriptionChanged { sections.append("description") }
                 if soulChanged { sections.append("soul") }
