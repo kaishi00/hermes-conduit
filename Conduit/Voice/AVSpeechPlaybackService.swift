@@ -193,7 +193,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         do {
             let player = try AVAudioPlayer(data: data)
             player.delegate = self
-            let rate = Self.clampedRate(playbackRate)
+            // AVAudioPlayer supports up to 2x.
+            let rate = min(Self.clampedRate(playbackRate), 2)
             if rate != 1 {
                 player.enableRate = true
                 player.rate = rate

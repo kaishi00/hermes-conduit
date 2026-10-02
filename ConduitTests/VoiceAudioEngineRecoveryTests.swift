@@ -358,16 +358,16 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(AVSpeechPlaybackService.clampedRate(.nan), 1)
     }
 
-    func testStretchedStreamConvertsUnalignedPCM16ToFloat() {
+    func testStretchedStreamConvertsUnalignedPCM16ToFloat() throws {
         // One leading byte puts the samples at an odd offset, as a Data
         // slice can.
         let bytes: [UInt8] = [0xFF, 0x00, 0x00, 0x00, 0x40, 0x00, 0x80, 0xFF, 0x7F]
         var samples = [Float](repeating: .nan, count: 4)
-        bytes.withUnsafeBytes { raw in
-            samples.withUnsafeMutableBufferPointer { destination in
+        try bytes.withUnsafeBytes { raw in
+            try samples.withUnsafeMutableBufferPointer { destination in
                 AVSpeechPlaybackService.convertPCM16(
                     UnsafeRawBufferPointer(rebasing: raw[1...]),
-                    into: destination.baseAddress!,
+                    into: try XCTUnwrap(destination.baseAddress),
                     frames: 4
                 )
             }
