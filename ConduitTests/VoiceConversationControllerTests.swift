@@ -2541,6 +2541,31 @@ extension ContinuousConversationPreferenceTests {
         XCTAssertEqual(capture.startCount, 2)
     }
 
+    func testFailedReplyReleasesAHeldMicrophone() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { true }
+        )
+        var preferences = Self.preferences(continuous: true)
+        preferences.keepListeningWhenLocked = true
+        controller.setProfilePreferences(preferences)
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        XCTAssertTrue(capture.isHeldForPlayback)
+
+        controller.receiveAssistantEvent(.failed(sessionID: "session", message: "Hermes failed."))
+
+        XCTAssertEqual(controller.state, .failed("Hermes failed."))
+        XCTAssertFalse(capture.isHeldForPlayback, "the microphone doesn't stay on behind a dead turn")
+        XCTAssertEqual(capture.pauseCount, 1)
+    }
+
     func testSpeakerPlaybackStillPausesTheMicrophoneWithoutKeepListening() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)

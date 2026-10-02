@@ -795,14 +795,14 @@ final class VoiceConversationController: ObservableObject {
             state = .failed(message)
             playback.stop()
             cancelSpeechDrainAndStream()
-            isPlaybackCaptureSuspended = false
+            endPlaybackCaptureSuspensionWithoutRelistening()
         case .interrupted:
             guard awaitedAssistantResponseStarted else { return }
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
             playback.stop()
             cancelSpeechDrainAndStream()
-            isPlaybackCaptureSuspended = false
+            endPlaybackCaptureSuspensionWithoutRelistening()
             state = .idle
         }
     }
@@ -1099,6 +1099,15 @@ final class VoiceConversationController: ObservableObject {
     /// still has a running microphone to come back to.
     private var keepsMicrophoneThroughPlayback: Bool {
         preferences.keepListeningWhenLocked == true
+    }
+
+    /// A turn that ends without a next listening window (failed or
+    /// interrupted reply) ends the playback suspension with the microphone
+    /// off. A held capture is still running, so release it the way the
+    /// pause it stands in for would have; an already paused one is a no-op.
+    private func endPlaybackCaptureSuspensionWithoutRelistening() {
+        if isPlaybackCaptureSuspended { capture.pause() }
+        isPlaybackCaptureSuspended = false
     }
 
     private func failForAudioInterruption() {
@@ -1441,7 +1450,7 @@ final class VoiceConversationController: ObservableObject {
             // (The cancellation branch above intentionally keeps ownership —
             // an interrupted stream's already-scheduled audio renders out.)
             playback.stop()
-            isPlaybackCaptureSuspended = false
+            endPlaybackCaptureSuspensionWithoutRelistening()
             if state == .speaking || state == .thinking { state = .failed(error.localizedDescription) }
             return
         }
