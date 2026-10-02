@@ -118,6 +118,55 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    func testSendRefusedByDesktopOwnershipOffersTakeover() async {
+        // #304: Hermes Desktop owns the chat, so prompt.submit is refused with
+        // SESSION_NOT_OWNED. Conduit offers "Take over" instead of a bare
+        // send failure, naming the owner and every id the chat goes by.
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(false, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
+        var sends = 0
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("stored-a")] },
+            openSession: { _, id, _ in
+                SessionResumeResult(sessionId: "runtime-a", storedSessionId: "stored-a",
+                    messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            refreshContext: { _, _ in },
+            sendPrompt: { _, _, _ in
+                sends += 1
+                throw RpcError(
+                    code: 4090,
+                    message: "This chat is open in another Hermes window/terminal. Use it there, or start a new chat here.\nDetails: session stored-a opened by desktop 3m ago.",
+                    reason: "SESSION_NOT_OWNED"
+                )
+            },
+            verifyTransportHealth: { _ in }
+        ))
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        let submitted = await harness.appState.submitComposer(text: "From my phone")
+
+        XCTAssertFalse(submitted, "The refused draft goes back to the composer")
+        XCTAssertEqual(sends, 1)
+        let takeover = harness.appState.chatTakeover
+        XCTAssertEqual(takeover?.sessionID, "runtime-a")
+        XCTAssertEqual(takeover?.surface, "desktop")
+        XCTAssertEqual(takeover?.phase, .offered)
+        XCTAssertEqual(takeover?.sessionIDs.first, "runtime-a")
+        XCTAssertTrue(takeover?.sessionIDs.contains("stored-a") ?? false)
+        XCTAssertNil(harness.appState.errorMessage, "The takeover offer replaces the send failure")
+        XCTAssertEqual(harness.appState.activeChatTakeover, takeover, "The open chat shows the offer")
+
+        harness.appState.dismissChatTakeover()
+        XCTAssertNil(harness.appState.chatTakeover)
+        box.client.disconnect()
+    }
+
     func testComposerSubmissionSurvivesLegitimateRuntimeRotationDuringRecovery() async {
         // Hermes legitimately rotates stored-a: runtime-old → runtime-new
         // during the second send's freshness recovery. The in-flight

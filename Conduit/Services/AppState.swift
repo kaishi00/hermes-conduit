@@ -528,7 +528,10 @@ final class AppState: ObservableObject {
     private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
 
     @Published private(set) var activeProfile: String = "default" {
-        didSet { refreshActiveChatScrollSessionIdentity() }
+        didSet {
+            refreshActiveChatScrollSessionIdentity()
+            if oldValue != activeProfile { dismissChatTakeover() }
+        }
     }
     /// The saved multi-dashboard registry (#148). `activeDashboardID` is the
     /// dashboard the user last chose — set at switch intent, kept on failed
@@ -1501,6 +1504,7 @@ final class AppState: ObservableObject {
         stopGPTLiveConversation()
         stopGrokLiveConversation()
         showSidebar = false
+        if minimisedLiveVoice == .geminiLive { minimisedLiveVoice = nil }
         showGeminiLiveSheet = true
         if !geminiLiveController.isActive {
             beginVoiceCallRecording(engine: .geminiLive)
@@ -1524,22 +1528,25 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A Gemini Live conversation only CarPlay was
-    /// presenting ends; one the phone's sheet shows keeps going. A
+    /// presenting ends; one the phone's sheet or minimised bar shows keeps going. A
     /// conversation that already failed drops its memory and persona too:
     /// nothing presents it, so nothing would close it.
     func releaseCarPlayGeminiLive() {
-        guard !(isSceneActive && showGeminiLiveSheet) else { return }
+        guard !(isSceneActive && (showGeminiLiveSheet || minimisedLiveVoice == .geminiLive)) else { return }
         if isGeminiLiveActive {
             closeGeminiLiveConversation()
         } else {
             dropGeminiLiveHostContext()
             if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
+            // A minimised call that failed has nothing left to show.
+            if minimisedLiveVoice == .geminiLive { minimisedLiveVoice = nil }
         }
     }
 
     func closeGeminiLiveConversation() {
         if geminiLiveControllerCreated { geminiLiveController.stop() }
         showGeminiLiveSheet = false
+        if minimisedLiveVoice == .geminiLive { minimisedLiveVoice = nil }
         dropGeminiLiveHostContext()
         if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
     }
@@ -1556,7 +1563,7 @@ final class AppState: ObservableObject {
     private func stopGeminiLiveConversation() {
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
-        guard showGeminiLiveSheet || isGeminiLiveActive else {
+        guard showGeminiLiveSheet || minimisedLiveVoice == .geminiLive || isGeminiLiveActive else {
             dropGeminiLiveHostContext()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
@@ -1741,6 +1748,7 @@ final class AppState: ObservableObject {
         stopGeminiLiveConversation()
         stopGrokLiveConversation()
         showSidebar = false
+        if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
         showGPTLiveSheet = true
         if !gptLiveController.isActive {
             beginVoiceCallRecording(engine: .gptLive)
@@ -1764,22 +1772,25 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A GPT-Live call only CarPlay was presenting ends;
-    /// one the phone's sheet shows keeps going. A call that already failed
+    /// one the phone's sheet or minimised bar shows keeps going. A call that already failed
     /// drops its memory and persona too: nothing presents it, so nothing
     /// would close it.
     func releaseCarPlayGPTLive() {
-        guard !(isSceneActive && showGPTLiveSheet) else { return }
+        guard !(isSceneActive && (showGPTLiveSheet || minimisedLiveVoice == .gptLive)) else { return }
         if isGPTLiveActive {
             closeGPTLiveConversation()
         } else {
             dropGPTLiveHostContext()
             if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
+            // A minimised call that failed has nothing left to show.
+            if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
         }
     }
 
     func closeGPTLiveConversation() {
         if gptLiveControllerCreated { gptLiveController.stop() }
         showGPTLiveSheet = false
+        if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
         dropGPTLiveHostContext()
         if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
     }
@@ -1796,7 +1807,7 @@ final class AppState: ObservableObject {
     private func stopGPTLiveConversation() {
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
-        guard showGPTLiveSheet || isGPTLiveActive else {
+        guard showGPTLiveSheet || minimisedLiveVoice == .gptLive || isGPTLiveActive else {
             dropGPTLiveHostContext()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
@@ -1977,6 +1988,7 @@ final class AppState: ObservableObject {
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         showSidebar = false
+        if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
         showGrokLiveSheet = true
         if !grokLiveController.isActive {
             beginVoiceCallRecording(engine: .grokLive)
@@ -2000,22 +2012,25 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A Grok Live call only CarPlay was presenting ends;
-    /// one the phone's sheet shows keeps going. A call that already failed
+    /// one the phone's sheet or minimised bar shows keeps going. A call that already failed
     /// drops its memory and persona too: nothing presents it, so nothing
     /// would close it.
     func releaseCarPlayGrokLive() {
-        guard !(isSceneActive && showGrokLiveSheet) else { return }
+        guard !(isSceneActive && (showGrokLiveSheet || minimisedLiveVoice == .grokLive)) else { return }
         if isGrokLiveActive {
             closeGrokLiveConversation()
         } else {
             dropGrokLiveHostContext()
             if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
+            // A minimised call that failed has nothing left to show.
+            if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
         }
     }
 
     func closeGrokLiveConversation() {
         if grokLiveControllerCreated { grokLiveController.stop() }
         showGrokLiveSheet = false
+        if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
         dropGrokLiveHostContext()
         if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
     }
@@ -2032,7 +2047,7 @@ final class AppState: ObservableObject {
     private func stopGrokLiveConversation() {
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
-        guard showGrokLiveSheet || isGrokLiveActive else {
+        guard showGrokLiveSheet || minimisedLiveVoice == .grokLive || isGrokLiveActive else {
             dropGrokLiveHostContext()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
@@ -3798,6 +3813,65 @@ final class AppState: ObservableObject {
     /// A live call is already running; opening another would only surface it.
     /// Queued saves wait for it to end.
     var isLiveVoiceCallActive: Bool { isGeminiLiveActive || isGPTLiveActive || isGrokLiveActive }
+
+    // MARK: Minimised live voice
+
+    /// The live call whose sheet was swiped away. The call keeps running
+    /// while the conversation stays usable, and a bar above the composer
+    /// brings the sheet back. Only End, a spoken goodbye, or a boundary
+    /// teardown ends it.
+    /// A call that fails while minimised keeps its bar on purpose: tapping
+    /// it shows why and offers Try again or End. The bar clears on End (in
+    /// the sheet or on the bar), a spoken goodbye, opening that mode again,
+    /// another mode taking over, CarPlay releasing a stopped call, and
+    /// boundary teardown (disconnect, sign-out, server or profile change).
+    @Published private(set) var minimisedLiveVoice: VoiceCallEngine?
+
+    /// Runs whenever a live sheet goes away. A swipe on a call that is
+    /// connecting or running minimises it (the connection carries on);
+    /// anything else (End, a failed call) closes it, as before. After End
+    /// this closes an already-closed call a second time, which is a no-op:
+    /// `stop()` settles the phase synchronously.
+    func liveVoiceSheetDismissed(_ engine: VoiceCallEngine) {
+        if isLiveVoiceCallActive(engine) {
+            minimisedLiveVoice = engine
+        } else {
+            closeLiveVoiceConversation(engine)
+        }
+    }
+
+    /// Brings the minimised call's sheet back.
+    func restoreMinimisedLiveVoice() {
+        guard let engine = minimisedLiveVoice else { return }
+        minimisedLiveVoice = nil
+        switch engine {
+        case .geminiLive: showGeminiLiveSheet = true
+        case .gptLive: showGPTLiveSheet = true
+        case .grokLive: showGrokLiveSheet = true
+        }
+    }
+
+    /// Hangs up the minimised call.
+    func endMinimisedLiveVoice() {
+        guard let engine = minimisedLiveVoice else { return }
+        closeLiveVoiceConversation(engine)
+    }
+
+    func isLiveVoiceCallActive(_ engine: VoiceCallEngine) -> Bool {
+        switch engine {
+        case .geminiLive: return isGeminiLiveActive
+        case .gptLive: return isGPTLiveActive
+        case .grokLive: return isGrokLiveActive
+        }
+    }
+
+    private func closeLiveVoiceConversation(_ engine: VoiceCallEngine) {
+        switch engine {
+        case .geminiLive: closeGeminiLiveConversation()
+        case .gptLive: closeGPTLiveConversation()
+        case .grokLive: closeGrokLiveConversation()
+        }
+    }
 
     /// Continues a saved call with a new live call on the selected engine.
     /// It is seeded with the row (a summary when it's long) and appends to
@@ -6741,6 +6815,7 @@ final class AppState: ObservableObject {
 
     func disconnect() {
         cancelExplicitSessionOpen()
+        dismissChatTakeover()
         chatResumeCoordinator.clearResumeState()
         cancelOwnedAutomaticOperations()
         activeAutomaticChatResumeWork = nil
@@ -14632,6 +14707,198 @@ final class AppState: ObservableObject {
         return .proceed
     }
 
+    // MARK: - Chat takeover
+    //
+    // A send refused because Hermes Desktop or a terminal owns the chat
+    // (SESSION_NOT_OWNED) offers "Take over"; see ChatTakeover.swift.
+
+    lazy var chatTakeoverClient = ChatTakeoverClient(request: { [weak self] path, method, body in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body)
+    })
+
+    /// The refused chat's takeover offer or progress. The composer shows it
+    /// only while that chat is the active one.
+    @Published private(set) var chatTakeover: ChatTakeoverState?
+    private var chatTakeoverTask: Task<Void, Never>?
+    private var chatTakeoverReadyCount = 0
+    static let chatTakeoverPollInterval: Duration = .seconds(3)
+    /// How long Conduit waits for the other app's running turn to finish.
+    static let chatTakeoverWaitLimit: TimeInterval = 15 * 60
+
+    var takesOverChatsAutomatically: Bool {
+        UserDefaults.standard.bool(forKey: ChatTakeoverPreference.automaticKey)
+    }
+
+    /// The chat Conduit last took over automatically. A send refused again
+    /// right after that offers the button instead of looping; a successful
+    /// send clears it.
+    private var chatTakeoverAutomaticSessionID: String?
+
+    /// The takeover for the open chat, matched on every id the chat goes by,
+    /// so a runtime id rotated mid-takeover keeps the notice and the resend.
+    var activeChatTakeover: ChatTakeoverState? {
+        guard let active = activeSessionId, chatTakeoverMatches(active) else { return nil }
+        return chatTakeover
+    }
+
+    /// Whether the takeover belongs to the chat `sessionID` names, by any of its ids.
+    private func chatTakeoverMatches(_ sessionID: String) -> Bool {
+        guard let takeover = chatTakeover else { return false }
+        let ids = Set(takeover.sessionIDs)
+        if ids.contains(sessionID) { return true }
+        if let canonical = canonicalSessionID(for: sessionID), ids.contains(canonical) { return true }
+        return false
+    }
+
+    /// The stored chat behind a runtime id, so a rotated runtime id doesn't
+    /// re-arm automatic takeover for the same chat.
+    private func chatTakeoverGuardKey(_ sessionID: String) -> String {
+        canonicalSessionID(for: sessionID) ?? sessionID
+    }
+
+    /// Records a send refused because another app owns the chat.
+    private func noteChatOwnedElsewhere(
+        _ refusal: RpcError,
+        sessionID: String,
+        knownSessionIDs: Set<String>,
+        refusedText: String
+    ) {
+        let details = ChatTakeoverState.details(fromRefusal: refusal.message)
+        var ids = [sessionID]
+        for id in [details.sessionID, canonicalSessionID(for: sessionID)].compactMap({ $0 }) + knownSessionIDs.sorted()
+        where !ids.contains(id) {
+            ids.append(id)
+        }
+        chatTakeoverTask?.cancel()
+        chatTakeoverTask = nil
+        errorMessage = nil
+        chatTakeover = ChatTakeoverState(
+            sessionID: sessionID, sessionIDs: ids, surface: details.surface, refusedText: refusedText, phase: .offered
+        )
+        lifecycleLog.notice(
+            "prompt.submit refused: chat owned by \(details.surface ?? "another surface", privacy: .public) session=\(sessionID, privacy: .public)"
+        )
+    }
+
+    /// Asks the host to drop the other app's claim, waiting while it runs a
+    /// turn. On success the composer sends its draft again.
+    func takeOverChat() {
+        guard var state = chatTakeover else { return }
+        switch state.phase {
+        case .offered, .failed: break
+        case .waiting, .ready, .heldHere, .unavailable: return
+        }
+        chatTakeoverTask?.cancel()
+        state.phase = .waiting
+        chatTakeover = state
+        let client = chatTakeoverClient
+        let profile = activeProfile
+        let waiting = state
+        // Only `client` is held across the awaits; `self` is re-taken weakly
+        // just to publish the result.
+        chatTakeoverTask = Task { [weak self] in
+            let phase = await Self.runChatTakeover(client: client, state: waiting, profile: profile)
+            guard let self else { return }
+            // Only the latest takeover clears its own handle.
+            if !Task.isCancelled { self.chatTakeoverTask = nil }
+            guard let phase, !Task.isCancelled,
+                  self.chatTakeover?.sessionID == waiting.sessionID else { return }
+            var settled = waiting
+            settled.phase = phase
+            if phase == .ready {
+                self.chatTakeoverReadyCount &+= 1
+                settled.readyToken = self.chatTakeoverReadyCount
+            }
+            self.chatTakeover = settled
+        }
+    }
+
+    /// Polls the takeover route until it settles: while the owner is mid-turn,
+    /// and through a few transient failures (bridge not ready, 5xx, network).
+    /// Nil when cancelled.
+    static func runChatTakeover(
+        client: ChatTakeoverClient,
+        state: ChatTakeoverState,
+        profile: String,
+        pollInterval: Duration = chatTakeoverPollInterval
+    ) async -> ChatTakeoverState.Phase? {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(chatTakeoverWaitLimit))
+        var transientFailures = 0
+        while !Task.isCancelled {
+            do {
+                switch try await client.takeOver(sessionIDs: state.sessionIDs, profile: profile) {
+                case .ready:
+                    return .ready
+                case .sameHost:
+                    return .heldHere
+                case .busy:
+                    transientFailures = 0
+                    guard clock.now < deadline else {
+                        return .failed(AppLocalization.string(
+                            "\(state.ownerName) is still replying in this chat. Try again when it finishes."
+                        ))
+                    }
+                }
+            } catch {
+                guard !Task.isCancelled else { return nil }
+                transientFailures += 1
+                guard isTransientChatTakeoverFailure(error),
+                      transientFailures < chatTakeoverTransientRetryLimit,
+                      clock.now < deadline else {
+                    if case ChatTakeoverError.pluginMissing = error { return .unavailable(chatTakeoverFailureMessage(error)) }
+                    if case ChatTakeoverError.unsupported = error { return .unavailable(chatTakeoverFailureMessage(error)) }
+                    if case ChatTakeoverError.malformed = error { return .unavailable(chatTakeoverFailureMessage(error)) }
+                    return .failed(chatTakeoverFailureMessage(error))
+                }
+            }
+            try? await Task.sleep(for: pollInterval)
+        }
+        return nil
+    }
+
+    static let chatTakeoverTransientRetryLimit = 5
+
+    static func isTransientChatTakeoverFailure(_ error: Error) -> Bool {
+        switch error {
+        case DashboardTicketBridgeError.notReady:
+            return true
+        case DashboardTicketBridgeError.http(let status, _):
+            // The client already maps 501 to `.unsupported`; excluded here too
+            // so the predicate stands on its own.
+            return status == 0 || status == 408 || status == 429 || (status >= 500 && status != 501)
+        case is URLError:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Stops waiting and hides the offer.
+    func dismissChatTakeover() {
+        chatTakeoverTask?.cancel()
+        chatTakeoverTask = nil
+        chatTakeover = nil
+    }
+
+    static func chatTakeoverFailureMessage(_ error: Error) -> String {
+        switch error {
+        case ChatTakeoverError.pluginMissing:
+            return AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over.")
+        case ChatTakeoverError.unsupported:
+            return AppLocalization.string("This Hermes version can't hand a chat over.")
+        case ChatTakeoverError.malformed:
+            return AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
+        default:
+            let detail = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !detail.isEmpty, !(error is DashboardTicketBridgeError) else {
+                return AppLocalization.string("Couldn't take this chat over. Check the connection to your Hermes host and try again.")
+            }
+            return AppLocalization.string("Couldn't take this chat over: \(detail)")
+        }
+    }
+
     func sendMessage(
         _ text: String,
         attachments: [Attachment] = [],
@@ -14731,6 +14998,12 @@ final class AppState: ObservableObject {
             lifecycleLog.notice(
                 "prompt.submit outcome=\(Self.promptOutcomeLogValue(outcome), privacy: .public) session=\(sessionId, privacy: .public)"
             )
+            if chatTakeoverMatches(sessionId) {
+                dismissChatTakeover()
+            }
+            if chatTakeoverAutomaticSessionID == chatTakeoverGuardKey(sessionId) {
+                chatTakeoverAutomaticSessionID = nil
+            }
             if isCurrentComposerSubmission(submissionContext) {
                 if outcome.isBusySubmission {
                     // Hermes applied its busy policy, which proves THIS
@@ -14982,9 +15255,24 @@ final class AppState: ObservableObject {
                 return false
             }
             if isCurrentComposerSubmission(submissionContext) {
-                errorMessage = AppLocalization.string("Failed to send: \(error.localizedDescription)")
+                // A spoken turn keeps the plain error: the takeover notice
+                // lives in the composer, which a live voice call doesn't show.
+                if let refusal = error as? RpcError, refusal.isSessionNotOwned, surface != Self.spokenPromptSurface {
+                    noteChatOwnedElsewhere(
+                        refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs, refusedText: text
+                    )
+                } else {
+                    errorMessage = AppLocalization.string("Failed to send: \(error.localizedDescription)")
+                }
             }
             await recoverComposerSubmission(using: submissionContext)
+            // Automatic takeover starts once the refused draft is back in
+            // the composer, which sends it again when the chat is Conduit's.
+            if chatTakeoverMatches(sessionId), activeChatTakeover?.phase == .offered,
+               takesOverChatsAutomatically, chatTakeoverAutomaticSessionID != chatTakeoverGuardKey(sessionId) {
+                chatTakeoverAutomaticSessionID = chatTakeoverGuardKey(sessionId)
+                takeOverChat()
+            }
             return false
         }
     }

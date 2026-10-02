@@ -181,6 +181,56 @@
         }
       }
     },
+    "End call" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束通话"
+          }
+        }
+      }
+    },
+    "Opens the call" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开通话"
+          }
+        }
+      }
+    },
+    "Call stopped. Tap to see why." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话已停止。点按查看原因。"
+          }
+        }
+      }
+    },
+    "Read Aloud" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗读"
+          }
+        }
+      }
+    },
+    "How fast the speaker button under a reply reads it aloud, without changing the voice's pitch. Applies from the next reply you play, on this device. Voice conversations always play at normal speed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回复下方扬声器按钮的朗读速度，不改变音调。从下一条播放的回复开始生效，仅限此设备。语音对话始终以正常速度播放。"
+          }
+        }
+      }
+    },
     "The picture was saved, but its look was not." : {
       "localizations" : {
         "zh-Hans" : {
@@ -19108,6 +19158,226 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 Grok Live 进行语音对话"
+          }
+        }
+      }
+    },
+    "%@ is still replying in this chat. Try again when it finishes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 仍在此对话中回复。请在回复结束后重试。"
+          }
+        }
+      }
+    },
+    "A reply running there always finishes first. If you go back to that app, reopen the chat there to see what you sent from Conduit." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "那里正在进行的回复总会先完成。如果你回到那个应用，请在那里重新打开对话，才能看到你从 Conduit 发送的内容。"
+          }
+        }
+      }
+    },
+    "Chats open on your computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在电脑上打开的对话"
+          }
+        }
+      }
+    },
+    "Couldn't take this chat over. Check the connection to your Hermes host and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法接管此对话。请检查与 Hermes 主机的连接，然后重试。"
+          }
+        }
+      }
+    },
+    "Couldn't take this chat over: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法接管此对话：%@"
+          }
+        }
+      }
+    },
+    "Hermes Desktop" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Desktop"
+          }
+        }
+      }
+    },
+    "Hermes lets one app use a chat at a time. When a chat is open in Hermes Desktop or a terminal, Conduit offers to take it over when you send." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 同一时间只允许一个应用使用某个对话。当对话在 Hermes Desktop 或终端中打开时，你发送消息时 Conduit 会提供接管选项。"
+          }
+        }
+      }
+    },
+    "Makes Conduit the app for this chat, then sends your message" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Conduit 接管此对话，然后发送你的消息"
+          }
+        }
+      }
+    },
+    "Sending in a chat open in Hermes Desktop or a terminal takes it over without asking. Needs the Conduit notifier plugin on your Hermes host." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Hermes Desktop 或终端中打开的对话里发送消息时，会直接接管该对话。需要在 Hermes 主机上安装 Conduit 通知插件。"
+          }
+        }
+      }
+    },
+    "Take over automatically" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动接管"
+          }
+        }
+      }
+    },
+    "Take over this chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接管此对话"
+          }
+        }
+      }
+    },
+    "Taking this chat over from %@. If it's replying, Conduit waits for the reply to finish." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从 %@ 接管此对话。如果它正在回复，Conduit 会等待回复结束。"
+          }
+        }
+      }
+    },
+    "This Hermes version can't hand a chat over." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 版本无法转交对话。"
+          }
+        }
+      }
+    },
+    "This chat is open in %@. Take it over to send from here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话已在 %@ 中打开。接管后即可在这里发送。"
+          }
+        }
+      }
+    },
+    "This chat is open in Conduit on another device or in the Hermes web chat. Send from there, or close it there and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话已在另一台设备上的 Conduit 或 Hermes 网页聊天中打开。请在那里发送，或在那里关闭后重试。"
+          }
+        }
+      }
+    },
+    "Update the Conduit notifier plugin on your Hermes host to take chats over." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 主机上的 Conduit 通知插件以接管对话。"
+          }
+        }
+      }
+    },
+    "a Hermes terminal" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 终端"
+          }
+        }
+      }
+    },
+    "another Hermes window" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另一个 Hermes 窗口"
+          }
+        }
+      }
+    },
+    "Stop waiting" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止等待"
+          }
+        }
+      }
+    },
+    "This chat is yours now. Send your message again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话已由你接管。请重新发送你的消息。"
+          }
+        }
+      }
+    },
+    "Waiting to take this chat over" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待接管此对话"
+          }
+        }
+      }
+    },
+    "The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 通知插件返回了意外的响应。请在 Hermes 主机上更新它后重试。"
           }
         }
       }

@@ -199,8 +199,14 @@ struct GPTLiveVoiceSheet: View {
                     : AppLocalization.string("GPT-Live: \(turn.text)")).post()
             }
             .toolbar {
+                // Swiping down only minimises a running call: this is
+                // the hang-up.
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", action: onClose)
+                    Button(role: .destructive, action: onClose) {
+                        Label("End", systemImage: "phone.down.fill")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .tint(.red)
                 }
             }
         }

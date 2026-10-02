@@ -14,8 +14,10 @@ struct GroupChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             transcript
+            MinimisedLiveVoiceBar()
             composer
         }
+        .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         .toolbar { toolbarContent }
         // The view is keyed by room, so appear/change bracket exactly one
         // room: the draft comes back on reopen and is kept as it changes.

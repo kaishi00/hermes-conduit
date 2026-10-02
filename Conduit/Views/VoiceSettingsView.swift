@@ -144,6 +144,7 @@ struct VoiceSettingsView: View {
     @State private var appleSpeechAvailability: AppleSpeechRecognitionAvailability
     @State private var continuousConversation: Bool
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
+    @AppStorage(ReadAloudSpeed.preferenceKey) private var readAloudSpeedRaw = ReadAloudSpeed.normal.rawValue
     let spokenStopPhrases: [String]
     let spokenEndConversationPhrases: [String]
     let setStopPhrases: ([String]) -> Void
@@ -210,6 +211,7 @@ struct VoiceSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     capabilitySection
+                    readAloudSection
                     if let callSaves, callSaves.pendingCount > 0 {
                         VoiceCallSaveStatusSection(model: callSaves)
                     }
@@ -249,6 +251,28 @@ struct VoiceSettingsView: View {
             for (key, value) in newValues where values[key] == nil { values[key] = value }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var readAloudSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Read Aloud"), symbol: "speaker.wave.2", tint: .conduitAccent) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Speed")
+                    .font(.subheadline.weight(.semibold))
+                Picker("Speed", selection: Binding(
+                    get: { ReadAloudSpeed(rawValue: readAloudSpeedRaw) ?? .normal },
+                    set: { readAloudSpeedRaw = $0.rawValue }
+                )) {
+                    ForEach(ReadAloudSpeed.allCases) { speed in
+                        Text(verbatim: speed.label).tag(speed)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("voice.readAloudSpeed")
+            }
+            Text("How fast the speaker button under a reply reads it aloud, without changing the voice's pitch. Applies from the next reply you play, on this device. Voice conversations always play at normal speed.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var capabilitySection: some View {
