@@ -2415,7 +2415,12 @@ final class HermesClientTests: XCTestCase {
         )
     }
 
+    /// Yields, then sleeps briefly and yields again. A fixed yield count alone
+    /// is not enough on a loaded CI runner, where the client's receive loop
+    /// can need wall-clock time before its frame reaches the main actor.
     private func flushMainActor() async {
+        for _ in 0..<10 { await Task.yield() }
+        try? await Task.sleep(for: .milliseconds(50))
         for _ in 0..<10 { await Task.yield() }
     }
 
