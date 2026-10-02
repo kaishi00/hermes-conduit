@@ -3924,7 +3924,7 @@ final class AppState: ObservableObject {
               activeRoomSurface == nil, activeVoiceCallSessionID == nil else { return nil }
         // The catalog row's stored id is the chat's durable identity.
         let row = sessions.first { $0.id == sessionID || $0.alternateIds.contains(sessionID) }
-        let stored = row.map { $0.storedSessionId ?? $0.id }.flatMap { $0 == sessionID ? nil : $0 }
+        let stored = row.map { $0.storedSessionId ?? $0.id }
         return VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: stored, title: activeSessionTitle)
     }
 
@@ -3983,15 +3983,34 @@ final class AppState: ObservableObject {
         if rows.contains(where: { ($0.runtimeSessionId == target || thread.owns(sessionID: $0.runtimeSessionId)) && $0.isRunning }) {
             throw VoiceThreadBusyError()
         }
-        _ = try await client.sendPrompt(target, text: text)
-        return target
+        switch try await client.sendPrompt(target, text: text) {
+        case .accepted:
+            return target
+        case .steered, .redirected:
+            // A turn started between the read and the send took it in.
+            // Sending again would repeat it.
+            throw VoiceThreadNotStartedError(message: AppLocalization.string("Hermes added this to the reply already running in the chat."))
+        case .queued:
+            throw VoiceThreadNotStartedError(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
+        }
     }
 
     /// The chat's latest assistant reply, without starting a turn: from the
     /// transcript when the chat is open, otherwise from its saved history.
     private func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> String? {
+        // Read once, without suspending: the chat on screen can change at
+        // any await.
         if isOpenChat(thread) { return latestReplyInOpenChat(thread) }
         guard let bridge = dashboardTicketBridge else { return nil }
+        // One profile for every read: a reply from another profile's history
+        // is never read out.
+        let profile = activeProfile
+        guard let reply = await latestSavedThreadReply(thread, bridge: bridge, profile: profile),
+              profile == activeProfile else { return nil }
+        return reply
+    }
+
+    private func latestSavedThreadReply(_ thread: VoiceThreadTarget, bridge: DashboardTicketBridge, profile: String) async -> String? {
         var ids: [String] = []
         for id in [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }) where !id.isEmpty && !ids.contains(id) {
             ids.append(id)
@@ -3999,7 +4018,7 @@ final class AppState: ObservableObject {
         for sessionID in ids {
             func read(_ query: String) async -> [String: Any]? {
                 try? await bridge.requestJSON(
-                    path: Self.sessionMessagesPath(sessionId: sessionID, profile: activeProfile, query: query)
+                    path: Self.sessionMessagesPath(sessionId: sessionID, profile: profile, query: query)
                 )
             }
             // Newest pages first, until one holds an assistant reply: a

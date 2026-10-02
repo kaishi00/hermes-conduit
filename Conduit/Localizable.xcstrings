@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Hermes added this to the reply already running in the chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 已将此内容并入对话中正在进行的回复。"
+          }
+        }
+      }
+    },
+    "Hermes queued this in the chat. Its reply will appear there." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 已将此内容排入对话队列，回复将显示在对话中。"
+          }
+        }
+      }
+    },
     "Shows why the call stopped" : {
       "localizations" : {
         "zh-Hans" : {

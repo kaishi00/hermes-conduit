@@ -186,6 +186,13 @@ struct VoiceBackgroundJobBackend {
 /// check and the send. The voice request waits for it instead.
 struct VoiceThreadBusyError: Error {}
 
+/// Hermes took the request but didn't start a turn for it: it joined the
+/// reply already running, or waits behind it. The voice turn ends with
+/// `message` rather than wait for a reply that is not its own.
+struct VoiceThreadNotStartedError: Error {
+    let message: String
+}
+
 /// The Hermes chat a live call is attached to: requests go there as its
 /// next turn instead of starting a background job.
 struct VoiceThreadTarget: Equatable {
@@ -472,11 +479,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return reply
         }
         // Only this chat's own turns: a reply from an earlier call's chat
-        // must never be read out as this chat's.
+        // must never be read out as this chat's. A turn that resumed the chat
+        // on a new runtime still counts by the runtime it ran on.
         guard let thread = liveThread else { return nil }
         return jobs.last(where: { job in
-            job.isThreadTurn && !job.isDetachedThreadTurn && job.status == .finished && job.result?.isEmpty == false
-                && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
+            guard job.isThreadTurn, !job.isDetachedThreadTurn, job.status == .finished,
+                  job.result?.isEmpty == false else { return false }
+            if threadTargets[job.id].map({ Self.sameChat($0, thread) }) == true { return true }
+            return job.runtimeSessionID.map { thread.owns(sessionID: $0) } == true
         })?.result
     }
 
@@ -538,6 +548,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     if $0.status == .starting { $0.status = .running }
                 }
                 startPollingIfNeeded()
+            } catch let error as VoiceThreadNotStartedError {
+                guard generation == self.generation else { return }
+                // Events of the turn already running may have moved it on:
+                // whatever they settled is that turn's, not this request's.
+                update(next.id) {
+                    $0.status = .failed(error.message)
+                    $0.result = nil
+                    $0.outcomeDelivered = $0.isDetachedThreadTurn
+                }
+                noticeMayBePending()
             } catch is VoiceThreadBusyError {
                 guard generation == self.generation else { return }
                 // The call ended during the send: nothing went out, so the

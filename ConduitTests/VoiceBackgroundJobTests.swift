@@ -595,7 +595,7 @@ extension VoiceConversationControllerTests {
         let (supervisor, fake) = makeThreadSupervisor()
 
         let sent = supervisor.startThreadTurn(request: "check the build")
-        await waitFor { !fake.threadSubmissions.isEmpty }
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
 
         XCTAssertNotNil(sent.jobID)
         XCTAssertEqual(fake.created, 0, "no session is created")
@@ -625,7 +625,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.first?.status, .starting, "the typed turn's reply isn't the voice turn's")
 
         fake.threadBusy = false
-        await waitFor { !fake.threadSubmissions.isEmpty }
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
         XCTAssertEqual(fake.threadSubmissions.count, 1)
     }
 
@@ -638,12 +638,12 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(refused.jobID)
         XCTAssertNotNil(refused.refusal)
 
-        await waitFor { !fake.threadSubmissions.isEmpty }
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
         try? await Task.sleep(for: .milliseconds(30))
         XCTAssertEqual(fake.threadSubmissions.map(\.1), ["(voice) request 1"])
 
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "one", reasoning: nil))
-        await waitFor { fake.threadSubmissions.count == 2 }
+        guard await waitFor({ fake.threadSubmissions.count == 2 }) else { return }
         XCTAssertEqual(fake.threadSubmissions.map(\.1), ["(voice) request 1", "(voice) request 2"])
     }
 
@@ -665,7 +665,7 @@ extension VoiceConversationControllerTests {
     func testASentTurnOutlivesTheCallWithoutBeingAnnounced() async {
         let (supervisor, fake) = makeThreadSupervisor()
         _ = supervisor.startThreadTurn(request: "deploy")
-        await waitFor { !fake.threadSubmissions.isEmpty }
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
 
         supervisor.detachLiveThread()
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Deployed.", reasoning: nil))
@@ -679,7 +679,7 @@ extension VoiceConversationControllerTests {
         fake.threadSubmitError = URLError(.notConnectedToInternet)
 
         _ = supervisor.startThreadTurn(request: "check")
-        await waitFor { supervisor.jobs.first?.status.isActive == false }
+        guard await waitFor({ supervisor.jobs.first?.status.isActive == false }) else { return }
 
         guard case .failed? = supervisor.jobs.first?.status else {
             return XCTFail("\(String(describing: supervisor.jobs.first?.status))")
@@ -717,7 +717,7 @@ extension VoiceConversationControllerTests {
 
         let immediate = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "summarize"]))
         XCTAssertEqual(immediate, [], "the call stays open while Hermes works")
-        await waitFor { !fake.threadSubmissions.isEmpty }
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
 
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Summary.", reasoning: nil))
         let updates = bridge.pendingUpdates()
@@ -746,7 +746,7 @@ extension VoiceConversationControllerTests {
         guard case .delegationReply(_, _, .commentary)? = immediate.first else {
             return XCTFail("\(immediate)")
         }
-        await waitFor { !fake.threadSubmissions.isEmpty }
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
         XCTAssertEqual(fake.created, 0)
 
         _ = await bridge.handleDelegation(id: "del_2", request: "research flights in the background")
@@ -783,7 +783,7 @@ extension VoiceConversationControllerTests {
         }
 
         _ = supervisor.startThreadTurn(request: "check")
-        await waitFor { supervisor.jobs.first?.status.isActive == false }
+        guard await waitFor({ supervisor.jobs.first?.status.isActive == false }) else { return }
 
         XCTAssertEqual(supervisor.jobs.first?.status, .finished)
         XCTAssertEqual(supervisor.jobs.first?.result, "Done.")
@@ -792,12 +792,12 @@ extension VoiceConversationControllerTests {
     func testATurnLeftRunningInAnotherChatDoesntHoldANewCall() async {
         let (supervisor, fake) = makeThreadSupervisor()
         _ = supervisor.startThreadTurn(request: "deploy")
-        await waitFor { fake.threadSubmissions.count == 1 }
+        guard await waitFor({ fake.threadSubmissions.count == 1 }) else { return }
         supervisor.detachLiveThread()
 
         supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-other", storedSessionID: "st-other", title: "Other")
         _ = supervisor.startThreadTurn(request: "status")
-        await waitFor { fake.threadSubmissions.count == 2 }
+        guard await waitFor({ fake.threadSubmissions.count == 2 }) else { return }
 
         XCTAssertEqual(fake.threadSubmissions.last?.0, "rt-other")
         supervisor.detachLiveThread()
@@ -808,11 +808,11 @@ extension VoiceConversationControllerTests {
         fake.threadSubmitError = VoiceThreadBusyError()
 
         _ = supervisor.startThreadTurn(request: "check")
-        await waitFor { fake.threadSubmissions.count >= 1 }
+        guard await waitFor({ fake.threadSubmissions.count >= 1 }) else { return }
         XCTAssertEqual(supervisor.jobs.first?.status, .starting, "back in line, not failed")
 
         fake.threadSubmitError = nil
-        await waitFor { supervisor.jobs.first?.status == .running }
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
         XCTAssertEqual(supervisor.jobs.first?.threadTurnSubmitted, true)
         supervisor.detachLiveThread()
     }
@@ -821,7 +821,7 @@ extension VoiceConversationControllerTests {
         let (supervisor, fake) = makeThreadSupervisor()
         fake.threadReply = "Build is green."
         _ = supervisor.startThreadTurn(request: "check the build")
-        await waitFor { supervisor.jobs.first?.status == .running }
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
 
         // The completion event never arrived; the runtime is gone.
         await supervisor.pollOnce()
@@ -842,7 +842,7 @@ extension VoiceConversationControllerTests {
         for index in 1...VoiceBackgroundJobSupervisor.maximumThreadTurns {
             supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-\(index)", storedSessionID: nil, title: "Chat \(index)")
             _ = supervisor.startThreadTurn(request: "request \(index)")
-            await waitFor { fake.threadSubmissions.count == index }
+            guard await waitFor({ fake.threadSubmissions.count == index }) else { return }
             supervisor.detachLiveThread()
         }
         XCTAssertEqual(supervisor.jobs.filter { $0.status.isActive }.count, VoiceBackgroundJobSupervisor.maximumThreadTurns)
@@ -903,6 +903,39 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(fake.threadSubmissions.count, 1, "never sent again after the call ended")
         XCTAssertNil(supervisor.takePendingNotice())
+    }
+
+    func testARequestHermesFoldsIntoTheRunningReplyIsntSentAgain() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadSubmitError = VoiceThreadNotStartedError(message: "joined")
+        // The turn already running finishes while the send returns.
+        fake.onThreadSubmit = {
+            supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "typed reply", reasoning: nil))
+        }
+
+        _ = supervisor.startThreadTurn(request: "check")
+        guard await waitFor({ supervisor.jobs.first?.status.isActive == false }) else { return }
+        fake.threadSubmitError = nil
+        try? await Task.sleep(for: .milliseconds(30))
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .failed("joined"))
+        XCTAssertNil(supervisor.jobs.first?.result, "the running turn's reply isn't this request's")
+        XCTAssertEqual(fake.threadSubmissions.count, 1, "never sent twice")
+    }
+
+    func testTheFallbackReplyCountsATurnByTheRuntimeItResumedOn() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-old", storedSessionID: nil, title: "Build")
+        fake.threadRuntime = "rt-new"
+        _ = supervisor.startThreadTurn(request: "check")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        supervisor.observe(.messageComplete(sessionId: "rt-new", messageId: nil, content: "Resumed reply.", reasoning: nil))
+
+        // The call's chat is now known by the runtime it resumed on.
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-new", storedSessionID: nil, title: "Build")
+        let reply = await supervisor.lastThreadReply()
+        XCTAssertEqual(reply, "Resumed reply.")
+        supervisor.detachLiveThread()
     }
 
     func testTheLatestAssistantReplyIsReadFromSavedRows() {
