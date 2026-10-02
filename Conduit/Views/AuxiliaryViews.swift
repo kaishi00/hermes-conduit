@@ -626,7 +626,18 @@ struct SettingsView: View {
                             appState.setVoiceJobModel(provider: provider, model: model, reasoningEffort: reasoning)
                         }
                     ),
-                    wake: wakeSettings(profile: snapshot.profile)
+                    wake: wakeSettings(profile: snapshot.profile),
+                    lockedListening: VoiceLockedListeningSettingsModel(
+                        enabled: appState.keepVoiceListeningWhenLocked,
+                        setEnabled: { appState.setKeepVoiceListeningWhenLocked($0) }
+                    ),
+                    callSaves: VoiceCallSaveStatusModel(
+                        pendingCount: appState.pendingVoiceCallSaves,
+                        blocked: appState.voiceCallSavesBlocked,
+                        isSaving: appState.isSavingQueuedVoiceCalls,
+                        isWaitingOnCall: appState.isLiveVoiceCallActive,
+                        saveNow: { await appState.saveQueuedVoiceCallsNow() }
+                    )
                 )
             } else {
                 SettingsDetailContainer {

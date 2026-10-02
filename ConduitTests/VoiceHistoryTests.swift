@@ -204,7 +204,8 @@ extension HermesVoiceGatewayTimeoutTests {
         recorder.capture([entry(.user, "Hello again")], unsettled: [])
         await recorder.flush()
         XCTAssertEqual(harness.requests.count, 1)
-        XCTAssertNil(recorder.outboxRequest)
+        // Kept for the outbox: the host may be updated before it gives up.
+        XCTAssertEqual(recorder.outboxRequest?.turns.map(\.text), ["Hello", "Hello again"])
     }
 
     func testRecorderResumingAppendsToTheRowWithoutATitle() async {
@@ -366,5 +367,42 @@ extension HermesVoiceGatewayTimeoutTests {
             AppState.normalizedSessionFilterOrder(["voice", "chat", "voice_job", "discord", "telegram", "api", "webhook", "other"]),
             [.voice, .chat, .voiceJob, .discord, .telegram, .api, .webhook, .other]
         )
+    }
+}
+
+// MARK: - Outbox on a host that can't save yet (issue #290)
+
+extension HermesVoiceGatewayTimeoutTests {
+    func testOutboxKeepsCallsAHostCantSaveYetAndSavesThemOnceItCan() async throws {
+        let suite = "VoiceOutboxBlockedHost.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("default", forKey: "conduit.activeProfile")
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let script = ScriptedVoiceHistoryRequests()
+        appState.voiceHistoryClient = VoiceHistoryClient(request: script.request)
+        let dashboard = appState.activeDashboardID?.uuidString ?? "-"
+        let turn = VoiceTranscriptTurn(index: 0, role: .user, text: "Add milk", at: Date())
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: dashboard, profile: appState.activeProfile,
+            request: VoiceTranscriptSaveRequest(callID: "c1", engine: .gptLive, sessionID: nil, title: "Groceries", turns: [turn]),
+            queuedAt: Date()
+        ))
+        outbox.store(in: defaults)
+
+        script.responses = [.failure(DashboardTicketBridgeError.http(status: 404, detail: ""))]
+        await appState.saveQueuedVoiceCallsNow()
+
+        XCTAssertEqual(VoiceTranscriptOutbox.load(from: defaults).entries.map(\.request.callID), ["c1"], "the call is kept, not dropped")
+        XCTAssertEqual(appState.pendingVoiceCallSaves, 1)
+        XCTAssertTrue(appState.voiceCallSavesBlocked)
+
+        script.responses = [.success(["ok": true, "session_id": "row-1", "written": 1])]
+        await appState.saveQueuedVoiceCallsNow()
+
+        XCTAssertTrue(VoiceTranscriptOutbox.load(from: defaults).entries.isEmpty)
+        XCTAssertEqual(appState.pendingVoiceCallSaves, 0)
+        XCTAssertFalse(appState.voiceCallSavesBlocked)
     }
 }

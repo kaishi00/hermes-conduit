@@ -2450,3 +2450,58 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
         controller.receiveAssistantEvent(.completed(sessionID: sessionID, content: "Answer."))
     }
 }
+
+// MARK: - Keep listening when locked (issue #290)
+
+extension ContinuousConversationPreferenceTests {
+    func testOlderPreferenceBlobDecodesKeepListeningWhenLockedOff() throws {
+        let data = try XCTUnwrap(#"{"outputMuted":false}"#.data(using: .utf8))
+        let preferences = try JSONDecoder().decode(VoiceProfilePreferences.self, from: data)
+        XCTAssertNil(preferences.keepListeningWhenLocked)
+    }
+
+    func testBackgroundListeningKeepsListeningThroughIdleSilence() async {
+        let capture = MockCapture(permissionGranted: true)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: MockGateway(),
+            submit: { _ in true },
+            interrupt: { true }
+        )
+        await controller.startListening()
+        controller.setBackgroundListening(true)
+        let starts = capture.startCount
+
+        controller.ingestAudioLevel(0, at: Date().addingTimeInterval(12.1))
+
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertFalse(controller.isMicrophonePaused, "nobody can unpause from the lock screen")
+        XCTAssertFalse(capture.didPause, "pausing would release the audio session")
+        XCTAssertEqual(capture.startCount, starts + 1, "the silent window is dropped and a fresh one opens")
+        XCTAssertEqual(capture.lastStartIncludePreRoll, false)
+    }
+
+    func testBackgroundListeningRelistensAfterAReplyEvenWithContinuousOff() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { true }
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: false))
+        controller.setBackgroundListening(true)
+
+        await Self.driveToAssistantCompletion(controller, gateway: gateway)
+        let relistened = await controller.waitForState(.listening)
+
+        XCTAssertTrue(relistened, "a locked phone can't start the next turn, so it opens by itself")
+        XCTAssertEqual(capture.startCount, 2)
+        XCTAssertFalse(controller.isMicrophonePaused)
+    }
+}

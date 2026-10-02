@@ -60,3 +60,24 @@ warm/release commands, process environment) remain Hermes-host
 administration concerns and are intentionally not mirrored here. Unknown or
 plugin providers discovered by Hermes still appear in the pickers with the
 generic model/language/voice fields.
+
+## Keep listening when locked
+
+Classic Voice normally suspends when Conduit leaves the foreground and is
+restored, not listening, when the user returns. "Keep listening when locked"
+(per profile, off by default) keeps a conversation that is already listening
+running instead, through the same path that keeps Voice live while CarPlay
+presents it: the capture gate stays open, the transport is recovered in the
+background, and no suspension descriptor is recorded. While the phone is
+locked, idle silence drops the silent audio and keeps listening instead of
+pausing the microphone, and every reply opens the next listening turn even
+with Continuous Conversation off, since nobody can tap Listen. The live
+voice modes keep running in the background regardless of this setting.
+
+## Unsaved voice calls
+
+Live calls that end before the host has stored them stay in an on-device
+outbox (20 calls, 7 days) and are retried whenever the session list loads.
+A host that answers that it can't store calls (no notifier plugin route, or
+no session store) no longer drops them: Voice settings shows an "Unsaved
+voice calls" section saying why, with Save Now to retry at once.

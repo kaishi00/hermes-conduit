@@ -1,6 +1,86 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Keep listening when locked" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "锁屏时继续聆听"
+          }
+        }
+      }
+    },
+    "A voice conversation that is already listening keeps going when you lock the phone or switch apps, so you can talk hands-free. While locked, Conduit always listens again after each response and keeps listening through silence. End it by saying a goodbye phrase or from the app. Uses more battery." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在聆听的语音对话会在你锁屏或切换应用后继续进行，让你可以免手操作对话。锁屏期间，Conduit 会在每次回复后自动继续聆听，并在静默时保持聆听。说出结束语或在应用中即可结束对话。会消耗更多电量。"
+          }
+        }
+      }
+    },
+    "The screen stays on while a voice conversation is open, including the live voice modes. When off, the phone locks on its usual timer: live voice calls keep going in the background, and a classic voice conversation does too with Keep Listening When Locked on. Applies to this device." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音对话（包括实时语音模式）打开时屏幕保持常亮。关闭后，手机会按平常的时间自动锁定：实时语音通话会在后台继续，开启“锁屏时继续聆听”后，经典语音对话也会继续。仅适用于此设备。"
+          }
+        }
+      }
+    },
+    "Unsaved voice calls" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未保存的语音通话"
+          }
+        }
+      }
+    },
+    "Voice calls waiting to save: %lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待保存的语音通话：%lld"
+          }
+        }
+      }
+    },
+    "Your Hermes server can't save voice calls yet. Install or update the Hermes notifier plugin on your Hermes server, then tap Save Now." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 服务器暂时无法保存语音通话。请在 Hermes 服务器上安装或更新 Hermes notifier 插件，然后轻点“立即保存”。"
+          }
+        }
+      }
+    },
+    "These calls are kept on this device and Conduit retries them automatically. It keeps up to 20 calls, and a call that still hasn't saved after 7 days is dropped." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些通话保存在此设备上，Conduit 会自动重试。最多保留 20 个通话，7 天后仍未保存的通话将被丢弃。"
+          }
+        }
+      }
+    },
+    "Save Now" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立即保存"
+          }
+        }
+      }
+    },
     "Allow Microphone and Speech Recognition for Conduit in Settings to use a wake phrase." : {
       "localizations" : {
         "zh-Hans" : {
