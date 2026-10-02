@@ -661,6 +661,9 @@ struct ProjectSummary: Identifiable, Equatable {
     var icon: String?
     var colorHex: String?
     var isHome: Bool
+    /// A repo Hermes discovered on its own rather than a project someone
+    /// created; it has no projects.db row, so it cannot be renamed or deleted.
+    var isAuto: Bool = false
     var sessionCount: Int
     var previewSessions: [SessionSummary]
 }
