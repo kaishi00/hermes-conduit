@@ -91,6 +91,7 @@ struct CustomHeadersEditorSheet: View {
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("extra-headers.value")
                             .accessibilityLabel(AppLocalization.string("Header \(String(position(of: row))) value"))
+                            .accessibilityHint(problem(for: row) ?? "")
                             Button {
                                 if revealedValues.contains(row.id) {
                                     revealedValues.remove(row.id)
