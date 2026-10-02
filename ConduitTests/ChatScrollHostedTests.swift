@@ -263,11 +263,6 @@ final class ChatScrollHostedTests: XCTestCase {
         ))
     }
 
-    /// Runs the run loop without forcing layout, as an idle screen would.
-    private func idle(seconds: TimeInterval) {
-        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
-    }
-
     /// Rows whose real heights are far from LazyVStack's estimates: long
     /// code blocks and lists between ordinary prose.
     private static func uneven(_ range: Range<Int>) -> [ChatMessage] {
@@ -426,7 +421,7 @@ final class ChatScrollHostedTests: XCTestCase {
         ))
         appState.streamingText = ""
         checkpoint("completion published", mounted, recorder)
-        idle(seconds: 0.5)
+        settle(mounted.host.view, seconds: 0.6)
         checkpoint("completion after", mounted, recorder)
         print("[ChatScrollHostedTests] completion trace:\n\(recorder.dump(since: mark))")
         assertAtLatest(mounted, "a completed turn leaves no empty space under it\n\(recorder.dump(since: mark))")
@@ -440,15 +435,17 @@ final class ChatScrollHostedTests: XCTestCase {
         let recorder = ScrollRecorder(mounted.scrollView)
         mounted.appState.messages.append(contentsOf: Self.uneven(90..<93))
         mounted.appState.streamingText = String(repeating: "Streaming with ```code``` and *emphasis*. ", count: 20)
-        idle(seconds: 0.6)
+        settle(mounted.host.view)
         mounted.appState.streamingText = ""
         mounted.appState.messages.append(contentsOf: Self.uneven(93..<94))
-        idle(seconds: 0.6)
+        settle(mounted.host.view)
         assertAtLatest(mounted, "following after the burst\n\(recorder.dump())")
 
         checkpoint("idle before", mounted, recorder)
         let mark = recorder.mark()
-        idle(seconds: 1.5)
+        // Layout passes keep running, as frames do on a device; nothing new
+        // arrives and nothing touches the screen.
+        settle(mounted.host.view, seconds: 1.5)
         checkpoint("idle after", mounted, recorder)
         // A sub-point settle is not a bounce; #302 moved 100-250 pt.
         let moves = recorder.offsetChanges(since: mark).filter { $0.distance > 1 }
