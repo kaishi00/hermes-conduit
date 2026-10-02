@@ -138,6 +138,155 @@ final class ChatScrollHostedTests: XCTestCase {
         return surface.transcriptOriginY + frame.minY - mounted.scrollView.contentOffset.y
     }
 
+    /// Records every offset and content-size change the scroll view goes
+    /// through, and whether the engine made the offset change, so a failure
+    /// says which side moved the transcript.
+    private final class ScrollRecorder {
+        struct Change {
+            let time: CFTimeInterval
+            let text: String
+            let isOffset: Bool
+            let byEngine: Bool
+            var distance: CGFloat = 0
+        }
+
+        private(set) var changes: [Change] = []
+        private var observations: [NSKeyValueObservation] = []
+        private let start = CACurrentMediaTime()
+
+        init(_ scrollView: UIScrollView) {
+            observations = [
+                scrollView.observe(\.contentOffset, options: [.old, .new]) { [weak self] view, change in
+                    guard let self, change.oldValue != change.newValue else { return }
+                    let stack = Thread.callStackSymbols
+                    let byEngine = stack.contains { $0.contains("ChatScrollEngine") }
+                    let writer = byEngine ? "engine" : Self.writer(in: stack)
+                    // Clamped like ChatScrollSurface.maxOffsetY.
+                    let max = Swift.max(
+                        -view.adjustedContentInset.top,
+                        view.contentSize.height + view.adjustedContentInset.bottom - view.bounds.height
+                    )
+                    self.record(
+                        String(
+                            format: "offset %.1f -> %.1f (max %.1f) by %@",
+                            change.oldValue?.y ?? .nan, change.newValue?.y ?? .nan, max, writer
+                        ),
+                        isOffset: true,
+                        byEngine: byEngine,
+                        distance: abs((change.newValue?.y ?? 0) - (change.oldValue?.y ?? 0))
+                    )
+                },
+                scrollView.observe(\.bounds, options: [.old, .new]) { [weak self] _, change in
+                    guard let self, change.oldValue != change.newValue else { return }
+                    self.record(
+                        String(
+                            format: "bounds y %.1f h %.1f -> y %.1f h %.1f",
+                            change.oldValue?.origin.y ?? .nan, change.oldValue?.height ?? .nan,
+                            change.newValue?.origin.y ?? .nan, change.newValue?.height ?? .nan
+                        ),
+                        isOffset: false,
+                        byEngine: false
+                    )
+                },
+                scrollView.observe(\.contentSize, options: [.old, .new]) { [weak self] _, change in
+                    guard let self, change.oldValue != change.newValue else { return }
+                    self.record(
+                        String(
+                            format: "contentSize %.1f -> %.1f",
+                            change.oldValue?.height ?? .nan, change.newValue?.height ?? .nan
+                        ),
+                        isOffset: false,
+                        byEngine: false
+                    )
+                },
+            ]
+        }
+
+        private static func writer(in stack: [String]) -> String {
+            // The first frame below the KVO machinery that is not UIKit's own
+            // setter names who moved the scroll view.
+            let frames = stack.dropFirst(1).filter {
+                !$0.contains("NSKeyValue") && !$0.contains("Foundation")
+                    && !$0.contains("ScrollRecorder") && !$0.contains("setContentOffset")
+                    && !$0.contains("setBounds")
+            }
+            return frames.prefix(4)
+                .map { frame -> String in
+                    let parts = frame.split(separator: " ", omittingEmptySubsequences: true)
+                    guard parts.count > 3 else { return frame }
+                    return "\(parts[1]):\(parts[3])"
+                }
+                .joined(separator: " < ")
+        }
+
+        private func record(_ text: String, isOffset: Bool, byEngine: Bool, distance: CGFloat = 0) {
+            changes.append(Change(
+                time: CACurrentMediaTime() - start,
+                text: text,
+                isOffset: isOffset,
+                byEngine: byEngine,
+                distance: distance
+            ))
+        }
+
+        func mark() -> Int { changes.count }
+
+        func offsetChanges(since mark: Int) -> [Change] {
+            changes[mark...].filter(\.isOffset)
+        }
+
+        func dump(since mark: Int = 0) -> String {
+            changes[mark...].map { String(format: "%7.3f %@", $0.time, $0.text) }.joined(separator: "\n")
+        }
+
+        deinit {
+            observations.forEach { $0.invalidate() }
+        }
+    }
+
+    /// Geometry read straight from the scroll view (no KVO), with the
+    /// engine's view of it, for the CI log.
+    private func checkpoint(_ label: String, _ mounted: Mounted, _ recorder: ScrollRecorder) {
+        let view = mounted.scrollView
+        print(String(
+            format: "[ChatScrollHostedTests] %@: offset %.1f max %.1f content %.1f bounds %.1f insets %.1f/%.1f mode %@ layoutCallbacks %ld recorded %ld",
+            label,
+            view.contentOffset.y,
+            maxOffset(view),
+            view.contentSize.height,
+            view.bounds.height,
+            view.adjustedContentInset.top,
+            view.adjustedContentInset.bottom,
+            String(describing: mounted.engine.mode),
+            TranscriptPerf.layoutMetricsChangedCalls,
+            recorder.mark()
+        ))
+    }
+
+    /// Rows whose real heights are far from LazyVStack's estimates: long
+    /// code blocks and lists between ordinary prose.
+    private static func uneven(_ range: Range<Int>) -> [ChatMessage] {
+        range.map { index in
+            let content: String
+            switch index % 7 {
+            case 2:
+                content = "```swift\n" + (0..<(30 + index % 20)).map { "let value\($0) = compute(\($0))" }
+                    .joined(separator: "\n") + "\n```"
+            case 5:
+                content = (0..<(12 + index % 9)).map { "- Item \($0) of a long list in message \(index)" }
+                    .joined(separator: "\n")
+            default:
+                content = String(repeating: "Message \(index) is ordinary prose. ", count: 2 + index % 6)
+            }
+            return ChatMessage(
+                id: "uneven-\(index)",
+                role: index % 2 == 0 ? .user : .assistant,
+                content: content,
+                timestamp: "2026-01-01T00:00:00Z"
+            )
+        }
+    }
+
     // MARK: - Tests
 
     func testOpensOnTheLatestMessage() throws {
@@ -227,5 +376,80 @@ final class ChatScrollHostedTests: XCTestCase {
         mounted.appState.messages.append(contentsOf: Self.transcript(120..<121))
         settle(mounted.host.view)
         assertAtLatest(mounted, "and following resumes")
+    }
+
+    /// Eric's report: send, leave the screen alone, and when the turn
+    /// completes the transcript sits past its end. Completion removes the
+    /// turn's partial rows and live tail and appends one settled reply, so
+    /// the content shrinks under a pinned offset.
+    func testTurnCompletionThatShrinksTheContentStaysOnTheLatestMessage() throws {
+        let mounted = try mount(Self.uneven(0..<60))
+        let recorder = ScrollRecorder(mounted.scrollView)
+        let appState = mounted.appState
+
+        appState.messages.append(ChatMessage(id: "turn-user", role: .user, content: "Do the thing.", timestamp: "2026-01-01T00:00:00Z"))
+        settle(mounted.host.view, seconds: 0.2)
+        for step in 0..<4 {
+            appState.messages.append(ChatMessage(
+                id: "turn-reasoning-\(step)",
+                role: .reasoning,
+                content: String(repeating: "Thinking about step \(step). ", count: 30),
+                timestamp: "2026-01-01T00:00:00Z"
+            ))
+            appState.messages.append(ChatMessage(
+                id: "turn-partial-\(step)",
+                role: .partial,
+                content: String(repeating: "Working on step \(step) of the task with plenty of detail. ", count: 12),
+                timestamp: "2026-01-01T00:00:00Z"
+            ))
+            settle(mounted.host.view, seconds: 0.15)
+        }
+        appState.streamingText = String(repeating: "The final answer streams in with several lines. ", count: 30)
+        settle(mounted.host.view, seconds: 0.3)
+        checkpoint("completion before", mounted, recorder)
+        assertAtLatest(mounted, "the live turn is followed")
+
+        let mark = recorder.mark()
+        // finalizeStreamingCompletion: partials out, one settled reply in,
+        // live text cleared, all in one update.
+        appState.messages.removeAll { $0.role == .partial }
+        appState.messages.append(ChatMessage(
+            id: "turn-final",
+            role: .assistant,
+            content: "Done.",
+            timestamp: "2026-01-01T00:00:00Z"
+        ))
+        appState.streamingText = ""
+        checkpoint("completion published", mounted, recorder)
+        settle(mounted.host.view, seconds: 0.6)
+        checkpoint("completion after", mounted, recorder)
+        print("[ChatScrollHostedTests] completion trace:\n\(recorder.dump(since: mark))")
+        assertAtLatest(mounted, "a completed turn leaves no empty space under it\n\(recorder.dump(since: mark))")
+        XCTAssertTrue(mounted.engine.isFollowingLatest)
+    }
+
+    /// Issue #302: the transcript bounced on its own until touched. With no
+    /// input and nothing new arriving, the offset must not move at all.
+    func testAnIdleTranscriptHoldsStill() throws {
+        let mounted = try mount(Self.uneven(0..<90))
+        let recorder = ScrollRecorder(mounted.scrollView)
+        mounted.appState.messages.append(contentsOf: Self.uneven(90..<93))
+        mounted.appState.streamingText = String(repeating: "Streaming with ```code``` and *emphasis*. ", count: 20)
+        settle(mounted.host.view)
+        mounted.appState.streamingText = ""
+        mounted.appState.messages.append(contentsOf: Self.uneven(93..<94))
+        settle(mounted.host.view)
+        assertAtLatest(mounted, "following after the burst\n\(recorder.dump())")
+
+        checkpoint("idle before", mounted, recorder)
+        let mark = recorder.mark()
+        // Layout passes keep running, as frames do on a device; nothing new
+        // arrives and nothing touches the screen.
+        settle(mounted.host.view, seconds: 1.5)
+        checkpoint("idle after", mounted, recorder)
+        // A sub-point settle is not a bounce; #302 moved 100-250 pt.
+        let moves = recorder.offsetChanges(since: mark).filter { $0.distance > 1 }
+        print("[ChatScrollHostedTests] idle trace:\n\(recorder.dump())")
+        XCTAssertTrue(moves.isEmpty, "the transcript moved on its own:\n\(recorder.dump(since: mark))")
     }
 }

@@ -14,7 +14,7 @@ private final class FakeChatScrollSurface: ChatScrollSurface {
     var isTracking = false
     var isDecelerating = false
     var transcriptOriginY: CGFloat = 18
-    private(set) var sets: [(y: CGFloat, animated: Bool)] = []
+    var sets: [(y: CGFloat, animated: Bool)] = []
 
     init(contentHeight: CGFloat = 4000, viewportHeight: CGFloat = 800) {
         self.contentHeight = contentHeight
@@ -135,6 +135,57 @@ final class ChatScrollEngineTests: XCTestCase {
         let (_, surface) = makeEngine()
         surface.layOut(contentHeight: 3700)
         XCTAssertEqual(surface.contentOffsetY, 2900, "no empty space left under the last message")
+    }
+
+    /// SwiftUI can write its previous offset back after the pass that
+    /// pinned a shrink, leaving empty space under the last message.
+    func testFollowingPinsAnOffsetWrittenPastTheBottom() {
+        let (engine, surface) = makeEngine()
+        surface.contentHeight = 3700
+        surface.contentOffsetY = 3200
+        engine.surfaceScrolled()
+        XCTAssertEqual(surface.contentOffsetY, 2900)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testPastTheBottomCorrectionsCannotLoopWithAnotherWriter() {
+        let (engine, surface) = makeEngine()
+        surface.contentHeight = 3700
+        surface.sets.removeAll()
+        // A writer that puts its own offset back after every pin, all within
+        // one main-queue turn: one inline correction, no recursion.
+        for _ in 0..<10 {
+            surface.contentOffsetY = 3200
+            engine.surfaceScrolled()
+        }
+        XCTAssertEqual(surface.sets.count, 1)
+
+        // Once the turn is over, the deferred check leaves it on the bottom.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(surface.contentOffsetY, 2900)
+        XCTAssertEqual(surface.sets.count, 2)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testATitleTapCancelsAPendingPastTheBottomCheck() {
+        let (engine, surface) = makeEngine()
+        surface.contentHeight = 3700
+        surface.contentOffsetY = 3200
+        engine.surfaceScrolled()
+        engine.explicitTopRequested()
+        XCTAssertEqual(surface.contentOffsetY, surface.minOffsetY)
+
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(surface.contentOffsetY, surface.minOffsetY, "the reader asked for the top")
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testFollowingLeavesARubberBandPastTheBottomToTheFinger() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        surface.contentOffsetY = 3300
+        engine.surfaceScrolled()
+        XCTAssertEqual(surface.contentOffsetY, 3300)
     }
 
     func testFollowingDoesNotFightAFingerOnTheScreen() {

@@ -1389,8 +1389,11 @@ final class ClarifyFakeSocket: HermesWebSocket {
 
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         self.closeCode = closeCode
-        receiveContinuation?.resume(throwing: URLError(.networkConnectionLost))
+        frameLock.lock()
+        let continuation = receiveContinuation
         receiveContinuation = nil
+        frameLock.unlock()
+        continuation?.resume(throwing: URLError(.networkConnectionLost))
     }
 
     /// When true, send completions are held until `releaseSends` — lets a
@@ -1417,15 +1420,38 @@ final class ClarifyFakeSocket: HermesWebSocket {
         }
     }
 
+    /// Frames delivered while the client's receive loop was between
+    /// receive() calls. Without the buffer such a frame was dropped and the
+    /// RPC waiting on it timed out (the fix #274 made in HermesClientTests).
+    /// The receive loop and the test deliver on different executors, so the
+    /// buffer and the parked continuation are guarded together.
+    private var bufferedFrames: [String] = []
+    private let frameLock = NSLock()
+
     func receive() async throws -> URLSessionWebSocketTask.Message {
         try await withCheckedThrowingContinuation { continuation in
+            frameLock.lock()
+            if !bufferedFrames.isEmpty {
+                let frame = bufferedFrames.removeFirst()
+                frameLock.unlock()
+                continuation.resume(returning: .string(frame))
+                return
+            }
             receiveContinuation = continuation
+            frameLock.unlock()
         }
     }
 
     func deliver(_ text: String) {
-        receiveContinuation?.resume(returning: .string(text))
+        frameLock.lock()
+        guard let continuation = receiveContinuation else {
+            bufferedFrames.append(text)
+            frameLock.unlock()
+            return
+        }
         receiveContinuation = nil
+        frameLock.unlock()
+        continuation.resume(returning: .string(text))
     }
 }
 
