@@ -37,6 +37,8 @@ struct VoiceAudioSessionConfiguration: Equatable {
     /// while letting other apps' audio keep playing at full volume. `.default`
     /// rather than `.voiceChat` so no voice processing ducks other media, and
     /// A2DP stays allowed so Bluetooth headphones keep their music route.
+    /// HFP is deliberately left out: it would drop headphones to call
+    /// quality, so wake listening uses the phone's own microphone.
     static let wakeListening = Self(
         category: .playAndRecord,
         mode: .default,

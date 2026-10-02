@@ -12,6 +12,7 @@
 import AVFAudio
 import Foundation
 import OSLog
+import os
 import Speech
 
 private let wakeLogger = Logger(subsystem: "com.milim.relay", category: "VoiceWake")
@@ -145,6 +146,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
             try engine.start()
         } catch {
             input.removeTap(onBus: 0)
+            engine.stop()
             throw error
         }
         self.engine = engine
@@ -288,7 +290,16 @@ final class AppleSpeechWakeWordService: WakeWordService {
             return
         }
         if transcript?.isEmpty == false { consecutiveFailures = 0 }
-        if isFinal { startRecognitionCycle() }
+        if isFinal {
+            // Restart on a later turn, never from inside this task's own
+            // result delivery.
+            cycleTask?.cancel()
+            cycleTask = Task { @MainActor [weak self] in
+                await Task.yield()
+                guard let self, !Task.isCancelled, self.cycleGeneration == generation else { return }
+                self.startRecognitionCycle()
+            }
+        }
     }
 
     private func recordFailure(_ message: String) {
@@ -320,21 +331,22 @@ final class AppleSpeechWakeWordService: WakeWordService {
 /// Hands microphone buffers from the render thread to whichever recognition
 /// request is current.
 private final class WakeAudioSink: @unchecked Sendable {
-    private let lock = NSLock()
-    private var request: SFSpeechAudioBufferRecognitionRequest?
+    /// An unfair lock: the render thread only ever waits for a request swap,
+    /// never for a contended mutex with priority inversion.
+    private let state = OSAllocatedUnfairLock<SFSpeechAudioBufferRecognitionRequest?>(uncheckedState: nil)
 
     /// Both calls hold the lock for the whole operation, so a render-thread
     /// append never runs concurrently with endAudio on the same request.
     func replace(with newRequest: SFSpeechAudioBufferRecognitionRequest?) {
-        lock.lock()
-        defer { lock.unlock() }
-        request?.endAudio()
-        request = newRequest
+        state.withLockUnchecked { request in
+            request?.endAudio()
+            request = newRequest
+        }
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
-        lock.lock()
-        defer { lock.unlock() }
-        request?.append(buffer)
+        state.withLockUnchecked { request in
+            request?.append(buffer)
+        }
     }
 }

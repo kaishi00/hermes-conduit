@@ -45,6 +45,7 @@ extension AppState {
             && !showGPTLiveSheet
             && !showGrokLiveSheet
             && !isCarPlayVoiceSurfaceActive
+            && !voiceConversationController.hasLiveVoiceSession
             && voiceLaunchesInFlight == 0
             && !PendingVoiceIntentStore.shared.hasPendingIntent
             && !VoiceAudioSessionCoordinator.shared.hasOwnersOtherThanWakeListening
@@ -64,7 +65,8 @@ extension AppState {
         }
         wakeObservations = [
             objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
-            PendingVoiceIntentStore.shared.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() }
+            PendingVoiceIntentStore.shared.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
+            voiceConversationController.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() }
         ]
         scheduleWakeRefresh()
     }

@@ -746,6 +746,15 @@ private struct WakePhraseSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        // Follow changes made elsewhere while this page stays open.
+        .onChange(of: model.phrases) { _, newPhrases in
+            guard !isRequestingPermission, newPhrases != phrases else { return }
+            phrases = newPhrases
+            isEnabled = !newPhrases.isEmpty
+        }
+        .onChange(of: model.startsFreshConversation) { _, value in
+            startsFresh = value
+        }
     }
 
     private func enable() {
