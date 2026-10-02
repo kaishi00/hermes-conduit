@@ -161,23 +161,73 @@ final class CarPlayVoiceTemplateFactoryTests: XCTestCase {
         }
     }
 
-    func testActionButtonsAreMinimalAndStateAppropriate() throws {
+    func testActionButtonsAreStateAppropriateAndAtMostTwo() throws {
         guard #available(iOS 26.4, *) else {
             throw XCTSkip("CarPlay action buttons require iOS 26.4")
         }
         let template = CarPlayVoiceTemplateFactory.makeTemplate(
             handlers: CarPlayVoiceActionHandlers(startListening: {}, endConversation: {})
         )
-        let buttonsByID = Dictionary(uniqueKeysWithValues: template.voiceControlStates.map { (
+        let titlesByID = Dictionary(uniqueKeysWithValues: template.voiceControlStates.map { (
             $0.identifier,
-            $0.actionButtons ?? []
+            $0.actionButtons.map { $0.title ?? "" }
         ) })
-        XCTAssertEqual(buttonsByID.values.map(\.count).max() ?? 0, 1, "exactly one control per state")
-        XCTAssertEqual(buttonsByID["ready"]?.count, 1, "Ready offers Listen")
-        XCTAssertEqual(buttonsByID["listening"]?.count, 1, "an active turn offers End")
-        XCTAssertEqual(buttonsByID["processing"]?.count, 1)
-        XCTAssertEqual(buttonsByID["responding"]?.count, 1)
-        XCTAssertEqual(buttonsByID["error"]?.count, 1, "Error offers Listen to retry")
+        XCTAssertLessThanOrEqual(titlesByID.values.map(\.count).max() ?? 0, 2, "the template shows at most two")
+        XCTAssertEqual(titlesByID["ready"], ["Listen", "New Chat"])
+        XCTAssertEqual(titlesByID["error"], ["Listen", "New Chat"], "Error offers Listen to retry")
+        XCTAssertEqual(titlesByID["listening"], ["Mute", "End"])
+        XCTAssertEqual(titlesByID["processing"], ["Mute", "End"])
+        XCTAssertEqual(titlesByID["responding"], ["Mute", "End"])
+    }
+
+    func testApplyingControlsReplacesTheButtonsInPlace() throws {
+        guard #available(iOS 26.4, *) else {
+            throw XCTSkip("CarPlay action buttons require iOS 26.4")
+        }
+        let handlers = CarPlayVoiceActionHandlers(startListening: {}, endConversation: {})
+        let template = CarPlayVoiceTemplateFactory.makeTemplate(handlers: handlers)
+        CarPlayVoiceTemplateFactory.apply(
+            CarPlayVoiceControls(offersNewChat: false, isMicrophoneMuted: true),
+            to: template,
+            handlers: handlers
+        )
+        let titlesByID = Dictionary(uniqueKeysWithValues: template.voiceControlStates.map { (
+            $0.identifier,
+            $0.actionButtons.map { $0.title ?? "" }
+        ) })
+        XCTAssertEqual(titlesByID["ready"], ["Listen"])
+        XCTAssertEqual(titlesByID["listening"], ["Unmute", "End"])
+    }
+
+    func testButtonsForEachStateAndControls() {
+        let classic = CarPlayVoiceControls(offersNewChat: true, isMicrophoneMuted: false)
+        let liveMuted = CarPlayVoiceControls(offersNewChat: false, isMicrophoneMuted: true)
+        XCTAssertEqual(CarPlayVoiceButton.buttons(for: .ready, controls: classic), [.listen, .newChat])
+        XCTAssertEqual(CarPlayVoiceButton.buttons(for: .ready, controls: liveMuted), [.listen])
+        XCTAssertEqual(CarPlayVoiceButton.buttons(for: .error, controls: liveMuted), [.listen])
+        XCTAssertEqual(CarPlayVoiceButton.buttons(for: .listening, controls: classic), [.mute, .end])
+        XCTAssertEqual(CarPlayVoiceButton.buttons(for: .responding, controls: liveMuted), [.unmute, .end])
+    }
+
+    func testEveryStateHasAnIconWithinTheTemplateLimits() throws {
+        for state in CarPlayVoiceState.allCases {
+            let image = try XCTUnwrap(CarPlayVoiceArtwork.image(for: state), "\(state) has an icon")
+            XCTAssertLessThanOrEqual(image.size.width, 150, "the template's 150 pt limit")
+            XCTAssertLessThanOrEqual(image.size.height, 150)
+            if CarPlayVoiceArtwork.isAnimated(state) {
+                XCTAssertEqual(image.images?.count, CarPlayVoiceArtwork.frameCount, "\(state) animates")
+                XCTAssertGreaterThanOrEqual(image.duration, 0.3, "the system's minimum cycle")
+                XCTAssertLessThanOrEqual(image.duration, 5, "the system's maximum cycle")
+            } else {
+                XCTAssertNil(image.images, "\(state) is still")
+            }
+        }
+        let template = CarPlayVoiceTemplateFactory.makeTemplate(
+            handlers: CarPlayVoiceActionHandlers(startListening: {}, endConversation: {})
+        )
+        for voiceControlState in template.voiceControlStates {
+            XCTAssertNotNil(voiceControlState.image, "\(voiceControlState.identifier) shows its icon")
+        }
     }
 }
 
@@ -622,6 +672,34 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertFalse(harness.controller.hasLiveVoiceSession, "Close tears the session down")
         XCTAssertEqual(harness.controller.state, .idle)
         XCTAssertFalse(harness.appState.showVoiceSheet)
+    }
+
+    func testMuteButtonPausesTheClassicMicrophoneAndTheButtonsFollow() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        harness.coordinator.handleConnect(harness.spy)
+        XCTAssertEqual(harness.coordinator.controls, CarPlayVoiceControls(offersNewChat: true, isMicrophoneMuted: false))
+
+        harness.coordinator.toggleMicrophone()
+
+        XCTAssertTrue(harness.controller.isMicrophonePaused, "Mute is the same pause the phone's sheet uses")
+        XCTAssertTrue(harness.coordinator.controls.isMicrophoneMuted, "the button turns into Unmute")
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "muting never ends the conversation")
+    }
+
+    func testNewChatClosesTheCurrentConversationAndPreparesAFreshOne() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+
+        await harness.coordinator.performStartNewChat(generation: harness.coordinator.connectionGeneration)
+
+        // The harness cannot create sessions, so the fresh prepare fails;
+        // Listen would have re-attached session-1 instead.
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession, "the current chat's conversation is not continued")
+        XCTAssertEqual(harness.activations.last, .error)
     }
 
     func testContinuousConversationOffCanReListenThroughCarPlayWithoutChangingThePreference() async {

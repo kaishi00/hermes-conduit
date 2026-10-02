@@ -126,8 +126,12 @@ final class CarPlayVoiceCoordinator {
     private var connectionWaitTask: Task<Bool, Never>?
 
     private var stateObservation: AnyCancellable?
+    /// Follows the microphone mute of the observed mode's controller.
+    private var controlsObservation: AnyCancellable?
     /// Which mode's controller `stateObservation` follows.
     private(set) var observedVoiceMode: CarPlayVoiceMode?
+    /// What the template's buttons currently offer.
+    private(set) var controls: CarPlayVoiceControls = .initial
 
     internal init() {}
 
@@ -145,7 +149,10 @@ final class CarPlayVoiceCoordinator {
         // Defensive: never two live sinks, even for an unpaired re-connect.
         stateObservation?.cancel()
         stateObservation = nil
+        controlsObservation?.cancel()
+        controlsObservation = nil
         observedVoiceMode = nil
+        controls = .initial
         self.interfacing = interfacing
         lastActivatedState = nil
         isTemplatePresented = false
@@ -185,7 +192,10 @@ final class CarPlayVoiceCoordinator {
         template = nil
         stateObservation?.cancel()
         stateObservation = nil
+        controlsObservation?.cancel()
+        controlsObservation = nil
         observedVoiceMode = nil
+        controls = .initial
         lastActivatedState = nil
         isTemplatePresented = false
         pendingPresentationState = nil
@@ -203,11 +213,7 @@ final class CarPlayVoiceCoordinator {
     private func installRootTemplate() {
         guard let interfacing else { return }
         let generation = connectionGeneration
-        let handlers = CarPlayVoiceActionHandlers(
-            startListening: { [weak self] in self?.startListeningTurn() },
-            endConversation: { [weak self] in self?.endConversation() }
-        )
-        let template = CarPlayVoiceTemplateFactory.makeTemplate(handlers: handlers)
+        let template = CarPlayVoiceTemplateFactory.makeTemplate(controls: controls, handlers: makeHandlers())
         self.template = template
         interfacing.setRootTemplate(template, animated: false) { [weak self] success, error in
             // MainActor Task hop (never a trapping assumeIsolated): the
@@ -241,6 +247,25 @@ final class CarPlayVoiceCoordinator {
         }
     }
 
+    private func makeHandlers() -> CarPlayVoiceActionHandlers {
+        CarPlayVoiceActionHandlers(
+            startListening: { [weak self] in self?.startListeningTurn() },
+            startNewChat: { [weak self] in self?.startNewChat() },
+            toggleMicrophone: { [weak self] in self?.toggleMicrophone() },
+            endConversation: { [weak self] in self?.endConversation() }
+        )
+    }
+
+    /// Replaces the buttons when the mode or the microphone changes. The
+    /// buttons carry no state of their own (Mute and Unmute both toggle the
+    /// live value), so a label that lags never sends the wrong action.
+    func updateControls(_ newControls: CarPlayVoiceControls) {
+        guard newControls != controls else { return }
+        controls = newControls
+        guard isConnected, let template else { return }
+        CarPlayVoiceTemplateFactory.apply(newControls, to: template, handlers: makeHandlers())
+    }
+
     /// Follows the controller for the profile's current Voice mode. The
     /// live mode settings can change while CarPlay is connected, so the
     /// controls re-check them and AppState reports the change.
@@ -255,6 +280,19 @@ final class CarPlayVoiceCoordinator {
         // Grok Live runs on Gemini Live's controller, so its phases map the same.
         case .grokLive: beginObservingGeminiLive(appState.grokLiveController)
         }
+        let muted: AnyPublisher<Bool, Never>
+        switch mode {
+        case .classic: muted = appState.voiceConversationController.$isMicrophonePaused.eraseToAnyPublisher()
+        case .geminiLive: muted = appState.geminiLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
+        case .gptLive: muted = appState.gptLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
+        case .grokLive: muted = appState.grokLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
+        }
+        controlsObservation?.cancel()
+        controlsObservation = muted
+            .removeDuplicates()
+            .sink { [weak self] isMuted in
+                self?.updateControls(CarPlayVoiceControls(offersNewChat: mode == .classic, isMicrophoneMuted: isMuted))
+            }
     }
 
     /// A live mode setting changed: show the controller now in use.
@@ -374,6 +412,60 @@ final class CarPlayVoiceCoordinator {
         await completeListenTurn(generation: generation, outcome: outcome)
     }
 
+    /// New Chat button (classic mode, Ready/Error states): the current chat's
+    /// conversation closes and listening starts in a new chat, the same
+    /// fresh prepare a wake phrase uses. A live mode has no chat to continue,
+    /// so the button falls back to Listen there.
+    func startNewChat() {
+        let generation = connectionGeneration
+        Task { @MainActor [weak self] in
+            await self?.performStartNewChat(generation: generation)
+        }
+    }
+
+    func performStartNewChat(generation: UInt64) async {
+        guard isCurrent(generation), isConnected else { return }
+        let appState = lastBoundAppState ?? appStateProvider()
+        observeCurrentVoiceMode(appState)
+        guard CarPlayVoiceMode.current(in: appState) == .classic else {
+            await performStartListeningTurn(generation: generation)
+            return
+        }
+        if appState.voiceConversationController.hasLiveVoiceSession {
+            appState.closeVoiceConversation()
+        }
+        let outcome = await prepareWaitingForConnection(
+            appState: appState,
+            generation: generation,
+            startsFreshConversation: true
+        )
+        await completeListenTurn(generation: generation, outcome: outcome)
+    }
+
+    /// Mute/Unmute button. Toggles the same microphone mute the phone's
+    /// controls use (the classic mode's microphone pause).
+    func toggleMicrophone() {
+        let appState = lastBoundAppState ?? appStateProvider()
+        switch CarPlayVoiceMode.current(in: appState) {
+        case .classic:
+            let controller = appState.voiceConversationController
+            if controller.isMicrophonePaused {
+                Task { await controller.resumeMicrophone() }
+            } else {
+                controller.pauseMicrophone()
+            }
+        case .geminiLive:
+            let gemini = appState.geminiLiveController
+            gemini.setMicrophoneMuted(!gemini.isMicrophoneMuted)
+        case .gptLive:
+            let gpt = appState.gptLiveController
+            gpt.setMicrophoneMuted(!gpt.isMicrophoneMuted)
+        case .grokLive:
+            let grok = appState.grokLiveController
+            grok.setMicrophoneMuted(!grok.isMicrophoneMuted)
+        }
+    }
+
     /// End button. Converges on the authoritative Close teardown — no
     /// parallel CarPlay teardown exists.
     func endConversation() {
@@ -410,10 +502,9 @@ final class CarPlayVoiceCoordinator {
         case .gptLive:
             let gpt = appState.gptLiveController
             guard !gpt.isActive else {
-                // A call running on the phone is shown, not restarted. The
-                // car has no mute control, so a call muted on the phone is
-                // opened up for the driver (End and Listen would otherwise
-                // be the only way back to a call they can be heard on).
+                // A call running on the phone is shown, not restarted. A
+                // call muted on the phone is opened up for the driver, who
+                // just got in and expects to be heard.
                 gpt.setMicrophoneMuted(false)
                 return
             }
@@ -422,7 +513,7 @@ final class CarPlayVoiceCoordinator {
         case .grokLive:
             let grok = appState.grokLiveController
             guard !grok.isActive else {
-                // Shown, not restarted; the car has no mute control, as with GPT-Live.
+                // Shown, not restarted, and unmuted for the driver as with GPT-Live.
                 grok.setMicrophoneMuted(false)
                 return
             }
@@ -492,11 +583,12 @@ final class CarPlayVoiceCoordinator {
     /// callers settle into the error state.
     func prepareWaitingForConnection(
         appState: AppState,
-        generation: UInt64
+        generation: UInt64,
+        startsFreshConversation: Bool = false
     ) async -> AppState.VoiceConversationPrepareOutcome {
         let outcome = await appState.prepareVoiceConversation(
             profile: nil,
-            startsFreshConversation: false
+            startsFreshConversation: startsFreshConversation
         )
         guard outcome == .deferred else { return outcome }
         carPlayLogger.notice("voice prepare deferred: waiting for Hermes to connect")
@@ -524,7 +616,7 @@ final class CarPlayVoiceCoordinator {
         }
         return await appState.prepareVoiceConversation(
             profile: nil,
-            startsFreshConversation: false
+            startsFreshConversation: startsFreshConversation
         )
     }
 

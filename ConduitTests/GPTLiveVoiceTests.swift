@@ -991,11 +991,39 @@ extension AppStateVoiceCapabilityTests {
         controller.setMicrophoneMuted(true)
         await coordinator.establishVoice(generation: coordinator.connectionGeneration)
         XCTAssertEqual(session.started, 1, "a running call is shown, not restarted")
-        XCTAssertFalse(controller.isMicrophoneMuted, "the car has no mute control, so the driver is heard")
+        XCTAssertFalse(controller.isMicrophoneMuted, "a driver getting in is heard")
         XCTAssertEqual(session.microphoneEnabled, true)
 
         coordinator.handleDisconnect()
         XCTAssertFalse(controller.isActive, "a call only CarPlay presented ends with it")
+        withExtendedLifetime(spy) {}
+    }
+
+    func testCarPlayMuteButtonTogglesTheCallMicrophoneAndFollowsIt() async {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        let (controller, session) = installFakeGPTLive(in: appState)
+        let coordinator = CarPlayVoiceCoordinator()
+        coordinator.appStateProvider = { appState }
+        coordinator.autoEstablishOnConnect = false
+        let spy = InterfacingSpy()
+        coordinator.handleConnect(spy)
+        await coordinator.establishVoice(generation: coordinator.connectionGeneration)
+        session.becomeReady()
+        XCTAssertEqual(
+            coordinator.controls,
+            CarPlayVoiceControls(offersNewChat: false, isMicrophoneMuted: false),
+            "a live call has no chat to continue, so Ready offers no New Chat"
+        )
+
+        coordinator.toggleMicrophone()
+        XCTAssertTrue(controller.isMicrophoneMuted, "Mute mutes the call")
+        XCTAssertTrue(coordinator.controls.isMicrophoneMuted, "the button turns into Unmute")
+
+        controller.setMicrophoneMuted(false)
+        XCTAssertFalse(coordinator.controls.isMicrophoneMuted, "an unmute on the phone reaches the car")
+
+        coordinator.handleDisconnect()
         withExtendedLifetime(spy) {}
     }
 
