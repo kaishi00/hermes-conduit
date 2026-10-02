@@ -259,6 +259,23 @@ enum ComposerDictation {
     /// Set once a dictation has produced text: the tip has done its job.
     static let tipDoneKey = "conduit.composerDictationTipDone"
 
+    /// What lifting the finger off the composer mic does.
+    enum Release: Equatable {
+        /// The hold had become a dictation: stop listening.
+        case stopDictation
+        /// A short press: open Voice, as the mic always has.
+        case openVoice
+        case nothing
+    }
+
+    /// A short press stops a dictation that is still listening (the
+    /// VoiceOver Dictate action has no finger to lift) and otherwise opens
+    /// Voice.
+    static func release(heldPastThreshold: Bool, isCapturing: Bool, canOpenVoice: Bool) -> Release {
+        if heldPastThreshold || isCapturing { return .stopDictation }
+        return canOpenVoice ? .openVoice : .nothing
+    }
+
     static func draft(before prefix: String, dictated: String) -> String {
         let dictated = dictated.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !dictated.isEmpty else { return prefix }

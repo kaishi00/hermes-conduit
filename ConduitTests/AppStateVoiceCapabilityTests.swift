@@ -322,6 +322,27 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(final, "Draft Buy milk.")
     }
 
+    func testAShortPressOnTheMicOpensVoiceAndAHoldStopsDictating() {
+        XCTAssertEqual(
+            ComposerDictation.release(heldPastThreshold: false, isCapturing: false, canOpenVoice: true),
+            .openVoice,
+            "a tap still opens Voice"
+        )
+        XCTAssertEqual(
+            ComposerDictation.release(heldPastThreshold: false, isCapturing: false, canOpenVoice: false),
+            .nothing
+        )
+        XCTAssertEqual(
+            ComposerDictation.release(heldPastThreshold: true, isCapturing: true, canOpenVoice: true),
+            .stopDictation
+        )
+        XCTAssertEqual(
+            ComposerDictation.release(heldPastThreshold: false, isCapturing: true, canOpenVoice: true),
+            .stopDictation,
+            "a tap ends a VoiceOver dictation instead of opening Voice over it"
+        )
+    }
+
     func testADictationCancelledBeforeItsStartRunsNeverStarts() async throws {
         let dictation = ComposerDictationService()
         var finished = false
