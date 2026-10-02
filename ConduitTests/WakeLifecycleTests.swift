@@ -11,7 +11,8 @@ final class WakeLifecycleTests: XCTestCase {
             isAuthenticated: true,
             isGatewayConnected: true,
             microphonePermitted: true,
-            voiceState: .idle
+            isVoiceIdle: true,
+            hasWakePhrases: true
         )
 
         coordinator.update(for: ready)
@@ -23,7 +24,8 @@ final class WakeLifecycleTests: XCTestCase {
             isAuthenticated: true,
             isGatewayConnected: true,
             microphonePermitted: true,
-            voiceState: .speaking
+            isVoiceIdle: false,
+            hasWakePhrases: true
         ))
         XCTAssertFalse(service.isArmed)
 
@@ -32,7 +34,8 @@ final class WakeLifecycleTests: XCTestCase {
             isAuthenticated: true,
             isGatewayConnected: true,
             microphonePermitted: true,
-            voiceState: .idle
+            isVoiceIdle: true,
+            hasWakePhrases: true
         ))
         XCTAssertFalse(service.isArmed)
         XCTAssertGreaterThanOrEqual(service.disarmCount, 2)
@@ -41,7 +44,7 @@ final class WakeLifecycleTests: XCTestCase {
     func testRecordsServiceFailureWithoutLeavingWakeArmed() {
         let service = FakeWakeWordService(error: WakeWordServiceError.unavailable("No model"))
         let coordinator = WakeLifecycleCoordinator(service: service)
-        coordinator.update(for: .init(isForegroundActive: true, isAuthenticated: true, isGatewayConnected: true, microphonePermitted: true, voiceState: .idle))
+        coordinator.update(for: .init(isForegroundActive: true, isAuthenticated: true, isGatewayConnected: true, microphonePermitted: true, isVoiceIdle: true, hasWakePhrases: true))
         XCTAssertFalse(service.isArmed)
         XCTAssertEqual(coordinator.lastFailureReason, "No model")
     }
@@ -75,6 +78,68 @@ final class WakeLifecycleTests: XCTestCase {
             ]
         )
         XCTAssertTrue(pack.assets.allSatisfy { $0.sha256 == nil && $0.checksumStatus == .notRecorded })
+    }
+}
+
+extension WakeLifecycleTests {
+    func testStaysDisarmedWithoutWakePhrases() {
+        let service = FakeWakeWordService()
+        let coordinator = WakeLifecycleCoordinator(service: service)
+        coordinator.update(for: .init(
+            isForegroundActive: true,
+            isAuthenticated: true,
+            isGatewayConnected: true,
+            microphonePermitted: true,
+            isVoiceIdle: true,
+            hasWakePhrases: false
+        ))
+        XCTAssertFalse(service.isArmed)
+        XCTAssertEqual(service.armCount, 0)
+    }
+
+    func testDisarmImmediatelyStopsAnArmedListener() {
+        let service = FakeWakeWordService()
+        let coordinator = WakeLifecycleCoordinator(service: service)
+        coordinator.update(for: .init(
+            isForegroundActive: true,
+            isAuthenticated: true,
+            isGatewayConnected: true,
+            microphonePermitted: true,
+            isVoiceIdle: true,
+            hasWakePhrases: true
+        ))
+        XCTAssertTrue(service.isArmed)
+        coordinator.disarmImmediately()
+        XCTAssertFalse(service.isArmed)
+    }
+
+    func testAppStateWakeBindingsAreScopedToTheActiveDashboard() throws {
+        let suite = "WakeLifecycleTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "https://hermes.example")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+            clearSessionPresentationCache: {}
+        )
+        let gatewayID = try XCTUnwrap(appState.wakeGatewayID)
+        XCTAssertEqual(gatewayID, dashboard.id.uuidString)
+        appState.setWakePreferences(
+            WakeProfilePreferences(enabledPhrases: ["Hey Default"], startsFreshConversation: false),
+            forProfile: "default"
+        )
+        appState.wakeConfiguration.save(
+            WakeProfilePreferences(enabledPhrases: ["hey elsewhere"]),
+            for: WakeProfileKey(gatewayID: "another-dashboard", profileID: "default")
+        )
+        XCTAssertEqual(appState.activeWakeBindings.map(\.normalizedPhrase), ["hey default"])
+        XCTAssertEqual(appState.activeWakeBindings.first?.key.gatewayID, gatewayID)
+        XCTAssertEqual(appState.wakePreferences(forProfile: "default").startsFreshConversation, false)
+
+        appState.setWakePreferences(WakeProfilePreferences(enabledPhrases: []), forProfile: "default")
+        XCTAssertTrue(appState.activeWakeBindings.isEmpty)
     }
 }
 

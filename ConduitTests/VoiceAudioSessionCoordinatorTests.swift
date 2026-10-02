@@ -364,6 +364,49 @@ final class VoiceAudioSessionCoordinatorTests: XCTestCase {
 }
 
 @MainActor
+extension VoiceAudioSessionCoordinatorTests {
+    func testWakeListeningMixesWithOtherAudio() throws {
+        _ = try coordinator.acquire(.wakeListening)
+
+        XCTAssertEqual(coordinator.appliedPolicy, .wakeListening)
+        XCTAssertEqual(session.categoryCalls.last?.category, .playAndRecord)
+        XCTAssertEqual(session.categoryCalls.last?.mode, .default)
+        XCTAssertTrue(session.categoryCalls.last?.options.contains(.mixWithOthers) ?? false)
+        XCTAssertFalse(coordinator.hasOwnersOtherThanWakeListening)
+    }
+
+    func testAnyOtherOwnerOutranksWakeListening() throws {
+        _ = try coordinator.acquire(.wakeListening)
+        let playback = try coordinator.acquire(.standalonePlayback)
+        XCTAssertEqual(coordinator.appliedPolicy, .standalonePlayback)
+        XCTAssertTrue(coordinator.hasOwnersOtherThanWakeListening)
+
+        let capture = try coordinator.acquire(.conversationCapture)
+        XCTAssertEqual(coordinator.appliedPolicy, .conversation)
+
+        coordinator.release(capture)
+        coordinator.release(playback)
+        XCTAssertEqual(coordinator.appliedPolicy, .wakeListening)
+        XCTAssertFalse(coordinator.hasOwnersOtherThanWakeListening)
+    }
+
+    func testOwnerChangesNotifyOnALaterTurn() async throws {
+        var notifications = 0
+        coordinator.onOwnersChanged = { notifications += 1 }
+
+        let lease = try coordinator.acquire(.standalonePlayback)
+        XCTAssertEqual(notifications, 0, "the callback must not re-enter the coordinator mid-transition")
+        await Task.yield()
+        await Task.yield()
+        XCTAssertGreaterThanOrEqual(notifications, 1)
+
+        coordinator.release(lease)
+        await Task.yield()
+        await Task.yield()
+        XCTAssertGreaterThanOrEqual(notifications, 2)
+    }
+}
+
 private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     struct CategoryCall: Equatable {
         let category: AVAudioSession.Category
