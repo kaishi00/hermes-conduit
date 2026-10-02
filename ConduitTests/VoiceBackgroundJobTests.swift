@@ -812,8 +812,12 @@ extension VoiceConversationControllerTests {
                       "only the word \"question\" is a figure of speech")
         XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("Quick: check my calendar"), "check my calendar")
         XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("快，查一下天气"), "查一下天气")
-        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("quickly summarize this"), "quickly summarize this",
-                       "only a marker set off by punctuation is removed")
+        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("quickly summarize this"), "summarize this")
+        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("quick check my inbox"), "check my inbox",
+                       "the same forms that route are removed")
+        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("quicksort this list"), "quicksort this list")
+        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("make the intro quick"), "make the intro quick")
+        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("快速排序是什么"), "快速排序是什么")
     }
 
     func testATurnOwnsTheResumedRuntimesEventsFromTheStart() async {

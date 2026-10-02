@@ -1160,16 +1160,13 @@ enum VoiceThreadRouting {
         return backgroundPhrases.contains { contains(folded, phrase: $0) } || startsQuick(folded: folded)
     }
 
-    static func startsQuick(_ request: String) -> Bool {
-        startsQuick(folded: fold(request))
-    }
-
-    /// The request without a leading "Quick:" marker (GPT-Live is told to
-    /// add one): it is routing, not part of the task or the job's title.
+    /// The request without the leading "quick" that routed it (GPT-Live is
+    /// told to add "Quick:"): routing, not part of the task or the job's
+    /// title.
     static func removingQuickMarker(_ request: String) -> String {
         let trimmed = request.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let marker = trimmed.range(
-            of: #"^(quickly|quick|快速|快)\s*[:,，：]\s*"#,
+            of: #"^(quickly|quick)(\s*[:,，：]\s*|\s+)|^(快速|快)\s*[:,，：]\s*"#,
             options: [.regularExpression, .caseInsensitive]
         ) else { return trimmed }
         let rest = trimmed[marker.upperBound...]

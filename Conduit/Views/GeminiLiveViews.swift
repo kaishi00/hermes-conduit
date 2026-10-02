@@ -189,7 +189,7 @@ struct GeminiLiveVoiceSheet: View {
     }
 
     @ObservedObject var controller: GeminiLiveConversationController
-    @ObservedObject var jobs: VoiceBackgroundJobSupervisor
+    let jobs: VoiceBackgroundJobSupervisor
     var engine: Engine = .gemini
     let onClose: () -> Void
     let onRetry: () -> Void
@@ -200,7 +200,7 @@ struct GeminiLiveVoiceSheet: View {
                 ConduitBackdrop()
                 VStack(spacing: 16) {
                     statusHeader
-                    LiveVoiceQuickHint(thread: jobs.liveThread?.title, threadID: jobs.liveThread?.runtimeSessionID)
+                    LiveVoiceQuickHint(jobs: jobs)
                     transcriptList
                     controls
                 }
@@ -327,13 +327,17 @@ struct LiveVoiceQuickHint: View {
     static let shownCountKey = "conduit.liveVoiceQuickHintShown"
     static let timesShown = 3
 
-    let thread: String?
-    /// The chat the call is attached to: bringing a minimised call back
-    /// doesn't count again.
-    let threadID: String?
+    /// Observed here, not by the sheet: job progress shouldn't redraw the
+    /// whole call.
+    @ObservedObject var jobs: VoiceBackgroundJobSupervisor
     @AppStorage(LiveVoiceQuickHint.shownCountKey) private var shownCount = 0
-    @AppStorage(LiveVoiceQuickHint.shownCountKey + ".last") private var lastCountedThreadID = ""
     @State private var isShown = false
+    /// Chats already counted while the app runs: bringing a minimised call
+    /// back, or calling the same chat again, doesn't count twice.
+    private static var countedThisRun: Set<String> = []
+
+    private var thread: String? { jobs.liveThread?.title }
+    private var threadID: String? { jobs.liveThread?.runtimeSessionID }
 
     var body: some View {
         Group {
@@ -354,16 +358,15 @@ struct LiveVoiceQuickHint: View {
             isShown = false
             return
         }
-        isShown = Self.shows(threadID: threadID, shownCount: &shownCount, lastCountedThreadID: &lastCountedThreadID)
+        isShown = Self.shows(threadID: threadID, shownCount: &shownCount, counted: &Self.countedThisRun)
     }
 
-    /// Counted once per attached call; the same call shows it again when
-    /// it is brought back.
-    static func shows(threadID: String, shownCount: inout Int, lastCountedThreadID: inout String) -> Bool {
-        if threadID == lastCountedThreadID { return shownCount <= timesShown }
+    /// Counted once per chat; one already counted shows it again.
+    static func shows(threadID: String, shownCount: inout Int, counted: inout Set<String>) -> Bool {
+        if counted.contains(threadID) { return true }
         guard shownCount < timesShown else { return false }
         shownCount += 1
-        lastCountedThreadID = threadID
+        counted.insert(threadID)
         return true
     }
 }

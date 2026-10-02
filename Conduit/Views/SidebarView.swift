@@ -219,7 +219,7 @@ struct SessionList: View {
                         }
                     } label: {
                         Image(systemName: "waveform")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.title3.weight(.semibold))
                             .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)

@@ -336,16 +336,21 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
 
     func testTheQuickHintCountsEachAttachedCallOnce() {
         var count = 0
-        var last = ""
-        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "a", shownCount: &count, lastCountedThreadID: &last))
-        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "a", shownCount: &count, lastCountedThreadID: &last),
+        var counted: Set<String> = []
+        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "a", shownCount: &count, counted: &counted))
+        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "a", shownCount: &count, counted: &counted),
                       "bringing the same call back shows it again")
         XCTAssertEqual(count, 1, "and doesn't count again")
-        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "b", shownCount: &count, lastCountedThreadID: &last))
-        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "c", shownCount: &count, lastCountedThreadID: &last))
-        XCTAssertFalse(LiveVoiceQuickHint.shows(threadID: "d", shownCount: &count, lastCountedThreadID: &last),
-                       "three calls, then it's done")
+        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "b", shownCount: &count, counted: &counted))
+        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "a", shownCount: &count, counted: &counted))
+        XCTAssertEqual(count, 2, "a chat counted earlier, between others, isn't counted again")
+        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "c", shownCount: &count, counted: &counted))
+        XCTAssertFalse(LiveVoiceQuickHint.shows(threadID: "d", shownCount: &count, counted: &counted),
+                       "three chats, then it's done")
         XCTAssertEqual(count, 3)
+        var nextLaunch: Set<String> = []
+        XCTAssertFalse(LiveVoiceQuickHint.shows(threadID: "a", shownCount: &count, counted: &nextLaunch),
+                       "after a relaunch a spent hint stays hidden for every chat")
     }
 
     func testAShortPressOnTheMicOpensVoiceAndAHoldStopsDictating() {
