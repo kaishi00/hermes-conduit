@@ -2908,6 +2908,8 @@ final class AppState: ObservableObject {
         presentationCacheProfileEpoch &+= 1
         // The saved copy belongs to the outgoing profile's scope.
         dismissOfflineChatPresentation()
+        // So do the unsaved voice calls Voice settings counts.
+        publishVoiceCallSaveStatus()
     }
 
 #if DEBUG
@@ -3553,8 +3555,10 @@ final class AppState: ObservableObject {
         }
         // A call often ends with the phone locked: keep Conduit running
         // until the closing save lands (the outbox covers it if it can't).
-        // A call with nothing left to send needs no extra time.
-        let endBackgroundTask: () -> Void = queuedCallID == nil ? {} : beginVoiceTranscriptBackgroundTask()
+        // A call with nothing left to send needs no extra time, so the task
+        // is only begun when there is a queued request.
+        var endBackgroundTask: () -> Void = {}
+        if queuedCallID != nil { endBackgroundTask = beginVoiceTranscriptBackgroundTask() }
         Task { [weak self] in
             defer { endBackgroundTask() }
             await recorder.flush()
