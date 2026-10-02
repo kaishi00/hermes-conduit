@@ -355,7 +355,7 @@ struct ComposerBar: View {
                 compressingNotice
             }
 
-            if let takeover = appState.chatTakeover, takeover.sessionID == appState.activeSessionId {
+            if let takeover = appState.activeChatTakeover {
                 chatTakeoverNotice(takeover)
             }
 
@@ -595,8 +595,7 @@ struct ComposerBar: View {
     /// message, as after a refused voice turn), the ready notice stays and
     /// asks the user to send again.
     private func resendAfterChatTakeover() {
-        guard let takeover = appState.chatTakeover, takeover.phase == .ready,
-              takeover.sessionID == appState.activeSessionId,
+        guard let takeover = appState.activeChatTakeover, takeover.phase == .ready,
               case .send = action,
               takeover.isRefusedMessage(text, hasAttachments: !attachments.isEmpty) else { return }
         appState.dismissChatTakeover()

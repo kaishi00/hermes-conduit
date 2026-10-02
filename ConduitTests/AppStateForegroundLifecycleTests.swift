@@ -122,6 +122,10 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         // #304: Hermes Desktop owns the chat, so prompt.submit is refused with
         // SESSION_NOT_OWNED. Conduit offers "Take over" instead of a bare
         // send failure, naming the owner and every id the chat goes by.
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(false, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
         var sends = 0
         let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [self.session("stored-a")] },
@@ -156,6 +160,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(takeover?.sessionIDs.first, "runtime-a")
         XCTAssertTrue(takeover?.sessionIDs.contains("stored-a") ?? false)
         XCTAssertNil(harness.appState.errorMessage, "The takeover offer replaces the send failure")
+        XCTAssertEqual(harness.appState.activeChatTakeover, takeover, "The open chat shows the offer")
 
         harness.appState.dismissChatTakeover()
         XCTAssertNil(harness.appState.chatTakeover)

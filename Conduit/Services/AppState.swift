@@ -14642,6 +14642,16 @@ final class AppState: ObservableObject {
     /// send clears it.
     private var chatTakeoverAutomaticSessionID: String?
 
+    /// The takeover for the open chat, matched on every id the chat goes by,
+    /// so a runtime id rotated mid-takeover keeps the notice and the resend.
+    var activeChatTakeover: ChatTakeoverState? {
+        guard let takeover = chatTakeover, let active = activeSessionId else { return nil }
+        let ids = Set(takeover.sessionIDs)
+        if ids.contains(active) { return takeover }
+        if let canonical = canonicalSessionID(for: active), ids.contains(canonical) { return takeover }
+        return nil
+    }
+
     /// The stored chat behind a runtime id, so a rotated runtime id doesn't
     /// re-arm automatic takeover for the same chat.
     private func chatTakeoverGuardKey(_ sessionID: String) -> String {
@@ -15159,7 +15169,7 @@ final class AppState: ObservableObject {
             await recoverComposerSubmission(using: submissionContext)
             // Automatic takeover starts once the refused draft is back in
             // the composer, which sends it again when the chat is Conduit's.
-            if chatTakeover?.sessionID == sessionId, chatTakeover?.phase == .offered,
+            if activeSessionId == sessionId, chatTakeover?.sessionID == sessionId, chatTakeover?.phase == .offered,
                takesOverChatsAutomatically, chatTakeoverAutomaticSessionID != chatTakeoverGuardKey(sessionId) {
                 chatTakeoverAutomaticSessionID = chatTakeoverGuardKey(sessionId)
                 takeOverChat()
