@@ -287,6 +287,9 @@ struct ComposerBar: View {
         .onChange(of: photoItem) { _, _ in
             handlePhotoSelection()
         }
+        .onChange(of: appState.chatTakeover?.readyToken) { _, _ in
+            resendAfterChatTakeover()
+        }
         .onAppear {
             guard loadedDraftKey == nil else { return }
             loadDraft(for: activeDraftKey)
@@ -340,6 +343,11 @@ struct ComposerBar: View {
 
             if appState.isCompressingActiveSession {
                 compressingNotice
+            }
+
+            if let takeover = appState.chatTakeover, takeover.phase != .ready,
+               takeover.sessionID == appState.activeSessionId {
+                chatTakeoverNotice(takeover)
             }
 
             if let composerErrorMessage, !composerErrorMessage.isEmpty {
@@ -491,6 +499,88 @@ struct ComposerBar: View {
         .padding(.horizontal, 14)
         .padding(.top, 10)
         .padding(.bottom, 2)
+    }
+
+    /// Offered when Hermes refused a send because Hermes Desktop or a
+    /// terminal owns this chat (#304). Taking over waits for a reply running
+    /// there to finish, then sends the draft again.
+    private func chatTakeoverNotice(_ takeover: ChatTakeoverState) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                switch takeover.phase {
+                case .waiting:
+                    ProgressView()
+                        .controlSize(.small)
+                case .failed:
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                case .offered, .ready:
+                    Image(systemName: "desktopcomputer")
+                        .foregroundStyle(.secondary)
+                }
+                Text(Self.chatTakeoverMessage(takeover))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Button {
+                    Haptics.selection()
+                    appState.dismissChatTakeover()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(takeover.phase == .waiting ? "Stop waiting" : "Dismiss")
+            }
+
+            switch takeover.phase {
+            case .offered, .failed:
+                Button {
+                    Haptics.light()
+                    appState.takeOverChat()
+                } label: {
+                    Label("Take over this chat", systemImage: "arrow.down.to.line")
+                        .font(.footnote.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 34)
+                }
+                .buttonStyle(.bordered)
+                .tint(.conduitAccent)
+                .accessibilityIdentifier("composer.take-over-chat")
+                .accessibilityHint("Makes Conduit the app for this chat, then sends your message")
+            case .waiting, .ready:
+                EmptyView()
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
+    }
+
+    static func chatTakeoverMessage(_ takeover: ChatTakeoverState) -> String {
+        switch takeover.phase {
+        case .offered:
+            return AppLocalization.string("This chat is open in \(takeover.ownerName). Take it over to send from here.")
+        case .waiting:
+            return AppLocalization.string("Taking this chat over from \(takeover.ownerName). If it's replying, Conduit waits for the reply to finish.")
+        case .ready:
+            return ""
+        case .failed(let message):
+            return message
+        }
+    }
+
+    /// The chat is Conduit's now: send the refused draft again, exactly as
+    /// the Send button would.
+    private func resendAfterChatTakeover() {
+        guard let takeover = appState.chatTakeover, takeover.phase == .ready,
+              takeover.sessionID == appState.activeSessionId else { return }
+        appState.dismissChatTakeover()
+        guard case .send = action else { return }
+        submit()
     }
 
     /// Small in-flight affordance for the dedicated `session.compress` RPC

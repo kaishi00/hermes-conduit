@@ -14610,6 +14610,113 @@ final class AppState: ObservableObject {
         return .proceed
     }
 
+    // MARK: - Chat takeover
+    //
+    // A send refused because Hermes Desktop or a terminal owns the chat
+    // (SESSION_NOT_OWNED) offers "Take over"; see ChatTakeover.swift.
+
+    lazy var chatTakeoverClient = ChatTakeoverClient(request: { [weak self] path, method, body in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body)
+    })
+
+    /// The refused chat's takeover offer or progress. The composer shows it
+    /// only while that chat is the active one.
+    @Published private(set) var chatTakeover: ChatTakeoverState?
+    private var chatTakeoverTask: Task<Void, Never>?
+    private var chatTakeoverReadyCount = 0
+    static let chatTakeoverPollInterval: Duration = .seconds(3)
+    /// How long Conduit waits for the other app's running turn to finish.
+    static let chatTakeoverWaitLimit: TimeInterval = 15 * 60
+
+    var takesOverChatsAutomatically: Bool {
+        UserDefaults.standard.bool(forKey: ChatTakeoverPreference.automaticKey)
+    }
+
+    /// Records a send refused because another app owns the chat.
+    private func noteChatOwnedElsewhere(_ refusal: RpcError, sessionID: String, knownSessionIDs: Set<String>) {
+        let details = ChatTakeoverState.details(fromRefusal: refusal.message)
+        var ids = [sessionID]
+        for id in [details.sessionID, canonicalSessionID(for: sessionID)].compactMap({ $0 }) + knownSessionIDs.sorted()
+        where !ids.contains(id) {
+            ids.append(id)
+        }
+        chatTakeoverTask?.cancel()
+        chatTakeoverTask = nil
+        chatTakeover = ChatTakeoverState(sessionID: sessionID, sessionIDs: ids, surface: details.surface, phase: .offered)
+        lifecycleLog.notice(
+            "prompt.submit refused: chat owned by \(details.surface ?? "another surface", privacy: .public) session=\(sessionID, privacy: .public)"
+        )
+    }
+
+    /// Asks the host to drop the other app's claim, waiting while it runs a
+    /// turn. On success the composer sends its draft again.
+    func takeOverChat() {
+        guard var state = chatTakeover, state.phase != .waiting, state.phase != .ready else { return }
+        chatTakeoverTask?.cancel()
+        state.phase = .waiting
+        chatTakeover = state
+        let profile = activeProfile
+        let waiting = state
+        chatTakeoverTask = Task { [weak self] in
+            var state = waiting
+            let deadline = Date().addingTimeInterval(Self.chatTakeoverWaitLimit)
+            while !Task.isCancelled {
+                guard let self else { return }
+                let phase: ChatTakeoverState.Phase
+                do {
+                    switch try await self.chatTakeoverClient.takeOver(sessionIDs: state.sessionIDs, profile: profile) {
+                    case .ready:
+                        phase = .ready
+                    case .sameHost:
+                        phase = .failed(AppLocalization.string(
+                            "This chat is open in Conduit on another device or in the Hermes web chat. Send from there, or close it there and try again."
+                        ))
+                    case .busy:
+                        guard Date() < deadline else {
+                            phase = .failed(AppLocalization.string(
+                                "\(state.ownerName) is still replying in this chat. Try again when it finishes."
+                            ))
+                            break
+                        }
+                        try? await Task.sleep(for: Self.chatTakeoverPollInterval)
+                        continue
+                    }
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    phase = .failed(Self.chatTakeoverFailureMessage(error))
+                }
+                guard !Task.isCancelled, self.chatTakeover?.sessionID == state.sessionID else { return }
+                state.phase = phase
+                if phase == .ready {
+                    self.chatTakeoverReadyCount &+= 1
+                    state.readyToken = self.chatTakeoverReadyCount
+                }
+                self.chatTakeover = state
+                self.chatTakeoverTask = nil
+                return
+            }
+        }
+    }
+
+    /// Stops waiting and hides the offer.
+    func dismissChatTakeover() {
+        chatTakeoverTask?.cancel()
+        chatTakeoverTask = nil
+        chatTakeover = nil
+    }
+
+    static func chatTakeoverFailureMessage(_ error: Error) -> String {
+        switch error {
+        case ChatTakeoverError.pluginMissing:
+            return AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over.")
+        case ChatTakeoverError.unsupported:
+            return AppLocalization.string("This Hermes version can't hand a chat over.")
+        default:
+            return AppLocalization.string("Couldn't take this chat over: \(error.localizedDescription)")
+        }
+    }
+
     func sendMessage(
         _ text: String,
         attachments: [Attachment] = [],
@@ -14709,6 +14816,9 @@ final class AppState: ObservableObject {
             lifecycleLog.notice(
                 "prompt.submit outcome=\(Self.promptOutcomeLogValue(outcome), privacy: .public) session=\(sessionId, privacy: .public)"
             )
+            if chatTakeover?.sessionID == sessionId {
+                dismissChatTakeover()
+            }
             if isCurrentComposerSubmission(submissionContext) {
                 if outcome.isBusySubmission {
                     // Hermes applied its busy policy, which proves THIS
@@ -14960,9 +15070,19 @@ final class AppState: ObservableObject {
                 return false
             }
             if isCurrentComposerSubmission(submissionContext) {
-                errorMessage = AppLocalization.string("Failed to send: \(error.localizedDescription)")
+                if let refusal = error as? RpcError, refusal.isSessionNotOwned {
+                    noteChatOwnedElsewhere(refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs)
+                } else {
+                    errorMessage = AppLocalization.string("Failed to send: \(error.localizedDescription)")
+                }
             }
             await recoverComposerSubmission(using: submissionContext)
+            // Automatic takeover starts once the refused draft is back in
+            // the composer, which sends it again when the chat is Conduit's.
+            if chatTakeover?.sessionID == sessionId, chatTakeover?.phase == .offered,
+               takesOverChatsAutomatically {
+                takeOverChat()
+            }
             return false
         }
     }

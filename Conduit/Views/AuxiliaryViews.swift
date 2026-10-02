@@ -969,6 +969,7 @@ struct ChatSettingsDetail: View {
                 VStack(spacing: 14) {
                     ChatTextSizeSettings()
                     ComposerReturnKeySettings()
+                    ChatTakeoverSettings()
                     DeviceHapticsSettings()
                 }
             )
@@ -1066,6 +1067,31 @@ private struct ComposerReturnKeySettings: View {
             Toggle("Return key sends", isOn: $returnKeySends)
                 .tint(.conduitAccent)
                 .accessibilityHint("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged.")
+        }
+    }
+}
+
+/// Device-only: take a chat over from Hermes Desktop or a terminal as soon
+/// as a send is refused, instead of offering a button (#304).
+private struct ChatTakeoverSettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @AppStorage(ChatTakeoverPreference.automaticKey) private var automatic = false
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("Chats open on your computer"),
+            symbol: "desktopcomputer",
+            tint: .conduitAura
+        ) {
+            Text("Hermes lets one app use a chat at a time. When a chat is open in Hermes Desktop or a terminal, Conduit offers to take it over when you send.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text("A reply running there always finishes first. If you go back to that app, reopen the chat there to see what you sent from Conduit.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Toggle("Take over automatically", isOn: $automatic)
+                .tint(.conduitAccent)
+                .accessibilityHint("Sending in a chat open in Hermes Desktop or a terminal takes it over without asking. Needs the Conduit notifier plugin on your Hermes host.")
         }
     }
 }
