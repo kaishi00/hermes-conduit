@@ -6588,6 +6588,7 @@ final class AppState: ObservableObject {
             // its old in-memory session. Tear it down before presenting login.
             dashboardTicketBridge?.invalidate()
             dashboardTicketBridge = nil
+            notifierPlugin = NotifierPluginStatus()
             let failure = ConnectionFailureClassifier.classify(error)
             if keepOfflineChatInsteadOfSignIn(failure) { return }
             wipeOfflineChatCacheForSignIn(after: failure, dashboardID: dashboardID)
@@ -6771,6 +6772,7 @@ final class AppState: ObservableObject {
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
             Task { await loadChatResumeSlashCommands() }
+            Task { await refreshNotifierPluginStatus() }
         } catch {
             guard let continuation = transportContinuation(
                     purpose: syncPurpose,
@@ -6981,6 +6983,7 @@ final class AppState: ObservableObject {
         }
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
+        notifierPlugin = NotifierPluginStatus()
         prepareDashboardBridge(for: baseURL)
     }
 
@@ -7113,6 +7116,7 @@ final class AppState: ObservableObject {
         client = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
+        notifierPlugin = NotifierPluginStatus()
         voiceConversationController.stop()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
@@ -7371,6 +7375,7 @@ final class AppState: ObservableObject {
         connectedAt = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
+        notifierPlugin = NotifierPluginStatus()
         // A flush scheduled under the outgoing server must not write through
         // after the switch; the boundary already cleared the cache it would
         // resurrect content into.
@@ -7679,6 +7684,7 @@ final class AppState: ObservableObject {
             || dashboardTicketBridge?.extraHeaders != CustomHeaderPolicy.sendable(CustomHeaderStore.shared.headers(forServerURL: normalized))
             || dashboardTicketBridge?.matchesNativeOAuthTokens(storedNativeOAuthTokens) != true {
             dashboardTicketBridge?.invalidate()
+            notifierPlugin = NotifierPluginStatus()
             dashboardTicketBridge = DashboardTicketBridge(
                 baseURL: normalized,
                 cloudflareAccess: access,
@@ -7730,6 +7736,7 @@ final class AppState: ObservableObject {
         connection = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
+        notifierPlugin = NotifierPluginStatus()
         // A forced sign-out kills the bridge mid-playback; stop the read
         // aloud and drop its gateway the same way Disconnect does.
         messageReadAloudController.stop()
@@ -10594,6 +10601,7 @@ final class AppState: ObservableObject {
             await loadChatResumeProfileDisplayPreferences()
             guard refreshTransportContinuation() else { return }
             Task { await loadChatResumeSlashCommands() }
+            Task { await refreshNotifierPluginStatus() }
         } catch {
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }
@@ -11202,6 +11210,7 @@ final class AppState: ObservableObject {
         await loadChatResumeProfileDisplayPreferences()
         guard stillOwns() else { return }
         Task { await loadChatResumeSlashCommands() }
+        Task { await refreshNotifierPluginStatus() }
     }
 
     /// A healthy foreground transition must be observational, not a session
@@ -14968,6 +14977,23 @@ final class AppState: ObservableObject {
     // A send refused because Hermes Desktop or a terminal owns the chat
     // (SESSION_NOT_OWNED) offers "Take over"; see ChatTakeover.swift.
 
+    /// What the host's notifier plugin serves; Settings nudges an update.
+    @Published private(set) var notifierPlugin = NotifierPluginStatus()
+
+    /// Asks the plugin what it serves. Cheap, so it runs on every connect.
+    func refreshNotifierPluginStatus() async {
+        guard let bridge = dashboardTicketBridge else { return }
+        let state: NotifierPluginStatus.State
+        do {
+            state = NotifierPluginStatus.state(from: try await bridge.requestJSON(path: NotifierPluginStatus.path))
+        } catch {
+            state = NotifierPluginStatus.state(from: error)
+        }
+        // A bridge swapped mid-request belongs to another host.
+        guard bridge === dashboardTicketBridge else { return }
+        notifierPlugin.state = state
+    }
+
     lazy var chatTakeoverClient = ChatTakeoverClient(request: { [weak self] path, method, body in
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
@@ -15030,7 +15056,12 @@ final class AppState: ObservableObject {
         chatTakeoverTask = nil
         errorMessage = nil
         chatTakeover = ChatTakeoverState(
-            sessionID: sessionID, sessionIDs: ids, surface: details.surface, refusedText: refusedText, phase: .offered
+            sessionID: sessionID, sessionIDs: ids, surface: details.surface, refusedText: refusedText,
+            // A plugin that reported no takeover route can't help: say so
+            // now rather than after a tap.
+            phase: notifierPlugin.mightSupport("session-takeover")
+                ? .offered
+                : .unavailable(Self.chatTakeoverFailureMessage(ChatTakeoverError.pluginMissing))
         )
         lifecycleLog.notice(
             "prompt.submit refused: chat owned by \(details.surface ?? "another surface", privacy: .public) session=\(sessionID, privacy: .public)"

@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "The notifier plugin on your Hermes host (version %@) is missing features Conduit uses, such as taking chats over from Hermes Desktop. Run these on the host." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 主机上的通知插件（版本 %@）缺少 Conduit 使用的功能，例如从 Hermes Desktop 接管对话。请在主机上运行以下命令。"
+          }
+        }
+      }
+    },
+    "The notifier plugin on your Hermes host is missing or out of date, so features like taking chats over from Hermes Desktop won't work. Run these on the host." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 主机上的通知插件缺失或已过期，因此从 Hermes Desktop 接管对话等功能将无法使用。请在主机上运行以下命令。"
+          }
+        }
+      }
+    },
+    "Update the Conduit notifier" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 Conduit 通知插件"
+          }
+        }
+      }
+    },
     "Stops dictating; the words stay in the message" : {
       "localizations" : {
         "zh-Hans" : {
