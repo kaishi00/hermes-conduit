@@ -1144,6 +1144,72 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(appState.minimisedLiveVoice, "no bar for a call nothing presents any more")
     }
 
+    /// Gemini Live and Grok Live share a controller type: a live one over
+    /// fake audio and session, swapped in after the real one is built.
+    private func installFakeGeminiFamilyController(_ engine: VoiceCallEngine, in appState: AppState) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl) {
+        let session = FakeGeminiLiveSessionControl()
+        let tokens = FakeGeminiLiveTokens()
+        let controller = GeminiLiveConversationController(
+            makeSession: { session },
+            availability: { try await tokens.availability() },
+            tools: GeminiLiveToolBridge(supervisor: appState.voiceBackgroundJobSupervisor),
+            input: FakeGeminiLiveInput(),
+            output: FakeGeminiLiveOutput(),
+            routePolicy: { .fullDuplex }
+        )
+        if engine == .grokLive {
+            _ = appState.grokLiveController
+            appState.grokLiveController = controller
+        } else {
+            _ = appState.geminiLiveController
+            appState.geminiLiveController = controller
+        }
+        return (controller, session)
+    }
+
+    func testGeminiAndGrokCallsMinimiseRestoreAndEndLikeGPTLive() async {
+        for engine in [VoiceCallEngine.geminiLive, .grokLive] {
+            let appState = makeGPTLiveAppState()
+            let (controller, session) = installFakeGeminiFamilyController(engine, in: appState)
+            let setSheet: (Bool) -> Void = { shown in
+                if engine == .grokLive { appState.showGrokLiveSheet = shown } else { appState.showGeminiLiveSheet = shown }
+            }
+            setSheet(true)
+            await controller.start()
+            session.becomeReady()
+            XCTAssertTrue(controller.isActive, "\(engine)")
+
+            setSheet(false)
+            appState.liveVoiceSheetDismissed(engine)
+            XCTAssertEqual(appState.minimisedLiveVoice, engine)
+            XCTAssertTrue(controller.isActive, "\(engine): a swipe keeps the call")
+
+            appState.releaseCarPlayGeminiLive()
+            appState.releaseCarPlayGrokLive()
+            XCTAssertTrue(controller.isActive, "\(engine): CarPlay leaving keeps a minimised call")
+
+            appState.restoreMinimisedLiveVoice()
+            XCTAssertEqual(engine == .grokLive ? appState.showGrokLiveSheet : appState.showGeminiLiveSheet, true)
+            XCTAssertNil(appState.minimisedLiveVoice)
+
+            setSheet(false)
+            appState.liveVoiceSheetDismissed(engine)
+            appState.endMinimisedLiveVoice()
+            XCTAssertFalse(controller.isActive, "\(engine)")
+            XCTAssertNil(appState.minimisedLiveVoice, "\(engine): the bar goes with the call")
+
+            // A stopped minimised call's bar is cleared by a boundary.
+            setSheet(true)
+            await controller.start()
+            session.becomeReady()
+            setSheet(false)
+            appState.liveVoiceSheetDismissed(engine)
+            controller.stop()
+            appState.disconnect()
+            XCTAssertNil(appState.minimisedLiveVoice, "\(engine)")
+        }
+    }
+
     func testDisconnectEndsAMinimisedCall() async {
         let appState = makeGPTLiveAppState()
         let (controller, session) = await startMinimisableGPTLive(in: appState)

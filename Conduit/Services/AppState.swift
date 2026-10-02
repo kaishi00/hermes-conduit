@@ -3818,13 +3818,17 @@ final class AppState: ObservableObject {
     /// brings the sheet back. Only End, a spoken goodbye, or a boundary
     /// teardown ends it.
     /// A call that fails while minimised keeps its bar on purpose: tapping
-    /// it shows why and offers Try again or End.
+    /// it shows why and offers Try again or End. The bar clears on End (in
+    /// the sheet or on the bar), a spoken goodbye, opening that mode again,
+    /// another mode taking over, CarPlay releasing a stopped call, and
+    /// boundary teardown (disconnect, sign-out, server or profile change).
     @Published private(set) var minimisedLiveVoice: VoiceCallEngine?
 
     /// Runs whenever a live sheet goes away. A swipe on a call that is
-    /// connecting or running minimises it (the connection carries on); anything else (End, a failed call) closes it, as
-    /// before. After End this closes an already-closed call a second
-    /// time, which is a no-op: `stop()` settles the phase synchronously.
+    /// connecting or running minimises it (the connection carries on);
+    /// anything else (End, a failed call) closes it, as before. After End
+    /// this closes an already-closed call a second time, which is a no-op:
+    /// `stop()` settles the phase synchronously.
     func liveVoiceSheetDismissed(_ engine: VoiceCallEngine) {
         if isLiveVoiceCallActive(engine) {
             minimisedLiveVoice = engine
