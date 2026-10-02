@@ -180,9 +180,10 @@ extension WakeLifecycleTests {
         let revision = appState.wakeSettingsRevision
         appState.setWakeListensOnCarPlay(false)
         XCTAssertNotEqual(appState.wakeSettingsRevision, revision, "the change must publish")
-        XCTAssertFalse(appState.wakeLifecycleSnapshot.isRouteSuitable, "turned off, CarPlay stops wake")
-        appState.isWakeRouteCarPlay = false
+        XCTAssertFalse(appState.isWakeRouteCarPlay, "the change re-reads the live route (no CarPlay in tests)")
         XCTAssertTrue(appState.wakeLifecycleSnapshot.isRouteSuitable, "the setting only affects CarPlay")
+        appState.isWakeRouteCarPlay = true
+        XCTAssertFalse(appState.wakeLifecycleSnapshot.isRouteSuitable, "turned off, CarPlay stops wake")
     }
 }
 

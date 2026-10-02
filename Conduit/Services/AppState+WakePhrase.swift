@@ -173,6 +173,9 @@ extension AppState {
 
     func setWakeListensOnCarPlay(_ enabled: Bool) {
         wakeConfiguration.listensOnCarPlay = enabled
+        // Judge the change against the live route, not a cache that may
+        // have missed a route change.
+        isWakeRouteCarPlay = WakeRoutePolicy.currentRouteIsCarPlay()
         wakeListeningFailure = nil
         wakeSettingsRevision &+= 1
     }
