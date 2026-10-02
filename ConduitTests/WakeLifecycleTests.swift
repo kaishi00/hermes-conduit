@@ -82,14 +82,15 @@ final class WakeLifecycleTests: XCTestCase {
 }
 
 extension WakeLifecycleTests {
-    func testWakeStaysOffOnCarPlay() {
+    func testRoutePolicyIdentifiesCarPlay() {
         let car = VoiceAudioRoutePort(type: .carAudio, name: "CarPlay")
         let speaker = VoiceAudioRoutePort(type: .builtInSpeaker, name: "Speaker")
         let a2dp = VoiceAudioRoutePort(type: .bluetoothA2DP, name: "Buds")
-        XCTAssertFalse(WakeRoutePolicy.allowsWakeListening(outputs: [car]))
-        XCTAssertTrue(WakeRoutePolicy.allowsWakeListening(outputs: [speaker]))
-        XCTAssertTrue(WakeRoutePolicy.allowsWakeListening(outputs: [a2dp]))
-        XCTAssertFalse(WakeRoutePolicy.allowsWakeListening(outputs: [speaker, car]), "any CarPlay output vetoes")
+        XCTAssertTrue(WakeRoutePolicy.isCarPlay(outputs: [car]))
+        XCTAssertFalse(WakeRoutePolicy.isCarPlay(outputs: [speaker]))
+        XCTAssertFalse(WakeRoutePolicy.isCarPlay(outputs: [a2dp]))
+        XCTAssertFalse(WakeRoutePolicy.isCarPlay(outputs: []), "an empty route fails open")
+        XCTAssertTrue(WakeRoutePolicy.isCarPlay(outputs: [speaker, car]), "any CarPlay output counts")
 
         var snapshot = WakeLifecycleSnapshot(
             isForegroundActive: true,
@@ -162,6 +163,27 @@ extension WakeLifecycleTests {
 
         appState.setWakePreferences(WakeProfilePreferences(enabledPhrases: []), forProfile: "default")
         XCTAssertTrue(appState.activeWakeBindings.isEmpty)
+    }
+
+    func testAppStateWakeRouteFollowsTheCarPlaySetting() throws {
+        let suite = "WakeLifecycleTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {})
+        XCTAssertTrue(appState.wakeListensOnCarPlay, "on by default")
+
+        appState.isWakeRouteCarPlay = false
+        XCTAssertTrue(appState.wakeLifecycleSnapshot.isRouteSuitable)
+        appState.isWakeRouteCarPlay = true
+        XCTAssertTrue(appState.wakeLifecycleSnapshot.isRouteSuitable, "CarPlay listens through the iPhone microphone")
+
+        let revision = appState.wakeSettingsRevision
+        appState.setWakeListensOnCarPlay(false)
+        XCTAssertNotEqual(appState.wakeSettingsRevision, revision, "the change must publish")
+        XCTAssertFalse(appState.isWakeRouteCarPlay, "the change re-reads the live route (no CarPlay in tests)")
+        XCTAssertTrue(appState.wakeLifecycleSnapshot.isRouteSuitable, "the setting only affects CarPlay")
+        appState.isWakeRouteCarPlay = true
+        XCTAssertFalse(appState.wakeLifecycleSnapshot.isRouteSuitable, "turned off, CarPlay stops wake")
     }
 }
 
