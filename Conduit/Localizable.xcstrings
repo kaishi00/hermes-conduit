@@ -1041,12 +1041,12 @@
         }
       }
     },
-    "Say the phrase while Conduit is open to start voice on this profile, in whichever voice mode it uses. Listening runs on this iPhone, stops during calls and in the background, and the microphone indicator stays on while it listens." : {
+    "Say the phrase while Conduit is open to start voice on this profile, in whichever voice mode it uses. Listening runs on this iPhone, stops during calls, on CarPlay and in the background, and the microphone indicator stays on while it listens." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Conduit 打开时说出唤醒词，即可按此配置文件当前使用的语音模式开始语音对话。监听在此 iPhone 上进行，通话期间和后台时会停止，监听时麦克风指示灯会保持亮起。"
+            "value" : "在 Conduit 打开时说出唤醒词，即可按此配置文件当前使用的语音模式开始语音对话。监听在此 iPhone 上进行，通话期间、连接 CarPlay 时和后台时会停止，监听时麦克风指示灯会保持亮起。"
           }
         }
       }

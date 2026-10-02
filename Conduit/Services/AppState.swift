@@ -2292,6 +2292,9 @@ final class AppState: ObservableObject {
     var lastAppliedWakeSnapshot: WakeLifecycleSnapshot?
     var wakeObservations: [AnyCancellable] = []
     var isWakeRefreshScheduled = false
+    /// Cached `WakeRoutePolicy.current()`: reading the audio route is too
+    /// costly for every publish, so it refreshes only on route changes.
+    var isWakeRouteSuitable = true
 
     /// Whether the CarPlay scene currently presents the shared Voice
     /// conversation. Pure surface bookkeeping: CarPlay is another Voice

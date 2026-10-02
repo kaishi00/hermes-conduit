@@ -8,6 +8,7 @@
 //  exactly as it does for Siri.
 //
 
+import AVFAudio
 import Combine
 import Foundation
 
@@ -35,7 +36,8 @@ extension AppState {
             microphonePermitted: AppleSpeechWakeWordService.isSpeechAuthorized
                 && AppleSpeechWakeWordService.isMicrophoneAuthorized,
             isVoiceIdle: isVoiceIdleForWake,
-            hasWakePhrases: !activeWakeBindings.isEmpty
+            hasWakePhrases: !activeWakeBindings.isEmpty,
+            isRouteSuitable: isWakeRouteSuitable
         )
     }
 
@@ -73,10 +75,23 @@ extension AppState {
         VoiceAudioSessionCoordinator.shared.onOwnersChanged = { [weak self] in
             self?.scheduleWakeRefresh()
         }
+        isWakeRouteSuitable = WakeRoutePolicy.current()
         wakeObservations = [
             objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
             PendingVoiceIntentStore.shared.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
-            voiceConversationController.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() }
+            voiceConversationController.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
+            // Connecting or leaving CarPlay changes whether wake may listen.
+            NotificationCenter.default.publisher(
+                for: AVAudioSession.routeChangeNotification,
+                object: AVAudioSession.sharedInstance()
+            )
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.isWakeRouteSuitable = WakeRoutePolicy.current()
+                    self.scheduleWakeRefresh()
+                }
+            }
         ]
         scheduleWakeRefresh()
     }
@@ -94,7 +109,13 @@ extension AppState {
     }
 
     func refreshWakeListening() {
-        let snapshot = wakeLifecycleSnapshot
+        var snapshot = wakeLifecycleSnapshot
+        // Route changes while suspended are never delivered, so confirm the
+        // cached route right before arming (rare: only when wake would start).
+        if snapshot.canArm, !wakeWordService.isArmed, snapshot != lastAppliedWakeSnapshot {
+            isWakeRouteSuitable = WakeRoutePolicy.current()
+            snapshot.isRouteSuitable = isWakeRouteSuitable
+        }
         if snapshot.canArm { wakeWordService.bindings = activeWakeBindings }
         // Only act on a change: a failed arm is not retried on every
         // unrelated publish, only once something relevant moves.
@@ -111,6 +132,8 @@ extension AppState {
         guard !wakeObservations.isEmpty else { return }
         wakeLifecycle.disarmImmediately()
         lastAppliedWakeSnapshot = nil
+        // Re-read on the next foreground: CarPlay may connect meanwhile.
+        isWakeRouteSuitable = true
     }
 
     private func handleWakeDetection(_ binding: WakePhraseBinding) {
