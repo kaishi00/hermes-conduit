@@ -1901,6 +1901,23 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGeminiLiveWithdrawalOfAFinishedCallDoesNotSilenceLaterCalls() async {
+        let search = ParkedGeminiLiveWebSearch()
+        let (controller, session, _, _, _) = makeGeminiController(webSearch: search, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        // A late withdrawal of a call that was already answered is ignored.
+        session.onEvent?(.toolCallCancellation(["s1"]))
+        session.onEvent?(.toolCall([.init(id: "s1", name: "web_search", arguments: ["query": "weather"])]))
+        await settle(40)
+        search.finish([GeminiLiveWebResult(title: "Toronto", url: "https://example.com", snippet: "Sunny")])
+        await settle(40)
+
+        let response = session.sent.compactMap { ($0["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]] }.first?.first
+        XCTAssertEqual(response?["id"] as? String, "s1")
+        controller.stop()
+    }
+
     func testGeminiLiveLookupOnTheSameConnectionIsAnsweredOnItsCall() async {
         let search = ParkedGeminiLiveWebSearch()
         let (controller, session, _, _, _) = makeGeminiController(webSearch: search, clock: Date.init)

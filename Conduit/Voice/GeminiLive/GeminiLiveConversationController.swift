@@ -154,7 +154,7 @@ final class GeminiLiveConversationController: ObservableObject {
         case .google:
             lookups = "For weather, news, sports, prices, and other quick facts from the web, use Google Search and answer directly."
         case .hermes:
-            lookups = "For weather, news, sports, prices, and other quick facts from the web, first say two or three words out loud, like \"Let me check.\", then call web_search. Its result arrives a few seconds later: wait for it and answer from it. Never guess the answer before it arrives."
+            lookups = "For weather, news, sports, prices, and other quick facts from the web, first say two or three words out loud, like \"Let me check.\", then call web_search. Its result arrives a few seconds later: wait for it and answer from it. Never guess the answer before it arrives; if it returns an error, say in a few words that the lookup failed."
         case .none:
             lookups = "You have no web search. A question that needs current information from the web (weather, news, prices) is work for Hermes: offer to start a job for it."
         }
@@ -191,7 +191,7 @@ final class GeminiLiveConversationController: ObservableObject {
         guard let memory else { return "" }
         var text = "\nYou share memory with the user's Hermes agent. Use it naturally to personalize answers; don't read it out or mention where it came from unless asked."
         if memory.canRecall {
-            text += " When the user mentions something from before that you don't know, or asks what Hermes remembers, call recall_memory first and wait for its result before answering."
+            text += " When the user mentions something from before that you don't know, or asks what Hermes remembers, call recall_memory first and wait for its result before answering; if it returns an error, answer without it."
         }
         if !memory.text.isEmpty {
             // Stored text can't close the block early and pass as instructions.
@@ -272,7 +272,8 @@ final class GeminiLiveConversationController: ObservableObject {
     /// the model's goodbye has played.
     private var endRequestedAt: Date?
     private var endTask: Task<Void, Never>?
-    /// Calls the model withdrew while they were being handled.
+    /// Calls being handled right now, and those of them the model withdrew.
+    private var inFlightCallIDs: Set<String> = []
     private var withdrawnCallIDs: Set<String> = []
     /// The end began before the model answered the user's goodbye: wait
     /// for its reply to start, not just for silence.
@@ -636,6 +637,7 @@ final class GeminiLiveConversationController: ObservableObject {
             let calledOn = session
             let generation = calledOn?.connectionGeneration
             for call in calls {
+                inFlightCallIDs.insert(call.id)
                 Task { [weak self] in
                     guard let self else { return }
                     // The model is told to acknowledge before it calls, so
@@ -643,6 +645,7 @@ final class GeminiLiveConversationController: ObservableObject {
                     let calledAt = self.now()
                     let requestedAt = min(calledAt, self.lastUserSpeechAt ?? calledAt)
                     var outgoing = await self.tools.handle(call)
+                    self.inFlightCallIDs.remove(call.id)
                     // The model withdrew the call while it ran (the user
                     // spoke over a lookup): its answer must not go back.
                     if self.withdrawnCallIDs.remove(call.id) != nil {
@@ -663,7 +666,8 @@ final class GeminiLiveConversationController: ObservableObject {
             }
         case .toolCallCancellation(let ids):
             tools.cancelCalls(ids)
-            withdrawnCallIDs.formUnion(ids)
+            // Only calls still being handled: their task clears the mark.
+            withdrawnCallIDs.formUnion(inFlightCallIDs.intersection(ids))
         case .setupComplete, .goAway, .resumptionUpdate:
             break
         }
