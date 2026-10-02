@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Read Aloud" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗读"
+          }
+        }
+      }
+    },
+    "How fast the speaker button under a reply reads it aloud, without changing the voice's pitch. Applies from the next reply you play, on this device. Voice conversations always play at normal speed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回复下方扬声器按钮的朗读速度，不改变音调。从下一条播放的回复开始生效，仅限此设备。语音对话始终以正常速度播放。"
+          }
+        }
+      }
+    },
     "The picture was saved, but its look was not." : {
       "localizations" : {
         "zh-Hans" : {
