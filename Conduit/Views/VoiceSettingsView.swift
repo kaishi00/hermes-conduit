@@ -767,7 +767,7 @@ private struct WakePhraseSettingsSection: View {
                 }
             ))
             .disabled(isRequestingPermission)
-            Text("Say the phrase while Conduit is open to start voice on this profile, in whichever voice mode it uses. Listening runs on this iPhone, stops during calls and in the background, and the microphone indicator stays on while it listens.")
+            Text("Say the phrase while Conduit is open to start voice on this profile, in whichever voice mode it uses. Listening runs on this iPhone, stops during calls, on CarPlay and in the background, and the microphone indicator stays on while it listens.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if permissionDenied {

@@ -8,6 +8,7 @@
 //  exactly as it does for Siri.
 //
 
+import AVFAudio
 import Combine
 import Foundation
 
@@ -35,7 +36,8 @@ extension AppState {
             microphonePermitted: AppleSpeechWakeWordService.isSpeechAuthorized
                 && AppleSpeechWakeWordService.isMicrophoneAuthorized,
             isVoiceIdle: isVoiceIdleForWake,
-            hasWakePhrases: !activeWakeBindings.isEmpty
+            hasWakePhrases: !activeWakeBindings.isEmpty,
+            isRouteSuitable: WakeRoutePolicy.current()
         )
     }
 
@@ -76,7 +78,12 @@ extension AppState {
         wakeObservations = [
             objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
             PendingVoiceIntentStore.shared.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
-            voiceConversationController.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() }
+            voiceConversationController.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
+            // Connecting or leaving CarPlay changes whether wake may listen.
+            NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)
+                .sink { [weak self] _ in
+                    Task { @MainActor [weak self] in self?.scheduleWakeRefresh() }
+                }
         ]
         scheduleWakeRefresh()
     }

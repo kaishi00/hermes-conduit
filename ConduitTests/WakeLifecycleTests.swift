@@ -82,6 +82,27 @@ final class WakeLifecycleTests: XCTestCase {
 }
 
 extension WakeLifecycleTests {
+    func testWakeStaysOffOnCarPlay() {
+        let car = VoiceAudioRoutePort(type: .carAudio, name: "CarPlay")
+        let speaker = VoiceAudioRoutePort(type: .builtInSpeaker, name: "Speaker")
+        let a2dp = VoiceAudioRoutePort(type: .bluetoothA2DP, name: "Buds")
+        XCTAssertFalse(WakeRoutePolicy.allowsWakeListening(outputs: [car]))
+        XCTAssertTrue(WakeRoutePolicy.allowsWakeListening(outputs: [speaker]))
+        XCTAssertTrue(WakeRoutePolicy.allowsWakeListening(outputs: [a2dp]))
+
+        var snapshot = WakeLifecycleSnapshot(
+            isForegroundActive: true,
+            isAuthenticated: true,
+            isGatewayConnected: true,
+            microphonePermitted: true,
+            isVoiceIdle: true,
+            hasWakePhrases: true
+        )
+        XCTAssertTrue(snapshot.canArm)
+        snapshot.isRouteSuitable = false
+        XCTAssertFalse(snapshot.canArm)
+    }
+
     func testStaysDisarmedWithoutWakePhrases() {
         let service = FakeWakeWordService()
         let coordinator = WakeLifecycleCoordinator(service: service)

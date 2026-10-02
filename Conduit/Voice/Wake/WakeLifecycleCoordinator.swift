@@ -3,6 +3,7 @@
 //  Conduit
 //
 
+import AVFAudio
 import Foundation
 
 struct WakeLifecycleSnapshot: Equatable {
@@ -17,9 +18,28 @@ struct WakeLifecycleSnapshot: Equatable {
     var isVoiceIdle: Bool
     /// At least one usable wake phrase is bound on the current gateway.
     var hasWakePhrases: Bool
+    /// The audio route tolerates a background recording session. CarPlay
+    /// does not: any app recording there switches the car's audio to a
+    /// voice stream, and other apps' music plays from one side only.
+    var isRouteSuitable: Bool = true
 
     var canArm: Bool {
-        isForegroundActive && isAuthenticated && isGatewayConnected && microphonePermitted && isVoiceIdle && hasWakePhrases
+        isForegroundActive && isAuthenticated && isGatewayConnected && microphonePermitted && isVoiceIdle
+            && hasWakePhrases && isRouteSuitable
+    }
+}
+
+/// Which audio routes foreground wake listening may record on.
+enum WakeRoutePolicy {
+    static func allowsWakeListening(outputs: [VoiceAudioRoutePort]) -> Bool {
+        !outputs.contains { $0.type == .carAudio }
+    }
+
+    @MainActor
+    static func current() -> Bool {
+        allowsWakeListening(outputs: AVAudioSession.sharedInstance().currentRoute.outputs.map {
+            VoiceAudioRoutePort(type: $0.portType, name: $0.portName)
+        })
     }
 }
 
