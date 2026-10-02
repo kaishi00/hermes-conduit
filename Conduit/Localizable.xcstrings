@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Stops dictating; the words stay in the message" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止听写；文字会保留在消息中"
+          }
+        }
+      }
+    },
     "Tap for Voice · Hold to dictate" : {
       "localizations" : {
         "zh-Hans" : {

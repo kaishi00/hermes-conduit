@@ -975,13 +975,25 @@ struct ComposerBar: View {
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(isDictating ? Text("Stop dictation") : Text("Start voice conversation"))
-            .accessibilityHint(appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Opens voice controls over this conversation"))
+            .accessibilityHint(isDictating
+                ? AppLocalization.string("Stops dictating; the words stay in the message")
+                : appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Opens voice controls over this conversation"))
             .accessibilityAction {
-                if isDictating { dictation.stop() } else if canOpenVoice { openVoiceFromComposer() }
+                if isDictating {
+                    dictation.stop()
+                } else if dictation.isStarting {
+                    // Activated again before the microphone came up.
+                    dictation.cancel()
+                } else if canOpenVoice {
+                    openVoiceFromComposer()
+                }
             }
-            .accessibilityAction(named: Text("Dictate")) {
-                guard canDictate, !isDictating else { return }
-                beginDictation(stopsWhenReleased: false)
+            .accessibilityActions {
+                if canDictate, !isDictating, !dictation.isStarting {
+                    Button(AppLocalization.string("Dictate")) {
+                        beginDictation(stopsWhenReleased: false)
+                    }
+                }
             }
     }
 

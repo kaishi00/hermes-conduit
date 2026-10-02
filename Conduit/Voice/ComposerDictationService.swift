@@ -17,10 +17,14 @@ import Speech
 @MainActor
 final class ComposerDictationService: ObservableObject {
     @Published private(set) var isDictating = false
+    /// Permission or the microphone is still coming up.
+    @Published private(set) var isStarting = false
 
     /// The whole transcript of this dictation so far, each time it changes.
+    /// Cleared when the dictation ends: the view that set it is captured.
     var onTranscript: ((String) -> Void)?
-    /// Called once the dictation is over, with whether it produced text.
+    /// Called once the dictation is over, with whether it produced text,
+    /// then cleared.
     var onFinish: ((Bool) -> Void)?
 
     private let audioCoordinator: VoiceAudioSessionCoordinator
@@ -31,6 +35,8 @@ final class ComposerDictationService: ObservableObject {
     private var finishTask: Task<Void, Never>?
     private var generation: UInt64 = 0
     private var producedText = false
+    /// Bumped by `cancel()` so a start still awaiting permission gives up.
+    private var startToken: UInt64 = 0
 
     init(audioCoordinator: VoiceAudioSessionCoordinator? = nil) {
         self.audioCoordinator = audioCoordinator ?? .shared
@@ -38,12 +44,24 @@ final class ComposerDictationService: ObservableObject {
 
     /// Starts listening. Throws a message for the user when it can't.
     func start() async throws {
-        guard !isDictating else { return }
-        guard await AppleSpeechWakeWordService.requestPermissions() else {
+        guard !isDictating, !isStarting else { return }
+        startToken &+= 1
+        let token = startToken
+        isStarting = true
+        defer { if startToken == token { isStarting = false } }
+        let allowed = await AppleSpeechWakeWordService.requestPermissions()
+        // Cancelled (the composer went away) while permission was asked.
+        guard startToken == token else {
+            clearCallbacks()
+            return
+        }
+        guard allowed else {
+            clearCallbacks()
             throw DictationError.message(AppLocalization.string("Dictation needs microphone and speech recognition access. You can allow them in Settings."))
         }
         guard let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer(),
               recognizer.isAvailable else {
+            clearCallbacks()
             throw DictationError.message(AppLocalization.string("Dictation isn't available right now."))
         }
         generation &+= 1
@@ -60,6 +78,7 @@ final class ComposerDictationService: ObservableObject {
             try startAudio()
         } catch {
             releaseAudio()
+            clearCallbacks()
             throw DictationError.message(AppLocalization.string("The microphone is not available right now."))
         }
         audioSink.replace(with: request)
@@ -74,10 +93,11 @@ final class ComposerDictationService: ObservableObject {
     }
 
     /// The finger lifted: stop listening and let the recognizer settle its
-    /// last words, briefly.
+    /// last words, briefly. The microphone is let go at once.
     func stop() {
         guard isDictating else { return }
         stopAudio()
+        releaseAudio()
         audioSink.replace(with: nil)
         let generation = generation
         finishTask?.cancel()
@@ -88,10 +108,16 @@ final class ComposerDictationService: ObservableObject {
         }
     }
 
-    /// Ends it now (the composer went away or was disabled).
+    /// Ends it now (the composer went away or was disabled), including a
+    /// start still waiting on permission.
     func cancel() {
-        guard isDictating else { return }
-        finish()
+        startToken &+= 1
+        isStarting = false
+        if isDictating {
+            finish()
+        } else {
+            clearCallbacks()
+        }
     }
 
     private func receive(transcript: String?, isFinal: Bool, generation: UInt64) {
@@ -115,7 +141,14 @@ final class ComposerDictationService: ObservableObject {
         stopAudio()
         releaseAudio()
         isDictating = false
+        let onFinish = onFinish
+        clearCallbacks()
         onFinish?(producedText)
+    }
+
+    private func clearCallbacks() {
+        onTranscript = nil
+        onFinish = nil
     }
 
     private func startAudio() throws {

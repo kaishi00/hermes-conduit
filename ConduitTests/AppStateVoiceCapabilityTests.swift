@@ -322,8 +322,9 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(final, "Draft Buy milk.")
     }
 
-    func testVoiceInUseFollowsAnOpenVoiceSheet() {
-        let appState = AppState(defaults: UserDefaults(suiteName: "VoiceInUse.\(UUID().uuidString)")!, loadSavedConnection: false)
+    func testVoiceInUseFollowsAnOpenVoiceSheet() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "VoiceInUse.\(UUID().uuidString)"))
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
         XCTAssertFalse(appState.isVoiceInUse)
         appState.showVoiceSheet = true
         XCTAssertTrue(appState.isVoiceInUse, "dictation never competes with Voice for the microphone")
