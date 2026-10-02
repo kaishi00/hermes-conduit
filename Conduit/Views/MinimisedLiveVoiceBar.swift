@@ -15,11 +15,11 @@ struct MinimisedLiveVoiceBar: View {
     var body: some View {
         switch appState.minimisedLiveVoice {
         case .geminiLive?:
-            GeminiLiveBarContent(controller: appState.geminiLiveController, name: "Gemini Live")
+            GeminiLiveBarContent(controller: appState.geminiLiveController, jobs: appState.voiceBackgroundJobSupervisor, name: "Gemini Live")
         case .grokLive?:
-            GeminiLiveBarContent(controller: appState.grokLiveController, name: "Grok Live")
+            GeminiLiveBarContent(controller: appState.grokLiveController, jobs: appState.voiceBackgroundJobSupervisor, name: "Grok Live")
         case .gptLive?:
-            GPTLiveBarContent(controller: appState.gptLiveController)
+            GPTLiveBarContent(controller: appState.gptLiveController, jobs: appState.voiceBackgroundJobSupervisor)
         case nil:
             EmptyView()
         }
@@ -29,13 +29,21 @@ struct MinimisedLiveVoiceBar: View {
 private struct GeminiLiveBarContent: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var controller: GeminiLiveConversationController
+    @ObservedObject var jobs: VoiceBackgroundJobSupervisor
     let name: String
+
+    private var isFailed: Bool {
+        if case .failed = controller.phase { return true }
+        return false
+    }
 
     var body: some View {
         LiveVoiceBarRow(
             name: name,
             status: status,
             symbol: symbol,
+            thread: jobs.liveThread?.title,
+            isFailed: isFailed,
             isMuted: controller.isMicrophoneMuted,
             canMute: controller.isActive && !controller.isEnding,
             onRestore: appState.restoreMinimisedLiveVoice,
@@ -70,12 +78,20 @@ private struct GeminiLiveBarContent: View {
 private struct GPTLiveBarContent: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var controller: GPTLiveConversationController
+    @ObservedObject var jobs: VoiceBackgroundJobSupervisor
+
+    private var isFailed: Bool {
+        if case .failed = controller.phase { return true }
+        return false
+    }
 
     var body: some View {
         LiveVoiceBarRow(
             name: "GPT-Live",
             status: status,
             symbol: symbol,
+            thread: jobs.liveThread?.title,
+            isFailed: isFailed,
             isMuted: controller.isMicrophoneMuted,
             canMute: controller.isActive && !controller.isEnding,
             onRestore: appState.restoreMinimisedLiveVoice,
@@ -110,11 +126,15 @@ private struct LiveVoiceBarRow: View {
     let name: String
     let status: String
     let symbol: String
+    /// The chat the call is attached to, if any.
+    let thread: String?
+    let isFailed: Bool
     let isMuted: Bool
     let canMute: Bool
     let onRestore: () -> Void
     let onToggleMute: () -> Void
     let onEnd: () -> Void
+    @ScaledMetric(relativeTo: .body) private var iconWidth: CGFloat = 24
 
     var body: some View {
         HStack(spacing: 10) {
@@ -123,23 +143,25 @@ private struct LiveVoiceBarRow: View {
                     Image(systemName: symbol)
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Color.conduitAura)
-                        .frame(width: 24)
+                        .frame(width: iconWidth)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(verbatim: name)
+                        Text(verbatim: thread.map { "\(name) · \($0)" } ?? name)
                             .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
                         Text(status)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
                     }
                     Spacer(minLength: 0)
                 }
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
-            .accessibilityHint(Text("Opens the call"))
+            .accessibilityHint(isFailed ? Text("Shows why the call stopped") : Text("Opens the call"))
 
             Button(action: onToggleMute) {
                 Image(systemName: isMuted ? "mic.slash.fill" : "mic.fill")
