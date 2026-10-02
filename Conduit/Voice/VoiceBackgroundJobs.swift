@@ -515,7 +515,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 if !target.isEmpty { update(next.id) { $0.runtimeSessionID = target } }
                 // Resolving can suspend (a resume): a turn that started in
                 // the chat meanwhile is waited for, and its events stay its own.
-                if await backend.threadIsBusy(thread) {
+                // Checked on the runtime just resolved.
+                var resolved = thread
+                if !target.isEmpty { resolved.runtimeSessionID = target }
+                if await backend.threadIsBusy(resolved) {
                     guard generation == self.generation else { return }
                     try? await Task.sleep(for: threadWaitInterval)
                     continue
@@ -534,7 +537,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             } catch is VoiceThreadBusyError {
                 guard generation == self.generation else { return }
                 // A typed turn got there first: back in line to wait for it.
-                update(next.id) { $0.threadTurnSubmitted = false }
+                // Anything its events did to this turn meanwhile is undone.
+                update(next.id) {
+                    $0.threadTurnSubmitted = false
+                    $0.status = .starting
+                    $0.result = nil
+                    $0.inputRequestDelivered = false
+                    $0.outcomeDelivered = false
+                }
                 try? await Task.sleep(for: threadWaitInterval)
             } catch {
                 guard generation == self.generation else { return }

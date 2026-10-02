@@ -3968,7 +3968,9 @@ final class AppState: ObservableObject {
             var foundBusy = isBusy
             if !foundBusy {
                 let sent = await submitComposer(text: text, onBusy: { foundBusy = true })
-                if sent { return activeSessionId ?? sessionID }
+                // The id captured before the send: the user may have moved to
+                // another chat while it was in flight.
+                if sent { return sessionID }
             }
             if foundBusy { throw VoiceThreadBusyError() }
             throw VoiceAudioError.unavailable(errorMessage ?? AppLocalization.string("Hermes could not send this to the chat."))
@@ -3991,7 +3993,11 @@ final class AppState: ObservableObject {
         if isOpenChat(thread) { return latestReplyInOpenChat(thread) }
         guard let bridge = dashboardTicketBridge else { return nil }
         let tailQuery = "?limit=20&offset=0&order=latest&include_compacted=true&inline_images=false"
-        for sessionID in [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }) where !sessionID.isEmpty {
+        var ids: [String] = []
+        for id in [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }) where !id.isEmpty && !ids.contains(id) {
+            ids.append(id)
+        }
+        for sessionID in ids {
             func read(_ query: String) async -> [String: Any]? {
                 try? await bridge.requestJSON(
                     path: Self.sessionMessagesPath(sessionId: sessionID, profile: activeProfile, query: query)
@@ -4026,7 +4032,7 @@ final class AppState: ObservableObject {
     /// The open chat's latest assistant reply.
     private func latestReplyInOpenChat(_ thread: VoiceThreadTarget) -> String? {
         guard isOpenChat(thread) else { return nil }
-        return messages.last { $0.role == .assistant && !$0.content.isEmpty }?.content
+        return messages.last { $0.role == .assistant && $0.tool == nil && !$0.content.isEmpty }?.content
     }
 
     /// Instructions for a call attached to a chat. Written for the live
