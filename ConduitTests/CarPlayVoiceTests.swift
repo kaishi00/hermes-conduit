@@ -828,6 +828,20 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertTrue(harness.controller.hasLiveVoiceSession, "muting never ends the conversation")
     }
 
+    func testListenAtReadyReopensAPausedClassicMicrophone() async {
+        let harness = makeHarness(continuousConversation: false)
+        harness.appState.activeSessionId = "existing-session"
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.establishVoice(generation: harness.coordinator.connectionGeneration)
+        harness.controller.pauseMicrophone()
+        harness.controller.suspendRuntimeForLifecycle()
+        XCTAssertTrue(harness.controller.isMicrophonePaused, "the pause outlives the settle to Ready")
+
+        await harness.coordinator.performStartListeningTurn(generation: harness.coordinator.connectionGeneration)
+
+        XCTAssertFalse(harness.controller.isMicrophonePaused, "Listen reopens the microphone instead of a silent window")
+    }
+
     func testNewChatClosesTheCurrentConversationAndPreparesAFreshOne() async {
         let harness = makeHarness()
         harness.openVoice(session: "session-1")

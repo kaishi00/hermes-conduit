@@ -40,6 +40,12 @@ struct CarPlayOptionRow: Equatable {
     let isSelected: Bool
 }
 
+struct CarPlayModeRow: Equatable {
+    let mode: CarPlayVoiceMode
+    let title: String
+    let isSelected: Bool
+}
+
 enum CarPlayBrowse {
     static let maximumChats = 12
 
@@ -92,8 +98,8 @@ enum CarPlayBrowse {
         }
     }
 
-    static func modeRows(current: CarPlayVoiceMode) -> [CarPlayOptionRow] {
-        CarPlayVoiceMode.all.map { CarPlayOptionRow(title: $0.title, isSelected: $0 == current) }
+    static func modeRows(current: CarPlayVoiceMode) -> [CarPlayModeRow] {
+        CarPlayVoiceMode.all.map { CarPlayModeRow(mode: $0, title: $0.title, isSelected: $0 == current) }
     }
 
     /// Agents (Hermes profiles) to switch between; empty when there is only
@@ -196,13 +202,13 @@ enum CarPlayBrowseTemplateFactory {
     }
 
     static func voiceTemplate(
-        modes: [CarPlayOptionRow],
+        modes: [CarPlayModeRow],
         agents: [CarPlayOptionRow],
         handlers: CarPlayBrowseHandlers
     ) -> CPListTemplate {
         var sections = [CPListSection(
-            items: modes.enumerated().map { index, row in
-                optionItem(row) { handlers.selectMode(CarPlayVoiceMode.all[index]) }
+            items: modes.map { row in
+                optionItem(title: row.title, isSelected: row.isSelected) { handlers.selectMode(row.mode) }
             },
             header: AppLocalization.string("Voice mode"),
             sectionIndexTitle: nil
@@ -210,7 +216,7 @@ enum CarPlayBrowseTemplateFactory {
         if !agents.isEmpty {
             sections.append(CPListSection(
                 items: agents.enumerated().map { index, row in
-                    optionItem(row) { handlers.selectAgent(index) }
+                    optionItem(title: row.title, isSelected: row.isSelected) { handlers.selectAgent(index) }
                 },
                 header: AppLocalization.string("Agent"),
                 sectionIndexTitle: nil
@@ -219,12 +225,12 @@ enum CarPlayBrowseTemplateFactory {
         return CPListTemplate(title: AppLocalization.string("Voice"), sections: sections)
     }
 
-    private static func optionItem(_ row: CarPlayOptionRow, select: @escaping () -> Void) -> CPListItem {
+    private static func optionItem(title: String, isSelected: Bool, select: @escaping () -> Void) -> CPListItem {
         let item = CPListItem(
-            text: row.title,
+            text: title,
             detailText: nil,
             image: nil,
-            accessoryImage: row.isSelected ? UIImage(systemName: "checkmark") : nil,
+            accessoryImage: isSelected ? UIImage(systemName: "checkmark") : nil,
             accessoryType: .none
         )
         item.handler = { _, completion in

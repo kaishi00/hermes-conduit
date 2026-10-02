@@ -443,6 +443,10 @@ final class CarPlayVoiceCoordinator {
     }
 
     private func push(_ browseTemplate: CPTemplate) {
+        // Only the Jobs list is kept current, and only while it is the
+        // newest screen (the car's back button reports nothing).
+        jobsObservation?.cancel()
+        jobsObservation = nil
         guard let interfacing else { return }
         interfacing.pushTemplate(browseTemplate, animated: true, completion: nil)
     }
@@ -468,6 +472,7 @@ final class CarPlayVoiceCoordinator {
             rows: CarPlayBrowse.jobRows(from: supervisor.jobs),
             handlers: handlers
         )
+        push(list)
         jobsTemplate = list
         jobsObservation = supervisor.$jobs
             .dropFirst()
@@ -478,7 +483,6 @@ final class CarPlayVoiceCoordinator {
                     handlers: handlers
                 ))
             }
-        push(list)
     }
 
     func showShortcuts() {
@@ -519,6 +523,10 @@ final class CarPlayVoiceCoordinator {
         let mode = CarPlayVoiceMode.current(in: appState)
         if let liveMode = CarPlayLiveVoiceMode(mode) {
             endConversation()
+            // The phone shows the chat the call is attached to, as when the
+            // call starts from that chat there.
+            _ = await appState.openSession(row.sessionID)
+            guard isCurrent(generation), isConnected else { return }
             await establishLiveVoice(liveMode, appState: appState, generation: generation, attachingTo: row.thread)
             return
         }
@@ -651,6 +659,13 @@ final class CarPlayVoiceCoordinator {
             // of a silent no-op listen.
             guard appState.attachToLiveVoiceConversation() else {
                 handleControllerState(.failed(""))
+                return
+            }
+            // A microphone the driver paused stays paused through a new
+            // listening window, so Listen reopens it, as the phone's
+            // microphone button does.
+            if controller.isMicrophonePaused {
+                await controller.resumeMicrophone()
                 return
             }
         } else {
