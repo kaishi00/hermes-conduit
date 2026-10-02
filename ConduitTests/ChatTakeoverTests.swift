@@ -90,4 +90,14 @@ extension HermesClientTests {
             XCTAssertEqual(error as? ChatTakeoverError, .pluginMissing)
         }
     }
+
+    func testOnlyTransientTakeoverFailuresAreRetried() {
+        XCTAssertTrue(AppState.isTransientChatTakeoverFailure(DashboardTicketBridgeError.notReady))
+        XCTAssertTrue(AppState.isTransientChatTakeoverFailure(DashboardTicketBridgeError.http(status: 503, detail: "")))
+        XCTAssertTrue(AppState.isTransientChatTakeoverFailure(DashboardTicketBridgeError.http(status: 0, detail: "")))
+        XCTAssertTrue(AppState.isTransientChatTakeoverFailure(URLError(.timedOut)))
+        XCTAssertFalse(AppState.isTransientChatTakeoverFailure(DashboardTicketBridgeError.http(status: 501, detail: "")))
+        XCTAssertFalse(AppState.isTransientChatTakeoverFailure(DashboardTicketBridgeError.http(status: 400, detail: "")))
+        XCTAssertFalse(AppState.isTransientChatTakeoverFailure(ChatTakeoverError.pluginMissing))
+    }
 }

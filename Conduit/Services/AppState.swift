@@ -14633,6 +14633,11 @@ final class AppState: ObservableObject {
         UserDefaults.standard.bool(forKey: ChatTakeoverPreference.automaticKey)
     }
 
+    /// The chat Conduit last took over automatically. A send refused again
+    /// right after that offers the button instead of looping; a successful
+    /// send clears it.
+    private var chatTakeoverAutomaticSessionID: String?
+
     /// Records a send refused because another app owns the chat.
     private func noteChatOwnedElsewhere(_ refusal: RpcError, sessionID: String, knownSessionIDs: Set<String>) {
         let details = ChatTakeoverState.details(fromRefusal: refusal.message)
@@ -14643,6 +14648,7 @@ final class AppState: ObservableObject {
         }
         chatTakeoverTask?.cancel()
         chatTakeoverTask = nil
+        errorMessage = nil
         chatTakeover = ChatTakeoverState(sessionID: sessionID, sessionIDs: ids, surface: details.surface, phase: .offered)
         lifecycleLog.notice(
             "prompt.submit refused: chat owned by \(details.surface ?? "another surface", privacy: .public) session=\(sessionID, privacy: .public)"
@@ -14656,46 +14662,79 @@ final class AppState: ObservableObject {
         chatTakeoverTask?.cancel()
         state.phase = .waiting
         chatTakeover = state
+        let client = chatTakeoverClient
         let profile = activeProfile
         let waiting = state
+        // Only `client` is held across the awaits; `self` is re-taken weakly
+        // just to publish the result.
         chatTakeoverTask = Task { [weak self] in
-            var state = waiting
-            let deadline = Date().addingTimeInterval(Self.chatTakeoverWaitLimit)
-            while !Task.isCancelled {
-                guard let self else { return }
-                let phase: ChatTakeoverState.Phase
-                do {
-                    switch try await self.chatTakeoverClient.takeOver(sessionIDs: state.sessionIDs, profile: profile) {
-                    case .ready:
-                        phase = .ready
-                    case .sameHost:
-                        phase = .failed(AppLocalization.string(
-                            "This chat is open in Conduit on another device or in the Hermes web chat. Send from there, or close it there and try again."
-                        ))
-                    case .busy:
-                        guard Date() < deadline else {
-                            phase = .failed(AppLocalization.string(
-                                "\(state.ownerName) is still replying in this chat. Try again when it finishes."
-                            ))
-                            break
-                        }
-                        try? await Task.sleep(for: Self.chatTakeoverPollInterval)
-                        continue
-                    }
-                } catch {
-                    guard !Task.isCancelled else { return }
-                    phase = .failed(Self.chatTakeoverFailureMessage(error))
-                }
-                guard !Task.isCancelled, self.chatTakeover?.sessionID == state.sessionID else { return }
-                state.phase = phase
-                if phase == .ready {
-                    self.chatTakeoverReadyCount &+= 1
-                    state.readyToken = self.chatTakeoverReadyCount
-                }
-                self.chatTakeover = state
-                self.chatTakeoverTask = nil
-                return
+            let phase = await Self.runChatTakeover(client: client, state: waiting, profile: profile)
+            guard let phase, !Task.isCancelled, let self,
+                  self.chatTakeover?.sessionID == waiting.sessionID else { return }
+            var settled = waiting
+            settled.phase = phase
+            if phase == .ready {
+                self.chatTakeoverReadyCount &+= 1
+                settled.readyToken = self.chatTakeoverReadyCount
             }
+            self.chatTakeover = settled
+            self.chatTakeoverTask = nil
+        }
+    }
+
+    /// Polls the takeover route until it settles: while the owner is mid-turn,
+    /// and through a few transient failures (bridge not ready, 5xx, network).
+    /// Nil when cancelled.
+    private static func runChatTakeover(
+        client: ChatTakeoverClient,
+        state: ChatTakeoverState,
+        profile: String
+    ) async -> ChatTakeoverState.Phase? {
+        let deadline = Date().addingTimeInterval(chatTakeoverWaitLimit)
+        var transientFailures = 0
+        while !Task.isCancelled {
+            do {
+                switch try await client.takeOver(sessionIDs: state.sessionIDs, profile: profile) {
+                case .ready:
+                    return .ready
+                case .sameHost:
+                    return .failed(AppLocalization.string(
+                        "This chat is open in Conduit on another device or in the Hermes web chat. Send from there, or close it there and try again."
+                    ))
+                case .busy:
+                    transientFailures = 0
+                    guard Date() < deadline else {
+                        return .failed(AppLocalization.string(
+                            "\(state.ownerName) is still replying in this chat. Try again when it finishes."
+                        ))
+                    }
+                }
+            } catch {
+                guard !Task.isCancelled else { return nil }
+                transientFailures += 1
+                guard isTransientChatTakeoverFailure(error),
+                      transientFailures < chatTakeoverTransientRetryLimit,
+                      Date() < deadline else {
+                    return .failed(chatTakeoverFailureMessage(error))
+                }
+            }
+            try? await Task.sleep(for: chatTakeoverPollInterval)
+        }
+        return nil
+    }
+
+    static let chatTakeoverTransientRetryLimit = 5
+
+    static func isTransientChatTakeoverFailure(_ error: Error) -> Bool {
+        switch error {
+        case DashboardTicketBridgeError.notReady:
+            return true
+        case DashboardTicketBridgeError.http(let status, _):
+            return status == 0 || status == 408 || status == 429 || (status >= 500 && status != 501)
+        case is URLError:
+            return true
+        default:
+            return false
         }
     }
 
@@ -14819,6 +14858,7 @@ final class AppState: ObservableObject {
             if chatTakeover?.sessionID == sessionId {
                 dismissChatTakeover()
             }
+            chatTakeoverAutomaticSessionID = nil
             if isCurrentComposerSubmission(submissionContext) {
                 if outcome.isBusySubmission {
                     // Hermes applied its busy policy, which proves THIS
@@ -15080,7 +15120,8 @@ final class AppState: ObservableObject {
             // Automatic takeover starts once the refused draft is back in
             // the composer, which sends it again when the chat is Conduit's.
             if chatTakeover?.sessionID == sessionId, chatTakeover?.phase == .offered,
-               takesOverChatsAutomatically {
+               takesOverChatsAutomatically, chatTakeoverAutomaticSessionID != sessionId {
+                chatTakeoverAutomaticSessionID = sessionId
                 takeOverChat()
             }
             return false

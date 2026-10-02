@@ -345,8 +345,7 @@ struct ComposerBar: View {
                 compressingNotice
             }
 
-            if let takeover = appState.chatTakeover, takeover.phase != .ready,
-               takeover.sessionID == appState.activeSessionId {
+            if let takeover = appState.chatTakeover, takeover.sessionID == appState.activeSessionId {
                 chatTakeoverNotice(takeover)
             }
 
@@ -511,6 +510,7 @@ struct ComposerBar: View {
                 case .waiting:
                     ProgressView()
                         .controlSize(.small)
+                        .accessibilityLabel(Text("Waiting to take this chat over"))
                 case .failed:
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
@@ -533,7 +533,9 @@ struct ComposerBar: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .accessibilityLabel(takeover.phase == .waiting ? "Stop waiting" : "Dismiss")
+                .accessibilityLabel(takeover.phase == .waiting
+                    ? AppLocalization.string("Stop waiting")
+                    : AppLocalization.string("Dismiss"))
             }
 
             switch takeover.phase {
@@ -567,19 +569,22 @@ struct ComposerBar: View {
         case .waiting:
             return AppLocalization.string("Taking this chat over from \(takeover.ownerName). If it's replying, Conduit waits for the reply to finish.")
         case .ready:
-            return ""
+            return AppLocalization.string("This chat is yours now. Send your message again.")
         case .failed(let message):
             return message
         }
     }
 
     /// The chat is Conduit's now: send the refused draft again, exactly as
-    /// the Send button would.
+    /// the Send button would. When that can't happen here (another chat is
+    /// open, the draft is gone, or the composer isn't offering Send), the
+    /// ready notice stays and asks the user to send again.
     private func resendAfterChatTakeover() {
         guard let takeover = appState.chatTakeover, takeover.phase == .ready,
-              takeover.sessionID == appState.activeSessionId else { return }
+              takeover.sessionID == appState.activeSessionId,
+              case .send = action,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty else { return }
         appState.dismissChatTakeover()
-        guard case .send = action else { return }
         submit()
     }
 

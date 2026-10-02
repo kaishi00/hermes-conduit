@@ -19101,6 +19101,36 @@
           }
         }
       }
+    },
+    "Stop waiting" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止等待"
+          }
+        }
+      }
+    },
+    "This chat is yours now. Send your message again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话已由你接管。请重新发送你的消息。"
+          }
+        }
+      }
+    },
+    "Waiting to take this chat over" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待接管此对话"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
