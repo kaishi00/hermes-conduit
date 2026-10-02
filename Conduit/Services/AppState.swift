@@ -1898,7 +1898,7 @@ final class AppState: ObservableObject {
         // Behind Cloudflare Access the upgrade needs the service-token
         // headers, like the speech stream's.
         let request = URLRequest(url: url)
-        return bridge.cloudflareAccess?.applying(to: request) ?? request
+        return request.applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
     })
 
     /// Built on first use only, like Gemini Live's.
@@ -5907,6 +5907,19 @@ final class AppState: ObservableObject {
         if let baseURL = connection?.baseUrl { prepareDashboardBridge(for: baseURL) }
     }
 
+    func customHeaders() -> [CustomHeader] {
+        guard let baseURL = connection?.baseUrl else { return [] }
+        return CustomHeaderStore.shared.headers(forServerURL: baseURL)
+    }
+
+    /// Saves the connected server's extra proxy headers and rebuilds the
+    /// dashboard bridge so its page script carries the new set.
+    func saveCustomHeaders(_ headers: [CustomHeader]) {
+        guard let baseURL = connection?.baseUrl else { return }
+        CustomHeaderStore.shared.setHeaders(headers, forServerURL: baseURL)
+        prepareDashboardBridge(for: baseURL)
+    }
+
     func removeCloudflareAccess() {
         if let dashboardID = activeDashboardID {
             KeychainHelper.clearCloudflareAccess(dashboardID: dashboardID)
@@ -7093,7 +7106,7 @@ final class AppState: ObservableObject {
     /// disconnected with the dashboard selection/add flow presented — no
     /// other saved dashboard is auto-connected.
     func removeDashboard(_ id: UUID) {
-        guard savedDashboardRegistry.dashboard(with: id) != nil else { return }
+        guard let removed = savedDashboardRegistry.dashboard(with: id) else { return }
         let wasActive = id == activeDashboardID
         if wasActive {
             // Full scoped teardown of the active dashboard's auth and live
@@ -7105,6 +7118,14 @@ final class AppState: ObservableObject {
         var registry = savedDashboardRegistry
         registry.dashboards.removeAll { $0.id == id }
         if registry.activeDashboardID == id { registry.activeDashboardID = nil }
+        // Extra proxy headers are server configuration, not session auth:
+        // sign-out keeps them, forgetting the server drops them — unless
+        // another saved dashboard is still reached through the same origin.
+        let removedOrigin = CustomHeaderPolicy.origin(forServerURL: removed.normalizedURL)
+        if removedOrigin != nil,
+           !registry.dashboards.contains(where: { CustomHeaderPolicy.origin(forServerURL: $0.normalizedURL) == removedOrigin }) {
+            CustomHeaderStore.shared.removeHeaders(forServerURL: removed.normalizedURL)
+        }
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
@@ -7333,6 +7354,7 @@ final class AppState: ObservableObject {
         }
         if dashboardTicketBridge?.baseURL != normalized
             || dashboardTicketBridge?.cloudflareAccess != access
+            || dashboardTicketBridge?.extraHeaders != CustomHeaderPolicy.sendable(CustomHeaderStore.shared.headers(forServerURL: normalized))
             || dashboardTicketBridge?.matchesNativeOAuthTokens(storedNativeOAuthTokens) != true {
             dashboardTicketBridge?.invalidate()
             dashboardTicketBridge = DashboardTicketBridge(
@@ -22179,6 +22201,7 @@ enum KeychainHelper {
     private static let cloudflareAccessKey = "hermes-conduit.cloudflare-access.v1"
     private static let nativeOAuthTokensKey = "hermes-conduit.native-oauth-tokens.v1"
     private static let pushRegistrationKey = "hermes-conduit.push-registration.v1"
+    private static let customHeadersKey = "hermes-conduit.custom-headers.v1"
     private static let service = "com.milim.conduit"
 
     static func saveConnection(_ conn: HermesConnection) {
@@ -22232,6 +22255,24 @@ enum KeychainHelper {
 
     static func clearCloudflareAccess() {
         delete(account: cloudflareAccessKey)
+    }
+
+    /// Extra proxy headers (issue #305), keyed by secure server origin.
+    /// Readable after first unlock like the Cloudflare token, so background
+    /// reconnects reach a header-gated proxy too.
+    static func saveCustomHeaders(_ headers: [String: [CustomHeader]]) {
+        guard !headers.isEmpty else {
+            delete(account: customHeadersKey)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(headers) else { return }
+        save(data, account: customHeadersKey, accessibility: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+    }
+
+    static func loadCustomHeaders() -> [String: [CustomHeader]] {
+        guard let data = load(account: customHeadersKey),
+              let headers = try? JSONDecoder().decode([String: [CustomHeader]].self, from: data) else { return [:] }
+        return headers
     }
 
     /// The raw legacy global Cloudflare record (origin included), read only

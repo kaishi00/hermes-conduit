@@ -51,7 +51,7 @@ final class URLSessionKanbanEventSocket: KanbanEventSocket {
 
     static func upgradeRequest(url: URL, cloudflareAccess: CloudflareAccessCredentials?) -> URLRequest {
         let request = URLRequest(url: url)
-        return cloudflareAccess?.applying(to: request) ?? request
+        return request.applyingProxyHeaders(cloudflare: cloudflareAccess)
     }
 
     func receive() async throws -> KanbanEventSocketMessage {

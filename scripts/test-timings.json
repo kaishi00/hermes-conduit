@@ -25,6 +25,7 @@
     "ConnectionSetupUITests": 215.9,
     "ConnectionURLPolicyOriginTests": 0.072,
     "CrossProfilePresentationCacheTests": 1.563,
+    "CustomHeadersTests": 0.05,
     "DashboardCookieClearingTests": 0.663,
     "DashboardTicketBridgeTests": 15.309,
     "HapticsEmissionTests": 0.012,

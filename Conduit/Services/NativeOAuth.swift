@@ -316,7 +316,7 @@ final class NativeOAuthAPIClient {
               ConnectionURLPolicy.originMatches(url, expected: URL(string: normalized)) else {
             throw NativeOAuthError.invalidURL
         }
-        return cloudflareAccess?.applying(to: URLRequest(url: url)) ?? URLRequest(url: url)
+        return URLRequest(url: url).applyingProxyHeaders(cloudflare: cloudflareAccess)
     }
 
     private static func errorDetail(_ data: Data) -> String? {
