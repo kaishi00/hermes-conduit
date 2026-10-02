@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Header %@ name" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求头 %@ 名称"
+          }
+        }
+      }
+    },
+    "Header %@ value" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求头 %@ 的值"
+          }
+        }
+      }
+    },
+    "Remove header %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除请求头 %@"
+          }
+        }
+      }
+    },
     "Add header" : {
       "localizations" : {
         "zh-Hans" : {
