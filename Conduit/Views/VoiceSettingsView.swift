@@ -807,9 +807,11 @@ private struct WakePhraseSettingsSection: View {
                         model.setListensOnCarPlay(value)
                     }
                 ))
+                .accessibilityHint(Text("On CarPlay, wake listens through the iPhone's microphone so music keeps playing normally in the car. Turn this off if the phrase is missed or music sounds wrong."))
                 Text("On CarPlay, wake listens through the iPhone's microphone so music keeps playing normally in the car. Turn this off if the phrase is missed or music sounds wrong.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 if let failure = model.failure {
                     Label(failure, systemImage: "exclamationmark.triangle")
                         .font(.caption)

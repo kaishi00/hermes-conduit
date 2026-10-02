@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Wake listening on CarPlay needs the iPhone's microphone, which is not available right now." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 CarPlay 上监听唤醒词需要使用 iPhone 麦克风，但它目前不可用。"
+          }
+        }
+      }
+    },
     "Listen on CarPlay" : {
       "localizations" : {
         "zh-Hans" : {
