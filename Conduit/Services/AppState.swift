@@ -3865,7 +3865,8 @@ final class AppState: ObservableObject {
     /// teardown ends it.
     /// A call that fails while minimised keeps its bar on purpose: tapping
     /// it shows why and offers Try again or End. The bar clears on End (in
-    /// the sheet or on the bar), a spoken goodbye, opening that mode again,
+    /// the sheet or on the bar), a spoken goodbye, opening that mode again
+    /// (from its sheet, the composer mic or Siri),
     /// another mode taking over, CarPlay releasing a stopped call, and
     /// boundary teardown (disconnect, sign-out, server or profile change).
     @Published private(set) var minimisedLiveVoice: VoiceCallEngine?
@@ -3884,14 +3885,16 @@ final class AppState: ObservableObject {
     }
 
     /// Brings the minimised call's sheet back.
+    /// While another sheet is up it does nothing, so the bar stays as the
+    /// call's only control instead of vanishing behind a sheet that can't show.
     func restoreMinimisedLiveVoice() {
-        guard let engine = minimisedLiveVoice else { return }
-        minimisedLiveVoice = nil
+        guard let engine = minimisedLiveVoice, !isModalSheetPresented else { return }
         switch engine {
         case .geminiLive: showGeminiLiveSheet = true
         case .gptLive: showGPTLiveSheet = true
         case .grokLive: showGrokLiveSheet = true
         }
+        minimisedLiveVoice = nil
     }
 
     /// Hangs up the minimised call.

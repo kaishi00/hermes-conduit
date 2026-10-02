@@ -1096,7 +1096,7 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(appState.minimisedLiveVoice, "the bar goes with the call")
     }
 
-    func testDismissingAFailedLiveCallClosesItInsteadOfMinimising() {
+    func testDismissingAnIdleLiveCallClosesItInsteadOfMinimising() {
         let appState = makeGPTLiveAppState()
         appState.setGPTLiveEnabled(true)
         let (controller, _) = installFakeGPTLive(in: appState)
@@ -1106,6 +1106,45 @@ extension AppStateVoiceCapabilityTests {
         swipeGPTLiveSheetAway(appState)
 
         XCTAssertNil(appState.minimisedLiveVoice)
+    }
+
+    func testDismissingAFailedLiveCallClosesItInsteadOfMinimising() async {
+        let appState = makeGPTLiveAppState()
+        let (controller, session) = await startMinimisableGPTLive(in: appState)
+        session.onStateChange?(.failed("The GPT-Live connection was lost."))
+        guard case .failed = controller.phase else { return XCTFail("Expected failed, got \(controller.phase)") }
+
+        swipeGPTLiveSheetAway(appState)
+
+        XCTAssertNil(appState.minimisedLiveVoice)
+    }
+
+    func testACallThatFailsWhileMinimisedKeepsItsBar() async {
+        let appState = makeGPTLiveAppState()
+        let (controller, session) = await startMinimisableGPTLive(in: appState)
+        swipeGPTLiveSheetAway(appState)
+
+        session.onStateChange?(.failed("The GPT-Live connection was lost."))
+
+        XCTAssertFalse(controller.isActive)
+        XCTAssertEqual(appState.minimisedLiveVoice, .gptLive, "the bar stays so the user can see why")
+        appState.endMinimisedLiveVoice()
+        XCTAssertNil(appState.minimisedLiveVoice)
+    }
+
+    func testRestoringWhileAnotherSheetIsUpKeepsTheBar() async {
+        let appState = makeGPTLiveAppState()
+        let (controller, _) = await startMinimisableGPTLive(in: appState)
+        swipeGPTLiveSheetAway(appState)
+        appState.showModelPicker = true
+
+        appState.restoreMinimisedLiveVoice()
+
+        XCTAssertFalse(appState.showGPTLiveSheet)
+        XCTAssertEqual(appState.minimisedLiveVoice, .gptLive, "the call keeps its only control")
+        XCTAssertTrue(controller.isActive)
+        appState.showModelPicker = false
+        appState.endMinimisedLiveVoice()
     }
 
     func testTheMicReopensAMinimisedCallWithoutRestartingIt() async {

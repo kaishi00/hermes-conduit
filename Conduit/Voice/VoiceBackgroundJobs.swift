@@ -218,8 +218,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// turn in order.
     static let maximumThreadTurns = 3
 
-    /// The chat the running live call is attached to, if any.
-    var liveThread: VoiceThreadTarget?
+    /// The chat the running live call is attached to, if any. Published so
+    /// the minimised call's bar can name it.
+    @Published var liveThread: VoiceThreadTarget?
 
     @Published private(set) var jobs: [VoiceBackgroundJob] = []
 

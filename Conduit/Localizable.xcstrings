@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Shows why the call stopped" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示通话停止的原因"
+          }
+        }
+      }
+    },
     "Hermes could not send this to the chat." : {
       "localizations" : {
         "zh-Hans" : {
