@@ -48,8 +48,27 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     var activelyRecording = false
     var paused = false
     /// Set by `holdForPlayback()`: the engine, tap, and session lease stay
-    /// up but no frame is admitted. Cleared by every lifecycle method.
+    /// up but no frame is admitted. Cleared when capture starts, resumes,
+    /// pauses, or stops.
     var heldForPlayback = false
+    /// The hold keeps the tap, so its frames share a capture generation
+    /// with frames from after it. Lifting a hold advances this epoch, which
+    /// the tap stamps on every frame on the audio thread, so playback audio
+    /// still queued for the MainActor can't land in the next window.
+    private var holdEpoch: UInt64 = 0
+    private let observedHoldEpoch = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+
+    nonisolated private var holdEpochForTap: UInt64 {
+        observedHoldEpoch.withLock { $0 }
+    }
+
+    private func liftPlaybackHold() {
+        guard heldForPlayback else { return }
+        heldForPlayback = false
+        holdEpoch &+= 1
+        let current = holdEpoch
+        observedHoldEpoch.withLock { $0 = current }
+    }
     /// Monotonic identity of the installed input-tap/rendering lifetime.
     /// Bumped at every teardown (pause/stop) and every tap reinstall, so
     /// frames queued from a previous generation can be recognized and
@@ -140,7 +159,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         lastCaptureFailure = nil
         activelyRecording = true
         paused = false
-        heldForPlayback = false
+        liftPlaybackHold()
         shouldKeepEngineRunning = true
     }
 
@@ -154,7 +173,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         }
         activelyRecording = false
         paused = false
-        heldForPlayback = false
+        liftPlaybackHold()
         shouldKeepEngineRunning = true
     }
 
@@ -201,7 +220,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             throw error
         }
         paused = false
-        heldForPlayback = false
+        liftPlaybackHold()
         shouldKeepEngineRunning = true
     }
 
@@ -313,6 +332,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         publishGenerationForInterruptionObservers()
         let frameGeneration = captureGeneration
         engine.installInputTap(bufferSize: 1_024, format: tapFormat) { [weak self] buffer, _ in
+            let frameHoldEpoch = self?.holdEpochForTap ?? 0
             // AVAudioEngine owns and reuses tap buffers as soon as this block
             // returns. Copy the frame bytes before crossing onto MainActor so
             // conversion never reads a recycled hardware buffer.
@@ -339,7 +359,8 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 // admission seam checks the frame's own generation against
                 // the currently installed tap before anything downstream
                 // (including consume's own defense-in-depth guard) runs.
-                guard let self, self.acceptsFrame(generation: frameGeneration) else { return }
+                guard let self, self.acceptsFrame(generation: frameGeneration),
+                      frameHoldEpoch == self.holdEpoch else { return }
                 self.consume(copy, generation: frameGeneration)
             }
         }
