@@ -12423,8 +12423,9 @@ final class AppState: ObservableObject {
 
     /// Fetches the bot's picture from its profile's asset store once per
     /// avatar generation. `has_avatar` on the roster row gates the call, so
-    /// a bot without a picture costs nothing. Returns false only when the
-    /// fetch failed and a retry could help.
+    /// a bot without a picture costs nothing. Returns false when the
+    /// picture is not settled yet (failed, in flight elsewhere, or offline)
+    /// and a later retry could help.
     @discardableResult
     func loadBotAvatarIfNeeded(_ bot: BotProfile) async -> Bool {
         let name = bot.name
@@ -12434,9 +12435,11 @@ final class AppState: ObservableObject {
             return true
         }
         let generation = botAvatarGeneration
-        guard botAvatarFetchedGeneration[name] != generation,
-              botAvatarFetchInflight[name] != generation,
-              let client, isConnected else { return true }
+        guard botAvatarFetchedGeneration[name] != generation else { return true }
+        // In flight elsewhere or offline: not done yet, so a retrying caller
+        // checks again after its backoff instead of trusting the other fetch.
+        guard botAvatarFetchInflight[name] != generation,
+              let client, isConnected else { return false }
         let epoch = botRosterEpoch
         botAvatarFetchInflight[name] = generation
         defer {
@@ -12562,26 +12565,18 @@ final class AppState: ObservableObject {
         }
         let epoch = botRosterEpoch
         var problems: [String] = []
-        // The picture goes first so ui_meta's `imageKind` (what Desktop
-        // renders from) only changes once the asset store agrees.
-        var pictureChanged = false
+        // Ordering keeps ui_meta's `imageKind` (what Desktop renders from)
+        // from ever claiming a photo the asset store lacks: a new picture is
+        // uploaded before `imageKind = photo` is written, and a removal
+        // deletes the asset only after `imageKind = shape` is confirmed.
+        var uploaded = false
         if let png = draft.newAvatarPNG {
-            pictureChanged = await storeBotAvatar(png, for: bot.name, client: client, epoch: epoch)
-            if !pictureChanged {
+            uploaded = await storeBotAvatar(png, for: bot.name, client: client, epoch: epoch)
+            if !uploaded {
                 problems.append(AppLocalization.string("The picture was not saved."))
             }
-        } else if draft.removesAvatar {
-            do {
-                try await client.setBotAvatar(name: bot.name, png: nil)
-                pictureChanged = true
-                if botOpenFenceIsCurrent(epoch: epoch, client: client) {
-                    botAvatarImages[bot.name] = nil
-                    botAvatarFetchedGeneration[bot.name] = nil
-                }
-            } catch {
-                problems.append(AppLocalization.string("The picture was not removed."))
-            }
         }
+        let removing = draft.newAvatarPNG == nil && draft.removesAvatar
         var patch: [String: Any?] = [:]
         let title = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
         if title != (bot.botTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines) {
@@ -12591,13 +12586,12 @@ final class AppState: ObservableObject {
             patch.updateValue(draft.color, forKey: "color")
             patch["custom"] = true
         }
-        if pictureChanged {
-            if draft.newAvatarPNG != nil {
-                patch["imageKind"] = "photo"
-                patch["custom"] = true
-            } else {
-                patch["imageKind"] = "shape"
-            }
+        let changesNameOrColor = !patch.isEmpty
+        if uploaded {
+            patch["imageKind"] = "photo"
+            patch["custom"] = true
+        } else if removing {
+            patch["imageKind"] = "shape"
         }
         let originalDescription = loadedDetails?.description ?? bot.profileDescription
         let description = draft.description.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -12606,6 +12600,22 @@ final class AppState: ObservableObject {
         // unloaded editor can never blank a bot's personality.
         let soulChanged = loadedDetails.map { draft.soul != $0.soul } ?? false
 
+        /// The warnings for a meta write that did not land.
+        func metaNotSaved() -> [String] {
+            var notes: [String] = []
+            if changesNameOrColor {
+                notes.append(AppLocalization.string("The name or color was not saved."))
+            }
+            if uploaded {
+                notes.append(AppLocalization.string("The picture was saved, but its look was not."))
+            }
+            if removing {
+                notes.append(AppLocalization.string("The picture was not removed."))
+            }
+            return notes
+        }
+
+        var metaPersisted = patch.isEmpty
         if !patch.isEmpty || descriptionChanged || soulChanged {
             do {
                 let result = try await client.configureBotProfile(
@@ -12616,7 +12626,9 @@ final class AppState: ObservableObject {
                     soul: soulChanged ? draft.soul : nil
                 )
                 guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
-                    // The server changed mid-save; only the picture result is known.
+                    // The server changed mid-save: the meta write's outcome
+                    // is unknown, so a pending removal never runs.
+                    problems += metaNotSaved()
                     return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
                 }
                 var sections: [String] = []
@@ -12630,23 +12642,33 @@ final class AppState: ObservableObject {
                     if outcome == .conflict {
                         outcome = await retryBotMetaWrite(bot.name, patch: patch, client: client, epoch: epoch)
                     }
-                    if outcome == .failed || outcome == .conflict {
-                        problems.append(AppLocalization.string("The name or color was not saved."))
+                    metaPersisted = outcome == .persisted || outcome == .unsupported
+                    if !metaPersisted {
+                        problems += metaNotSaved()
                     }
                 }
             } catch {
-                if pictureChanged {
-                    // The picture already landed; only the other fields failed.
-                    if !patch.isEmpty {
-                        problems.append(AppLocalization.string("The name or color was not saved."))
-                    }
-                    if descriptionChanged || soulChanged {
-                        problems.append(AppLocalization.string("The description or personality was not saved."))
-                    }
-                    await refreshBotRosterAfterWrite()
-                    return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
+                guard uploaded else {
+                    return .failed(AppLocalization.string("Could not save the bot: \(error.localizedDescription)"))
                 }
-                return .failed(AppLocalization.string("Could not save the bot: \(error.localizedDescription)"))
+                // The picture already landed; only the other fields failed.
+                problems += metaNotSaved()
+                if descriptionChanged || soulChanged {
+                    problems.append(AppLocalization.string("The description or personality was not saved."))
+                }
+                await refreshBotRosterAfterWrite()
+                return .saved(warning: problems.joined(separator: " "))
+            }
+        }
+        if removing, metaPersisted {
+            do {
+                try await client.setBotAvatar(name: bot.name, png: nil)
+                if botOpenFenceIsCurrent(epoch: epoch, client: client) {
+                    botAvatarImages[bot.name] = nil
+                    botAvatarFetchedGeneration[bot.name] = nil
+                }
+            } catch {
+                problems.append(AppLocalization.string("The picture was not removed."))
             }
         }
         await refreshBotRosterAfterWrite()

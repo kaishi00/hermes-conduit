@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "The picture was saved, but its look was not." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片已保存，但外观设置未保存。"
+          }
+        }
+      }
+    },
     "Picture" : {
       "localizations" : {
         "zh-Hans" : {
