@@ -3553,7 +3553,8 @@ final class AppState: ObservableObject {
         }
         // A call often ends with the phone locked: keep Conduit running
         // until the closing save lands (the outbox covers it if it can't).
-        let endBackgroundTask = beginVoiceTranscriptBackgroundTask()
+        // A call with nothing left to send needs no extra time.
+        let endBackgroundTask: () -> Void = queuedCallID == nil ? {} : beginVoiceTranscriptBackgroundTask()
         Task { [weak self] in
             defer { endBackgroundTask() }
             await recorder.flush()
@@ -6763,6 +6764,8 @@ final class AppState: ObservableObject {
         continuousConversationEnabled = true
         keepVoiceListeningWhenLocked = false
         voiceCallSaveBlockedKeys = []
+        pendingVoiceCallSaves = 0
+        voiceCallSavesBlocked = false
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
         retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
@@ -20901,6 +20904,8 @@ final class AppState: ObservableObject {
         continuousConversationEnabled = preferences.continuousConversation
         keepVoiceListeningWhenLocked = preferences.keepListeningWhenLocked ?? false
         voiceConversationController.setProfilePreferences(preferences)
+        // Voice settings shows this profile's unsaved calls, not the last one's.
+        publishVoiceCallSaveStatus()
         refreshVoiceControllerGateway()
         refreshReadAloudGateway()
     }
