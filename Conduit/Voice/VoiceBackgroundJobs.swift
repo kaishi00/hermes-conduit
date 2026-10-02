@@ -429,11 +429,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// The call left its chat (it ended, or a boundary reset it). Requests
     /// still waiting their turn are dropped: nobody is on the call to hear
-    /// them. A turn already sent keeps running in the chat.
+    /// them. A turn already sent keeps running in the chat, unannounced:
+    /// its reply is there, and a later call shouldn't bring it up.
     func detachLiveThread() {
         liveThread = nil
-        for index in jobs.indices where jobs[index].isThreadTurn && !jobs[index].threadTurnSubmitted && jobs[index].status.isActive {
-            jobs[index].status = .cancelled
+        for index in jobs.indices where jobs[index].isThreadTurn && jobs[index].status.isActive {
+            if !jobs[index].threadTurnSubmitted { jobs[index].status = .cancelled }
             jobs[index].outcomeDelivered = true
         }
         pruneSettledJobs()
@@ -751,6 +752,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private func takeNotice() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
         for index in jobs.indices {
             let job = jobs[index]
+            // A thread turn its call let go of is never announced.
+            if job.isThreadTurn, job.outcomeDelivered { continue }
             if job.status == .needsInput, !job.inputRequestDelivered {
                 jobs[index].inputRequestDelivered = true
                 return (.speak(AppLocalization.string("\(job.title) is waiting for your approval or an answer. Open it in Conduit to respond.")), job.id)

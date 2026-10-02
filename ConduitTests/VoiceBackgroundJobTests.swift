@@ -649,6 +649,18 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.startThreadTurn(request: "after").jobID, "no chat to send to")
     }
 
+    func testASentTurnOutlivesTheCallWithoutBeingAnnounced() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        _ = supervisor.startThreadTurn(request: "deploy")
+        await waitFor { !fake.threadSubmissions.isEmpty }
+
+        supervisor.detachLiveThread()
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Deployed.", reasoning: nil))
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished, "it kept running in the chat")
+        XCTAssertNil(supervisor.takePendingNotice(), "a later call doesn't bring it up")
+    }
+
     func testAFailedThreadSubmitIsReported() async {
         let (supervisor, fake) = makeThreadSupervisor()
         fake.threadSubmitError = URLError(.notConnectedToInternet)
