@@ -1411,6 +1411,75 @@ final class HermesClient: ObservableObject {
         return (sessionId, stored)
     }
 
+    // MARK: - Bot management
+    //
+    // Every `profiles.*` write addresses its profile through `name` and is
+    // sent UNSCOPED, like `profiles.list`: the dashboard's own profile
+    // context must never redirect a write meant for another bot.
+
+    /// `profiles.create`. A fresh profile (bundled skills) that inherits the
+    /// launch profile's model and credentials (the gateway's default).
+    func createBotProfile(name: String, description: String, soul: String) async throws {
+        _ = try await rpc("profiles.create", params: [
+            "name": name,
+            "description": description,
+            "soul": soul
+        ], timeout: 60, scoped: false)
+    }
+
+    /// `profiles.describe`: the editor snapshot (description + SOUL.md).
+    func describeBotProfile(name: String) async throws -> BotProfileDetails {
+        let result = try await rpc("profiles.describe", params: ["name": name], scoped: false)
+        guard let object = result.objectValue else { throw HermesError.invalidResponse }
+        return BotProfileDetails(
+            description: object["description"]?.stringValue ?? "",
+            soul: object["soul"]?.stringValue ?? ""
+        )
+    }
+
+    /// `profiles.configure`. Sections are independent; the answer's
+    /// `applied` reports each. `expectedMetaRevision` turns the ui_meta
+    /// write into a compare-and-swap against the roster snapshot it was
+    /// built from.
+    func configureBotProfile(
+        name: String,
+        botMeta: [String: Any]? = nil,
+        expectedMetaRevision: Int? = nil,
+        description: String? = nil,
+        soul: String? = nil
+    ) async throws -> AnyCodable {
+        var params: [String: Any] = ["name": name]
+        if let botMeta {
+            params["ui_meta"] = [BotManagement.uiMetaKey: botMeta]
+            if let expectedMetaRevision {
+                params["ui_meta_expected_revisions"] = [BotManagement.uiMetaKey: expectedMetaRevision]
+            }
+        }
+        if let description { params["description"] = description }
+        if let soul { params["soul"] = soul }
+        return try await rpc("profiles.configure", params: params, scoped: false)
+    }
+
+    /// `profiles.get_asset` for the bot's avatar. Nil when it has none.
+    func botAvatar(name: String) async throws -> Data? {
+        let result = try await rpc("profiles.get_asset", params: [
+            "name": name,
+            "asset": BotManagement.avatarAsset
+        ], scoped: false)
+        return BotAvatarImage.imageData(fromGetAssetResult: result)
+    }
+
+    /// `profiles.set_asset`: stores the avatar PNG, or clears it when nil.
+    func setBotAvatar(name: String, png: Data?) async throws {
+        var params: [String: Any] = ["name": name, "asset": BotManagement.avatarAsset]
+        if let png {
+            params["data"] = BotAvatarImage.dataURL(png: png)
+        } else {
+            params["clear"] = true
+        }
+        _ = try await rpc("profiles.set_asset", params: params, scoped: false)
+    }
+
 
     /// Projects are a newer, optional gateway capability. Unlike the ordinary
     /// session catalog, membership comes from Hermes' server-side project tree

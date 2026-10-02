@@ -1,15 +1,21 @@
 import SwiftUI
 
-/// The read-only Bots roster. Every row is a Hermes profile; selecting one
-/// resolves (or, only when genuinely missing, creates) the profile's ONE
-/// canonical hidden "Bot Chat" and opens it through the ordinary chat stack.
-/// Profile CRUD, groups, and presence are deliberately out of Phase 1 scope.
+/// The Bots roster. Every row is a Hermes profile; selecting one resolves
+/// (or, only when genuinely missing, creates) the profile's ONE canonical
+/// hidden "Bot Chat" and opens it through the ordinary chat stack. Bots are
+/// created, edited (look, picture, description, personality), pinned and
+/// deleted here, through the same gateway records Hermes Desktop uses.
 struct BotRosterView: View {
     @EnvironmentObject private var appState: AppState
     /// Language changes must re-render localized strings immediately while
     /// the Bots tab stays selected (same contract as SessionList/CronList).
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var presentedDesktopGroup: DesktopGroupChat?
+    @State private var editorMode: BotEditorSheet.Mode?
+    @State private var pendingDelete: BotProfile?
+    /// Outcome of the last management action that needs explaining (a
+    /// failed delete, a save whose picture did not land).
+    @State private var managementNotice: String?
 
     var body: some View {
         Group {
@@ -25,10 +31,49 @@ struct BotRosterView: View {
         .sheet(item: $presentedDesktopGroup) { group in
             DesktopGroupChatView(group: group)
         }
+        .sheet(item: $editorMode) { mode in
+            BotEditorSheet(mode: mode) { createdName, warning in
+                managementNotice = warning
+                guard let createdName,
+                      let bot = appState.botRoster.first(where: { $0.name == createdName }) else { return }
+                // Desktop opens a new bot's forever chat straight away.
+                appState.dismissSidebarDrawer()
+                Task { await appState.openBotChat(for: bot) }
+            }
+        }
+        .confirmationDialog(
+            deleteDialogTitle,
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDelete
+        ) { bot in
+            Button(AppLocalization.string("Delete Bot"), role: .destructive) {
+                Task {
+                    let error = await appState.deleteBot(bot)
+                    if error == nil { Haptics.success() } else { Haptics.warning() }
+                    managementNotice = error
+                }
+            }
+            Button(AppLocalization.string("Cancel"), role: .cancel) {}
+        } message: { _ in
+            Text(AppLocalization.string("This permanently removes the bot's profile, chats, memory and skills from the gateway."))
+        }
         .task(id: rosterRefreshKey) {
             await appState.refreshBotRoster()
             await appState.refreshGroupChatSupport()
         }
+    }
+
+    private var deleteDialogTitle: String {
+        guard let bot = pendingDelete else { return "" }
+        return AppLocalization.string("Delete \(bot.displayLabel)?")
+    }
+
+    private var canManageBots: Bool {
+        appState.botModePhase == .available && appState.isConnected
     }
 
     /// `botRoster` keeps EVERY bot (sessions-list hygiene reads the full
@@ -64,6 +109,30 @@ struct BotRosterView: View {
 
     private var rosterList: some View {
         List {
+            if let notice = managementNotice {
+                Section {
+                    HStack(alignment: .top) {
+                        BotModeNoticeRow(icon: "exclamationmark.circle", message: notice)
+                        Spacer(minLength: 0)
+                        Button {
+                            managementNotice = nil
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text(AppLocalization.string("Dismiss")))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+                }
+            }
             if case .failed(let message) = appState.botModePhase {
                 Section {
                     BotModeNoticeRow(
@@ -82,8 +151,26 @@ struct BotRosterView: View {
             if !visibleBots.isEmpty {
                 Section(AppLocalization.string("Bots")) {
                     ForEach(visibleBots) { bot in
-                        BotRosterRow(bot: bot)
+                        BotRosterRow(
+                            bot: bot,
+                            canManage: canManageBots,
+                            canDelete: appState.canDeleteBot(bot),
+                            onEdit: { editorMode = .edit(bot) },
+                            onTogglePin: {
+                                Task {
+                                    managementNotice = await appState.setBotPinned(bot, pinned: !bot.isPinned)
+                                }
+                            },
+                            onDelete: { pendingDelete = bot }
+                        )
                     }
+                    if canManageBots {
+                        newBotButton
+                    }
+                }
+            } else if canManageBots {
+                Section(AppLocalization.string("Bots")) {
+                    newBotButton
                 }
             }
             groupSection
@@ -91,7 +178,7 @@ struct BotRosterView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .refreshable {
-            await appState.refreshBotRoster()
+            await appState.reloadBotRoster()
             await appState.refreshGroupChatSupport()
         }
         .sheet(isPresented: $showingGroupCreateSheet) {
@@ -157,9 +244,27 @@ struct BotRosterView: View {
         }
     }
 
-    /// The create action as a roster card: the room rows' glyph, padding,
-    /// fill and border, with the accent carrying the "new" affordance.
+    private var newBotButton: some View {
+        Button {
+            Haptics.light()
+            editorMode = .create
+        } label: {
+            createCard(title: AppLocalization.string("New Bot"))
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+        .accessibilityLabel(Text(AppLocalization.string("New Bot")))
+    }
+
     private var newGroupCard: some View {
+        createCard(title: AppLocalization.string("New Group Chat"))
+    }
+
+    /// A create action as a roster card: the rows' glyph, padding, fill and
+    /// border, with the accent carrying the "new" affordance.
+    private func createCard(title: String) -> some View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
@@ -169,7 +274,7 @@ struct BotRosterView: View {
                     .foregroundStyle(.conduitAccent)
             }
             .frame(width: 36, height: 36)
-            Text(AppLocalization.string("New Group Chat"))
+            Text(title)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(.conduitAccent)
                 .fixedSize(horizontal: false, vertical: true)
@@ -250,6 +355,10 @@ struct BotRosterView: View {
             } description: {
                 Text(AppLocalization.string("Bots you create with Hermes appear here."))
             } actions: {
+                Button(AppLocalization.string("New Bot")) {
+                    editorMode = .create
+                }
+                .buttonStyle(.borderedProminent)
                 Button(AppLocalization.string("Retry")) {
                     Task { await appState.refreshBotRoster() }
                 }
@@ -344,6 +453,11 @@ struct GroupRosterRow: View {
 /// sharp-edged slab that ignores the rounded glass surfaces above it.
 private struct BotRosterRow: View {
     let bot: BotProfile
+    let canManage: Bool
+    let canDelete: Bool
+    let onEdit: () -> Void
+    let onTogglePin: () -> Void
+    let onDelete: () -> Void
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
@@ -392,6 +506,37 @@ private struct BotRosterRow: View {
         .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
         .accessibilityLabel(Text(bot.displayLabel))
         .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
+        .contextMenu {
+            if canManage {
+                Button(action: onEdit) {
+                    Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
+                }
+                Button(action: onTogglePin) {
+                    Label(
+                        bot.isPinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                        systemImage: bot.isPinned ? "pin.slash" : "pin"
+                    )
+                }
+                if canDelete {
+                    Button(role: .destructive, action: onDelete) {
+                        Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
+                    }
+                }
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if canManage {
+                if canDelete {
+                    Button(role: .destructive, action: onDelete) {
+                        Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
+                    }
+                }
+                Button(action: onEdit) {
+                    Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
+                }
+                .tint(.conduitAccent)
+            }
+        }
     }
 
     @ViewBuilder
@@ -412,62 +557,27 @@ private struct BotRosterRow: View {
     }
 }
 
-/// Static appearance: the profile's configured color when present, else a
-/// deterministic hue derived from the profile name (upstream's fallback).
-/// Animated/complex avatars are out of Phase 1 scope.
+/// A bot's face on the roster and in group pickers: its gateway-stored
+/// picture (the one Hermes Desktop shows) once fetched, else its initial on
+/// its color.
 struct BotMonogramView: View {
     let bot: BotProfile
+    @EnvironmentObject private var appState: AppState
     /// Scales with Dynamic Type so the glyph never clips at accessibility
     /// sizes (a fixed 36x36 frame clipped the letter once `.body` grew).
     @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = 36
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(color)
-            Text(initial)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.white)
+        BotAvatarView(
+            name: bot.name,
+            label: bot.displayLabel,
+            colorString: bot.appearanceColor,
+            image: appState.botAvatarImage(for: bot),
+            size: avatarSize
+        )
+        .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)") {
+            await appState.loadBotAvatarIfNeeded(bot)
         }
-        .frame(width: avatarSize, height: avatarSize)
-    }
-
-    private var initial: String {
-        String(bot.displayLabel.prefix(1)).uppercased()
-    }
-
-    private var color: Color {
-        if let name = bot.appearanceColor, let resolved = botColor(named: name) {
-            return resolved
-        }
-        // Deterministic across launches (Swift's hashValue is per-process
-        // salted, so a stable FNV-1a stands in for the name-derived hue).
-        var hash: UInt64 = 0xcbf29ce484222325
-        for byte in bot.name.utf8 {
-            hash = (hash ^ UInt64(byte)) &* 0x100000001b3
-        }
-        return Color(hue: Double(hash % 360) / 360.0,
-                     saturation: 0.45,
-                     brightness: 0.6)
-    }
-}
-
-/// Decodes the small set of named colors Bot Mode's appearance metadata uses.
-private func botColor(named name: String) -> Color? {
-    switch name.lowercased() {
-    case "blue": return .blue
-    case "brown": return .brown
-    case "cyan": return .cyan
-    case "green": return .green
-    case "indigo": return .indigo
-    case "mint": return .mint
-    case "orange": return .orange
-    case "pink": return .pink
-    case "purple": return .purple
-    case "red": return .red
-    case "teal": return .teal
-    case "yellow": return .yellow
-    default: return nil
     }
 }
 

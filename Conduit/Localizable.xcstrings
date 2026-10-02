@@ -1,6 +1,356 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Could not load this bot's personality." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载此机器人的个性设定。"
+          }
+        }
+      }
+    },
+    "Saved as the bot's SOUL.md." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存为机器人的 SOUL.md。"
+          }
+        }
+      }
+    },
+    "Shown behind the bot's initial when it has no picture." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机器人没有头像时，显示在其首字母背后。"
+          }
+        }
+      }
+    },
+    "This permanently removes the bot's profile, chats, memory and skills from the gateway." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会从网关永久删除该机器人的配置、聊天、记忆和技能。"
+          }
+        }
+      }
+    },
+    "This profile can't be deleted from here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在此删除此配置。"
+          }
+        }
+      }
+    },
+    "A profile named %@ already exists." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名为 %@ 的配置已存在。"
+          }
+        }
+      }
+    },
+    "Auto" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动"
+          }
+        }
+      }
+    },
+    "Automatic color" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动颜色"
+          }
+        }
+      }
+    },
+    "Choose Photo" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择照片"
+          }
+        }
+      }
+    },
+    "Color" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "颜色"
+          }
+        }
+      }
+    },
+    "Connect to Hermes to manage bots." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到 Hermes 以管理机器人。"
+          }
+        }
+      }
+    },
+    "Could not create the bot: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法创建机器人：%@"
+          }
+        }
+      }
+    },
+    "Could not delete %@: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法删除 %1$@：%2$@"
+          }
+        }
+      }
+    },
+    "Could not save the bot: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存机器人：%@"
+          }
+        }
+      }
+    },
+    "Could not update %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更新 %@。"
+          }
+        }
+      }
+    },
+    "Delete %@?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除 %@？"
+          }
+        }
+      }
+    },
+    "Delete Bot" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除机器人"
+          }
+        }
+      }
+    },
+    "Description" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述"
+          }
+        }
+      }
+    },
+    "Dismiss" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭"
+          }
+        }
+      }
+    },
+    "Display Name" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示名称"
+          }
+        }
+      }
+    },
+    "Edit Bot" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑机器人"
+          }
+        }
+      }
+    },
+    "Give the bot a name with at least one letter or number." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请为机器人起一个至少包含一个字母或数字的名称。"
+          }
+        }
+      }
+    },
+    "New Bot" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建机器人"
+          }
+        }
+      }
+    },
+    "Optional. Leave empty to start from a short identity built from the name and description." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选。留空则根据名称和描述生成一段简短的身份设定。"
+          }
+        }
+      }
+    },
+    "Profile ID: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 ID：%@"
+          }
+        }
+      }
+    },
+    "Remove Photo" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除照片"
+          }
+        }
+      }
+    },
+    "That picture could not be used." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法使用该图片。"
+          }
+        }
+      }
+    },
+    "The bot gets its own Hermes profile, chat, memory and skills." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机器人将拥有自己的 Hermes 配置、聊天、记忆和技能。"
+          }
+        }
+      }
+    },
+    "The bot was created, but its picture or look was not saved. Edit the bot to try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机器人已创建，但其头像或外观未保存。请编辑机器人后重试。"
+          }
+        }
+      }
+    },
+    "The description or personality was not saved." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述或个性设定未保存。"
+          }
+        }
+      }
+    },
+    "The name or color was not saved." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名称或颜色未保存。"
+          }
+        }
+      }
+    },
+    "The picture was not removed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "头像未移除。"
+          }
+        }
+      }
+    },
+    "The picture was not saved." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "头像未保存。"
+          }
+        }
+      }
+    },
+    "Use at least one letter or number." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请至少使用一个字母或数字。"
+          }
+        }
+      }
+    },
+    "What this bot is for" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个机器人的用途"
+          }
+        }
+      }
+    },
     "I don't know a profile or bot called %@, so I didn't start the job." : {
       "localizations" : {
         "zh-Hans" : {

@@ -68,8 +68,22 @@ struct BotProfile: Identifiable, Equatable {
     /// before renames. Mention resolution gap-fill only: a live name always
     /// outranks another bot's rename history (upstream `previous_names`).
     var previousNames: [String] = []
+    /// `profiles.list` `is_default`: the gateway's primary profile.
+    var isDefault = false
+    /// The raw `ui_meta['hermes-bots']` object. Bot editors write the key
+    /// back WHOLE (the gateway replaces it), so fields this client does not
+    /// model — Desktop's sections, groups, avatar shape — must round-trip.
+    var botMeta: [String: AnyCodable] = [:]
+    /// `ui_meta_revisions['hermes-bots']`: the compare-and-swap revision a
+    /// write expects. Nil on gateways that predate ui_meta CAS.
+    var botMetaRevision: Int?
 
     var id: String { name }
+
+    /// Removable from Conduit: never the gateway's primary profile.
+    var isDeletable: Bool {
+        !isDefault && !BotManagement.isDefaultProfile(name)
+    }
 
     /// Upstream `displayName`: the bot's customized title, else the profile's
     /// display name, else the profile name.
@@ -132,7 +146,7 @@ enum BotRosterDecoder {
     private static func decodeRow(_ object: [String: AnyCodable]) -> BotProfile? {
         guard let name = object["name"]?.stringValue?
             .trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
-        let meta = object["ui_meta"]?.objectValue?["hermes-bots"]?.objectValue
+        let meta = object["ui_meta"]?.objectValue?[BotManagement.uiMetaKey]?.objectValue
         var bot = BotProfile(
             name: name,
             botTitle: meta?["title"]?.stringValue,
@@ -151,6 +165,13 @@ enum BotRosterDecoder {
         bot.previousNames = (object["previous_names"]?.arrayValue ?? [])
             .compactMap { $0.stringValue }
             .filter { !$0.isEmpty }
+        bot.isDefault = object["is_default"]?.boolValue ?? false
+        bot.botMeta = meta ?? [:]
+        if let revisions = object["ui_meta_revisions"]?.objectValue {
+            // Present-but-missing key is revision 0: the gateway feature-
+            // detects CAS with an always-present (possibly empty) object.
+            bot.botMetaRevision = revisions[BotManagement.uiMetaKey]?.intValue ?? 0
+        }
         return bot
     }
 
