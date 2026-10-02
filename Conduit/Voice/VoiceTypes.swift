@@ -350,6 +350,32 @@ enum VoiceScreenAwake {
     }
 }
 
+/// Read Aloud playback speed: a device-wide choice (not per profile) for the
+/// speaker button under replies. Voice conversations always play at 1x.
+enum ReadAloudSpeed: Double, CaseIterable, Identifiable {
+    case normal = 1.0
+    case fast = 1.25
+    case faster = 1.5
+    case fastest = 1.75
+    case double = 2.0
+
+    static let preferenceKey = "conduit.voice.readAloudSpeed"
+
+    var id: Double { rawValue }
+    var rate: Float { Float(rawValue) }
+
+    /// "1x", "1.25x", …
+    var label: String {
+        let number = rawValue.formatted(.number.precision(.fractionLength(0...2)))
+        return "\(number)x"
+    }
+
+    /// The stored choice; anything missing or unrecognised reads as 1x.
+    static func current(defaults: UserDefaults = .standard) -> ReadAloudSpeed {
+        ReadAloudSpeed(rawValue: defaults.double(forKey: preferenceKey)) ?? .normal
+    }
+}
+
 /// A prebuilt Gemini Live voice: its API name and Google's one-word
 /// description of how it sounds.
 struct GeminiLiveVoice: Equatable, Identifiable {
@@ -596,12 +622,22 @@ protocol SpeechPlaybackService: AnyObject {
     /// Conversation playback joins the capture-owned session; standalone
     /// flows (Read Aloud, provider tests) own the session alone.
     var ownershipIntent: VoiceAudioIntent { get set }
+    /// Speed applied to the next stream or clip; 1.0 is normal speed.
+    var playbackRate: Float { get set }
     func start(sampleRate: Double) throws
     func enqueuePCM16(_ data: Data, sampleRate: Double) throws -> Int
     func playEncodedAudioData(_ data: Data) throws
     func finish() throws
     func drain() async
     func stop()
+}
+
+extension SpeechPlaybackService {
+    /// Services without a speed control play at normal speed.
+    var playbackRate: Float {
+        get { 1 }
+        set {}
+    }
 }
 
 @MainActor

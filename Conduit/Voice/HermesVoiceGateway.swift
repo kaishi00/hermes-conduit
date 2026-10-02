@@ -161,15 +161,23 @@ final class HermesSpeechStream: VoiceSpeechStream {
     private var cancelledByClient = false
     private var finishTimeoutTask: Task<Void, Never>?
     private var finishSendTask: Task<Void, Never>?
+    /// How long the stream may stay silent after `finish()` before it is
+    /// judged dead. An idle window, not a total deadline: a long reply is
+    /// still being synthesized well past any fixed budget (Read Aloud sends
+    /// the whole message at once, so its synthesis runs entirely after
+    /// finish), and a total deadline cut it off mid-sentence (#303).
+    private let finishIdleTimeout: Duration
 
     init(
         task: any HermesSpeechSocket,
+        finishIdleTimeout: Duration = .seconds(20),
         fallback: @escaping @MainActor (String) async throws -> Data,
         onStart: @escaping @MainActor (Double) throws -> Void,
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) {
         self.task = task
+        self.finishIdleTimeout = finishIdleTimeout
         self.fallback = fallback
         self.onStart = onStart
         self.onPCM16 = onPCM16
@@ -213,24 +221,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
         finishRequested = true
         return try await withCheckedThrowingContinuation { continuation in
             completed = continuation
-            finishTimeoutTask?.cancel()
-            finishTimeoutTask = Task { [weak self] in
-                do { try await Task.sleep(for: .seconds(20)) }
-                catch { return }
-                guard let self, !self.terminal, !self.cancelledByClient else { return }
-                if self.receivedPCM {
-                    self.complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Hermes speech streaming timed out."))))
-                } else {
-                    self.fallbackMode = true
-                    // A send of {done:true} can remain suspended even after
-                    // the stream timeout. Retire it before scheduling the
-                    // fallback task, otherwise its occupied slot prevents
-                    // fallback audio from ever starting.
-                    self.finishSendTask?.cancel()
-                    self.finishSendTask = nil
-                    self.startFallbackIfNeeded()
-                }
-            }
+            armFinishIdleTimeout()
             finishSendTask = Task { [weak self] in
                 guard let self else { return }
                 do {
@@ -251,6 +242,31 @@ final class HermesSpeechStream: VoiceSpeechStream {
                         catch { self.complete(.failure(error)) }
                     }
                 }
+            }
+        }
+    }
+
+    /// (Re)starts the post-finish idle window. Called when finish begins and
+    /// again for every frame the server sends afterwards, so only a stream
+    /// that goes quiet for the whole window times out.
+    private func armFinishIdleTimeout() {
+        finishTimeoutTask?.cancel()
+        let timeout = finishIdleTimeout
+        finishTimeoutTask = Task { [weak self] in
+            do { try await Task.sleep(for: timeout) }
+            catch { return }
+            guard let self, !self.terminal, !self.cancelledByClient else { return }
+            if self.receivedPCM {
+                self.complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Hermes speech streaming timed out."))))
+            } else {
+                self.fallbackMode = true
+                // A send of {done:true} can remain suspended even after
+                // the stream timeout. Retire it before scheduling the
+                // fallback task, otherwise its occupied slot prevents
+                // fallback audio from ever starting.
+                self.finishSendTask?.cancel()
+                self.finishSendTask = nil
+                self.startFallbackIfNeeded()
             }
         }
     }
@@ -279,6 +295,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
         do {
             while !Task.isCancelled {
                 let message = try await task.receive()
+                if finishRequested, !terminal, !cancelledByClient, !fallbackMode { armFinishIdleTimeout() }
                 switch message {
                 case .data(let data):
                     if let control = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {

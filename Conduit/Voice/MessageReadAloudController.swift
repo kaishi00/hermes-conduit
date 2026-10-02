@@ -25,6 +25,9 @@ final class MessageReadAloudController: ObservableObject {
 
     private let playback: SpeechPlaybackService
     private let reportError: @MainActor (String) -> Void
+    /// Read Aloud speed, read when each playback starts so a change in
+    /// Settings applies from the next tap.
+    private let playbackRate: @MainActor () -> Float
     private var activeGateway: VoiceGatewayService?
     private var speechStream: VoiceSpeechStream?
     private var playbackTask: Task<Void, Never>?
@@ -34,10 +37,12 @@ final class MessageReadAloudController: ObservableObject {
     init(
         playback: SpeechPlaybackService? = nil,
         gateway: VoiceGatewayService? = nil,
+        playbackRate: @escaping @MainActor () -> Float = { ReadAloudSpeed.current().rate },
         reportError: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         self.playback = playback ?? AVSpeechPlaybackService()
         self.activeGateway = gateway
+        self.playbackRate = playbackRate
         self.reportError = reportError
     }
 
@@ -139,6 +144,7 @@ final class MessageReadAloudController: ObservableObject {
             // Pin output-only ownership per operation rather than inheriting
             // whatever intent a shared playback instance last claimed.
             playback.ownershipIntent = .standalonePlayback
+            playback.playbackRate = playbackRate()
             let stream = try await gateway.openSpeechStream(
                 onStart: { [weak self] sampleRate in
                     guard let self, self.isCurrent(generation) else { return }
