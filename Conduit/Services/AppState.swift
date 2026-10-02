@@ -3613,7 +3613,8 @@ final class AppState: ObservableObject {
     }
 
     /// Recounts the active dashboard and profile's queued calls. A running
-    /// call's own checkpoint isn't waiting on anything, so it isn't counted.
+    /// call's checkpoint and a closing save still in flight aren't waiting
+    /// on anything, so they aren't counted.
     private func publishVoiceCallSaveStatus() {
         let key = voiceHistoryKey(profile: activeProfile)
         let dashboard = activeDashboardID?.uuidString ?? "-"
@@ -3622,8 +3623,11 @@ final class AppState: ObservableObject {
         let pending = outbox.entries.filter { entry in
             entry.dashboard == dashboard && entry.profile == activeProfile
                 && entry.request.callID != voiceCallRecorder?.callID
+                && !voiceTranscriptsSaving.contains(entry.request.callID)
         }.count
         if pendingVoiceCallSaves != pending { pendingVoiceCallSaves = pending }
+        // The reason lasts only while a refused call is still waiting.
+        if pending == 0, voiceCallSaveBlockedKeys.contains(key) { voiceCallSaveBlockedKeys.remove(key) }
         let blocked = pending > 0 && voiceCallSaveBlockedKeys.contains(key)
         if voiceCallSavesBlocked != blocked { voiceCallSavesBlocked = blocked }
     }
@@ -3762,7 +3766,8 @@ final class AppState: ObservableObject {
     }
 
     /// A live call is already running; opening another would only surface it.
-    private var isLiveVoiceCallActive: Bool { isGeminiLiveActive || isGPTLiveActive || isGrokLiveActive }
+    /// Queued saves wait for it to end.
+    var isLiveVoiceCallActive: Bool { isGeminiLiveActive || isGPTLiveActive || isGrokLiveActive }
 
     /// Continues a saved call with a new live call on the selected engine.
     /// It is seeded with the row (a summary when it's long) and appends to
@@ -6757,6 +6762,7 @@ final class AppState: ObservableObject {
         voiceTranscriptionMode = .hermes
         continuousConversationEnabled = true
         keepVoiceListeningWhenLocked = false
+        voiceCallSaveBlockedKeys = []
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
         retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true

@@ -635,6 +635,7 @@ struct SettingsView: View {
                         pendingCount: appState.pendingVoiceCallSaves,
                         blocked: appState.voiceCallSavesBlocked,
                         isSaving: appState.isSavingQueuedVoiceCalls,
+                        isWaitingOnCall: appState.isLiveVoiceCallActive,
                         saveNow: { await appState.saveQueuedVoiceCallsNow() }
                     )
                 )

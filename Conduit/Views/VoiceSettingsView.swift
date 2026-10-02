@@ -1013,6 +1013,8 @@ struct VoiceCallSaveStatusModel {
     /// The host answered that it can't store voice calls.
     var blocked: Bool
     var isSaving: Bool
+    /// Saves wait while a live call runs: a save would stall it.
+    var isWaitingOnCall: Bool = false
     var saveNow: () async -> Void
 }
 
@@ -1035,7 +1037,7 @@ struct VoiceCallSaveStatusSection: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 44)
             }
-            .disabled(model.isSaving)
+            .disabled(model.isSaving || model.isWaitingOnCall)
             .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.14))
         }
     }
