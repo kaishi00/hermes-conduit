@@ -14642,6 +14642,12 @@ final class AppState: ObservableObject {
     /// send clears it.
     private var chatTakeoverAutomaticSessionID: String?
 
+    /// The stored chat behind a runtime id, so a rotated runtime id doesn't
+    /// re-arm automatic takeover for the same chat.
+    private func chatTakeoverGuardKey(_ sessionID: String) -> String {
+        canonicalSessionID(for: sessionID) ?? sessionID
+    }
+
     /// Records a send refused because another app owns the chat.
     private func noteChatOwnedElsewhere(
         _ refusal: RpcError,
@@ -14684,7 +14690,10 @@ final class AppState: ObservableObject {
         // just to publish the result.
         chatTakeoverTask = Task { [weak self] in
             let phase = await Self.runChatTakeover(client: client, state: waiting, profile: profile)
-            guard let phase, !Task.isCancelled, let self,
+            guard let self else { return }
+            // Only the latest takeover clears its own handle.
+            if !Task.isCancelled { self.chatTakeoverTask = nil }
+            guard let phase, !Task.isCancelled,
                   self.chatTakeover?.sessionID == waiting.sessionID else { return }
             var settled = waiting
             settled.phase = phase
@@ -14693,7 +14702,6 @@ final class AppState: ObservableObject {
                 settled.readyToken = self.chatTakeoverReadyCount
             }
             self.chatTakeover = settled
-            self.chatTakeoverTask = nil
         }
     }
 
@@ -14774,7 +14782,11 @@ final class AppState: ObservableObject {
         case ChatTakeoverError.malformed:
             return AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
         default:
-            return AppLocalization.string("Couldn't take this chat over: \(error.localizedDescription)")
+            let detail = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !detail.isEmpty, !(error is DashboardTicketBridgeError) else {
+                return AppLocalization.string("Couldn't take this chat over. Check the connection to your Hermes host and try again.")
+            }
+            return AppLocalization.string("Couldn't take this chat over: \(detail)")
         }
     }
 
@@ -14880,7 +14892,7 @@ final class AppState: ObservableObject {
             if chatTakeover?.sessionID == sessionId {
                 dismissChatTakeover()
             }
-            if chatTakeoverAutomaticSessionID == sessionId {
+            if chatTakeoverAutomaticSessionID == chatTakeoverGuardKey(sessionId) {
                 chatTakeoverAutomaticSessionID = nil
             }
             if isCurrentComposerSubmission(submissionContext) {
@@ -15148,8 +15160,8 @@ final class AppState: ObservableObject {
             // Automatic takeover starts once the refused draft is back in
             // the composer, which sends it again when the chat is Conduit's.
             if chatTakeover?.sessionID == sessionId, chatTakeover?.phase == .offered,
-               takesOverChatsAutomatically, chatTakeoverAutomaticSessionID != sessionId {
-                chatTakeoverAutomaticSessionID = sessionId
+               takesOverChatsAutomatically, chatTakeoverAutomaticSessionID != chatTakeoverGuardKey(sessionId) {
+                chatTakeoverAutomaticSessionID = chatTakeoverGuardKey(sessionId)
                 takeOverChat()
             }
             return false
