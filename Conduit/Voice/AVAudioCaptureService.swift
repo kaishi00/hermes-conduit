@@ -51,6 +51,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     /// up but no frame is admitted. Cleared when capture starts, resumes,
     /// pauses, or stops.
     var heldForPlayback = false
+    var isHeldForPlayback: Bool { heldForPlayback }
     /// The hold keeps the tap, so its frames share a capture generation
     /// with frames from after it. Lifting a hold advances this epoch, which
     /// the tap stamps on every frame on the audio thread, so playback audio

@@ -576,6 +576,7 @@ protocol AudioCaptureService: AnyObject {
     /// microphone, so listening can reopen while Conduit is in the
     /// background. Starting, resuming, pausing, or stopping capture ends it.
     func holdForPlayback()
+    var isHeldForPlayback: Bool { get }
     func resume() throws
     func finishUtterance() throws -> VoiceCapturedAudio
     func stop()

@@ -238,6 +238,33 @@ extension VoiceAudioSessionCoordinatorTests {
         service.stop()
     }
 
+    /// A frame tapped during the hold but still queued for the MainActor
+    /// when listening reopens is reply audio, and must not be recorded.
+    func testFrameTappedDuringAHoldIsDroppedAfterTheHoldLifts() async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        try service.startListening()
+        let tap = try XCTUnwrap(factory.engines.last?.tapBlock)
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
+        buffer.frameLength = 4_800
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for index in 0..<4_800 { samples[index] = 0.25 }
+
+        service.holdForPlayback()
+        tap(buffer, AVAudioTime(hostTime: 0))
+        try service.startListening()
+        await drainPendingMainActorWork()
+
+        XCTAssertTrue(service.capturedPCM.isEmpty, "reply audio from the hold never reaches the new window")
+
+        tap(buffer, AVAudioTime(hostTime: 0))
+        await drainPendingMainActorWork()
+
+        XCTAssertFalse(service.capturedPCM.isEmpty, "frames tapped after the hold are recorded")
+        service.stop()
+    }
+
     func testPlaybackHoldWithoutARunningEngineIsARealPause() {
         let factory = FakeCaptureEngineFactory()
         let service = makeCaptureService(factory)
@@ -443,6 +470,7 @@ private final class FakeCaptureEngine: VoiceCaptureEngine {
     private(set) var isRunning = false
     private(set) var hasTap = false
     private(set) var installedTapFormats: [AVAudioFormat?] = []
+    private(set) var tapBlock: AVAudioNodeTapBlock?
 
     init(factory: FakeCaptureEngineFactory) { self.factory = factory }
 
@@ -451,6 +479,7 @@ private final class FakeCaptureEngine: VoiceCaptureEngine {
 
     func installInputTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat?, block: @escaping AVAudioNodeTapBlock) {
         installedTapFormats.append(format)
+        tapBlock = block
         hasTap = true
     }
 

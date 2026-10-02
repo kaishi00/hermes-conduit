@@ -2566,6 +2566,34 @@ extension ContinuousConversationPreferenceTests {
         XCTAssertEqual(capture.pauseCount, 1)
     }
 
+    func testRelistenThatFailsBeforeCaptureReleasesAHeldMicrophone() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { true }
+        )
+        var preferences = Self.preferences(continuous: true)
+        preferences.keepListeningWhenLocked = true
+        controller.setProfilePreferences(preferences)
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        XCTAssertTrue(capture.isHeldForPlayback)
+
+        capture.permissionGranted = false
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Answer."))
+        let failed = await controller.waitForFailedState()
+
+        XCTAssertTrue(failed)
+
+        XCTAssertEqual(controller.state, .failed(VoiceAudioError.microphonePermissionDenied.localizedDescription))
+        XCTAssertFalse(capture.isHeldForPlayback, "the microphone doesn't stay on behind the failed relisten")
+    }
+
     func testSpeakerPlaybackStillPausesTheMicrophoneWithoutKeepListening() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)

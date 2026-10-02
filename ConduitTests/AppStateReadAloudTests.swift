@@ -320,6 +320,7 @@ private final class MockVoiceCapture: AudioCaptureService {
     func beginBargeInMonitoring() throws {}
     func pause() {}
     func holdForPlayback() {}
+    var isHeldForPlayback: Bool { false }
     func resume() throws {}
     func finishUtterance() throws -> VoiceCapturedAudio {
         VoiceCapturedAudio(wavData: Data(), pcm16Data: Data(), sampleRate: 16_000, duration: 0)

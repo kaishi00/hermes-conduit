@@ -333,10 +333,15 @@ final class VoiceConversationController: ObservableObject {
         isVoiceSessionActive = true
         // A fresh listen re-arms the runtime: suspended state ends here.
         rearmRuntimeAfterCaptureRestart()
-        guard let gateway else { state = .failed(AppLocalization.string("Voice is unavailable for this gateway.")); return }
+        guard let gateway else {
+            releaseHeldCapture()
+            state = .failed(AppLocalization.string("Voice is unavailable for this gateway."))
+            return
+        }
         _ = gateway // keeps the availability check explicit at the state edge.
         guard await capture.requestPermission() else {
             guard isCurrent(generation) else { return }
+            releaseHeldCapture()
             state = .failed(VoiceAudioError.microphonePermissionDenied.localizedDescription)
             return
         }
@@ -1105,6 +1110,12 @@ final class VoiceConversationController: ObservableObject {
     /// interrupted reply) ends the playback suspension with the microphone
     /// off. A held capture is still running, so release it the way the
     /// pause it stands in for would have; an already paused one is a no-op.
+    /// A relisten that fails before reaching capture would otherwise leave a
+    /// playback hold's microphone running behind the failed state.
+    private func releaseHeldCapture() {
+        if capture.isHeldForPlayback { capture.pause() }
+    }
+
     private func endPlaybackCaptureSuspensionWithoutRelistening() {
         if isPlaybackCaptureSuspended { capture.pause() }
         isPlaybackCaptureSuspended = false

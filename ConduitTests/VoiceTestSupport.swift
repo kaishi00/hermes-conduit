@@ -289,7 +289,8 @@ final class MockCapture: AudioCaptureService {
     /// (start/pause/resume/stop) so generation-tagged events can be tested.
     var captureGeneration: UInt64 = 0
     private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
-    private let permissionGranted: Bool
+    /// Mutable so a test can revoke permission between turns.
+    var permissionGranted: Bool
     private let startError: Error?
     /// Latches on the first successful `startListening` and is never cleared.
     /// It answers "did a capture window ever open", NOT production's
