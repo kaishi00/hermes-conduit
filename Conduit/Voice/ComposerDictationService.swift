@@ -35,26 +35,38 @@ final class ComposerDictationService: ObservableObject {
     private var finishTask: Task<Void, Never>?
     private var generation: UInt64 = 0
     private var producedText = false
-    /// Bumped by `cancel()` so a start still awaiting permission gives up.
+    /// Bumped by `cancel()` so a reserved start that hasn't run, or is
+    /// still awaiting permission, gives up.
     private var startToken: UInt64 = 0
+    /// The microphone is open (a dictation still settling its last words
+    /// is not capturing).
+    private var isCapturing = false
 
     init(audioCoordinator: VoiceAudioSessionCoordinator? = nil) {
         self.audioCoordinator = audioCoordinator ?? .shared
     }
 
-    /// Starts listening. Throws a message for the user when it can't.
-    func start() async throws {
-        guard !isDictating, !isStarting else { return }
+    /// Reserves a start, synchronously: a `cancel()` that lands before
+    /// `start(token:)` runs still stops it. A dictation still settling its
+    /// last words ends here, so its results never reach the new one.
+    /// Returns nil while one is starting or capturing.
+    func reserveStart() -> UInt64? {
+        guard !isStarting, !isCapturing else { return nil }
+        if isDictating { finish() }
         startToken &+= 1
-        let token = startToken
         isStarting = true
+        return startToken
+    }
+
+    /// Starts listening for the start `reserveStart()` returned. Throws a
+    /// message for the user when it can't.
+    func start(token: UInt64) async throws {
+        guard startToken == token, !isDictating else { return }
         defer { if startToken == token { isStarting = false } }
         let allowed = await AppleSpeechWakeWordService.requestPermissions()
-        // Cancelled (the composer went away) while permission was asked.
-        guard startToken == token else {
-            clearCallbacks()
-            return
-        }
+        // Cancelled (the composer went away) while permission was asked;
+        // cancel() already cleared the callbacks.
+        guard startToken == token else { return }
         guard allowed else {
             clearCallbacks()
             throw DictationError.message(AppLocalization.string("Dictation needs microphone and speech recognition access. You can allow them in Settings."))
@@ -82,6 +94,7 @@ final class ComposerDictationService: ObservableObject {
             throw DictationError.message(AppLocalization.string("The microphone is not available right now."))
         }
         audioSink.replace(with: request)
+        isCapturing = true
         isDictating = true
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             let transcript = result?.bestTranscription.formattedString
@@ -95,7 +108,8 @@ final class ComposerDictationService: ObservableObject {
     /// The finger lifted: stop listening and let the recognizer settle its
     /// last words, briefly. The microphone is let go at once.
     func stop() {
-        guard isDictating else { return }
+        guard isCapturing else { return }
+        isCapturing = false
         stopAudio()
         releaseAudio()
         audioSink.replace(with: nil)
@@ -140,6 +154,7 @@ final class ComposerDictationService: ObservableObject {
         audioSink.replace(with: nil)
         stopAudio()
         releaseAudio()
+        isCapturing = false
         isDictating = false
         let onFinish = onFinish
         clearCallbacks()

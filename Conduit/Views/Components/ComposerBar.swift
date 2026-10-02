@@ -324,6 +324,12 @@ struct ComposerBar: View {
                 saveDraft(for: activeDraftKey)
             }
         }
+        .onChange(of: appState.isVoiceInUse) { _, inUse in
+            // Voice took the microphone: dictation steps aside.
+            guard inUse else { return }
+            isHoldingMic = false
+            dictation.cancel()
+        }
         .onDisappear {
             isHoldingMic = false
             dictation.cancel()
@@ -1032,6 +1038,9 @@ struct ComposerBar: View {
     }
 
     private func beginDictation(stopsWhenReleased: Bool) {
+        // Reserved first: it ends a dictation still settling, whose
+        // callbacks must not be the new ones.
+        guard let token = dictation.reserveStart() else { return }
         dictationPrefix = text
         Haptics.medium()
         dictation.onTranscript = { transcript in
@@ -1043,7 +1052,7 @@ struct ComposerBar: View {
         }
         Task {
             do {
-                try await dictation.start()
+                try await dictation.start(token: token)
                 // Released while permission or the microphone was coming up.
                 if stopsWhenReleased, !isHoldingMic { dictation.stop() }
             } catch {

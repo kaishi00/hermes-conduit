@@ -322,6 +322,25 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(final, "Draft Buy milk.")
     }
 
+    func testADictationCancelledBeforeItsStartRunsNeverStarts() async throws {
+        let dictation = ComposerDictationService()
+        var finished = false
+        let token = try XCTUnwrap(dictation.reserveStart())
+        dictation.onFinish = { _ in finished = true }
+        XCTAssertNil(dictation.reserveStart(), "one start at a time")
+
+        // The composer went away before the start task ran.
+        dictation.cancel()
+        try await dictation.start(token: token)
+
+        XCTAssertFalse(dictation.isDictating)
+        XCTAssertFalse(dictation.isStarting)
+        XCTAssertNil(dictation.onFinish, "callbacks don't outlive a cancelled start")
+        XCTAssertFalse(finished)
+        XCTAssertNotNil(dictation.reserveStart(), "a later hold can start again")
+        dictation.cancel()
+    }
+
     func testVoiceInUseFollowsAnOpenVoiceSheet() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "VoiceInUse.\(UUID().uuidString)"))
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
