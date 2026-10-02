@@ -368,11 +368,13 @@ struct BotRosterView: View {
             } description: {
                 Text(AppLocalization.string("Bots you create with Hermes appear here."))
             } actions: {
-                Button(AppLocalization.string("New Bot")) {
-                    Haptics.light()
-                    editorMode = .create
+                if canManageBots {
+                    Button(AppLocalization.string("New Bot")) {
+                        Haptics.light()
+                        editorMode = .create
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
                 Button(AppLocalization.string("Retry")) {
                     Task { await appState.refreshBotRoster() }
                 }
@@ -519,6 +521,7 @@ private struct BotRosterRow: View {
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
         .accessibilityLabel(Text(bot.displayLabel))
+        .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
         .contextMenu {
             if canManage {
@@ -568,6 +571,14 @@ private struct BotRosterRow: View {
             // localized.
             Text(BotMode.canonicalChatTitle)
         }
+    }
+
+    /// The pin badge and the description, spoken after the name; the
+    /// label alone would leave both visual-only.
+    private var accessibilityValue: String {
+        let detail = bot.profileDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = [bot.isPinned ? AppLocalization.string("Pinned") : "", detail]
+        return parts.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 }
 

@@ -114,13 +114,20 @@ struct BotEditorSheet: View {
 
     private var avatarHeader: some View {
         VStack(spacing: 12) {
-            BotAvatarView(
-                name: avatarName,
-                label: avatarLabel,
-                colorString: draft.color,
-                image: previewImage,
-                size: 88
-            )
+            ZStack {
+                BotAvatarView(
+                    name: avatarName,
+                    label: avatarLabel,
+                    colorString: draft.color,
+                    image: previewImage,
+                    size: 88
+                )
+            }
+            // The avatar itself is decorative everywhere else; here it is the
+            // only sign of whether the bot will have a picture.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(AppLocalization.string("Picture")))
+            .accessibilityValue(Text(pictureStateDescription))
             HStack(spacing: 12) {
                 Button {
                     Haptics.light()
@@ -143,6 +150,14 @@ struct BotEditorSheet: View {
                         Label(AppLocalization.string("Remove Photo"), systemImage: "trash")
                     }
                     .buttonStyle(.bordered)
+                } else if draft.removesAvatar {
+                    Button {
+                        Haptics.light()
+                        draft.removesAvatar = false
+                    } label: {
+                        Label(AppLocalization.string("Keep Photo"), systemImage: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
             .font(.subheadline)
@@ -151,12 +166,26 @@ struct BotEditorSheet: View {
         .padding(.vertical, 4)
     }
 
+    private var pictureStateDescription: String {
+        if draft.newAvatarPNG != nil {
+            return AppLocalization.string("New photo chosen")
+        }
+        if draft.removesAvatar {
+            return AppLocalization.string("Photo will be removed")
+        }
+        return hasStoredAvatar ? AppLocalization.string("Photo set") : AppLocalization.string("No photo")
+    }
+
     private var colorSection: some View {
-        Section {
+        let names = swatchNames
+        return Section {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 8) {
                 swatch(nil, name: AppLocalization.string("Automatic color"))
                 ForEach(Array(BotAvatarColor.swatches.enumerated()), id: \.element) { item in
-                    swatch(item.element, name: swatchName(item.offset))
+                    swatch(
+                        item.element,
+                        name: names.indices.contains(item.offset) ? names[item.offset] : AppLocalization.string("Color")
+                    )
                 }
             }
             .padding(.vertical, 4)
@@ -168,9 +197,10 @@ struct BotEditorSheet: View {
     }
 
     /// VoiceOver names for `BotAvatarColor.swatches`, in hue order (0°, 30°, …).
-    /// Resolved per render so a language change applies immediately.
-    private func swatchName(_ index: Int) -> String {
-        let names = [
+    /// Resolved once per render of the grid so a language change applies
+    /// immediately.
+    private var swatchNames: [String] {
+        [
             AppLocalization.string("Red"),
             AppLocalization.string("Orange"),
             AppLocalization.string("Yellow"),
@@ -184,7 +214,6 @@ struct BotEditorSheet: View {
             AppLocalization.string("Magenta"),
             AppLocalization.string("Pink")
         ]
-        return names.indices.contains(index) ? names[index] : AppLocalization.string("Color")
     }
 
     private func swatch(_ value: String?, name: String) -> some View {
