@@ -49,6 +49,9 @@ struct LoginView: View {
     /// Keychain restore), so a returning saved-token user is not scrolled
     /// away from the top of the form every time the login screen appears.
     @State private var revealCloudflareSection = false
+    @State private var showExtraHeaders = false
+    /// Bumped when the extra-headers sheet saves so the row's count refreshes.
+    @State private var extraHeadersRevision = 0
     /// The WebKit session store used for the CURRENT browser sign-in (#148):
     /// the registered dashboard's own identified store when one exists, or a
     /// fresh per-presentation identity for a dashboard being added. Set at
@@ -159,6 +162,16 @@ struct LoginView: View {
         }
         .sheet(item: $connectionRepairContext) { context in
             ConnectionRepairSetupSheet(context: context)
+        }
+        .sheet(isPresented: $showExtraHeaders) {
+            let address = (try? ConnectionURLPolicy.normalizedBaseURL(serverUrl)) ?? serverUrl
+            CustomHeadersEditorSheet(
+                serverURL: address,
+                headers: CustomHeaderStore.shared.headers(forServerURL: address)
+            ) { headers in
+                CustomHeaderStore.shared.setHeaders(headers, forServerURL: address)
+                extraHeadersRevision += 1
+            }
         }
         .sheet(isPresented: $showNativeOAuth) {
             NativeOAuthSignInSheet(
@@ -401,6 +414,26 @@ struct LoginView: View {
                         Text("Used only to reach this Cloudflare-protected dashboard; the secret stays in Keychain.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                    Button {
+                        focusedField = nil
+                        showExtraHeaders = true
+                    } label: {
+                        HStack {
+                            Text(AppLocalization.string("Extra headers"))
+                            Spacer()
+                            let count = extraHeaderCount
+                            if count > 0 {
+                                Text(verbatim: String(count))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    .disabled(serverUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("login.extra-headers")
                 }
                 .padding(.horizontal, 2)
                 if let failure {
@@ -642,6 +675,13 @@ struct LoginView: View {
         }
     }
 
+    /// Valid extra headers saved for the address currently typed.
+    private var extraHeaderCount: Int {
+        _ = extraHeadersRevision
+        let address = (try? ConnectionURLPolicy.normalizedBaseURL(serverUrl)) ?? serverUrl
+        return CustomHeaderPolicy.sendable(CustomHeaderStore.shared.headers(forServerURL: address)).count
+    }
+
     var configuredCloudflareAccess: CloudflareAccessCredentials? {
         guard cloudflareEnabled else { return nil }
         return CloudflareAccessCredentials.from(clientID: cloudflareClientID, clientSecret: cloudflareClientSecret)
@@ -825,6 +865,14 @@ struct AuthWebView: UIViewRepresentable {
                 WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
             )
         }
+        if let normalized {
+            let script = CustomHeaderStore.shared.fetchInjectionUserScript(expectedBaseURL: normalized)
+            if !script.isEmpty {
+                config.userContentController.addUserScript(
+                    WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+                )
+            }
+        }
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         guard let normalized else {
@@ -866,7 +914,7 @@ struct AuthWebView: UIViewRepresentable {
         }
         let loginURL = dashboardURL.appending(path: "login")
         var request = URLRequest(url: loginURL)
-        request = cloudflareAccess?.applying(to: request) ?? request
+        request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
         return request
     }
 

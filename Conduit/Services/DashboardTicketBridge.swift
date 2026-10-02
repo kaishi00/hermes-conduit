@@ -318,6 +318,9 @@ final class DashboardTicketBridge: NSObject {
     let baseURL: String
     let webView: WKWebView
     let cloudflareAccess: CloudflareAccessCredentials?
+    /// The extra proxy headers baked into this bridge's page script at
+    /// construction. AppState rebuilds the bridge when the saved set changes.
+    let extraHeaders: [CustomHeader]
     /// The saved dashboard this bridge authenticates against, when one
     /// exists — decides which dashboard's scoped cookie mirror is restored
     /// into the WebKit store on load.
@@ -394,6 +397,7 @@ final class DashboardTicketBridge: NSObject {
         let normalizedBaseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL)) ?? ""
         self.baseURL = normalizedBaseURL
         self.cloudflareAccess = cloudflareAccess
+        self.extraHeaders = CustomHeaderPolicy.sendable(CustomHeaderStore.shared.headers(forServerURL: normalizedBaseURL))
         let resolvedDashboardID = dashboardID ?? SavedDashboardRegistryStore.load()?.dashboardID(atNormalizedURL: normalizedBaseURL)
         self.dashboardID = resolvedDashboardID
         self.nativeOAuthSession = resolvedDashboardID.flatMap {
@@ -414,6 +418,12 @@ final class DashboardTicketBridge: NSObject {
         if let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL), !script.isEmpty {
             configuration.userContentController.addUserScript(
                 WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+            )
+        }
+        let extraHeaderScript = CustomHeaderStore.shared.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL)
+        if !extraHeaderScript.isEmpty {
+            configuration.userContentController.addUserScript(
+                WKUserScript(source: extraHeaderScript, injectionTime: .atDocumentStart, forMainFrameOnly: true)
             )
         }
         self.webView = WKWebView(frame: .zero, configuration: configuration)
@@ -828,7 +838,7 @@ final class DashboardTicketBridge: NSObject {
         guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(baseURL),
               let url = URL(string: "\(normalized)/api/status") else { return }
         var request = URLRequest(url: url)
-        request = cloudflareAccess?.applying(to: request) ?? request
+        request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
         // The fresh load's landing is unknown until its navigation callback;
         // a stale verdict must not leak into its poll window. Reset the
         // verdicts explicitly (nil simulatedLanding in production), then

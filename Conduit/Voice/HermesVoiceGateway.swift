@@ -110,7 +110,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
             queryItems: [URLQueryItem(name: "ticket", value: ticket), URLQueryItem(name: "profile", value: profile)]
         )
         let request = URLRequest(url: url)
-        return cloudflareAccess?.applying(to: request) ?? request
+        return request.applyingProxyHeaders(cloudflare: cloudflareAccess)
     }
 
     private static func loadFallbackAudio(bridge: DashboardTicketBridge, profile: String, text: String) async throws -> Data {

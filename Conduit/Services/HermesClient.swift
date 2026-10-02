@@ -839,7 +839,7 @@ final class HermesClient: ObservableObject {
         self.transport = transport
 
         var request = URLRequest(url: url)
-        request = cloudflareAccess?.applying(to: request) ?? request
+        request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
         let socket = transport.makeSocket(
             request: request,
             onOpen: { [weak self] socket in Task { @MainActor in self?.didOpen(socket) } },
