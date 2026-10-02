@@ -152,9 +152,9 @@ struct BotEditorSheet: View {
     private var colorSection: some View {
         Section {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 7), spacing: 10) {
-                swatch(nil)
-                ForEach(BotAvatarColor.swatches, id: \.self) { value in
-                    swatch(value)
+                swatch(nil, name: AppLocalization.string("Automatic color"))
+                ForEach(Array(BotAvatarColor.swatches.enumerated()), id: \.element) { item in
+                    swatch(item.element, name: Self.swatchNames[item.offset])
                 }
             }
             .padding(.vertical, 4)
@@ -165,7 +165,23 @@ struct BotEditorSheet: View {
         }
     }
 
-    private func swatch(_ value: String?) -> some View {
+    /// VoiceOver names for `BotAvatarColor.swatches`, in hue order (0°, 30°, …).
+    private static let swatchNames: [String] = [
+        AppLocalization.string("Red"),
+        AppLocalization.string("Orange"),
+        AppLocalization.string("Yellow"),
+        AppLocalization.string("Lime"),
+        AppLocalization.string("Green"),
+        AppLocalization.string("Mint"),
+        AppLocalization.string("Cyan"),
+        AppLocalization.string("Sky Blue"),
+        AppLocalization.string("Blue"),
+        AppLocalization.string("Purple"),
+        AppLocalization.string("Magenta"),
+        AppLocalization.string("Pink")
+    ]
+
+    private func swatch(_ value: String?, name: String) -> some View {
         let isSelected = draft.color == value
         return Button {
             Haptics.light()
@@ -189,9 +205,7 @@ struct BotEditorSheet: View {
             .frame(width: 40, height: 40)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(value == nil
-            ? AppLocalization.string("Automatic color")
-            : AppLocalization.string("Color")))
+        .accessibilityLabel(Text(name))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 

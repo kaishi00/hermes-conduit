@@ -24,6 +24,12 @@ struct BotRosterView: View {
             // must the group probe's failure notice.
             if visibleBots.isEmpty && !hasGroupRows && groupProbeFailure == nil {
                 emptyState
+                    .safeAreaInset(edge: .top) {
+                        if let notice = managementNotice {
+                            managementNoticeCard(notice)
+                                .padding(.horizontal, 16)
+                        }
+                    }
             } else {
                 rosterList
             }
@@ -72,6 +78,29 @@ struct BotRosterView: View {
         return AppLocalization.string("Delete \(bot.displayLabel)?")
     }
 
+    /// A dismissible notice for the last management action that needs
+    /// explaining. Shown over the list and over the empty state alike, so a
+    /// warning is never lost when the roster has nothing visible.
+    private func managementNoticeCard(_ notice: String) -> some View {
+        HStack(alignment: .top) {
+            BotModeNoticeRow(icon: "exclamationmark.circle", message: notice)
+            Spacer(minLength: 0)
+            Button {
+                managementNotice = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(AppLocalization.string("Dismiss")))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
+    }
+
     private var canManageBots: Bool {
         appState.botModePhase == .available && appState.isConnected
     }
@@ -111,23 +140,7 @@ struct BotRosterView: View {
         List {
             if let notice = managementNotice {
                 Section {
-                    HStack(alignment: .top) {
-                        BotModeNoticeRow(icon: "exclamationmark.circle", message: notice)
-                        Spacer(minLength: 0)
-                        Button {
-                            managementNotice = nil
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Text(AppLocalization.string("Dismiss")))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
+                    managementNoticeCard(notice)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
@@ -356,6 +369,7 @@ struct BotRosterView: View {
                 Text(AppLocalization.string("Bots you create with Hermes appear here."))
             } actions: {
                 Button(AppLocalization.string("New Bot")) {
+                    Haptics.light()
                     editorMode = .create
                 }
                 .buttonStyle(.borderedProminent)

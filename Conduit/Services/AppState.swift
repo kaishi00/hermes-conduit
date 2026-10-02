@@ -4745,6 +4745,7 @@ final class AppState: ObservableObject {
         botAvatarImages = [:]
         botAvatarFetchedGeneration.removeAll()
         botAvatarFetchInflight.removeAll()
+        botRosterSupportsProtocol = false
         botRosterRefreshToken = nil
         // The in-flight refresh, if any, still completes but its epoch guard
         // discards the stale snapshot; drop the join handle so the next
@@ -12527,6 +12528,9 @@ final class AppState: ObservableObject {
     }
 
     private func storeBotAvatar(_ png: Data, for name: String, client: HermesClient, epoch: Int) async -> Bool {
+        // The generation the write belongs to: a reload that starts while it
+        // is in flight must still refetch, in case it read the older asset.
+        let generation = botAvatarGeneration
         do {
             try await client.setBotAvatar(name: name, png: png)
         } catch {
@@ -12534,7 +12538,7 @@ final class AppState: ObservableObject {
         }
         if botOpenFenceIsCurrent(epoch: epoch, client: client), let image = UIImage(data: png) {
             botAvatarImages[name] = image
-            botAvatarFetchedGeneration[name] = botAvatarGeneration
+            botAvatarFetchedGeneration[name] = generation
         }
         return true
     }
