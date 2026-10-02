@@ -87,6 +87,7 @@ final class FakeVoiceJobBackend {
     /// The runtime the chat resumes onto; nil keeps the target's own.
     var threadRuntime: String?
     var onThreadSubmit: (@MainActor () -> Void)?
+    var onLatestReply: (@MainActor () -> Void)?
     private(set) var threadSubmissions: [(String, String)] = []
 
     /// Strong captures: tests routinely discard the fake (`let (supervisor, _)
@@ -132,7 +133,10 @@ final class FakeVoiceJobBackend {
                 if let error = self.threadSubmitError { throw error }
                 return runtimeID
             },
-            latestThreadReply: { [self] _ in self.threadReply }
+            latestThreadReply: { [self] _ in
+                self.onLatestReply?()
+                return self.threadReply
+            }
         )
     }
 
@@ -962,6 +966,21 @@ extension VoiceConversationControllerTests {
         supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-new", storedSessionID: nil, title: "Build")
         let reply = await supervisor.lastThreadReply()
         XCTAssertEqual(reply, "Resumed reply.")
+        supervisor.detachLiveThread()
+    }
+
+    func testALastReplyReadDuringACallSwapIsDropped() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadReply = "Old chat's reply."
+        // The call ends and another attaches to a different chat mid-read.
+        fake.onLatestReply = {
+            supervisor.detachLiveThread()
+            supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-other", storedSessionID: nil, title: "Other")
+        }
+
+        let reply = await supervisor.lastThreadReply()
+
+        XCTAssertNil(reply, "the old chat's reply isn't read to the new call")
         supervisor.detachLiveThread()
     }
 

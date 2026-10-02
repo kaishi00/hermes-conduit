@@ -3973,7 +3973,7 @@ final class AppState: ObservableObject {
                 if sent { return sessionID }
             }
             if foundBusy { throw VoiceThreadBusyError() }
-            throw VoiceAudioError.unavailable(errorMessage ?? AppLocalization.string("Hermes could not send this to the chat."))
+            throw VoiceAudioError.unavailable(AppLocalization.string("Hermes could not send this to the chat."))
         }
         let target = runtimeID.isEmpty ? thread.runtimeSessionID : runtimeID
         // Re-read right before the send: a turn running there (typed on

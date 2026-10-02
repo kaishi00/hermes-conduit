@@ -473,11 +473,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// The attached chat's latest reply, read without starting a turn.
     func lastThreadReply() async -> String? {
-        if let thread = liveThread,
-           let reply = await backend.latestThreadReply(thread)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !reply.isEmpty {
-            return reply
-        }
+        guard let asked = liveThread else { return nil }
+        let read = await backend.latestThreadReply(asked)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The call that asked may have ended, or another call attached to a
+        // different chat, while the history was read.
+        guard liveThread == asked else { return nil }
+        if let read, !read.isEmpty { return read }
         // Only this chat's own turns: a reply from an earlier call's chat
         // must never be read out as this chat's. A turn that resumed the chat
         // on a new runtime still counts by the runtime it ran on.
@@ -862,7 +863,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         for index in jobs.indices {
             let job = jobs[index]
             // A thread turn its call let go of is never announced.
-            if job.isThreadTurn, job.outcomeDelivered || job.isDetachedThreadTurn { continue }
+            if job.isThreadTurn, job.outcomeDelivered || job.isDetachedThreadTurn || liveThread == nil { continue }
             if job.status == .needsInput, !job.inputRequestDelivered {
                 jobs[index].inputRequestDelivered = true
                 return (.speak(AppLocalization.string("\(job.title) is waiting for your approval or an answer. Open it in Conduit to respond.")), job.id)
