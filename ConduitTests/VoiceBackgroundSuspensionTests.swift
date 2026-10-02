@@ -1438,6 +1438,12 @@ extension AppStateVoiceSuspensionTests {
         harness.controller.pauseMicrophone()
 
         XCTAssertFalse(harness.controller.isBackgroundListening)
+
+        // The same holds once the session is torn down.
+        harness.controller.setBackgroundListening(true)
+        harness.controller.stop()
+
+        XCTAssertFalse(harness.controller.isBackgroundListening)
     }
 
     func testSigningOutClearsTheUnsavedVoiceCallStatus() {

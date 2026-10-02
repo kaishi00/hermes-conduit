@@ -3557,8 +3557,12 @@ final class AppState: ObservableObject {
         // until the closing save lands (the outbox covers it if it can't).
         // A call with nothing left to send needs no extra time, so the task
         // is only begun when there is a queued request.
-        var endBackgroundTask: () -> Void = {}
-        if queuedCallID != nil { endBackgroundTask = beginVoiceTranscriptBackgroundTask() }
+        let endBackgroundTask: () -> Void
+        if queuedCallID != nil {
+            endBackgroundTask = beginVoiceTranscriptBackgroundTask()
+        } else {
+            endBackgroundTask = {}
+        }
         Task { [weak self] in
             defer { endBackgroundTask() }
             await recorder.flush()
@@ -3621,6 +3625,12 @@ final class AppState: ObservableObject {
     /// call's checkpoint and a closing save still in flight aren't waiting
     /// on anything, so they aren't counted.
     private func publishVoiceCallSaveStatus() {
+        // Signed out: nothing is shown, whatever the outbox still holds.
+        guard connection != nil else {
+            if pendingVoiceCallSaves != 0 { pendingVoiceCallSaves = 0 }
+            if voiceCallSavesBlocked { voiceCallSavesBlocked = false }
+            return
+        }
         let key = voiceHistoryKey(profile: activeProfile)
         let dashboard = activeDashboardID?.uuidString ?? "-"
         var outbox = VoiceTranscriptOutbox.load(from: defaults)

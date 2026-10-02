@@ -379,6 +379,7 @@ extension HermesVoiceGatewayTimeoutTests {
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         defaults.set("default", forKey: "conduit.activeProfile")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
         let script = ScriptedVoiceHistoryRequests()
         appState.voiceHistoryClient = VoiceHistoryClient(request: script.request)
         let dashboard = appState.activeDashboardID?.uuidString ?? "-"
