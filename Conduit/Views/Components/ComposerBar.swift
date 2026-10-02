@@ -56,6 +56,12 @@ struct ComposerBar: View {
     /// The draft as it was when the hold began; dictated text goes after it.
     @State private var dictationPrefix = ""
     @State private var isHoldingMic = false
+    /// The pending hold on the mic: fires after the threshold unless the
+    /// finger lifts first, which makes the press a tap.
+    @State private var micHoldTask: Task<Void, Never>?
+    /// True while a finger is on the mic. Unlike `onEnded`, it also resets
+    /// when the touch is cancelled (an alert, the app leaving).
+    @GestureState private var isMicPressed = false
     /// The one-time "Tap for Voice · Hold to dictate" tip stays until a
     /// dictation has produced text.
     @AppStorage(ComposerDictation.tipDoneKey) private var dictationTipDone = false
@@ -327,11 +333,11 @@ struct ComposerBar: View {
         .onChange(of: appState.isVoiceInUse) { _, inUse in
             // Voice took the microphone: dictation steps aside.
             guard inUse else { return }
-            isHoldingMic = false
+            endMicPress()
             dictation.cancel()
         }
         .onDisappear {
-            isHoldingMic = false
+            endMicPress()
             dictation.cancel()
             // Dependable second hook: whether this view leaves for a room,
             // a session switch, or teardown, the typed text lands in the
@@ -957,8 +963,8 @@ struct ComposerBar: View {
     /// Tap opens Voice; press and hold dictates into the draft, never sent
     /// on its own.
     private var voiceButton: some View {
-        let canOpenVoice = appState.canStartPhoneVoiceConversation && !appState.isBusy && appState.composerIsEnabled
-        let canDictate = appState.composerIsEnabled && !appState.isVoiceInUse
+        let canOpenVoice = canOpenVoiceFromComposer
+        let canDictate = canDictateFromComposer
         // Capturing only: once the finger lifts, the mic is a mic again and
         // Send comes back while the last words settle.
         let isDictating = dictation.isCapturing
@@ -973,12 +979,18 @@ struct ComposerBar: View {
                 tint: isDictating ? .red.opacity(0.16) : (appState.canStartPhoneVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06)),
                 interactive: canOpenVoice || canDictate
             )
-            .gesture(
-                holdToDictate(canOpenVoice: canOpenVoice, canDictate: canDictate)
-                    .exclusively(before: TapGesture().onEnded {
-                        if canOpenVoice { openVoiceFromComposer() }
-                    })
-            )
+            .gesture(micPress())
+            .onChange(of: isMicPressed) { _, pressed in
+                guard !pressed else { return }
+                // On the next turn, so a normal lift's onEnded has already
+                // run; anything still pending is a cancelled touch, which
+                // ends like a lift but never counts as a tap.
+                Task { @MainActor in
+                    guard micHoldTask != nil || isHoldingMic else { return }
+                    endMicPress()
+                    dictation.stop()
+                }
+            }
             .overlay(alignment: .topTrailing) { dictationTip(canDictate: canDictate) }
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
@@ -1019,24 +1031,55 @@ struct ComposerBar: View {
         }
     }
 
-    /// Held past the long-press threshold: dictate until the finger lifts.
-    /// While a voice conversation has the microphone, a hold acts as a tap.
-    private func holdToDictate(canOpenVoice: Bool, canDictate: Bool) -> some Gesture {
-        LongPressGesture(minimumDuration: ComposerDictation.holdDuration)
-            .sequenced(before: DragGesture(minimumDistance: 0))
-            .onChanged { value in
-                guard case .second(true, _) = value, !isHoldingMic else { return }
-                isHoldingMic = true
-                if canDictate {
-                    beginDictation(stopsWhenReleased: true)
-                } else if canOpenVoice {
-                    openVoiceFromComposer()
+    private var canOpenVoiceFromComposer: Bool {
+        appState.canStartPhoneVoiceConversation && !appState.isBusy && appState.composerIsEnabled
+    }
+
+    private var canDictateFromComposer: Bool {
+        appState.composerIsEnabled && !appState.isVoiceInUse
+    }
+
+    /// One touch, timed here: lifted before the threshold it is a tap that
+    /// opens Voice; held past it, it dictates until the finger lifts. While
+    /// a voice conversation has the microphone, a hold acts as a tap.
+    /// (A long press exclusively before a tap left the tap unrecognized.)
+    private func micPress() -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .updating($isMicPressed) { _, pressed, _ in pressed = true }
+            .onChanged { _ in
+                guard micHoldTask == nil, !isHoldingMic else { return }
+                micHoldTask = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(ComposerDictation.holdDuration))
+                    guard !Task.isCancelled else { return }
+                    micHoldTask = nil
+                    if canDictateFromComposer {
+                        isHoldingMic = true
+                        beginDictation(stopsWhenReleased: true)
+                    } else if canOpenVoiceFromComposer {
+                        isHoldingMic = true
+                        openVoiceFromComposer()
+                    }
                 }
             }
             .onEnded { _ in
-                isHoldingMic = false
-                dictation.stop()
+                let release = ComposerDictation.release(
+                    heldPastThreshold: isHoldingMic,
+                    isCapturing: dictation.isCapturing,
+                    canOpenVoice: canOpenVoiceFromComposer
+                )
+                endMicPress()
+                switch release {
+                case .stopDictation: dictation.stop()
+                case .openVoice: openVoiceFromComposer()
+                case .nothing: break
+                }
             }
+    }
+
+    private func endMicPress() {
+        micHoldTask?.cancel()
+        micHoldTask = nil
+        isHoldingMic = false
     }
 
     private func beginDictation(stopsWhenReleased: Bool) {
