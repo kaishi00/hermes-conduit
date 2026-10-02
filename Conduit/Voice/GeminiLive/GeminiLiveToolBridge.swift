@@ -284,7 +284,10 @@ final class GeminiLiveToolBridge {
                 "message": "Sent to the chat. Hermes' reply will arrive later as a message; don't guess it.",
             ], scheduling: nil)]
         case .readLastReply:
-            guard let reply = await supervisor.lastThreadReply() else {
+            guard !isEnding else { return [] }
+            let reply = await supervisor.lastThreadReply()
+            guard !isEnding else { return [] }
+            guard let reply else {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "Hermes hasn't replied in this chat yet."], scheduling: .whenIdle)]
             }
             return [.toolResponse(id: call.id, name: call.name, result: ["reply": Self.clipped(reply)], scheduling: .whenIdle)]
