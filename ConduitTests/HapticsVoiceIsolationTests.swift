@@ -284,6 +284,8 @@ private final class StubPermissionCapture: AudioCaptureService {
     func startListening(includePreRoll: Bool) throws {}
     func beginBargeInMonitoring() throws {}
     func pause() {}
+    func holdForPlayback() {}
+    var isHeldForPlayback: Bool { false }
     func resume() throws {}
     func finishUtterance() throws -> VoiceCapturedAudio {
         VoiceCapturedAudio(wavData: Data([1]), pcm16Data: Data([1, 0]), sampleRate: 16_000, duration: 0.01)

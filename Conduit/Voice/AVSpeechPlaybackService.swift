@@ -46,6 +46,11 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// Conversation playback joins the capture-owned session; standalone
     /// flows (Read Aloud, TTS provider test) claim output-only ownership.
     var ownershipIntent: VoiceAudioIntent = .standalonePlayback
+    /// Speed for the next stream (Read Aloud's speed setting), applied when a
+    /// stream or encoded clip starts. At 1.0 the graph is the plain
+    /// player→mixer path voice conversations use; any other rate inserts a
+    /// pitch-preserving time stretch.
+    var playbackRate: Float = 1.0
     private(set) var isPlaying = false
 
     /// Optional injection instead of a default `.shared` argument: default
@@ -89,7 +94,15 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
 
     func start(sampleRate: Double) throws {
         stop()
-        guard let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: sampleRate, channels: 1, interleaved: true) else {
+        let rate = Self.clampedRate(playbackRate)
+        // Effect units render Float32 only, so a stretched stream schedules
+        // float buffers (converted in enqueuePCM16) instead of the Int16 ones
+        // the direct path plays.
+        let stretched = rate != 1
+        let format = stretched
+            ? AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)
+            : AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: sampleRate, channels: 1, interleaved: true)
+        guard let format else {
             throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format."))
         }
         lease = try coordinator.acquire(ownershipIntent)
@@ -99,7 +112,15 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
                 rebuild: { rebuildEngine() },
                 reassert: { try coordinator.reassert() },
                 start: {
-                    engine.connect(player, to: engine.mainMixerNode, format: format)
+                    if stretched {
+                        let timePitch = AVAudioUnitTimePitch()
+                        timePitch.rate = rate
+                        engine.attach(timePitch)
+                        engine.connect(player, to: timePitch, format: format)
+                        engine.connect(timePitch, to: engine.mainMixerNode, format: format)
+                    } else {
+                        engine.connect(player, to: engine.mainMixerNode, format: format)
+                    }
                     engine.prepare()
                     try engine.start()
                 }
@@ -136,10 +157,17 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         let frames = AVAudioFrameCount(alignedBytes / 2)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return 0 }
         buffer.frameLength = frames
-        guard let destination = buffer.int16ChannelData else { return 0 }
-        pcm.withUnsafeBytes { source in
-            guard let base = source.baseAddress else { return }
-            destination[0].assign(from: base.assumingMemoryBound(to: Int16.self), count: Int(frames))
+        if let destination = buffer.int16ChannelData {
+            pcm.withUnsafeBytes { source in
+                guard let base = source.baseAddress else { return }
+                destination[0].assign(from: base.assumingMemoryBound(to: Int16.self), count: Int(frames))
+            }
+        } else if let destination = buffer.floatChannelData {
+            pcm.withUnsafeBytes { source in
+                Self.convertPCM16(source, into: destination[0], frames: Int(frames))
+            }
+        } else {
+            return 0
         }
         pendingBuffers += 1
         // A stream stays started across drains (Gemini Live keeps it open
@@ -165,6 +193,12 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         do {
             let player = try AVAudioPlayer(data: data)
             player.delegate = self
+            // AVAudioPlayer supports up to 2x.
+            let rate = min(Self.clampedRate(playbackRate), 2)
+            if rate != 1 {
+                player.enableRate = true
+                player.rate = rate
+            }
             player.prepareToPlay()
             guard player.play() else { throw VoiceAudioError.unavailable(AppLocalization.string("Could not play Hermes fallback speech.")) }
             encodedPlayer = player
@@ -235,6 +269,23 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         engine = makeEngine()
         player = AVAudioPlayerNode()
         engine.attach(player)
+    }
+
+    /// Read Aloud offers 1x–2x. Slower than 1x is never played: the drain
+    /// watchdog budgets source-length audio, which a slowed stream outlasts.
+    /// Not-a-number plays at normal speed.
+    nonisolated static func clampedRate(_ rate: Float) -> Float {
+        guard rate.isFinite else { return 1 }
+        return min(max(rate, 1), 4)
+    }
+
+    /// Little-endian PCM16 to Float32 samples in [-1, 1), for the stretched
+    /// graph. Reads unaligned: the bytes come from a Data slice.
+    nonisolated static func convertPCM16(_ source: UnsafeRawBufferPointer, into destination: UnsafeMutablePointer<Float>, frames: Int) {
+        for index in 0..<min(frames, source.count / 2) {
+            let sample = source.loadUnaligned(fromByteOffset: index * 2, as: Int16.self)
+            destination[index] = Float(Int16(littleEndian: sample)) / 32_768
+        }
     }
 
     /// Ownership is released only after the engine stopped rendering, so the

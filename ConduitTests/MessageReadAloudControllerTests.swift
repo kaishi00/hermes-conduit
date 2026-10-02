@@ -50,6 +50,39 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .idle)
     }
 
+    func testEachPlaybackStartsAtTheSpeedChosenWhenTapped() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        var speed: Float = 1.5
+        let controller = MessageReadAloudController(
+            playback: playback,
+            gateway: gateway,
+            playbackRate: { speed }
+        )
+
+        controller.toggle(messageID: "message-a", content: "First")
+        for _ in 0..<1_000 where controller.state != .idle { await Task.yield() }
+        XCTAssertEqual(controller.state, .idle)
+        speed = 2
+        controller.toggle(messageID: "message-b", content: "Second")
+        for _ in 0..<1_000 where playback.startedRates.count < 2 { await Task.yield() }
+
+        XCTAssertEqual(playback.startedRates, [1.5, 2])
+    }
+
+    func testReadAloudSpeedReadsTheStoredChoice() throws {
+        let suite = "MessageReadAloudControllerTests.speed"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(ReadAloudSpeed.current(defaults: defaults), .normal)
+        defaults.set(1.5, forKey: ReadAloudSpeed.preferenceKey)
+        XCTAssertEqual(ReadAloudSpeed.current(defaults: defaults), .faster)
+        defaults.set(3.0, forKey: ReadAloudSpeed.preferenceKey)
+        XCTAssertEqual(ReadAloudSpeed.current(defaults: defaults), .normal, "an unknown value plays at 1x")
+        XCTAssertEqual(ReadAloudSpeed.allCases.map(\.label), ["1x", "1.25x", "1.5x", "1.75x", "2x"])
+    }
+
     func testEncodedFallbackReachesPlayback() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway(emitsEncoded: true)
@@ -437,6 +470,8 @@ private final class MockReadAloudPlayback: SpeechPlaybackService {
     private(set) var stopCount = 0
     var isPlaying = false
     var ownershipIntent: VoiceAudioIntent = .standalonePlayback
+    var playbackRate: Float = 1
+    private(set) var startedRates: [Float] = []
     var startError: Error?
     var enqueueError: Error?
     /// When set, drain() suspends until stop() releases it — models audio
@@ -447,6 +482,7 @@ private final class MockReadAloudPlayback: SpeechPlaybackService {
     func start(sampleRate: Double) throws {
         if let startError { throw startError }
         startedSampleRates.append(sampleRate)
+        startedRates.append(playbackRate)
         isPlaying = true
     }
 

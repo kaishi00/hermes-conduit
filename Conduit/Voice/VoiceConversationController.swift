@@ -333,10 +333,15 @@ final class VoiceConversationController: ObservableObject {
         isVoiceSessionActive = true
         // A fresh listen re-arms the runtime: suspended state ends here.
         rearmRuntimeAfterCaptureRestart()
-        guard let gateway else { state = .failed(AppLocalization.string("Voice is unavailable for this gateway.")); return }
+        guard let gateway else {
+            releaseHeldCapture()
+            state = .failed(AppLocalization.string("Voice is unavailable for this gateway."))
+            return
+        }
         _ = gateway // keeps the availability check explicit at the state edge.
         guard await capture.requestPermission() else {
             guard isCurrent(generation) else { return }
+            releaseHeldCapture()
             state = .failed(VoiceAudioError.microphonePermissionDenied.localizedDescription)
             return
         }
@@ -356,7 +361,12 @@ final class VoiceConversationController: ObservableObject {
             state = .listening
             scheduleBackgroundJobNoticeDelivery()
         } catch {
-            state = .failed(error.localizedDescription)
+            // iOS can still refuse the microphone in the background (a route
+            // change or another app took it while locked); its raw avfaudio
+            // error means nothing on the lock screen or after unlocking.
+            state = .failed(isBackgroundListeningRequested
+                ? AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue.")
+                : error.localizedDescription)
         }
     }
 
@@ -622,6 +632,7 @@ final class VoiceConversationController: ObservableObject {
         // The TTS provider test runs outside a voice conversation, so its
         // playback must claim standalone (output-only) session ownership.
         playback.ownershipIntent = .standalonePlayback
+        playback.playbackRate = 1
         let generation = operationGeneration
         defer {
             speechStream?.cancel()
@@ -790,14 +801,14 @@ final class VoiceConversationController: ObservableObject {
             state = .failed(message)
             playback.stop()
             cancelSpeechDrainAndStream()
-            isPlaybackCaptureSuspended = false
+            endPlaybackCaptureSuspensionWithoutRelistening()
         case .interrupted:
             guard awaitedAssistantResponseStarted else { return }
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
             playback.stop()
             cancelSpeechDrainAndStream()
-            isPlaybackCaptureSuspended = false
+            endPlaybackCaptureSuspensionWithoutRelistening()
             state = .idle
         }
     }
@@ -1078,7 +1089,37 @@ final class VoiceConversationController: ObservableObject {
         // the next listening window.
         speechDetector.reset()
         resetMicrophoneMeter()
-        capture.pause()
+        if keepsMicrophoneThroughPlayback {
+            capture.holdForPlayback()
+        } else {
+            capture.pause()
+        }
+    }
+
+    /// "Keep listening when locked" keeps the microphone through assistant
+    /// playback (frames dropped, hardware kept): iOS won't start recording
+    /// while Conduit is in the background, so a capture torn down for a
+    /// reply on a locked phone could never reopen and the conversation
+    /// failed with avfaudio error 2003329396. Keyed off the preference, not
+    /// the lock, so a reply that starts on screen and ends after the lock
+    /// still has a running microphone to come back to.
+    private var keepsMicrophoneThroughPlayback: Bool {
+        preferences.keepListeningWhenLocked == true
+    }
+
+    /// A turn that ends without a next listening window (failed or
+    /// interrupted reply) ends the playback suspension with the microphone
+    /// off. A held capture is still running, so release it the way the
+    /// pause it stands in for would have; an already paused one is a no-op.
+    /// A relisten that fails before reaching capture would otherwise leave a
+    /// playback hold's microphone running behind the failed state.
+    private func releaseHeldCapture() {
+        if capture.isHeldForPlayback { capture.pause() }
+    }
+
+    private func endPlaybackCaptureSuspensionWithoutRelistening() {
+        if isPlaybackCaptureSuspended { capture.pause() }
+        isPlaybackCaptureSuspended = false
     }
 
     private func failForAudioInterruption() {
@@ -1359,6 +1400,8 @@ final class VoiceConversationController: ObservableObject {
                 // Assistant speech during a live voice conversation joins the
                 // capture-owned session instead of reconfiguring it.
                 playback.ownershipIntent = .conversationPlayback
+                // Read Aloud's speed setting never applies to conversations.
+                playback.playbackRate = 1
                 let openedStream = try await gateway.openSpeechStream(
                     onStart: { [weak self] rate in
                         guard let self,
@@ -1421,7 +1464,7 @@ final class VoiceConversationController: ObservableObject {
             // (The cancellation branch above intentionally keeps ownership —
             // an interrupted stream's already-scheduled audio renders out.)
             playback.stop()
-            isPlaybackCaptureSuspended = false
+            endPlaybackCaptureSuspensionWithoutRelistening()
             if state == .speaking || state == .thinking { state = .failed(error.localizedDescription) }
             return
         }

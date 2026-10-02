@@ -47,6 +47,29 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     private let maximumPreRollBytes = Int(AVAudioCaptureService.outputSampleRate * AVAudioCaptureService.preRollDuration) * AVAudioCaptureService.outputBytesPerFrame
     var activelyRecording = false
     var paused = false
+    /// Set by `holdForPlayback()`: the engine, tap, and session lease stay
+    /// up but no frame is admitted. Cleared when capture starts, resumes,
+    /// pauses, or stops.
+    var heldForPlayback = false
+    var isHeldForPlayback: Bool { heldForPlayback }
+    /// The hold keeps the tap, so its frames share a capture generation
+    /// with frames from after it. Lifting a hold advances this epoch, which
+    /// the tap stamps on every frame on the audio thread, so playback audio
+    /// still queued for the MainActor can't land in the next window.
+    private var holdEpoch: UInt64 = 0
+    private let observedHoldEpoch = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+
+    nonisolated private var holdEpochForTap: UInt64 {
+        observedHoldEpoch.withLock { $0 }
+    }
+
+    private func liftPlaybackHold() {
+        guard heldForPlayback else { return }
+        heldForPlayback = false
+        holdEpoch &+= 1
+        let current = holdEpoch
+        observedHoldEpoch.withLock { $0 = current }
+    }
     /// Monotonic identity of the installed input-tap/rendering lifetime.
     /// Bumped at every teardown (pause/stop) and every tap reinstall, so
     /// frames queued from a previous generation can be recognized and
@@ -137,6 +160,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         lastCaptureFailure = nil
         activelyRecording = true
         paused = false
+        liftPlaybackHold()
         shouldKeepEngineRunning = true
     }
 
@@ -150,7 +174,27 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         }
         activelyRecording = false
         paused = false
+        liftPlaybackHold()
         shouldKeepEngineRunning = true
+    }
+
+    /// Playback suspension that keeps the microphone hardware. Frames are
+    /// dropped at the admission gate (no meter, VAD, pre-roll, or captured
+    /// audio), but the engine and the capture lease stay up, so the next
+    /// `startListening()` reuses the running engine instead of starting a
+    /// new one. That matters on a locked phone: iOS refuses to start
+    /// recording while Conduit is in the background (the engine start
+    /// fails with 'what', 2003329396), so a capture torn down by `pause()`
+    /// for a reply could never reopen afterwards. A capture that is not
+    /// running has nothing to keep, so it falls back to a real pause.
+    func holdForPlayback() {
+        guard !paused else { return }
+        guard captureLease != nil, engine.isRunning else {
+            pause()
+            return
+        }
+        activelyRecording = false
+        heldForPlayback = true
     }
 
     /// A real resource pause: the engine, tap, converter, and capture's
@@ -161,6 +205,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     func pause() {
         guard !paused else { return }
         paused = true
+        heldForPlayback = false
         shouldKeepEngineRunning = false
         captureGeneration &+= 1
         publishGenerationForInterruptionObservers()
@@ -176,6 +221,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             throw error
         }
         paused = false
+        liftPlaybackHold()
         shouldKeepEngineRunning = true
     }
 
@@ -200,6 +246,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     func stop() {
         activelyRecording = false
         paused = false
+        heldForPlayback = false
         shouldKeepEngineRunning = false
         // Deliberately unguarded (unlike pause): a redundant stop bumps the
         // generation again, which is always fail-closed.
@@ -286,6 +333,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         publishGenerationForInterruptionObservers()
         let frameGeneration = captureGeneration
         engine.installInputTap(bufferSize: 1_024, format: tapFormat) { [weak self] buffer, _ in
+            let frameHoldEpoch = self?.holdEpochForTap ?? 0
             // AVAudioEngine owns and reuses tap buffers as soon as this block
             // returns. Copy the frame bytes before crossing onto MainActor so
             // conversion never reads a recycled hardware buffer.
@@ -312,7 +360,8 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 // admission seam checks the frame's own generation against
                 // the currently installed tap before anything downstream
                 // (including consume's own defense-in-depth guard) runs.
-                guard let self, self.acceptsFrame(generation: frameGeneration) else { return }
+                guard let self, self.acceptsFrame(generation: frameGeneration),
+                      frameHoldEpoch == self.holdEpoch else { return }
                 self.consume(copy, generation: frameGeneration)
             }
         }
@@ -334,14 +383,15 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
 
     /// Single admission gate for tap frames on their way into PCM state.
     /// A frame is admitted only when it was produced by the currently
-    /// installed tap generation while capture is unpaused and the engine is
+    /// installed tap generation while capture is unpaused (and not held for
+    /// playback) and the engine is
     /// expected to stay live. Both the MainActor hop and consume() gate on
     /// this seam, so an invalidated generation's bytes can never reach
     /// conversion state, pre-roll, captured audio, the meter, or VAD — even
     /// when a stop was immediately followed by a restart that re-armed the
     /// live flags.
     func acceptsFrame(generation: UInt64) -> Bool {
-        generation == captureGeneration && !paused && shouldKeepEngineRunning
+        generation == captureGeneration && !paused && !heldForPlayback && shouldKeepEngineRunning
     }
 
     func consume(_ buffer: AVAudioPCMBuffer, generation: UInt64) {

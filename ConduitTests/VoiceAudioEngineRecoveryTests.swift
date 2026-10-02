@@ -217,6 +217,64 @@ extension VoiceAudioSessionCoordinatorTests {
         service.stop()
     }
 
+    /// A locked phone can't start a new capture engine, so a playback hold
+    /// must keep the running one and drop its frames instead.
+    func testPlaybackHoldKeepsTheRunningEngineAndDropsFrames() throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        try service.startListening()
+        let generation = service.captureGeneration
+
+        service.holdForPlayback()
+
+        XCTAssertTrue(factory.engines[1].isRunning, "the microphone stays up")
+        XCTAssertEqual(service.captureGeneration, generation)
+        XCTAssertFalse(service.acceptsFrame(generation: generation), "the reply never reaches capture")
+
+        try service.startListening()
+
+        XCTAssertEqual(factory.engines.count, 2, "listening reuses the held engine")
+        XCTAssertTrue(service.acceptsFrame(generation: generation))
+        service.stop()
+    }
+
+    /// A frame tapped during the hold but still queued for the MainActor
+    /// when listening reopens is reply audio, and must not be recorded.
+    func testFrameTappedDuringAHoldIsDroppedAfterTheHoldLifts() async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        try service.startListening()
+        let tap = try XCTUnwrap(factory.engines.last?.tapBlock)
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
+        buffer.frameLength = 4_800
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for index in 0..<4_800 { samples[index] = 0.25 }
+
+        service.holdForPlayback()
+        tap(buffer, AVAudioTime(hostTime: 0))
+        try service.startListening()
+        await drainPendingMainActorWork()
+
+        XCTAssertTrue(service.capturedPCM.isEmpty, "reply audio from the hold never reaches the new window")
+
+        tap(buffer, AVAudioTime(hostTime: 0))
+        await drainPendingMainActorWork()
+
+        XCTAssertFalse(service.capturedPCM.isEmpty, "frames tapped after the hold are recorded")
+        service.stop()
+    }
+
+    func testPlaybackHoldWithoutARunningEngineIsARealPause() {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+
+        service.holdForPlayback()
+
+        XCTAssertTrue(service.paused)
+        XCTAssertFalse(service.heldForPlayback)
+    }
+
     func testCaptureTapsAtTheHardwareFormatWhenTheNodeRateIsStale() throws {
         let factory = FakeCaptureEngineFactory()
         factory.hardware = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
@@ -289,6 +347,32 @@ extension VoiceAudioSessionCoordinatorTests {
 
         XCTAssertThrowsError(try service.startListening())
         XCTAssertEqual(factory.engines.count, 2)
+    }
+
+    // MARK: - Read Aloud speed
+
+    func testPlaybackRateNeverSlowsBelowNormalSpeed() {
+        XCTAssertEqual(AVSpeechPlaybackService.clampedRate(1.5), 1.5)
+        XCTAssertEqual(AVSpeechPlaybackService.clampedRate(0.5), 1, "slowed audio would outlast the drain watchdog")
+        XCTAssertEqual(AVSpeechPlaybackService.clampedRate(10), 4)
+        XCTAssertEqual(AVSpeechPlaybackService.clampedRate(.nan), 1)
+    }
+
+    func testStretchedStreamConvertsUnalignedPCM16ToFloat() throws {
+        // One leading byte puts the samples at an odd offset, as a Data
+        // slice can.
+        let bytes: [UInt8] = [0xFF, 0x00, 0x00, 0x00, 0x40, 0x00, 0x80, 0xFF, 0x7F]
+        var samples = [Float](repeating: .nan, count: 4)
+        try bytes.withUnsafeBytes { raw in
+            try samples.withUnsafeMutableBufferPointer { destination in
+                AVSpeechPlaybackService.convertPCM16(
+                    UnsafeRawBufferPointer(rebasing: raw[1...]),
+                    into: try XCTUnwrap(destination.baseAddress),
+                    frames: 4
+                )
+            }
+        }
+        XCTAssertEqual(samples, [0, 0.5, -1, Float(32_767) / 32_768])
     }
 
     // MARK: - Playback drain watchdog
@@ -412,6 +496,7 @@ private final class FakeCaptureEngine: VoiceCaptureEngine {
     private(set) var isRunning = false
     private(set) var hasTap = false
     private(set) var installedTapFormats: [AVAudioFormat?] = []
+    private(set) var tapBlock: AVAudioNodeTapBlock?
 
     init(factory: FakeCaptureEngineFactory) { self.factory = factory }
 
@@ -420,6 +505,7 @@ private final class FakeCaptureEngine: VoiceCaptureEngine {
 
     func installInputTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat?, block: @escaping AVAudioNodeTapBlock) {
         installedTapFormats.append(format)
+        tapBlock = block
         hasTap = true
     }
 
