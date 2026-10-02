@@ -121,7 +121,7 @@ private struct LiveVoiceBarRow: View {
             Button(action: onRestore) {
                 HStack(spacing: 10) {
                     Image(systemName: symbol)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.body.weight(.semibold))
                         .foregroundStyle(Color.conduitAura)
                         .frame(width: 24)
                         .accessibilityHidden(true)
@@ -143,18 +143,21 @@ private struct LiveVoiceBarRow: View {
 
             Button(action: onToggleMute) {
                 Image(systemName: isMuted ? "mic.slash.fill" : "mic.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 36, height: 36)
+                    .font(.body.weight(.semibold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             }
             .disabled(!canMute)
             .accessibilityLabel(isMuted ? Text("Unmute microphone") : Text("Mute microphone"))
 
             Button(action: onEnd) {
                 Image(systemName: "phone.down.fill")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
+                    .frame(minWidth: 36, minHeight: 36)
                     .background(Circle().fill(Color.red))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel(Text("End call"))
         }

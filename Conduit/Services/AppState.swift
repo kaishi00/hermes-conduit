@@ -3815,7 +3815,8 @@ final class AppState: ObservableObject {
 
     /// Runs whenever a live sheet goes away. A swipe on a running call
     /// minimises it; anything else (End, a failed call) closes it, as
-    /// before.
+    /// before. After End this closes an already-closed call a second
+    /// time, which is a no-op: `stop()` settles the phase synchronously.
     func liveVoiceSheetDismissed(_ engine: VoiceCallEngine) {
         if isLiveVoiceCallActive(engine) {
             minimisedLiveVoice = engine
