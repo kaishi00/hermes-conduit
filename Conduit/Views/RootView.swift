@@ -127,7 +127,8 @@ struct MainView: View {
         }
         // Sign-out swaps this view out with a sheet possibly still up.
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
-        .sheet(isPresented: $appState.showGeminiLiveSheet, onDismiss: appState.closeGeminiLiveConversation) {
+        // Swiping a running call away minimises it; End hangs up.
+        .sheet(isPresented: $appState.showGeminiLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.geminiLive) }) {
             GeminiLiveVoiceSheet(
                 controller: appState.geminiLiveController,
                 onClose: appState.closeGeminiLiveConversation,
@@ -136,7 +137,7 @@ struct MainView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $appState.showGrokLiveSheet, onDismiss: appState.closeGrokLiveConversation) {
+        .sheet(isPresented: $appState.showGrokLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.grokLive) }) {
             GeminiLiveVoiceSheet(
                 controller: appState.grokLiveController,
                 engine: .grok,
@@ -146,7 +147,7 @@ struct MainView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $appState.showGPTLiveSheet, onDismiss: appState.closeGPTLiveConversation) {
+        .sheet(isPresented: $appState.showGPTLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.gptLive) }) {
             GPTLiveVoiceSheet(
                 controller: appState.gptLiveController,
                 onClose: appState.closeGPTLiveConversation,

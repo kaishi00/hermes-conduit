@@ -14,6 +14,7 @@ struct GroupChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             transcript
+            MinimisedLiveVoiceBar()
             composer
         }
         .toolbar { toolbarContent }

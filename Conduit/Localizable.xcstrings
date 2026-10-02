@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "End call" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束通话"
+          }
+        }
+      }
+    },
+    "Opens the call" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开通话"
+          }
+        }
+      }
+    },
+    "Call stopped. Tap to see why." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话已停止。点按查看原因。"
+          }
+        }
+      }
+    },
     "The picture was saved, but its look was not." : {
       "localizations" : {
         "zh-Hans" : {
