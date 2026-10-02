@@ -89,6 +89,7 @@ extension WakeLifecycleTests {
         XCTAssertFalse(WakeRoutePolicy.allowsWakeListening(outputs: [car]))
         XCTAssertTrue(WakeRoutePolicy.allowsWakeListening(outputs: [speaker]))
         XCTAssertTrue(WakeRoutePolicy.allowsWakeListening(outputs: [a2dp]))
+        XCTAssertFalse(WakeRoutePolicy.allowsWakeListening(outputs: [speaker, car]), "any CarPlay output vetoes")
 
         var snapshot = WakeLifecycleSnapshot(
             isForegroundActive: true,

@@ -37,7 +37,7 @@ extension AppState {
                 && AppleSpeechWakeWordService.isMicrophoneAuthorized,
             isVoiceIdle: isVoiceIdleForWake,
             hasWakePhrases: !activeWakeBindings.isEmpty,
-            isRouteSuitable: WakeRoutePolicy.current()
+            isRouteSuitable: isWakeRouteSuitable
         )
     }
 
@@ -75,15 +75,23 @@ extension AppState {
         VoiceAudioSessionCoordinator.shared.onOwnersChanged = { [weak self] in
             self?.scheduleWakeRefresh()
         }
+        isWakeRouteSuitable = WakeRoutePolicy.current()
         wakeObservations = [
             objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
             PendingVoiceIntentStore.shared.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
             voiceConversationController.objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
             // Connecting or leaving CarPlay changes whether wake may listen.
-            NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)
-                .sink { [weak self] _ in
-                    Task { @MainActor [weak self] in self?.scheduleWakeRefresh() }
+            NotificationCenter.default.publisher(
+                for: AVAudioSession.routeChangeNotification,
+                object: AVAudioSession.sharedInstance()
+            )
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.isWakeRouteSuitable = WakeRoutePolicy.current()
+                    self.scheduleWakeRefresh()
                 }
+            }
         ]
         scheduleWakeRefresh()
     }

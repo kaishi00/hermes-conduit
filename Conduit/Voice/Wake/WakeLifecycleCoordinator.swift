@@ -31,6 +31,9 @@ struct WakeLifecycleSnapshot: Equatable {
 
 /// Which audio routes foreground wake listening may record on.
 enum WakeRoutePolicy {
+    /// Fails open on an empty route on purpose: with no session active the
+    /// route can read empty, and refusing there would keep wake from ever
+    /// arming. CarPlay always reports its `.carAudio` output.
     static func allowsWakeListening(outputs: [VoiceAudioRoutePort]) -> Bool {
         !outputs.contains { $0.type == .carAudio }
     }
