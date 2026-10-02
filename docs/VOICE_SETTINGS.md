@@ -85,3 +85,7 @@ voice calls" section saying why, with Save Now to retry at once.
 ## Minimising a live call
 
 Swiping down the Gemini Live, Grok Live or GPT-Live sheet minimises the call instead of ending it. The call keeps running, and a bar above the composer shows its state, with mute and end controls. When the call is attached to a chat, the bar also names that chat. Tapping the bar, or the composer's mic, brings the sheet back. End (in the sheet or on the bar), a spoken goodbye, sign-out and server or profile changes still end the call. While minimised the screen can lock as usual; only the full sheet keeps the phone awake. Classic Voice is unchanged: swiping its sheet away still closes it.
+
+## Hold the mic to dictate
+
+Tapping the composer's mic opens Voice as before. Pressing and holding it dictates into the message instead: the words appear in the draft while you hold, after anything already typed, and nothing is sent until you send it. Recognition uses Apple's speech recognizer, on the device when the language supports it. While a voice conversation has the microphone, a hold acts like a tap. A small "Tap for Voice · Hold to dictate" tip sits above the mic until the first dictation that produces text; tapping the tip hides it until the next launch. VoiceOver users get a Dictate action on the mic.

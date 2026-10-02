@@ -302,6 +302,33 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         )
     }
 
+    /// Dictated text makes the draft sendable while the finger is still on
+    /// the mic: the mic must stay put until the hold ends.
+    func testDictationKeepsTheMicInTheSlotUntilReleased() {
+        XCTAssertEqual(ComposerBar.trailingControl(action: .send, showsVoiceButton: true, isDictating: true), .voice)
+        XCTAssertEqual(ComposerBar.trailingControl(action: .send, showsVoiceButton: true, isDictating: false), .action)
+    }
+
+    func testDictatedTextGoesAfterTheDraftAndReplacesOnlyItsOwnSpan() {
+        XCTAssertEqual(ComposerDictation.draft(before: "", dictated: "hello there"), "hello there")
+        XCTAssertEqual(ComposerDictation.draft(before: "Note:", dictated: "buy milk"), "Note: buy milk")
+        XCTAssertEqual(ComposerDictation.draft(before: "Note: ", dictated: " buy milk "), "Note: buy milk")
+        XCTAssertEqual(ComposerDictation.draft(before: "Note:", dictated: "  "), "Note:", "nothing heard leaves the draft alone")
+        // Each partial result rewrites the dictated span, never the draft.
+        let prefix = "Draft"
+        let partial = ComposerDictation.draft(before: prefix, dictated: "buy")
+        let final = ComposerDictation.draft(before: prefix, dictated: "Buy milk.")
+        XCTAssertEqual(partial, "Draft buy")
+        XCTAssertEqual(final, "Draft Buy milk.")
+    }
+
+    func testVoiceInUseFollowsAnOpenVoiceSheet() {
+        let appState = AppState(defaults: UserDefaults(suiteName: "VoiceInUse.\(UUID().uuidString)")!, loadSavedConnection: false)
+        XCTAssertFalse(appState.isVoiceInUse)
+        appState.showVoiceSheet = true
+        XCTAssertTrue(appState.isVoiceInUse, "dictation never competes with Voice for the microphone")
+    }
+
     /// A sendable draft or a live turn always owns the slot, so Send, Stop,
     /// Steer and Interrupt are never hidden behind the mic.
     func testSendableOrRunningStatesTakeTheTrailingSlot() {

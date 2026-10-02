@@ -1,6 +1,56 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Tap for Voice · Hold to dictate" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点使用语音 · 按住听写"
+          }
+        }
+      }
+    },
+    "Stop dictation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止听写"
+          }
+        }
+      }
+    },
+    "Dictate" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "听写"
+          }
+        }
+      }
+    },
+    "Dictation needs microphone and speech recognition access. You can allow them in Settings." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "听写需要麦克风和语音识别权限。你可以在“设置”中允许。"
+          }
+        }
+      }
+    },
+    "Dictation isn't available right now." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "听写目前不可用。"
+          }
+        }
+      }
+    },
     "Hermes added this to the reply already running in the chat." : {
       "localizations" : {
         "zh-Hans" : {
