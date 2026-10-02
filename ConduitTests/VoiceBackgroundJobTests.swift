@@ -891,6 +891,20 @@ extension VoiceConversationControllerTests {
         supervisor.detachLiveThread()
     }
 
+    func testHangingUpDuringASendThatFindsTheChatBusyDropsTheRequest() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadSubmitError = VoiceThreadBusyError()
+        fake.onThreadSubmit = { supervisor.detachLiveThread() }
+
+        _ = supervisor.startThreadTurn(request: "later")
+        guard await waitFor({ supervisor.jobs.first?.status == .cancelled }) else { return }
+        fake.threadSubmitError = nil
+        try? await Task.sleep(for: .milliseconds(30))
+
+        XCTAssertEqual(fake.threadSubmissions.count, 1, "never sent again after the call ended")
+        XCTAssertNil(supervisor.takePendingNotice())
+    }
+
     func testTheLatestAssistantReplyIsReadFromSavedRows() {
         let rows: [Any] = [
             ["role": "user", "content": "check the build"],

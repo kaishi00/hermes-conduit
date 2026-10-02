@@ -3992,7 +3992,6 @@ final class AppState: ObservableObject {
     private func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> String? {
         if isOpenChat(thread) { return latestReplyInOpenChat(thread) }
         guard let bridge = dashboardTicketBridge else { return nil }
-        let tailQuery = "?limit=20&offset=0&order=latest&include_compacted=true&inline_images=false"
         var ids: [String] = []
         for id in [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }) where !id.isEmpty && !ids.contains(id) {
             ids.append(id)
@@ -4003,19 +4002,33 @@ final class AppState: ObservableObject {
                     path: Self.sessionMessagesPath(sessionId: sessionID, profile: activeProfile, query: query)
                 )
             }
-            guard let response = await read(tailQuery), var rows = Self.persistedMessageRows(in: response) else { continue }
-            // A dashboard that doesn't page from the newest end returned the
-            // oldest rows: read the whole transcript instead.
-            let page = PersistedTranscriptPagination.parse(response, rawRowCount: rows.count)
-            if page?.honorsTailContract != true {
-                guard let full = await read(PersistedTranscriptPagination.legacyQuery),
-                      let fullRows = Self.persistedMessageRows(in: full) else { continue }
-                rows = fullRows
+            // Newest pages first, until one holds an assistant reply: a
+            // tool-heavy turn can fill a page with tool rows alone.
+            var offset = 0
+            for _ in 0..<Self.lastReplyMaximumPages {
+                let query = "?limit=\(Self.voiceRowPageSize)&offset=\(offset)&order=latest&include_compacted=true&inline_images=false"
+                guard let response = await read(query), let rows = Self.persistedMessageRows(in: response) else { break }
+                // A dashboard that doesn't page from the newest end returned
+                // the oldest rows: read the whole transcript instead.
+                let page = PersistedTranscriptPagination.parse(response, rawRowCount: rows.count)
+                guard page?.honorsTailContract == true else {
+                    if let full = await read(PersistedTranscriptPagination.legacyQuery),
+                       let fullRows = Self.persistedMessageRows(in: full),
+                       let reply = Self.latestAssistantReply(inMessageRows: fullRows) {
+                        return reply
+                    }
+                    break
+                }
+                if let reply = Self.latestAssistantReply(inMessageRows: rows) { return reply }
+                if rows.isEmpty { break }
+                offset += rows.count
             }
-            if let reply = Self.latestAssistantReply(inMessageRows: rows) { return reply }
         }
         return nil
     }
+
+    /// How far back "read the last reply" looks in a chat's saved history.
+    static let lastReplyMaximumPages = 4
 
     /// The newest assistant text in a page of raw `/api/sessions/{id}/messages`
     /// rows. A tail page still lists its rows oldest first, as

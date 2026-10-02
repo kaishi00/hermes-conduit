@@ -452,9 +452,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// its reply is there, and a later call shouldn't bring it up.
     func detachLiveThread() {
         liveThread = nil
-        for index in jobs.indices where jobs[index].isThreadTurn && jobs[index].status.isActive {
-            if !jobs[index].threadTurnSubmitted { jobs[index].status = .cancelled }
-            jobs[index].outcomeDelivered = true
+        // Every turn of the ending call, settled ones too: none is read back
+        // or announced to a later call.
+        for index in jobs.indices where jobs[index].isThreadTurn && !jobs[index].isDetachedThreadTurn {
+            if jobs[index].status.isActive {
+                if !jobs[index].threadTurnSubmitted { jobs[index].status = .cancelled }
+                jobs[index].outcomeDelivered = true
+            }
             jobs[index].isDetachedThreadTurn = true
         }
         pruneSettledJobs()
@@ -536,6 +540,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 startPollingIfNeeded()
             } catch is VoiceThreadBusyError {
                 guard generation == self.generation else { return }
+                // The call ended during the send: nothing went out, so the
+                // request is dropped like any other still waiting.
+                if job(next.id)?.isDetachedThreadTurn == true {
+                    update(next.id) {
+                        $0.threadTurnSubmitted = false
+                        $0.status = .cancelled
+                        $0.result = nil
+                    }
+                    continue
+                }
                 // A typed turn got there first: back in line to wait for it.
                 // Anything its events did to this turn meanwhile is undone.
                 update(next.id) {
@@ -568,8 +582,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return candidates.first { !jobs[$0].isDetachedThreadTurn } ?? candidates.first
     }
 
+    /// Whether two targets name the same chat, by any id either knows.
     private static func sameChat(_ a: VoiceThreadTarget, _ b: VoiceThreadTarget) -> Bool {
-        a.owns(sessionID: b.runtimeSessionID) || (b.storedSessionID.map { a.owns(sessionID: $0) } ?? false)
+        let aIDs = [a.runtimeSessionID, a.storedSessionID].compactMap { $0 }
+        let bIDs = [b.runtimeSessionID, b.storedSessionID].compactMap { $0 }
+        return aIDs.contains { b.owns(sessionID: $0) } || bIDs.contains { a.owns(sessionID: $0) }
     }
 
     /// A voice request as it appears in the chat. Not localized: it is
