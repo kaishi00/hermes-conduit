@@ -108,6 +108,11 @@ struct BotEditorSheet: View {
             pickedImage = nil
         }
         .task { await seed() }
+        .task {
+            // The stored picture, independent of whether the roster row's
+            // fetch succeeded.
+            if let bot = editedBot { await appState.loadBotAvatarRetrying(bot) }
+        }
     }
 
     // MARK: Sections

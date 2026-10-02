@@ -12408,20 +12408,38 @@ final class AppState: ObservableObject {
         bot.hasAvatar ? botAvatarImages[bot.name] : nil
     }
 
+    /// Loads the bot's picture, retrying a failed fetch a few times with
+    /// backoff while the calling view stays on screen (its `.task` cancels
+    /// the wait when it goes away).
+    func loadBotAvatarRetrying(_ bot: BotProfile) async {
+        for delay in [UInt64(0), 3, 10, 30] {
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+            }
+            if Task.isCancelled { return }
+            if await loadBotAvatarIfNeeded(bot) { return }
+        }
+    }
+
     /// Fetches the bot's picture from its profile's asset store once per
     /// avatar generation. `has_avatar` on the roster row gates the call, so
-    /// a bot without a picture costs nothing.
-    func loadBotAvatarIfNeeded(_ bot: BotProfile) async {
+    /// a bot without a picture costs nothing. Returns false when the
+    /// picture is not settled yet (failed, in flight elsewhere, or offline)
+    /// and a later retry could help.
+    @discardableResult
+    func loadBotAvatarIfNeeded(_ bot: BotProfile) async -> Bool {
         let name = bot.name
         guard bot.hasAvatar else {
             if botAvatarImages[name] != nil { botAvatarImages[name] = nil }
             botAvatarFetchedGeneration[name] = nil
-            return
+            return true
         }
         let generation = botAvatarGeneration
-        guard botAvatarFetchedGeneration[name] != generation,
-              botAvatarFetchInflight[name] != generation,
-              let client, isConnected else { return }
+        guard botAvatarFetchedGeneration[name] != generation else { return true }
+        // In flight elsewhere or offline: not done yet, so a retrying caller
+        // checks again after its backoff instead of trusting the other fetch.
+        guard botAvatarFetchInflight[name] != generation,
+              let client, isConnected else { return false }
         let epoch = botRosterEpoch
         botAvatarFetchInflight[name] = generation
         defer {
@@ -12431,16 +12449,18 @@ final class AppState: ObservableObject {
         }
         do {
             let data = try await client.botAvatar(name: name)
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return }
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return true }
             // An older generation's fetch landing late never replaces a newer one.
-            if let fetched = botAvatarFetchedGeneration[name], fetched > generation { return }
+            if let fetched = botAvatarFetchedGeneration[name], fetched > generation { return true }
             botAvatarFetchedGeneration[name] = generation
             botAvatarImages[name] = data.flatMap { UIImage(data: $0) }
+            return true
         } catch {
-            // Not pinned to the generation: a failed fetch retries on the
-            // row's next appearance, keeping whatever picture is shown.
-            // (`has_avatar` and `profiles.get_asset` ship together, so a
-            // gateway without the method never sends rows that call it.)
+            // Not pinned to the generation, so the caller can retry; whatever
+            // picture is shown stays. (`has_avatar` and `profiles.get_asset`
+            // ship together, so a gateway without the method never sends
+            // rows that call it.)
+            return false
         }
     }
 
@@ -12499,13 +12519,19 @@ final class AppState: ObservableObject {
             ))
         }
 
+        // The picture goes first so ui_meta only claims a photo the asset
+        // store actually holds (Desktop renders from `imageKind`).
+        var photoSaved = true
+        if let png = draft.newAvatarPNG {
+            photoSaved = await storeBotAvatar(png, for: slug, client: client, epoch: epoch)
+        }
         var meta: [String: Any] = ["created": Int(Date().timeIntervalSince1970 * 1000)]
         if !title.isEmpty { meta["title"] = title }
         if let color = draft.color {
             meta["color"] = color
             meta["custom"] = true
         }
-        if draft.newAvatarPNG != nil {
+        if draft.newAvatarPNG != nil, photoSaved {
             meta["imageKind"] = "photo"
             meta["custom"] = true
         }
@@ -12515,10 +12541,6 @@ final class AppState: ObservableObject {
             lookSaved = BotMetaWriteOutcome(configureResult: result) != .failed
         } catch {
             lookSaved = false
-        }
-        var photoSaved = true
-        if let png = draft.newAvatarPNG {
-            photoSaved = await storeBotAvatar(png, for: slug, client: client, epoch: epoch)
         }
         await refreshBotRosterAfterWrite()
         await loadProfiles()
@@ -12542,6 +12564,19 @@ final class AppState: ObservableObject {
             return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
         }
         let epoch = botRosterEpoch
+        var problems: [String] = []
+        // Ordering keeps ui_meta's `imageKind` (what Desktop renders from)
+        // from ever claiming a photo the asset store lacks: a new picture is
+        // uploaded before `imageKind = photo` is written, and a removal
+        // deletes the asset only after `imageKind = shape` is confirmed.
+        var uploaded = false
+        if let png = draft.newAvatarPNG {
+            uploaded = await storeBotAvatar(png, for: bot.name, client: client, epoch: epoch)
+            if !uploaded {
+                problems.append(AppLocalization.string("The picture was not saved."))
+            }
+        }
+        let removing = draft.newAvatarPNG == nil && draft.removesAvatar
         var patch: [String: Any?] = [:]
         let title = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
         if title != (bot.botTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines) {
@@ -12551,10 +12586,11 @@ final class AppState: ObservableObject {
             patch.updateValue(draft.color, forKey: "color")
             patch["custom"] = true
         }
-        if draft.newAvatarPNG != nil {
+        let changesNameOrColor = !patch.isEmpty
+        if uploaded {
             patch["imageKind"] = "photo"
             patch["custom"] = true
-        } else if draft.removesAvatar {
+        } else if removing {
             patch["imageKind"] = "shape"
         }
         let originalDescription = loadedDetails?.description ?? bot.profileDescription
@@ -12564,7 +12600,22 @@ final class AppState: ObservableObject {
         // unloaded editor can never blank a bot's personality.
         let soulChanged = loadedDetails.map { draft.soul != $0.soul } ?? false
 
-        var problems: [String] = []
+        /// The warnings for a meta write that did not land.
+        func metaNotSaved() -> [String] {
+            var notes: [String] = []
+            if changesNameOrColor {
+                notes.append(AppLocalization.string("The name or color was not saved."))
+            }
+            if uploaded {
+                notes.append(AppLocalization.string("The picture was saved, but its look was not."))
+            }
+            if removing {
+                notes.append(AppLocalization.string("The picture was not removed."))
+            }
+            return notes
+        }
+
+        var metaPersisted = patch.isEmpty
         if !patch.isEmpty || descriptionChanged || soulChanged {
             do {
                 let result = try await client.configureBotProfile(
@@ -12575,14 +12626,10 @@ final class AppState: ObservableObject {
                     soul: soulChanged ? draft.soul : nil
                 )
                 guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
-                    // The server changed mid-save; a pending picture change never ran.
-                    if draft.newAvatarPNG != nil {
-                        return .saved(warning: AppLocalization.string("The picture was not saved."))
-                    }
-                    if draft.removesAvatar {
-                        return .saved(warning: AppLocalization.string("The picture was not removed."))
-                    }
-                    return .saved(warning: nil)
+                    // The server changed mid-save: the meta write's outcome
+                    // is unknown, so a pending removal never runs.
+                    problems += metaNotSaved()
+                    return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
                 }
                 var sections: [String] = []
                 if descriptionChanged { sections.append("description") }
@@ -12595,20 +12642,25 @@ final class AppState: ObservableObject {
                     if outcome == .conflict {
                         outcome = await retryBotMetaWrite(bot.name, patch: patch, client: client, epoch: epoch)
                     }
-                    if outcome == .failed || outcome == .conflict {
-                        problems.append(AppLocalization.string("The name or color was not saved."))
+                    metaPersisted = outcome == .persisted || outcome == .unsupported
+                    if !metaPersisted {
+                        problems += metaNotSaved()
                     }
                 }
             } catch {
-                return .failed(AppLocalization.string("Could not save the bot: \(error.localizedDescription)"))
+                guard uploaded else {
+                    return .failed(AppLocalization.string("Could not save the bot: \(error.localizedDescription)"))
+                }
+                // The picture already landed; only the other fields failed.
+                problems += metaNotSaved()
+                if descriptionChanged || soulChanged {
+                    problems.append(AppLocalization.string("The description or personality was not saved."))
+                }
+                await refreshBotRosterAfterWrite()
+                return .saved(warning: problems.joined(separator: " "))
             }
         }
-        if let png = draft.newAvatarPNG {
-            let stored = await storeBotAvatar(png, for: bot.name, client: client, epoch: epoch)
-            if !stored {
-                problems.append(AppLocalization.string("The picture was not saved."))
-            }
-        } else if draft.removesAvatar {
+        if removing, metaPersisted {
             do {
                 try await client.setBotAvatar(name: bot.name, png: nil)
                 if botOpenFenceIsCurrent(epoch: epoch, client: client) {
@@ -12702,8 +12754,10 @@ final class AppState: ObservableObject {
             return false
         }
         if botOpenFenceIsCurrent(epoch: epoch, client: client), let image = UIImage(data: png) {
+            // The upload is the newest picture, but the recorded generation
+            // never moves backwards past a newer fetch.
             botAvatarImages[name] = image
-            botAvatarFetchedGeneration[name] = generation
+            botAvatarFetchedGeneration[name] = max(botAvatarFetchedGeneration[name] ?? generation, generation)
         }
         return true
     }

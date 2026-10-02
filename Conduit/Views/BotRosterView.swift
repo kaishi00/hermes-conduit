@@ -600,7 +600,7 @@ struct BotMonogramView: View {
             size: avatarSize
         )
         .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)") {
-            await appState.loadBotAvatarIfNeeded(bot)
+            await appState.loadBotAvatarRetrying(bot)
         }
     }
 }
