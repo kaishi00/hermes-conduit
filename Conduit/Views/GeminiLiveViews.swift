@@ -189,6 +189,7 @@ struct GeminiLiveVoiceSheet: View {
     }
 
     @ObservedObject var controller: GeminiLiveConversationController
+    @ObservedObject var jobs: VoiceBackgroundJobSupervisor
     var engine: Engine = .gemini
     let onClose: () -> Void
     let onRetry: () -> Void
@@ -199,6 +200,7 @@ struct GeminiLiveVoiceSheet: View {
                 ConduitBackdrop()
                 VStack(spacing: 16) {
                     statusHeader
+                    LiveVoiceQuickHint(thread: jobs.liveThread?.title)
                     transcriptList
                     controls
                 }
@@ -316,6 +318,38 @@ struct GeminiLiveVoiceSheet: View {
         case .ending: return AppLocalization.string("Ending conversation…")
         case .failed(let message): return message
         }
+    }
+}
+
+/// Under an attached call's status, the first few times: the call works in
+/// its chat, and "quick…" runs a fast job instead.
+struct LiveVoiceQuickHint: View {
+    static let shownCountKey = "conduit.liveVoiceQuickHintShown"
+    static let timesShown = 3
+
+    let thread: String?
+    @AppStorage(LiveVoiceQuickHint.shownCountKey) private var shownCount = 0
+    /// Decided once per appearance, so counting it doesn't hide it at once.
+    @State private var isShown = false
+
+    var body: some View {
+        Group {
+            if isShown, let thread {
+                Text(AppLocalization.string("Working in \(thread). Say “quick…” for a fast side job."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .onAppear { showIfDue() }
+        .onChange(of: thread) { _, _ in showIfDue() }
+    }
+
+    private func showIfDue() {
+        guard !isShown, thread != nil, shownCount < Self.timesShown else { return }
+        isShown = true
+        shownCount += 1
     }
 }
 

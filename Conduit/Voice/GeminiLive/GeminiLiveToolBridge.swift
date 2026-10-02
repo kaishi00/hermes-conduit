@@ -89,7 +89,7 @@ final class GeminiLiveToolBridge {
     static let threadDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         .init(
             name: Tool.askThread.rawValue,
-            description: "Send the user's request to Hermes as the next message in the chat this call is attached to. Use it for anything that needs Hermes: questions about the chat, follow-ups, and real work. Hermes' reply arrives later on this call; summarize it unless the user asks to hear it in full. Don't guess the reply.",
+            description: "Send the user's request to Hermes as the next message in the chat this call is attached to. Use it for work that needs Hermes: questions about the chat, follow-ups, and real work. Not for quick facts from the web, or requests the user starts with \"quick\". Hermes' reply arrives later on this call; summarize it unless the user asks to hear it in full. Don't guess the reply.",
             parameters: [
                 "type": "OBJECT",
                 "properties": [

@@ -178,7 +178,7 @@ enum PendingVoiceLaunchPolicy {
             switch intent.source {
             case .siri: return .failed(message: stableFailureMessage(for: connection))
             case .wakePhrase: return .failed(message: wakePhraseFailureMessage)
-            case .composer: return .waiting
+            case .composer, .newCall: return .waiting
             }
         }
     }
@@ -193,7 +193,7 @@ enum PendingVoiceLaunchPolicy {
         switch intent.source {
         case .siri: return .terminal(message: disconnectedFailureMessage)
         case .wakePhrase: return .terminal(message: wakePhraseFailureMessage)
-        case .composer: return .retryLater
+        case .composer, .newCall: return .retryLater
         }
     }
 }

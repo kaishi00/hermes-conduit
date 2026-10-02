@@ -755,6 +755,8 @@ extension VoiceConversationControllerTests {
 
         _ = await bridge.handleDelegation(id: "del_2", request: "research flights in the background")
         XCTAssertEqual(fake.created, 1, "background work is still a job")
+        _ = await bridge.handleDelegation(id: "del_2q", request: "Quick: check my calendar for tomorrow")
+        XCTAssertEqual(fake.created, 2, "a quick request is a fast job, not a chat turn")
 
         fake.threadReply = "The last reply."
         let read = await bridge.handleDelegation(id: "del_3", request: "Read the last reply word for word")
@@ -785,6 +787,20 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(VoiceThreadRouting.wantsBackgroundJob("look into it in a new chat"))
         XCTAssertFalse(VoiceThreadRouting.wantsLastReply("what was the last reply in the thread about"),
                        "\"read\" inside \"thread\" isn't a request to read")
+    }
+
+    func testAQuickRequestRunsAsAFastJob() {
+        XCTAssertTrue(VoiceThreadRouting.wantsBackgroundJob("Quick, what's on my calendar tomorrow"))
+        XCTAssertTrue(VoiceThreadRouting.wantsBackgroundJob("quick: check the build status"))
+        XCTAssertTrue(VoiceThreadRouting.wantsBackgroundJob("Can you quickly check my inbox"))
+        XCTAssertTrue(VoiceThreadRouting.wantsBackgroundJob("快，查一下明天的日程"))
+        XCTAssertTrue(VoiceThreadRouting.wantsBackgroundJob("请快速：看看构建状态"))
+        XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("Quick question, why did the build fail here?"),
+                       "a figure of speech keeps the request in the chat")
+        XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("quicksort this list"))
+        XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("make the intro quick"), "only a leading quick counts")
+        XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("quick"))
+        XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("快速排序是什么"))
     }
 
     func testATurnOwnsTheResumedRuntimesEventsFromTheStart() async {

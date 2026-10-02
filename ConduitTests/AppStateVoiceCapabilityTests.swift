@@ -322,6 +322,16 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(final, "Draft Buy milk.")
     }
 
+    func testACallFromANewEmptyChatIsNotAttachedToIt() {
+        XCTAssertFalse(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .idle),
+                       "an empty chat has nothing to continue")
+        XCTAssertTrue(AppState.attachesLiveVoiceCall(chatHasMessages: true, turnState: .idle))
+        XCTAssertTrue(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .synchronizing),
+                      "a chat still loading may have history")
+        XCTAssertTrue(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .running),
+                      "its first message is on its way")
+    }
+
     func testAShortPressOnTheMicOpensVoiceAndAHoldStopsDictating() {
         XCTAssertEqual(
             ComposerDictation.release(heldPastThreshold: false, isCapturing: false, canOpenVoice: true),

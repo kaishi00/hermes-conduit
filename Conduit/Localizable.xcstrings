@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "New voice call" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新语音通话"
+          }
+        }
+      }
+    },
+    "Starts a voice call that isn't tied to a chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始一个不关联任何聊天的语音通话"
+          }
+        }
+      }
+    },
+    "Working in %@. Say “quick…” for a fast side job." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在“%@”中通话。说“快，……”可另开快速任务。"
+          }
+        }
+      }
+    },
     "The notifier plugin on your Hermes host (version %@) is missing features Conduit uses, such as taking chats over from Hermes Desktop. Run these on the host." : {
       "localizations" : {
         "zh-Hans" : {
