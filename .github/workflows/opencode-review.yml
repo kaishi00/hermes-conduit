@@ -14,7 +14,16 @@ concurrency:
 
 jobs:
   review:
+    name: review (${{ matrix.reviewer }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - reviewer: DeepSeek V4.1 Flash
+            model: go-custom/deepseek-flash
+          - reviewer: Xiaomi MiMo V2.6 Flash
+            model: commandcode/xiaomi/mimo-v2.6-flash
     permissions:
       id-token: write
       contents: read
@@ -37,12 +46,14 @@ jobs:
         run: GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
         env:
           OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+          COMMANDCODE_API_KEY: ${{ secrets.COMMANDCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.OPENCODE_GH_PAT }}
-          MODEL: go-custom/deepseek-flash
+          MODEL: ${{ matrix.model }}
           USE_GITHUB_TOKEN: "true"
           PROMPT: |
             You are a code reviewer. DO NOT modify any files. DO NOT make commits.
             DO NOT run builds or tests.
+            Start the review with the label: Review by ${{ matrix.reviewer }}.
 
             Output a structured code review as your final message. Use this format:
 
