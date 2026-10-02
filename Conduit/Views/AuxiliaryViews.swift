@@ -733,6 +733,9 @@ private struct SettingsHome: View {
             ConduitBackdrop()
             ScrollView {
                 VStack(spacing: 14) {
+                    if appState.notifierPlugin.needsUpdate {
+                        NotifierPluginUpdateNotice(status: appState.notifierPlugin)
+                    }
                     homeSection("Profile", tint: .conduitAccent) {
                         settingsLink(.profile, icon: "person.crop.circle", title: profileDisplayName, detail: AppLocalization.string("Profile-specific preferences"))
                     }
@@ -1095,6 +1098,36 @@ private struct ChatTakeoverSettings: View {
                 .tint(.conduitAccent)
                 .accessibilityHint("Sending in a chat open in Hermes Desktop or a terminal takes it over without asking. Needs the Conduit notifier plugin on your Hermes host.")
         }
+    }
+}
+
+/// Shown at the top of Settings when the host's notifier plugin is older
+/// than the features Conduit uses (chat takeover, live voice, call
+/// transcripts), with the commands that update it.
+private struct NotifierPluginUpdateNotice: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let status: NotifierPluginStatus
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("Update the Conduit notifier"),
+            symbol: "arrow.down.circle",
+            tint: .orange
+        ) {
+            Text(detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
+            NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
+        }
+        .accessibilityIdentifier("settings.notifier-update")
+    }
+
+    private var detail: String {
+        if let version = status.version {
+            return AppLocalization.string("The notifier plugin on your Hermes host (version \(version)) is missing features Conduit uses, such as taking chats over from Hermes Desktop. Run these on the host.")
+        }
+        return AppLocalization.string("The notifier plugin on your Hermes host is missing or out of date, so features like taking chats over from Hermes Desktop won't work. Run these on the host.")
     }
 }
 

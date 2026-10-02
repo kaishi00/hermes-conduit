@@ -150,4 +150,37 @@ extension HermesClientTests {
         XCTAssertTrue(takeoverState("").isRefusedMessage(" ", hasAttachments: true))
         XCTAssertFalse(takeoverState("").isRefusedMessage("new text", hasAttachments: true))
     }
+
+    // MARK: Notifier plugin capabilities
+
+    func testPluginCapabilitiesParse() {
+        let state = NotifierPluginStatus.state(from: [
+            "ok": true, "version": "0.4.0", "capabilities": ["session-takeover", "voice-tags"],
+        ])
+        XCTAssertEqual(state, .reported(version: "0.4.0", capabilities: ["session-takeover", "voice-tags"]))
+        XCTAssertEqual(NotifierPluginStatus.state(from: ["ok": true]), .unknown)
+    }
+
+    func testAMissingCapabilitiesRouteMeansAnOlderPlugin() {
+        XCTAssertEqual(NotifierPluginStatus.state(from: DashboardTicketBridgeError.http(status: 404, detail: "")), .predatesCapabilities)
+        XCTAssertEqual(NotifierPluginStatus.state(from: DashboardTicketBridgeError.http(status: 503, detail: "")), .unknown)
+        XCTAssertEqual(NotifierPluginStatus.state(from: URLError(.timedOut)), .unknown)
+    }
+
+    func testPluginUpdateNudge() {
+        XCTAssertFalse(NotifierPluginStatus(state: .unknown).needsUpdate)
+        XCTAssertTrue(NotifierPluginStatus(state: .predatesCapabilities).needsUpdate)
+        let current = NotifierPluginStatus(state: .reported(version: "0.4.0", capabilities: Set(NotifierPluginStatus.usedCapabilities)))
+        XCTAssertFalse(current.needsUpdate)
+        XCTAssertEqual(current.version, "0.4.0")
+        var older = Set(NotifierPluginStatus.usedCapabilities)
+        older.remove("session-takeover")
+        let missingTakeover = NotifierPluginStatus(state: .reported(version: "0.4.0", capabilities: older))
+        XCTAssertTrue(missingTakeover.needsUpdate)
+        XCTAssertFalse(missingTakeover.mightSupport("session-takeover"))
+        XCTAssertTrue(missingTakeover.mightSupport("voice-tags"))
+        XCTAssertTrue(NotifierPluginStatus(state: .predatesCapabilities).mightSupport("session-takeover"),
+                      "A plugin older than capability reporting may still serve the route")
+    }
 }
+
