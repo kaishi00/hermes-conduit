@@ -189,6 +189,7 @@ struct GeminiLiveVoiceSheet: View {
     }
 
     @ObservedObject var controller: GeminiLiveConversationController
+    @ObservedObject var jobs: VoiceBackgroundJobSupervisor
     var engine: Engine = .gemini
     let onClose: () -> Void
     let onRetry: () -> Void
@@ -199,6 +200,7 @@ struct GeminiLiveVoiceSheet: View {
                 ConduitBackdrop()
                 VStack(spacing: 16) {
                     statusHeader
+                    LiveVoiceQuickHint(thread: jobs.liveThread?.title, threadID: jobs.liveThread?.runtimeSessionID)
                     transcriptList
                     controls
                 }
@@ -316,6 +318,53 @@ struct GeminiLiveVoiceSheet: View {
         case .ending: return AppLocalization.string("Ending conversation…")
         case .failed(let message): return message
         }
+    }
+}
+
+/// Under an attached call's status, the first few times: the call works in
+/// its chat, and "quick…" runs a fast job instead.
+struct LiveVoiceQuickHint: View {
+    static let shownCountKey = "conduit.liveVoiceQuickHintShown"
+    static let timesShown = 3
+
+    let thread: String?
+    /// The chat the call is attached to: bringing a minimised call back
+    /// doesn't count again.
+    let threadID: String?
+    @AppStorage(LiveVoiceQuickHint.shownCountKey) private var shownCount = 0
+    @AppStorage(LiveVoiceQuickHint.shownCountKey + ".last") private var lastCountedThreadID = ""
+    @State private var isShown = false
+
+    var body: some View {
+        Group {
+            if isShown, let thread {
+                Text(AppLocalization.string("Working in \(thread). Say “quick…” for a fast side job."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .onAppear { showIfDue() }
+        .onChange(of: threadID) { _, _ in showIfDue() }
+    }
+
+    private func showIfDue() {
+        guard let threadID, thread != nil else {
+            isShown = false
+            return
+        }
+        isShown = Self.shows(threadID: threadID, shownCount: &shownCount, lastCountedThreadID: &lastCountedThreadID)
+    }
+
+    /// Counted once per attached call; the same call shows it again when
+    /// it is brought back.
+    static func shows(threadID: String, shownCount: inout Int, lastCountedThreadID: inout String) -> Bool {
+        if threadID == lastCountedThreadID { return shownCount <= timesShown }
+        guard shownCount < timesShown else { return false }
+        shownCount += 1
+        lastCountedThreadID = threadID
+        return true
     }
 }
 

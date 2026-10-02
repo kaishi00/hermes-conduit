@@ -131,6 +131,7 @@ struct MainView: View {
         .sheet(isPresented: $appState.showGeminiLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.geminiLive) }) {
             GeminiLiveVoiceSheet(
                 controller: appState.geminiLiveController,
+                jobs: appState.voiceBackgroundJobSupervisor,
                 onClose: appState.closeGeminiLiveConversation,
                 onRetry: { Task { await appState.geminiLiveController.start() } }
             )
@@ -140,6 +141,7 @@ struct MainView: View {
         .sheet(isPresented: $appState.showGrokLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.grokLive) }) {
             GeminiLiveVoiceSheet(
                 controller: appState.grokLiveController,
+                jobs: appState.voiceBackgroundJobSupervisor,
                 engine: .grok,
                 onClose: appState.closeGrokLiveConversation,
                 onRetry: { Task { await appState.grokLiveController.start() } }
@@ -150,6 +152,7 @@ struct MainView: View {
         .sheet(isPresented: $appState.showGPTLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.gptLive) }) {
             GPTLiveVoiceSheet(
                 controller: appState.gptLiveController,
+                jobs: appState.voiceBackgroundJobSupervisor,
                 onClose: appState.closeGPTLiveConversation,
                 onRetry: { Task { await appState.gptLiveController.start() } }
             )

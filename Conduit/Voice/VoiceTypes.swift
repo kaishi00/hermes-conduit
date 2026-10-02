@@ -504,7 +504,8 @@ struct PendingVoiceIntent: Equatable {
     /// deadline waiter; nil for requests with no external budget.
     var externalLaunchElapsedDeadline: ContinuousClock.Instant? = nil
 
-    enum Source: String, Equatable { case composer, wakePhrase, siri }
+    /// `newCall`: the sidebar's New voice call, never attached to a chat.
+    enum Source: String, Equatable { case composer, wakePhrase, siri, newCall }
 }
 
 /// AppState emits these from its authoritative Hermes socket event path. Voice

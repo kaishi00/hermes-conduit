@@ -1151,9 +1151,57 @@ enum VoiceThreadRouting {
     static let cjkPolitePrefixes = ["请", "麻烦", "帮我"]
     static let cjkTrailers = ["。", "！", "吧", "呢", "一下", "给我听", "!", "."]
 
+    /// A request led by "quick" ("quick, what's on my calendar") runs as a
+    /// fast job on the Voice Jobs model instead of in the chat.
+    static let quickWords = ["quick", "quickly"]
+
     static func wantsBackgroundJob(_ request: String) -> Bool {
         let folded = fold(request)
-        return backgroundPhrases.contains { contains(folded, phrase: $0) }
+        return backgroundPhrases.contains { contains(folded, phrase: $0) } || startsQuick(folded: folded)
+    }
+
+    static func startsQuick(_ request: String) -> Bool {
+        startsQuick(folded: fold(request))
+    }
+
+    /// The request without a leading "Quick:" marker (GPT-Live is told to
+    /// add one): it is routing, not part of the task or the job's title.
+    static func removingQuickMarker(_ request: String) -> String {
+        let trimmed = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let marker = trimmed.range(
+            of: #"^(quickly|quick|快速|快)\s*[:,，：]\s*"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) else { return trimmed }
+        let rest = trimmed[marker.upperBound...]
+        return rest.isEmpty ? trimmed : String(rest)
+    }
+
+    private static func startsQuick(folded: String) -> Bool {
+        var request = Substring(folded.trimmingCharacters(in: .whitespacesAndNewlines))
+        while let prefix = politePrefixes.first(where: { request.hasPrefix($0) }) {
+            request = request.dropFirst(prefix.count)
+        }
+        for word in quickWords where request.hasPrefix(word) {
+            let rest = request.dropFirst(word.count)
+            // A word of its own, with something asked after it.
+            guard let next = rest.first, !(next.isLetter || next.isNumber) else { continue }
+            // "Quick question, …" is a figure of speech, not a request for a job.
+            let asked = rest.drop { !($0.isLetter || $0.isNumber) }
+            if asked.hasPrefix("question"),
+               asked.dropFirst("question".count).first.map({ !($0.isLetter || $0.isNumber) }) ?? true { continue }
+            if !asked.isEmpty { return true }
+        }
+        var cjk = Substring(folded.filter { !$0.isWhitespace })
+        while let prefix = cjkPolitePrefixes.first(where: { cjk.hasPrefix($0) }) {
+            cjk = cjk.dropFirst(prefix.count)
+        }
+        // "快速" or "快" set off from the request: "快，查一下天气". Without
+        // the separator it is a word of its own ("快速排序").
+        for word in ["快速", "快"] where cjk.hasPrefix(word) {
+            let rest = cjk.dropFirst(word.count)
+            if let next = rest.first, "，,：:".contains(next), rest.count > 1 { return true }
+        }
+        return false
     }
 
     static func wantsLastReply(_ request: String) -> Bool {

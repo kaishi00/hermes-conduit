@@ -3928,11 +3928,20 @@ final class AppState: ObservableObject {
         // own profile, which the off-screen paths here don't address.
         guard let sessionID = activeSessionId, !sessionID.isEmpty,
               activeRoomSurface == nil, activeVoiceCallSessionID == nil,
-              botConversationProfile(for: sessionID) == nil else { return nil }
+              botConversationProfile(for: sessionID) == nil,
+              Self.attachesLiveVoiceCall(chatHasMessages: !messages.isEmpty, turnState: turnState) else { return nil }
         // The catalog row's stored id is the chat's durable identity.
         let row = sessions.first { $0.id == sessionID || $0.alternateIds.contains(sessionID) }
         let stored = row.map { $0.storedSessionId ?? $0.id }
         return VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: stored, title: activeSessionTitle)
+    }
+
+    /// A new, empty chat has nothing to continue: a call started from it
+    /// works on its own, with jobs on the Voice Jobs model. A chat still
+    /// loading (its history may not be here yet) or running its first turn
+    /// counts as having messages.
+    static func attachesLiveVoiceCall(chatHasMessages: Bool, turnState: TurnState) -> Bool {
+        chatHasMessages || turnState == .synchronizing || turnState == .running
     }
 
     /// Whether `thread` is the chat on screen now.
@@ -4094,9 +4103,9 @@ final class AppState: ObservableObject {
             .prefix(80)
         var block = "\n\nThis call is attached to the user's Hermes chat \"\(title)\". "
         if delegation {
-            block += "Delegate anything that needs Hermes: it is sent to that chat as its next message and Hermes' reply comes back on the delegation. Only when the user asks for work to run in the background or in a separate chat, say \"in the background\" in the delegation. When the user asks to hear Hermes' last reply, delegate \"read the last reply\" and read what comes back word for word."
+            block += "Delegate work that needs Hermes: it is sent to that chat as its next message and Hermes' reply comes back on the delegation. When the user asks for work to run in the background or in a separate chat, say \"in the background\" in the delegation. When the user starts a request with \"quick\", start the delegation with \"Quick:\": it runs as a fast separate job instead of in the chat. When the user asks to hear Hermes' last reply, delegate \"read the last reply\" and read what comes back word for word."
         } else {
-            block += "Send anything that needs Hermes to that chat with ask_thread: it becomes the chat's next message and Hermes' reply comes back to you. Use start_job only when the user asks for work to run in the background or in a separate chat. When the user asks to hear Hermes' last reply, call read_last_reply and read it word for word."
+            block += "Quick facts from the web (weather, news, prices) are not work for the chat: answer them as your instructions above say. Send other work that needs Hermes to that chat with ask_thread: it becomes the chat's next message and Hermes' reply comes back to you. Use start_job instead when the user asks for work to run in the background or in a separate chat, or starts a request with \"quick\": answer a quick fact with a lookup, and send quick work that needs Hermes' tools to start_job, which runs it fast in its own chat. When the user asks to hear Hermes' last reply, call read_last_reply and read it word for word."
         }
         block += " Otherwise keep your own replies short; the full replies stay in the chat."
         if let last = latestReplyInOpenChat(thread) {

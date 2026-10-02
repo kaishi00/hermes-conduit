@@ -54,15 +54,17 @@ final class GPTLiveDelegationBridge {
             return [.delegationReply(delegationID: id, text: Self.relay("Hermes didn't get a request to work on. Ask the user what they want done."), channel: .speakable)]
         }
         let call = callGeneration
-        // Attached to a chat: the request is that chat's next turn, unless
-        // it asks for background work or only to hear the last reply.
+        // The "Quick:" marker routes; it isn't part of the task.
+        let task = VoiceThreadRouting.removingQuickMarker(instructions)
+        // Attached to a chat: hearing the last reply reads it, quick or
+        // background work is a job, and anything else is the chat's next turn.
+        if supervisor.liveThread != nil, VoiceThreadRouting.wantsLastReply(task) {
+            let reply = await supervisor.lastThreadReply()
+            guard callGeneration == call, !isEnding else { return [] }
+            let text = reply.map(Self.lastReplyText) ?? Self.relay("Hermes hasn't replied in this chat yet.")
+            return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
+        }
         if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(instructions) {
-            if VoiceThreadRouting.wantsLastReply(instructions) {
-                let reply = await supervisor.lastThreadReply()
-                guard callGeneration == call, !isEnding else { return [] }
-                let text = reply.map(Self.lastReplyText) ?? Self.relay("Hermes hasn't replied in this chat yet.")
-                return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
-            }
             let sent = supervisor.startThreadTurn(request: instructions)
             guard let jobID = sent.jobID else {
                 return [.delegationReply(delegationID: id, text: Self.relay(sent.refusal ?? ""), channel: .speakable)]
@@ -78,7 +80,7 @@ final class GPTLiveDelegationBridge {
         // A call that ends while Hermes creates the job must not leave this
         // delegation in the next call's table.
         // The delegation is free text: "for Fam, …" names another profile.
-        let reply = await supervisor.startJob(instructions: instructions, profile: nil) { [weak self] jobID in
+        let reply = await supervisor.startJob(instructions: task, profile: nil) { [weak self] jobID in
             createdJobID = jobID
             guard let self, !self.isEnding, self.callGeneration == call else { return }
             self.openDelegations[jobID] = id
