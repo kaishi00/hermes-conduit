@@ -33,6 +33,21 @@ struct CustomHeadersEditorSheet: View {
         return duplicates
     }
 
+    /// The row's problem in words, shown under it and read by VoiceOver on
+    /// the name field so the error isn't conveyed by colour alone.
+    private func problem(for row: CustomHeader) -> String? {
+        if let issue = issue(for: row) { return issue.message }
+        if duplicateNames.contains(row.trimmedName.lowercased()) {
+            return AppLocalization.string("This header is already in the list.")
+        }
+        return nil
+    }
+
+    /// 1-based row number, so VoiceOver can tell rows apart.
+    private func position(of row: CustomHeader) -> Int {
+        (rows.firstIndex { $0.id == row.id } ?? 0) + 1
+    }
+
     private var canSave: Bool {
         origin != nil
             && rows.allSatisfy { issue(for: $0) == nil }
@@ -62,6 +77,8 @@ struct CustomHeadersEditorSheet: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("extra-headers.name")
+                            .accessibilityLabel(AppLocalization.string("Header \(String(position(of: row))) name"))
+                            .accessibilityHint(problem(for: row) ?? "")
                         HStack {
                             Group {
                                 if revealedValues.contains(row.id) {
@@ -73,6 +90,8 @@ struct CustomHeadersEditorSheet: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("extra-headers.value")
+                            .accessibilityLabel(AppLocalization.string("Header \(String(position(of: row))) value"))
+                            .accessibilityHint(problem(for: row) ?? "")
                             Button {
                                 if revealedValues.contains(row.id) {
                                     revealedValues.remove(row.id)
@@ -87,12 +106,8 @@ struct CustomHeadersEditorSheet: View {
                                 ? AppLocalization.string("Hide value")
                                 : AppLocalization.string("Show value"))
                         }
-                        if let issue = issue(for: row) {
-                            Text(issue.message)
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                        } else if duplicateNames.contains(row.trimmedName.lowercased()) {
-                            Text(AppLocalization.string("This header is already in the list."))
+                        if let problem = problem(for: row) {
+                            Text(problem)
                                 .font(.footnote)
                                 .foregroundStyle(.red)
                         }
@@ -101,6 +116,7 @@ struct CustomHeadersEditorSheet: View {
                         } label: {
                             Label(AppLocalization.string("Remove header"), systemImage: "trash")
                         }
+                        .accessibilityLabel(AppLocalization.string("Remove header \(String(position(of: row)))"))
                     }
                 }
                 Section {
