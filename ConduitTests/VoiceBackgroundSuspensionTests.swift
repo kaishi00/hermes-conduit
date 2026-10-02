@@ -1411,6 +1411,20 @@ extension AppStateVoiceSuspensionTests {
         XCTAssertFalse(harness.controller.isBackgroundListening, "the phone presents Voice again")
     }
 
+    func testKeepListeningWhenLockedStillSuspendsAConversationThatIsntRunning() async {
+        let harness = makeHarness()
+        harness.appState.setKeepVoiceListeningWhenLocked(true)
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        harness.controller.pauseMicrophone()
+
+        harness.appState.handleScenePhase(.background)
+
+        XCTAssertNotNil(harness.appState.suspendedVoiceConversation, "a paused microphone has nothing to keep going")
+        XCTAssertTrue(harness.controller.isRuntimeSuspended)
+        XCTAssertFalse(harness.controller.isBackgroundListening)
+    }
+
     func testKeepListeningWhenLockedOffStillSuspendsOnBackground() async {
         let harness = makeHarness()
         harness.openVoice(session: "session-1")

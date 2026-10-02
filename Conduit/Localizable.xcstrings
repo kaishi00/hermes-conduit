@@ -61,12 +61,12 @@
         }
       }
     },
-    "These calls are kept on this device and Conduit retries them automatically. A call that still hasn't saved after 7 days is dropped." : {
+    "These calls are kept on this device and Conduit retries them automatically. It keeps up to 20 calls, and a call that still hasn't saved after 7 days is dropped." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这些通话保存在此设备上，Conduit 会自动重试。7 天后仍未保存的通话将被丢弃。"
+            "value" : "这些通话保存在此设备上，Conduit 会自动重试。最多保留 20 个通话，7 天后仍未保存的通话将被丢弃。"
           }
         }
       }

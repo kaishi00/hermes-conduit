@@ -2247,13 +2247,13 @@ final class AppState: ObservableObject {
 
     /// "Keep listening when locked": an open classic Voice conversation that
     /// is already running keeps presenting with the phone locked or Conduit
-    /// in the background, the way CarPlay keeps it live. A sheet that never
-    /// started listening, or a conversation already suspended, doesn't count.
+    /// in the background, the way CarPlay keeps it live. A conversation that
+    /// isn't running (never listened, settled idle, paused, failed, or
+    /// already suspended) doesn't count: it suspends as usual instead.
     var isLockedVoiceSurfaceActive: Bool {
         keepVoiceListeningWhenLocked
             && showVoiceSheet
-            && voiceConversationController.hasLiveVoiceSession
-            && !voiceConversationController.isRuntimeSuspended
+            && voiceConversationController.isConversationRunning
     }
 
     /// Whether the app itself has a foreground presentation surface: the
@@ -3296,8 +3296,19 @@ final class AppState: ObservableObject {
     /// (no plugin route, or no session store). Queued calls are kept.
     @Published private(set) var voiceCallSavesBlocked = false
     @Published private(set) var isSavingQueuedVoiceCalls = false
-    /// Keys whose host refused the last outbox save as unsupported.
-    private var voiceCallSaveBlockedKeys: Set<String> = []
+    /// Keys whose host refused the last outbox save as unsupported. Kept
+    /// across launches so Voice settings gives the reason at once.
+    private var voiceCallSaveBlockedKeys: Set<String> {
+        get { Set(defaults.stringArray(forKey: Self.voiceCallSaveBlockedKeysKey) ?? []) }
+        set {
+            if newValue.isEmpty {
+                defaults.removeObject(forKey: Self.voiceCallSaveBlockedKeysKey)
+            } else {
+                defaults.set(newValue.sorted(), forKey: Self.voiceCallSaveBlockedKeysKey)
+            }
+        }
+    }
+    private static let voiceCallSaveBlockedKeysKey = "conduit.voiceCallSaveBlocked.v1"
 
     /// Profile names repeat across Hermes servers, so voice state is keyed
     /// by dashboard too.
@@ -3585,6 +3596,8 @@ final class AppState: ObservableObject {
 
     // MARK: Outbox
 
+    /// Main actor only: the expiration handler and the closing save's
+    /// `defer` both run on the main queue, so the one-shot `end` never races.
     private func beginVoiceTranscriptBackgroundTask() -> () -> Void {
         var taskID = UIBackgroundTaskIdentifier.invalid
         let end = {

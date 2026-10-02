@@ -1025,7 +1025,7 @@ struct VoiceCallSaveStatusSection: View {
                 .font(.subheadline.weight(.semibold))
             Text(model.blocked
                  ? AppLocalization.string("Your Hermes server can't save voice calls yet. Install or update the Hermes notifier plugin on your Hermes server, then tap Save Now.")
-                 : AppLocalization.string("These calls are kept on this device and Conduit retries them automatically. A call that still hasn't saved after 7 days is dropped."))
+                 : AppLocalization.string("These calls are kept on this device and Conduit retries them automatically. It keeps up to 20 calls, and a call that still hasn't saved after 7 days is dropped."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button {

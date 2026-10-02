@@ -293,6 +293,17 @@ final class VoiceConversationController: ObservableObject {
         isBackgroundListening = active
     }
 
+    /// Whether the conversation is actually running: listening, or a turn
+    /// in flight. An idle or failed session, a paused microphone, or a
+    /// suspended runtime has nothing to keep going with the phone locked.
+    var isConversationRunning: Bool {
+        guard isVoiceSessionActive, !isRuntimeSuspended, !isMicrophonePaused else { return false }
+        switch state {
+        case .listening, .transcribing, .thinking, .speaking, .muted: return true
+        case .idle, .failed: return false
+        }
+    }
+
     /// Observability seam: whether the app-foreground gate currently admits
     /// permission and provider-test work. Tests pin it through here because
     /// the failure it guards against — a foreground settings action refused
@@ -878,6 +889,12 @@ final class VoiceConversationController: ObservableObject {
     private func restartSilentListeningWindow(at date: Date) {
         do {
             try capture.startListening(includePreRoll: false)
+            // A fresh window, as after a resume: no speech or barge-in state
+            // carries over from the silence.
+            speechDetector.reset()
+            resetMicrophoneMeter()
+            bargeInStartedAt = nil
+            lastSpeechAt = nil
             utteranceStartedAt = date
         } catch {
             pauseMicrophone()
