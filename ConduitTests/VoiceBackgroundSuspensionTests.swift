@@ -1425,6 +1425,49 @@ extension AppStateVoiceSuspensionTests {
         XCTAssertFalse(harness.controller.isBackgroundListening)
     }
 
+    func testBackgroundListeningEndsWhenTheConversationStopsRunningWhileLocked() async {
+        let harness = makeHarness()
+        harness.appState.setKeepVoiceListeningWhenLocked(true)
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        harness.appState.handleScenePhase(.background)
+        XCTAssertTrue(harness.controller.isBackgroundListening)
+
+        // No scene event follows while locked: the controller's own state
+        // decides.
+        harness.controller.pauseMicrophone()
+
+        XCTAssertFalse(harness.controller.isBackgroundListening)
+
+        // The same holds once the session is torn down.
+        harness.controller.setBackgroundListening(true)
+        harness.controller.stop()
+
+        XCTAssertFalse(harness.controller.isBackgroundListening)
+    }
+
+    func testSigningOutClearsTheUnsavedVoiceCallStatus() {
+        let harness = makeHarness()
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: harness.appState.activeDashboardID?.uuidString ?? "-",
+            profile: harness.appState.activeProfile,
+            request: VoiceTranscriptSaveRequest(
+                callID: "c1", engine: .gptLive, sessionID: nil, title: "Call",
+                turns: [VoiceTranscriptTurn(index: 0, role: .user, text: "Hi", at: Date())]
+            ),
+            queuedAt: Date()
+        ))
+        outbox.store(in: harness.defaults)
+        harness.appState.refreshVoiceSessionTags()
+        XCTAssertEqual(harness.appState.pendingVoiceCallSaves, 1)
+
+        harness.appState.disconnect()
+
+        XCTAssertEqual(harness.appState.pendingVoiceCallSaves, 0)
+        XCTAssertFalse(harness.appState.voiceCallSavesBlocked)
+    }
+
     func testKeepListeningWhenLockedOffStillSuspendsOnBackground() async {
         let harness = makeHarness()
         harness.openVoice(session: "session-1")

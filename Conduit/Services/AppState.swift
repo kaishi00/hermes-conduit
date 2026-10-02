@@ -2908,6 +2908,8 @@ final class AppState: ObservableObject {
         presentationCacheProfileEpoch &+= 1
         // The saved copy belongs to the outgoing profile's scope.
         dismissOfflineChatPresentation()
+        // So do the unsaved voice calls Voice settings counts.
+        publishVoiceCallSaveStatus()
     }
 
 #if DEBUG
@@ -3553,7 +3555,14 @@ final class AppState: ObservableObject {
         }
         // A call often ends with the phone locked: keep Conduit running
         // until the closing save lands (the outbox covers it if it can't).
-        let endBackgroundTask = beginVoiceTranscriptBackgroundTask()
+        // A call with nothing left to send needs no extra time, so the task
+        // is only begun when there is a queued request.
+        let endBackgroundTask: () -> Void
+        if queuedCallID != nil {
+            endBackgroundTask = beginVoiceTranscriptBackgroundTask()
+        } else {
+            endBackgroundTask = {}
+        }
         Task { [weak self] in
             defer { endBackgroundTask() }
             await recorder.flush()
@@ -3616,6 +3625,12 @@ final class AppState: ObservableObject {
     /// call's checkpoint and a closing save still in flight aren't waiting
     /// on anything, so they aren't counted.
     private func publishVoiceCallSaveStatus() {
+        // Signed out: nothing is shown, whatever the outbox still holds.
+        guard connection != nil else {
+            if pendingVoiceCallSaves != 0 { pendingVoiceCallSaves = 0 }
+            if voiceCallSavesBlocked { voiceCallSavesBlocked = false }
+            return
+        }
         let key = voiceHistoryKey(profile: activeProfile)
         let dashboard = activeDashboardID?.uuidString ?? "-"
         var outbox = VoiceTranscriptOutbox.load(from: defaults)
@@ -6763,6 +6778,8 @@ final class AppState: ObservableObject {
         continuousConversationEnabled = true
         keepVoiceListeningWhenLocked = false
         voiceCallSaveBlockedKeys = []
+        pendingVoiceCallSaves = 0
+        voiceCallSavesBlocked = false
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
         retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
@@ -20901,6 +20918,8 @@ final class AppState: ObservableObject {
         continuousConversationEnabled = preferences.continuousConversation
         keepVoiceListeningWhenLocked = preferences.keepListeningWhenLocked ?? false
         voiceConversationController.setProfilePreferences(preferences)
+        // Voice settings shows this profile's unsaved calls, not the last one's.
+        publishVoiceCallSaveStatus()
         refreshVoiceControllerGateway()
         refreshReadAloudGateway()
     }

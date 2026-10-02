@@ -111,8 +111,11 @@ final class VoiceConversationController: ObservableObject {
     /// Hands-free listening while the phone is locked or Conduit is in the
     /// background ("Keep listening when locked"). Nobody can tap Listen or
     /// unpause then, so silence never pauses the microphone and every reply
-    /// opens the next listening turn.
-    private(set) var isBackgroundListening = false
+    /// opens the next listening turn. Only while the conversation is still
+    /// running: a session that failed or closed in the background reads
+    /// false even before AppState restates the gate.
+    var isBackgroundListening: Bool { isBackgroundListeningRequested && isConversationRunning }
+    private var isBackgroundListeningRequested = false
     private var isVoiceSessionActive = false
     private var isAwaitingVoiceAssistant = false
     private var awaitedAssistantResponseStarted = false
@@ -290,7 +293,7 @@ final class VoiceConversationController: ObservableObject {
     /// AppState sets this while an open conversation keeps running with the
     /// phone locked, and clears it when the phone presents Voice again.
     func setBackgroundListening(_ active: Bool) {
-        isBackgroundListening = active
+        isBackgroundListeningRequested = active
     }
 
     /// Whether the conversation is actually running: listening, or a turn
