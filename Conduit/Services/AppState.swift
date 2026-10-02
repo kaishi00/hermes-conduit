@@ -14993,8 +14993,9 @@ final class AppState: ObservableObject {
         } catch {
             state = NotifierPluginStatus.state(from: error)
         }
-        // A bridge swapped mid-request belongs to another host.
-        guard bridge === dashboardTicketBridge else { return }
+        // A bridge swapped mid-request belongs to another host, and a failed
+        // request says nothing new: keep the last real answer.
+        guard bridge === dashboardTicketBridge, state != .unknown else { return }
         notifierPlugin.state = state
     }
 
@@ -15067,6 +15068,11 @@ final class AppState: ObservableObject {
                 ? .offered
                 : .unavailable(Self.chatTakeoverFailureMessage(ChatTakeoverError.pluginMissing))
         )
+        // The plugin may have been updated since the last check: ask again,
+        // so the next refusal can offer the takeover.
+        if !notifierPlugin.mightSupport("session-takeover") {
+            Task { await refreshNotifierPluginStatus() }
+        }
         lifecycleLog.notice(
             "prompt.submit refused: chat owned by \(details.surface ?? "another surface", privacy: .public) session=\(sessionID, privacy: .public)"
         )
