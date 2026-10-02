@@ -109,7 +109,13 @@ extension AppState {
     }
 
     func refreshWakeListening() {
-        let snapshot = wakeLifecycleSnapshot
+        var snapshot = wakeLifecycleSnapshot
+        // Route changes while suspended are never delivered, so confirm the
+        // cached route right before arming (rare: only when wake would start).
+        if snapshot.canArm, !wakeWordService.isArmed, snapshot != lastAppliedWakeSnapshot {
+            isWakeRouteSuitable = WakeRoutePolicy.current()
+            snapshot.isRouteSuitable = isWakeRouteSuitable
+        }
         if snapshot.canArm { wakeWordService.bindings = activeWakeBindings }
         // Only act on a change: a failed arm is not retried on every
         // unrelated publish, only once something relevant moves.
@@ -126,6 +132,8 @@ extension AppState {
         guard !wakeObservations.isEmpty else { return }
         wakeLifecycle.disarmImmediately()
         lastAppliedWakeSnapshot = nil
+        // Re-read on the next foreground: CarPlay may connect meanwhile.
+        isWakeRouteSuitable = true
     }
 
     private func handleWakeDetection(_ binding: WakePhraseBinding) {
