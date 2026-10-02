@@ -14645,11 +14645,17 @@ final class AppState: ObservableObject {
     /// The takeover for the open chat, matched on every id the chat goes by,
     /// so a runtime id rotated mid-takeover keeps the notice and the resend.
     var activeChatTakeover: ChatTakeoverState? {
-        guard let takeover = chatTakeover, let active = activeSessionId else { return nil }
+        guard let active = activeSessionId, chatTakeoverMatches(active) else { return nil }
+        return chatTakeover
+    }
+
+    /// Whether the takeover belongs to the chat `sessionID` names, by any of its ids.
+    private func chatTakeoverMatches(_ sessionID: String) -> Bool {
+        guard let takeover = chatTakeover else { return false }
         let ids = Set(takeover.sessionIDs)
-        if ids.contains(active) { return takeover }
-        if let canonical = canonicalSessionID(for: active), ids.contains(canonical) { return takeover }
-        return nil
+        if ids.contains(sessionID) { return true }
+        if let canonical = canonicalSessionID(for: sessionID), ids.contains(canonical) { return true }
+        return false
     }
 
     /// The stored chat behind a runtime id, so a rotated runtime id doesn't
@@ -14899,7 +14905,7 @@ final class AppState: ObservableObject {
             lifecycleLog.notice(
                 "prompt.submit outcome=\(Self.promptOutcomeLogValue(outcome), privacy: .public) session=\(sessionId, privacy: .public)"
             )
-            if chatTakeover?.sessionID == sessionId {
+            if chatTakeoverMatches(sessionId) {
                 dismissChatTakeover()
             }
             if chatTakeoverAutomaticSessionID == chatTakeoverGuardKey(sessionId) {
@@ -15169,7 +15175,7 @@ final class AppState: ObservableObject {
             await recoverComposerSubmission(using: submissionContext)
             // Automatic takeover starts once the refused draft is back in
             // the composer, which sends it again when the chat is Conduit's.
-            if activeSessionId == sessionId, chatTakeover?.sessionID == sessionId, chatTakeover?.phase == .offered,
+            if chatTakeoverMatches(sessionId), activeChatTakeover?.phase == .offered,
                takesOverChatsAutomatically, chatTakeoverAutomaticSessionID != chatTakeoverGuardKey(sessionId) {
                 chatTakeoverAutomaticSessionID = chatTakeoverGuardKey(sessionId)
                 takeOverChat()
