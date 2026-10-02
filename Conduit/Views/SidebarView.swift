@@ -206,6 +206,29 @@ struct SessionList: View {
                 .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
                 .opacity(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil ? 0.6 : 1)
 
+                // A call of its own, not tied to the open chat: its work
+                // runs as jobs on the Voice Jobs model.
+                if appState.showsComposerVoiceButton {
+                    Button {
+                        Haptics.medium()
+                        appState.dismissSidebarDrawer()
+                        Task {
+                            _ = await appState.openVoiceConversation(
+                                PendingVoiceIntent(profile: appState.activeProfile, startsFreshConversation: true, source: .newCall)
+                            )
+                        }
+                    } label: {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .conduitGlassControl(cornerRadius: 14)
+                    .disabled(!appState.canStartPhoneVoiceConversation || appState.isVoiceInUse)
+                    .accessibilityLabel("New voice call")
+                    .accessibilityHint(appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Starts a voice call that isn't tied to a chat"))
+                }
+
                 Menu {
                     Button {
                         Haptics.selection()

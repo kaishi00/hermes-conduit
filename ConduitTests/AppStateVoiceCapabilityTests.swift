@@ -322,6 +322,32 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(final, "Draft Buy milk.")
     }
 
+    func testACallFromANewEmptyChatIsNotAttachedToIt() {
+        XCTAssertFalse(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .idle),
+                       "an empty chat has nothing to continue")
+        XCTAssertTrue(AppState.attachesLiveVoiceCall(chatHasMessages: true, turnState: .idle))
+        XCTAssertTrue(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .synchronizing),
+                      "a chat still loading may have history")
+        XCTAssertTrue(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .running),
+                      "its first message is on its way")
+        XCTAssertFalse(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .reconnecting),
+                       "reconnecting doesn't give an empty chat anything to continue")
+    }
+
+    func testTheQuickHintCountsEachAttachedCallOnce() {
+        var count = 0
+        var last = ""
+        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "a", shownCount: &count, lastCountedThreadID: &last))
+        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "a", shownCount: &count, lastCountedThreadID: &last),
+                      "bringing the same call back shows it again")
+        XCTAssertEqual(count, 1, "and doesn't count again")
+        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "b", shownCount: &count, lastCountedThreadID: &last))
+        XCTAssertTrue(LiveVoiceQuickHint.shows(threadID: "c", shownCount: &count, lastCountedThreadID: &last))
+        XCTAssertFalse(LiveVoiceQuickHint.shows(threadID: "d", shownCount: &count, lastCountedThreadID: &last),
+                       "three calls, then it's done")
+        XCTAssertEqual(count, 3)
+    }
+
     func testAShortPressOnTheMicOpensVoiceAndAHoldStopsDictating() {
         XCTAssertEqual(
             ComposerDictation.release(heldPastThreshold: false, isCapturing: false, canOpenVoice: true),

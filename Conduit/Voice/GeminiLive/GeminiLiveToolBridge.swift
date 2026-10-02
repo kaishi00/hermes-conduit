@@ -89,7 +89,7 @@ final class GeminiLiveToolBridge {
     static let threadDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         .init(
             name: Tool.askThread.rawValue,
-            description: "Send the user's request to Hermes as the next message in the chat this call is attached to. Use it for anything that needs Hermes: questions about the chat, follow-ups, and real work. Hermes' reply arrives later on this call; summarize it unless the user asks to hear it in full. Don't guess the reply.",
+            description: "Send the user's request to Hermes as the next message in the chat this call is attached to. Use it for work that needs Hermes: questions about the chat, follow-ups, and real work. Not for quick facts from the web, or requests the user starts with \"quick\". Hermes' reply arrives later on this call; summarize it unless the user asks to hear it in full. Don't guess the reply.",
             parameters: [
                 "type": "OBJECT",
                 "properties": [
@@ -145,7 +145,7 @@ final class GeminiLiveToolBridge {
     static let functionDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         .init(
             name: Tool.startJob.rawValue,
-            description: "Start a background job on the user's Hermes agent for work that takes more than a moment (research, coding, checking systems, anything needing Hermes' tools). Only call this when the user asks for such work. The job runs in its own Hermes chat; its result arrives later on this call. Do not describe job progress unless asked.",
+            description: "Start a background job on the user's Hermes agent for work that takes more than a moment (research, coding, checking systems, anything needing Hermes' tools). Only call this when the user asks for such work; in a call attached to a chat, also for quick work the user starts with \"quick\" that needs Hermes' tools. The job runs in its own Hermes chat; its result arrives later on this call. Do not describe job progress unless asked.",
             parameters: [
                 "type": "OBJECT",
                 "properties": [

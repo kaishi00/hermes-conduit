@@ -168,6 +168,7 @@ struct GPTLiveSettingsSection: View {
 
 struct GPTLiveVoiceSheet: View {
     @ObservedObject var controller: GPTLiveConversationController
+    @ObservedObject var jobs: VoiceBackgroundJobSupervisor
     let onClose: () -> Void
     let onRetry: () -> Void
 
@@ -177,6 +178,7 @@ struct GPTLiveVoiceSheet: View {
                 ConduitBackdrop()
                 VStack(spacing: 16) {
                     statusHeader
+                    LiveVoiceQuickHint(thread: jobs.liveThread?.title, threadID: jobs.liveThread?.runtimeSessionID)
                     transcriptList
                     controls
                 }
