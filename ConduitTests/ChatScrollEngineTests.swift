@@ -167,6 +167,19 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(engine.isFollowingLatest)
     }
 
+    func testATitleTapCancelsAPendingPastTheBottomCheck() {
+        let (engine, surface) = makeEngine()
+        surface.contentHeight = 3700
+        surface.contentOffsetY = 3200
+        engine.surfaceScrolled()
+        engine.explicitTopRequested()
+        XCTAssertEqual(surface.contentOffsetY, surface.minOffsetY)
+
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(surface.contentOffsetY, surface.minOffsetY, "the reader asked for the top")
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
     func testFollowingLeavesARubberBandPastTheBottomToTheFinger() {
         let (engine, surface) = makeEngine()
         surface.isTracking = true

@@ -153,6 +153,9 @@ final class ChatScrollEngine: ObservableObject {
     private var surfaceCallbackDepth = 0
     private var lastObservedOffsetY: CGFloat?
     private var pastBottomCheckScheduled = false
+    /// Bumped when the reader or a command takes over, so a pending
+    /// past-the-bottom check does nothing when it runs.
+    private var pastBottomCheckGeneration: UInt64 = 0
     private let now: () -> TimeInterval
     private let prefersReducedMotion: @MainActor () -> Bool
 
@@ -263,8 +266,9 @@ final class ChatScrollEngine: ObservableObject {
             // update (HostingScrollView.updateContext), so following corrects
             // here: once inline, then once more after the current update has
             // finished, so the bottom is where it ends up whoever wrote last.
-            // At most one inline pin per main-queue turn, so a writer that
-            // answers every pin cannot recurse with this.
+            // While a check is pending there is no inline pin, so a writer
+            // that answers every pin cannot recurse with this. A drag, a
+            // title tap or going to the background cancels the check.
             if !pastBottomCheckScheduled {
                 pin(surface)
             }
@@ -285,7 +289,10 @@ final class ChatScrollEngine: ObservableObject {
     func setPaused(_ paused: Bool) {
         guard paused != isPaused else { return }
         isPaused = paused
-        guard !paused else { return }
+        guard !paused else {
+            cancelPastBottomCheck()
+            return
+        }
         // Catch up on whatever changed while backgrounded.
         surfaceLayoutChanged()
         surfaceScrolled()
@@ -297,6 +304,7 @@ final class ChatScrollEngine: ObservableObject {
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         isDragging = true
+        cancelPastBottomCheck()
         latestAnimationUntil = nil
         prependAnchor = nil
         restoration = nil
@@ -501,6 +509,7 @@ final class ChatScrollEngine: ObservableObject {
         restoration = nil
         prependAnchor = nil
         latestAnimationUntil = nil
+        cancelPastBottomCheck()
         emit(.cancelAutomaticRestoration)
         setMode(.browsing)
         guard !isPaused else { return }
@@ -680,11 +689,17 @@ final class ChatScrollEngine: ObservableObject {
         }
     }
 
+    private func cancelPastBottomCheck() {
+        pastBottomCheckGeneration &+= 1
+        pastBottomCheckScheduled = false
+    }
+
     private func schedulePastBottomCheck() {
         guard !pastBottomCheckScheduled else { return }
         pastBottomCheckScheduled = true
+        let generation = pastBottomCheckGeneration
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, generation == self.pastBottomCheckGeneration else { return }
             self.pastBottomCheckScheduled = false
             guard let surface = self.surface,
                   !self.isPaused,
