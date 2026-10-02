@@ -193,7 +193,7 @@ enum CarPlayBrowseTemplateFactory {
         let buttons = shortcuts.prefix(CarPlayPreferences.maximumShortcuts).enumerated().map { index, shortcut in
             CPGridButton(
                 titleVariants: [shortcut.title],
-                image: UIImage(systemName: CarPlayBrowse.shortcutSymbol(at: index)) ?? UIImage()
+                image: UIImage(systemName: CarPlayBrowse.shortcutSymbol(at: index)) ?? UIImage(systemName: "circle.fill") ?? UIImage()
             ) { _ in
                 handlers.runShortcut(shortcut)
             }

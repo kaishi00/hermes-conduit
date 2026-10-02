@@ -169,7 +169,7 @@ enum CarPlayVoiceTemplateFactory {
         handler: @escaping (CPButton) -> Void
     ) -> CPButton {
         let button = CPButton(
-            image: UIImage(systemName: symbol) ?? UIImage(),
+            image: UIImage(systemName: symbol) ?? UIImage(systemName: "circle.fill") ?? UIImage(),
             handler: handler
         )
         button.title = title

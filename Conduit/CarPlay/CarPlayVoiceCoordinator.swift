@@ -278,6 +278,9 @@ final class CarPlayVoiceCoordinator {
                     return
                 }
                 self.isTemplatePresented = true
+                // Re-assert the top bar for the presented state, so it never
+                // rests on buttons set before the template was on screen.
+                self.updateBrowseButtons(for: self.pendingPresentationState ?? .ready, force: true)
                 // The template presents its FIRST state (ready) by default;
                 // activate a retained pending state exactly once when it
                 // differs, then resume normal dedupe against the presented
@@ -412,9 +415,9 @@ final class CarPlayVoiceCoordinator {
 
     // MARK: - Browse screens
 
-    private func updateBrowseButtons(for state: CarPlayVoiceState) {
+    private func updateBrowseButtons(for state: CarPlayVoiceState, force: Bool = false) {
         let shows = state == .ready || state == .error
-        guard shows != showsBrowseButtons else { return }
+        guard force || shows != showsBrowseButtons else { return }
         showsBrowseButtons = shows
         guard let template, #available(iOS 26.4, *) else { return }
         if shows {
