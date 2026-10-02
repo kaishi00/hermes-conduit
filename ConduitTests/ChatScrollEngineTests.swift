@@ -137,6 +137,25 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 2900, "no empty space left under the last message")
     }
 
+    /// SwiftUI can write its previous offset back after the pass that
+    /// pinned a shrink, leaving empty space under the last message.
+    func testFollowingPinsAnOffsetWrittenPastTheBottom() {
+        let (engine, surface) = makeEngine()
+        surface.contentHeight = 3700
+        surface.contentOffsetY = 3200
+        engine.surfaceScrolled()
+        XCTAssertEqual(surface.contentOffsetY, 2900)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testFollowingLeavesARubberBandPastTheBottomToTheFinger() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        surface.contentOffsetY = 3300
+        engine.surfaceScrolled()
+        XCTAssertEqual(surface.contentOffsetY, 3300)
+    }
+
     func testFollowingDoesNotFightAFingerOnTheScreen() {
         let (_, surface) = makeEngine()
         surface.isTracking = true

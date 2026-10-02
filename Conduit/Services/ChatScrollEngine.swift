@@ -256,6 +256,18 @@ final class ChatScrollEngine: ObservableObject {
                   surface.distanceFromBottom > Self.nearBottomTolerance {
             setMode(.browsing)
             emit(.persistSnapshot(renderedSessionKey))
+        } else if mode == .following,
+                  !isDragging,
+                  !surface.isTracking,
+                  !surface.isDecelerating,
+                  !latestAnimationInFlight,
+                  surface.distanceFromBottom < -0.5 {
+            // Past the bottom with no finger or momentum: empty space under
+            // the last message. UIKit never clamps an offset when content
+            // shrinks, and SwiftUI can write its previous offset back after
+            // the layout pass that pinned (a turn completing collapses its
+            // live rows), so following pins again here.
+            pin(surface)
         }
         refreshJumpButton()
     }
