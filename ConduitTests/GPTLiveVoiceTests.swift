@@ -1132,6 +1132,18 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(appState.minimisedLiveVoice, .gptLive)
     }
 
+    func testCarPlayGoingAwayWhileLockedClearsTheBarOfACallThatStopped() async {
+        let appState = makeGPTLiveAppState()
+        let (controller, _) = await startMinimisableGPTLive(in: appState)
+        swipeGPTLiveSheetAway(appState)
+        controller.stop()
+        _ = appState.handleScenePhase(.background)
+
+        appState.releaseCarPlayGPTLive()
+
+        XCTAssertNil(appState.minimisedLiveVoice, "no bar for a call nothing presents any more")
+    }
+
     func testDisconnectEndsAMinimisedCall() async {
         let appState = makeGPTLiveAppState()
         let (controller, session) = await startMinimisableGPTLive(in: appState)
