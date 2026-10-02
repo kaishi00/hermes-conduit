@@ -1385,3 +1385,69 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         )
     }
 }
+
+// MARK: - Keep listening when locked (issue #290)
+
+extension AppStateVoiceSuspensionTests {
+    func testKeepListeningWhenLockedKeepsARunningConversationLiveInTheBackground() async {
+        let harness = makeHarness()
+        XCTAssertTrue(harness.appState.setKeepVoiceListeningWhenLocked(true))
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        let stopsBeforeBackground = harness.capture.stopCount
+
+        harness.appState.handleScenePhase(.background)
+
+        XCTAssertNil(harness.appState.suspendedVoiceConversation, "nothing is suspended, so nothing waits to restore")
+        XCTAssertFalse(harness.controller.isRuntimeSuspended)
+        XCTAssertEqual(harness.controller.state, .listening)
+        XCTAssertEqual(harness.capture.stopCount, stopsBeforeBackground, "capture keeps running")
+        XCTAssertTrue(harness.controller.isBackgroundListening)
+        XCTAssertTrue(harness.appState.hasActiveVoiceSurface)
+        XCTAssertTrue(harness.controller.isApplicationForegroundGateOpen, "the conversation's work isn't discarded as backgrounded")
+
+        _ = harness.appState.handleScenePhase(.active)
+
+        XCTAssertFalse(harness.controller.isBackgroundListening, "the phone presents Voice again")
+    }
+
+    func testKeepListeningWhenLockedStillSuspendsAConversationThatIsntRunning() async {
+        let harness = makeHarness()
+        harness.appState.setKeepVoiceListeningWhenLocked(true)
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        harness.controller.pauseMicrophone()
+
+        harness.appState.handleScenePhase(.background)
+
+        XCTAssertNotNil(harness.appState.suspendedVoiceConversation, "a paused microphone has nothing to keep going")
+        XCTAssertTrue(harness.controller.isRuntimeSuspended)
+        XCTAssertFalse(harness.controller.isBackgroundListening)
+    }
+
+    func testKeepListeningWhenLockedOffStillSuspendsOnBackground() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+
+        harness.appState.handleScenePhase(.background)
+
+        XCTAssertNotNil(harness.appState.suspendedVoiceConversation)
+        XCTAssertTrue(harness.controller.isRuntimeSuspended)
+        XCTAssertFalse(harness.controller.isBackgroundListening)
+    }
+
+    func testKeepListeningWhenLockedIsSavedPerProfile() {
+        let harness = makeHarness()
+        XCTAssertFalse(harness.appState.keepVoiceListeningWhenLocked)
+
+        harness.appState.setKeepVoiceListeningWhenLocked(true)
+
+        XCTAssertTrue(harness.appState.keepVoiceListeningWhenLocked)
+        XCTAssertEqual(harness.controller.activePreferences.keepListeningWhenLocked, true)
+
+        harness.appState.setKeepVoiceListeningWhenLocked(false)
+
+        XCTAssertNil(harness.controller.activePreferences.keepListeningWhenLocked, "off is stored as unset")
+    }
+}

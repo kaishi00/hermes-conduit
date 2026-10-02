@@ -194,6 +194,10 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// barge-in, or route policy.
     var continuousConversation: Bool = true
     var continueWakeConversation: Bool = false
+    /// Whether an open classic Voice conversation keeps listening with the
+    /// phone locked or Conduit in the background, like a live call. Nil is
+    /// off.
+    var keepListeningWhenLocked: Bool? = nil
     var spokenStopPhrases: [String] = VoiceSpokenCommands.defaultStopPhrases
     /// Spoken phrases that close the whole Voice session through the
     /// existing Close teardown path. An empty list disables the category.
@@ -257,6 +261,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         outputMuted = try container.decodeIfPresent(Bool.self, forKey: .outputMuted) ?? false
         continuousConversation = try container.decodeIfPresent(Bool.self, forKey: .continuousConversation) ?? true
         continueWakeConversation = try container.decodeIfPresent(Bool.self, forKey: .continueWakeConversation) ?? false
+        keepListeningWhenLocked = try? container.decodeIfPresent(Bool.self, forKey: .keepListeningWhenLocked)
         spokenStopPhrases = try container.decodeIfPresent([String].self, forKey: .spokenStopPhrases)
             .map {
                 VoiceSpokenCommands.migratedDefaultPhrases(

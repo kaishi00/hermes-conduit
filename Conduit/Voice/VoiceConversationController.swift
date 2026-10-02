@@ -108,6 +108,11 @@ final class VoiceConversationController: ObservableObject {
     /// closed, which is exactly the state Voice settings is in, so reading
     /// it here refuses legitimate settings actions.
     private var isApplicationForegroundActive = true
+    /// Hands-free listening while the phone is locked or Conduit is in the
+    /// background ("Keep listening when locked"). Nobody can tap Listen or
+    /// unpause then, so silence never pauses the microphone and every reply
+    /// opens the next listening turn.
+    private(set) var isBackgroundListening = false
     private var isVoiceSessionActive = false
     private var isAwaitingVoiceAssistant = false
     private var awaitedAssistantResponseStarted = false
@@ -280,6 +285,23 @@ final class VoiceConversationController: ObservableObject {
     /// is in fact absent while the user works in Voice settings.
     func setApplicationForegroundActive(_ active: Bool) {
         isApplicationForegroundActive = active
+    }
+
+    /// AppState sets this while an open conversation keeps running with the
+    /// phone locked, and clears it when the phone presents Voice again.
+    func setBackgroundListening(_ active: Bool) {
+        isBackgroundListening = active
+    }
+
+    /// Whether the conversation is actually running: listening, or a turn
+    /// in flight. An idle or failed session, a paused microphone, or a
+    /// suspended runtime has nothing to keep going with the phone locked.
+    var isConversationRunning: Bool {
+        guard isVoiceSessionActive, !isRuntimeSuspended, !isMicrophonePaused else { return false }
+        switch state {
+        case .listening, .transcribing, .thinking, .speaking, .muted: return true
+        case .idle, .failed: return false
+        }
     }
 
     /// Observability seam: whether the app-foreground gate currently admits
@@ -679,7 +701,11 @@ final class VoiceConversationController: ObservableObject {
                 scheduleFinishUtterance()
             } else if lastSpeechAt == nil, let started = utteranceStartedAt,
                       date.timeIntervalSince(started) >= configuration.idleSilence {
-                pauseMicrophone()
+                if isBackgroundListening {
+                    restartSilentListeningWindow(at: date)
+                } else {
+                    pauseMicrophone()
+                }
             }
         case .thinking, .speaking, .muted:
             // Speaker-safe suspension: while capture is suspended during
@@ -854,6 +880,25 @@ final class VoiceConversationController: ObservableObject {
         guard currentRoutePolicy() == .speakerSafeHalfDuplex else { return }
         guard state == .speaking || isPlaybackCaptureSuspended else { return }
         suspendCaptureForPlayback()
+    }
+
+    /// Locked-phone idle silence: a paused microphone can't be unpaused
+    /// from the lock screen, and pausing releases the audio session iOS
+    /// keeps Conduit running for. The silent audio is dropped instead and a
+    /// fresh listening window opens on the same capture.
+    private func restartSilentListeningWindow(at date: Date) {
+        do {
+            try capture.startListening(includePreRoll: false)
+            // A fresh window, as after a resume: no speech or barge-in state
+            // carries over from the silence.
+            speechDetector.reset()
+            resetMicrophoneMeter()
+            bargeInStartedAt = nil
+            lastSpeechAt = nil
+            utteranceStartedAt = date
+        } catch {
+            pauseMicrophone()
+        }
     }
 
     private func scheduleFinishUtterance() {
@@ -1384,7 +1429,7 @@ final class VoiceConversationController: ObservableObject {
             // (barge-in, manual Interrupt, empty transcript, spoken stop,
             // stream cancellation after the assistant finished) always
             // re-listen and are intentionally not gated here.
-            if preferences.continuousConversation {
+            if preferences.continuousConversation || isBackgroundListening {
                 cachedRoutePolicy = nil
                 isPlaybackCaptureSuspended = false
                 await startListening()
