@@ -2163,9 +2163,9 @@ final class AppState: ObservableObject {
                 guard let self else { throw HermesError.notConnected }
                 return try await self.liveVoiceThreadRuntime(thread)
             },
-            submitThreadTurn: { [weak self] thread, text in
+            submitThreadTurn: { [weak self] thread, runtimeID, text in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.submitLiveVoiceThreadTurn(thread, text: text)
+                return try await self.submitLiveVoiceThreadTurn(thread, runtimeID: runtimeID, text: text)
             },
             latestThreadReply: { [weak self] thread in
                 await self?.latestLiveVoiceThreadReply(thread)
@@ -3922,7 +3922,9 @@ final class AppState: ObservableObject {
     func liveVoiceThreadForOpenChat() -> VoiceThreadTarget? {
         guard let sessionID = activeSessionId, !sessionID.isEmpty,
               activeRoomSurface == nil, activeVoiceCallSessionID == nil else { return nil }
-        let stored = knownSessionIDs(for: sessionID).subtracting([sessionID]).sorted().first
+        // The catalog row's stored id is the chat's durable identity.
+        let row = sessions.first { $0.id == sessionID || $0.alternateIds.contains(sessionID) }
+        let stored = row.map { $0.storedSessionId ?? $0.id }.flatMap { $0 == sessionID ? nil : $0 }
         return VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: stored, title: activeSessionTitle)
     }
 
@@ -3956,21 +3958,22 @@ final class AppState: ObservableObject {
 
     /// Sends a live call's request as the chat's next turn. On screen it
     /// goes through the composer's own path, so the chat shows and streams
-    /// it like a typed message. Off screen it goes to the chat's live
-    /// runtime, which `liveVoiceThreadRuntime` resumed first.
-    private func submitLiveVoiceThreadTurn(_ thread: VoiceThreadTarget, text: String) async throws -> String {
+    /// it like a typed message. Off screen it goes to `runtimeID`, the live
+    /// runtime `liveVoiceThreadRuntime` already resolved.
+    private func submitLiveVoiceThreadTurn(_ thread: VoiceThreadTarget, runtimeID: String, text: String) async throws -> String {
         guard let client else { throw HermesError.notConnected }
         if isOpenChat(thread), let sessionID = activeSessionId {
-            // Checked with no suspension before the composer's own check, so
-            // a typed turn that started meanwhile is waited for, never
-            // steered or interrupted by the composer's busy mode.
-            guard !isBusy else { throw VoiceThreadBusyError() }
-            guard await submitComposer(text: text) else {
-                throw VoiceAudioError.unavailable(errorMessage ?? AppLocalization.string("Hermes could not send this to the chat."))
+            // A turn found running, here or by the composer's own stale-idle
+            // probe, is waited for: never steered or interrupted.
+            var foundBusy = isBusy
+            if !foundBusy {
+                let sent = await submitComposer(text: text, onBusy: { foundBusy = true })
+                if sent { return activeSessionId ?? sessionID }
             }
-            return activeSessionId ?? sessionID
+            if foundBusy { throw VoiceThreadBusyError() }
+            throw VoiceAudioError.unavailable(errorMessage ?? AppLocalization.string("Hermes could not send this to the chat."))
         }
-        let target = try await liveVoiceThreadRuntime(thread)
+        let target = runtimeID.isEmpty ? thread.runtimeSessionID : runtimeID
         _ = try await client.sendPrompt(target, text: text)
         return target
     }
@@ -3980,12 +3983,23 @@ final class AppState: ObservableObject {
     private func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> String? {
         if isOpenChat(thread) { return latestReplyInOpenChat(thread) }
         guard let bridge = dashboardTicketBridge else { return nil }
-        let query = "?limit=20&offset=0&order=latest&include_compacted=true&inline_images=false"
+        let tailQuery = "?limit=20&offset=0&order=latest&include_compacted=true&inline_images=false"
         for sessionID in [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }) where !sessionID.isEmpty {
-            guard let response = try? await bridge.requestJSON(
-                path: Self.sessionMessagesPath(sessionId: sessionID, profile: activeProfile, query: query)
-            ), let rows = Self.persistedMessageRows(in: response) else { continue }
-            return Self.latestAssistantReply(inMessageRows: rows)
+            func read(_ query: String) async -> [String: Any]? {
+                try? await bridge.requestJSON(
+                    path: Self.sessionMessagesPath(sessionId: sessionID, profile: activeProfile, query: query)
+                )
+            }
+            guard let response = await read(tailQuery), var rows = Self.persistedMessageRows(in: response) else { continue }
+            // A dashboard that doesn't page from the newest end returned the
+            // oldest rows: read the whole transcript instead.
+            let page = PersistedTranscriptPagination.parse(response, rawRowCount: rows.count)
+            if page?.honorsTailContract != true {
+                guard let full = await read(PersistedTranscriptPagination.legacyQuery),
+                      let fullRows = Self.persistedMessageRows(in: full) else { continue }
+                rows = fullRows
+            }
+            if let reply = Self.latestAssistantReply(inMessageRows: rows) { return reply }
         }
         return nil
     }
@@ -14301,10 +14315,15 @@ final class AppState: ObservableObject {
         return currentComposerSubmissionContextIfOwnedAndAliased(context)
     }
 
+    /// `onBusy`, when given, replaces the composer's Steer/Interrupt routing:
+    /// a submission that finds a turn running (directly or after a stale-idle
+    /// probe) calls it and sends nothing. A live call's turn uses it to wait
+    /// for typed work instead of steering it.
     func submitComposer(
         text: String,
         attachments: [Attachment] = [],
-        context: ComposerSubmissionContext? = nil
+        context: ComposerSubmissionContext? = nil,
+        onBusy: (() -> Void)? = nil
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
@@ -14335,6 +14354,7 @@ final class AppState: ObservableObject {
                 return false
             }
 
+            if let onBusy { onBusy(); return false }
             switch busyInputMode {
             case .steer:
                 return await steer(text, context: submissionContext)
@@ -14356,6 +14376,7 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("Attachments can only be sent in a new message, after the current response finishes.")
                 return false
             }
+            if let onBusy { onBusy(); return false }
             switch busyInputMode {
             case .steer:
                 lifecycleLog.notice("submitComposer: stale-idle corrected to running → busy steer")
@@ -14376,6 +14397,7 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("Attachments can only be sent in a new message, after the current response finishes.")
                 return false
             }
+            if let onBusy { onBusy(); return false }
             switch busyInputMode {
             case .steer:
                 lifecycleLog.notice("submitComposer: busy edge raced the stale-idle probe → busy steer")
@@ -14408,6 +14430,7 @@ final class AppState: ObservableObject {
                     errorMessage = AppLocalization.string("Attachments can only be sent in a new message, after the current response finishes.")
                     return false
                 }
+                if let onBusy { onBusy(); return false }
                 switch busyInputMode {
                 case .steer:
                     lifecycleLog.notice(

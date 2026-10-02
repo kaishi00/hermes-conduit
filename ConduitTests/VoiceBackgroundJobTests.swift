@@ -126,11 +126,11 @@ final class FakeVoiceJobBackend {
             resolveProfile: { [self] name in self.profileTargets[name.lowercased()] ?? .unknown },
             threadIsBusy: { [self] _ in self.threadBusy },
             resolveThreadRuntime: { [self] thread in self.threadRuntime ?? thread.runtimeSessionID },
-            submitThreadTurn: { [self] thread, text in
-                self.threadSubmissions.append((thread.runtimeSessionID, text))
+            submitThreadTurn: { [self] _, runtimeID, text in
+                self.threadSubmissions.append((runtimeID, text))
                 self.onThreadSubmit?()
                 if let error = self.threadSubmitError { throw error }
-                return self.threadRuntime ?? thread.runtimeSessionID
+                return runtimeID
             },
             latestThreadReply: { [self] _ in self.threadReply }
         )
@@ -811,6 +811,41 @@ extension VoiceConversationControllerTests {
         fake.threadSubmitError = nil
         await waitFor { supervisor.jobs.first?.status == .running }
         XCTAssertEqual(supervisor.jobs.first?.threadTurnSubmitted, true)
+        supervisor.detachLiveThread()
+    }
+
+    func testAThreadTurnSettledByThePollStillBringsBackTheChatsReply() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadReply = "Build is green."
+        _ = supervisor.startThreadTurn(request: "check the build")
+        await waitFor { supervisor.jobs.first?.status == .running }
+
+        // The completion event never arrived; the runtime is gone.
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "Build is green.")
+        guard case .submit(let prompt, _)? = supervisor.takePendingNotice() else {
+            return XCTFail("the reply goes back to the call")
+        }
+        XCTAssertTrue(prompt.contains("Build is green."))
+    }
+
+    func testTurnsLeftRunningInAnotherChatDontCountAgainstANewCall() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.detachLiveThread()
+        // Earlier calls each left a sent turn running in their own chat.
+        for index in 1...VoiceBackgroundJobSupervisor.maximumThreadTurns {
+            supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-\(index)", storedSessionID: nil, title: "Chat \(index)")
+            _ = supervisor.startThreadTurn(request: "request \(index)")
+            await waitFor { fake.threadSubmissions.count == index }
+            supervisor.detachLiveThread()
+        }
+        XCTAssertEqual(supervisor.jobs.filter { $0.status.isActive }.count, VoiceBackgroundJobSupervisor.maximumThreadTurns)
+
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-new", storedSessionID: nil, title: "New")
+        XCTAssertNotNil(supervisor.startThreadTurn(request: "status").jobID)
         supervisor.detachLiveThread()
     }
 

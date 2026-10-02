@@ -167,11 +167,12 @@ struct VoiceBackgroundJobBackend {
     /// the chat first when it isn't live. Asked before the turn is sent, so
     /// the turn owns that id's events from its first one.
     var resolveThreadRuntime: @MainActor (_ thread: VoiceThreadTarget) async throws -> String = { $0.runtimeSessionID }
-    /// Sends a live call's request as the attached chat's next turn and
-    /// returns the runtime session id the turn runs on. Throws
-    /// `VoiceThreadBusyError` when another turn started in the chat since
-    /// it was checked, so the request waits instead of steering it.
-    var submitThreadTurn: @MainActor (_ thread: VoiceThreadTarget, _ text: String) async throws -> String = { _, _ in
+    /// Sends a live call's request as the attached chat's next turn, on the
+    /// runtime `resolveThreadRuntime` gave, and returns the runtime session
+    /// id the turn runs on. Throws `VoiceThreadBusyError` when another turn
+    /// started in the chat since it was checked, so the request waits
+    /// instead of steering it.
+    var submitThreadTurn: @MainActor (_ thread: VoiceThreadTarget, _ runtimeID: String, _ text: String) async throws -> String = { _, _, _ in
         throw VoiceAudioError.unavailable(AppLocalization.string("Hermes could not send this to the chat."))
     }
     /// The chat's latest assistant reply, read without starting a turn.
@@ -417,7 +418,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard !request.isEmpty else {
             return (nil, AppLocalization.string("Hermes didn't get a request to send."))
         }
-        let inFlight = jobs.filter { $0.isThreadTurn && $0.status.isActive }.count
+        // Only this chat's turns count: ones an earlier call left running in
+        // another chat don't hold this one.
+        let inFlight = jobs.filter { job in
+            job.isThreadTurn && job.status.isActive
+                && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
+        }.count
         guard inFlight < Self.maximumThreadTurns else {
             return (nil, AppLocalization.string("Hermes is still working on your earlier requests in this chat. Ask again once they finish."))
         }
@@ -491,14 +497,23 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             // Dropped (the call ended) while the chat was checked.
             guard generation == self.generation, job(next.id)?.status == .starting else { continue }
-            update(next.id) { $0.threadTurnSubmitted = true }
             do {
                 // The runtime id is known before the send, so none of the
                 // turn's events arrive under an id it doesn't own yet.
                 let target = try await backend.resolveThreadRuntime(thread)
                 guard generation == self.generation else { return }
                 if !target.isEmpty { update(next.id) { $0.runtimeSessionID = target } }
-                let runtimeID = try await backend.submitThreadTurn(thread, Self.threadTurnText(for: next.instructions))
+                // Resolving can suspend (a resume): a turn that started in
+                // the chat meanwhile is waited for, and its events stay its own.
+                if await backend.threadIsBusy(thread) {
+                    guard generation == self.generation else { return }
+                    try? await Task.sleep(for: threadWaitInterval)
+                    continue
+                }
+                guard generation == self.generation, job(next.id)?.status == .starting else { continue }
+                // Only now does the turn own the chat's events.
+                update(next.id) { $0.threadTurnSubmitted = true }
+                let runtimeID = try await backend.submitThreadTurn(thread, target, Self.threadTurnText(for: next.instructions))
                 guard generation == self.generation else { return }
                 update(next.id) {
                     // A resumed chat can run on a new runtime id.
@@ -872,6 +887,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if let rows { rowsByProfile[profile] = rows }
         }
         var changed = false
+        var settledThreadTurns: [UUID] = []
         for index in jobs.indices where jobs[index].status == .running || jobs[index].status == .needsInput {
             let job = jobs[index]
             // A job that went active while the reads awaited is judged next time.
@@ -892,7 +908,29 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 jobs[index].consecutiveMissedPolls += 1
                 if jobs[index].consecutiveMissedPolls < Self.missedPollsBeforeSettling { continue }
             }
+            // A thread turn's reply is in its chat: read it before settling,
+            // so the call hears the reply, not a pointer to the chat.
+            if job.isThreadTurn, job.result == nil, !job.outcomeDelivered {
+                settledThreadTurns.append(job.id)
+                continue
+            }
             jobs[index].status = .finished
+            changed = true
+        }
+        for id in settledThreadTurns {
+            guard let thread = threadTargets[id] else {
+                update(id) { $0.status = .finished }
+                changed = true
+                continue
+            }
+            let reply = await backend.latestThreadReply(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard generation == self.generation else { return }
+            // Events may have settled it meanwhile; they carry the real reply.
+            guard let current = job(id), current.status.isActive else { continue }
+            update(id) {
+                $0.status = .finished
+                if let reply, !reply.isEmpty { $0.result = reply }
+            }
             changed = true
         }
         if changed {
