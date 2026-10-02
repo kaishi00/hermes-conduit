@@ -105,6 +105,9 @@ final class VoiceAudioSessionCoordinator {
 
     private let session: VoiceAudioSessionControlling
     private var leases: [UUID: VoiceAudioIntent] = [:]
+    /// Owners that give way when another capture owner arrives (composer
+    /// dictation), by lease.
+    private var takeoverHandlers: [UUID: @MainActor () -> Void] = [:]
 
     /// Single consumer: AppState's wake lifecycle.
     /// Called on the next main-actor turn after the set of owners changed,
@@ -117,6 +120,11 @@ final class VoiceAudioSessionCoordinator {
         leases.values.contains { $0 != .wakeListening }
     }
 
+    /// True while anything holds the microphone for a conversation.
+    var hasCaptureOwner: Bool {
+        leases.values.contains(.conversationCapture)
+    }
+
     /// Optional injection instead of a default-constructed argument: default
     /// parameter values are evaluated in a nonisolated context, which cannot
     /// construct the MainActor-isolated `SystemVoiceAudioSession`.
@@ -124,8 +132,15 @@ final class VoiceAudioSessionCoordinator {
         self.session = session ?? SystemVoiceAudioSession()
     }
 
-    func acquire(_ intent: VoiceAudioIntent) throws -> VoiceAudioLease {
+    /// `onTakenOver` makes the owner one that gives way: it is called, on a
+    /// later main-actor turn, when another owner acquires capture. The owner
+    /// still releases its own lease.
+    func acquire(
+        _ intent: VoiceAudioIntent,
+        onTakenOver: (@MainActor () -> Void)? = nil
+    ) throws -> VoiceAudioLease {
         let lease = VoiceAudioLease(id: UUID())
+        let displaced = intent == .conversationCapture ? Array(takeoverHandlers.values) : []
         leases[lease.id] = intent
         do {
             try applyDominantPolicy()
@@ -147,12 +162,17 @@ final class VoiceAudioSessionCoordinator {
         audioSessionLogger.debug(
             "audio intent acquired: \(Self.describe(intent), privacy: .public) (owners: \(self.leases.count))"
         )
+        if let onTakenOver { takeoverHandlers[lease.id] = onTakenOver }
+        for handler in displaced {
+            Task { @MainActor in handler() }
+        }
         notifyOwnersChanged()
         return lease
     }
 
     func release(_ lease: VoiceAudioLease) {
         guard let intent = leases.removeValue(forKey: lease.id) else { return }
+        takeoverHandlers.removeValue(forKey: lease.id)
         notifyOwnersChanged()
         do {
             try applyDominantPolicy()

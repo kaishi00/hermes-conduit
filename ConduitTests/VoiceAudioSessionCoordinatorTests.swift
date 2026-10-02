@@ -390,6 +390,32 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertFalse(coordinator.hasOwnersOtherThanWakeListening)
     }
 
+    func testAnotherCaptureOwnerTakesOverAGivingWayOwner() async throws {
+        var takenOver = 0
+        let dictation = try coordinator.acquire(.conversationCapture) { takenOver += 1 }
+        XCTAssertTrue(coordinator.hasCaptureOwner)
+
+        let playback = try coordinator.acquire(.standalonePlayback)
+        await Task.yield()
+        await Task.yield()
+        XCTAssertEqual(takenOver, 0, "only capture takes over")
+
+        let voice = try coordinator.acquire(.conversationCapture)
+        XCTAssertEqual(takenOver, 0, "the handler must not re-enter the coordinator mid-transition")
+        await Task.yield()
+        await Task.yield()
+        XCTAssertEqual(takenOver, 1)
+
+        coordinator.release(dictation)
+        coordinator.release(voice)
+        coordinator.release(playback)
+        XCTAssertFalse(coordinator.hasCaptureOwner)
+        _ = try coordinator.acquire(.conversationCapture)
+        await Task.yield()
+        await Task.yield()
+        XCTAssertEqual(takenOver, 1, "a released owner is never called")
+    }
+
     func testOwnerChangesNotifyOnALaterTurn() async throws {
         var notifications = 0
         coordinator.onOwnersChanged = { notifications += 1 }

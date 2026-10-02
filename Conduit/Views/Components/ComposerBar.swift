@@ -51,6 +51,15 @@ struct ComposerBar: View {
     /// users keep Return inserting a newline after updating.
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = false
     @Namespace private var glassNamespace
+    /// Hold the mic to dictate into the draft (#290).
+    @StateObject private var dictation = ComposerDictationService()
+    /// The draft as it was when the hold began; dictated text goes after it.
+    @State private var dictationPrefix = ""
+    @State private var isHoldingMic = false
+    /// The one-time "Tap for Voice · Hold to dictate" tip stays until a
+    /// dictation has produced text.
+    @AppStorage(ComposerDictation.tipDoneKey) private var dictationTipDone = false
+    @State private var dictationTipHidden = false
 
     struct AsyncAttachmentContext: Equatable {
         let editorIdentity: UUID
@@ -315,7 +324,15 @@ struct ComposerBar: View {
                 saveDraft(for: activeDraftKey)
             }
         }
+        .onChange(of: appState.isVoiceInUse) { _, inUse in
+            // Voice took the microphone: dictation steps aside.
+            guard inUse else { return }
+            isHoldingMic = false
+            dictation.cancel()
+        }
         .onDisappear {
+            isHoldingMic = false
+            dictation.cancel()
             // Dependable second hook: whether this view leaves for a room,
             // a session switch, or teardown, the typed text lands in the
             // app-lifetime store first.
@@ -705,15 +722,19 @@ struct ComposerBar: View {
     /// profile), and any sendable draft or live turn swaps it for the
     /// action button. The slot itself never disappears, so the field keeps
     /// its width as the first character is typed.
-    static func trailingControl(action: ComposerAction, showsVoiceButton: Bool) -> TrailingControl {
-        action == .unavailable && showsVoiceButton ? .voice : .action
+    /// While dictating the mic keeps the slot even though the draft is now
+    /// sendable: the finger is still on it.
+    static func trailingControl(action: ComposerAction, showsVoiceButton: Bool, isDictating: Bool = false) -> TrailingControl {
+        if isDictating { return .voice }
+        return action == .unavailable && showsVoiceButton ? .voice : .action
     }
 
     @ViewBuilder
     private var trailingSlot: some View {
         let control = Self.trailingControl(
             action: action,
-            showsVoiceButton: appState.showsComposerVoiceButton
+            showsVoiceButton: appState.showsComposerVoiceButton,
+            isDictating: dictation.isCapturing || isHoldingMic
         )
         if #available(iOS 26.0, *) {
             trailingControlButton(control)
@@ -933,32 +954,131 @@ struct ComposerBar: View {
         .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
     }
 
+    /// Tap opens Voice; press and hold dictates into the draft, never sent
+    /// on its own.
     private var voiceButton: some View {
-        Button {
-            dismissComposer()
-            Haptics.selection()
-            Task {
-                _ = await appState.openVoiceConversation(
-                    PendingVoiceIntent(
-                        profile: appState.activeProfile,
-                        startsFreshConversation: false,
-                        source: .composer
-                    )
-                )
+        let canOpenVoice = appState.canStartPhoneVoiceConversation && !appState.isBusy && appState.composerIsEnabled
+        let canDictate = appState.composerIsEnabled && !appState.isVoiceInUse
+        // Capturing only: once the finger lifts, the mic is a mic again and
+        // Send comes back while the last words settle.
+        let isDictating = dictation.isCapturing
+        return Image(systemName: isDictating ? "waveform" : (appState.canStartPhoneVoiceConversation ? "mic.fill" : "mic.slash"))
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(isDictating ? Color.red : (canOpenVoice || canDictate ? Color.accentColor : Color.secondary))
+            .symbolEffect(.pulse, isActive: isDictating && !reduceMotion)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+            .conduitGlassControl(
+                cornerRadius: 22,
+                tint: isDictating ? .red.opacity(0.16) : (appState.canStartPhoneVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06)),
+                interactive: canOpenVoice || canDictate
+            )
+            .gesture(
+                holdToDictate(canOpenVoice: canOpenVoice, canDictate: canDictate)
+                    .exclusively(before: TapGesture().onEnded {
+                        if canOpenVoice { openVoiceFromComposer() }
+                    })
+            )
+            .overlay(alignment: .topTrailing) { dictationTip(canDictate: canDictate) }
+            .accessibilityElement()
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(isDictating || dictation.isStarting ? Text("Stop dictation") : Text("Start voice conversation"))
+            .accessibilityHint(isDictating || dictation.isStarting
+                ? AppLocalization.string("Stops dictating; the words stay in the message")
+                : appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Opens voice controls over this conversation"))
+            .accessibilityAction {
+                if isDictating {
+                    dictation.stop()
+                } else if dictation.isStarting {
+                    // Activated again before the microphone came up.
+                    dictation.cancel()
+                } else if canOpenVoice {
+                    openVoiceFromComposer()
+                }
             }
-        } label: {
-            Image(systemName: appState.canStartPhoneVoiceConversation ? "mic.fill" : "mic.slash")
-                .font(.system(size: 18, weight: .semibold))
-                .frame(width: 44, height: 44)
+            .accessibilityActions {
+                if canDictate, !isDictating, !dictation.isStarting {
+                    Button(AppLocalization.string("Dictate")) {
+                        beginDictation(stopsWhenReleased: false)
+                    }
+                }
+            }
+    }
+
+    private func openVoiceFromComposer() {
+        dismissComposer()
+        Haptics.selection()
+        Task {
+            _ = await appState.openVoiceConversation(
+                PendingVoiceIntent(
+                    profile: appState.activeProfile,
+                    startsFreshConversation: false,
+                    source: .composer
+                )
+            )
         }
-        .disabled(!appState.canStartPhoneVoiceConversation || appState.isBusy || !appState.composerIsEnabled)
-        .conduitGlassControl(
-            cornerRadius: 22,
-            tint: appState.canStartPhoneVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06),
-            interactive: appState.canStartPhoneVoiceConversation
-        )
-        .accessibilityLabel("Start voice conversation")
-        .accessibilityHint(appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Opens voice controls over this conversation"))
+    }
+
+    /// Held past the long-press threshold: dictate until the finger lifts.
+    /// While a voice conversation has the microphone, a hold acts as a tap.
+    private func holdToDictate(canOpenVoice: Bool, canDictate: Bool) -> some Gesture {
+        LongPressGesture(minimumDuration: ComposerDictation.holdDuration)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                guard case .second(true, _) = value, !isHoldingMic else { return }
+                isHoldingMic = true
+                if canDictate {
+                    beginDictation(stopsWhenReleased: true)
+                } else if canOpenVoice {
+                    openVoiceFromComposer()
+                }
+            }
+            .onEnded { _ in
+                isHoldingMic = false
+                dictation.stop()
+            }
+    }
+
+    private func beginDictation(stopsWhenReleased: Bool) {
+        // Reserved first: it ends a dictation still settling, whose
+        // callbacks must not be the new ones.
+        guard let token = dictation.reserveStart() else { return }
+        dictationPrefix = text
+        Haptics.medium()
+        dictation.onTranscript = { transcript in
+            replaceComposerText(ComposerDictation.draft(before: dictationPrefix, dictated: transcript))
+        }
+        dictation.onFinish = { producedText in
+            Haptics.light()
+            if producedText { dictationTipDone = true }
+        }
+        Task {
+            do {
+                try await dictation.start(token: token)
+                // Released while permission or the microphone was coming up.
+                if stopsWhenReleased, !isHoldingMic { dictation.stop() }
+            } catch {
+                isHoldingMic = false
+                composerErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dictationTip(canDictate: Bool) -> some View {
+        if canDictate, !dictationTipDone, !dictationTipHidden, !dictation.isDictating, !dictation.isStarting {
+            Text("Tap for Voice · Hold to dictate")
+                .font(.caption.weight(.semibold))
+                .fixedSize()
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(.regularMaterial))
+                .overlay(Capsule().strokeBorder(Color.conduitAura.opacity(0.35), lineWidth: 1))
+                .offset(y: -40)
+                .onTapGesture { dictationTipHidden = true }
+                .accessibilityHidden(true)
+                .transition(.opacity)
+        }
     }
 
     /// Collapse the draft in the same transaction that dismisses the keyboard.

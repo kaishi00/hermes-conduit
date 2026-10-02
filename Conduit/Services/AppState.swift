@@ -4111,6 +4111,12 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// A voice conversation of any kind holds the microphone, so composer
+    /// dictation steps aside.
+    var isVoiceInUse: Bool {
+        showVoiceSheet || isLiveVoiceCallActive || voiceConversationController.hasLiveVoiceSession
+    }
+
     /// Continues a saved call with a new live call on the selected engine.
     /// It is seeded with the row (a summary when it's long) and appends to
     /// the same row.
