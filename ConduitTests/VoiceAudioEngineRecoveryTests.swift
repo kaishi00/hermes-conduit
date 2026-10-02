@@ -217,6 +217,37 @@ extension VoiceAudioSessionCoordinatorTests {
         service.stop()
     }
 
+    /// A locked phone can't start a new capture engine, so a playback hold
+    /// must keep the running one and drop its frames instead.
+    func testPlaybackHoldKeepsTheRunningEngineAndDropsFrames() throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        try service.startListening()
+        let generation = service.captureGeneration
+
+        service.holdForPlayback()
+
+        XCTAssertTrue(factory.engines[1].isRunning, "the microphone stays up")
+        XCTAssertEqual(service.captureGeneration, generation)
+        XCTAssertFalse(service.acceptsFrame(generation: generation), "the reply never reaches capture")
+
+        try service.startListening()
+
+        XCTAssertEqual(factory.engines.count, 2, "listening reuses the held engine")
+        XCTAssertTrue(service.acceptsFrame(generation: generation))
+        service.stop()
+    }
+
+    func testPlaybackHoldWithoutARunningEngineIsARealPause() {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+
+        service.holdForPlayback()
+
+        XCTAssertTrue(service.paused)
+        XCTAssertFalse(service.heldForPlayback)
+    }
+
     func testCaptureTapsAtTheHardwareFormatWhenTheNodeRateIsStale() throws {
         let factory = FakeCaptureEngineFactory()
         factory.hardware = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))

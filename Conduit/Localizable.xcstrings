@@ -9758,6 +9758,16 @@
         }
       }
     },
+    "Listening stopped while your phone was locked. Tap Listen to continue." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手机锁定时聆听已停止。点按“聆听”继续。"
+          }
+        }
+      }
+    },
     "Live tests become available when the active voice session is connected." : {
       "localizations" : {
         "zh-Hans" : {

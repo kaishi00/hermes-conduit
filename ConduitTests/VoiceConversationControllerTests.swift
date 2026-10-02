@@ -2504,4 +2504,80 @@ extension ContinuousConversationPreferenceTests {
         XCTAssertEqual(capture.startCount, 2)
         XCTAssertFalse(controller.isMicrophonePaused)
     }
+
+    /// Eric's lock-screen failure: on the speaker the microphone used to be
+    /// torn down for each reply, and iOS refuses to start it again while
+    /// Conduit is in the background (avfaudio error 2003329396). With the
+    /// preference on, playback only holds the running capture.
+    func testKeepListeningWhenLockedHoldsTheMicrophoneThroughSpeakerPlayback() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { true }
+        )
+        var preferences = Self.preferences(continuous: true)
+        preferences.keepListeningWhenLocked = true
+        controller.setProfilePreferences(preferences)
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        controller.setBackgroundListening(true)
+
+        XCTAssertTrue(controller.isPlaybackCaptureSuspended, "the reply still can't reach the detector")
+        XCTAssertTrue(capture.isHeldForPlayback)
+        XCTAssertEqual(capture.pauseCount, 0, "pausing releases the microphone iOS won't give back while locked")
+
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Answer."))
+        let relistened = await controller.waitForState(.listening)
+
+        XCTAssertTrue(relistened)
+        XCTAssertFalse(capture.isHeldForPlayback)
+        XCTAssertEqual(capture.pauseCount, 0)
+        XCTAssertEqual(capture.startCount, 2)
+    }
+
+    func testSpeakerPlaybackStillPausesTheMicrophoneWithoutKeepListening() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let policy = RoutePolicyBox(.speakerSafeHalfDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { true }
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: true))
+
+        await Self.driveToSpeaking(controller, gateway: gateway)
+
+        XCTAssertTrue(controller.isPlaybackCaptureSuspended)
+        XCTAssertEqual(capture.holdCount, 0)
+        XCTAssertEqual(capture.pauseCount, 1)
+    }
+
+    func testLockedListeningStartFailureReadsAsAPlainMessage() async {
+        let capture = MockCapture(permissionGranted: true, startError: NSError(domain: "com.apple.coreaudio.avfaudio", code: 2_003_329_396))
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: MockGateway(),
+            submit: { _ in true },
+            interrupt: { true }
+        )
+        controller.setBackgroundListening(true)
+
+        await controller.startListening()
+
+        XCTAssertEqual(
+            controller.state,
+            .failed(AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue."))
+        )
+    }
 }

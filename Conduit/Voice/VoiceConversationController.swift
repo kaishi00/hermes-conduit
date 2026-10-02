@@ -356,7 +356,12 @@ final class VoiceConversationController: ObservableObject {
             state = .listening
             scheduleBackgroundJobNoticeDelivery()
         } catch {
-            state = .failed(error.localizedDescription)
+            // iOS can still refuse the microphone in the background (a route
+            // change or another app took it while locked); its raw avfaudio
+            // error means nothing on the lock screen or after unlocking.
+            state = .failed(isBackgroundListeningRequested
+                ? AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue.")
+                : error.localizedDescription)
         }
     }
 
@@ -1078,7 +1083,22 @@ final class VoiceConversationController: ObservableObject {
         // the next listening window.
         speechDetector.reset()
         resetMicrophoneMeter()
-        capture.pause()
+        if keepsMicrophoneThroughPlayback {
+            capture.holdForPlayback()
+        } else {
+            capture.pause()
+        }
+    }
+
+    /// "Keep listening when locked" keeps the microphone through assistant
+    /// playback (frames dropped, hardware kept): iOS won't start recording
+    /// while Conduit is in the background, so a capture torn down for a
+    /// reply on a locked phone could never reopen and the conversation
+    /// failed with avfaudio error 2003329396. Keyed off the preference, not
+    /// the lock, so a reply that starts on screen and ends after the lock
+    /// still has a running microphone to come back to.
+    private var keepsMicrophoneThroughPlayback: Bool {
+        preferences.keepListeningWhenLocked == true
     }
 
     private func failForAudioInterruption() {
