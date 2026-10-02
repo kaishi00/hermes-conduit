@@ -131,6 +131,9 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// Whether a thread turn reached Hermes. Until then the chat's events
     /// belong to whatever else runs there (a typed message).
     var threadTurnSubmitted = false
+    /// A thread turn whose call ended. It keeps running in its chat, but no
+    /// later call hears about it, reads its reply, or loses events to it.
+    var isDetachedThreadTurn = false
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
@@ -452,6 +455,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         for index in jobs.indices where jobs[index].isThreadTurn && jobs[index].status.isActive {
             if !jobs[index].threadTurnSubmitted { jobs[index].status = .cancelled }
             jobs[index].outcomeDelivered = true
+            jobs[index].isDetachedThreadTurn = true
         }
         pruneSettledJobs()
     }
@@ -467,7 +471,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // must never be read out as this chat's.
         guard let thread = liveThread else { return nil }
         return jobs.last(where: { job in
-            job.isThreadTurn && job.status == .finished && job.result?.isEmpty == false
+            job.isThreadTurn && !job.isDetachedThreadTurn && job.status == .finished && job.result?.isEmpty == false
                 && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
         })?.result
     }
@@ -542,6 +546,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 }
             }
         }
+    }
+
+    /// The job an event for `sessionID` belongs to. A turn left running by an
+    /// ended call yields to the current call's turn in the same chat.
+    private static func observingIndex(in jobs: [VoiceBackgroundJob], sessionID: String) -> Int? {
+        let candidates = jobs.indices.filter { index in
+            let job = jobs[index]
+            return job.owns(sessionID: sessionID) && (!job.isThreadTurn || (job.threadTurnSubmitted && job.status.isActive))
+        }
+        return candidates.first { !jobs[$0].isDetachedThreadTurn } ?? candidates.first
     }
 
     private static func sameChat(_ a: VoiceThreadTarget, _ b: VoiceThreadTarget) -> Bool {
@@ -719,9 +733,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Only events addressed to a job session change anything.
     func observe(_ event: StreamEvent) {
         guard let sessionID = Self.sessionID(for: event),
-              let index = jobs.firstIndex(where: {
-                  $0.owns(sessionID: sessionID) && (!$0.isThreadTurn || ($0.threadTurnSubmitted && $0.status.isActive))
-              }) else { return }
+              let index = Self.observingIndex(in: jobs, sessionID: sessionID) else { return }
         let before = jobs[index]
         guard before.status.isActive else { return }
         // A thread turn waiting its turn doesn't own the chat's events yet.
@@ -916,7 +928,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             // A thread turn's reply is in its chat: read it before settling,
             // so the call hears the reply, not a pointer to the chat.
-            if job.isThreadTurn, job.result == nil, !job.outcomeDelivered {
+            if job.isThreadTurn, job.result == nil, !job.isDetachedThreadTurn {
                 settledThreadTurns.append(job.id)
                 continue
             }

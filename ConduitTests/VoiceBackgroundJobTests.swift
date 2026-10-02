@@ -866,6 +866,31 @@ extension VoiceConversationControllerTests {
         supervisor.detachLiveThread()
     }
 
+    func testATurnLeftByAnEndedCallYieldsToTheNewCallsTurn() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        _ = supervisor.startThreadTurn(request: "old")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        supervisor.detachLiveThread()
+
+        // A new call in the same chat; the old turn has finished meanwhile
+        // but its completion never arrived.
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        fake.threadBusy = false
+        let new = supervisor.startThreadTurn(request: "new")
+        // The old turn still holds the chat's queue until it settles.
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "old reply", reasoning: nil))
+        guard await waitFor({ fake.threadSubmissions.count == 2 }) else { return }
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "new reply", reasoning: nil))
+        let newJob = supervisor.jobs.first { $0.id == new.jobID }
+        XCTAssertEqual(newJob?.result, "new reply")
+        XCTAssertFalse(supervisor.backgroundJobs.contains { $0.id == new.jobID }, "a thread turn isn't listed as a job")
+        XCTAssertEqual(supervisor.activeJobCount, 0)
+        let fallback = await supervisor.lastThreadReply()
+        XCTAssertEqual(fallback, "new reply", "the ended call's turn is never read back")
+        supervisor.detachLiveThread()
+    }
+
     func testTheLatestAssistantReplyIsReadFromSavedRows() {
         let rows: [Any] = [
             ["role": "user", "content": "check the build"],
