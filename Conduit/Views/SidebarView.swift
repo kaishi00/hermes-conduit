@@ -157,6 +157,9 @@ struct SessionList: View {
     @State private var sessionPendingRename: SessionSummary?
     @State private var sessionRenameTitle = ""
     @State private var selectedProject: ProjectSummary?
+    @State private var projectPendingRename: ProjectSummary?
+    @State private var projectRenameTitle = ""
+    @State private var projectPendingDeletion: ProjectSummary?
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
 
@@ -345,6 +348,34 @@ struct SessionList: View {
         .task(id: appState.activeProfile) {
             await appState.refreshProjects()
         }
+        .alert("Rename project", isPresented: Binding(
+            get: { projectPendingRename != nil },
+            set: { if !$0 { projectPendingRename = nil } }
+        )) {
+            TextField("Project name", text: $projectRenameTitle)
+            Button("Rename") {
+                guard let project = projectPendingRename else { return }
+                let name = projectRenameTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                projectPendingRename = nil
+                guard !name.isEmpty, name != project.title else { return }
+                Task { Haptics.mutationCompleted(await appState.renameProject(project, to: name)) }
+            }
+            .disabled(projectRenameTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Cancel", role: .cancel) { projectPendingRename = nil }
+        }
+        .alert("Delete project?", isPresented: Binding(
+            get: { projectPendingDeletion != nil },
+            set: { if !$0 { projectPendingDeletion = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                guard let project = projectPendingDeletion else { return }
+                projectPendingDeletion = nil
+                Task { Haptics.mutationCompleted(await appState.deleteProject(project)) }
+            }
+            Button("Cancel", role: .cancel) { projectPendingDeletion = nil }
+        } message: {
+            Text(AppLocalization.string("This removes \(projectPendingDeletion?.title ?? "") from Hermes. Its folders, files and conversations are kept."))
+        }
         .alert("Delete conversation?", isPresented: Binding(
             get: { sessionPendingDeletion != nil },
             set: { if !$0 { sessionPendingDeletion = nil } }
@@ -422,7 +453,46 @@ struct SessionList: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Opens the conversations in this project.")
+                    .accessibilityHint(appState.isProjectEditable(project)
+                        ? AppLocalization.string("Opens the conversations in this project. Swipe or touch and hold to rename or delete it.")
+                        : AppLocalization.string("Opens the conversations in this project."))
+                    .projectActionsMenu(isEnabled: appState.isProjectEditable(project)) {
+                        Button {
+                            Haptics.selection()
+                            projectRenameTitle = project.title
+                            projectPendingRename = project
+                        } label: {
+                            Label("Rename…", systemImage: "pencil")
+                        }
+                        .disabled(appState.isProjectMutationInFlight)
+                        Button(role: .destructive) {
+                            Haptics.warning()
+                            projectPendingDeletion = project
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .disabled(appState.isProjectMutationInFlight)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if appState.isProjectEditable(project) {
+                            Button(role: .destructive) {
+                                Haptics.warning()
+                                projectPendingDeletion = project
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            .disabled(appState.isProjectMutationInFlight)
+                            Button {
+                                Haptics.selection()
+                                projectRenameTitle = project.title
+                                projectPendingRename = project
+                            } label: {
+                                Label("Rename…", systemImage: "pencil")
+                            }
+                            .tint(.conduitAccent)
+                            .disabled(appState.isProjectMutationInFlight)
+                        }
+                    }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
@@ -781,6 +851,23 @@ struct SessionRow: View {
     }
 }
 
+private extension View {
+    /// Attaches a context menu only when there is something in it, so a
+    /// row with no actions (Home, auto-discovered repos) gets no empty
+    /// long-press preview.
+    @ViewBuilder
+    func projectActionsMenu<MenuItems: View>(
+        isEnabled: Bool,
+        @ViewBuilder menuItems: () -> MenuItems
+    ) -> some View {
+        if isEnabled {
+            contextMenu(menuItems: menuItems)
+        } else {
+            self
+        }
+    }
+}
+
 /// A conversation's touch-and-hold actions, shared by the main session list
 /// and a project's conversation list so both offer the same menu. Rename and
 /// Delete need a host-owned alert, so the host supplies those two actions.
@@ -944,6 +1031,7 @@ private struct ProjectSessionsSheet: View {
                                         SessionRow(
                                             session: session,
                                             isSelected: session.id == appState.activeSessionId,
+                                            isPinned: appState.isSessionPinned(session),
                                             isVoiceJob: appState.isVoiceJobSession(session),
                                             category: appState.sessionCategory(for: session),
                                             detail: appState.voiceSessionDetail(for: session)
@@ -951,7 +1039,7 @@ private struct ProjectSessionsSheet: View {
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
-                                    .accessibilityHint("Touch and hold for conversation actions.")
+                                    .accessibilityHint("Swipe or touch and hold for conversation actions.")
                                     .contextMenu {
                                         SessionActionMenuItems(
                                             session: session,
@@ -963,6 +1051,36 @@ private struct ProjectSessionsSheet: View {
                                             onDelete: { sessionPendingDeletion = session },
                                             onChanged: reloadDetail
                                         )
+                                    }
+                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                        Button {
+                                            Haptics.light()
+                                            appState.toggleSessionPinned(session)
+                                        } label: {
+                                            Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
+                                        }
+                                        .tint(.conduitAccent)
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button {
+                                            Task {
+                                                let archived = await appState.archiveSession(session)
+                                                Haptics.mutationCompleted(archived)
+                                                if archived { reloadDetail() }
+                                            }
+                                        } label: {
+                                            Label("Archive", systemImage: "archivebox")
+                                        }
+                                        .tint(.orange)
+                                        .disabled(appState.isSessionMutationInFlight(session))
+
+                                        Button(role: .destructive) {
+                                            Haptics.warning()
+                                            sessionPendingDeletion = session
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                        .disabled(appState.isSessionMutationInFlight(session))
                                     }
                                     .listRowBackground(Color.clear)
                                     .listRowSeparator(.hidden)

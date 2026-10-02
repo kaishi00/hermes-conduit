@@ -24,6 +24,10 @@ enum VoiceAudioIntent: Equatable {
     case conversationPlayback
     /// Output-only speech outside a Voice Conversation (Read Aloud, TTS test).
     case standalonePlayback
+    /// Foreground wake phrase listening (#174). The lowest-priority owner:
+    /// any other intent takes the session over, and AppState disarms the
+    /// wake listener as soon as another owner appears.
+    case wakeListening
 }
 
 /// Seam over `AVAudioSession.sharedInstance()` so coordinator policy can be
@@ -94,10 +98,24 @@ final class VoiceAudioSessionCoordinator {
         case conversation
         /// Output-only `.playback` with media coexistence: standalone speech.
         case standalonePlayback
+        /// `.playAndRecord` + `.default`, mixing with other apps' audio:
+        /// foreground wake phrase listening.
+        case wakeListening
     }
 
     private let session: VoiceAudioSessionControlling
     private var leases: [UUID: VoiceAudioIntent] = [:]
+
+    /// Single consumer: AppState's wake lifecycle.
+    /// Called on the next main-actor turn after the set of owners changed,
+    /// so the wake listener can step aside for any other audio owner without
+    /// re-entering the coordinator mid-transition.
+    var onOwnersChanged: (@MainActor () -> Void)?
+
+    /// True while anything other than the wake listener holds the session.
+    var hasOwnersOtherThanWakeListening: Bool {
+        leases.values.contains { $0 != .wakeListening }
+    }
 
     /// Optional injection instead of a default-constructed argument: default
     /// parameter values are evaluated in a nonisolated context, which cannot
@@ -129,11 +147,13 @@ final class VoiceAudioSessionCoordinator {
         audioSessionLogger.debug(
             "audio intent acquired: \(Self.describe(intent), privacy: .public) (owners: \(self.leases.count))"
         )
+        notifyOwnersChanged()
         return lease
     }
 
     func release(_ lease: VoiceAudioLease) {
         guard let intent = leases.removeValue(forKey: lease.id) else { return }
+        notifyOwnersChanged()
         do {
             try applyDominantPolicy()
         } catch {
@@ -168,14 +188,25 @@ final class VoiceAudioSessionCoordinator {
     /// reconfiguring it, and conversation playback that outlives its capture
     /// owner (paused microphone while the assistant is still speaking) must
     /// not churn the audio route mid-playback.
+    /// Wake listening ranks below standalone playback: it is the only owner
+    /// that steps aside on its own, so it never decides the policy while
+    /// anything else holds the session.
     private var dominantPolicy: Policy? {
-        if leases.values.contains(where: { $0 != .standalonePlayback }) {
+        if leases.values.contains(where: { $0 == .conversationCapture || $0 == .conversationPlayback }) {
             return .conversation
         }
         if leases.values.contains(.standalonePlayback) {
             return .standalonePlayback
         }
+        if leases.values.contains(.wakeListening) {
+            return .wakeListening
+        }
         return nil
+    }
+
+    private func notifyOwnersChanged() {
+        guard onOwnersChanged != nil else { return }
+        Task { @MainActor [weak self] in self?.onOwnersChanged?() }
     }
 
     /// Best-effort restore of the surviving owners' policy after a partial
@@ -211,6 +242,11 @@ final class VoiceAudioSessionCoordinator {
                 try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
                 try session.setActive(true, options: [])
                 appliedPolicy = .standalonePlayback
+            case .wakeListening:
+                let configuration = VoiceAudioSessionConfiguration.wakeListening
+                try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
+                try session.setActive(true, options: [])
+                appliedPolicy = .wakeListening
             case nil:
                 try session.setActive(false, options: .notifyOthersOnDeactivation)
                 appliedPolicy = nil
@@ -236,6 +272,7 @@ final class VoiceAudioSessionCoordinator {
         case .conversationCapture: return "conversationCapture"
         case .conversationPlayback: return "conversationPlayback"
         case .standalonePlayback: return "standalonePlayback"
+        case .wakeListening: return "wakeListening"
         }
     }
 
@@ -243,6 +280,7 @@ final class VoiceAudioSessionCoordinator {
         switch policy {
         case .conversation: return "conversation"
         case .standalonePlayback: return "standalone"
+        case .wakeListening: return "wakeListening"
         case nil: return "inactive"
         }
     }

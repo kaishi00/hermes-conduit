@@ -32,4 +32,18 @@ struct VoiceAudioSessionConfiguration: Equatable {
         outputSampleRate: 24_000,
         outputChannelCount: 1
     )
+
+    /// Foreground wake phrase listening (#174): records from the microphone
+    /// while letting other apps' audio keep playing at full volume. `.default`
+    /// rather than `.voiceChat` so no voice processing ducks other media, and
+    /// A2DP stays allowed so Bluetooth headphones keep their music route.
+    /// HFP is deliberately left out: it would drop headphones to call
+    /// quality, so wake listening uses the phone's own microphone.
+    static let wakeListening = Self(
+        category: .playAndRecord,
+        mode: .default,
+        options: [.mixWithOthers, .allowBluetoothA2DP],
+        outputSampleRate: 16_000,
+        outputChannelCount: 1
+    )
 }

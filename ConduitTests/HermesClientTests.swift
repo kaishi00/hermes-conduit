@@ -400,6 +400,44 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testProjectRenameAndDeleteAddressTheProjectID() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        for (method, expected) in [("projects.update", ["id": "p1", "name": "Renamed"]), ("projects.delete", ["id": "p1"])] {
+            let sent = Gate()
+            socket.onSend = { sent.signal() }
+            let task = Task<Void, Error> {
+                if method == "projects.update" {
+                    try await client.renameProject("p1", name: "Renamed")
+                } else {
+                    try await client.deleteProject("p1")
+                }
+            }
+            try await sent.wait("the \(method) request to be sent")
+
+            let request = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+            )
+            XCTAssertEqual(request["method"] as? String, method)
+            let params = try XCTUnwrap(request["params"] as? [String: Any])
+            for (key, value) in expected {
+                XCTAssertEqual(params[key] as? String, value, "\(method) \(key)")
+            }
+
+            let id = try XCTUnwrap(request["id"] as? Int)
+            let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": ["projects": []]]
+            socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+            try await awaitResult(of: task, "the \(method) response")
+        }
+        client.disconnect()
+    }
+
     func testMoveSessionWorkspaceSendsStoredKeyAndProjectFolder() async throws {
         let transport = FakeTransport()
         let socket = FakeSocket()

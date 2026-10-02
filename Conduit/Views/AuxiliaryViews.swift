@@ -487,6 +487,23 @@ struct SettingsView: View {
         .preferredColorScheme(appState.themePreference.colorScheme)
     }
 
+    private func wakeSettings(profile: String) -> WakePhraseSettingsModel? {
+        guard appState.wakeGatewayID != nil else { return nil }
+        let preferences = appState.wakePreferences(forProfile: profile)
+        return WakePhraseSettingsModel(
+            phrases: preferences.enabledPhrases,
+            suggestedPhrase: appState.suggestedWakePhrase(forProfile: profile),
+            startsFreshConversation: preferences.startsFreshConversation,
+            failure: appState.wakeListeningFailure,
+            save: { phrases, startsFresh in
+                appState.setWakePreferences(
+                    WakeProfilePreferences(enabledPhrases: phrases, startsFreshConversation: startsFresh),
+                    forProfile: profile
+                )
+            }
+        )
+    }
+
     @ViewBuilder
     private func destinationView(_ destination: SettingsDestination) -> some View {
         switch destination {
@@ -608,7 +625,8 @@ struct SettingsView: View {
                         save: { provider, model, reasoning in
                             appState.setVoiceJobModel(provider: provider, model: model, reasoningEffort: reasoning)
                         }
-                    )
+                    ),
+                    wake: wakeSettings(profile: snapshot.profile)
                 )
             } else {
                 SettingsDetailContainer {

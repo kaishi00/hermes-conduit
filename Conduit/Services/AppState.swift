@@ -573,6 +573,13 @@ final class AppState: ObservableObject {
         guard let client, isConnected else { return false }
         return client !== workspaceMoveUnsupportedClient
     }
+
+    /// The client whose gateway rejected `projects.update` or
+    /// `projects.delete`; project rename and delete stop being offered for
+    /// it while the project list itself stays.
+    private weak var projectEditingUnsupportedClient: HermesClient? {
+        willSet { objectWillChange.send() }
+    }
     @Published private(set) var projectsLoading = false
     @Published private(set) var archivedSessions: [SessionSummary] = []
     @Published private(set) var pinnedSessionIDs: [String] = []
@@ -2201,6 +2208,25 @@ final class AppState: ObservableObject {
     /// the now-active profile's blob.
     internal(set) var voiceControllerSessionProfile: String?
 
+    // MARK: - Wake phrase (#174)
+
+    /// Device-local wake phrase bindings, keyed by dashboard and profile.
+    lazy var wakeConfiguration = WakeConfigurationStore(defaults: defaults)
+    lazy var wakeWordService = AppleSpeechWakeWordService()
+    lazy var wakeLifecycle = WakeLifecycleCoordinator(service: wakeWordService)
+    /// The store is not observable: this publish is what re-renders Voice
+    /// settings and wakes the lifecycle (via objectWillChange) after a
+    /// wake setting changes.
+    @Published var wakeSettingsRevision: UInt64 = 0
+    /// Why foreground wake listening last stopped or could not start.
+    @Published var wakeListeningFailure: String?
+    /// Voice launches between a wake/Siri request and the sheet appearing:
+    /// the listener must stay off across a profile switch in that gap.
+    var voiceLaunchesInFlight = 0
+    var lastAppliedWakeSnapshot: WakeLifecycleSnapshot?
+    var wakeObservations: [AnyCancellable] = []
+    var isWakeRefreshScheduled = false
+
     /// Whether the CarPlay scene currently presents the shared Voice
     /// conversation. Pure surface bookkeeping: CarPlay is another Voice
     /// presentation surface over the same runtime, never a second owner.
@@ -2513,7 +2539,7 @@ final class AppState: ObservableObject {
     /// startup. `.inactive` is treated like `.background` on purpose — it
     /// immediately precedes backgrounding on home-press, and a socket that
     /// dies under a system overlay is recovered by the `.active` scene task.
-    private var isSceneActive = true
+    private(set) var isSceneActive = true
     /// Whether transport recovery (reconnect cycles and the post-connect
     /// sync they drive) may run. The phone scene being active is one such
     /// surface; a connected CarPlay Voice surface is another. In a car the
@@ -10217,6 +10243,7 @@ final class AppState: ObservableObject {
         switch phase {
         case .active:
             isSceneActive = true
+            scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
             // while the app-foreground gate is true — that pair is exactly
@@ -10364,6 +10391,7 @@ final class AppState: ObservableObject {
 
         case .background:
             isSceneActive = false
+            disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
             // The socket can die while suspended and turn edges can be missed,
             // so the local turn state must be re-confirmed against the
@@ -10432,6 +10460,7 @@ final class AppState: ObservableObject {
 
         case .inactive:
             isSceneActive = false
+            disarmWakeListeningForBackground()
             // Same reasoning as .background: a dip through Control Center or a
             // system overlay can miss turn edges. This never causes a resume —
             // the foreground path treats staleness as a read-only probe.
@@ -18232,6 +18261,81 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Only projects someone created can be renamed or deleted: Home is
+    /// immutable, and auto-discovered repos have no project record.
+    func isProjectEditable(_ project: ProjectSummary) -> Bool {
+        guard let client, supportsProjects, isConnected,
+              client !== projectEditingUnsupportedClient else { return false }
+        return !project.isHome && !project.isAuto
+    }
+
+    /// The project a rename or delete is running for; a second one waits.
+    @Published private(set) var projectMutationID: String?
+
+    /// Project rename and delete controls stay disabled while one runs.
+    var isProjectMutationInFlight: Bool { projectMutationID != nil }
+
+    @discardableResult
+    func renameProject(_ project: ProjectSummary, to name: String) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, projectMutationID == nil else { return false }
+        guard let client, isProjectEditable(project) else {
+            errorMessage = AppLocalization.string("Could not rename \(project.title): Conduit is not connected to Hermes.")
+            return false
+        }
+        let profile = activeProfile
+        projectMutationID = project.id
+        defer { projectMutationID = nil }
+        do {
+            try await client.renameProject(project.id, name: trimmed)
+            guard profile == activeProfile, self.client === client else { return false }
+            if let index = projects.firstIndex(where: { $0.id == project.id }) {
+                projects[index].title = trimmed
+            }
+            await loadProjects(using: client, profile: profile)
+            return true
+        } catch {
+            guard profile == activeProfile, self.client === client else { return false }
+            if isMethodUnavailable(error) {
+                // Only this action is missing; keep the project list.
+                projectEditingUnsupportedClient = client
+                errorMessage = AppLocalization.string("This Hermes version can't rename or delete projects.")
+            } else {
+                errorMessage = AppLocalization.string("Could not rename \(project.title): \(error.localizedDescription)")
+            }
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteProject(_ project: ProjectSummary) async -> Bool {
+        guard projectMutationID == nil else { return false }
+        guard let client, isProjectEditable(project) else {
+            errorMessage = AppLocalization.string("Could not delete \(project.title): Conduit is not connected to Hermes.")
+            return false
+        }
+        let profile = activeProfile
+        projectMutationID = project.id
+        defer { projectMutationID = nil }
+        do {
+            try await client.deleteProject(project.id)
+            guard profile == activeProfile, self.client === client else { return false }
+            projects.removeAll { $0.id == project.id }
+            await loadProjects(using: client, profile: profile)
+            return true
+        } catch {
+            guard profile == activeProfile, self.client === client else { return false }
+            if isMethodUnavailable(error) {
+                // Only this action is missing; keep the project list.
+                projectEditingUnsupportedClient = client
+                errorMessage = AppLocalization.string("This Hermes version can't rename or delete projects.")
+            } else {
+                errorMessage = AppLocalization.string("Could not delete \(project.title): \(error.localizedDescription)")
+            }
+            return false
+        }
+    }
+
     /// Projects a conversation can be moved into: every project with a root
     /// folder except Home, which has no folder to move into. Mirrors the
     /// Hermes Desktop "Move to project" submenu.
@@ -21159,6 +21263,11 @@ final class AppState: ObservableObject {
     @discardableResult
     func openVoiceConversation(_ intent: PendingVoiceIntent) async -> Bool {
         guard isConnected else { return false }
+        voiceLaunchesInFlight += 1
+        defer {
+            voiceLaunchesInFlight -= 1
+            scheduleWakeRefresh()
+        }
         // The mode is the requested profile's (Siri may name another one).
         let requestedProfile = intent.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let targetProfile = requestedProfile.isEmpty ? activeProfile : requestedProfile

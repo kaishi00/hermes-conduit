@@ -51,6 +51,7 @@ struct RootView: View {
             // closes itself (the primary window releases its claim on close).
             if ConduitWindowClaimKeeper.claimPrimaryWindow() {
                 isPrimaryWindow = true
+                appState.startWakeListeningLifecycle()
             } else {
                 // Environment-scoped dismissal: close THIS duplicate window
                 // only. ID-scoped dismissal targets the WindowGroup and

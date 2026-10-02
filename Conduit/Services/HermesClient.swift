@@ -1505,6 +1505,16 @@ final class HermesClient: ObservableObject {
         return MessageNormalizer.normalizeProject(project, profile: profile)
     }
 
+    func renameProject(_ projectId: String, name: String) async throws {
+        _ = try await rpc("projects.update", params: ["id": projectId, "name": name])
+    }
+
+    /// Removes the project record and its folder list from projects.db. The
+    /// folders, files and conversations themselves are left untouched.
+    func deleteProject(_ projectId: String) async throws {
+        _ = try await rpc("projects.delete", params: ["id": projectId])
+    }
+
     /// Re-homes a stored session's workspace into `cwd`, the same RPC Hermes
     /// Desktop's "Move to project" uses. Project membership follows the
     /// session's folder, so moving the folder is moving the session; the
@@ -2556,6 +2566,12 @@ enum MessageNormalizer {
             ?? object["previewSessions"]?.arrayValue
             ?? []
         let isHome = object["isNoProject"]?.boolValue ?? object["is_no_project"]?.boolValue ?? false
+        // Only projects created in Hermes have a projects.db row, and their ids
+        // are `p_<hex>`. When a gateway omits the flag, any non-Home id without
+        // that prefix is treated as auto, so rename and delete fail closed.
+        let isAuto = object["isAuto"]?.boolValue
+            ?? object["is_auto"]?.boolValue
+            ?? (!isHome && !id.hasPrefix("p_"))
         let folderPath = firstNonEmptyString(
             object["folders"]?.arrayValue?.compactMap { $0.objectValue?["path"]?.stringValue }.map(AnyCodable.string) ?? []
         )
@@ -2582,6 +2598,7 @@ enum MessageNormalizer {
             icon: object["icon"]?.stringValue,
             colorHex: object["color"]?.stringValue,
             isHome: isHome,
+            isAuto: isAuto,
             sessionCount: count,
             previewSessions: normalizeSessions(.array(previews), profile: profile)
         )

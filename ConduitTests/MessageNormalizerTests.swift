@@ -824,6 +824,38 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(projects[0].previewSessions.map(\.title), ["Plan the trip"])
     }
 
+    func testProjectTreeMarksAutoDiscoveredReposAsNotEditable() {
+        let projects = MessageNormalizer.normalizeProjects(
+            .object([
+                "projects": .array([
+                    .object(["id": .string("p1"), "label": .string("Skunkworks"), "isAuto": .bool(false)]),
+                    .object(["id": .string("auto:repo"), "label": .string("repo"), "isAuto": .bool(true)])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        XCTAssertEqual(projects.map(\.isAuto), [false, true])
+    }
+
+    func testOnlyCreatedProjectIDsAreEditableWhenTheFlagIsMissing() {
+        // Created projects are `p_<hex>`; without the flag, any other id
+        // counts as auto so editability fails closed.
+        let projects = MessageNormalizer.normalizeProjects(
+            .object([
+                "projects": .array([
+                    .object(["id": .string("p_1a2b3c4d"), "label": .string("Skunkworks")]),
+                    .object(["id": .string("/srv/repos/conduit"), "label": .string("conduit")]),
+                    .object(["id": .string("auto:repo"), "label": .string("repo")]),
+                    .object(["id": .string("__no_project__"), "label": .string("Home"), "is_no_project": .bool(true)])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        XCTAssertEqual(projects.map(\.isAuto), [false, true, true, false], "Home is not an auto repo")
+    }
+
     func testProjectWithoutPrimaryPathAnchorsAtFirstRepoRoot() {
         // `projects.tree` emits `path: null` for an explicit project whose
         // primary_path was never set, but still seeds its folders as repos.

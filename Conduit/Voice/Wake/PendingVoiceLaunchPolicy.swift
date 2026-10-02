@@ -108,6 +108,30 @@ enum PendingVoiceLaunchPolicy {
         )
     }
 
+    /// Wake phrases only fire while Hermes is connected, so a wake launch
+    /// that is not ready within a few seconds is dropped instead of opening
+    /// Voice much later (and it must not hold the wake listener off).
+    static let wakePhraseLaunchBudget: TimeInterval = 10
+
+    static let wakePhraseFailureMessage =
+        "Conduit lost the connection to Hermes, so voice did not start. Say the wake phrase again after the connection is restored."
+
+    static func makeWakePhrasePendingIntent(
+        profile: String,
+        startsFreshConversation: Bool,
+        now: Date = Date(),
+        budget: TimeInterval = wakePhraseLaunchBudget,
+        clock: ContinuousClock = ContinuousClock()
+    ) -> PendingVoiceIntent {
+        PendingVoiceIntent(
+            profile: normalizedProfile(profile),
+            startsFreshConversation: startsFreshConversation,
+            source: .wakePhrase,
+            externalLaunchDeadline: now.addingTimeInterval(budget),
+            externalLaunchElapsedDeadline: clock.now.advanced(by: .seconds(budget))
+        )
+    }
+
     enum Readiness: Equatable {
         /// Hermes is live — consume the request exactly once.
         case ready
@@ -143,7 +167,7 @@ enum PendingVoiceLaunchPolicy {
         now: Date
     ) -> Readiness {
         if let deadline = intent.externalLaunchDeadline, now >= deadline {
-            return .failed(message: expiredFailureMessage)
+            return .failed(message: intent.source == .wakePhrase ? wakePhraseFailureMessage : expiredFailureMessage)
         }
         switch connection.phase {
         case .connected:
@@ -151,23 +175,25 @@ enum PendingVoiceLaunchPolicy {
         case .connecting, .inconclusive:
             return .waiting
         case .stableFailure:
-            if intent.source == .siri {
-                return .failed(message: stableFailureMessage(for: connection))
+            switch intent.source {
+            case .siri: return .failed(message: stableFailureMessage(for: connection))
+            case .wakePhrase: return .failed(message: wakePhraseFailureMessage)
+            case .composer: return .waiting
             }
-            return .waiting
         }
     }
 
     /// Outcome when the launch handler reports it could not open Voice.
-    /// Production store traffic is Siri-only (Composer calls
-    /// `openVoiceConversation` directly). Siri launches are terminal so Voice
-    /// cannot open minutes later.
+    /// Production store traffic is Siri and wake phrases (Composer calls
+    /// `openVoiceConversation` directly). Both are terminal so Voice cannot
+    /// open minutes later.
     static func handlerFailure(
         for intent: PendingVoiceIntent
     ) -> PendingVoiceHandlerFailure {
-        if intent.source == .siri {
-            return .terminal(message: disconnectedFailureMessage)
+        switch intent.source {
+        case .siri: return .terminal(message: disconnectedFailureMessage)
+        case .wakePhrase: return .terminal(message: wakePhraseFailureMessage)
+        case .composer: return .retryLater
         }
-        return .retryLater
     }
 }

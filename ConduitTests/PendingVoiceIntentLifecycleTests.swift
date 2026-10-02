@@ -657,3 +657,42 @@ actor LaunchHandlerGate {
         await withCheckedContinuation { openWaiters.append($0) }
     }
 }
+
+extension PendingVoiceIntentLifecycleTests {
+    func testWakePhraseLaunchCarriesShortBudgetAndProfile() {
+        let now = Date()
+        let intent = PendingVoiceLaunchPolicy.makeWakePhrasePendingIntent(
+            profile: " fam ",
+            startsFreshConversation: false,
+            now: now
+        )
+        XCTAssertEqual(intent.source, .wakePhrase)
+        XCTAssertEqual(intent.profile, "fam")
+        XCTAssertFalse(intent.startsFreshConversation)
+        XCTAssertEqual(intent.externalLaunchDeadline, now.addingTimeInterval(PendingVoiceLaunchPolicy.wakePhraseLaunchBudget))
+        XCTAssertNotNil(intent.externalLaunchElapsedDeadline)
+    }
+
+    func testWakePhraseStableFailureAndExpiryAreTerminal() {
+        let now = Date()
+        let intent = PendingVoiceLaunchPolicy.makeWakePhrasePendingIntent(profile: "fam", startsFreshConversation: true, now: now)
+        XCTAssertEqual(
+            PendingVoiceLaunchPolicy.readiness(for: intent, connection: stableFailure(), now: now),
+            .failed(message: PendingVoiceLaunchPolicy.wakePhraseFailureMessage)
+        )
+        XCTAssertEqual(
+            PendingVoiceLaunchPolicy.readiness(for: intent, connection: connecting(), now: now.addingTimeInterval(11)),
+            .failed(message: PendingVoiceLaunchPolicy.wakePhraseFailureMessage)
+        )
+    }
+
+    func testWakePhraseHandlerFailureDoesNotStayPending() async {
+        store.enqueue(PendingVoiceLaunchPolicy.makeWakePhrasePendingIntent(profile: "fam", startsFreshConversation: true))
+        let router = PendingVoiceIntentRouter(store: store)
+
+        let outcome = await router.routePending(connection: connected()) { _ in false }
+
+        XCTAssertEqual(outcome, .failed(message: PendingVoiceLaunchPolicy.wakePhraseFailureMessage))
+        XCTAssertFalse(store.hasPendingIntent, "a stalled wake launch must not hold the wake listener off")
+    }
+}
