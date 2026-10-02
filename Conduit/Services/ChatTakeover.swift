@@ -21,8 +21,11 @@ struct ChatTakeoverState: Equatable {
         case waiting
         /// The chat is Conduit's now; the composer sends its draft again.
         case ready
-        /// Taking over failed; the message says why.
+        /// Taking over failed; the message says why. Tapping again retries.
         case failed(String)
+        /// Conduit on another device, or the Hermes web chat, holds the
+        /// chat. The host never takes it from them, so there's no retry.
+        case heldHere
     }
 
     let sessionID: String

@@ -6728,6 +6728,7 @@ final class AppState: ObservableObject {
 
     func disconnect() {
         cancelExplicitSessionOpen()
+        dismissChatTakeover()
         chatResumeCoordinator.clearResumeState()
         cancelOwnedAutomaticOperations()
         activeAutomaticChatResumeWork = nil
@@ -14658,7 +14659,8 @@ final class AppState: ObservableObject {
     /// Asks the host to drop the other app's claim, waiting while it runs a
     /// turn. On success the composer sends its draft again.
     func takeOverChat() {
-        guard var state = chatTakeover, state.phase != .waiting, state.phase != .ready else { return }
+        guard var state = chatTakeover, state.phase != .waiting, state.phase != .ready,
+              state.phase != .heldHere else { return }
         chatTakeoverTask?.cancel()
         state.phase = .waiting
         chatTakeover = state
@@ -14698,9 +14700,7 @@ final class AppState: ObservableObject {
                 case .ready:
                     return .ready
                 case .sameHost:
-                    return .failed(AppLocalization.string(
-                        "This chat is open in Conduit on another device or in the Hermes web chat. Send from there, or close it there and try again."
-                    ))
+                    return .heldHere
                 case .busy:
                     transientFailures = 0
                     guard Date() < deadline else {
@@ -14751,6 +14751,8 @@ final class AppState: ObservableObject {
             return AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over.")
         case ChatTakeoverError.unsupported:
             return AppLocalization.string("This Hermes version can't hand a chat over.")
+        case ChatTakeoverError.malformed:
+            return AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
         default:
             return AppLocalization.string("Couldn't take this chat over: \(error.localizedDescription)")
         }

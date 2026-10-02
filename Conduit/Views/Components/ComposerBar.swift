@@ -290,6 +290,11 @@ struct ComposerBar: View {
         .onChange(of: appState.chatTakeover?.readyToken) { _, _ in
             resendAfterChatTakeover()
         }
+        .onChange(of: loadedDraftKey) { _, _ in
+            // Back in a chat that was taken over while another was open:
+            // its draft is loaded now, so send it.
+            resendAfterChatTakeover()
+        }
         .onAppear {
             guard loadedDraftKey == nil else { return }
             loadDraft(for: activeDraftKey)
@@ -511,7 +516,7 @@ struct ComposerBar: View {
                     ProgressView()
                         .controlSize(.small)
                         .accessibilityLabel(Text("Waiting to take this chat over"))
-                case .failed:
+                case .failed, .heldHere:
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 case .offered, .ready:
@@ -553,7 +558,7 @@ struct ComposerBar: View {
                 .tint(.conduitAccent)
                 .accessibilityIdentifier("composer.take-over-chat")
                 .accessibilityHint("Makes Conduit the app for this chat, then sends your message")
-            case .waiting, .ready:
+            case .waiting, .ready, .heldHere:
                 EmptyView()
             }
         }
@@ -572,6 +577,10 @@ struct ComposerBar: View {
             return AppLocalization.string("This chat is yours now. Send your message again.")
         case .failed(let message):
             return message
+        case .heldHere:
+            return AppLocalization.string(
+                "This chat is open in Conduit on another device or in the Hermes web chat. Send from there, or close it there and try again."
+            )
         }
     }
 
