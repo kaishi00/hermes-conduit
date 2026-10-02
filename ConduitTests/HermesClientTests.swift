@@ -1484,8 +1484,10 @@ final class HermesClientTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
-        for _ in 0..<200 where !socket.isReceivePending {
+        let deadline = ContinuousClock.now + .seconds(3)
+        while !socket.isReceivePending, ContinuousClock.now < deadline {
             await Task.yield()
+            try? await Task.sleep(for: .milliseconds(5))
         }
         XCTAssertTrue(socket.isReceivePending, "The receive loop never suspended", file: file, line: line)
         let text = try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: object), encoding: .utf8), file: file, line: line)
@@ -1500,8 +1502,12 @@ final class HermesClientTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async {
-        for _ in 0..<500 where socket.sentTexts.count < count {
+        // Bounded by time, not by yields: on a loaded runner the client's
+        // send can need more scheduler turns than any fixed yield count.
+        let deadline = ContinuousClock.now + .seconds(3)
+        while socket.sentTexts.count < count, ContinuousClock.now < deadline {
             await Task.yield()
+            try? await Task.sleep(for: .milliseconds(5))
         }
         XCTAssertGreaterThanOrEqual(socket.sentTexts.count, count, "Expected \(count) outbound frames", file: file, line: line)
     }
@@ -1657,8 +1663,17 @@ final class HermesClientTests: XCTestCase {
             "jsonrpc": "2.0", "id": firstID, "error": ["code": -32603, "message": "transient"]
         ], to: socket)
 
-        for _ in 0..<50 { await Task.yield() }  // let the failed RPC's catch clear the latch
-        try await deliverFrame(ready, to: socket)
+        // The failed RPC's catch clears the latch asynchronously. A ready that
+        // lands before it is ignored, so repeat it until the retry goes out;
+        // a latched socket never sends, however many readies arrive.
+        let deadline = ContinuousClock.now + .seconds(3)
+        while socket.sentTexts.count < 2, ContinuousClock.now < deadline {
+            try await deliverFrame(ready, to: socket)
+            for _ in 0..<20 where socket.sentTexts.count < 2 {
+                await Task.yield()
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+        }
         await waitForSends(2, on: socket)
         XCTAssertEqual(socket.sentTexts.count, 2, "A failed advertisement must not latch the socket as advertised")
         XCTAssertEqual(try sentFrame(socket)["method"] as? String, "client.capabilities")
