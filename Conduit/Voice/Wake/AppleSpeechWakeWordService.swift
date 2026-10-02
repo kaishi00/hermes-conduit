@@ -49,6 +49,9 @@ final class AppleSpeechWakeWordService: WakeWordService {
     private var recoveryTask: Task<Void, Never>?
     private var cycleGeneration: UInt64 = 0
     private var consecutiveFailures = 0
+    /// This listener set the session's preferred input (CarPlay) and must
+    /// clear it before handing the session back.
+    private var prefersBuiltInMicrophone = false
     /// A system interruption (a call, Siri) is in progress.
     private var isInterrupted = false
     private var observers: [NSObjectProtocol] = []
@@ -127,6 +130,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
         if lease == nil {
             lease = try audioCoordinator.acquire(.wakeListening)
         }
+        try applyPreferredInput()
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -159,6 +163,38 @@ final class AppleSpeechWakeWordService: WakeWordService {
         self.engine = nil
     }
 
+    /// On CarPlay, record from the iPhone's own microphone: recording
+    /// through the car switches it to a voice stream, and music from other
+    /// apps then plays from one side only. Elsewhere, the system default.
+    /// Never falls back to the car's microphone: that is what plays other
+    /// apps' music from one side, so wake stops instead.
+    private func applyPreferredInput() throws {
+        guard WakeRoutePolicy.currentRouteIsCarPlay() else {
+            clearPreferredInput()
+            return
+        }
+        let session = AVAudioSession.sharedInstance()
+        guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else {
+            throw WakeWordServiceError.unavailable(
+                AppLocalization.string("Wake listening on CarPlay needs the iPhone's microphone, which is not available right now.")
+            )
+        }
+        try session.setPreferredInput(builtIn)
+        prefersBuiltInMicrophone = true
+    }
+
+    /// A conversation that takes the session over uses the car's own
+    /// microphone again.
+    private func clearPreferredInput() {
+        guard prefersBuiltInMicrophone else { return }
+        prefersBuiltInMicrophone = false
+        do {
+            try AVAudioSession.sharedInstance().setPreferredInput(nil)
+        } catch {
+            wakeLogger.error("wake listening could not clear its preferred input: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     private func observeAudioDisruptions() {
         removeObservers()
         let center = NotificationCenter.default
@@ -169,6 +205,20 @@ final class AppleSpeechWakeWordService: WakeWordService {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in self?.scheduleAudioRecovery() }
+        })
+        // Connecting or leaving CarPlay changes which microphone wake must
+        // use, even if the engine does not report a configuration change.
+        observers.append(center.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if WakeRoutePolicy.currentRouteIsCarPlay() != self.prefersBuiltInMicrophone {
+                    self.scheduleAudioRecovery()
+                }
+            }
         })
         // A phone call, Siri or an alarm is not a Conduit audio owner: stop
         // listening for its whole duration and only resume once it ends.
@@ -331,6 +381,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
         recognitionTask?.cancel()
         recognitionTask = nil
         stopAudio()
+        clearPreferredInput()
         if let lease {
             self.lease = nil
             audioCoordinator.release(lease)

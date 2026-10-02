@@ -2,6 +2,17 @@ import XCTest
 @testable import Conduit
 
 final class WakeConfigurationStoreTests: XCTestCase {
+    func testListensOnCarPlayDefaultsOnAndPersists() {
+        let suite = "WakeConfigurationStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WakeConfigurationStore(defaults: defaults, storageKey: "wake")
+        XCTAssertTrue(store.listensOnCarPlay)
+
+        store.listensOnCarPlay = false
+        XCTAssertFalse(WakeConfigurationStore(defaults: defaults, storageKey: "wake").listensOnCarPlay)
+    }
+
     func testStoresPreferencesPerGatewayAndProfileAndDeduplicatesPhrases() {
         let suite = "WakeConfigurationStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

@@ -734,8 +734,11 @@ struct WakePhraseSettingsModel {
     var phrases: [String]
     var suggestedPhrase: String
     var startsFreshConversation: Bool
+    /// Device-wide, shared by every profile's wake phrases.
+    var listensOnCarPlay: Bool
     var failure: String?
     var save: (_ phrases: [String], _ startsFreshConversation: Bool) -> Void
+    var setListensOnCarPlay: (Bool) -> Void
 }
 
 /// Foreground wake phrase for this profile (#174). Device-local: phrases
@@ -745,6 +748,7 @@ private struct WakePhraseSettingsSection: View {
     let model: WakePhraseSettingsModel
     @State private var phrases: [String]
     @State private var startsFresh: Bool
+    @State private var listensOnCarPlay: Bool
     /// Optimistic: stays on while the permission prompt is up.
     @State private var isEnabled: Bool
     @State private var isRequestingPermission = false
@@ -754,6 +758,7 @@ private struct WakePhraseSettingsSection: View {
         self.model = model
         _phrases = State(initialValue: model.phrases)
         _startsFresh = State(initialValue: model.startsFreshConversation)
+        _listensOnCarPlay = State(initialValue: model.listensOnCarPlay)
         _isEnabled = State(initialValue: !model.phrases.isEmpty)
     }
 
@@ -767,7 +772,7 @@ private struct WakePhraseSettingsSection: View {
                 }
             ))
             .disabled(isRequestingPermission)
-            Text("Say the phrase while Conduit is open to start voice on this profile, in whichever voice mode it uses. Listening runs on this iPhone, stops during calls, on CarPlay and in the background, and the microphone indicator stays on while it listens.")
+            Text("Say the phrase while Conduit is open to start voice on this profile, in whichever voice mode it uses. Listening runs on this iPhone, stops during calls and in the background, and the microphone indicator stays on while it listens.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if permissionDenied {
@@ -795,6 +800,18 @@ private struct WakePhraseSettingsSection: View {
                         model.save(phrases, value)
                     }
                 ))
+                Toggle("Listen on CarPlay", isOn: Binding(
+                    get: { listensOnCarPlay },
+                    set: { value in
+                        listensOnCarPlay = value
+                        model.setListensOnCarPlay(value)
+                    }
+                ))
+                .accessibilityHint(Text("On CarPlay, wake listens through the iPhone's microphone so music keeps playing normally in the car. Turn this off if the phrase is missed or music sounds wrong."))
+                Text("On CarPlay, wake listens through the iPhone's microphone so music keeps playing normally in the car. Turn this off if the phrase is missed or music sounds wrong.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 if let failure = model.failure {
                     Label(failure, systemImage: "exclamationmark.triangle")
                         .font(.caption)
@@ -813,6 +830,9 @@ private struct WakePhraseSettingsSection: View {
         }
         .onChange(of: model.startsFreshConversation) { _, value in
             startsFresh = value
+        }
+        .onChange(of: model.listensOnCarPlay) { _, value in
+            listensOnCarPlay = value
         }
     }
 

@@ -494,13 +494,15 @@ struct SettingsView: View {
             phrases: preferences.enabledPhrases,
             suggestedPhrase: appState.suggestedWakePhrase(forProfile: profile),
             startsFreshConversation: preferences.startsFreshConversation,
+            listensOnCarPlay: appState.wakeListensOnCarPlay,
             failure: appState.wakeListeningFailure,
             save: { phrases, startsFresh in
                 appState.setWakePreferences(
                     WakeProfilePreferences(enabledPhrases: phrases, startsFreshConversation: startsFresh),
                     forProfile: profile
                 )
-            }
+            },
+            setListensOnCarPlay: { appState.setWakeListensOnCarPlay($0) }
         )
     }
 
