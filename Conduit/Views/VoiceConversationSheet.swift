@@ -106,14 +106,14 @@ struct VoiceConversationSheet: View {
 
     private var backgroundJobsCard: some View {
         ConduitSettingsSection(title: AppLocalization.string("Background jobs"), symbol: "square.stack.3d.up", tint: .conduitAccent) {
-            if backgroundJobs.jobs.isEmpty {
+            if backgroundJobs.backgroundJobs.isEmpty {
                 Text("Say “background job” and then a task to run it as its own chat while you keep talking.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(backgroundJobs.jobs.reversed()) { job in
+                    ForEach(backgroundJobs.backgroundJobs.reversed()) { job in
                         HStack(spacing: 10) {
                             Image(systemName: Self.jobSymbol(job.status))
                                 .foregroundStyle(Self.jobTint(job.status))

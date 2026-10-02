@@ -124,6 +124,13 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// profile, that proves the scoped read really is that profile's
     /// registry, so a later absence can be trusted.
     var listedByLivenessPoll = false
+    /// A live call's request sent as the next turn of the chat the call is
+    /// attached to, not a job in its own session. It runs in that chat, so
+    /// it is never listed, counted, or cancelled as a background job.
+    var isThreadTurn = false
+    /// Whether a thread turn reached Hermes. Until then the chat's events
+    /// belong to whatever else runs there (a typed message).
+    var threadTurnSubmitted = false
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
@@ -154,6 +161,29 @@ struct VoiceBackgroundJobBackend {
     var liveSessions: @MainActor (_ profile: String?) async throws -> [LiveSessionStatus]
     /// Maps a spoken profile or bot name to the profile it names.
     var resolveProfile: @MainActor (_ spokenName: String) -> VoiceJobProfileTarget = { _ in .unknown }
+    /// Whether a turn is running in the attached chat right now.
+    var threadIsBusy: @MainActor (_ thread: VoiceThreadTarget) async -> Bool = { _ in false }
+    /// Sends a live call's request as the attached chat's next turn
+    /// (resuming the chat first when it isn't live) and returns the runtime
+    /// session id the turn runs on.
+    var submitThreadTurn: @MainActor (_ thread: VoiceThreadTarget, _ text: String) async throws -> String = { _, _ in
+        throw VoiceAudioError.unavailable(AppLocalization.string("Hermes could not send this to the chat."))
+    }
+    /// The chat's latest assistant reply, read without starting a turn.
+    var latestThreadReply: @MainActor (_ thread: VoiceThreadTarget) async -> String? = { _ in nil }
+}
+
+/// The Hermes chat a live call is attached to: requests go there as its
+/// next turn instead of starting a background job.
+struct VoiceThreadTarget: Equatable {
+    var runtimeSessionID: String
+    var storedSessionID: String?
+    var title: String
+
+    func owns(sessionID: String) -> Bool {
+        guard !sessionID.isEmpty else { return false }
+        return sessionID == runtimeSessionID || sessionID == storedSessionID
+    }
 }
 
 /// What a profile or bot name spoken for a job refers to.
@@ -184,6 +214,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Settled, already-announced jobs kept for the Voice sheet and status.
     static let maximumSettledJobs = 10
     static let missedPollsBeforeSettling = 2
+    /// Thread turns in flight at once: one running, the rest waiting their
+    /// turn in order.
+    static let maximumThreadTurns = 3
+
+    /// The chat the running live call is attached to, if any.
+    var liveThread: VoiceThreadTarget?
 
     @Published private(set) var jobs: [VoiceBackgroundJob] = []
 
@@ -201,14 +237,29 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// can never write into the new ledger.
     private var generation: UInt64 = 0
 
-    init(backend: VoiceBackgroundJobBackend, pollInterval: Duration = .seconds(20)) {
+    init(
+        backend: VoiceBackgroundJobBackend,
+        pollInterval: Duration = .seconds(20),
+        threadWaitInterval: Duration = .seconds(1)
+    ) {
         self.backend = backend
         self.pollInterval = pollInterval
+        self.threadWaitInterval = threadWaitInterval
     }
 
-    deinit { pollTask?.cancel() }
+    deinit {
+        pollTask?.cancel()
+        threadTask?.cancel()
+    }
 
-    var activeJobCount: Int { jobs.filter { $0.status.isActive }.count }
+    /// Background jobs only: thread turns run in the attached chat.
+    var activeJobCount: Int { jobs.filter { $0.status.isActive && !$0.isThreadTurn }.count }
+
+    /// Jobs and thread turns still being worked on, for the liveness poll.
+    private var activeWorkCount: Int { jobs.filter { $0.status.isActive }.count }
+
+    /// Background jobs, as the Voice sheet and job tools list them.
+    var backgroundJobs: [VoiceBackgroundJob] { jobs.filter { !$0.isThreadTurn } }
 
     // MARK: Commands
 
@@ -336,6 +387,122 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
     }
 
+    // MARK: Thread turns
+
+    private let threadWaitInterval: Duration
+    private var threadTask: Task<Void, Never>?
+    /// The chat each thread turn goes to, kept from when it was asked.
+    private var threadTargets: [UUID: VoiceThreadTarget] = [:]
+
+    /// Queues `request` as the next turn of the chat the live call is
+    /// attached to. Turns go out one at a time, in order, and each waits for
+    /// whatever already runs in the chat (a typed message) to finish: a
+    /// voice request never steers or interrupts other work. Returns the
+    /// turn's ledger id, or what to tell the user when it can't be queued.
+    func startThreadTurn(request: String) -> (jobID: UUID?, refusal: String?) {
+        let request = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let thread = liveThread else {
+            return (nil, AppLocalization.string("This call isn't attached to a chat."))
+        }
+        guard !request.isEmpty else {
+            return (nil, AppLocalization.string("Hermes didn't get a request to send."))
+        }
+        let inFlight = jobs.filter { $0.isThreadTurn && $0.status.isActive }.count
+        guard inFlight < Self.maximumThreadTurns else {
+            return (nil, AppLocalization.string("Hermes is still working on your earlier requests in this chat. Ask again once they finish."))
+        }
+        let job = VoiceBackgroundJob(
+            id: UUID(),
+            title: Self.title(for: request),
+            instructions: request,
+            runtimeSessionID: thread.runtimeSessionID,
+            storedSessionID: thread.storedSessionID,
+            status: .starting,
+            startedAt: Date(),
+            isThreadTurn: true
+        )
+        jobs.append(job)
+        threadTargets[job.id] = thread
+        pumpThreadTurns()
+        return (job.id, nil)
+    }
+
+    /// The call left its chat (it ended, or a boundary reset it). Requests
+    /// still waiting their turn are dropped: nobody is on the call to hear
+    /// them. A turn already sent keeps running in the chat.
+    func detachLiveThread() {
+        liveThread = nil
+        for index in jobs.indices where jobs[index].isThreadTurn && !jobs[index].threadTurnSubmitted && jobs[index].status.isActive {
+            jobs[index].status = .cancelled
+            jobs[index].outcomeDelivered = true
+        }
+        pruneSettledJobs()
+    }
+
+    /// The attached chat's latest reply, read without starting a turn.
+    func lastThreadReply() async -> String? {
+        if let thread = liveThread,
+           let reply = await backend.latestThreadReply(thread)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !reply.isEmpty {
+            return reply
+        }
+        return jobs.last(where: { $0.isThreadTurn && $0.status == .finished && $0.result?.isEmpty == false })?.result
+    }
+
+    private func pumpThreadTurns() {
+        guard threadTask == nil else { return }
+        let generation = generation
+        threadTask = Task { [weak self] in
+            await self?.runThreadTurns(generation: generation)
+        }
+    }
+
+    private func runThreadTurns(generation: UInt64) async {
+        defer { if generation == self.generation { threadTask = nil } }
+        while !Task.isCancelled, generation == self.generation {
+            // One at a time: a sent turn still running holds the rest. Its
+            // settling pumps the queue again.
+            if jobs.contains(where: { $0.isThreadTurn && $0.threadTurnSubmitted && $0.status.isActive }) { return }
+            guard let next = jobs.first(where: { $0.isThreadTurn && !$0.threadTurnSubmitted && $0.status == .starting }) else { return }
+            guard let thread = threadTargets[next.id] else {
+                update(next.id) { $0.status = .failed(AppLocalization.string("Hermes could not send this to the chat.")) }
+                continue
+            }
+            if await backend.threadIsBusy(thread) {
+                guard generation == self.generation else { return }
+                try? await Task.sleep(for: threadWaitInterval)
+                continue
+            }
+            // Dropped (the call ended) while the chat was checked.
+            guard generation == self.generation, job(next.id)?.status == .starting else { continue }
+            update(next.id) { $0.threadTurnSubmitted = true }
+            do {
+                let runtimeID = try await backend.submitThreadTurn(thread, Self.threadTurnText(for: next.instructions))
+                guard generation == self.generation else { return }
+                update(next.id) {
+                    // A resumed chat can run on a new runtime id.
+                    if !runtimeID.isEmpty { $0.runtimeSessionID = runtimeID }
+                    if $0.status == .starting { $0.status = .running }
+                }
+                startPollingIfNeeded()
+            } catch {
+                guard generation == self.generation else { return }
+                // Events that already moved it on mean Hermes took the turn
+                // (a lost acknowledgement), so only a turn still starting failed.
+                if job(next.id)?.status == .starting {
+                    update(next.id) { $0.status = .failed(error.localizedDescription) }
+                    noticeMayBePending()
+                }
+            }
+        }
+    }
+
+    /// A voice request as it appears in the chat. Not localized: it is
+    /// Hermes' input, marked so the chat shows where it came from.
+    static func threadTurnText(for request: String) -> String {
+        "(voice) " + request
+    }
+
     private func startedReply(_ job: VoiceBackgroundJob) -> String {
         if let profile = job.profileLabel ?? job.profile {
             return AppLocalization.string("Started a background job on \(profile): \(job.title).")
@@ -396,7 +563,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     func statusSummary() -> String {
-        let visible = jobs.filter { $0.status.isActive || !$0.outcomeDelivered }
+        let visible = backgroundJobs.filter { $0.status.isActive || !$0.outcomeDelivered }
         guard !visible.isEmpty else {
             return AppLocalization.string("No background jobs are running.")
         }
@@ -418,7 +585,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     func cancelAll() async -> String {
-        let targets = jobs.filter { $0.status.isActive }
+        let targets = backgroundJobs.filter { $0.status.isActive }
         guard !targets.isEmpty else {
             return AppLocalization.string("There are no background jobs to cancel.")
         }
@@ -438,7 +605,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Cancels one active job. Returns what to say, or nil when no active
     /// job has that id.
     func cancel(jobID: UUID) async -> String? {
-        guard let job = job(jobID), job.status.isActive else { return nil }
+        guard let job = job(jobID), job.status.isActive, !job.isThreadTurn else { return nil }
         let cancelled = await cancelOnHermes(job)
         stopPollingIfIdle()
         pruneSettledJobs()
@@ -487,8 +654,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         generation &+= 1
         pollTask?.cancel()
         pollTask = nil
+        threadTask?.cancel()
+        threadTask = nil
         jobs.removeAll()
         noticesInFlight.removeAll()
+        liveThread = nil
+        threadTargets.removeAll()
     }
 
     // MARK: Events
@@ -497,9 +668,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Only events addressed to a job session change anything.
     func observe(_ event: StreamEvent) {
         guard let sessionID = Self.sessionID(for: event),
-              let index = jobs.firstIndex(where: { $0.owns(sessionID: sessionID) }) else { return }
+              let index = jobs.firstIndex(where: {
+                  $0.owns(sessionID: sessionID) && (!$0.isThreadTurn || ($0.threadTurnSubmitted && $0.status.isActive))
+              }) else { return }
         let before = jobs[index]
         guard before.status.isActive else { return }
+        // A thread turn waiting its turn doesn't own the chat's events yet.
+        guard !before.isThreadTurn || before.threadTurnSubmitted else { return }
         // Any event for the job is proof of life for the liveness poll.
         jobs[index].consecutiveMissedPolls = 0
         switch event {
@@ -527,7 +702,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         default:
             return
         }
-        if jobs[index] != before { noticeMayBePending() }
+        if jobs[index] != before {
+            noticeMayBePending()
+            if before.isThreadTurn, !jobs[index].status.isActive { pumpThreadTurns() }
+        }
     }
 
     private static func sessionID(for event: StreamEvent) -> String? {
@@ -586,7 +764,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                       !result.isEmpty else {
                     return (.speak(openChat), job.id)
                 }
-                return (.submit(prompt: Self.completionPrompt(title: job.title, result: result), fallback: openChat), job.id)
+                return (.submit(prompt: Self.outcomePrompt(for: job, result: result), fallback: openChat), job.id)
             case .failed:
                 return (.speak(AppLocalization.string("\(job.title) failed. Open it in Conduit for details.")), job.id)
             case .cancelled:
@@ -624,7 +802,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// job's chat). `session.active_list` is read-only and authoritative
     /// about absence.
     private func startPollingIfNeeded() {
-        guard pollTask == nil, activeJobCount > 0 else { return }
+        guard pollTask == nil, activeWorkCount > 0 else { return }
         let generation = generation
         pollTask = Task { [weak self, pollInterval] in
             while !Task.isCancelled {
@@ -632,7 +810,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 guard !Task.isCancelled, let self, generation == self.generation else { return }
                 await self.pollOnce()
                 guard generation == self.generation else { return }
-                if self.activeJobCount == 0 {
+                if self.activeWorkCount == 0 {
                     self.pollTask = nil
                     return
                 }
@@ -641,7 +819,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     private func stopPollingIfIdle() {
-        guard activeJobCount == 0 else { return }
+        guard activeWorkCount == 0 else { return }
         pollTask?.cancel()
         pollTask = nil
     }
@@ -685,7 +863,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             jobs[index].status = .finished
             changed = true
         }
-        if changed { noticeMayBePending() }
+        if changed {
+            noticeMayBePending()
+            pumpThreadTurns()
+        }
     }
 
     // MARK: Helpers
@@ -701,6 +882,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard excess > 0 else { return }
         let dropped = Set(settled.prefix(excess).map(\.id))
         jobs.removeAll { dropped.contains($0.id) }
+        for id in dropped { threadTargets[id] = nil }
     }
 
     private func job(_ id: UUID) -> VoiceBackgroundJob? {
@@ -736,6 +918,24 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         """
     }
 
+    /// A settled job's or thread turn's result, for the live model.
+    static func outcomePrompt(for job: VoiceBackgroundJob, result: String) -> String {
+        job.isThreadTurn ? threadReplyPrompt(result: result) : completionPrompt(title: job.title, result: result)
+    }
+
+    /// Hermes' reply in the attached chat, for the live model. Written for
+    /// the model, not shown as UI copy, so not localized.
+    static func threadReplyPrompt(result: String) -> String {
+        let clipped = result.count > maximumResultCharacters
+            ? String(result.prefix(maximumResultCharacters)) + "\n[…]"
+            : result
+        return """
+        [Hermes replied in the chat. Its reply is below. Unless the user asked to hear it in full, tell them the gist in a few spoken sentences, in the language we have been speaking; the full reply stays in the chat.]
+
+        \(clipped)
+        """
+    }
+
     /// The hand-back submitted to the voice conversation's own session.
     static func completionPrompt(title: String, result: String) -> String {
         let clipped: String
@@ -749,5 +949,45 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
         \(clipped)
         """
+    }
+}
+
+// MARK: - Attached-chat routing
+
+/// GPT-Live has one delegation channel, so while a call is attached to a
+/// chat the delegation's own words decide where it goes. Gemini and Grok
+/// pick a tool instead.
+enum VoiceThreadRouting {
+    /// Phrases that keep work out of the chat, as a background job.
+    static let backgroundPhrases = [
+        "in the background",
+        "background job",
+        "as a job",
+        "separate chat",
+        "new chat",
+        "后台",
+    ]
+    /// "Read me the last reply" asks for what Hermes already said.
+    static let lastReplyPhrases = [
+        "last reply",
+        "last response",
+        "latest reply",
+        "latest response",
+        "previous reply",
+        "full reply",
+        "上一条回复",
+        "最后一条回复",
+    ]
+    static let readVerbs = ["read", "repeat", "朗读", "读"]
+
+    static func wantsBackgroundJob(_ request: String) -> Bool {
+        let folded = request.lowercased()
+        return backgroundPhrases.contains { folded.contains($0) }
+    }
+
+    static func wantsLastReply(_ request: String) -> Bool {
+        let folded = request.lowercased()
+        return lastReplyPhrases.contains { folded.contains($0) }
+            && readVerbs.contains { folded.contains($0) }
     }
 }

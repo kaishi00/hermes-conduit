@@ -79,6 +79,12 @@ final class FakeVoiceJobBackend {
     private(set) var titles: [(String, String)] = []
     private(set) var submissions: [(String, String)] = []
     private(set) var cancelled: [String] = []
+    /// The attached chat: whether a turn runs there, what was sent to it,
+    /// and its latest reply.
+    var threadBusy = false
+    var threadSubmitError: Error?
+    var threadReply: String?
+    private(set) var threadSubmissions: [(String, String)] = []
 
     /// Strong captures: tests routinely discard the fake (`let (supervisor, _)
     /// = makeSupervisor()`), and the supervisor's backend must keep it alive
@@ -114,7 +120,14 @@ final class FakeVoiceJobBackend {
                 if let profile, self.failingLiveProfiles.contains(profile) { throw URLError(.timedOut) }
                 return self.liveRows
             },
-            resolveProfile: { [self] name in self.profileTargets[name.lowercased()] ?? .unknown }
+            resolveProfile: { [self] name in self.profileTargets[name.lowercased()] ?? .unknown },
+            threadIsBusy: { [self] _ in self.threadBusy },
+            submitThreadTurn: { [self] thread, text in
+                self.threadSubmissions.append((thread.runtimeSessionID, text))
+                if let error = self.threadSubmitError { throw error }
+                return thread.runtimeSessionID
+            },
+            latestThreadReply: { [self] _ in self.threadReply }
         )
     }
 
@@ -541,6 +554,194 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(title.hasSuffix("…"))
         XCTAssertLessThanOrEqual(title.count, VoiceBackgroundJobSupervisor.maximumTitleCharacters + 1)
         XCTAssertEqual(VoiceBackgroundJobSupervisor.title(for: "  short\n task "), "short task")
+    }
+}
+
+// MARK: - Turns in the attached chat
+
+@MainActor
+extension VoiceConversationControllerTests {
+    private func makeThreadSupervisor() -> (VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(
+            backend: fake.backend,
+            pollInterval: .seconds(3_600),
+            threadWaitInterval: .milliseconds(5)
+        )
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        return (supervisor, fake)
+    }
+
+    private func waitFor(_ condition: () -> Bool) async {
+        for _ in 0..<400 where !condition() {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
+    func testAThreadTurnIsTheChatsNextTurnNotANewSession() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+
+        let sent = supervisor.startThreadTurn(request: "check the build")
+        await waitFor { !fake.threadSubmissions.isEmpty }
+
+        XCTAssertNotNil(sent.jobID)
+        XCTAssertEqual(fake.created, 0, "no session is created")
+        XCTAssertEqual(fake.threadSubmissions.first?.0, "rt-chat")
+        XCTAssertEqual(fake.threadSubmissions.first?.1, "(voice) check the build")
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+
+        supervisor.observe(.messageComplete(sessionId: "st-chat", messageId: nil, content: "Build is green.", reasoning: nil))
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        guard case .submit(let prompt, _)? = supervisor.takePendingNotice() else {
+            return XCTFail("the reply goes back to the call")
+        }
+        XCTAssertTrue(prompt.contains("Hermes replied in the chat"))
+        XCTAssertTrue(prompt.contains("Build is green."))
+    }
+
+    func testAThreadTurnWaitsForATypedTurnAndIgnoresItsEvents() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadBusy = true
+
+        _ = supervisor.startThreadTurn(request: "and the tests?")
+        try? await Task.sleep(for: .milliseconds(40))
+        XCTAssertTrue(fake.threadSubmissions.isEmpty, "never steers or interrupts the typed turn")
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "typed answer", reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .starting, "the typed turn's reply isn't the voice turn's")
+
+        fake.threadBusy = false
+        await waitFor { !fake.threadSubmissions.isEmpty }
+        XCTAssertEqual(fake.threadSubmissions.count, 1)
+    }
+
+    func testThreadTurnsGoOutOneAtATimeAndTooManyAreRefused() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        for index in 1...VoiceBackgroundJobSupervisor.maximumThreadTurns {
+            XCTAssertNotNil(supervisor.startThreadTurn(request: "request \(index)").jobID)
+        }
+        let refused = supervisor.startThreadTurn(request: "one more")
+        XCTAssertNil(refused.jobID)
+        XCTAssertNotNil(refused.refusal)
+
+        await waitFor { !fake.threadSubmissions.isEmpty }
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(fake.threadSubmissions.map(\.1), ["(voice) request 1"])
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "one", reasoning: nil))
+        await waitFor { fake.threadSubmissions.count == 2 }
+        XCTAssertEqual(fake.threadSubmissions.map(\.1), ["(voice) request 1", "(voice) request 2"])
+    }
+
+    func testEndingTheCallDropsTurnsStillWaiting() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadBusy = true
+        _ = supervisor.startThreadTurn(request: "later")
+
+        supervisor.detachLiveThread()
+        fake.threadBusy = false
+        try? await Task.sleep(for: .milliseconds(40))
+
+        XCTAssertTrue(fake.threadSubmissions.isEmpty)
+        XCTAssertEqual(supervisor.jobs.first?.status, .cancelled)
+        XCTAssertNil(supervisor.takePendingNotice(), "nobody is on the call to tell")
+        XCTAssertNil(supervisor.startThreadTurn(request: "after").jobID, "no chat to send to")
+    }
+
+    func testAFailedThreadSubmitIsReported() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadSubmitError = URLError(.notConnectedToInternet)
+
+        _ = supervisor.startThreadTurn(request: "check")
+        await waitFor { supervisor.jobs.first?.status.isActive == false }
+
+        guard case .failed? = supervisor.jobs.first?.status else {
+            return XCTFail("\(String(describing: supervisor.jobs.first?.status))")
+        }
+    }
+
+    func testThreadTurnsArentBackgroundJobs() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadBusy = true
+        _ = supervisor.startThreadTurn(request: "check")
+
+        XCTAssertEqual(supervisor.activeJobCount, 0)
+        XCTAssertTrue(supervisor.backgroundJobs.isEmpty)
+        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("No background jobs are running."))
+        let cancelled = await supervisor.cancelAll()
+        XCTAssertEqual(cancelled, AppLocalization.string("There are no background jobs to cancel."))
+        XCTAssertEqual(supervisor.jobs.first?.status, .starting)
+        supervisor.detachLiveThread()
+    }
+
+    func testTheLastReplyIsReadWithoutANewTurn() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadReply = "Here is the full report."
+
+        let reply = await supervisor.lastThreadReply()
+
+        XCTAssertEqual(reply, "Here is the full report.")
+        XCTAssertTrue(fake.threadSubmissions.isEmpty)
+        XCTAssertTrue(supervisor.jobs.isEmpty)
+    }
+
+    func testGeminiAskThreadAnswersWithTheChatsReply() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+
+        let immediate = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "summarize"]))
+        XCTAssertEqual(immediate, [], "the call stays open while Hermes works")
+        await waitFor { !fake.threadSubmissions.isEmpty }
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Summary.", reasoning: nil))
+        let updates = bridge.pendingUpdates()
+        guard case .toolResponse(let id, let name, let result, _)? = updates.first, updates.count == 1 else {
+            return XCTFail("\(updates)")
+        }
+        XCTAssertEqual(id, "call_1")
+        XCTAssertEqual(name, "ask_thread")
+        XCTAssertEqual(result["result"], "Summary.")
+    }
+
+    func testThreadToolsAreOfferedOnlyWhenAttached() {
+        let plain = GeminiLiveToolBridge.declarations(webSearch: false).map(\.name)
+        let attached = GeminiLiveToolBridge.declarations(webSearch: false, thread: true).map(\.name)
+        XCTAssertFalse(plain.contains("ask_thread"))
+        XCTAssertTrue(attached.contains("ask_thread"))
+        XCTAssertTrue(attached.contains("read_last_reply"))
+        XCTAssertTrue(attached.contains("start_job"), "background work stays available")
+    }
+
+    func testGPTLiveDelegationGoesToTheAttachedChatUnlessItAsksForBackgroundWork() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+
+        let immediate = await bridge.handleDelegation(id: "del_1", request: "what failed in the build?")
+        guard case .delegationReply(_, _, .commentary)? = immediate.first else {
+            return XCTFail("\(immediate)")
+        }
+        await waitFor { !fake.threadSubmissions.isEmpty }
+        XCTAssertEqual(fake.created, 0)
+
+        _ = await bridge.handleDelegation(id: "del_2", request: "research flights in the background")
+        XCTAssertEqual(fake.created, 1, "background work is still a job")
+
+        fake.threadReply = "The last reply."
+        let read = await bridge.handleDelegation(id: "del_3", request: "Read the last reply word for word")
+        guard case .delegationReply("del_3", let text, .speakable)? = read.first else {
+            return XCTFail("\(read)")
+        }
+        XCTAssertTrue(text.contains("The last reply."))
+        XCTAssertEqual(fake.threadSubmissions.count, 1, "reading the last reply asks Hermes nothing")
+    }
+
+    func testThreadRoutingPhrases() {
+        XCTAssertTrue(VoiceThreadRouting.wantsBackgroundJob("Run this in the background: check prices"))
+        XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("what's the background of this issue"))
+        XCTAssertTrue(VoiceThreadRouting.wantsLastReply("Read me Hermes' last reply"))
+        XCTAssertTrue(VoiceThreadRouting.wantsLastReply("repeat the full reply"))
+        XCTAssertFalse(VoiceThreadRouting.wantsLastReply("fix the bug from the last reply"))
     }
 }
 

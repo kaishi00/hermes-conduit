@@ -1453,8 +1453,13 @@ final class AppState: ObservableObject {
                         search: search,
                         memory: memory,
                         personality: self?.geminiLivePersonality
-                    ) + (self?.liveVoiceResumeContext?.instructionBlock ?? ""),
-                    functions: GeminiLiveToolBridge.declarations(webSearch: search == .hermes, memoryRecall: memory?.canRecall == true),
+                    ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
+                        + (self?.liveVoiceThreadInstructions(delegation: false) ?? ""),
+                    functions: GeminiLiveToolBridge.declarations(
+                        webSearch: search == .hermes,
+                        memoryRecall: memory?.canRecall == true,
+                        thread: self?.voiceBackgroundJobSupervisor.liveThread != nil
+                    ),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
                 )
@@ -1497,7 +1502,7 @@ final class AppState: ObservableObject {
     /// classic conversation (and Read Aloud) is closed first so the two
     /// modes never share the audio session.
     @discardableResult
-    func openGeminiLiveConversation() -> Bool {
+    func openGeminiLiveConversation(attachingTo thread: VoiceThreadTarget? = nil) -> Bool {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -1507,6 +1512,9 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .geminiLive { minimisedLiveVoice = nil }
         showGeminiLiveSheet = true
         if !geminiLiveController.isActive {
+            // A new call is attached to the chat it was started from; a
+            // running one keeps what it had.
+            voiceBackgroundJobSupervisor.liveThread = thread
             beginVoiceCallRecording(engine: .geminiLive)
             Task { await geminiLiveController.start() }
         }
@@ -1523,6 +1531,7 @@ final class AppState: ObservableObject {
         stopGPTLiveConversation()
         stopGrokLiveConversation()
         guard !geminiLiveController.isActive else { return }
+        voiceBackgroundJobSupervisor.detachLiveThread()
         beginVoiceCallRecording(engine: .geminiLive)
         await geminiLiveController.start()
     }
@@ -1547,6 +1556,7 @@ final class AppState: ObservableObject {
         if geminiLiveControllerCreated { geminiLiveController.stop() }
         showGeminiLiveSheet = false
         if minimisedLiveVoice == .geminiLive { minimisedLiveVoice = nil }
+        voiceBackgroundJobSupervisor.detachLiveThread()
         dropGeminiLiveHostContext()
         if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
     }
@@ -1567,6 +1577,8 @@ final class AppState: ObservableObject {
             dropGeminiLiveHostContext()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
+            // Not while another mode's call runs: it may be attached.
+            if !isLiveVoiceCallActive { voiceBackgroundJobSupervisor.detachLiveThread() }
             return
         }
         closeGeminiLiveConversation()
@@ -1712,6 +1724,7 @@ final class AppState: ObservableObject {
                     voice: self?.gptLiveVoice,
                     briefing: GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
                         + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
+                        + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
                 )
             },
             availability: { [weak self] in
@@ -1725,6 +1738,7 @@ final class AppState: ObservableObject {
             briefing: { [weak self] in
                 GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
                     + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
+                    + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
             },
             supervisor: self.voiceBackgroundJobSupervisor,
             // The same "End conversation" phrases as the other voice modes.
@@ -1741,7 +1755,7 @@ final class AppState: ObservableObject {
     /// Opens GPT-Live instead of the other voice modes, which (with Read
     /// Aloud) are closed first so they never share the audio session.
     @discardableResult
-    func openGPTLiveConversation() -> Bool {
+    func openGPTLiveConversation(attachingTo thread: VoiceThreadTarget? = nil) -> Bool {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -1751,6 +1765,9 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
         showGPTLiveSheet = true
         if !gptLiveController.isActive {
+            // A new call is attached to the chat it was started from; a
+            // running one keeps what it had.
+            voiceBackgroundJobSupervisor.liveThread = thread
             beginVoiceCallRecording(engine: .gptLive)
             Task { await gptLiveController.start() }
         }
@@ -1767,6 +1784,7 @@ final class AppState: ObservableObject {
         stopGeminiLiveConversation()
         stopGrokLiveConversation()
         guard !gptLiveController.isActive else { return }
+        voiceBackgroundJobSupervisor.detachLiveThread()
         beginVoiceCallRecording(engine: .gptLive)
         await gptLiveController.start()
     }
@@ -1791,6 +1809,7 @@ final class AppState: ObservableObject {
         if gptLiveControllerCreated { gptLiveController.stop() }
         showGPTLiveSheet = false
         if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
+        voiceBackgroundJobSupervisor.detachLiveThread()
         dropGPTLiveHostContext()
         if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
     }
@@ -1811,6 +1830,8 @@ final class AppState: ObservableObject {
             dropGPTLiveHostContext()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
+            // Not while another mode's call runs: it may be attached.
+            if !isLiveVoiceCallActive { voiceBackgroundJobSupervisor.detachLiveThread() }
             return
         }
         closeGPTLiveConversation()
@@ -1937,8 +1958,13 @@ final class AppState: ObservableObject {
                         search: search,
                         memory: memory,
                         personality: self?.grokLivePersonality
-                    ) + (self?.liveVoiceResumeContext?.instructionBlock ?? ""),
-                    functions: GeminiLiveToolBridge.declarations(webSearch: search == .hermes, memoryRecall: memory?.canRecall == true),
+                    ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
+                        + (self?.liveVoiceThreadInstructions(delegation: false) ?? ""),
+                    functions: GeminiLiveToolBridge.declarations(
+                        webSearch: search == .hermes,
+                        memoryRecall: memory?.canRecall == true,
+                        thread: self?.voiceBackgroundJobSupervisor.liveThread != nil
+                    ),
                     voice: self?.grokLiveVoice
                 )
             },
@@ -1981,7 +2007,7 @@ final class AppState: ObservableObject {
     /// Opens Grok Live instead of the other voice modes, which (with Read
     /// Aloud) are closed first so they never share the audio session.
     @discardableResult
-    func openGrokLiveConversation() -> Bool {
+    func openGrokLiveConversation(attachingTo thread: VoiceThreadTarget? = nil) -> Bool {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -1991,6 +2017,9 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
         showGrokLiveSheet = true
         if !grokLiveController.isActive {
+            // A new call is attached to the chat it was started from; a
+            // running one keeps what it had.
+            voiceBackgroundJobSupervisor.liveThread = thread
             beginVoiceCallRecording(engine: .grokLive)
             Task { await grokLiveController.start() }
         }
@@ -2007,6 +2036,7 @@ final class AppState: ObservableObject {
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         guard !grokLiveController.isActive else { return }
+        voiceBackgroundJobSupervisor.detachLiveThread()
         beginVoiceCallRecording(engine: .grokLive)
         await grokLiveController.start()
     }
@@ -2031,6 +2061,7 @@ final class AppState: ObservableObject {
         if grokLiveControllerCreated { grokLiveController.stop() }
         showGrokLiveSheet = false
         if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
+        voiceBackgroundJobSupervisor.detachLiveThread()
         dropGrokLiveHostContext()
         if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
     }
@@ -2051,6 +2082,8 @@ final class AppState: ObservableObject {
             dropGrokLiveHostContext()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
+            // Not while another mode's call runs: it may be attached.
+            if !isLiveVoiceCallActive { voiceBackgroundJobSupervisor.detachLiveThread() }
             return
         }
         closeGrokLiveConversation()
@@ -2122,6 +2155,16 @@ final class AppState: ObservableObject {
             },
             resolveProfile: { [weak self] spokenName in
                 self?.voiceJobProfileTarget(named: spokenName) ?? .unknown
+            },
+            threadIsBusy: { [weak self] thread in
+                await self?.liveVoiceThreadIsBusy(thread) ?? false
+            },
+            submitThreadTurn: { [weak self] thread, text in
+                guard let self else { throw HermesError.notConnected }
+                return try await self.submitLiveVoiceThreadTurn(thread, text: text)
+            },
+            latestThreadReply: { [weak self] thread in
+                self?.latestReplyInOpenChat(thread)
             }
         ))
         supervisor.onNoticePending = { [weak self] in
@@ -3863,6 +3906,79 @@ final class AppState: ObservableObject {
         case .gptLive: return isGPTLiveActive
         case .grokLive: return isGrokLiveActive
         }
+    }
+
+    // MARK: Live voice attached to a chat
+
+    /// The open chat as a target for a live call started from it. A saved
+    /// call's row or a group room isn't a chat to work in.
+    func liveVoiceThreadForOpenChat() -> VoiceThreadTarget? {
+        guard let sessionID = activeSessionId, !sessionID.isEmpty,
+              activeRoomSurface == nil, activeVoiceCallSessionID == nil else { return nil }
+        let stored = knownSessionIDs(for: sessionID).subtracting([sessionID]).sorted().first
+        return VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: stored, title: activeSessionTitle)
+    }
+
+    /// Whether `thread` is the chat on screen now.
+    private func isOpenChat(_ thread: VoiceThreadTarget) -> Bool {
+        guard let sessionID = activeSessionId else { return false }
+        var ids = knownSessionIDs(for: sessionID)
+        ids.insert(sessionID)
+        return ids.contains { thread.owns(sessionID: $0) }
+    }
+
+    private func liveVoiceThreadIsBusy(_ thread: VoiceThreadTarget) async -> Bool {
+        if isOpenChat(thread) { return turnState.isRunning }
+        guard let client, let rows = try? await client.activeSessions() else { return false }
+        return rows.contains { row in
+            (thread.owns(sessionID: row.runtimeSessionId) || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
+        }
+    }
+
+    /// Sends a live call's request as the chat's next turn. On screen it
+    /// goes through the composer's own path, so the chat shows and streams
+    /// it like a typed message. Off screen the chat is resumed first when
+    /// it isn't live.
+    private func submitLiveVoiceThreadTurn(_ thread: VoiceThreadTarget, text: String) async throws -> String {
+        guard let client else { throw HermesError.notConnected }
+        if isOpenChat(thread), let sessionID = activeSessionId {
+            guard await submitComposer(text: text) else {
+                throw VoiceAudioError.unavailable(errorMessage ?? AppLocalization.string("Hermes could not send this to the chat."))
+            }
+            return activeSessionId ?? sessionID
+        }
+        let rows = (try? await client.activeSessions()) ?? []
+        var runtimeID = rows.first { thread.owns(sessionID: $0.runtimeSessionId) || thread.owns(sessionID: $0.storedSessionId) }?.runtimeSessionId
+        if runtimeID == nil {
+            runtimeID = try await client.openSession(thread.storedSessionID ?? thread.runtimeSessionID).sessionId
+        }
+        let target = runtimeID ?? thread.runtimeSessionID
+        _ = try await client.sendPrompt(target, text: text)
+        return target
+    }
+
+    /// The open chat's latest assistant reply.
+    private func latestReplyInOpenChat(_ thread: VoiceThreadTarget) -> String? {
+        guard isOpenChat(thread) else { return nil }
+        return messages.last { $0.role == .assistant && !$0.content.isEmpty }?.content
+    }
+
+    /// Instructions for a call attached to a chat. Written for the live
+    /// model, not shown as UI copy, so not localized.
+    func liveVoiceThreadInstructions(delegation: Bool) -> String {
+        guard let thread = voiceBackgroundJobSupervisor.liveThread else { return "" }
+        var block = "\n\nThis call is attached to the user's Hermes chat \"\(thread.title)\". "
+        if delegation {
+            block += "Delegate anything that needs Hermes: it is sent to that chat as its next message and Hermes' reply comes back on the delegation. Only when the user asks for work to run in the background or in a separate chat, say \"in the background\" in the delegation. When the user asks to hear Hermes' last reply, delegate \"read the last reply\" and read what comes back word for word."
+        } else {
+            block += "Send anything that needs Hermes to that chat with ask_thread: it becomes the chat's next message and Hermes' reply comes back to you. Use start_job only when the user asks for work to run in the background or in a separate chat. When the user asks to hear Hermes' last reply, call read_last_reply and read it word for word."
+        }
+        block += " Otherwise keep your own replies short; the full replies stay in the chat."
+        if let last = latestReplyInOpenChat(thread) {
+            let clipped = last.count > 2_000 ? String(last.prefix(2_000)) + " […]" : last
+            block += "\n\nHermes' latest reply in the chat, for context (don't read it out unless asked):\n" + clipped
+        }
+        return block
     }
 
     private func closeLiveVoiceConversation(_ engine: VoiceCallEngine) {
@@ -21762,6 +21878,8 @@ final class AppState: ObservableObject {
         // The mode is the requested profile's (Siri may name another one).
         let requestedProfile = intent.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let targetProfile = requestedProfile.isEmpty ? activeProfile : requestedProfile
+        // Live Voice started from a chat's mic works in that chat.
+        let thread = intent.source == .composer && targetProfile == activeProfile ? liveVoiceThreadForOpenChat() : nil
         if loadVoiceProfilePreferences(profile: targetProfile).geminiLiveEnabled {
             if targetProfile != activeProfile {
                 await switchProfile(to: targetProfile)
@@ -21771,7 +21889,7 @@ final class AppState: ObservableObject {
                 }
                 guard isConnected else { return false }
             }
-            return openGeminiLiveConversation()
+            return openGeminiLiveConversation(attachingTo: thread)
         }
         if loadVoiceProfilePreferences(profile: targetProfile).gptLiveEnabled {
             if targetProfile != activeProfile {
@@ -21782,7 +21900,7 @@ final class AppState: ObservableObject {
                 }
                 guard isConnected else { return false }
             }
-            return openGPTLiveConversation()
+            return openGPTLiveConversation(attachingTo: thread)
         }
         if loadVoiceProfilePreferences(profile: targetProfile).grokLiveEnabled {
             if targetProfile != activeProfile {
@@ -21793,7 +21911,7 @@ final class AppState: ObservableObject {
                 }
                 guard isConnected else { return false }
             }
-            return openGrokLiveConversation()
+            return openGrokLiveConversation(attachingTo: thread)
         }
         // Mutual exclusion: the voice conversation owns playback while its
         // sheet is open, so a read aloud started before must not continue.

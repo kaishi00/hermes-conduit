@@ -48,3 +48,15 @@ reply pending or playing):
   restarts, sign-out, and profile switches, but Voice stops following them.
 - Voice still suspends when the app goes to the background. Background audio
   and a GPT-Live transport are later phases.
+
+## Live Voice attached to a chat (issue #290)
+
+Live Voice (Gemini, Grok or GPT-Live) started from a chat's mic is attached to that chat for the whole call. Starting it anywhere else (Siri, a wake phrase, CarPlay, a saved call) leaves it unattached, as before.
+
+- **Requests become the chat's next turn.** Gemini and Grok get `ask_thread`, and GPT-Live delegations go to the chat. No new session is created. The turn is sent as `(voice) <request>`. Hermes' reply comes back to the live model, which summarizes it unless asked to read it out. The full reply stays in the chat.
+- **Background work is still a job.** `start_job`, or a GPT-Live delegation that says "in the background" or "separate chat", still creates its own Voice Jobs session.
+- **"Read the last reply"** (`read_last_reply`, or a GPT-Live delegation asking to read or repeat the last reply) returns the chat's latest assistant message without a new turn.
+- **One voice turn at a time, in order.** Up to three are in flight; a fourth is refused. Each waits for anything already running in the chat (a typed message) to finish, so voice never steers or interrupts typed work. Typing while a voice turn runs follows the composer's Steer/Interrupt setting, as for any running turn.
+- **On screen or not.** When the attached chat is open, the turn goes through the composer's own send path, so it shows and streams like a typed message. Otherwise the chat is resumed if it isn't live, then the prompt is submitted. The supervisor follows the turn by its session events, plus the liveness poll as a fallback.
+- **Hanging up** drops requests still waiting their turn. A turn already sent keeps running in the chat.
+- The call's own transcript is still saved separately, under Voice.

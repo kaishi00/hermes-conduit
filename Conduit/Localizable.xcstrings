@@ -1,6 +1,46 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Hermes could not send this to the chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法将此内容发送到对话。"
+          }
+        }
+      }
+    },
+    "This call isn't attached to a chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此通话未关联任何对话。"
+          }
+        }
+      }
+    },
+    "Hermes didn't get a request to send." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 没有收到要发送的请求。"
+          }
+        }
+      }
+    },
+    "Hermes is still working on your earlier requests in this chat. Ask again once they finish." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 仍在处理你在此对话中的先前请求。请在完成后再问。"
+          }
+        }
+      }
+    },
     "End call" : {
       "localizations" : {
         "zh-Hans" : {

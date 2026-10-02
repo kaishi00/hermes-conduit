@@ -37,6 +37,10 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func takePendingNoticeForJob() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)?
     func returnUndeliveredNotice(jobID: UUID)
     func noticeSent(jobID: UUID)
+    /// The chat the call is attached to, if any.
+    var liveThread: VoiceThreadTarget? { get }
+    func startThreadTurn(request: String) -> (jobID: UUID?, refusal: String?)
+    func lastThreadReply() async -> String?
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -50,6 +54,8 @@ final class GeminiLiveToolBridge {
         case webSearch = "web_search"
         case recallMemory = "recall_memory"
         case endConversation = "end_conversation"
+        case askThread = "ask_thread"
+        case readLastReply = "read_last_reply"
     }
 
     /// What the bridge asks the session to send.
@@ -72,11 +78,37 @@ final class GeminiLiveToolBridge {
     /// The declarations for a session, with web_search when its lookups run
     /// on the Hermes host and recall_memory when its memory provider can be
     /// searched.
-    static func declarations(webSearch: Bool, memoryRecall: Bool = false) -> [GeminiLiveProtocol.FunctionDeclaration] {
+    static func declarations(webSearch: Bool, memoryRecall: Bool = false, thread: Bool = false) -> [GeminiLiveProtocol.FunctionDeclaration] {
         functionDeclarations
             + (webSearch ? [webSearchDeclaration] : [])
             + (memoryRecall ? [recallMemoryDeclaration] : [])
+            + (thread ? threadDeclarations : [])
     }
+
+    /// Offered only while the call is attached to a Hermes chat.
+    static let threadDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
+        .init(
+            name: Tool.askThread.rawValue,
+            description: "Send the user's request to Hermes as the next message in the chat this call is attached to. Use it for anything that needs Hermes: questions about the chat, follow-ups, and real work. Hermes' reply arrives later on this call; summarize it unless the user asks to hear it in full. Don't guess the reply.",
+            parameters: [
+                "type": "OBJECT",
+                "properties": [
+                    "request": [
+                        "type": "STRING",
+                        "description": "The request for Hermes, in the user's words plus any context it needs.",
+                    ],
+                ],
+                "required": ["request"],
+            ],
+            behavior: .nonBlocking
+        ),
+        .init(
+            name: Tool.readLastReply.rawValue,
+            description: "Get Hermes' latest reply in the attached chat without asking Hermes anything new. Use it when the user asks you to read the last reply; read it word for word.",
+            parameters: ["type": "OBJECT", "properties": [String: Any]()],
+            behavior: .nonBlocking
+        ),
+    ]
 
     static let recallMemoryDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.recallMemory.rawValue,
@@ -231,6 +263,31 @@ final class GeminiLiveToolBridge {
                 "status": "started",
                 "message": "The job is running on Hermes. Its result will arrive later as a message; don't wait for it.",
             ], scheduling: nil)]
+        case .askThread:
+            let request = call.arguments["request"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !request.isEmpty else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": "request is required"], scheduling: .whenIdle)]
+            }
+            guard !isEnding else { return [] }
+            let sent = supervisor.startThreadTurn(request: request)
+            guard let jobID = sent.jobID else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? ""], scheduling: .whenIdle)]
+            }
+            openCalls[jobID] = call.id
+            // Without held calls it's answered now and the reply follows as
+            // a text update, like start_job's outcome.
+            guard !holdsJobCalls else { return settleOpenCalls() }
+            openCalls[jobID] = nil
+            return [.toolResponse(id: call.id, name: call.name, result: [
+                "status": "sent",
+                "message": "Sent to the chat. Hermes' reply will arrive later as a message; don't guess it.",
+            ], scheduling: nil)]
+        case .readLastReply:
+            guard let reply = await supervisor.lastThreadReply() else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": "Hermes hasn't replied in this chat yet."], scheduling: .whenIdle)]
+            }
+            return [.toolResponse(id: call.id, name: call.name, result: ["reply": Self.clipped(reply)], scheduling: .whenIdle)]
         case .listJobs:
             return [.toolResponse(id: call.id, name: call.name, result: listResult(), scheduling: nil)]
         case .cancelJob:
@@ -379,7 +436,8 @@ final class GeminiLiveToolBridge {
             // second report; everything else — including a start that failed
             // — is told once the conversation is quiet.
             let scheduling: GeminiLiveProtocol.Scheduling = job.status == .cancelled && alreadyAnnounced ? .silent : .whenIdle
-            outgoing.append(.toolResponse(id: callID, name: Tool.startJob.rawValue, result: result, scheduling: scheduling))
+            let name = job.isThreadTurn ? Tool.askThread.rawValue : Tool.startJob.rawValue
+            outgoing.append(.toolResponse(id: callID, name: name, result: result, scheduling: scheduling))
         }
         return outgoing
     }
@@ -419,7 +477,7 @@ final class GeminiLiveToolBridge {
     }
 
     private func listResult() -> [String: String] {
-        let visible = supervisor.jobs.filter { $0.status.isActive || !$0.outcomeDelivered }
+        let visible = supervisor.jobs.filter { !$0.isThreadTurn && ($0.status.isActive || !$0.outcomeDelivered) }
         var result: [String: String] = ["summary": supervisor.statusSummary()]
         for (index, job) in visible.enumerated() {
             result["job_\(index + 1)"] = "id=\(job.id.uuidString); title=\(job.title); status=\(Self.statusName(job.status))"
