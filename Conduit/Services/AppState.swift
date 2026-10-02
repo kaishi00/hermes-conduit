@@ -4064,7 +4064,8 @@ final class AppState: ObservableObject {
     /// The open chat's latest assistant reply.
     private func latestReplyInOpenChat(_ thread: VoiceThreadTarget) -> String? {
         guard isOpenChat(thread) else { return nil }
-        return messages.last { $0.role == .assistant && $0.tool == nil && !$0.content.isEmpty }?.content
+        return messages.last { $0.role == .assistant && $0.tool == nil && !$0.content.isEmpty }?
+            .content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Instructions for a call attached to a chat. Written for the live

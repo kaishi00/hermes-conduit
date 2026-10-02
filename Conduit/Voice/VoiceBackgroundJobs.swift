@@ -1132,7 +1132,11 @@ enum VoiceThreadRouting {
         "上一条回复",
         "最后一条回复",
     ]
-    static let readVerbs = ["read", "repeat", "hear", "tell me", "play", "朗读", "读", "告诉我"]
+    /// Said as the request itself ("read me…", "can you repeat…"), not
+    /// mentioned along the way ("they hear the last reply was wrong").
+    static let readVerbs = ["read", "repeat", "tell me", "let me hear", "play back"]
+    static let politePrefixes = ["please ", "can you ", "could you ", "would you ", "hey, ", "ok, ", "okay, "]
+    static let cjkReadVerbs = ["朗读", "读一下", "读给我", "告诉我"]
 
     static func wantsBackgroundJob(_ request: String) -> Bool {
         let folded = fold(request)
@@ -1141,8 +1145,17 @@ enum VoiceThreadRouting {
 
     static func wantsLastReply(_ request: String) -> Bool {
         let folded = fold(request)
-        return lastReplyPhrases.contains { contains(folded, phrase: $0) }
-            && readVerbs.contains { contains(folded, phrase: $0) }
+        guard lastReplyPhrases.contains(where: { contains(folded, phrase: $0) }) else { return false }
+        if cjkReadVerbs.contains(where: { folded.contains($0) }) { return true }
+        var request = Substring(folded.trimmingCharacters(in: .whitespacesAndNewlines))
+        while let prefix = politePrefixes.first(where: { request.hasPrefix($0) }) {
+            request = request.dropFirst(prefix.count)
+        }
+        return readVerbs.contains { verb in
+            guard request.hasPrefix(verb) else { return false }
+            let rest = request.dropFirst(verb.count)
+            return rest.first.map { !($0.isLetter || $0.isNumber) } ?? true
+        }
     }
 
     private static func fold(_ text: String) -> String {

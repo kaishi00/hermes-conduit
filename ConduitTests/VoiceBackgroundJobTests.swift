@@ -767,7 +767,11 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(VoiceThreadRouting.wantsLastReply("Read me Hermes' last reply"))
         XCTAssertTrue(VoiceThreadRouting.wantsLastReply("repeat the full reply"))
         XCTAssertTrue(VoiceThreadRouting.wantsLastReply("tell me what Hermes said last"))
-        XCTAssertTrue(VoiceThreadRouting.wantsLastReply("I want to hear the latest reply"))
+        XCTAssertTrue(VoiceThreadRouting.wantsLastReply("Can you read me the latest reply?"))
+        XCTAssertTrue(VoiceThreadRouting.wantsLastReply("朗读上一条回复"))
+        XCTAssertFalse(VoiceThreadRouting.wantsLastReply("the user says they hear the last reply was wrong, fix it"),
+                       "a read verb mentioned along the way isn't a request to read")
+        XCTAssertFalse(VoiceThreadRouting.wantsLastReply("readjust the code from the last reply"))
         XCTAssertFalse(VoiceThreadRouting.wantsLastReply("fix the bug from the last reply"))
         XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("summarize the new chat feature"))
         XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("rename this as a job title"))
