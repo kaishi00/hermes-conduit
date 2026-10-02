@@ -154,7 +154,7 @@ final class GeminiLiveConversationController: ObservableObject {
         case .google:
             lookups = "For weather, news, sports, prices, and other quick facts from the web, use Google Search and answer directly."
         case .hermes:
-            lookups = "For weather, news, sports, prices, and other quick facts from the web, call web_search and answer directly from its results. A lookup takes a few seconds and you can't speak while it runs, so first say two or three words out loud, like \"Let me check.\", then call it."
+            lookups = "For weather, news, sports, prices, and other quick facts from the web, first say two or three words out loud, like \"Let me check.\", then call web_search. Its result arrives a few seconds later: wait for it and answer from it. Never guess the answer before it arrives."
         case .none:
             lookups = "You have no web search. A question that needs current information from the web (weather, news, prices) is work for Hermes: offer to start a job for it."
         }
@@ -191,7 +191,7 @@ final class GeminiLiveConversationController: ObservableObject {
         guard let memory else { return "" }
         var text = "\nYou share memory with the user's Hermes agent. Use it naturally to personalize answers; don't read it out or mention where it came from unless asked."
         if memory.canRecall {
-            text += " When the user mentions something from before that you don't know, or asks what Hermes remembers, call recall_memory first."
+            text += " When the user mentions something from before that you don't know, or asks what Hermes remembers, call recall_memory first and wait for its result before answering."
         }
         if !memory.text.isEmpty {
             // Stored text can't close the block early and pass as instructions.
@@ -272,6 +272,8 @@ final class GeminiLiveConversationController: ObservableObject {
     /// the model's goodbye has played.
     private var endRequestedAt: Date?
     private var endTask: Task<Void, Never>?
+    /// Calls the model withdrew while they were being handled.
+    private var withdrawnCallIDs: Set<String> = []
     /// The end began before the model answered the user's goodbye: wait
     /// for its reply to start, not just for silence.
     private var endAwaitsReply = false
@@ -339,6 +341,7 @@ final class GeminiLiveConversationController: ObservableObject {
         lateEndPhraseTask = nil
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
+        withdrawnCallIDs = []
         // Nothing from a previous attempt may gate or attach to this one.
         modelTurnActive = false
         suppressingModelTurn = false
@@ -413,6 +416,7 @@ final class GeminiLiveConversationController: ObservableObject {
         // Unspoken job notices go back to the supervisor, not the bin.
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
+        withdrawnCallIDs = []
         tools.connectionReplaced()
         closeOpenEntries()
         phase = .idle
@@ -638,7 +642,12 @@ final class GeminiLiveConversationController: ObservableObject {
                     // any speech since the user's request counts.
                     let calledAt = self.now()
                     let requestedAt = min(calledAt, self.lastUserSpeechAt ?? calledAt)
-                    let outgoing = await self.tools.handle(call)
+                    var outgoing = await self.tools.handle(call)
+                    // The model withdrew the call while it ran (the user
+                    // spoke over a lookup): its answer must not go back.
+                    if self.withdrawnCallIDs.remove(call.id) != nil {
+                        outgoing.removeAll { $0.answers(call.id) }
+                    }
                     // A new connection took over while this ran (a GoAway
                     // handoff during a lookup): the call is gone with the
                     // old one, so its answer goes out as a text update.
@@ -654,6 +663,7 @@ final class GeminiLiveConversationController: ObservableObject {
             }
         case .toolCallCancellation(let ids):
             tools.cancelCalls(ids)
+            withdrawnCallIDs.formUnion(ids)
         case .setupComplete, .goAway, .resumptionUpdate:
             break
         }

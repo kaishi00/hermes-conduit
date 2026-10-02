@@ -1228,7 +1228,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(roundTrip.geminiLiveSearch, .hermes)
     }
 
-    func testGeminiLiveHermesSearchDeclaresABlockingWebSearchInsteadOfGoogleSearch() throws {
+    func testGeminiLiveHermesSearchDeclaresANonBlockingWebSearchInsteadOfGoogleSearch() throws {
         let declarations = GeminiLiveToolBridge.declarations(webSearch: true)
         let setup = try XCTUnwrap(GeminiLiveProtocol.setupMessage(
             systemInstruction: GeminiLiveConversationController.instructions(search: .hermes),
@@ -1239,7 +1239,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let tools = try XCTUnwrap(setup["tools"] as? [[String: Any]])
         XCTAssertFalse(tools.contains { $0["googleSearch"] != nil })
         let functions = try XCTUnwrap(tools.first?["functionDeclarations"] as? [[String: Any]])
-        XCTAssertEqual(functions.first { $0["name"] as? String == "web_search" }?["behavior"] as? String, "BLOCKING")
+        XCTAssertEqual(functions.first { $0["name"] as? String == "web_search" }?["behavior"] as? String, "NON_BLOCKING", "A BLOCKING lookup stalls the user's transcript and the model's filler")
         XCTAssertFalse(GeminiLiveToolBridge.declarations(webSearch: false).contains { $0.name == "web_search" })
         XCTAssertTrue(GeminiLiveConversationController.instructions(search: .hermes).contains("web_search"))
         XCTAssertTrue(GeminiLiveConversationController.instructions(search: .google).contains("Google Search"))
@@ -1290,7 +1290,7 @@ extension HermesVoiceGatewayTimeoutTests {
             id: "s1",
             name: "web_search",
             result: ["results": "1. Toronto weather: Sunny, 21°C (https://example.com/w)\n2. Forecast: Rain tomorrow (https://example.com/f)"],
-            scheduling: nil
+            scheduling: .whenIdle
         )])
     }
 
@@ -1304,14 +1304,14 @@ extension HermesVoiceGatewayTimeoutTests {
         let failed = await bridge.handle(.init(id: "s1", name: "web_search", arguments: ["query": "news"]))
         guard case .toolResponse(_, _, let result, let scheduling) = failed.first else { return XCTFail("Expected a response") }
         XCTAssertNotNil(result["error"])
-        XCTAssertNil(scheduling)
+        XCTAssertEqual(scheduling, .whenIdle)
 
         let empty = await bridge.handle(.init(id: "s2", name: "web_search", arguments: [:]))
-        XCTAssertEqual(empty, [.toolResponse(id: "s2", name: "web_search", result: ["error": "query is required"], scheduling: nil)])
+        XCTAssertEqual(empty, [.toolResponse(id: "s2", name: "web_search", result: ["error": "query is required"], scheduling: .whenIdle)])
         XCTAssertEqual(search.queries, ["news"])
 
         let unwired = await GeminiLiveToolBridge(supervisor: supervisor).handle(.init(id: "s3", name: "web_search", arguments: ["query": "news"]))
-        XCTAssertEqual(unwired, [.toolResponse(id: "s3", name: "web_search", result: ["error": "web search is not available"], scheduling: nil)])
+        XCTAssertEqual(unwired, [.toolResponse(id: "s3", name: "web_search", result: ["error": "web search is not available"], scheduling: .whenIdle)])
     }
 
     func testGeminiLiveWebSearchClientParsesResultsAndRequestsTheProfilesBackend() async throws {
@@ -1352,18 +1352,18 @@ extension HermesVoiceGatewayTimeoutTests {
 
         let answer = await bridge.handle(.init(id: "m1", name: "recall_memory", arguments: ["query": " marathon "]))
         XCTAssertEqual(memory.queries, ["marathon"])
-        XCTAssertEqual(answer, [.toolResponse(id: "m1", name: "recall_memory", result: ["results": "The user is training for a marathon in May."], scheduling: nil)])
+        XCTAssertEqual(answer, [.toolResponse(id: "m1", name: "recall_memory", result: ["results": "The user is training for a marathon in May."], scheduling: .whenIdle)])
 
         memory.results = ""
         let nothing = await bridge.handle(.init(id: "m2", name: "recall_memory", arguments: ["query": "cats"]))
-        XCTAssertEqual(nothing, [.toolResponse(id: "m2", name: "recall_memory", result: ["results": "Nothing in memory about that."], scheduling: nil)])
+        XCTAssertEqual(nothing, [.toolResponse(id: "m2", name: "recall_memory", result: ["results": "Nothing in memory about that."], scheduling: .whenIdle)])
 
         memory.error = GeminiLiveMemoryError(reason: "The memory backend failed")
         let failed = await bridge.handle(.init(id: "m3", name: "recall_memory", arguments: ["query": "cats"]))
-        XCTAssertEqual(failed, [.toolResponse(id: "m3", name: "recall_memory", result: ["error": "The memory backend failed"], scheduling: nil)])
+        XCTAssertEqual(failed, [.toolResponse(id: "m3", name: "recall_memory", result: ["error": "The memory backend failed"], scheduling: .whenIdle)])
 
         let unwired = await GeminiLiveToolBridge(supervisor: supervisor).handle(.init(id: "m4", name: "recall_memory", arguments: ["query": "cats"]))
-        XCTAssertEqual(unwired, [.toolResponse(id: "m4", name: "recall_memory", result: ["error": "Hermes memory is not available"], scheduling: nil)])
+        XCTAssertEqual(unwired, [.toolResponse(id: "m4", name: "recall_memory", result: ["error": "Hermes memory is not available"], scheduling: .whenIdle)])
     }
 
     func testGeminiLiveMemoryClientReadsTheProfilesContextAndRecall() async throws {
@@ -1881,6 +1881,23 @@ extension VoiceConversationControllerTests {
 
         XCTAssertTrue(session.sent.allSatisfy { $0["toolResponse"] == nil }, "The old connection's call is never answered on the new one")
         XCTAssertEqual(controller.pendingTextTurnCountForTesting, 1)
+        controller.stop()
+    }
+
+    func testGeminiLiveWithdrawnLookupIsNotAnswered() async {
+        let search = ParkedGeminiLiveWebSearch()
+        let (controller, session, _, _, _) = makeGeminiController(webSearch: search, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "s1", name: "web_search", arguments: ["query": "weather"])]))
+        await settle(40)
+        // The user spoke over the lookup and the model withdrew the call.
+        session.onEvent?(.toolCallCancellation(["s1"]))
+        search.finish([GeminiLiveWebResult(title: "Toronto", url: "https://example.com", snippet: "Sunny")])
+        await settle(40)
+
+        XCTAssertTrue(session.sent.allSatisfy { $0["toolResponse"] == nil }, "A withdrawn call gets no answer")
+        XCTAssertEqual(controller.pendingTextTurnCountForTesting, 0)
         controller.stop()
     }
 

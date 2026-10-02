@@ -13,8 +13,11 @@
 //  answers and BLOCKING. Approvals and clarifications are never answered by
 //  voice: a job that needs input tells the user to open it in Conduit.
 //
-//  web_search (offered only when lookups run on the Hermes host) is
-//  BLOCKING: a quick lookup the model answers from as soon as it returns.
+//  web_search (offered only when lookups run on the Hermes host) and
+//  recall_memory are NON_BLOCKING too, answered with WHEN_IDLE scheduling.
+//  A BLOCKING call pauses the whole server stream until it is answered:
+//  the user's transcript and the model's "let me check" stalled behind
+//  the lookup, then everything arrived at once with the result.
 //
 //  Grok Live has no NON_BLOCKING calls, so its bridge answers start_job
 //  as soon as the job is running (`holdsJobCalls` false); the outcome
@@ -88,7 +91,7 @@ final class GeminiLiveToolBridge {
             ],
             "required": ["query"],
         ],
-        behavior: .blocking
+        behavior: .nonBlocking
     )
 
     static let webSearchDeclaration = GeminiLiveProtocol.FunctionDeclaration(
@@ -104,7 +107,7 @@ final class GeminiLiveToolBridge {
             ],
             "required": ["query"],
         ],
-        behavior: .blocking
+        behavior: .nonBlocking
     )
 
     static let functionDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
@@ -246,9 +249,9 @@ final class GeminiLiveToolBridge {
             outgoing += settleOpenCalls()
             return outgoing
         case .webSearch:
-            return [.toolResponse(id: call.id, name: call.name, result: await searchResult(call.arguments["query"]), scheduling: nil)]
+            return [.toolResponse(id: call.id, name: call.name, result: await searchResult(call.arguments["query"]), scheduling: .whenIdle)]
         case .recallMemory:
-            return [.toolResponse(id: call.id, name: call.name, result: await recallResult(call.arguments["query"]), scheduling: nil)]
+            return [.toolResponse(id: call.id, name: call.name, result: await recallResult(call.arguments["query"]), scheduling: .whenIdle)]
         case .endConversation:
             // Deliberately unanswered: a response would prompt another turn
             // after the goodbye, and the connection closes anyway.
