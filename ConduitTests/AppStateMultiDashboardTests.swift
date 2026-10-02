@@ -327,6 +327,27 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertNotNil(appState.savedDashboardRegistry.dashboard(with: vps.id))
     }
 
+    func testRemovingADashboardDropsExtraHeadersOnlyWhenNoOtherDashboardSharesTheOrigin() {
+        let active = dashboard("Active", "https://shared.example/two")
+        let sibling = dashboard("Sibling", "https://shared.example/one")
+        let solo = dashboard("Solo", "https://solo.example")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: active.id, dashboards: [active, sibling, solo]))
+        addTeardownBlock {
+            CustomHeaderStore.shared.removeHeaders(forServerURL: "https://shared.example")
+            CustomHeaderStore.shared.removeHeaders(forServerURL: "https://solo.example")
+        }
+        CustomHeaderStore.shared.setHeaders([CustomHeader(name: "X-Shared", value: "s")], forServerURL: sibling.normalizedURL)
+        CustomHeaderStore.shared.setHeaders([CustomHeader(name: "X-Solo", value: "o")], forServerURL: solo.normalizedURL)
+
+        appState.removeDashboard(sibling.id)
+        appState.removeDashboard(solo.id)
+
+        // The active dashboard still reaches the shared origin, so its
+        // headers stay; nothing else uses the solo origin, so they go.
+        XCTAssertEqual(CustomHeaderStore.shared.headers(forServerURL: active.normalizedURL).map(\.name), ["X-Shared"])
+        XCTAssertTrue(CustomHeaderStore.shared.headers(forServerURL: solo.normalizedURL).isEmpty)
+    }
+
     func testRemoveInactiveDashboardNeverTouchesActiveOrOthers() throws {
         let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
         let vps = dashboard("VPS", "https://hermes.example.com")

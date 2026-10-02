@@ -389,7 +389,7 @@ final class NativeAuthClient {
     }
 
     private func request(url: URL) -> URLRequest {
-        cloudflareAccess?.applying(to: URLRequest(url: url)) ?? URLRequest(url: url)
+        URLRequest(url: url).applyingProxyHeaders(cloudflare: cloudflareAccess)
     }
 
     private func endpointURL(path: String) throws -> URL {

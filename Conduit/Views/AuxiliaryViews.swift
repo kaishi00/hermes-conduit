@@ -667,7 +667,7 @@ struct SettingsView: View {
         case .capabilities:
             CapabilitiesView()
         case .gateway:
-            GatewaySettingsDetail(snapshot: snapshot, reconnect: reconnect, disconnect: disconnect, close: { dismiss() }, saveCloudflareAccess: appState.saveCloudflareAccess, removeCloudflareAccess: appState.removeCloudflareAccess)
+            GatewaySettingsDetail(snapshot: snapshot, reconnect: reconnect, disconnect: disconnect, close: { dismiss() }, saveCloudflareAccess: appState.saveCloudflareAccess, removeCloudflareAccess: appState.removeCloudflareAccess, customHeaders: appState.customHeaders(), saveCustomHeaders: appState.saveCustomHeaders)
         case .savedDashboards:
             SavedDashboardsSettingsDetail(close: { dismiss() })
         case .appearance:
@@ -1612,15 +1612,20 @@ private struct GatewaySettingsDetail: View {
     let close: () -> Void
     let saveCloudflareAccess: (String, String) -> Void
     let removeCloudflareAccess: () -> Void
+    let saveCustomHeaders: ([CustomHeader]) -> Void
+    @State private var customHeaders: [CustomHeader]
+    @State private var showCustomHeaders = false
     @State private var connected: Bool
     @State private var reconnecting = false
     @State private var cloudflareEnabled: Bool
     @State private var clientID: String
     @State private var clientSecret = ""
 
-    init(snapshot: SettingsSnapshot, reconnect: @escaping () async -> Bool, disconnect: @escaping () -> Void, close: @escaping () -> Void, saveCloudflareAccess: @escaping (String, String) -> Void, removeCloudflareAccess: @escaping () -> Void) {
+    init(snapshot: SettingsSnapshot, reconnect: @escaping () async -> Bool, disconnect: @escaping () -> Void, close: @escaping () -> Void, saveCloudflareAccess: @escaping (String, String) -> Void, removeCloudflareAccess: @escaping () -> Void, customHeaders: [CustomHeader], saveCustomHeaders: @escaping ([CustomHeader]) -> Void) {
         self.snapshot = snapshot; self.reconnect = reconnect; self.disconnect = disconnect; self.close = close
         self.saveCloudflareAccess = saveCloudflareAccess; self.removeCloudflareAccess = removeCloudflareAccess
+        self.saveCustomHeaders = saveCustomHeaders
+        _customHeaders = State(initialValue: customHeaders)
         _connected = State(initialValue: snapshot.isConnected)
         _cloudflareEnabled = State(initialValue: snapshot.cloudflareAccess != nil)
         _clientID = State(initialValue: snapshot.cloudflareAccess?.clientID ?? "")
@@ -1648,10 +1653,29 @@ private struct GatewaySettingsDetail: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
+            ConduitSettingsSection(title: AppLocalization.string("Extra headers"), symbol: "list.bullet.rectangle", tint: .conduitAccent) {
+                Text(AppLocalization.string("For reverse proxies such as Pangolin, Traefik, or nginx that check a header. Sent only to this server, over HTTPS."))
+                    .font(.footnote).foregroundStyle(.secondary)
+                let configured = CustomHeaderPolicy.sendable(customHeaders)
+                ForEach(configured) { header in
+                    SettingsMetricRow(label: header.name, value: "••••••", lineLimit: 1)
+                }
+                Button(configured.isEmpty ? AppLocalization.string("Add headers") : AppLocalization.string("Edit headers")) { showCustomHeaders = true }
+                    .disabled(snapshot.server == nil)
+                    .accessibilityIdentifier("gateway.extra-headers")
+                Text(AppLocalization.string("Reconnect after changing them."))
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             Button(role: .destructive) { disconnect(); close() } label: { Label(AppLocalization.string("Sign Out of This Dashboard"), systemImage: "rectangle.portrait.and.arrow.right").frame(maxWidth: .infinity).frame(height: 48) }
                 .conduitGlassControl(cornerRadius: 18, tint: .red.opacity(0.18))
         }
         .navigationTitle("Gateway")
+        .sheet(isPresented: $showCustomHeaders) {
+            CustomHeadersEditorSheet(serverURL: snapshot.server ?? "", headers: customHeaders) { headers in
+                saveCustomHeaders(headers)
+                customHeaders = headers.filter { !$0.trimmedName.isEmpty || !$0.value.isEmpty }
+            }
+        }
     }
 }
 
