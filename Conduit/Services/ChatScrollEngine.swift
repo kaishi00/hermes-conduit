@@ -121,8 +121,6 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     static let nearBottomTolerance: CGFloat = 40
-    /// Past-the-bottom corrections allowed between two layout changes.
-    static let maximumPastBottomRepins = 2
     static let maximumRestorationChecks = 80
     static let restorationRevealInterval = 4
     /// How long a landed prepend keeps holding the reader's position while
@@ -154,7 +152,7 @@ final class ChatScrollEngine: ObservableObject {
     private(set) weak var surface: ChatScrollSurface?
     private var surfaceCallbackDepth = 0
     private var lastObservedOffsetY: CGFloat?
-    private var pastBottomRepins = 0
+    private var pastBottomCheckScheduled = false
     private let now: () -> TimeInterval
     private let prefersReducedMotion: @MainActor () -> Bool
 
@@ -218,7 +216,6 @@ final class ChatScrollEngine: ObservableObject {
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         guard let surface, !isPaused else { return }
-        pastBottomRepins = 0
         holdPrependAnchor(on: surface)
         if canPinWhileFollowing(surface) {
             pin(surface)
@@ -259,17 +256,19 @@ final class ChatScrollEngine: ObservableObject {
             emit(.persistSnapshot(renderedSessionKey))
         } else if canPinWhileFollowing(surface),
                   !isDragging,
-                  surface.distanceFromBottom < -0.5,
-                  pastBottomRepins < Self.maximumPastBottomRepins {
+                  surface.distanceFromBottom < -0.5 {
             // Past the bottom with no finger or momentum: empty space under
             // the last message. UIKit never clamps an offset when content
-            // shrinks, and SwiftUI can write its previous offset back after
-            // the layout pass that pinned (a turn completing collapses its
-            // live rows), so following pins again here. Bounded per layout
-            // change, so a writer that answers every pin with its own value
-            // cannot turn this into a loop.
-            pastBottomRepins += 1
-            pin(surface)
+            // shrinks, and SwiftUI writes offsets of its own during its
+            // update (HostingScrollView.updateContext), so following corrects
+            // here: once inline, then once more after the current update has
+            // finished, so the bottom is where it ends up whoever wrote last.
+            // At most one inline pin per main-queue turn, so a writer that
+            // answers every pin cannot recurse with this.
+            if !pastBottomCheckScheduled {
+                pin(surface)
+            }
+            schedulePastBottomCheck()
         }
         refreshJumpButton()
     }
@@ -678,6 +677,22 @@ final class ChatScrollEngine: ObservableObject {
         )
         if inputs != renderInputs {
             renderInputs = inputs
+        }
+    }
+
+    private func schedulePastBottomCheck() {
+        guard !pastBottomCheckScheduled else { return }
+        pastBottomCheckScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.pastBottomCheckScheduled = false
+            guard let surface = self.surface,
+                  !self.isPaused,
+                  !self.isDragging,
+                  self.canPinWhileFollowing(surface),
+                  surface.distanceFromBottom < -0.5 else { return }
+            self.pin(surface)
+            self.refreshJumpButton()
         }
     }
 

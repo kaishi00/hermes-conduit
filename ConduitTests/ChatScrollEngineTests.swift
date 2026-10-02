@@ -152,16 +152,19 @@ final class ChatScrollEngineTests: XCTestCase {
         let (engine, surface) = makeEngine()
         surface.contentHeight = 3700
         surface.sets.removeAll()
-        // A writer that puts its own offset back after every pin.
+        // A writer that puts its own offset back after every pin, all within
+        // one main-queue turn: one inline correction, no recursion.
         for _ in 0..<10 {
             surface.contentOffsetY = 3200
             engine.surfaceScrolled()
         }
-        XCTAssertEqual(surface.sets.count, ChatScrollEngine.maximumPastBottomRepins)
+        XCTAssertEqual(surface.sets.count, 1)
 
-        // The next layout change re-arms the correction.
-        surface.layOut(contentHeight: 3700)
+        // Once the turn is over, the deferred check leaves it on the bottom.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(surface.contentOffsetY, 2900)
+        XCTAssertEqual(surface.sets.count, 2)
+        XCTAssertTrue(engine.isFollowingLatest)
     }
 
     func testFollowingLeavesARubberBandPastTheBottomToTheFinger() {
