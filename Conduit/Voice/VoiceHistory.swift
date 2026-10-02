@@ -220,7 +220,8 @@ final class VoiceTranscriptRecorder {
     private(set) var turns: [VoiceTranscriptTurn] = []
     /// Turns the host confirmed (every turn below this index).
     private(set) var written = 0
-    /// Set when the host can't store transcripts at all; saving stops.
+    /// Set when the host can't store transcripts at all; saving stops for
+    /// this call and its turns wait in the outbox.
     private(set) var isDisabled = false
 
     private var recordedEntries: Set<UUID> = []
@@ -329,9 +330,11 @@ final class VoiceTranscriptRecorder {
         }
     }
 
-    /// What is still unsaved, for the outbox to retry after the call.
+    /// What is still unsaved, for the outbox to retry after the call. Kept
+    /// even when the host can't store transcripts yet: the outbox holds the
+    /// call until the host is updated or the entry ages out.
     var outboxRequest: VoiceTranscriptSaveRequest? {
-        guard !isDisabled, hasUserSpeech else { return nil }
+        guard hasUserSpeech else { return nil }
         let pending = unsavedTurns
         guard !pending.isEmpty else { return nil }
         return VoiceTranscriptSaveRequest(

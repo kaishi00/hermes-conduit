@@ -1270,6 +1270,8 @@ final class AppState: ObservableObject {
     @Published private(set) var isVoiceEnabled = false
     @Published private(set) var voiceTranscriptionMode: VoiceTranscriptionMode = .hermes
     @Published private(set) var continuousConversationEnabled = true
+    /// "Keep listening when locked" for the active profile.
+    @Published private(set) var keepVoiceListeningWhenLocked = false
     @Published private(set) var appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
 
     private var voiceAssistantObserverID: UUID?
@@ -2240,7 +2242,18 @@ final class AppState: ObservableObject {
     /// transport/chat reconciliation continues to read `isSceneActive` for
     /// phone-specific behavior.
     var hasActiveVoiceSurface: Bool {
-        (isSceneActive && showVoiceSheet) || isCarPlayVoiceSurfaceActive
+        (isSceneActive && showVoiceSheet) || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive
+    }
+
+    /// "Keep listening when locked": an open classic Voice conversation that
+    /// is already running keeps presenting with the phone locked or Conduit
+    /// in the background, the way CarPlay keeps it live. A sheet that never
+    /// started listening, or a conversation already suspended, doesn't count.
+    var isLockedVoiceSurfaceActive: Bool {
+        keepVoiceListeningWhenLocked
+            && showVoiceSheet
+            && voiceConversationController.hasLiveVoiceSession
+            && !voiceConversationController.isRuntimeSuspended
     }
 
     /// Whether the app itself has a foreground presentation surface: the
@@ -2255,7 +2268,7 @@ final class AppState: ObservableObject {
     /// the foreground and presents no Voice sheet, so reading the capture
     /// gate there refused legitimate actions.
     var hasForegroundApplicationSurface: Bool {
-        isSceneActive || isCarPlayVoiceSurfaceActive
+        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive
     }
 
     /// Publishes every Voice runtime gate from the current surface
@@ -2274,6 +2287,7 @@ final class AppState: ObservableObject {
     private func publishVoiceRuntimeGates() {
         voiceConversationController.setForegroundActive(hasActiveVoiceSurface)
         voiceConversationController.setApplicationForegroundActive(hasForegroundApplicationSurface)
+        voiceConversationController.setBackgroundListening(!isSceneActive && isLockedVoiceSurfaceActive)
     }
 
     /// Re-asserts the Voice runtime gates from the current surface
@@ -2534,7 +2548,7 @@ final class AppState: ObservableObject {
     /// left a socket lost during suspension dead for the whole drive and
     /// CarPlay reporting Voice unavailable.
     private var canRunTransportRecovery: Bool {
-        isSceneActive || isCarPlayVoiceSurfaceActive
+        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive
     }
     /// A transport whose handshake completed but whose post-connect bootstrap
     /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
@@ -3275,6 +3289,15 @@ final class AppState: ObservableObject {
     /// builders (reconnects included) until the call closes.
     private(set) var liveVoiceResumeContext: VoiceResumeContext?
     @Published private(set) var isPreparingVoiceResume = false
+    /// Ended calls on the active dashboard and profile still waiting in the
+    /// outbox, for Voice settings.
+    @Published private(set) var pendingVoiceCallSaves = 0
+    /// Set when the active host answered that it can't store voice calls
+    /// (no plugin route, or no session store). Queued calls are kept.
+    @Published private(set) var voiceCallSavesBlocked = false
+    @Published private(set) var isSavingQueuedVoiceCalls = false
+    /// Keys whose host refused the last outbox save as unsupported.
+    private var voiceCallSaveBlockedKeys: Set<String> = []
 
     /// Profile names repeat across Hermes servers, so voice state is keyed
     /// by dashboard too.
@@ -3342,6 +3365,7 @@ final class AppState: ObservableObject {
     func refreshVoiceSessionTags(force: Bool = false) {
         let profile = activeProfile
         let key = voiceHistoryKey(profile: profile)
+        publishVoiceCallSaveStatus()
         if !force, let last = voiceTagsFetchedAt[key], Date().timeIntervalSince(last) < Self.voiceTagRefreshInterval { return }
         guard voiceTagRefreshTask == nil, dashboardTicketBridge != nil else { return }
         voiceTagsFetchedAt[key] = Date()
@@ -3516,7 +3540,11 @@ final class AppState: ObservableObject {
             // The outbox leaves it alone while the save below is running.
             voiceTranscriptsSaving.insert(request.callID)
         }
+        // A call often ends with the phone locked: keep Conduit running
+        // until the closing save lands (the outbox covers it if it can't).
+        let endBackgroundTask = beginVoiceTranscriptBackgroundTask()
         Task { [weak self] in
+            defer { endBackgroundTask() }
             await recorder.flush()
             guard let self else { return }
             if let queuedCallID {
@@ -3524,6 +3552,7 @@ final class AppState: ObservableObject {
                 self.dequeueVoiceTranscript(callID: queuedCallID)
             }
             let requeued = recorder.outboxRequest
+            if recorder.isDisabled { self.voiceCallSaveBlockedKeys.insert(key) }
             if let requeued {
                 // A later retry creates the row and links the jobs then.
                 self.queueVoiceTranscript(requeued, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs)
@@ -3556,6 +3585,46 @@ final class AppState: ObservableObject {
 
     // MARK: Outbox
 
+    private func beginVoiceTranscriptBackgroundTask() -> () -> Void {
+        var taskID = UIBackgroundTaskIdentifier.invalid
+        let end = {
+            guard taskID != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+        taskID = UIApplication.shared.beginBackgroundTask(
+            withName: "conduit.voiceTranscript.save",
+            expirationHandler: end
+        )
+        return end
+    }
+
+    /// Recounts the active dashboard and profile's queued calls. A running
+    /// call's own checkpoint isn't waiting on anything, so it isn't counted.
+    private func publishVoiceCallSaveStatus() {
+        let key = voiceHistoryKey(profile: activeProfile)
+        let dashboard = activeDashboardID?.uuidString ?? "-"
+        var outbox = VoiceTranscriptOutbox.load(from: defaults)
+        outbox.prune(now: Date())
+        let pending = outbox.entries.filter { entry in
+            entry.dashboard == dashboard && entry.profile == activeProfile
+                && entry.request.callID != voiceCallRecorder?.callID
+        }.count
+        if pendingVoiceCallSaves != pending { pendingVoiceCallSaves = pending }
+        let blocked = pending > 0 && voiceCallSaveBlockedKeys.contains(key)
+        if voiceCallSavesBlocked != blocked { voiceCallSavesBlocked = blocked }
+    }
+
+    /// Save Now in Voice settings: retries the active profile's queued
+    /// calls at once.
+    func saveQueuedVoiceCallsNow() async {
+        guard !isSavingQueuedVoiceCalls else { return }
+        isSavingQueuedVoiceCalls = true
+        defer { isSavingQueuedVoiceCalls = false }
+        let profile = activeProfile
+        await drainVoiceTranscriptOutbox(profile: profile, key: voiceHistoryKey(profile: profile))
+    }
+
     private func queueVoiceTranscript(_ request: VoiceTranscriptSaveRequest, dashboard: String, profile: String, jobs: [String] = []) {
         var request = request
         // A retry that creates the row can't wait on a title from Hermes.
@@ -3563,12 +3632,14 @@ final class AppState: ObservableObject {
         var outbox = VoiceTranscriptOutbox.load(from: defaults)
         outbox.add(.init(dashboard: dashboard, profile: profile, request: request, queuedAt: Date(), jobSessionIDs: jobs.isEmpty ? nil : jobs))
         outbox.store(in: defaults)
+        publishVoiceCallSaveStatus()
     }
 
     private func dequeueVoiceTranscript(callID: String) {
         var outbox = VoiceTranscriptOutbox.load(from: defaults)
         outbox.entries.removeAll { $0.request.callID == callID }
         outbox.store(in: defaults)
+        publishVoiceCallSaveStatus()
     }
 
     /// Retries the saves queued for this dashboard and profile, oldest first.
@@ -3589,6 +3660,7 @@ final class AppState: ObservableObject {
             var request = entry.request
             do {
                 let result = try await voiceHistoryClient.save(request, profile: profile)
+                voiceCallSaveBlockedKeys.remove(key)
                 settled.append((entry, nil))
                 if let sessionID = result.sessionID, voiceSessionTagsByKey[key]?[sessionID] == nil {
                     voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: request.engine.rawValue)
@@ -3610,7 +3682,11 @@ final class AppState: ObservableObject {
                 }
                 settled.append((entry, .init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt, jobSessionIDs: entry.jobSessionIDs)))
             } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.unsupported {
-                settled.append((entry, nil))
+                // Kept, not dropped: the host may get the plugin (or a
+                // session store) before the outbox gives up on the call.
+                // Voice settings says why the calls are waiting.
+                voiceCallSaveBlockedKeys.insert(key)
+                break
             } catch {
                 break
             }
@@ -3622,6 +3698,7 @@ final class AppState: ObservableObject {
             if let new { outbox.add(new) }
         }
         outbox.store(in: defaults)
+        publishVoiceCallSaveStatus()
     }
 
     // MARK: Titles
@@ -6666,6 +6743,7 @@ final class AppState: ObservableObject {
         isVoiceEnabled = false
         voiceTranscriptionMode = .hermes
         continuousConversationEnabled = true
+        keepVoiceListeningWhenLocked = false
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
         retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
@@ -10404,9 +10482,11 @@ final class AppState: ObservableObject {
             foregroundFreshnessCheckArmed = true
             messageReadAloudController.setForegroundActive(false)
             // The app-foreground fact changed here regardless of which branch
-            // below runs: the phone scene is gone, so only CarPlay can still
-            // count as a foreground surface.
+            // below runs: the phone scene is gone, so only CarPlay or a
+            // conversation kept running while locked can still count as a
+            // foreground surface.
             voiceConversationController.setApplicationForegroundActive(hasForegroundApplicationSurface)
+            voiceConversationController.setBackgroundListening(isLockedVoiceSurfaceActive)
             // Suspension is not Close: an open Voice conversation releases its
             // runtime ownership and is recorded for foreground restoration,
             // and the sheet presentation intentionally survives the
@@ -10415,7 +10495,9 @@ final class AppState: ObservableObject {
             // conversation, the phone backgrounding is NOT a Voice lifecycle
             // boundary — Voice must stay live for the driver — so the
             // suspension (and its restoration descriptor) is skipped
-            // entirely. Read-aloud remains phone-bound and deactivates above.
+            // entirely. "Keep listening when locked" makes an open, running
+            // conversation such a surface too. Read-aloud remains phone-bound
+            // and deactivates above.
             if hasActiveVoiceSurface {
                 voiceConversationController.setForegroundActive(true)
             } else {
@@ -20798,6 +20880,7 @@ final class AppState: ObservableObject {
         }
         voiceTranscriptionMode = preferences.resolvedTranscriptionMode
         continuousConversationEnabled = preferences.continuousConversation
+        keepVoiceListeningWhenLocked = preferences.keepListeningWhenLocked ?? false
         voiceConversationController.setProfilePreferences(preferences)
         refreshVoiceControllerGateway()
         refreshReadAloudGateway()
@@ -20855,6 +20938,16 @@ final class AppState: ObservableObject {
         guard isConnected else { return false }
         updateActiveProfileVoicePreferences { $0.continuousConversation = enabled }
         continuousConversationEnabled = enabled
+        return true
+    }
+
+    /// "Keep listening when locked". Applies the next time Conduit leaves
+    /// the foreground; a conversation already suspended stays suspended.
+    @discardableResult
+    func setKeepVoiceListeningWhenLocked(_ enabled: Bool) -> Bool {
+        guard isConnected else { return false }
+        updateActiveProfileVoicePreferences { $0.keepListeningWhenLocked = enabled ? true : nil }
+        keepVoiceListeningWhenLocked = enabled
         return true
     }
 
@@ -21124,7 +21217,9 @@ final class AppState: ObservableObject {
     /// through the normal backoff, so a drive with frequent phone-scene
     /// transitions cannot keep a dead gateway on a fixed 0.1s retry.
     func recoverTransportForCarPlayIfNeeded(immediately: Bool = false) {
-        guard isCarPlayVoiceSurfaceActive,
+        // A conversation kept running while locked relies on the transport
+        // the same way.
+        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive,
               !isSceneActive,
               connection != nil,
               !isConnected,

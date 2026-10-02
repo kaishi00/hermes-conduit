@@ -28,6 +28,8 @@ struct VoiceSettingsRoute: View {
     let grokLive: GrokLiveSettingsModel?
     let voiceJobs: VoiceJobModelSettingsModel?
     let wake: WakePhraseSettingsModel?
+    let lockedListening: VoiceLockedListeningSettingsModel?
+    let callSaves: VoiceCallSaveStatusModel?
 
     init(
         bridge: DashboardTicketBridge,
@@ -49,13 +51,17 @@ struct VoiceSettingsRoute: View {
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
         voiceJobs: VoiceJobModelSettingsModel? = nil,
-        wake: WakePhraseSettingsModel? = nil
+        wake: WakePhraseSettingsModel? = nil,
+        lockedListening: VoiceLockedListeningSettingsModel? = nil,
+        callSaves: VoiceCallSaveStatusModel? = nil
     ) {
         self.geminiLive = geminiLive
         self.gptLive = gptLive
         self.grokLive = grokLive
         self.voiceJobs = voiceJobs
         self.wake = wake
+        self.lockedListening = lockedListening
+        self.callSaves = callSaves
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
@@ -92,7 +98,9 @@ struct VoiceSettingsRoute: View {
             gptLive: gptLive,
             grokLive: grokLive,
             voiceJobs: voiceJobs,
-            wake: wake
+            wake: wake,
+            lockedListening: lockedListening,
+            callSaves: callSaves
         )
     }
 }
@@ -145,6 +153,9 @@ struct VoiceSettingsView: View {
     var grokLive: GrokLiveSettingsModel?
     var voiceJobs: VoiceJobModelSettingsModel?
     var wake: WakePhraseSettingsModel?
+    var lockedListening: VoiceLockedListeningSettingsModel?
+    var callSaves: VoiceCallSaveStatusModel?
+    @State private var keepListeningWhenLocked: Bool
 
     init(
         service: HermesVoiceConfigurationService,
@@ -165,13 +176,18 @@ struct VoiceSettingsView: View {
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
         voiceJobs: VoiceJobModelSettingsModel? = nil,
-        wake: WakePhraseSettingsModel? = nil
+        wake: WakePhraseSettingsModel? = nil,
+        lockedListening: VoiceLockedListeningSettingsModel? = nil,
+        callSaves: VoiceCallSaveStatusModel? = nil
     ) {
         self.geminiLive = geminiLive
         self.gptLive = gptLive
         self.grokLive = grokLive
         self.voiceJobs = voiceJobs
         self.wake = wake
+        self.lockedListening = lockedListening
+        self.callSaves = callSaves
+        _keepListeningWhenLocked = State(initialValue: lockedListening?.enabled ?? false)
         self.service = service
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
@@ -194,6 +210,9 @@ struct VoiceSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     capabilitySection
+                    if let callSaves, callSaves.pendingCount > 0 {
+                        VoiceCallSaveStatusSection(model: callSaves)
+                    }
                     if let geminiLive {
                         GeminiLiveSettingsSection(model: geminiLive)
                     }
@@ -263,8 +282,24 @@ struct VoiceSettingsView: View {
             Text("When enabled, Conduit automatically listens again after each response. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if let lockedListening {
+                Toggle("Keep listening when locked", isOn: Binding(
+                    get: { keepListeningWhenLocked },
+                    set: { requested in
+                        let previous = keepListeningWhenLocked
+                        keepListeningWhenLocked = requested
+                        if !lockedListening.setEnabled(requested) {
+                            keepListeningWhenLocked = previous
+                        }
+                    }
+                ))
+                .onChange(of: lockedListening.enabled) { _, newValue in keepListeningWhenLocked = newValue }
+                Text("A voice conversation that is already listening keeps going when you lock the phone or switch apps, so you can talk hands-free. While locked, Conduit always listens again after each response and keeps listening through silence. End it by saying a goodbye phrase or from the app. Uses more battery.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("Keep phone awake during voice conversations", isOn: $keepScreenAwake)
-            Text("The screen stays on while a voice conversation is open, including Gemini Live. When off, the phone locks on its usual timer and the conversation keeps going in the background. Applies to this device.")
+            Text("The screen stays on while a voice conversation is open, including the live voice modes. When off, the phone locks on its usual timer: live voice calls keep going in the background, and a classic voice conversation does too with Keep Listening When Locked on. Applies to this device.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {
@@ -962,5 +997,46 @@ private struct VoiceProviderFieldEditor: View {
     private func submitIfValid() {
         guard !isSaving, validationMessage == nil else { return }
         Task { await save(value) }
+    }
+}
+
+/// "Keep listening when locked" for classic Voice on this profile.
+struct VoiceLockedListeningSettingsModel {
+    var enabled: Bool
+    /// Returns false when the change couldn't be saved (disconnected).
+    var setEnabled: (Bool) -> Bool
+}
+
+/// Live calls that ended but haven't reached the Hermes host yet.
+struct VoiceCallSaveStatusModel {
+    var pendingCount: Int
+    /// The host answered that it can't store voice calls.
+    var blocked: Bool
+    var isSaving: Bool
+    var saveNow: () async -> Void
+}
+
+struct VoiceCallSaveStatusSection: View {
+    let model: VoiceCallSaveStatusModel
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Unsaved voice calls"), symbol: "exclamationmark.icloud", tint: .orange) {
+            Text(AppLocalization.string("Voice calls waiting to save: \(model.pendingCount)"))
+                .font(.subheadline.weight(.semibold))
+            Text(model.blocked
+                 ? AppLocalization.string("Your Hermes server can't save voice calls yet. Install or update the Hermes notifier plugin on your Hermes server, then tap Save Now.")
+                 : AppLocalization.string("These calls are kept on this device and Conduit retries them automatically. A call that still hasn't saved after 7 days is dropped."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                Task { await model.saveNow() }
+            } label: {
+                Label(model.isSaving ? AppLocalization.string("Saving…") : AppLocalization.string("Save Now"), systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+            }
+            .disabled(model.isSaving)
+            .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.14))
+        }
     }
 }
