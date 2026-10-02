@@ -2091,6 +2091,216 @@
         }
       }
     },
+    "A soft tone when your turn is sent and a low one if Voice fails, in the classic voice mode." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在经典语音模式下，发送你的话时播放轻柔提示音，语音失败时播放低沉提示音。"
+          }
+        }
+      }
+    },
+    "Add them on your iPhone in Settings, Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 iPhone 的“设置”>“语音”中添加。"
+          }
+        }
+      }
+    },
+    "Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "智能体"
+          }
+        }
+      }
+    },
+    "CarPlay" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CarPlay"
+          }
+        }
+      }
+    },
+    "CarPlay shows up to 8 shortcuts." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CarPlay 最多显示 8 个快捷指令。"
+          }
+        }
+      }
+    },
+    "Chats" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聊天"
+          }
+        }
+      }
+    },
+    "Classic voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "经典语音"
+          }
+        }
+      }
+    },
+    "Delete shortcut %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除快捷指令 %@"
+          }
+        }
+      }
+    },
+    "Edit shortcut %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑快捷指令 %@"
+          }
+        }
+      }
+    },
+    "Name, like Morning brief" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名称，例如“晨间简报”"
+          }
+        }
+      }
+    },
+    "No Voice Jobs" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有语音任务"
+          }
+        }
+      }
+    },
+    "No chats yet" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有聊天"
+          }
+        }
+      }
+    },
+    "No shortcuts yet" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有快捷指令"
+          }
+        }
+      }
+    },
+    "No shortcuts yet." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有快捷指令。"
+          }
+        }
+      }
+    },
+    "One tap in the car starts the prompt as a Voice Job and opens a conversation, which speaks the result when the job is done." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在车上轻点一下，即可将提示作为语音任务启动并打开对话，任务完成后会朗读结果。"
+          }
+        }
+      }
+    },
+    "Shortcuts" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快捷指令"
+          }
+        }
+      }
+    },
+    "Start one from a shortcut or by asking during a call." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可通过快捷指令或在通话中提出请求来启动。"
+          }
+        }
+      }
+    },
+    "Status sounds" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态提示音"
+          }
+        }
+      }
+    },
+    "Voice mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音模式"
+          }
+        }
+      }
+    },
+    "Waiting for you" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待你的回应"
+          }
+        }
+      }
+    },
+    "What to ask Hermes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要问 Hermes 的内容"
+          }
+        }
+      }
+    },
     "Mute" : {
       "localizations" : {
         "zh-Hans" : {

@@ -17,6 +17,9 @@
 //      when a prepare was in flight across a disconnect;
 //    • reports CarPlay surface (de)activation to AppState, which owns the
 //      Voice lifecycle policy (PR #161 rules stay authoritative).
+//    • opens the browse screens (Chats, Jobs, Shortcuts, Voice) from the
+//      top bar at Ready/Error, and routes their taps into the same
+//      listen/call paths; plays the classic mode's status sounds.
 //
 
 import Combine
@@ -32,6 +35,15 @@ private let carPlayLogger = Logger(subsystem: "com.milim.relay", category: "CarP
 protocol CarPlayInterfacing: AnyObject {
     func setRootTemplate(
         _ rootTemplate: CPTemplate,
+        animated: Bool,
+        completion: ((Bool, (any Error)?) -> Void)?
+    )
+    func pushTemplate(
+        _ templateToPush: CPTemplate,
+        animated: Bool,
+        completion: ((Bool, (any Error)?) -> Void)?
+    )
+    func popToRootTemplate(
         animated: Bool,
         completion: ((Bool, (any Error)?) -> Void)?
     )
@@ -61,6 +73,16 @@ enum CarPlayLiveVoiceMode: Equatable {
     case geminiLive
     case gptLive
     case grokLive
+
+    /// The live mode for a profile's Voice mode; nil for classic.
+    init?(_ mode: CarPlayVoiceMode) {
+        switch mode {
+        case .classic: return nil
+        case .geminiLive: self = .geminiLive
+        case .gptLive: self = .gptLive
+        case .grokLive: self = .grokLive
+        }
+    }
 
     var voiceMode: CarPlayVoiceMode {
         switch self {
@@ -132,6 +154,22 @@ final class CarPlayVoiceCoordinator {
     private(set) var observedVoiceMode: CarPlayVoiceMode?
     /// What the template's buttons currently offer.
     private(set) var controls: CarPlayVoiceControls = .initial
+    /// Whether the top bar's browse buttons are showing. They show only at
+    /// Ready and Error: Apple requires the voice screen while Voice runs.
+    private(set) var showsBrowseButtons = false
+    /// The Voice Jobs list last opened, kept current as jobs change.
+    private weak var jobsTemplate: CPListTemplate?
+    private var jobsObservation: AnyCancellable?
+    /// The profiles the open Voice list offered, in row order.
+    private var listedAgentProfiles: [String] = []
+
+    /// Test seam; production reads the device's CarPlay settings.
+    var preferencesProvider: @MainActor () -> CarPlayPreferences = { CarPlayPreferences.shared }
+    /// Test seam over the status sounds.
+    var earconPlayer: @MainActor (CarPlayEarcon) -> Void = { earcon in
+        CarPlayVoiceCoordinator.sharedEarcons.play(earcon)
+    }
+    private static let sharedEarcons = CarPlayEarconPlayer()
 
     internal init() {}
 
@@ -153,6 +191,9 @@ final class CarPlayVoiceCoordinator {
         controlsObservation = nil
         observedVoiceMode = nil
         controls = .initial
+        showsBrowseButtons = false
+        jobsObservation?.cancel()
+        jobsObservation = nil
         self.interfacing = interfacing
         lastActivatedState = nil
         isTemplatePresented = false
@@ -196,6 +237,9 @@ final class CarPlayVoiceCoordinator {
         controlsObservation = nil
         observedVoiceMode = nil
         controls = .initial
+        showsBrowseButtons = false
+        jobsObservation?.cancel()
+        jobsObservation = nil
         lastActivatedState = nil
         isTemplatePresented = false
         pendingPresentationState = nil
@@ -215,6 +259,8 @@ final class CarPlayVoiceCoordinator {
         let generation = connectionGeneration
         let template = CarPlayVoiceTemplateFactory.makeTemplate(controls: controls, handlers: makeHandlers())
         self.template = template
+        // The template opens on Ready.
+        updateBrowseButtons(for: .ready)
         interfacing.setRootTemplate(template, animated: false) { [weak self] success, error in
             // MainActor Task hop (never a trapping assumeIsolated): the
             // completion is expected on the main queue, but a wrong-queue
@@ -291,7 +337,7 @@ final class CarPlayVoiceCoordinator {
         controlsObservation = muted
             .removeDuplicates()
             .sink { [weak self] isMuted in
-                self?.updateControls(CarPlayVoiceControls(offersNewChat: mode == .classic, isMicrophoneMuted: isMuted))
+                self?.updateControls(CarPlayVoiceControls(isClassic: mode == .classic, isMicrophoneMuted: isMuted))
             }
     }
 
@@ -337,6 +383,7 @@ final class CarPlayVoiceCoordinator {
     private func forward(_ target: CarPlayVoiceState) {
         guard isConnected else { return }
         guard let template else { return }
+        updateBrowseButtons(for: target)
         guard isTemplatePresented else {
             // Pre-presentation: activateVoiceControlState has no effect, so
             // only RETAIN the latest desired state. Recording it as
@@ -349,8 +396,208 @@ final class CarPlayVoiceCoordinator {
             lastActivated: lastActivatedState,
             newState: target
         ) else { return }
+        let previous = lastActivatedState
         lastActivatedState = activated
         stateActivator(template, activated)
+        playEarcon(from: previous, to: activated)
+    }
+
+    /// Status sounds, classic mode only (see `CarPlayEarcon`).
+    private func playEarcon(from previous: CarPlayVoiceState?, to state: CarPlayVoiceState) {
+        guard observedVoiceMode == .classic,
+              preferencesProvider().playsSounds,
+              let earcon = CarPlayEarcon.forTransition(from: previous, to: state) else { return }
+        earconPlayer(earcon)
+    }
+
+    // MARK: - Browse screens
+
+    private func updateBrowseButtons(for state: CarPlayVoiceState) {
+        let shows = state == .ready || state == .error
+        guard shows != showsBrowseButtons else { return }
+        showsBrowseButtons = shows
+        guard let template, #available(iOS 26.4, *) else { return }
+        if shows {
+            template.leadingNavigationBarButtons = [
+                CPBarButton(title: AppLocalization.string("Chats")) { [weak self] _ in self?.showChats() },
+                CPBarButton(title: AppLocalization.string("Jobs")) { [weak self] _ in self?.showJobs() },
+            ]
+            template.trailingNavigationBarButtons = [
+                CPBarButton(title: AppLocalization.string("Shortcuts")) { [weak self] _ in self?.showShortcuts() },
+                CPBarButton(title: AppLocalization.string("Voice")) { [weak self] _ in self?.showVoiceOptions() },
+            ]
+        } else {
+            template.leadingNavigationBarButtons = []
+            template.trailingNavigationBarButtons = []
+        }
+    }
+
+    private func makeBrowseHandlers() -> CarPlayBrowseHandlers {
+        CarPlayBrowseHandlers(
+            openChat: { [weak self] row in self?.openChat(row) },
+            replayJob: { [weak self] jobID in self?.replayJob(jobID) },
+            runShortcut: { [weak self] shortcut in self?.runShortcut(shortcut) },
+            selectMode: { [weak self] mode in self?.selectVoiceMode(mode) },
+            selectAgent: { [weak self] index in self?.selectAgent(at: index) }
+        )
+    }
+
+    private func push(_ browseTemplate: CPTemplate) {
+        guard let interfacing else { return }
+        interfacing.pushTemplate(browseTemplate, animated: true, completion: nil)
+    }
+
+    /// Back to the voice screen before Voice starts.
+    private func returnToVoiceScreen() {
+        jobsObservation?.cancel()
+        jobsObservation = nil
+        interfacing?.popToRootTemplate(animated: true, completion: nil)
+    }
+
+    func showChats() {
+        let appState = lastBoundAppState ?? appStateProvider()
+        let rows = CarPlayBrowse.recentChats(from: appState.activeProfileSessions)
+        push(CarPlayBrowseTemplateFactory.chatsTemplate(rows: rows, handlers: makeBrowseHandlers()))
+    }
+
+    func showJobs() {
+        let appState = lastBoundAppState ?? appStateProvider()
+        let supervisor = appState.voiceBackgroundJobSupervisor
+        let handlers = makeBrowseHandlers()
+        let list = CarPlayBrowseTemplateFactory.jobsTemplate(
+            rows: CarPlayBrowse.jobRows(from: supervisor.jobs),
+            handlers: handlers
+        )
+        jobsTemplate = list
+        jobsObservation = supervisor.$jobs
+            .dropFirst()
+            .sink { [weak self] jobs in
+                guard let list = self?.jobsTemplate else { return }
+                list.updateSections(CarPlayBrowseTemplateFactory.jobSections(
+                    rows: CarPlayBrowse.jobRows(from: jobs),
+                    handlers: handlers
+                ))
+            }
+        push(list)
+    }
+
+    func showShortcuts() {
+        push(CarPlayBrowseTemplateFactory.shortcutsTemplate(
+            shortcuts: preferencesProvider().shortcuts,
+            handlers: makeBrowseHandlers()
+        ))
+    }
+
+    func showVoiceOptions() {
+        let appState = lastBoundAppState ?? appStateProvider()
+        listedAgentProfiles = appState.profiles.count > 1 ? appState.profiles : []
+        push(CarPlayBrowseTemplateFactory.voiceTemplate(
+            modes: CarPlayBrowse.modeRows(current: CarPlayVoiceMode.current(in: appState)),
+            agents: CarPlayBrowse.agentRows(
+                profiles: appState.profiles,
+                active: appState.activeProfile,
+                displayName: { appState.profileDisplayName($0) }
+            ),
+            handlers: makeBrowseHandlers()
+        ))
+    }
+
+    /// A chat from the list: Voice continues in that chat. A live call is
+    /// attached to it, as a call started from that chat on the phone is.
+    func openChat(_ row: CarPlayChatRow) {
+        returnToVoiceScreen()
+        let generation = connectionGeneration
+        Task { @MainActor [weak self] in
+            await self?.performOpenChat(row, generation: generation)
+        }
+    }
+
+    func performOpenChat(_ row: CarPlayChatRow, generation: UInt64) async {
+        guard isCurrent(generation), isConnected else { return }
+        let appState = lastBoundAppState ?? appStateProvider()
+        observeCurrentVoiceMode(appState)
+        let mode = CarPlayVoiceMode.current(in: appState)
+        if let liveMode = CarPlayLiveVoiceMode(mode) {
+            endConversation()
+            await establishLiveVoice(liveMode, appState: appState, generation: generation, attachingTo: row.thread)
+            return
+        }
+        if appState.voiceConversationController.hasLiveVoiceSession {
+            appState.closeVoiceConversation()
+        }
+        guard await appState.openSession(row.sessionID) else {
+            if isCurrent(generation), isConnected { handleControllerState(.failed("")) }
+            return
+        }
+        let outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
+        await completeListenTurn(generation: generation, outcome: outcome)
+    }
+
+    /// A settled Voice Job: its outcome is spoken again in the conversation
+    /// this starts (or the one already open).
+    func replayJob(_ jobID: UUID) {
+        returnToVoiceScreen()
+        let generation = connectionGeneration
+        Task { @MainActor [weak self] in
+            guard let self, self.isCurrent(generation), self.isConnected else { return }
+            let appState = self.lastBoundAppState ?? self.appStateProvider()
+            guard appState.voiceBackgroundJobSupervisor.replayOutcome(jobID: jobID) else { return }
+            await self.performStartListeningTurn(generation: generation)
+        }
+    }
+
+    /// A shortcut: its prompt starts as a Voice Job, and the conversation
+    /// this opens speaks the result when the job is done.
+    func runShortcut(_ shortcut: CarPlayShortcut) {
+        returnToVoiceScreen()
+        let generation = connectionGeneration
+        Task { @MainActor [weak self] in
+            await self?.performRunShortcut(shortcut, generation: generation)
+        }
+    }
+
+    func performRunShortcut(_ shortcut: CarPlayShortcut, generation: UInt64) async {
+        guard isCurrent(generation), isConnected else { return }
+        let appState = lastBoundAppState ?? appStateProvider()
+        // A refusal (too many jobs running) has no place on the car's
+        // screen, so it is dropped; the conversation still opens.
+        _ = await appState.voiceBackgroundJobSupervisor.startJob(instructions: shortcut.prompt)
+        await performStartListeningTurn(generation: generation)
+    }
+
+    /// Switches the profile's voice mode from the car. The running
+    /// conversation ends first, as switching on the phone does.
+    func selectVoiceMode(_ mode: CarPlayVoiceMode) {
+        returnToVoiceScreen()
+        let appState = lastBoundAppState ?? appStateProvider()
+        guard mode != CarPlayVoiceMode.current(in: appState) else { return }
+        endConversation()
+        switch mode {
+        case .classic:
+            appState.setGeminiLiveEnabled(false)
+            appState.setGPTLiveEnabled(false)
+            appState.setGrokLiveEnabled(false)
+        case .geminiLive: appState.setGeminiLiveEnabled(true)
+        case .gptLive: appState.setGPTLiveEnabled(true)
+        case .grokLive: appState.setGrokLiveEnabled(true)
+        }
+        observeCurrentVoiceMode(appState)
+    }
+
+    /// Switches the agent (Hermes profile) from the car.
+    func selectAgent(at index: Int) {
+        returnToVoiceScreen()
+        guard listedAgentProfiles.indices.contains(index) else { return }
+        let profile = listedAgentProfiles[index]
+        let appState = lastBoundAppState ?? appStateProvider()
+        guard profile != appState.activeProfile else { return }
+        endConversation()
+        let generation = connectionGeneration
+        Task { @MainActor [weak self] in
+            await appState.switchProfile(to: profile)
+            guard let self, self.isCurrent(generation), self.isConnected else { return }
+            self.observeCurrentVoiceMode(appState)
+        }
     }
 
     // MARK: - Controls
@@ -535,7 +782,12 @@ final class CarPlayVoiceCoordinator {
     /// Starts a live mode (Gemini Live, GPT-Live or Grok Live) for this CarPlay surface
     /// once Hermes is connected (both start through the host), waiting the
     /// same bounded time as the classic prepare path.
-    func establishLiveVoice(_ mode: CarPlayLiveVoiceMode, appState: AppState, generation: UInt64) async {
+    func establishLiveVoice(
+        _ mode: CarPlayLiveVoiceMode,
+        appState: AppState,
+        generation: UInt64,
+        attachingTo thread: VoiceThreadTarget? = nil
+    ) async {
         if !appState.isConnected {
             appState.recoverTransportForCarPlayIfNeeded()
             forward(.processing)
@@ -559,18 +811,18 @@ final class CarPlayVoiceCoordinator {
         guard isCurrent(generation), isConnected, CarPlayVoiceMode.current(in: appState) == mode.voiceMode else { return }
         switch mode {
         case .geminiLive:
-            await appState.startGeminiLiveForCarPlay()
+            await appState.startGeminiLiveForCarPlay(attachingTo: thread)
             // The surface went away while connecting: nothing presents it now.
             if !isCurrent(generation) || !isConnected {
                 appState.releaseCarPlayGeminiLive()
             }
         case .gptLive:
-            await appState.startGPTLiveForCarPlay()
+            await appState.startGPTLiveForCarPlay(attachingTo: thread)
             if !isCurrent(generation) || !isConnected {
                 appState.releaseCarPlayGPTLive()
             }
         case .grokLive:
-            await appState.startGrokLiveForCarPlay()
+            await appState.startGrokLiveForCarPlay(attachingTo: thread)
             if !isCurrent(generation) || !isConnected {
                 appState.releaseCarPlayGrokLive()
             }

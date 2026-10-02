@@ -1524,14 +1524,20 @@ final class AppState: ObservableObject {
     /// Starts Gemini Live for the CarPlay surface. CarPlay presents it, so
     /// no phone sheet opens; the classic conversation and read aloud stop
     /// first, as on the phone.
-    func startGeminiLiveForCarPlay() async {
+    func startGeminiLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
         stopGPTLiveConversation()
         stopGrokLiveConversation()
         guard !geminiLiveController.isActive else { return }
-        voiceBackgroundJobSupervisor.detachLiveThread()
+        // A call started from CarPlay's chat list is attached to that chat,
+        // as one started from a chat on the phone is.
+        if let thread {
+            voiceBackgroundJobSupervisor.attachLiveThread(thread)
+        } else {
+            voiceBackgroundJobSupervisor.detachLiveThread()
+        }
         beginVoiceCallRecording(engine: .geminiLive)
         await geminiLiveController.start()
     }
@@ -1777,14 +1783,20 @@ final class AppState: ObservableObject {
     /// Starts GPT-Live for the CarPlay surface. CarPlay presents it, so no
     /// phone sheet opens; the other voice modes and read aloud stop first,
     /// as on the phone.
-    func startGPTLiveForCarPlay() async {
+    func startGPTLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
         stopGeminiLiveConversation()
         stopGrokLiveConversation()
         guard !gptLiveController.isActive else { return }
-        voiceBackgroundJobSupervisor.detachLiveThread()
+        // A call started from CarPlay's chat list is attached to that chat,
+        // as one started from a chat on the phone is.
+        if let thread {
+            voiceBackgroundJobSupervisor.attachLiveThread(thread)
+        } else {
+            voiceBackgroundJobSupervisor.detachLiveThread()
+        }
         beginVoiceCallRecording(engine: .gptLive)
         await gptLiveController.start()
     }
@@ -2029,14 +2041,20 @@ final class AppState: ObservableObject {
     /// Starts Grok Live for the CarPlay surface. CarPlay presents it, so no
     /// phone sheet opens; the other voice modes and read aloud stop first,
     /// as on the phone.
-    func startGrokLiveForCarPlay() async {
+    func startGrokLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         guard !grokLiveController.isActive else { return }
-        voiceBackgroundJobSupervisor.detachLiveThread()
+        // A call started from CarPlay's chat list is attached to that chat,
+        // as one started from a chat on the phone is.
+        if let thread {
+            voiceBackgroundJobSupervisor.attachLiveThread(thread)
+        } else {
+            voiceBackgroundJobSupervisor.detachLiveThread()
+        }
         beginVoiceCallRecording(engine: .grokLive)
         await grokLiveController.start()
     }

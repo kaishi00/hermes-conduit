@@ -227,6 +227,7 @@ struct VoiceSettingsView: View {
                     if let voiceJobs {
                         VoiceJobModelSettingsSection(settings: voiceJobs)
                     }
+                    CarPlaySettingsSection()
                     if service.isLoading {
                         ProgressView("Loading profile voice settings…")
                             .frame(maxWidth: .infinity, alignment: .leading)

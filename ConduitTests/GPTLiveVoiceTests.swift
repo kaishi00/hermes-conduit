@@ -1012,7 +1012,7 @@ extension AppStateVoiceCapabilityTests {
         session.becomeReady()
         XCTAssertEqual(
             coordinator.controls,
-            CarPlayVoiceControls(offersNewChat: false, isMicrophoneMuted: false),
+            CarPlayVoiceControls(isClassic: false, isMicrophoneMuted: false),
             "a live call has no chat to continue, so Ready offers no New Chat"
         )
 

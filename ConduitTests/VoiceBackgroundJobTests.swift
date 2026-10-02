@@ -317,6 +317,27 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.takePendingNotice(), "each outcome is delivered once")
     }
 
+    func testASettledJobsOutcomeCanBeReplayedOnce() async throws {
+        let (supervisor, _) = makeSupervisor()
+        var pendingSignals = 0
+        supervisor.onNoticePending = { pendingSignals += 1 }
+        _ = await supervisor.startJob(instructions: "review the PR")
+        let jobID = try XCTUnwrap(supervisor.jobs.first?.id)
+        XCTAssertFalse(supervisor.replayOutcome(jobID: jobID), "a running job has no outcome to replay")
+
+        supervisor.observe(.messageComplete(sessionId: "st-1", messageId: nil, content: "Looks good.", reasoning: nil))
+        _ = supervisor.takePendingNotice()
+        XCTAssertNil(supervisor.takePendingNotice())
+
+        XCTAssertTrue(supervisor.replayOutcome(jobID: jobID))
+        XCTAssertEqual(pendingSignals, 2, "the replay asks the voice session to deliver it")
+        guard case .submit(let prompt, _)? = supervisor.takePendingNotice() else {
+            return XCTFail("the replayed outcome is handed back like the first time")
+        }
+        XCTAssertTrue(prompt.contains("Looks good."))
+        XCTAssertNil(supervisor.takePendingNotice(), "a replay is delivered once")
+    }
+
     func testApprovalAnnouncesNeedsInputOncePerEpisode() async {
         let (supervisor, _) = makeSupervisor()
         _ = await supervisor.startJob(instructions: "clean the logs")

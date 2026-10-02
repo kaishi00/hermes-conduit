@@ -768,6 +768,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         pruneSettledJobs()
     }
 
+    /// Hands a settled background job's outcome to the voice conversation
+    /// again, through the same pending-notice path as the first time
+    /// (CarPlay's Voice Jobs list). False for a running job or a chat turn.
+    @discardableResult
+    func replayOutcome(jobID: UUID) -> Bool {
+        guard let job = job(jobID), !job.isThreadTurn, !job.status.isActive else { return false }
+        update(jobID) { $0.outcomeDelivered = false }
+        noticeMayBePending()
+        return true
+    }
+
     /// Forgets every job without touching Hermes: the jobs keep running on
     /// the server as ordinary chats. Used at server, profile, and sign-out
     /// boundaries, where the ledger no longer belongs to the active gateway.

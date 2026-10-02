@@ -6,7 +6,8 @@
 //  conversation on CarPlay. Exactly five states (the template's documented
 //  maximum), each with its state icon. Action buttons (iOS 26.4+, at most
 //  two): Listen (plus New Chat in the classic mode) at Ready/Error, Mute or
-//  Unmute next to End while the conversation is active. Handlers arrive from
+//  Unmute (Listen for the classic mode's paused microphone) next to End
+//  while the conversation is active. Handlers arrive from
 //  the coordinator and converge on the existing shared teardown/listen/mute
 //  paths — CarPlay adds no parallel Voice business logic.
 //
@@ -44,12 +45,15 @@ struct CarPlayVoiceActionHandlers {
 /// microphone. The template's states are fixed at creation, so their buttons
 /// are replaced in place when this changes.
 struct CarPlayVoiceControls: Equatable {
-    /// The classic mode's Listen continues the current chat, so a new chat
-    /// is its own button. A live call always starts fresh.
-    var offersNewChat: Bool
+    /// The classic voice mode, as opposed to a live call.
+    var isClassic: Bool
     var isMicrophoneMuted: Bool
 
-    static let initial = CarPlayVoiceControls(offersNewChat: true, isMicrophoneMuted: false)
+    /// The classic mode's Listen continues the current chat, so a new chat
+    /// is its own button. A live call always starts fresh.
+    var offersNewChat: Bool { isClassic }
+
+    static let initial = CarPlayVoiceControls(isClassic: true, isMicrophoneMuted: false)
 }
 
 enum CarPlayVoiceButton: Equatable {
@@ -57,6 +61,8 @@ enum CarPlayVoiceButton: Equatable {
     case newChat
     case mute
     case unmute
+    /// Reopens the classic mode's paused microphone.
+    case resume
     case end
 
     /// The buttons for one state, in display order.
@@ -65,7 +71,11 @@ enum CarPlayVoiceButton: Equatable {
         case .ready, .error:
             return controls.offersNewChat ? [.listen, .newChat] : [.listen]
         case .listening, .processing, .responding:
-            return [controls.isMicrophoneMuted ? .unmute : .mute, .end]
+            guard controls.isMicrophoneMuted else { return [.mute, .end] }
+            // The classic microphone also pauses itself after a long
+            // silence, so a paused one offers Listen rather than an Unmute
+            // the driver never asked for.
+            return [controls.isClassic ? .resume : .unmute, .end]
         }
     }
 
@@ -75,6 +85,7 @@ enum CarPlayVoiceButton: Equatable {
         case .newChat: return AppLocalization.string("New Chat")
         case .mute: return AppLocalization.string("Mute")
         case .unmute: return AppLocalization.string("Unmute")
+        case .resume: return AppLocalization.string("Listen")
         case .end: return AppLocalization.string("End")
         }
     }
@@ -83,8 +94,10 @@ enum CarPlayVoiceButton: Equatable {
         switch self {
         case .listen: return "mic.fill"
         case .newChat: return "square.and.pencil"
-        case .mute: return "mic.slash.fill"
-        case .unmute: return "mic.fill"
+        // The microphone's current state, as on the phone's controls.
+        case .mute: return "mic.fill"
+        case .unmute: return "mic.slash.fill"
+        case .resume: return "mic.slash.fill"
         case .end: return "xmark.circle"
         }
     }
@@ -143,7 +156,7 @@ enum CarPlayVoiceTemplateFactory {
                 switch button {
                 case .listen: handlers.startListening()
                 case .newChat: handlers.startNewChat()
-                case .mute, .unmute: handlers.toggleMicrophone()
+                case .mute, .unmute, .resume: handlers.toggleMicrophone()
                 case .end: handlers.endConversation()
                 }
             }
