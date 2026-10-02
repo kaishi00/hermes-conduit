@@ -765,6 +765,13 @@ extension VoiceConversationControllerTests {
         }
         XCTAssertTrue(text.contains("The last reply."))
         XCTAssertEqual(fake.threadSubmissions.count, 1, "reading the last reply asks Hermes nothing")
+
+        let quickRead = await bridge.handleDelegation(id: "del_4", request: "Quick: read the last reply")
+        guard case .delegationReply("del_4", let quickText, .speakable)? = quickRead.first else {
+            return XCTFail("\(quickRead)")
+        }
+        XCTAssertTrue(quickText.contains("The last reply."), "a quick read still reads the chat")
+        XCTAssertEqual(fake.created, 2)
     }
 
     func testThreadRoutingPhrases() {
@@ -801,6 +808,12 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("make the intro quick"), "only a leading quick counts")
         XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("quick"))
         XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("快速排序是什么"))
+        XCTAssertTrue(VoiceThreadRouting.wantsBackgroundJob("quick, questionnaire results for the survey"),
+                      "only the word \"question\" is a figure of speech")
+        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("Quick: check my calendar"), "check my calendar")
+        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("快，查一下天气"), "查一下天气")
+        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("quickly summarize this"), "quickly summarize this",
+                       "only a marker set off by punctuation is removed")
     }
 
     func testATurnOwnsTheResumedRuntimesEventsFromTheStart() async {

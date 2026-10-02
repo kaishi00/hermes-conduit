@@ -997,7 +997,7 @@ struct ComposerBar: View {
             .accessibilityLabel(isDictating || dictation.isStarting ? Text("Stop dictation") : Text("Start voice conversation"))
             .accessibilityHint(isDictating || dictation.isStarting
                 ? AppLocalization.string("Stops dictating; the words stay in the message")
-                : appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Opens voice controls over this conversation"))
+                : appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Starts a voice call; in a chat with messages, the call works in that chat"))
             .accessibilityAction {
                 if isDictating {
                     dictation.stop()

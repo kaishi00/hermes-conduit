@@ -145,7 +145,7 @@ final class GeminiLiveToolBridge {
     static let functionDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         .init(
             name: Tool.startJob.rawValue,
-            description: "Start a background job on the user's Hermes agent for work that takes more than a moment (research, coding, checking systems, anything needing Hermes' tools). Only call this when the user asks for such work. The job runs in its own Hermes chat; its result arrives later on this call. Do not describe job progress unless asked.",
+            description: "Start a background job on the user's Hermes agent for work that takes more than a moment (research, coding, checking systems, anything needing Hermes' tools). Only call this when the user asks for such work; in a call attached to a chat, also for quick work the user starts with \"quick\" that needs Hermes' tools. The job runs in its own Hermes chat; its result arrives later on this call. Do not describe job progress unless asked.",
             parameters: [
                 "type": "OBJECT",
                 "properties": [

@@ -178,7 +178,7 @@ struct GPTLiveVoiceSheet: View {
                 ConduitBackdrop()
                 VStack(spacing: 16) {
                     statusHeader
-                    LiveVoiceQuickHint(thread: jobs.liveThread?.title)
+                    LiveVoiceQuickHint(thread: jobs.liveThread?.title, threadID: jobs.liveThread?.runtimeSessionID)
                     transcriptList
                     controls
                 }

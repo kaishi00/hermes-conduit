@@ -3938,9 +3938,10 @@ final class AppState: ObservableObject {
 
     /// A new, empty chat has nothing to continue: a call started from it
     /// works on its own, with jobs on the Voice Jobs model. A chat still
-    /// loading or running is treated as having messages.
+    /// loading (its history may not be here yet) or running its first turn
+    /// counts as having messages.
     static func attachesLiveVoiceCall(chatHasMessages: Bool, turnState: TurnState) -> Bool {
-        chatHasMessages || turnState != .idle
+        chatHasMessages || turnState == .synchronizing || turnState == .running
     }
 
     /// Whether `thread` is the chat on screen now.

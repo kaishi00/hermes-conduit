@@ -200,7 +200,7 @@ struct GeminiLiveVoiceSheet: View {
                 ConduitBackdrop()
                 VStack(spacing: 16) {
                     statusHeader
-                    LiveVoiceQuickHint(thread: jobs.liveThread?.title)
+                    LiveVoiceQuickHint(thread: jobs.liveThread?.title, threadID: jobs.liveThread?.runtimeSessionID)
                     transcriptList
                     controls
                 }
@@ -328,8 +328,11 @@ struct LiveVoiceQuickHint: View {
     static let timesShown = 3
 
     let thread: String?
+    /// The chat the call is attached to: bringing a minimised call back
+    /// doesn't count again.
+    let threadID: String?
     @AppStorage(LiveVoiceQuickHint.shownCountKey) private var shownCount = 0
-    /// Decided once per appearance, so counting it doesn't hide it at once.
+    @AppStorage(LiveVoiceQuickHint.shownCountKey + ".last") private var lastCountedThreadID = ""
     @State private var isShown = false
 
     var body: some View {
@@ -343,13 +346,25 @@ struct LiveVoiceQuickHint: View {
             }
         }
         .onAppear { showIfDue() }
-        .onChange(of: thread) { _, _ in showIfDue() }
+        .onChange(of: threadID) { _, _ in showIfDue() }
     }
 
     private func showIfDue() {
-        guard !isShown, thread != nil, shownCount < Self.timesShown else { return }
-        isShown = true
+        guard let threadID, thread != nil else {
+            isShown = false
+            return
+        }
+        isShown = Self.shows(threadID: threadID, shownCount: &shownCount, lastCountedThreadID: &lastCountedThreadID)
+    }
+
+    /// Counted once per attached call; the same call shows it again when
+    /// it is brought back.
+    static func shows(threadID: String, shownCount: inout Int, lastCountedThreadID: inout String) -> Bool {
+        if threadID == lastCountedThreadID { return shownCount <= timesShown }
+        guard shownCount < timesShown else { return false }
         shownCount += 1
+        lastCountedThreadID = threadID
+        return true
     }
 }
 
