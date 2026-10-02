@@ -3920,8 +3920,11 @@ final class AppState: ObservableObject {
     /// The open chat as a target for a live call started from it. A saved
     /// call's row or a group room isn't a chat to work in.
     func liveVoiceThreadForOpenChat() -> VoiceThreadTarget? {
+        // Not a Bot Chat: its runtime, history and live rows live in the bot's
+        // own profile, which the off-screen paths here don't address.
         guard let sessionID = activeSessionId, !sessionID.isEmpty,
-              activeRoomSurface == nil, activeVoiceCallSessionID == nil else { return nil }
+              activeRoomSurface == nil, activeVoiceCallSessionID == nil,
+              botConversationProfile(for: sessionID) == nil else { return nil }
         // The catalog row's stored id is the chat's durable identity.
         let row = sessions.first { $0.id == sessionID || $0.alternateIds.contains(sessionID) }
         let stored = row.map { $0.storedSessionId ?? $0.id }
