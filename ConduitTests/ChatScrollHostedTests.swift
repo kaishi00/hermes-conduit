@@ -53,19 +53,38 @@ final class ChatScrollHostedTests: XCTestCase {
         }
     }
 
-    private func mount(_ messages: [ChatMessage]) throws -> Mounted {
+    /// `inAppShell` hosts the chat the way RootView does: inside a
+    /// NavigationStack with a hidden inline bar, whose insets a bare host
+    /// never has.
+    private func mount(_ messages: [ChatMessage], inAppShell: Bool = false) throws -> Mounted {
         let suiteName = "chat-scroll-hosted"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.messages = messages
 
-        let host = UIHostingController(
-            rootView: DormancyHarnessEnvironment.applying(
-                ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
-                    .environmentObject(appState)
-            )
-        )
+        let chat = ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
+            .environmentObject(appState)
+        let root: AnyView
+        if inAppShell {
+            root = AnyView(NavigationStack {
+                ZStack {
+                    Color.clear
+                    chat
+                }
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        Text("Conversation")
+                    }
+                }
+            })
+        } else {
+            root = AnyView(chat)
+        }
+        let host = UIHostingController(rootView: DormancyHarnessEnvironment.applying(root))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
         window.makeKeyAndVisible()
@@ -451,5 +470,48 @@ final class ChatScrollHostedTests: XCTestCase {
         let moves = recorder.offsetChanges(since: mark).filter { $0.distance > 1 }
         print("[ChatScrollHostedTests] idle trace:\n\(recorder.dump())")
         XCTAssertTrue(moves.isEmpty, "the transcript moved on its own:\n\(recorder.dump(since: mark))")
+    }
+
+    /// The same turn and idle checks inside the app's navigation shell, with
+    /// a keyboard-sized bottom safe area coming and going: insets the bare
+    /// host never has, where the engine's bottom and SwiftUI's could differ.
+    func testInTheAppShellATurnAndAnIdleScreenStayOnTheLatestMessage() throws {
+        let mounted = try mount(Self.uneven(0..<80), inAppShell: true)
+        let recorder = ScrollRecorder(mounted.scrollView)
+        let appState = mounted.appState
+        checkpoint("shell mounted", mounted, recorder)
+        assertAtLatest(mounted, "opens on the latest message\n\(recorder.dump())")
+
+        appState.messages.append(ChatMessage(id: "shell-user", role: .user, content: "Go.", timestamp: "2026-01-01T00:00:00Z"))
+        settle(mounted.host.view, seconds: 0.2)
+        for tick in 1...6 {
+            appState.streamingText = String(repeating: "Streaming line \(tick) of the reply. ", count: tick * 4)
+            settle(mounted.host.view, seconds: 0.1)
+        }
+        checkpoint("shell streaming", mounted, recorder)
+        assertAtLatest(mounted, "streaming is followed\n\(recorder.dump())")
+
+        appState.messages.append(ChatMessage(id: "shell-final", role: .assistant, content: "Done.", timestamp: "2026-01-01T00:00:00Z"))
+        appState.streamingText = ""
+        settle(mounted.host.view)
+        checkpoint("shell completed", mounted, recorder)
+        assertAtLatest(mounted, "a completed turn stays on the latest message\n\(recorder.dump())")
+
+        mounted.host.additionalSafeAreaInsets.bottom = 300
+        settle(mounted.host.view)
+        checkpoint("shell keyboard up", mounted, recorder)
+        assertAtLatest(mounted, "a keyboard-sized inset keeps the latest message\n\(recorder.dump())")
+
+        let mark = recorder.mark()
+        settle(mounted.host.view, seconds: 1.5)
+        checkpoint("shell idle", mounted, recorder)
+        let moves = recorder.offsetChanges(since: mark).filter { $0.distance > 1 }
+        print("[ChatScrollHostedTests] shell trace:\n\(recorder.dump())")
+        XCTAssertTrue(moves.isEmpty, "the transcript moved on its own:\n\(recorder.dump(since: mark))")
+
+        mounted.host.additionalSafeAreaInsets.bottom = 0
+        settle(mounted.host.view)
+        checkpoint("shell keyboard down", mounted, recorder)
+        assertAtLatest(mounted, "the inset going away keeps the latest message\n\(recorder.dump())")
     }
 }
