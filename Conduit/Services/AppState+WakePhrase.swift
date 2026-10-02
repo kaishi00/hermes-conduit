@@ -44,6 +44,7 @@ extension AppState {
             && !showGeminiLiveSheet
             && !showGPTLiveSheet
             && !showGrokLiveSheet
+            && minimisedLiveVoice == nil
             && !isCarPlayVoiceSurfaceActive
             && !voiceConversationController.hasLiveVoiceSession
             && voiceLaunchesInFlight == 0

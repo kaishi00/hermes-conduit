@@ -210,6 +210,8 @@ struct ChatView: View {
                 }
             }
 
+            // A live call swiped down keeps running; its bar sits here.
+            MinimisedLiveVoiceBar()
             // Composer + control bar
             ComposerBar()
         }
@@ -228,6 +230,7 @@ struct ChatView: View {
             }
         }
         .animation(.easeInOut(duration: 0.18), value: appState.isOpeningNotificationSession)
+        .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         .overlay {
             // Cross-block selection chrome (endpoint handles + copy pill),
             // mounted at screen level so its frame always covers the whole

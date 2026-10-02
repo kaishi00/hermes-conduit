@@ -81,3 +81,7 @@ outbox (20 calls, 7 days) and are retried whenever the session list loads.
 A host that answers that it can't store calls (no notifier plugin route, or
 no session store) no longer drops them: Voice settings shows an "Unsaved
 voice calls" section saying why, with Save Now to retry at once.
+
+## Minimising a live call
+
+Swiping down the Gemini Live, Grok Live or GPT-Live sheet minimises the call instead of ending it. The call keeps running, and a bar above the composer shows its state, with mute and end controls. Tapping the bar, or the composer's mic, brings the sheet back. End (in the sheet or on the bar), a spoken goodbye, sign-out and server or profile changes still end the call. While minimised the screen can lock as usual; only the full sheet keeps the phone awake. Classic Voice is unchanged: swiping its sheet away still closes it.

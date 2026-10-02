@@ -1504,6 +1504,7 @@ final class AppState: ObservableObject {
         stopGPTLiveConversation()
         stopGrokLiveConversation()
         showSidebar = false
+        if minimisedLiveVoice == .geminiLive { minimisedLiveVoice = nil }
         showGeminiLiveSheet = true
         if !geminiLiveController.isActive {
             beginVoiceCallRecording(engine: .geminiLive)
@@ -1527,22 +1528,25 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A Gemini Live conversation only CarPlay was
-    /// presenting ends; one the phone's sheet shows keeps going. A
+    /// presenting ends; one the phone's sheet or minimised bar shows keeps going. A
     /// conversation that already failed drops its memory and persona too:
     /// nothing presents it, so nothing would close it.
     func releaseCarPlayGeminiLive() {
-        guard !(isSceneActive && showGeminiLiveSheet) else { return }
+        guard !(isSceneActive && (showGeminiLiveSheet || minimisedLiveVoice == .geminiLive)) else { return }
         if isGeminiLiveActive {
             closeGeminiLiveConversation()
         } else {
             dropGeminiLiveHostContext()
             if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
+            // A minimised call that failed has nothing left to show.
+            if minimisedLiveVoice == .geminiLive { minimisedLiveVoice = nil }
         }
     }
 
     func closeGeminiLiveConversation() {
         if geminiLiveControllerCreated { geminiLiveController.stop() }
         showGeminiLiveSheet = false
+        if minimisedLiveVoice == .geminiLive { minimisedLiveVoice = nil }
         dropGeminiLiveHostContext()
         if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
     }
@@ -1559,7 +1563,7 @@ final class AppState: ObservableObject {
     private func stopGeminiLiveConversation() {
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
-        guard showGeminiLiveSheet || isGeminiLiveActive else {
+        guard showGeminiLiveSheet || minimisedLiveVoice == .geminiLive || isGeminiLiveActive else {
             dropGeminiLiveHostContext()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
@@ -1744,6 +1748,7 @@ final class AppState: ObservableObject {
         stopGeminiLiveConversation()
         stopGrokLiveConversation()
         showSidebar = false
+        if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
         showGPTLiveSheet = true
         if !gptLiveController.isActive {
             beginVoiceCallRecording(engine: .gptLive)
@@ -1767,22 +1772,25 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A GPT-Live call only CarPlay was presenting ends;
-    /// one the phone's sheet shows keeps going. A call that already failed
+    /// one the phone's sheet or minimised bar shows keeps going. A call that already failed
     /// drops its memory and persona too: nothing presents it, so nothing
     /// would close it.
     func releaseCarPlayGPTLive() {
-        guard !(isSceneActive && showGPTLiveSheet) else { return }
+        guard !(isSceneActive && (showGPTLiveSheet || minimisedLiveVoice == .gptLive)) else { return }
         if isGPTLiveActive {
             closeGPTLiveConversation()
         } else {
             dropGPTLiveHostContext()
             if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
+            // A minimised call that failed has nothing left to show.
+            if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
         }
     }
 
     func closeGPTLiveConversation() {
         if gptLiveControllerCreated { gptLiveController.stop() }
         showGPTLiveSheet = false
+        if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
         dropGPTLiveHostContext()
         if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
     }
@@ -1799,7 +1807,7 @@ final class AppState: ObservableObject {
     private func stopGPTLiveConversation() {
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
-        guard showGPTLiveSheet || isGPTLiveActive else {
+        guard showGPTLiveSheet || minimisedLiveVoice == .gptLive || isGPTLiveActive else {
             dropGPTLiveHostContext()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
@@ -1980,6 +1988,7 @@ final class AppState: ObservableObject {
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         showSidebar = false
+        if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
         showGrokLiveSheet = true
         if !grokLiveController.isActive {
             beginVoiceCallRecording(engine: .grokLive)
@@ -2003,22 +2012,25 @@ final class AppState: ObservableObject {
     }
 
     /// CarPlay went away. A Grok Live call only CarPlay was presenting ends;
-    /// one the phone's sheet shows keeps going. A call that already failed
+    /// one the phone's sheet or minimised bar shows keeps going. A call that already failed
     /// drops its memory and persona too: nothing presents it, so nothing
     /// would close it.
     func releaseCarPlayGrokLive() {
-        guard !(isSceneActive && showGrokLiveSheet) else { return }
+        guard !(isSceneActive && (showGrokLiveSheet || minimisedLiveVoice == .grokLive)) else { return }
         if isGrokLiveActive {
             closeGrokLiveConversation()
         } else {
             dropGrokLiveHostContext()
             if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
+            // A minimised call that failed has nothing left to show.
+            if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
         }
     }
 
     func closeGrokLiveConversation() {
         if grokLiveControllerCreated { grokLiveController.stop() }
         showGrokLiveSheet = false
+        if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
         dropGrokLiveHostContext()
         if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
     }
@@ -2035,7 +2047,7 @@ final class AppState: ObservableObject {
     private func stopGrokLiveConversation() {
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
-        guard showGrokLiveSheet || isGrokLiveActive else {
+        guard showGrokLiveSheet || minimisedLiveVoice == .grokLive || isGrokLiveActive else {
             dropGrokLiveHostContext()
             // Its recording still closes, so the call is saved.
             if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
@@ -3801,6 +3813,65 @@ final class AppState: ObservableObject {
     /// A live call is already running; opening another would only surface it.
     /// Queued saves wait for it to end.
     var isLiveVoiceCallActive: Bool { isGeminiLiveActive || isGPTLiveActive || isGrokLiveActive }
+
+    // MARK: Minimised live voice
+
+    /// The live call whose sheet was swiped away. The call keeps running
+    /// while the conversation stays usable, and a bar above the composer
+    /// brings the sheet back. Only End, a spoken goodbye, or a boundary
+    /// teardown ends it.
+    /// A call that fails while minimised keeps its bar on purpose: tapping
+    /// it shows why and offers Try again or End. The bar clears on End (in
+    /// the sheet or on the bar), a spoken goodbye, opening that mode again,
+    /// another mode taking over, CarPlay releasing a stopped call, and
+    /// boundary teardown (disconnect, sign-out, server or profile change).
+    @Published private(set) var minimisedLiveVoice: VoiceCallEngine?
+
+    /// Runs whenever a live sheet goes away. A swipe on a call that is
+    /// connecting or running minimises it (the connection carries on);
+    /// anything else (End, a failed call) closes it, as before. After End
+    /// this closes an already-closed call a second time, which is a no-op:
+    /// `stop()` settles the phase synchronously.
+    func liveVoiceSheetDismissed(_ engine: VoiceCallEngine) {
+        if isLiveVoiceCallActive(engine) {
+            minimisedLiveVoice = engine
+        } else {
+            closeLiveVoiceConversation(engine)
+        }
+    }
+
+    /// Brings the minimised call's sheet back.
+    func restoreMinimisedLiveVoice() {
+        guard let engine = minimisedLiveVoice else { return }
+        minimisedLiveVoice = nil
+        switch engine {
+        case .geminiLive: showGeminiLiveSheet = true
+        case .gptLive: showGPTLiveSheet = true
+        case .grokLive: showGrokLiveSheet = true
+        }
+    }
+
+    /// Hangs up the minimised call.
+    func endMinimisedLiveVoice() {
+        guard let engine = minimisedLiveVoice else { return }
+        closeLiveVoiceConversation(engine)
+    }
+
+    func isLiveVoiceCallActive(_ engine: VoiceCallEngine) -> Bool {
+        switch engine {
+        case .geminiLive: return isGeminiLiveActive
+        case .gptLive: return isGPTLiveActive
+        case .grokLive: return isGrokLiveActive
+        }
+    }
+
+    private func closeLiveVoiceConversation(_ engine: VoiceCallEngine) {
+        switch engine {
+        case .geminiLive: closeGeminiLiveConversation()
+        case .gptLive: closeGPTLiveConversation()
+        case .grokLive: closeGrokLiveConversation()
+        }
+    }
 
     /// Continues a saved call with a new live call on the selected engine.
     /// It is seeded with the row (a summary when it's long) and appends to

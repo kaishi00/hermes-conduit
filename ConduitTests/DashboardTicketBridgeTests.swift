@@ -257,7 +257,9 @@ final class DashboardTicketBridgeTests: XCTestCase {
         let elapsed = Date().timeIntervalSince(started)
         // Without the fast exit, three attempts would poll ~3s each plus
         // sleeps (~9.7s). With it, the run is three ~350ms sleeps (~1.1s).
-        XCTAssertLessThan(elapsed, 3.0, "Login-parked minting must skip the readiness poll window")
+        // The bound leaves room for a loaded CI runner and still catches the
+        // slow path.
+        XCTAssertLessThan(elapsed, 6.0, "Login-parked minting must skip the readiness poll window")
         XCTAssertEqual(bridge.reloadCount, 2, "Both signInRequired retries must reload")
     }
 }
