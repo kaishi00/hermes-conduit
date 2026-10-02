@@ -295,6 +295,11 @@ struct ComposerBar: View {
             // its draft is loaded now, so send it.
             resendAfterChatTakeover()
         }
+        .onChange(of: action) { _, _ in
+            // The composer offers Send again (a turn finished, or sync
+            // settled after the refusal).
+            resendAfterChatTakeover()
+        }
         .onAppear {
             guard loadedDraftKey == nil else { return }
             loadDraft(for: activeDraftKey)
@@ -516,7 +521,7 @@ struct ComposerBar: View {
                     ProgressView()
                         .controlSize(.small)
                         .accessibilityLabel(Text("Waiting to take this chat over"))
-                case .failed, .heldHere:
+                case .failed, .heldHere, .unavailable:
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 case .offered, .ready:
@@ -558,7 +563,7 @@ struct ComposerBar: View {
                 .tint(.conduitAccent)
                 .accessibilityIdentifier("composer.take-over-chat")
                 .accessibilityHint("Makes Conduit the app for this chat, then sends your message")
-            case .waiting, .ready, .heldHere:
+            case .waiting, .ready, .heldHere, .unavailable:
                 EmptyView()
             }
         }
@@ -575,7 +580,7 @@ struct ComposerBar: View {
             return AppLocalization.string("Taking this chat over from \(takeover.ownerName). If it's replying, Conduit waits for the reply to finish.")
         case .ready:
             return AppLocalization.string("This chat is yours now. Send your message again.")
-        case .failed(let message):
+        case .failed(let message), .unavailable(let message):
             return message
         case .heldHere:
             return AppLocalization.string(
@@ -586,13 +591,14 @@ struct ComposerBar: View {
 
     /// The chat is Conduit's now: send the refused draft again, exactly as
     /// the Send button would. When that can't happen here (another chat is
-    /// open, the draft is gone, or the composer isn't offering Send), the
-    /// ready notice stays and asks the user to send again.
+    /// open, the composer isn't offering Send, or its draft isn't the refused
+    /// message, as after a refused voice turn), the ready notice stays and
+    /// asks the user to send again.
     private func resendAfterChatTakeover() {
         guard let takeover = appState.chatTakeover, takeover.phase == .ready,
               takeover.sessionID == appState.activeSessionId,
               case .send = action,
-              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty else { return }
+              takeover.isRefusedMessage(text) else { return }
         appState.dismissChatTakeover()
         submit()
     }

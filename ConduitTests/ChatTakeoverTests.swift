@@ -100,4 +100,52 @@ extension HermesClientTests {
         XCTAssertFalse(AppState.isTransientChatTakeoverFailure(DashboardTicketBridgeError.http(status: 400, detail: "")))
         XCTAssertFalse(AppState.isTransientChatTakeoverFailure(ChatTakeoverError.pluginMissing))
     }
+
+    private func takeoverState(_ text: String = "hello") -> ChatTakeoverState {
+        ChatTakeoverState(sessionID: "s1", sessionIDs: ["s1"], surface: "desktop", refusedText: text, phase: .waiting)
+    }
+
+    func testTakeoverPollsWhileTheOwnerIsReplying() async {
+        var replies: [[String: Any]] = [["ok": true, "status": "busy"], ["ok": true, "status": "busy"], ["ok": true, "status": "taken_over"]]
+        var calls = 0
+        let client = ChatTakeoverClient(request: { _, _, _ in
+            calls += 1
+            return replies.removeFirst()
+        })
+        let phase = await AppState.runChatTakeover(client: client, state: takeoverState(), profile: "default", pollInterval: .zero)
+        XCTAssertEqual(phase, .ready)
+        XCTAssertEqual(calls, 3)
+    }
+
+    func testTakeoverGivesUpAfterRepeatedTransientFailures() async {
+        var calls = 0
+        let client = ChatTakeoverClient(request: { _, _, _ in
+            calls += 1
+            throw DashboardTicketBridgeError.http(status: 503, detail: "")
+        })
+        let phase = await AppState.runChatTakeover(client: client, state: takeoverState(), profile: "default", pollInterval: .zero)
+        guard case .failed = phase else { return XCTFail("expected failed, got \(String(describing: phase))") }
+        XCTAssertEqual(calls, AppState.chatTakeoverTransientRetryLimit)
+    }
+
+    func testTakeoverWithoutThePluginIsUnavailableNotRetryable() async {
+        let client = ChatTakeoverClient(request: { _, _, _ in
+            throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
+        })
+        let phase = await AppState.runChatTakeover(client: client, state: takeoverState(), profile: "default", pollInterval: .zero)
+        guard case .unavailable = phase else { return XCTFail("expected unavailable, got \(String(describing: phase))") }
+    }
+
+    func testTakeoverHeldByAnotherConduitIsHeldHere() async {
+        let client = ChatTakeoverClient(request: { _, _, _ in ["ok": true, "status": "same_host"] })
+        let phase = await AppState.runChatTakeover(client: client, state: takeoverState(), profile: "default", pollInterval: .zero)
+        XCTAssertEqual(phase, .heldHere)
+    }
+
+    func testOnlyTheRefusedMessageIsResent() {
+        let state = takeoverState("  hello\n")
+        XCTAssertTrue(state.isRefusedMessage("hello"))
+        XCTAssertFalse(state.isRefusedMessage("something else"))
+        XCTAssertFalse(takeoverState("").isRefusedMessage(""))
+    }
 }

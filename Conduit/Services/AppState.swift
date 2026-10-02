@@ -528,7 +528,10 @@ final class AppState: ObservableObject {
     private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
 
     @Published private(set) var activeProfile: String = "default" {
-        didSet { refreshActiveChatScrollSessionIdentity() }
+        didSet {
+            refreshActiveChatScrollSessionIdentity()
+            if oldValue != activeProfile { dismissChatTakeover() }
+        }
     }
     /// The saved multi-dashboard registry (#148). `activeDashboardID` is the
     /// dashboard the user last chose — set at switch intent, kept on failed
@@ -14640,7 +14643,12 @@ final class AppState: ObservableObject {
     private var chatTakeoverAutomaticSessionID: String?
 
     /// Records a send refused because another app owns the chat.
-    private func noteChatOwnedElsewhere(_ refusal: RpcError, sessionID: String, knownSessionIDs: Set<String>) {
+    private func noteChatOwnedElsewhere(
+        _ refusal: RpcError,
+        sessionID: String,
+        knownSessionIDs: Set<String>,
+        refusedText: String
+    ) {
         let details = ChatTakeoverState.details(fromRefusal: refusal.message)
         var ids = [sessionID]
         for id in [details.sessionID, canonicalSessionID(for: sessionID)].compactMap({ $0 }) + knownSessionIDs.sorted()
@@ -14650,7 +14658,9 @@ final class AppState: ObservableObject {
         chatTakeoverTask?.cancel()
         chatTakeoverTask = nil
         errorMessage = nil
-        chatTakeover = ChatTakeoverState(sessionID: sessionID, sessionIDs: ids, surface: details.surface, phase: .offered)
+        chatTakeover = ChatTakeoverState(
+            sessionID: sessionID, sessionIDs: ids, surface: details.surface, refusedText: refusedText, phase: .offered
+        )
         lifecycleLog.notice(
             "prompt.submit refused: chat owned by \(details.surface ?? "another surface", privacy: .public) session=\(sessionID, privacy: .public)"
         )
@@ -14659,8 +14669,11 @@ final class AppState: ObservableObject {
     /// Asks the host to drop the other app's claim, waiting while it runs a
     /// turn. On success the composer sends its draft again.
     func takeOverChat() {
-        guard var state = chatTakeover, state.phase != .waiting, state.phase != .ready,
-              state.phase != .heldHere else { return }
+        guard var state = chatTakeover else { return }
+        switch state.phase {
+        case .offered, .failed: break
+        case .waiting, .ready, .heldHere, .unavailable: return
+        }
         chatTakeoverTask?.cancel()
         state.phase = .waiting
         chatTakeover = state
@@ -14687,10 +14700,11 @@ final class AppState: ObservableObject {
     /// Polls the takeover route until it settles: while the owner is mid-turn,
     /// and through a few transient failures (bridge not ready, 5xx, network).
     /// Nil when cancelled.
-    private static func runChatTakeover(
+    static func runChatTakeover(
         client: ChatTakeoverClient,
         state: ChatTakeoverState,
-        profile: String
+        profile: String,
+        pollInterval: Duration = chatTakeoverPollInterval
     ) async -> ChatTakeoverState.Phase? {
         let deadline = Date().addingTimeInterval(chatTakeoverWaitLimit)
         var transientFailures = 0
@@ -14715,10 +14729,13 @@ final class AppState: ObservableObject {
                 guard isTransientChatTakeoverFailure(error),
                       transientFailures < chatTakeoverTransientRetryLimit,
                       Date() < deadline else {
+                    if case ChatTakeoverError.pluginMissing = error { return .unavailable(chatTakeoverFailureMessage(error)) }
+                    if case ChatTakeoverError.unsupported = error { return .unavailable(chatTakeoverFailureMessage(error)) }
+                    if case ChatTakeoverError.malformed = error { return .unavailable(chatTakeoverFailureMessage(error)) }
                     return .failed(chatTakeoverFailureMessage(error))
                 }
             }
-            try? await Task.sleep(for: chatTakeoverPollInterval)
+            try? await Task.sleep(for: pollInterval)
         }
         return nil
     }
@@ -15113,7 +15130,9 @@ final class AppState: ObservableObject {
             }
             if isCurrentComposerSubmission(submissionContext) {
                 if let refusal = error as? RpcError, refusal.isSessionNotOwned {
-                    noteChatOwnedElsewhere(refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs)
+                    noteChatOwnedElsewhere(
+                        refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs, refusedText: text
+                    )
                 } else {
                     errorMessage = AppLocalization.string("Failed to send: \(error.localizedDescription)")
                 }

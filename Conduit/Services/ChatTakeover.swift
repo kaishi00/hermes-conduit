@@ -23,6 +23,9 @@ struct ChatTakeoverState: Equatable {
         case ready
         /// Taking over failed; the message says why. Tapping again retries.
         case failed(String)
+        /// Taking over can't work until the host changes (plugin missing or
+        /// too old, Hermes too old); the message says what to update.
+        case unavailable(String)
         /// Conduit on another device, or the Hermes web chat, holds the
         /// chat. The host never takes it from them, so there's no retry.
         case heldHere
@@ -33,6 +36,10 @@ struct ChatTakeoverState: Equatable {
     let sessionIDs: [String]
     /// The app that holds the chat (`desktop`, `cli`, …), when Hermes named it.
     let surface: String?
+    /// The text whose send was refused. The composer only resends after a
+    /// takeover when its draft is this message, so a refused voice or other
+    /// non-composer turn never sends an unrelated draft.
+    var refusedText = ""
     var phase: Phase
     /// Changes every time a takeover finishes, so the composer resends once.
     var readyToken = 0
@@ -129,5 +136,13 @@ final class ChatTakeoverClient {
         case "same_host": return .sameHost
         default: throw ChatTakeoverError.malformed
         }
+    }
+}
+
+extension ChatTakeoverState {
+    /// Whether `draft` is the refused message, ignoring surrounding whitespace.
+    func isRefusedMessage(_ draft: String) -> Bool {
+        let refused = refusedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !refused.isEmpty && refused == draft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
