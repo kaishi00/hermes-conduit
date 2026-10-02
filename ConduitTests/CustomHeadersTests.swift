@@ -147,6 +147,7 @@ final class CustomHeadersTests: XCTestCase {
         XCTAssertEqual(KeychainHelper.loadCustomHeaders(), [:])
     }
 
+    @MainActor
     func testSharedStoreReachesKanbanUpgradeRequests() throws {
         KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
         addTeardownBlock {

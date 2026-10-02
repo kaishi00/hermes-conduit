@@ -158,11 +158,12 @@ final class CustomHeaderStore: @unchecked Sendable {
     func setHeaders(_ headers: [CustomHeader], forServerURL serverURL: String) -> Bool {
         guard let origin = CustomHeaderPolicy.origin(forServerURL: serverURL) else { return false }
         let kept = headers.filter { !$0.trimmedName.isEmpty || !$0.value.isEmpty }
-        let snapshot: [String: [CustomHeader]] = withHeaders { all in
+        // Persisted inside the lock so concurrent writers can never leave
+        // the Keychain holding an older snapshot than memory.
+        withHeaders { all in
             all[origin] = kept.isEmpty ? nil : kept
-            return all
+            persist(all)
         }
-        persist(snapshot)
         return true
     }
 
