@@ -34,6 +34,9 @@ final class ComposerDictationService: ObservableObject {
     private let audioSink = DictationAudioSink()
     private var engine: AVAudioEngine?
     private var lease: VoiceAudioLease?
+    /// Interruption, media-reset and engine-configuration observers while
+    /// the microphone is open.
+    private var audioObservers: [NSObjectProtocol] = []
     private var recognitionTask: SFSpeechRecognitionTask?
     private var finishTask: Task<Void, Never>?
     private var generation: UInt64 = 0
@@ -71,6 +74,12 @@ final class ComposerDictationService: ObservableObject {
             clearCallbacks()
             throw DictationError.message(AppLocalization.string("Dictation needs microphone and speech recognition access. You can allow them in Settings."))
         }
+        // A voice conversation already has the microphone (one the
+        // composer hasn't re-rendered for yet).
+        guard !audioCoordinator.hasCaptureOwner else {
+            clearCallbacks()
+            throw DictationError.message(AppLocalization.string("The microphone is not available right now."))
+        }
         guard let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer(),
               recognizer.isAvailable else {
             clearCallbacks()
@@ -86,8 +95,12 @@ final class ComposerDictationService: ObservableObject {
         // On the device when the language allows it.
         request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
         do {
-            lease = try audioCoordinator.acquire(.conversationCapture)
+            // Voice or a live call taking the microphone ends dictation.
+            lease = try audioCoordinator.acquire(.conversationCapture) { [weak self] in
+                self?.audioWasLost(generation: generation)
+            }
             try startAudio()
+            observeAudioLoss(generation: generation)
         } catch {
             releaseAudio()
             clearCallbacks()
@@ -132,6 +145,30 @@ final class ComposerDictationService: ObservableObject {
         } else {
             clearCallbacks()
         }
+    }
+
+    /// The microphone went away underneath dictation: a call, Siri, a route
+    /// change, a media-services reset, or a voice conversation taking it.
+    /// Ends it with the words so far.
+    private func audioWasLost(generation: UInt64) {
+        guard isDictating, generation == self.generation else { return }
+        finish()
+    }
+
+    private func observeAudioLoss(generation: UInt64) {
+        let center = NotificationCenter.default
+        let lost: @Sendable (Notification) -> Void = { [weak self] _ in
+            Task { @MainActor [weak self] in self?.audioWasLost(generation: generation) }
+        }
+        audioObservers = [
+            center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { note in
+                let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt)
+                    .flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+                if type == .began { lost(note) }
+            },
+            center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: nil, using: lost),
+            center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil, using: lost),
+        ]
     }
 
     private func receive(transcript: String?, isFinal: Bool, generation: UInt64) {
@@ -189,6 +226,8 @@ final class ComposerDictationService: ObservableObject {
     }
 
     private func stopAudio() {
+        for observer in audioObservers { NotificationCenter.default.removeObserver(observer) }
+        audioObservers = []
         guard let engine else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()

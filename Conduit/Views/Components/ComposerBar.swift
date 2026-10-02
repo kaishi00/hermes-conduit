@@ -1066,7 +1066,7 @@ struct ComposerBar: View {
 
     @ViewBuilder
     private func dictationTip(canDictate: Bool) -> some View {
-        if canDictate, !dictationTipDone, !dictationTipHidden, !dictation.isDictating {
+        if canDictate, !dictationTipDone, !dictationTipHidden, !dictation.isDictating, !dictation.isStarting {
             Text("Tap for Voice · Hold to dictate")
                 .font(.caption.weight(.semibold))
                 .fixedSize()
