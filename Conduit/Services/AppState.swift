@@ -7683,8 +7683,12 @@ final class AppState: ObservableObject {
             || dashboardTicketBridge?.cloudflareAccess != access
             || dashboardTicketBridge?.extraHeaders != CustomHeaderPolicy.sendable(CustomHeaderStore.shared.headers(forServerURL: normalized))
             || dashboardTicketBridge?.matchesNativeOAuthTokens(storedNativeOAuthTokens) != true {
+            // Header or sign-in changes keep the host, so its plugin status
+            // still holds; a new host is asked again on connect.
+            if dashboardTicketBridge?.baseURL != normalized {
+                notifierPlugin = NotifierPluginStatus()
+            }
             dashboardTicketBridge?.invalidate()
-            notifierPlugin = NotifierPluginStatus()
             dashboardTicketBridge = DashboardTicketBridge(
                 baseURL: normalized,
                 cloudflareAccess: access,

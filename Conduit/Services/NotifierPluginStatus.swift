@@ -14,7 +14,8 @@ struct NotifierPluginStatus: Equatable {
 
     static let path = "/api/plugins/conduit_push/capabilities"
 
-    /// Plugin features Conduit uses, by the plugin's capability id.
+    /// Plugin features Conduit uses, by the plugin's capability id. Must match
+    /// ROUTE_CAPABILITIES in hermes-conduit-notifier's dashboard/plugin_api.py.
     static let usedCapabilities = [
         "session-takeover",
         "voice-sessions",
