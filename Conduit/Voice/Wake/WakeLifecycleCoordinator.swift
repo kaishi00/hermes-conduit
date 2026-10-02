@@ -18,9 +18,10 @@ struct WakeLifecycleSnapshot: Equatable {
     var isVoiceIdle: Bool
     /// At least one usable wake phrase is bound on the current gateway.
     var hasWakePhrases: Bool
-    /// The audio route tolerates a background recording session. CarPlay
-    /// does not: any app recording there switches the car's audio to a
-    /// voice stream, and other apps' music plays from one side only.
+    /// The audio route allows listening. CarPlay does only when the user
+    /// keeps wake on there: recording through the car switches its audio to
+    /// a voice stream (other apps' music then plays from one side), so on
+    /// CarPlay the listener records from the iPhone's own microphone.
     var isRouteSuitable: Bool = true
 
     var canArm: Bool {
@@ -34,13 +35,13 @@ enum WakeRoutePolicy {
     /// Fails open on an empty route on purpose: with no session active the
     /// route can read empty, and refusing there would keep wake from ever
     /// arming. CarPlay always reports its `.carAudio` output.
-    static func allowsWakeListening(outputs: [VoiceAudioRoutePort]) -> Bool {
-        !outputs.contains { $0.type == .carAudio }
+    static func isCarPlay(outputs: [VoiceAudioRoutePort]) -> Bool {
+        outputs.contains { $0.type == .carAudio }
     }
 
     @MainActor
-    static func current() -> Bool {
-        allowsWakeListening(outputs: AVAudioSession.sharedInstance().currentRoute.outputs.map {
+    static func currentRouteIsCarPlay() -> Bool {
+        isCarPlay(outputs: AVAudioSession.sharedInstance().currentRoute.outputs.map {
             VoiceAudioRoutePort(type: $0.portType, name: $0.portName)
         })
     }

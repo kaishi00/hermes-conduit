@@ -86,10 +86,11 @@ extension WakeLifecycleTests {
         let car = VoiceAudioRoutePort(type: .carAudio, name: "CarPlay")
         let speaker = VoiceAudioRoutePort(type: .builtInSpeaker, name: "Speaker")
         let a2dp = VoiceAudioRoutePort(type: .bluetoothA2DP, name: "Buds")
-        XCTAssertFalse(WakeRoutePolicy.allowsWakeListening(outputs: [car]))
-        XCTAssertTrue(WakeRoutePolicy.allowsWakeListening(outputs: [speaker]))
-        XCTAssertTrue(WakeRoutePolicy.allowsWakeListening(outputs: [a2dp]))
-        XCTAssertFalse(WakeRoutePolicy.allowsWakeListening(outputs: [speaker, car]), "any CarPlay output vetoes")
+        XCTAssertTrue(WakeRoutePolicy.isCarPlay(outputs: [car]))
+        XCTAssertFalse(WakeRoutePolicy.isCarPlay(outputs: [speaker]))
+        XCTAssertFalse(WakeRoutePolicy.isCarPlay(outputs: [a2dp]))
+        XCTAssertFalse(WakeRoutePolicy.isCarPlay(outputs: []), "an empty route fails open")
+        XCTAssertTrue(WakeRoutePolicy.isCarPlay(outputs: [speaker, car]), "any CarPlay output counts")
 
         var snapshot = WakeLifecycleSnapshot(
             isForegroundActive: true,

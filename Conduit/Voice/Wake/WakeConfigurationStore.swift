@@ -22,10 +22,23 @@ final class WakeConfigurationStore {
     private let storageKey: String
     private var values: [WakeProfileKey: WakeProfilePreferences]
 
+    /// Device-wide: keep listening while the iPhone plays through CarPlay,
+    /// recording from the iPhone's own microphone. On by default; turning it
+    /// off stops wake listening on CarPlay entirely.
+    var listensOnCarPlay: Bool {
+        didSet {
+            guard listensOnCarPlay != oldValue else { return }
+            defaults.set(listensOnCarPlay, forKey: carPlayKey)
+        }
+    }
+
+    private var carPlayKey: String { storageKey + ".listensOnCarPlay" }
+
     init(defaults: UserDefaults = .standard, storageKey: String = "conduit.wakeConfiguration.v1") {
         self.defaults = defaults
         self.storageKey = storageKey
         values = Self.decode(defaults.data(forKey: storageKey))
+        listensOnCarPlay = defaults.object(forKey: storageKey + ".listensOnCarPlay") as? Bool ?? true
     }
 
     func preferences(for key: WakeProfileKey) -> WakeProfilePreferences {
