@@ -129,14 +129,16 @@ struct BotEditorSheet: View {
                     Label(AppLocalization.string("Choose Photo"), systemImage: "photo")
                 }
                 .buttonStyle(.bordered)
-                if previewImage != nil {
+                if previewImage != nil || (hasStoredAvatar && !draft.removesAvatar) {
                     Button(role: .destructive) {
                         Haptics.light()
                         if draft.newAvatarPNG != nil {
+                            // Discarding a fresh pick goes back to the stored
+                            // picture; it never deletes it.
                             draft.newAvatarPNG = nil
+                        } else {
+                            draft.removesAvatar = hasStoredAvatar
                         }
-                        // Removing only matters for a picture the gateway holds.
-                        draft.removesAvatar = storedImage != nil
                     } label: {
                         Label(AppLocalization.string("Remove Photo"), systemImage: "trash")
                     }
@@ -151,10 +153,10 @@ struct BotEditorSheet: View {
 
     private var colorSection: some View {
         Section {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 7), spacing: 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 8) {
                 swatch(nil, name: AppLocalization.string("Automatic color"))
                 ForEach(Array(BotAvatarColor.swatches.enumerated()), id: \.element) { item in
-                    swatch(item.element, name: Self.swatchNames[item.offset])
+                    swatch(item.element, name: swatchName(item.offset))
                 }
             }
             .padding(.vertical, 4)
@@ -166,20 +168,24 @@ struct BotEditorSheet: View {
     }
 
     /// VoiceOver names for `BotAvatarColor.swatches`, in hue order (0°, 30°, …).
-    private static let swatchNames: [String] = [
-        AppLocalization.string("Red"),
-        AppLocalization.string("Orange"),
-        AppLocalization.string("Yellow"),
-        AppLocalization.string("Lime"),
-        AppLocalization.string("Green"),
-        AppLocalization.string("Mint"),
-        AppLocalization.string("Cyan"),
-        AppLocalization.string("Sky Blue"),
-        AppLocalization.string("Blue"),
-        AppLocalization.string("Purple"),
-        AppLocalization.string("Magenta"),
-        AppLocalization.string("Pink")
-    ]
+    /// Resolved per render so a language change applies immediately.
+    private func swatchName(_ index: Int) -> String {
+        let names = [
+            AppLocalization.string("Red"),
+            AppLocalization.string("Orange"),
+            AppLocalization.string("Yellow"),
+            AppLocalization.string("Lime"),
+            AppLocalization.string("Green"),
+            AppLocalization.string("Mint"),
+            AppLocalization.string("Cyan"),
+            AppLocalization.string("Sky Blue"),
+            AppLocalization.string("Blue"),
+            AppLocalization.string("Purple"),
+            AppLocalization.string("Magenta"),
+            AppLocalization.string("Pink")
+        ]
+        return names.indices.contains(index) ? names[index] : AppLocalization.string("Color")
+    }
 
     private func swatch(_ value: String?, name: String) -> some View {
         let isSelected = draft.color == value
@@ -202,7 +208,8 @@ struct BotEditorSheet: View {
                     .strokeBorder(Color.primary.opacity(isSelected ? 0.9 : 0), lineWidth: 2)
                     .padding(-4)
             }
-            .frame(width: 40, height: 40)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(name))
@@ -284,6 +291,11 @@ struct BotEditorSheet: View {
         return editedBot?.displayLabel ?? "?"
     }
 
+    /// The gateway holds a picture for the bot being edited, loaded or not.
+    private var hasStoredAvatar: Bool {
+        editedBot?.hasAvatar ?? false
+    }
+
     /// The picture the gateway holds for the bot being edited.
     private var storedImage: UIImage? {
         editedBot.flatMap { appState.botAvatarImage(for: $0) }
@@ -297,7 +309,9 @@ struct BotEditorSheet: View {
 
     private var canSave: Bool {
         guard !isSaving else { return false }
-        guard isCreating else { return true }
+        // An edit saves only once the editor snapshot settled: before it,
+        // the form still holds placeholders that would overwrite the bot.
+        guard isCreating else { return detailsState == .loaded || detailsState == .failed }
         let identity = appState.newBotSlug(for: draft.name)
         return identity.isValid && !identity.isTaken
     }

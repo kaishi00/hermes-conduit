@@ -329,7 +329,8 @@ enum BotSoul {
     /// Upstream `messagingProtocolSection`, verbatim in substance.
     static func messagingProtocol(name: String, roster: [BotProfile]) -> String {
         let handle = name
-        let teammates = roster.filter { $0.name != name }
+        // Meta-hidden bots stay out, as they do on the roster.
+        let teammates = roster.filter { $0.name != name && !$0.isHiddenByMeta }
         var lines = [
             protocolHeading,
             "",

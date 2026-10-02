@@ -12313,13 +12313,10 @@ final class AppState: ObservableObject {
             botAvatarFetchedGeneration[name] = generation
             botAvatarImages[name] = data.flatMap { UIImage(data: $0) }
         } catch {
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return }
-            // A gateway without the asset store never will have one this
-            // generation; anything else is transient and retries on the
-            // next appearance, keeping whatever picture is already shown.
-            if HermesClient.isMissingRPCMethod(error) {
-                botAvatarFetchedGeneration[name] = generation
-            }
+            // Not pinned to the generation: a failed fetch retries on the
+            // row's next appearance, keeping whatever picture is shown.
+            // (`has_avatar` and `profiles.get_asset` ship together, so a
+            // gateway without the method never sends rows that call it.)
         }
     }
 

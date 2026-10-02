@@ -176,10 +176,16 @@ extension BotModeTests {
             model: nil, provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
             appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil
         )
+        let hidden = BotProfile(
+            name: "ops-internal", botTitle: nil, displayName: "", profileDescription: "",
+            model: nil, provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: true,
+            appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil
+        )
         let custom = BotSoul.compose(
             name: "nova", title: "", description: "", customSoul: "You are Nova.",
-            serverInjectsProtocol: false, roster: [teammate]
+            serverInjectsProtocol: false, roster: [teammate, hidden]
         )
+        XCTAssertFalse(custom.contains("ops-internal"), "meta-hidden bots are not listed as teammates")
         XCTAssertTrue(custom.hasPrefix("You are Nova."))
         XCTAssertTrue(custom.contains(BotSoul.protocolHeading))
         XCTAssertTrue(custom.contains("- `atlas` — Research"))
