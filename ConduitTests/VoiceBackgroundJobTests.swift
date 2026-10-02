@@ -818,6 +818,10 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("quicksort this list"), "quicksort this list")
         XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("make the intro quick"), "make the intro quick")
         XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("快速排序是什么"), "快速排序是什么")
+        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("Quick question, why did the build fail?"),
+                       "Quick question, why did the build fail?", "a quick that doesn't route stays")
+        XCTAssertEqual(VoiceThreadRouting.removingQuickMarker("Can you quickly check my inbox"),
+                       "Can you quickly check my inbox", "after a polite prefix it is part of the sentence")
     }
 
     func testATurnOwnsTheResumedRuntimesEventsFromTheStart() async {

@@ -334,10 +334,11 @@ struct LiveVoiceQuickHint: View {
     @State private var isShown = false
     /// Chats already counted while the app runs: bringing a minimised call
     /// back, or calling the same chat again, doesn't count twice.
-    private static var countedThisRun: Set<String> = []
+    @MainActor private static var countedThisRun: Set<String> = []
 
     private var thread: String? { jobs.liveThread?.title }
-    private var threadID: String? { jobs.liveThread?.runtimeSessionID }
+    /// The chat's durable id: a resumed chat runs under a new runtime id.
+    private var threadID: String? { jobs.liveThread.map { $0.storedSessionID ?? $0.runtimeSessionID } }
 
     var body: some View {
         Group {

@@ -1162,10 +1162,12 @@ enum VoiceThreadRouting {
 
     /// The request without the leading "quick" that routed it (GPT-Live is
     /// told to add "Quick:"): routing, not part of the task or the job's
-    /// title.
+    /// title. Only a "quick" at the very start is removed; after a polite
+    /// prefix ("can you quickly…") it reads as part of the sentence. A
+    /// "quick" that doesn't route ("Quick question, …") stays.
     static func removingQuickMarker(_ request: String) -> String {
         let trimmed = request.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let marker = trimmed.range(
+        guard startsQuick(folded: fold(trimmed)), let marker = trimmed.range(
             of: #"^(quickly|quick)(\s*[:,，：]\s*|\s+)|^(快速|快)\s*[:,，：]\s*"#,
             options: [.regularExpression, .caseInsensitive]
         ) else { return trimmed }
