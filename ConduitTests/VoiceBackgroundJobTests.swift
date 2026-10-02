@@ -84,6 +84,9 @@ final class FakeVoiceJobBackend {
     var threadBusy = false
     var threadSubmitError: Error?
     var threadReply: String?
+    /// The runtime the chat resumes onto; nil keeps the target's own.
+    var threadRuntime: String?
+    var onThreadSubmit: (@MainActor () -> Void)?
     private(set) var threadSubmissions: [(String, String)] = []
 
     /// Strong captures: tests routinely discard the fake (`let (supervisor, _)
@@ -122,10 +125,12 @@ final class FakeVoiceJobBackend {
             },
             resolveProfile: { [self] name in self.profileTargets[name.lowercased()] ?? .unknown },
             threadIsBusy: { [self] _ in self.threadBusy },
+            resolveThreadRuntime: { [self] thread in self.threadRuntime ?? thread.runtimeSessionID },
             submitThreadTurn: { [self] thread, text in
                 self.threadSubmissions.append((thread.runtimeSessionID, text))
+                self.onThreadSubmit?()
                 if let error = self.threadSubmitError { throw error }
-                return thread.runtimeSessionID
+                return self.threadRuntime ?? thread.runtimeSessionID
             },
             latestThreadReply: { [self] _ in self.threadReply }
         )
@@ -572,10 +577,15 @@ extension VoiceConversationControllerTests {
         return (supervisor, fake)
     }
 
-    private func waitFor(_ condition: () -> Bool) async {
+    private func waitFor(
+        _ condition: () -> Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
         for _ in 0..<400 where !condition() {
             try? await Task.sleep(for: .milliseconds(5))
         }
+        if !condition() { XCTFail("Timed out waiting for the condition", file: file, line: line) }
     }
 
     func testAThreadTurnIsTheChatsNextTurnNotANewSession() async {
@@ -754,6 +764,65 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(VoiceThreadRouting.wantsLastReply("Read me Hermes' last reply"))
         XCTAssertTrue(VoiceThreadRouting.wantsLastReply("repeat the full reply"))
         XCTAssertFalse(VoiceThreadRouting.wantsLastReply("fix the bug from the last reply"))
+        XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("summarize the new chat feature"))
+        XCTAssertFalse(VoiceThreadRouting.wantsBackgroundJob("rename this as a job title"))
+        XCTAssertTrue(VoiceThreadRouting.wantsBackgroundJob("look into it in a new chat"))
+        XCTAssertFalse(VoiceThreadRouting.wantsLastReply("what was the last reply in the thread about"),
+                       "\"read\" inside \"thread\" isn't a request to read")
+    }
+
+    func testATurnOwnsTheResumedRuntimesEventsFromTheStart() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadRuntime = "rt-resumed"
+        // The reply lands while the send is still returning.
+        fake.onThreadSubmit = {
+            supervisor.observe(.messageComplete(sessionId: "rt-resumed", messageId: nil, content: "Done.", reasoning: nil))
+        }
+
+        _ = supervisor.startThreadTurn(request: "check")
+        await waitFor { supervisor.jobs.first?.status.isActive == false }
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "Done.")
+    }
+
+    func testATurnLeftRunningInAnotherChatDoesntHoldANewCall() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        _ = supervisor.startThreadTurn(request: "deploy")
+        await waitFor { fake.threadSubmissions.count == 1 }
+        supervisor.detachLiveThread()
+
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-other", storedSessionID: "st-other", title: "Other")
+        _ = supervisor.startThreadTurn(request: "status")
+        await waitFor { fake.threadSubmissions.count == 2 }
+
+        XCTAssertEqual(fake.threadSubmissions.last?.0, "rt-other")
+        supervisor.detachLiveThread()
+    }
+
+    func testATypedTurnThatStartsDuringTheSendIsWaitedFor() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadSubmitError = VoiceThreadBusyError()
+
+        _ = supervisor.startThreadTurn(request: "check")
+        await waitFor { fake.threadSubmissions.count >= 1 }
+        XCTAssertEqual(supervisor.jobs.first?.status, .starting, "back in line, not failed")
+
+        fake.threadSubmitError = nil
+        await waitFor { supervisor.jobs.first?.status == .running }
+        XCTAssertEqual(supervisor.jobs.first?.threadTurnSubmitted, true)
+        supervisor.detachLiveThread()
+    }
+
+    func testTheLatestAssistantReplyIsReadFromSavedRows() {
+        let rows: [Any] = [
+            ["role": "user", "content": "check the build"],
+            ["role": "assistant", "content": "Earlier answer."],
+            ["role": "user", "content": "and now?"],
+            ["role": "assistant", "content": "Build is green."],
+        ]
+        XCTAssertEqual(AppState.latestAssistantReply(inMessageRows: rows), "Build is green.")
+        XCTAssertNil(AppState.latestAssistantReply(inMessageRows: [["role": "user", "content": "hi"]]))
     }
 }
 

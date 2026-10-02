@@ -2159,12 +2159,16 @@ final class AppState: ObservableObject {
             threadIsBusy: { [weak self] thread in
                 await self?.liveVoiceThreadIsBusy(thread) ?? false
             },
+            resolveThreadRuntime: { [weak self] thread in
+                guard let self else { throw HermesError.notConnected }
+                return try await self.liveVoiceThreadRuntime(thread)
+            },
             submitThreadTurn: { [weak self] thread, text in
                 guard let self else { throw HermesError.notConnected }
                 return try await self.submitLiveVoiceThreadTurn(thread, text: text)
             },
             latestThreadReply: { [weak self] thread in
-                self?.latestReplyInOpenChat(thread)
+                await self?.latestLiveVoiceThreadReply(thread)
             }
         ))
         supervisor.onNoticePending = { [weak self] in
@@ -3931,33 +3935,71 @@ final class AppState: ObservableObject {
     }
 
     private func liveVoiceThreadIsBusy(_ thread: VoiceThreadTarget) async -> Bool {
-        if isOpenChat(thread) { return turnState.isRunning }
+        if isOpenChat(thread) { return isBusy }
         guard let client, let rows = try? await client.activeSessions() else { return false }
         return rows.contains { row in
             (thread.owns(sessionID: row.runtimeSessionId) || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
         }
     }
 
+    /// The runtime id the chat's next turn runs on: the open chat's own, or
+    /// the chat's live runtime off screen, resuming it when it isn't live.
+    private func liveVoiceThreadRuntime(_ thread: VoiceThreadTarget) async throws -> String {
+        guard let client else { throw HermesError.notConnected }
+        if isOpenChat(thread), let sessionID = activeSessionId { return sessionID }
+        let rows = (try? await client.activeSessions()) ?? []
+        if let live = rows.first(where: { thread.owns(sessionID: $0.runtimeSessionId) || thread.owns(sessionID: $0.storedSessionId) }) {
+            return live.runtimeSessionId
+        }
+        return try await client.openSession(thread.storedSessionID ?? thread.runtimeSessionID).sessionId
+    }
+
     /// Sends a live call's request as the chat's next turn. On screen it
     /// goes through the composer's own path, so the chat shows and streams
-    /// it like a typed message. Off screen the chat is resumed first when
-    /// it isn't live.
+    /// it like a typed message. Off screen it goes to the chat's live
+    /// runtime, which `liveVoiceThreadRuntime` resumed first.
     private func submitLiveVoiceThreadTurn(_ thread: VoiceThreadTarget, text: String) async throws -> String {
         guard let client else { throw HermesError.notConnected }
         if isOpenChat(thread), let sessionID = activeSessionId {
+            // Checked with no suspension before the composer's own check, so
+            // a typed turn that started meanwhile is waited for, never
+            // steered or interrupted by the composer's busy mode.
+            guard !isBusy else { throw VoiceThreadBusyError() }
             guard await submitComposer(text: text) else {
                 throw VoiceAudioError.unavailable(errorMessage ?? AppLocalization.string("Hermes could not send this to the chat."))
             }
             return activeSessionId ?? sessionID
         }
-        let rows = (try? await client.activeSessions()) ?? []
-        var runtimeID = rows.first { thread.owns(sessionID: $0.runtimeSessionId) || thread.owns(sessionID: $0.storedSessionId) }?.runtimeSessionId
-        if runtimeID == nil {
-            runtimeID = try await client.openSession(thread.storedSessionID ?? thread.runtimeSessionID).sessionId
-        }
-        let target = runtimeID ?? thread.runtimeSessionID
+        let target = try await liveVoiceThreadRuntime(thread)
         _ = try await client.sendPrompt(target, text: text)
         return target
+    }
+
+    /// The chat's latest assistant reply, without starting a turn: from the
+    /// transcript when the chat is open, otherwise from its saved history.
+    private func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> String? {
+        if isOpenChat(thread) { return latestReplyInOpenChat(thread) }
+        guard let bridge = dashboardTicketBridge else { return nil }
+        let query = "?limit=20&offset=0&order=latest&include_compacted=true&inline_images=false"
+        for sessionID in [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }) where !sessionID.isEmpty {
+            guard let response = try? await bridge.requestJSON(
+                path: Self.sessionMessagesPath(sessionId: sessionID, profile: activeProfile, query: query)
+            ), let rows = Self.persistedMessageRows(in: response) else { continue }
+            return Self.latestAssistantReply(inMessageRows: rows)
+        }
+        return nil
+    }
+
+    /// The newest assistant text in a page of raw `/api/sessions/{id}/messages`
+    /// rows. A tail page still lists its rows oldest first, as
+    /// `voiceRowMessages` relies on.
+    static func latestAssistantReply(inMessageRows rows: [Any]) -> String? {
+        MessageNormalizer.normalizeMessages(rows.map(AnyCodable.from))
+            .last { message in
+                message.role == .assistant && message.tool == nil
+                    && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }?
+            .content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The open chat's latest assistant reply.
@@ -3970,7 +4012,13 @@ final class AppState: ObservableObject {
     /// model, not shown as UI copy, so not localized.
     func liveVoiceThreadInstructions(delegation: Bool) -> String {
         guard let thread = voiceBackgroundJobSupervisor.liveThread else { return "" }
-        var block = "\n\nThis call is attached to the user's Hermes chat \"\(thread.title)\". "
+        // The title is the user's text: kept to one line without quotes so it
+        // can't end the sentence and pass as instructions.
+        let title = thread.title
+            .components(separatedBy: .newlines).joined(separator: " ")
+            .replacingOccurrences(of: "\"", with: "'")
+            .prefix(80)
+        var block = "\n\nThis call is attached to the user's Hermes chat \"\(title)\". "
         if delegation {
             block += "Delegate anything that needs Hermes: it is sent to that chat as its next message and Hermes' reply comes back on the delegation. Only when the user asks for work to run in the background or in a separate chat, say \"in the background\" in the delegation. When the user asks to hear Hermes' last reply, delegate \"read the last reply\" and read what comes back word for word."
         } else {

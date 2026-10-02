@@ -163,15 +163,24 @@ struct VoiceBackgroundJobBackend {
     var resolveProfile: @MainActor (_ spokenName: String) -> VoiceJobProfileTarget = { _ in .unknown }
     /// Whether a turn is running in the attached chat right now.
     var threadIsBusy: @MainActor (_ thread: VoiceThreadTarget) async -> Bool = { _ in false }
-    /// Sends a live call's request as the attached chat's next turn
-    /// (resuming the chat first when it isn't live) and returns the runtime
-    /// session id the turn runs on.
+    /// The runtime session id the chat's next turn will run on, resuming
+    /// the chat first when it isn't live. Asked before the turn is sent, so
+    /// the turn owns that id's events from its first one.
+    var resolveThreadRuntime: @MainActor (_ thread: VoiceThreadTarget) async throws -> String = { $0.runtimeSessionID }
+    /// Sends a live call's request as the attached chat's next turn and
+    /// returns the runtime session id the turn runs on. Throws
+    /// `VoiceThreadBusyError` when another turn started in the chat since
+    /// it was checked, so the request waits instead of steering it.
     var submitThreadTurn: @MainActor (_ thread: VoiceThreadTarget, _ text: String) async throws -> String = { _, _ in
         throw VoiceAudioError.unavailable(AppLocalization.string("Hermes could not send this to the chat."))
     }
     /// The chat's latest assistant reply, read without starting a turn.
     var latestThreadReply: @MainActor (_ thread: VoiceThreadTarget) async -> String? = { _ in nil }
 }
+
+/// The attached chat started another turn (a typed message) between the
+/// check and the send. The voice request waits for it instead.
+struct VoiceThreadBusyError: Error {}
 
 /// The Hermes chat a live call is attached to: requests go there as its
 /// next turn instead of starting a background job.
@@ -462,14 +471,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private func runThreadTurns(generation: UInt64) async {
         defer { if generation == self.generation { threadTask = nil } }
         while !Task.isCancelled, generation == self.generation {
-            // One at a time: a sent turn still running holds the rest. Its
-            // settling pumps the queue again.
-            if jobs.contains(where: { $0.isThreadTurn && $0.threadTurnSubmitted && $0.status.isActive }) { return }
             guard let next = jobs.first(where: { $0.isThreadTurn && !$0.threadTurnSubmitted && $0.status == .starting }) else { return }
             guard let thread = threadTargets[next.id] else {
                 update(next.id) { $0.status = .failed(AppLocalization.string("Hermes could not send this to the chat.")) }
                 continue
             }
+            // One at a time per chat: a sent turn still running there holds
+            // the rest. Its settling pumps the queue again. A turn left
+            // running in another chat (an earlier call's) doesn't.
+            let chatHasSentTurn = jobs.contains { job in
+                job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive
+                    && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
+            }
+            if chatHasSentTurn { return }
             if await backend.threadIsBusy(thread) {
                 guard generation == self.generation else { return }
                 try? await Task.sleep(for: threadWaitInterval)
@@ -479,6 +493,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard generation == self.generation, job(next.id)?.status == .starting else { continue }
             update(next.id) { $0.threadTurnSubmitted = true }
             do {
+                // The runtime id is known before the send, so none of the
+                // turn's events arrive under an id it doesn't own yet.
+                let target = try await backend.resolveThreadRuntime(thread)
+                guard generation == self.generation else { return }
+                if !target.isEmpty { update(next.id) { $0.runtimeSessionID = target } }
                 let runtimeID = try await backend.submitThreadTurn(thread, Self.threadTurnText(for: next.instructions))
                 guard generation == self.generation else { return }
                 update(next.id) {
@@ -487,6 +506,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     if $0.status == .starting { $0.status = .running }
                 }
                 startPollingIfNeeded()
+            } catch is VoiceThreadBusyError {
+                guard generation == self.generation else { return }
+                // A typed turn got there first: back in line to wait for it.
+                update(next.id) { $0.threadTurnSubmitted = false }
+                try? await Task.sleep(for: threadWaitInterval)
             } catch {
                 guard generation == self.generation else { return }
                 // Events that already moved it on mean Hermes took the turn
@@ -497,6 +521,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 }
             }
         }
+    }
+
+    private static func sameChat(_ a: VoiceThreadTarget, _ b: VoiceThreadTarget) -> Bool {
+        a.owns(sessionID: b.runtimeSessionID) || (b.storedSessionID.map { a.owns(sessionID: $0) } ?? false)
     }
 
     /// A voice request as it appears in the chat. Not localized: it is
@@ -962,14 +990,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 /// chat the delegation's own words decide where it goes. Gemini and Grok
 /// pick a tool instead.
 enum VoiceThreadRouting {
-    /// Phrases that keep work out of the chat, as a background job.
+    /// Phrases that keep work out of the chat, as a background job. Matched
+    /// as whole words, and only ones that say where the work should run:
+    /// "the new chat feature" is a request for this chat.
     static let backgroundPhrases = [
         "in the background",
-        "background job",
-        "as a job",
-        "separate chat",
-        "new chat",
-        "后台",
+        "as a background job",
+        "in a background job",
+        "start a background job",
+        "in a separate chat",
+        "in a new chat",
+        "在后台",
+        "后台运行",
+        "后台任务",
     ]
     /// "Read me the last reply" asks for what Hermes already said.
     static let lastReplyPhrases = [
@@ -985,13 +1018,32 @@ enum VoiceThreadRouting {
     static let readVerbs = ["read", "repeat", "朗读", "读"]
 
     static func wantsBackgroundJob(_ request: String) -> Bool {
-        let folded = request.lowercased()
-        return backgroundPhrases.contains { folded.contains($0) }
+        let folded = fold(request)
+        return backgroundPhrases.contains { contains(folded, phrase: $0) }
     }
 
     static func wantsLastReply(_ request: String) -> Bool {
-        let folded = request.lowercased()
-        return lastReplyPhrases.contains { folded.contains($0) }
-            && readVerbs.contains { folded.contains($0) }
+        let folded = fold(request)
+        return lastReplyPhrases.contains { contains(folded, phrase: $0) }
+            && readVerbs.contains { contains(folded, phrase: $0) }
+    }
+
+    private static func fold(_ text: String) -> String {
+        text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+    }
+
+    /// Whole-word match for Latin phrases ("read" isn't in "thread"); CJK
+    /// phrases have no spaces, so a substring is a match.
+    static func contains(_ text: String, phrase: String) -> Bool {
+        guard phrase.unicodeScalars.allSatisfy({ $0.isASCII }) else { return text.contains(phrase) }
+        var searchStart = text.startIndex
+        while let range = text.range(of: phrase, range: searchStart..<text.endIndex) {
+            let before = range.lowerBound == text.startIndex ? nil : text[text.index(before: range.lowerBound)]
+            let after = range.upperBound == text.endIndex ? nil : text[range.upperBound]
+            let isWordCharacter: (Character?) -> Bool = { $0.map { $0.isLetter || $0.isNumber } ?? false }
+            if !isWordCharacter(before) && !isWordCharacter(after) { return true }
+            searchStart = text.index(after: range.lowerBound)
+        }
+        return false
     }
 }
