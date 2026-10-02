@@ -160,6 +160,10 @@ final class HermesSpeechStream: VoiceSpeechStream {
     private var finishRequested = false
     private var cancelledByClient = false
     private var finishTimeoutTask: Task<Void, Never>?
+    /// Identifies the current idle window. A window whose sleep already
+    /// returned can still be queued on the MainActor when a frame re-arms,
+    /// and cancellation alone would not stop it from failing the stream.
+    private var finishTimeoutGeneration: UInt64 = 0
     private var finishSendTask: Task<Void, Never>?
     /// How long the stream may stay silent after `finish()` before it is
     /// judged dead. An idle window, not a total deadline: a long reply is
@@ -251,11 +255,14 @@ final class HermesSpeechStream: VoiceSpeechStream {
     /// that goes quiet for the whole window times out.
     private func armFinishIdleTimeout() {
         finishTimeoutTask?.cancel()
+        finishTimeoutGeneration &+= 1
+        let generation = finishTimeoutGeneration
         let timeout = finishIdleTimeout
         finishTimeoutTask = Task { [weak self] in
             do { try await Task.sleep(for: timeout) }
             catch { return }
-            guard let self, !self.terminal, !self.cancelledByClient else { return }
+            guard let self, self.finishTimeoutGeneration == generation,
+                  !self.terminal, !self.cancelledByClient else { return }
             if self.receivedPCM {
                 self.complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Hermes speech streaming timed out."))))
             } else {

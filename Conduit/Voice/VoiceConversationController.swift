@@ -632,6 +632,7 @@ final class VoiceConversationController: ObservableObject {
         // The TTS provider test runs outside a voice conversation, so its
         // playback must claim standalone (output-only) session ownership.
         playback.ownershipIntent = .standalonePlayback
+        playback.playbackRate = 1
         let generation = operationGeneration
         defer {
             speechStream?.cancel()
@@ -1399,6 +1400,8 @@ final class VoiceConversationController: ObservableObject {
                 // Assistant speech during a live voice conversation joins the
                 // capture-owned session instead of reconfiguring it.
                 playback.ownershipIntent = .conversationPlayback
+                // Read Aloud's speed setting never applies to conversations.
+                playback.playbackRate = 1
                 let openedStream = try await gateway.openSpeechStream(
                     onStart: { [weak self] rate in
                         guard let self,

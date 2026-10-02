@@ -364,10 +364,10 @@ enum ReadAloudSpeed: Double, CaseIterable, Identifiable {
     var id: Double { rawValue }
     var rate: Float { Float(rawValue) }
 
-    /// "1x", "1.25x", …
+    /// "1x", "1.25x", …, the same in every locale like the speed labels of
+    /// system media players.
     var label: String {
-        let number = rawValue.formatted(.number.precision(.fractionLength(0...2)))
-        return "\(number)x"
+        String(format: "%gx", locale: Locale(identifier: "en_US_POSIX"), rawValue)
     }
 
     /// The stored choice; anything missing or unrecognised reads as 1x.

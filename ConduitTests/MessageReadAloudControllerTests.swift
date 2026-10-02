@@ -61,10 +61,11 @@ final class MessageReadAloudControllerTests: XCTestCase {
         )
 
         controller.toggle(messageID: "message-a", content: "First")
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        for _ in 0..<1_000 where controller.state != .idle { await Task.yield() }
+        XCTAssertEqual(controller.state, .idle)
         speed = 2
         controller.toggle(messageID: "message-b", content: "Second")
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        for _ in 0..<1_000 where playback.startedRates.count < 2 { await Task.yield() }
 
         XCTAssertEqual(playback.startedRates, [1.5, 2])
     }

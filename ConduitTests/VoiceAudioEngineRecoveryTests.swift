@@ -349,6 +349,32 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(factory.engines.count, 2)
     }
 
+    // MARK: - Read Aloud speed
+
+    func testPlaybackRateNeverSlowsBelowNormalSpeed() {
+        XCTAssertEqual(AVSpeechPlaybackService.clampedRate(1.5), 1.5)
+        XCTAssertEqual(AVSpeechPlaybackService.clampedRate(0.5), 1, "slowed audio would outlast the drain watchdog")
+        XCTAssertEqual(AVSpeechPlaybackService.clampedRate(10), 4)
+        XCTAssertEqual(AVSpeechPlaybackService.clampedRate(.nan), 1)
+    }
+
+    func testStretchedStreamConvertsUnalignedPCM16ToFloat() {
+        // One leading byte puts the samples at an odd offset, as a Data
+        // slice can.
+        let bytes: [UInt8] = [0xFF, 0x00, 0x00, 0x00, 0x40, 0x00, 0x80, 0xFF, 0x7F]
+        var samples = [Float](repeating: .nan, count: 4)
+        bytes.withUnsafeBytes { raw in
+            samples.withUnsafeMutableBufferPointer { destination in
+                AVSpeechPlaybackService.convertPCM16(
+                    UnsafeRawBufferPointer(rebasing: raw[1...]),
+                    into: destination.baseAddress!,
+                    frames: 4
+                )
+            }
+        }
+        XCTAssertEqual(samples, [0, 0.5, -1, Float(32_767) / 32_768])
+    }
+
     // MARK: - Playback drain watchdog
 
     func testDrainSettlesWhenRenderingDiesWithoutANotification() async {

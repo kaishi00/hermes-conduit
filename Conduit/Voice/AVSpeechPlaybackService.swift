@@ -164,10 +164,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             }
         } else if let destination = buffer.floatChannelData {
             pcm.withUnsafeBytes { source in
-                for index in 0..<Int(frames) {
-                    let sample = source.loadUnaligned(fromByteOffset: index * 2, as: Int16.self)
-                    destination[0][index] = Float(Int16(littleEndian: sample)) / 32_768
-                }
+                Self.convertPCM16(source, into: destination[0], frames: Int(frames))
             }
         } else {
             return 0
@@ -273,11 +270,21 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         engine.attach(player)
     }
 
-    /// Read Aloud offers 1x–2x; anything outside the time-stretch unit's
-    /// useful range (or not a number) plays at normal speed.
-    static func clampedRate(_ rate: Float) -> Float {
-        guard rate.isFinite, rate > 0 else { return 1 }
-        return min(max(rate, 0.5), 4)
+    /// Read Aloud offers 1x–2x. Slower than 1x is never played: the drain
+    /// watchdog budgets source-length audio, which a slowed stream outlasts.
+    /// Not-a-number plays at normal speed.
+    nonisolated static func clampedRate(_ rate: Float) -> Float {
+        guard rate.isFinite else { return 1 }
+        return min(max(rate, 1), 4)
+    }
+
+    /// Little-endian PCM16 to Float32 samples in [-1, 1), for the stretched
+    /// graph. Reads unaligned: the bytes come from a Data slice.
+    nonisolated static func convertPCM16(_ source: UnsafeRawBufferPointer, into destination: UnsafeMutablePointer<Float>, frames: Int) {
+        for index in 0..<min(frames, source.count / 2) {
+            let sample = source.loadUnaligned(fromByteOffset: index * 2, as: Int16.self)
+            destination[index] = Float(Int16(littleEndian: sample)) / 32_768
+        }
     }
 
     /// Ownership is released only after the engine stopped rendering, so the
