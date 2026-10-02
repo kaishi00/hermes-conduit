@@ -98,8 +98,30 @@ private struct JsonRpcResponse: Decodable {
 struct RpcError: Decodable, Error, LocalizedError {
     let code: Int?
     let message: String
+    /// Machine-readable refusal reason from the error's `data.reason`
+    /// (Hermes' contract; the message is for people), e.g.
+    /// `SESSION_NOT_OWNED` on a `prompt.submit` 4090.
+    var reason: String? = nil
 
     var errorDescription: String? { message }
+
+    /// Hermes refused the send because another live surface (Hermes
+    /// Desktop, a terminal) owns this chat.
+    var isSessionNotOwned: Bool { reason == "SESSION_NOT_OWNED" }
+}
+
+extension RpcError {
+    private enum CodingKeys: String, CodingKey { case code, message, data }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let data = try? container.decodeIfPresent(AnyCodable.self, forKey: .data)
+        self.init(
+            code: try container.decodeIfPresent(Int.self, forKey: .code),
+            message: try container.decode(String.self, forKey: .message),
+            reason: data?.objectValue?["reason"]?.stringValue
+        )
+    }
 }
 
 // Type-erased Codable for dynamic JSON
