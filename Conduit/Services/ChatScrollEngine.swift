@@ -121,6 +121,8 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     static let nearBottomTolerance: CGFloat = 40
+    /// Past-the-bottom corrections allowed between two layout changes.
+    static let maximumPastBottomRepins = 2
     static let maximumRestorationChecks = 80
     static let restorationRevealInterval = 4
     /// How long a landed prepend keeps holding the reader's position while
@@ -152,6 +154,7 @@ final class ChatScrollEngine: ObservableObject {
     private(set) weak var surface: ChatScrollSurface?
     private var surfaceCallbackDepth = 0
     private var lastObservedOffsetY: CGFloat?
+    private var pastBottomRepins = 0
     private let now: () -> TimeInterval
     private let prefersReducedMotion: @MainActor () -> Bool
 
@@ -215,11 +218,9 @@ final class ChatScrollEngine: ObservableObject {
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         guard let surface, !isPaused else { return }
+        pastBottomRepins = 0
         holdPrependAnchor(on: surface)
-        if mode == .following,
-           !surface.isTracking,
-           !surface.isDecelerating,
-           !latestAnimationInFlight {
+        if canPinWhileFollowing(surface) {
             pin(surface)
         }
         refreshJumpButton()
@@ -256,17 +257,18 @@ final class ChatScrollEngine: ObservableObject {
                   surface.distanceFromBottom > Self.nearBottomTolerance {
             setMode(.browsing)
             emit(.persistSnapshot(renderedSessionKey))
-        } else if mode == .following,
+        } else if canPinWhileFollowing(surface),
                   !isDragging,
-                  !surface.isTracking,
-                  !surface.isDecelerating,
-                  !latestAnimationInFlight,
-                  surface.distanceFromBottom < -0.5 {
+                  surface.distanceFromBottom < -0.5,
+                  pastBottomRepins < Self.maximumPastBottomRepins {
             // Past the bottom with no finger or momentum: empty space under
             // the last message. UIKit never clamps an offset when content
             // shrinks, and SwiftUI can write its previous offset back after
             // the layout pass that pinned (a turn completing collapses its
-            // live rows), so following pins again here.
+            // live rows), so following pins again here. Bounded per layout
+            // change, so a writer that answers every pin with its own value
+            // cannot turn this into a loop.
+            pastBottomRepins += 1
             pin(surface)
         }
         refreshJumpButton()
@@ -677,6 +679,12 @@ final class ChatScrollEngine: ObservableObject {
         if inputs != renderInputs {
             renderInputs = inputs
         }
+    }
+
+    /// Following, with no finger, momentum or jump animation moving the
+    /// content.
+    private func canPinWhileFollowing(_ surface: ChatScrollSurface) -> Bool {
+        mode == .following && !surface.isTracking && !surface.isDecelerating && !latestAnimationInFlight
     }
 
     private func pin(_ surface: ChatScrollSurface) {

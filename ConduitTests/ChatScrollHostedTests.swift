@@ -147,6 +147,7 @@ final class ChatScrollHostedTests: XCTestCase {
             let text: String
             let isOffset: Bool
             let byEngine: Bool
+            var distance: CGFloat = 0
         }
 
         private(set) var changes: [Change] = []
@@ -160,14 +161,19 @@ final class ChatScrollHostedTests: XCTestCase {
                     let stack = Thread.callStackSymbols
                     let byEngine = stack.contains { $0.contains("ChatScrollEngine") }
                     let writer = byEngine ? "engine" : Self.writer(in: stack)
-                    let max = view.contentSize.height + view.adjustedContentInset.bottom - view.bounds.height
+                    // Clamped like ChatScrollSurface.maxOffsetY.
+                    let max = Swift.max(
+                        -view.adjustedContentInset.top,
+                        view.contentSize.height + view.adjustedContentInset.bottom - view.bounds.height
+                    )
                     self.record(
                         String(
                             format: "offset %.1f -> %.1f (max %.1f) by %@",
                             change.oldValue?.y ?? .nan, change.newValue?.y ?? .nan, max, writer
                         ),
                         isOffset: true,
-                        byEngine: byEngine
+                        byEngine: byEngine,
+                        distance: abs((change.newValue?.y ?? 0) - (change.oldValue?.y ?? 0))
                     )
                 },
                 scrollView.observe(\.contentSize, options: [.old, .new]) { [weak self] _, change in
@@ -201,8 +207,14 @@ final class ChatScrollHostedTests: XCTestCase {
                 .joined(separator: " < ")
         }
 
-        private func record(_ text: String, isOffset: Bool, byEngine: Bool) {
-            changes.append(Change(time: CACurrentMediaTime() - start, text: text, isOffset: isOffset, byEngine: byEngine))
+        private func record(_ text: String, isOffset: Bool, byEngine: Bool, distance: CGFloat = 0) {
+            changes.append(Change(
+                time: CACurrentMediaTime() - start,
+                text: text,
+                isOffset: isOffset,
+                byEngine: byEngine,
+                distance: distance
+            ))
         }
 
         func mark() -> Int { changes.count }
@@ -402,7 +414,8 @@ final class ChatScrollHostedTests: XCTestCase {
 
         let mark = recorder.mark()
         idle(seconds: 1.5)
-        let moves = recorder.offsetChanges(since: mark)
+        // A sub-point settle is not a bounce; #302 moved 100-250 pt.
+        let moves = recorder.offsetChanges(since: mark).filter { $0.distance > 1 }
         print("[ChatScrollHostedTests] idle trace:\n\(recorder.dump())")
         XCTAssertTrue(moves.isEmpty, "the transcript moved on its own:\n\(recorder.dump(since: mark))")
     }

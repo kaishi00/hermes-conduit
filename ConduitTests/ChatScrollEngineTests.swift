@@ -14,7 +14,7 @@ private final class FakeChatScrollSurface: ChatScrollSurface {
     var isTracking = false
     var isDecelerating = false
     var transcriptOriginY: CGFloat = 18
-    private(set) var sets: [(y: CGFloat, animated: Bool)] = []
+    var sets: [(y: CGFloat, animated: Bool)] = []
 
     init(contentHeight: CGFloat = 4000, viewportHeight: CGFloat = 800) {
         self.contentHeight = contentHeight
@@ -146,6 +146,22 @@ final class ChatScrollEngineTests: XCTestCase {
         engine.surfaceScrolled()
         XCTAssertEqual(surface.contentOffsetY, 2900)
         XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testPastTheBottomCorrectionsCannotLoopWithAnotherWriter() {
+        let (engine, surface) = makeEngine()
+        surface.contentHeight = 3700
+        surface.sets.removeAll()
+        // A writer that puts its own offset back after every pin.
+        for _ in 0..<10 {
+            surface.contentOffsetY = 3200
+            engine.surfaceScrolled()
+        }
+        XCTAssertEqual(surface.sets.count, ChatScrollEngine.maximumPastBottomRepins)
+
+        // The next layout change re-arms the correction.
+        surface.layOut(contentHeight: 3700)
+        XCTAssertEqual(surface.contentOffsetY, 2900)
     }
 
     func testFollowingLeavesARubberBandPastTheBottomToTheFinger() {
