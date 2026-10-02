@@ -577,15 +577,18 @@ extension VoiceConversationControllerTests {
         return (supervisor, fake)
     }
 
+    @discardableResult
     private func waitFor(
         _ condition: () -> Bool,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) async {
+    ) async -> Bool {
         for _ in 0..<400 where !condition() {
             try? await Task.sleep(for: .milliseconds(5))
         }
-        if !condition() { XCTFail("Timed out waiting for the condition", file: file, line: line) }
+        if condition() { return true }
+        XCTFail("Timed out waiting for the condition", file: file, line: line)
+        return false
     }
 
     func testAThreadTurnIsTheChatsNextTurnNotANewSession() async {
@@ -846,6 +849,20 @@ extension VoiceConversationControllerTests {
 
         supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-new", storedSessionID: nil, title: "New")
         XCTAssertNotNil(supervisor.startThreadTurn(request: "status").jobID)
+        supervisor.detachLiveThread()
+    }
+
+    func testTheLastReplyFallbackNeverReadsAnotherChatsReply() async {
+        let (supervisor, _) = makeThreadSupervisor()
+        _ = supervisor.startThreadTurn(request: "check")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Chat A's reply.", reasoning: nil))
+        supervisor.detachLiveThread()
+
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-empty", storedSessionID: nil, title: "Empty")
+        let reply = await supervisor.lastThreadReply()
+
+        XCTAssertNil(reply)
         supervisor.detachLiveThread()
     }
 

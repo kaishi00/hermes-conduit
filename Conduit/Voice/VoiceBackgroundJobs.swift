@@ -463,7 +463,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
            !reply.isEmpty {
             return reply
         }
-        return jobs.last(where: { $0.isThreadTurn && $0.status == .finished && $0.result?.isEmpty == false })?.result
+        // Only this chat's own turns: a reply from an earlier call's chat
+        // must never be read out as this chat's.
+        guard let thread = liveThread else { return nil }
+        return jobs.last(where: { job in
+            job.isThreadTurn && job.status == .finished && job.result?.isEmpty == false
+                && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
+        })?.result
     }
 
     private func pumpThreadTurns() {
@@ -918,11 +924,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             changed = true
         }
         for id in settledThreadTurns {
-            guard let thread = threadTargets[id] else {
+            guard var thread = threadTargets[id] else {
                 update(id) { $0.status = .finished }
                 changed = true
                 continue
             }
+            // Read from the runtime the turn ran on: a resumed chat moved to a
+            // new one. The target itself keeps the chat's identity.
+            if let runtimeID = job(id)?.runtimeSessionID, !runtimeID.isEmpty { thread.runtimeSessionID = runtimeID }
             let reply = await backend.latestThreadReply(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
             guard generation == self.generation else { return }
             // Events may have settled it meanwhile; they carry the real reply.
