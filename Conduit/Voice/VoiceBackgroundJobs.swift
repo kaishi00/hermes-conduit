@@ -457,6 +457,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// still waiting their turn are dropped: nobody is on the call to hear
     /// them. A turn already sent keeps running in the chat, unannounced:
     /// its reply is there, and a later call shouldn't bring it up.
+    /// Attaches a new call to `thread`. Whatever an earlier call left
+    /// attached (one that failed rather than hung up) lets go first, so its
+    /// turns are never announced to this call.
+    func attachLiveThread(_ thread: VoiceThreadTarget?) {
+        detachLiveThread()
+        liveThread = thread
+    }
+
     func detachLiveThread() {
         liveThread = nil
         // Every turn of the ending call, settled ones too: none is read back
@@ -1137,7 +1145,11 @@ enum VoiceThreadRouting {
     /// mentioned along the way ("they hear the last reply was wrong").
     static let readVerbs = ["read", "repeat", "tell me", "let me hear", "play back"]
     static let politePrefixes = ["please ", "can you ", "could you ", "would you ", "hey, ", "ok, ", "okay, "]
-    static let cjkReadVerbs = ["朗读", "读一下", "读给我", "告诉我"]
+    /// CJK has no word breaks: the request is read only when it is just a
+    /// verb and the reply phrase ("朗读上一条回复"), not a sentence about it.
+    static let cjkReadVerbs = ["朗读", "读一下", "读给我听", "读给我", "读", "告诉我", "重复"]
+    static let cjkPolitePrefixes = ["请", "麻烦", "帮我"]
+    static let cjkTrailers = ["。", "！", "吧", "呢", "一下", "给我听", "!", "."]
 
     static func wantsBackgroundJob(_ request: String) -> Bool {
         let folded = fold(request)
@@ -1147,7 +1159,7 @@ enum VoiceThreadRouting {
     static func wantsLastReply(_ request: String) -> Bool {
         let folded = fold(request)
         guard lastReplyPhrases.contains(where: { contains(folded, phrase: $0) }) else { return false }
-        if cjkReadVerbs.contains(where: { folded.contains($0) }) { return true }
+        if wantsCJKLastReply(folded) { return true }
         var request = Substring(folded.trimmingCharacters(in: .whitespacesAndNewlines))
         while let prefix = politePrefixes.first(where: { request.hasPrefix($0) }) {
             request = request.dropFirst(prefix.count)
@@ -1157,6 +1169,21 @@ enum VoiceThreadRouting {
             let rest = request.dropFirst(verb.count)
             return rest.first.map { !($0.isLetter || $0.isNumber) } ?? true
         }
+    }
+
+    private static func wantsCJKLastReply(_ folded: String) -> Bool {
+        var request = Substring(folded.filter { !$0.isWhitespace })
+        while let prefix = cjkPolitePrefixes.first(where: { request.hasPrefix($0) }) {
+            request = request.dropFirst(prefix.count)
+        }
+        guard let verb = cjkReadVerbs.first(where: { request.hasPrefix($0) }) else { return false }
+        request = request.dropFirst(verb.count)
+        while let trailer = cjkTrailers.first(where: { request.hasSuffix($0) }) {
+            request = request.dropLast(trailer.count)
+        }
+        if request.hasPrefix("我") { request = request.dropFirst() }
+        if request.hasPrefix("hermes的") { request = request.dropFirst("hermes的".count) }
+        return lastReplyPhrases.contains { $0 == String(request) }
     }
 
     private static func fold(_ text: String) -> String {

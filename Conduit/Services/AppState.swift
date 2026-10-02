@@ -1514,7 +1514,7 @@ final class AppState: ObservableObject {
         if !geminiLiveController.isActive {
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
-            voiceBackgroundJobSupervisor.liveThread = thread
+            voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .geminiLive)
             Task { await geminiLiveController.start() }
         }
@@ -1767,7 +1767,7 @@ final class AppState: ObservableObject {
         if !gptLiveController.isActive {
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
-            voiceBackgroundJobSupervisor.liveThread = thread
+            voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .gptLive)
             Task { await gptLiveController.start() }
         }
@@ -2019,7 +2019,7 @@ final class AppState: ObservableObject {
         if !grokLiveController.isActive {
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
-            voiceBackgroundJobSupervisor.liveThread = thread
+            voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .grokLive)
             Task { await grokLiveController.start() }
         }
@@ -4067,8 +4067,10 @@ final class AppState: ObservableObject {
     /// The open chat's latest assistant reply.
     private func latestReplyInOpenChat(_ thread: VoiceThreadTarget) -> String? {
         guard isOpenChat(thread) else { return nil }
-        return messages.last { $0.role == .assistant && $0.tool == nil && !$0.content.isEmpty }?
-            .content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return messages.lazy
+            .filter { $0.role == .assistant && $0.tool == nil }
+            .map { $0.content.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .last { !$0.isEmpty }
     }
 
     /// Instructions for a call attached to a chat. Written for the live

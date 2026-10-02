@@ -773,6 +773,9 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(VoiceThreadRouting.wantsLastReply("tell me what Hermes said last"))
         XCTAssertTrue(VoiceThreadRouting.wantsLastReply("Can you read me the latest reply?"))
         XCTAssertTrue(VoiceThreadRouting.wantsLastReply("朗读上一条回复"))
+        XCTAssertTrue(VoiceThreadRouting.wantsLastReply("请告诉我最后一条回复。"))
+        XCTAssertFalse(VoiceThreadRouting.wantsLastReply("告诉我上一条回复是错的，帮我改一下"),
+                       "a sentence about the last reply goes to the chat")
         XCTAssertFalse(VoiceThreadRouting.wantsLastReply("the user says they hear the last reply was wrong, fix it"),
                        "a read verb mentioned along the way isn't a request to read")
         XCTAssertFalse(VoiceThreadRouting.wantsLastReply("readjust the code from the last reply"))
@@ -966,6 +969,19 @@ extension VoiceConversationControllerTests {
         supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-new", storedSessionID: nil, title: "Build")
         let reply = await supervisor.lastThreadReply()
         XCTAssertEqual(reply, "Resumed reply.")
+        supervisor.detachLiveThread()
+    }
+
+    func testANewCallAfterAFailedOneNeverHearsTheOldChatsTurn() async {
+        let (supervisor, _) = makeThreadSupervisor()
+        _ = supervisor.startThreadTurn(request: "deploy")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+
+        // The call failed without hanging up; a new one starts in another chat.
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-other", storedSessionID: nil, title: "Other"))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Deployed.", reasoning: nil))
+
+        XCTAssertNil(supervisor.takePendingNotice())
         supervisor.detachLiveThread()
     }
 
