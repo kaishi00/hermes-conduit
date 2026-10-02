@@ -3980,7 +3980,10 @@ final class AppState: ObservableObject {
         // another device) is waited for. A failed read fails the send rather
         // than risk steering it.
         let rows = try await client.activeSessions()
-        if rows.contains(where: { ($0.runtimeSessionId == target || thread.owns(sessionID: $0.runtimeSessionId)) && $0.isRunning }) {
+        if rows.contains(where: { row in
+            (row.runtimeSessionId == target || thread.owns(sessionID: row.runtimeSessionId)
+                || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
+        }) {
             throw VoiceThreadBusyError()
         }
         switch try await client.sendPrompt(target, text: text) {
@@ -4069,7 +4072,9 @@ final class AppState: ObservableObject {
     }
 
     /// Instructions for a call attached to a chat. Written for the live
-    /// model, not shown as UI copy, so not localized.
+    /// model, not shown as UI copy, so not localized. A snapshot taken when
+    /// the call starts: later replies reach the model through `ask_thread`'s
+    /// results and `read_last_reply`, not this block.
     func liveVoiceThreadInstructions(delegation: Bool) -> String {
         guard let thread = voiceBackgroundJobSupervisor.liveThread else { return "" }
         // The title is the user's text: kept to one line without quotes so it
