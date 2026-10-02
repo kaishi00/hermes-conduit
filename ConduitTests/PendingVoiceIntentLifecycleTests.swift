@@ -682,7 +682,7 @@ extension PendingVoiceIntentLifecycleTests {
         )
         XCTAssertEqual(
             PendingVoiceLaunchPolicy.readiness(for: intent, connection: connecting(), now: now.addingTimeInterval(11)),
-            .failed(message: PendingVoiceLaunchPolicy.expiredFailureMessage)
+            .failed(message: PendingVoiceLaunchPolicy.wakePhraseFailureMessage)
         )
     }
 

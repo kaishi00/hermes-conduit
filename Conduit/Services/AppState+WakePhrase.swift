@@ -58,7 +58,16 @@ extension AppState {
             self?.handleWakeDetection(binding)
         }
         wakeWordService.onFailure = { [weak self] message in
-            self?.wakeListeningFailure = message
+            guard let self else { return }
+            self.wakeListeningFailure = message
+            // The listener stopped on its own; the snapshot did not change,
+            // so retry once after a pause instead of waiting for one.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(10))
+                guard let self else { return }
+                self.lastAppliedWakeSnapshot = nil
+                self.scheduleWakeRefresh()
+            }
         }
         VoiceAudioSessionCoordinator.shared.onOwnersChanged = { [weak self] in
             self?.scheduleWakeRefresh()
@@ -91,10 +100,8 @@ extension AppState {
         guard snapshot != lastAppliedWakeSnapshot else { return }
         lastAppliedWakeSnapshot = snapshot
         wakeLifecycle.update(for: snapshot)
-        if snapshot.canArm {
-            let failure = wakeLifecycle.lastFailureReason
-            if wakeListeningFailure != failure { wakeListeningFailure = failure }
-        }
+        let failure = snapshot.canArm ? wakeLifecycle.lastFailureReason : nil
+        if wakeListeningFailure != failure { wakeListeningFailure = failure }
     }
 
     /// Synchronous: the microphone must stop before the app leaves the

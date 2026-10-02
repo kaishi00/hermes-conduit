@@ -189,7 +189,15 @@ final class AppleSpeechWakeWordService: WakeWordService {
         case .began:
             isInterrupted = true
             recoveryTask?.cancel()
-            recoveryTask = nil
+            // Watchdog: if the matching `.ended` never arrives, try once
+            // more; a failed restart then stops the listener cleanly.
+            recoveryTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(60))
+                guard let self, !Task.isCancelled, self.isArmed, self.isInterrupted else { return }
+                self.recoveryTask = nil
+                self.isInterrupted = false
+                self.scheduleAudioRecovery()
+            }
             cycleGeneration &+= 1
             cycleTask?.cancel()
             cycleTask = nil
@@ -199,6 +207,8 @@ final class AppleSpeechWakeWordService: WakeWordService {
             stopAudio()
         case .ended:
             isInterrupted = false
+            recoveryTask?.cancel()
+            recoveryTask = nil
             scheduleAudioRecovery()
         default:
             break

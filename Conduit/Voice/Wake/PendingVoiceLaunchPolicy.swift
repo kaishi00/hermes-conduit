@@ -167,7 +167,7 @@ enum PendingVoiceLaunchPolicy {
         now: Date
     ) -> Readiness {
         if let deadline = intent.externalLaunchDeadline, now >= deadline {
-            return .failed(message: expiredFailureMessage)
+            return .failed(message: intent.source == .wakePhrase ? wakePhraseFailureMessage : expiredFailureMessage)
         }
         switch connection.phase {
         case .connected:
