@@ -176,6 +176,18 @@ final class ChatScrollHostedTests: XCTestCase {
                         distance: abs((change.newValue?.y ?? 0) - (change.oldValue?.y ?? 0))
                     )
                 },
+                scrollView.observe(\.bounds, options: [.old, .new]) { [weak self] _, change in
+                    guard let self, change.oldValue != change.newValue else { return }
+                    self.record(
+                        String(
+                            format: "bounds y %.1f h %.1f -> y %.1f h %.1f",
+                            change.oldValue?.origin.y ?? .nan, change.oldValue?.height ?? .nan,
+                            change.newValue?.origin.y ?? .nan, change.newValue?.height ?? .nan
+                        ),
+                        isOffset: false,
+                        byEngine: false
+                    )
+                },
                 scrollView.observe(\.contentSize, options: [.old, .new]) { [weak self] _, change in
                     guard let self, change.oldValue != change.newValue else { return }
                     self.record(
@@ -230,6 +242,25 @@ final class ChatScrollHostedTests: XCTestCase {
         deinit {
             observations.forEach { $0.invalidate() }
         }
+    }
+
+    /// Geometry read straight from the scroll view (no KVO), with the
+    /// engine's view of it, for the CI log.
+    private func checkpoint(_ label: String, _ mounted: Mounted, _ recorder: ScrollRecorder) {
+        let view = mounted.scrollView
+        print(String(
+            format: "[ChatScrollHostedTests] %@: offset %.1f max %.1f content %.1f bounds %.1f insets %.1f/%.1f mode %@ layoutCallbacks %ld recorded %ld",
+            label,
+            view.contentOffset.y,
+            maxOffset(view),
+            view.contentSize.height,
+            view.bounds.height,
+            view.adjustedContentInset.top,
+            view.adjustedContentInset.bottom,
+            String(describing: mounted.engine.mode),
+            TranscriptPerf.layoutMetricsChangedCalls,
+            recorder.mark()
+        ))
     }
 
     /// Runs the run loop without forcing layout, as an idle screen would.
@@ -380,6 +411,7 @@ final class ChatScrollHostedTests: XCTestCase {
         }
         appState.streamingText = String(repeating: "The final answer streams in with several lines. ", count: 30)
         settle(mounted.host.view, seconds: 0.3)
+        checkpoint("completion before", mounted, recorder)
         assertAtLatest(mounted, "the live turn is followed")
 
         let mark = recorder.mark()
@@ -393,7 +425,9 @@ final class ChatScrollHostedTests: XCTestCase {
             timestamp: "2026-01-01T00:00:00Z"
         ))
         appState.streamingText = ""
+        checkpoint("completion published", mounted, recorder)
         idle(seconds: 0.5)
+        checkpoint("completion after", mounted, recorder)
         print("[ChatScrollHostedTests] completion trace:\n\(recorder.dump(since: mark))")
         assertAtLatest(mounted, "a completed turn leaves no empty space under it\n\(recorder.dump(since: mark))")
         XCTAssertTrue(mounted.engine.isFollowingLatest)
@@ -412,8 +446,10 @@ final class ChatScrollHostedTests: XCTestCase {
         idle(seconds: 0.6)
         assertAtLatest(mounted, "following after the burst\n\(recorder.dump())")
 
+        checkpoint("idle before", mounted, recorder)
         let mark = recorder.mark()
         idle(seconds: 1.5)
+        checkpoint("idle after", mounted, recorder)
         // A sub-point settle is not a bounce; #302 moved 100-250 pt.
         let moves = recorder.offsetChanges(since: mark).filter { $0.distance > 1 }
         print("[ChatScrollHostedTests] idle trace:\n\(recorder.dump())")
