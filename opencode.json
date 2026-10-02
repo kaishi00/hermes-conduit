@@ -13,6 +13,19 @@
           "name": "DeepSeek V4.1 Flash"
         }
       }
+    },
+    "commandcode": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Command Code",
+      "options": {
+        "baseURL": "https://api.commandcode.ai/provider/v1",
+        "apiKey": "{env:COMMANDCODE_API_KEY}"
+      },
+      "models": {
+        "xiaomi/mimo-v2.6-flash": {
+          "name": "Xiaomi MiMo V2.6 Flash"
+        }
+      }
     }
   }
 }
