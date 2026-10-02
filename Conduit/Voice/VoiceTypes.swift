@@ -572,6 +572,11 @@ protocol AudioCaptureService: AnyObject {
     func startListening(includePreRoll: Bool) throws
     func beginBargeInMonitoring() throws
     func pause()
+    /// Silences capture for assistant playback without releasing the
+    /// microphone, so listening can reopen while Conduit is in the
+    /// background. Starting, resuming, pausing, or stopping capture ends it.
+    func holdForPlayback()
+    var isHeldForPlayback: Bool { get }
     func resume() throws
     func finishUtterance() throws -> VoiceCapturedAudio
     func stop()

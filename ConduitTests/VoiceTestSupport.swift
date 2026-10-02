@@ -289,7 +289,8 @@ final class MockCapture: AudioCaptureService {
     /// (start/pause/resume/stop) so generation-tagged events can be tested.
     var captureGeneration: UInt64 = 0
     private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
-    private let permissionGranted: Bool
+    /// Mutable so a test can revoke permission between turns.
+    var permissionGranted: Bool
     private let startError: Error?
     /// Latches on the first successful `startListening` and is never cleared.
     /// It answers "did a capture window ever open", NOT production's
@@ -301,6 +302,10 @@ final class MockCapture: AudioCaptureService {
     private var mockPaused = false
     private(set) var lastStartIncludePreRoll: Bool?
     private(set) var pauseCount = 0
+    /// Playback holds keep the running capture (no generation bump), like
+    /// the real service; any later lifecycle call ends the hold.
+    private(set) var holdCount = 0
+    private(set) var isHeldForPlayback = false
     private(set) var resumeCount = 0
     private(set) var stopCount = 0
     private(set) var finishUtteranceCount = 0
@@ -330,6 +335,7 @@ final class MockCapture: AudioCaptureService {
         didStart = true
         lastStartIncludePreRoll = includePreRoll
         mockPaused = false
+        isHeldForPlayback = false
         captureGeneration &+= 1
         starts.increment()
     }
@@ -340,7 +346,13 @@ final class MockCapture: AudioCaptureService {
         await starts.waitUntil(count, timeout: timeout)
     }
     func beginBargeInMonitoring() throws { didBeginMonitoring = true }
+    func holdForPlayback() {
+        guard !mockPaused, !isHeldForPlayback else { return }
+        holdCount += 1
+        isHeldForPlayback = true
+    }
     func pause() {
+        isHeldForPlayback = false
         didPause = true
         // The real service is idempotent (guard !paused); keep counts honest.
         guard !mockPaused else { return }
@@ -350,6 +362,7 @@ final class MockCapture: AudioCaptureService {
     }
     func resume() throws {
         mockPaused = false
+        isHeldForPlayback = false
         resumeCount += 1
         captureGeneration &+= 1
     }
@@ -359,6 +372,7 @@ final class MockCapture: AudioCaptureService {
     }
     func stop() {
         mockPaused = false
+        isHeldForPlayback = false
         stopCount += 1
         captureGeneration &+= 1
     }
