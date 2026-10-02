@@ -147,5 +147,7 @@ extension HermesClientTests {
         XCTAssertTrue(state.isRefusedMessage("hello"))
         XCTAssertFalse(state.isRefusedMessage("something else"))
         XCTAssertFalse(takeoverState("").isRefusedMessage(""))
+        XCTAssertTrue(takeoverState("").isRefusedMessage(" ", hasAttachments: true))
+        XCTAssertFalse(takeoverState("").isRefusedMessage("new text", hasAttachments: true))
     }
 }

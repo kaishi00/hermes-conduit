@@ -598,7 +598,7 @@ struct ComposerBar: View {
         guard let takeover = appState.chatTakeover, takeover.phase == .ready,
               takeover.sessionID == appState.activeSessionId,
               case .send = action,
-              takeover.isRefusedMessage(text) else { return }
+              takeover.isRefusedMessage(text, hasAttachments: !attachments.isEmpty) else { return }
         appState.dismissChatTakeover()
         submit()
     }

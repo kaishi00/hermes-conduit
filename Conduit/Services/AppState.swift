@@ -14706,7 +14706,8 @@ final class AppState: ObservableObject {
         profile: String,
         pollInterval: Duration = chatTakeoverPollInterval
     ) async -> ChatTakeoverState.Phase? {
-        let deadline = Date().addingTimeInterval(chatTakeoverWaitLimit)
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(chatTakeoverWaitLimit))
         var transientFailures = 0
         while !Task.isCancelled {
             do {
@@ -14717,7 +14718,7 @@ final class AppState: ObservableObject {
                     return .heldHere
                 case .busy:
                     transientFailures = 0
-                    guard Date() < deadline else {
+                    guard clock.now < deadline else {
                         return .failed(AppLocalization.string(
                             "\(state.ownerName) is still replying in this chat. Try again when it finishes."
                         ))
@@ -14728,7 +14729,7 @@ final class AppState: ObservableObject {
                 transientFailures += 1
                 guard isTransientChatTakeoverFailure(error),
                       transientFailures < chatTakeoverTransientRetryLimit,
-                      Date() < deadline else {
+                      clock.now < deadline else {
                     if case ChatTakeoverError.pluginMissing = error { return .unavailable(chatTakeoverFailureMessage(error)) }
                     if case ChatTakeoverError.unsupported = error { return .unavailable(chatTakeoverFailureMessage(error)) }
                     if case ChatTakeoverError.malformed = error { return .unavailable(chatTakeoverFailureMessage(error)) }
@@ -14747,6 +14748,8 @@ final class AppState: ObservableObject {
         case DashboardTicketBridgeError.notReady:
             return true
         case DashboardTicketBridgeError.http(let status, _):
+            // The client already maps 501 to `.unsupported`; excluded here too
+            // so the predicate stands on its own.
             return status == 0 || status == 408 || status == 429 || (status >= 500 && status != 501)
         case is URLError:
             return true
@@ -14877,7 +14880,9 @@ final class AppState: ObservableObject {
             if chatTakeover?.sessionID == sessionId {
                 dismissChatTakeover()
             }
-            chatTakeoverAutomaticSessionID = nil
+            if chatTakeoverAutomaticSessionID == sessionId {
+                chatTakeoverAutomaticSessionID = nil
+            }
             if isCurrentComposerSubmission(submissionContext) {
                 if outcome.isBusySubmission {
                     // Hermes applied its busy policy, which proves THIS
@@ -15129,7 +15134,9 @@ final class AppState: ObservableObject {
                 return false
             }
             if isCurrentComposerSubmission(submissionContext) {
-                if let refusal = error as? RpcError, refusal.isSessionNotOwned {
+                // A spoken turn keeps the plain error: the takeover notice
+                // lives in the composer, which a live voice call doesn't show.
+                if let refusal = error as? RpcError, refusal.isSessionNotOwned, surface != Self.spokenPromptSurface {
                     noteChatOwnedElsewhere(
                         refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs, refusedText: text
                     )

@@ -141,8 +141,11 @@ final class ChatTakeoverClient {
 
 extension ChatTakeoverState {
     /// Whether `draft` is the refused message, ignoring surrounding whitespace.
-    func isRefusedMessage(_ draft: String) -> Bool {
+    /// An attachment-only send matches an empty draft that still has attachments.
+    func isRefusedMessage(_ draft: String, hasAttachments: Bool = false) -> Bool {
         let refused = refusedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !refused.isEmpty && refused == draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let draft = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if refused.isEmpty { return draft.isEmpty && hasAttachments }
+        return refused == draft
     }
 }
