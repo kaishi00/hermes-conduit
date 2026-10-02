@@ -337,6 +337,11 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
             .stopDictation
         )
         XCTAssertEqual(
+            ComposerDictation.release(heldPastThreshold: true, isCapturing: false, canOpenVoice: true),
+            .nothing,
+            "a hold never opens Voice on the lift"
+        )
+        XCTAssertEqual(
             ComposerDictation.release(heldPastThreshold: false, isCapturing: true, canOpenVoice: true),
             .stopDictation,
             "a tap ends a VoiceOver dictation instead of opening Voice over it"

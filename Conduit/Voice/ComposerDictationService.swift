@@ -271,8 +271,11 @@ enum ComposerDictation {
     /// A short press stops a dictation that is still listening (the
     /// VoiceOver Dictate action has no finger to lift) and otherwise opens
     /// Voice.
+    /// A hold that never captured (it opened Voice, or dictation is still
+    /// starting) does nothing more: the start sees the lift and stops.
     static func release(heldPastThreshold: Bool, isCapturing: Bool, canOpenVoice: Bool) -> Release {
-        if heldPastThreshold || isCapturing { return .stopDictation }
+        if isCapturing { return .stopDictation }
+        if heldPastThreshold { return .nothing }
         return canOpenVoice ? .openVoice : .nothing
     }
 

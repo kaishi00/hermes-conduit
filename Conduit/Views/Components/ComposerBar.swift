@@ -59,6 +59,9 @@ struct ComposerBar: View {
     /// The pending hold on the mic: fires after the threshold unless the
     /// finger lifts first, which makes the press a tap.
     @State private var micHoldTask: Task<Void, Never>?
+    /// True while a finger is on the mic. Unlike `onEnded`, it also resets
+    /// when the touch is cancelled (an alert, the app leaving).
+    @GestureState private var isMicPressed = false
     /// The one-time "Tap for Voice · Hold to dictate" tip stays until a
     /// dictation has produced text.
     @AppStorage(ComposerDictation.tipDoneKey) private var dictationTipDone = false
@@ -977,6 +980,17 @@ struct ComposerBar: View {
                 interactive: canOpenVoice || canDictate
             )
             .gesture(micPress())
+            .onChange(of: isMicPressed) { _, pressed in
+                guard !pressed else { return }
+                // On the next turn, so a normal lift's onEnded has already
+                // run; anything still pending is a cancelled touch, which
+                // ends like a lift but never counts as a tap.
+                Task { @MainActor in
+                    guard micHoldTask != nil || isHoldingMic else { return }
+                    endMicPress()
+                    dictation.stop()
+                }
+            }
             .overlay(alignment: .topTrailing) { dictationTip(canDictate: canDictate) }
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
@@ -1031,16 +1045,18 @@ struct ComposerBar: View {
     /// (A long press exclusively before a tap left the tap unrecognized.)
     private func micPress() -> some Gesture {
         DragGesture(minimumDistance: 0)
+            .updating($isMicPressed) { _, pressed, _ in pressed = true }
             .onChanged { _ in
                 guard micHoldTask == nil, !isHoldingMic else { return }
                 micHoldTask = Task { @MainActor in
                     try? await Task.sleep(for: .seconds(ComposerDictation.holdDuration))
                     guard !Task.isCancelled else { return }
                     micHoldTask = nil
-                    isHoldingMic = true
                     if canDictateFromComposer {
+                        isHoldingMic = true
                         beginDictation(stopsWhenReleased: true)
                     } else if canOpenVoiceFromComposer {
+                        isHoldingMic = true
                         openVoiceFromComposer()
                     }
                 }
