@@ -71,7 +71,8 @@ final class GPTLiveDelegationBridge {
         // background work is a job, and anything else is the chat's next turn.
         // Routed on the delegation's own words, not the conversation added
         // for context (which would end with whatever was said last).
-        let ownWords = task.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? task
+        let routingWords = instructions.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? instructions
+        let ownWords = VoiceThreadRouting.removingQuickMarker(routingWords)
         if supervisor.liveThread != nil, VoiceThreadRouting.wantsLastReply(ownWords) {
             if readBackIsRecent {
                 return [.delegationReply(delegationID: id, text: Self.readBackAlreadySent, channel: .commentary)]
@@ -85,7 +86,7 @@ final class GPTLiveDelegationBridge {
             let text = reply.map(Self.lastReplyText) ?? Self.relay("Hermes hasn't replied in this chat yet.")
             return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
         }
-        if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(instructions) {
+        if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(routingWords) {
             let sent = supervisor.startThreadTurn(request: instructions)
             guard let jobID = sent.jobID else {
                 return [.delegationReply(delegationID: id, text: Self.relay(sent.refusal ?? ""), channel: .speakable)]

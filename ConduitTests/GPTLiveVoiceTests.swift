@@ -886,6 +886,24 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGPTLiveChatTurnIsNotMadeAJobByEarlierWordsInItsContext() async {
+        let (controller, session, supervisor, fake) = makeGPTController(clock: Date.init)
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Check the weather in the background."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+        XCTAssertEqual(fake.submissions.count, 1)
+        session.onEvent?(.turnDone(role: "user", transcript: "What do you think of the plan?"))
+        session.onEvent?(.delegation(id: "del_2", text: ""))
+        await settle(40)
+
+        XCTAssertEqual(fake.submissions.count, 1, "the earlier request in the context isn't this one's")
+        XCTAssertEqual(fake.threadSubmissions.count, 1)
+        controller.stop()
+    }
+
     func testGPTLiveNeverTalksOverTheUser() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, supervisor, _) = makeGPTController(clock: { current })
