@@ -34,11 +34,70 @@ jobs:
         with:
           persist-credentials: false
       - name: Install opencode
+        timeout-minutes: 8
         run: |
-          if [ ! -d "$HOME/.opencode/bin" ]; then
-            curl -fsSL https://opencode.ai/install | bash
+          opencode_version=1.18.34
+          opencode_bin="$HOME/.opencode/bin/opencode"
+          opencode_bin_dir="$HOME/.opencode/bin"
+
+          opencode_version_matches=false
+          if [ -x "$opencode_bin" ] \
+            && installed_version=$("$opencode_bin" --version 2>/dev/null) \
+            && [ "$installed_version" = "$opencode_version" ]; then
+            opencode_version_matches=true
+          elif command -v opencode >/dev/null 2>&1; then
+            existing_opencode=$(command -v opencode)
+            if [ -x "$existing_opencode" ] \
+              && [ "$existing_opencode" != "$opencode_bin" ] \
+              && installed_version=$("$existing_opencode" --version 2>/dev/null) \
+              && [ "$installed_version" = "$opencode_version" ]; then
+              opencode_bin="$existing_opencode"
+              opencode_bin_dir="${existing_opencode%/*}"
+              opencode_version_matches=true
+            fi
           fi
-          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+          if [ "$opencode_version_matches" != true ]; then
+            installer="$RUNNER_TEMP/opencode-install.sh"
+            curl -fsSL \
+              --retry 3 \
+              --retry-all-errors \
+              --retry-delay 2 \
+              --connect-timeout 15 \
+              --max-time 120 \
+              "https://raw.githubusercontent.com/anomalyco/opencode/v${opencode_version}/install" \
+              -o "$installer"
+
+            installed=false
+            for attempt in 1 2 3; do
+              if GITHUB_ACTIONS=false bash "$installer" --version "$opencode_version" --no-modify-path \
+                && [ -x "$opencode_bin" ] \
+                && installed_version=$("$opencode_bin" --version 2>/dev/null) \
+                && [ "$installed_version" = "$opencode_version" ]; then
+                installed=true
+                break
+              fi
+
+              echo "opencode $opencode_version install attempt $attempt/3 failed" >&2
+              if [ "$attempt" -lt 3 ]; then
+                sleep "$((attempt * 5))"
+              fi
+            done
+
+            if [ "$installed" != true ]; then
+              echo "Failed to install opencode $opencode_version after 3 attempts" >&2
+              exit 1
+            fi
+          fi
+
+          if [ ! -x "$opencode_bin" ] \
+            || ! installed_version=$("$opencode_bin" --version 2>/dev/null) \
+            || [ "$installed_version" != "$opencode_version" ]; then
+            echo "opencode $opencode_version is not available at $opencode_bin" >&2
+            exit 1
+          fi
+
+          echo "$opencode_bin_dir" >> "$GITHUB_PATH"
       - name: Run opencode review
         run: GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
         env:
