@@ -2885,6 +2885,59 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(confirmation?.content, "Follow-up")
     }
 
+    private func runStaleIdleSteer(
+        seeded: [ChatMessage],
+        duringSteer: @escaping @MainActor (AppState) -> Void = { _ in }
+    ) async -> AppState {
+        let active = session("stored-a")
+        var appStateRef: AppState?
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in .accepted },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                },
+                steer: { _, _, _ in
+                    if let appStateRef { duringSteer(appStateRef) }
+                }
+            )
+        )
+        appStateRef = harness.appState
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.messages = seeded
+        harness.appState.handleScenePhase(.background)
+
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+        XCTAssertTrue(submitted)
+        return harness.appState
+    }
+
+    private func persistedSteer(_ id: String, _ text: String) -> ChatMessage {
+        ChatMessage(id: id, role: .user, content: text, timestamp: "", displayKind: ChatMessage.steerDisplayKind)
+    }
+
+    func testRepeatingAnEarlierSteerStillGetsItsOwnConfirmation() async {
+        let appState = await runStaleIdleSteer(seeded: [persistedSteer("90", "Follow-up")])
+
+        XCTAssertEqual(appState.messages.count, 2)
+        XCTAssertEqual(appState.messages.last?.isSteer, true)
+        XCTAssertTrue(appState.messages.last?.id.hasPrefix("local-steer-") == true)
+    }
+
+    func testSteerPersistedDuringTheRPCIsNotConfirmedTwice() async {
+        let appState = await runStaleIdleSteer(seeded: []) { appState in
+            appState.messages.append(self.persistedSteer("91", "Follow-up"))
+        }
+
+        XCTAssertEqual(appState.messages.map(\.id), ["91"])
+    }
+
     func testFailedSteerAddsNoTranscriptConfirmation() async {
         let active = session("stored-a")
         struct SteerFailure: Error {}

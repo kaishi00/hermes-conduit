@@ -3594,6 +3594,12 @@ enum MessageNormalizer {
         return collapsed
     }
 
+    /// A user prompt's visible text once `@image:` tokens are projected into
+    /// attachments — what a persisted user row's `content` holds.
+    static func visibleUserText(_ source: String) -> String {
+        splitUserImageReferences(source, messageId: "").content
+    }
+
     /// Desktop persists uploaded images as `@image:/gateway/path/file.ext`
     /// tokens in the user prompt. Project those tokens into Conduit's regular
     /// attachment model so resumed cross-client sessions keep their previews.

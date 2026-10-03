@@ -17150,6 +17150,7 @@ final class AppState: ObservableObject {
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
         let outboundText = mentionAnnotatedOutboundText(text)
+        let persistedTwinsBefore = persistedSteerIDs(matching: outboundText)
         do {
             if let steer = chatResumeLifecycleOperations.steer {
                 try await steer(client, sessionId, outboundText)
@@ -17179,7 +17180,7 @@ final class AppState: ObservableObject {
                 // persists it as a `display_kind: "steer"` user row only
                 // when the agent next reaches a tool boundary, so without
                 // this the text just vanished from the composer.
-                appendLocalSteerMessage(outboundText)
+                appendLocalSteerMessage(outboundText, persistedTwinsBefore: persistedTwinsBefore)
             }
             // A successful steer is accepted by Hermes even if the user
             // switched sessions while the RPC was suspended. Apart from the
@@ -17313,28 +17314,31 @@ final class AppState: ObservableObject {
         guard let index = messages.firstIndex(where: { $0.id == id }),
               messages[index].role == .user,
               messages[index].attachments?.isEmpty ?? true else { return }
-        let row = messages[index]
-        messages[index] = ChatMessage(
-            id: row.id,
-            role: .user,
-            content: row.content,
-            rawContent: row.rawContent,
-            timestamp: row.timestamp,
-            author: row.author,
-            displayKind: ChatMessage.steerDisplayKind
-        )
+        messages[index].displayKind = ChatMessage.steerDisplayKind
+        // Match the persisted twin's visible text (image tokens moved out).
+        messages[index].content = MessageNormalizer.visibleUserText(messages[index].content)
         cacheMessagePresentation()
     }
 
-    private func appendLocalSteerMessage(_ text: String) {
-        // A reconcile while the steer RPC was suspended may already have
-        // adopted Hermes' persisted steer row; don't confirm it twice.
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if messages.contains(where: {
+    /// Ids of durable steer rows on screen whose visible text matches `text`.
+    private func persistedSteerIDs(matching text: String) -> Set<String> {
+        let visible = MessageNormalizer.visibleUserText(text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return Set(messages.lazy.filter {
             $0.isSteer
                 && !$0.id.hasPrefix("local-")
-                && $0.content.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed
-        }) {
+                && $0.content.trimmingCharacters(in: .whitespacesAndNewlines) == visible
+        }.map(\.id))
+    }
+
+    private func appendLocalSteerMessage(_ text: String, persistedTwinsBefore: Set<String>) {
+        // A reconcile while the steer RPC was suspended may already have
+        // adopted THIS steer's persisted row; don't confirm it twice. Only a
+        // matching row that appeared during the RPC counts, so repeating an
+        // earlier steer word for word still gets its own confirmation. (The
+        // RPC returns no row identity, so an identical steer persisted from
+        // another surface in that window also suppresses it.)
+        if !persistedSteerIDs(matching: text).isSubset(of: persistedTwinsBefore) {
             return
         }
         // Same ordering rule as a redirect correction: the steer sits above
@@ -17343,7 +17347,9 @@ final class AppState: ObservableObject {
         messages.append(ChatMessage(
             id: "local-steer-\(UUID().uuidString)",
             role: .user,
-            content: text,
+            // The persisted row's visible text (image tokens moved out), so
+            // the local row and its persisted twin compare equal.
+            content: MessageNormalizer.visibleUserText(text),
             rawContent: nil,
             timestamp: Self.localTimestamp(),
             author: nil,
