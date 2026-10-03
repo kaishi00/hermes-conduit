@@ -1266,7 +1266,10 @@ enum VoiceThreadRouting {
 
     /// Words that may follow the reply phrase in a plain read request
     /// ("read the last message from Hermes out loud").
-    static let lastReplyTrailers = repeatTrailers.union(["aloud", "now", "from", "hermes"])
+    static let lastReplyTrailers = repeatTrailers.union([
+        "aloud", "now", "from", "hermes",
+        "that", "sent", "wrote", "gave", "said", "posted", "you", "just",
+    ])
 
     /// "Read the last message" is a read; "read the last message from Sam
     /// and draft a reply" or "say the last message in Spanish" is work.

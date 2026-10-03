@@ -813,6 +813,27 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGPTLiveReadsTheLastReplyWhenTheUserAsksAndRetriesOneThatWasNeverHeard() async {
+        let (controller, session, supervisor, fake) = makeGPTController(clock: Date.init)
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        fake.threadReply = "The full reply."
+        await controller.start()
+        session.becomeReady()
+
+        // The append fails (the call isn't ready): asking again still reads it.
+        session.failAppends = true
+        session.onEvent?(.turnDone(role: "user", transcript: "Say that again."))
+        await settle(40)
+        XCTAssertTrue(session.speakable.isEmpty)
+        session.failAppends = false
+        session.onEvent?(.turnDone(role: "user", transcript: "Say that again, please."))
+        await settle(40)
+        XCTAssertEqual(session.speakable.count, 1)
+        XCTAssertTrue(session.speakable[0].text.contains("The full reply."))
+        XCTAssertEqual(fake.threadSubmissions.count, 0, "reading asks Hermes nothing")
+        controller.stop()
+    }
+
     func testGPTLiveNeverTalksOverTheUser() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, supervisor, _) = makeGPTController(clock: { current })

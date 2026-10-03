@@ -892,7 +892,7 @@ extension VoiceConversationControllerTests {
             "read the last message", "read the last uh message", "Read me the last, um, reply",
             "say it again word for word", "okay repeat what you just said", "read it back to me",
             "could you please read the full answer", "read the last uh? message",
-            "read the last message from Hermes out loud", "read the last,uh message",
+            "read the last message from Hermes out loud", "read the last,uh message", "read the last reply that Hermes sent",
         ] {
             XCTAssertTrue(VoiceThreadRouting.wantsLastReply(request), request)
         }
