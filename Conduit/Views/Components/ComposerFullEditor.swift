@@ -54,8 +54,8 @@ struct ComposerFullEditor<ActionButton: View>: View {
                     .focused($isFocused)
                     .disabled(!enabled)
                     .onChange(of: text) { _, _ in
-                        // Only typing reaches here while the sheet has focus;
-                        // dictation keeps writing through the same binding.
+                        // Dictation ends when the sheet opens, so a change
+                        // while it has focus is typing.
                         if isFocused { onUserEdit() }
                     }
             }

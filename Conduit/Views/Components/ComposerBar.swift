@@ -474,6 +474,9 @@ struct ComposerBar: View {
             if showsFullEditorButton {
                 Button {
                     Haptics.selection()
+                    // The sheet's editor can't tell dictated words from typed
+                    // ones, so dictation ends here with the words so far.
+                    dictation.cancel()
                     isFocused = false
                     isShowingSlashSuggestions = false
                     isShowingFullEditor = true
