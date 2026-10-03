@@ -1256,11 +1256,34 @@ enum VoiceThreadRouting {
         while let prefix = politePrefixes.first(where: { request.hasPrefix($0) }) {
             request = request.dropFirst(prefix.count)
         }
-        return readVerbs.contains { verb in
+        let ledByReadVerb = readVerbs.contains { verb in
             guard request.hasPrefix(verb) else { return false }
             let rest = request.dropFirst(verb.count)
             return rest.first.map { !($0.isLetter || $0.isNumber) } ?? true
         }
+        return ledByReadVerb && endsWithTheReply(String(request))
+    }
+
+    /// Words that may follow the reply phrase in a plain read request
+    /// ("read the last message from Hermes out loud").
+    static let lastReplyTrailers = repeatTrailers.union(["aloud", "now", "from", "hermes", "the", "this", "chat", "here"])
+
+    /// "Read the last message" is a read; "read the last message from Sam
+    /// and draft a reply" or "say the last message in Spanish" is work.
+    private static func endsWithTheReply(_ request: String) -> Bool {
+        let words = request.split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") }).map(String.init)
+        var phraseEnd: Int?
+        for phrase in lastReplyPhrases {
+            let phraseWords = phrase.split(separator: " ").map(String.init)
+            guard !phraseWords.isEmpty, words.count >= phraseWords.count else { continue }
+            for start in stride(from: words.count - phraseWords.count, through: 0, by: -1)
+            where Array(words[start..<(start + phraseWords.count)]) == phraseWords {
+                phraseEnd = max(phraseEnd ?? 0, start + phraseWords.count)
+                break
+            }
+        }
+        guard let phraseEnd else { return false }
+        return words[phraseEnd...].allSatisfy { lastReplyTrailers.contains($0) }
     }
 
     private static func wantsRepeat(_ folded: String) -> Bool {
@@ -1280,7 +1303,7 @@ enum VoiceThreadRouting {
     /// Drops hesitation words so they don't break a phrase apart.
     private static func withoutFillers(_ folded: String) -> String {
         folded.split(separator: " ", omittingEmptySubsequences: true)
-            .filter { !fillers.contains($0.trimmingCharacters(in: CharacterSet(charactersIn: "."))) }
+            .filter { !fillers.contains($0.trimmingCharacters(in: .punctuationCharacters)) }
             .joined(separator: " ")
     }
 

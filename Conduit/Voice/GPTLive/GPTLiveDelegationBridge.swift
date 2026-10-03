@@ -73,6 +73,8 @@ final class GPTLiveDelegationBridge {
             lastReadBackAt = now()
             let reply = await supervisor.lastThreadReply()
             guard callGeneration == call, !isEnding else { return [] }
+            // Nothing read yet: asking again isn't a duplicate.
+            if reply == nil { lastReadBackAt = nil }
             let text = reply.map(Self.lastReplyText) ?? Self.relay("Hermes hasn't replied in this chat yet.")
             return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
         }
@@ -133,13 +135,21 @@ final class GPTLiveDelegationBridge {
         let call = callGeneration
         let reply = await supervisor.lastThreadReply()
         guard callGeneration == call, !isEnding else { return [] }
+        if reply == nil { lastReadBackAt = nil }
         let text = reply.map(Self.lastReplyText) ?? Self.relay("Hermes hasn't replied in this chat yet.")
         return [.sessionContext(text: text, channel: .speakable, whenIdle: false, jobID: nil)]
     }
 
+    /// The read-back never reached the model (the call wasn't ready): a
+    /// retry must go out.
+    func readBackNotDelivered() {
+        lastReadBackAt = nil
+    }
+
     private var readBackIsRecent: Bool {
         guard let lastReadBackAt else { return false }
-        return now().timeIntervalSince(lastReadBackAt) < Self.readBackWindow
+        let elapsed = now().timeIntervalSince(lastReadBackAt)
+        return elapsed >= 0 && elapsed < Self.readBackWindow
     }
 
     /// Not UI copy.
