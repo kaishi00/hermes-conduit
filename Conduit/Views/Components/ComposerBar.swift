@@ -670,6 +670,7 @@ struct ComposerBar: View {
                         canRemove: appState.composerIsEnabled
                     ) {
                         attachments.removeAll { $0.id == attachment.id }
+                        Self.discardStagedFile(attachment)
                     }
                 }
             }
@@ -1302,9 +1303,14 @@ struct ComposerBar: View {
         Task {
             var oversized: [String] = []
             var failed: [String] = []
+            var stagedAny = false
             for (index, item) in items.enumerated() {
                 guard shouldAcceptPhotoPickerCompletion(openedIn: origin) else { break }
-                let outcome = await Self.stagePickedItem(item, ordinal: index + 1, limitMegabytes: limitMegabytes)
+                // File copies and JPEG re-encodes stay off the main actor;
+                // only the strip update comes back here.
+                let outcome = await Task.detached(priority: .userInitiated) {
+                    await Self.stagePickedItem(item, ordinal: index + 1, limitMegabytes: limitMegabytes)
+                }.value
                 guard shouldAcceptPhotoPickerCompletion(openedIn: origin) else {
                     if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
                     break
@@ -1312,13 +1318,14 @@ struct ComposerBar: View {
                 switch outcome {
                 case .staged(let attachment):
                     attachments.append(attachment)
-                    Haptics.light()
+                    stagedAny = true
                 case .tooLarge(let name):
                     oversized.append(name)
                 case .failed(let name):
                     failed.append(name)
                 }
             }
+            if stagedAny { Haptics.light() }
             if shouldAcceptPhotoPickerCompletion(openedIn: origin) {
                 reportImportProblems(oversized: oversized, failed: failed, limitMegabytes: limitMegabytes)
             }
@@ -1338,7 +1345,7 @@ struct ComposerBar: View {
     /// Copies one picked item into the staging folder under its real name
     /// and type. Videos stay files end to end; images in a format model
     /// providers can't read (HEIC...) are re-encoded as JPEG.
-    private static func stagePickedItem(_ item: PhotosPickerItem, ordinal: Int, limitMegabytes: Int) async -> StagedImport {
+    nonisolated private static func stagePickedItem(_ item: PhotosPickerItem, ordinal: Int, limitMegabytes: Int) async -> StagedImport {
         let pickedType = item.supportedContentTypes.first
         let fallbackName = AttachmentTypePolicy.filename(suggested: nil, type: pickedType, ordinal: ordinal)
         if let file = try? await item.loadTransferable(type: PickedMediaFile.self) {
@@ -1346,8 +1353,10 @@ struct ComposerBar: View {
             let name = AttachmentTypePolicy.filename(suggested: file.originalName, type: type, ordinal: ordinal)
             return finishStaging(fileAt: file.url, name: name, type: type, limitMegabytes: limitMegabytes)
         }
-        // Some items only hand over their bytes.
-        guard let data = try? await item.loadTransferable(type: Data.self), !data.isEmpty else {
+        // Some images only hand over their bytes. Videos never take this
+        // path: it would hold the whole file in memory.
+        guard pickedType?.conforms(to: .image) == true,
+              let data = try? await item.loadTransferable(type: Data.self), !data.isEmpty else {
             return .failed(fallbackName)
         }
         do {
@@ -1359,21 +1368,27 @@ struct ComposerBar: View {
         }
     }
 
-    private static func finishStaging(fileAt url: URL, name: String, type: UTType?, limitMegabytes: Int) -> StagedImport {
+    nonisolated private static func finishStaging(fileAt url: URL, name: String, type: UTType?, limitMegabytes: Int) -> StagedImport {
         var url = url
         var name = name
         var type = type
+        // Checked on the original first, so an oversized file is never
+        // decoded; a re-encoded image is checked again below.
+        if let size = AttachmentSizeLimit.fileSize(at: url),
+           !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
+            try? FileManager.default.removeItem(at: url)
+            return .tooLarge(name)
+        }
         if AttachmentTypePolicy.needsJPEGTranscode(type) {
-            guard let data = try? Data(contentsOf: url),
-                  let jpeg = UIImage(data: data)?.jpegData(compressionQuality: 0.9),
-                  let jpegURL = try? AttachmentStaging.destination(for: AttachmentTypePolicy.jpegFilename(for: name)),
-                  (try? jpeg.write(to: jpegURL, options: .atomic)) != nil else {
+            let jpegName = AttachmentTypePolicy.jpegFilename(for: name)
+            guard let jpegURL = try? AttachmentStaging.destination(for: jpegName),
+                  AttachmentStaging.writeJPEG(from: url, to: jpegURL) else {
                 try? FileManager.default.removeItem(at: url)
                 return .failed(name)
             }
             try? FileManager.default.removeItem(at: url)
             url = jpegURL
-            name = AttachmentTypePolicy.jpegFilename(for: name)
+            name = jpegName
             type = .jpeg
         }
         let size = AttachmentSizeLimit.fileSize(at: url) ?? 0
@@ -1394,7 +1409,7 @@ struct ComposerBar: View {
         ))
     }
 
-    private static func discardStagedFile(_ attachment: Attachment) {
+    nonisolated private static func discardStagedFile(_ attachment: Attachment) {
         guard let url = URL(string: attachment.uri), url.isFileURL else { return }
         try? FileManager.default.removeItem(at: url)
     }
@@ -1435,6 +1450,7 @@ struct ComposerBar: View {
               shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { return }
         guard case .success(let urls) = result else { return }
         var oversized: [String] = []
+        var failed: [String] = []
         for url in urls {
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
@@ -1444,7 +1460,10 @@ struct ComposerBar: View {
                 oversized.append(url.lastPathComponent)
                 continue
             }
-            guard let data = try? Data(contentsOf: url) else { continue }
+            guard let data = try? Data(contentsOf: url) else {
+                failed.append(url.lastPathComponent)
+                continue
+            }
             let type = UTType(filenameExtension: url.pathExtension)
             addAttachment(
                 data: data,
@@ -1453,7 +1472,7 @@ struct ComposerBar: View {
                 kind: AttachmentTypePolicy.kind(for: type)
             )
         }
-        reportImportProblems(oversized: oversized, failed: [], limitMegabytes: attachmentLimitMegabytes)
+        reportImportProblems(oversized: oversized, failed: failed, limitMegabytes: attachmentLimitMegabytes)
     }
 
     private func clearDocumentImportContextIfCurrent(_ completingContext: AsyncAttachmentContext?) {

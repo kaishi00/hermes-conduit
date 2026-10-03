@@ -95,8 +95,8 @@ enum AttachmentTypePolicy {
         let preferredExtension = type?.preferredFilenameExtension
         if !trimmed.isEmpty {
             let currentExtension = (trimmed as NSString).pathExtension
-            if !currentExtension.isEmpty || preferredExtension == nil { return trimmed }
-            return "\(trimmed).\(preferredExtension!)"
+            guard currentExtension.isEmpty, let preferredExtension else { return trimmed }
+            return "\(trimmed).\(preferredExtension)"
         }
         let stem: String
         switch kind(for: type) {
@@ -154,6 +154,21 @@ enum AttachmentStaging {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appendingPathComponent("\(UUID().uuidString)-\(name)")
     }
+
+    /// Re-encodes an image file as JPEG through ImageIO, keeping its
+    /// metadata (orientation included) without decoding it into a UIImage.
+    static func writeJPEG(from source: URL, to destination: URL) -> Bool {
+        guard let imageSource = CGImageSourceCreateWithURL(source as CFURL, nil),
+              let target = CGImageDestinationCreateWithURL(
+                destination as CFURL,
+                UTType.jpeg.identifier as CFString,
+                1,
+                nil
+              ) else { return false }
+        let options = [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary
+        CGImageDestinationAddImageFromSource(target, imageSource, 0, options)
+        return CGImageDestinationFinalize(target)
+    }
 }
 
 /// A photo-library item received as a file, so the original name and type
@@ -182,7 +197,12 @@ struct PickedMediaFile: Transferable {
 /// Small previews for the composer strip: the image itself, or a video's
 /// first frame. Cached by file URL so re-renders don't decode again.
 enum AttachmentThumbnailLoader {
-    private static let cache = NSCache<NSURL, UIImage>()
+    private static let cache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 60
+        cache.totalCostLimit = 8 * 1024 * 1024
+        return cache
+    }()
 
     static func cachedThumbnail(for url: URL) -> UIImage? {
         cache.object(forKey: url as NSURL)
@@ -200,7 +220,10 @@ enum AttachmentThumbnailLoader {
                 downsampledImage(at: url, maxPixelSize: maxPixelSize)
             }.value
         }
-        if let image { cache.setObject(image, forKey: url as NSURL) }
+        if let image {
+            let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+            cache.setObject(image, forKey: url as NSURL, cost: cost)
+        }
         return image
     }
 
@@ -234,6 +257,7 @@ struct ComposerAttachmentChip: View {
     let onRemove: () -> Void
 
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var thumbnail: UIImage?
     @State private var byteCount: Int64?
 
@@ -245,14 +269,14 @@ struct ComposerAttachmentChip: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(attachment.name)
                     .font(.caption.weight(.medium))
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                     .truncationMode(.middle)
                 Text(AttachmentTypePolicy.detailLabel(for: attachment, byteCount: byteCount))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             }
-            .frame(maxWidth: 140, alignment: .leading)
+            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? 220 : 140, alignment: .leading)
             Button {
                 Haptics.light()
                 onRemove()
