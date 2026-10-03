@@ -2206,7 +2206,7 @@ final class AppState: ObservableObject {
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
             if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }),
-               let targetProfile = job.profile {
+               let targetProfile = job.profile, targetProfile != self.activeProfile {
                 // A job on another profile is that profile's chat: badged
                 // there, and noted in the call. Voice tags live in the
                 // calling profile's history, so it carries none.
@@ -2223,7 +2223,7 @@ final class AppState: ObservableObject {
             if let recorder = self.voiceCallRecorder,
                let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }) {
                 self.captureVoiceCall()
-                recorder.note(AppLocalization.string("Started a background job: \(job.title)."))
+                recorder.note(Self.voiceJobStartedNote(job))
             }
             // A job while the classic Voice sheet is up is that chat's.
             let closing = self.closingVoiceCallUntil.map { Date() < $0 } == true && !self.showVoiceSheet ? self.closingVoiceCallRecorder : nil
@@ -3874,10 +3874,32 @@ final class AppState: ObservableObject {
         AppLocalization.string("Voice call · \(date.formatted(date: .abbreviated, time: .shortened))")
     }
 
+    /// The line a saved call gets where it started a job: the job's title
+    /// and a link that opens the job's chat, so its full result is a tap
+    /// away from the transcript.
+    static func voiceJobStartedNote(_ job: VoiceBackgroundJob) -> String {
+        let line = AppLocalization.string("Started a background job: \(job.title).")
+        guard let id = [job.storedSessionID, job.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return line }
+        return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open job"))
+    }
+
+    /// Opens a link Conduit wrote into a chat (a voice call's job link).
+    func openAppLink(_ link: ConduitAppLink) {
+        switch link {
+        case .session(let id):
+            // Some failed opens say nothing themselves; a deleted job
+            // shouldn't make the link look dead.
+            requestOpenSession(id) { [weak self] in
+                guard let self, self.errorMessage == nil else { return }
+                self.errorMessage = AppLocalization.string("That job's chat is no longer available.")
+            }
+        }
+    }
+
     /// A short title from the call's opening, like a chat's; the time-stamped
     /// fallback when Hermes can't make one.
     private func voiceCallTitle(turns: [VoiceTranscriptTurn], profile: String) async -> String {
-        let opening = turns.prefix(6).map { ($0.role == .user ? "User: " : "Assistant: ") + String($0.text.prefix(300)) }.joined(separator: "\n")
+        let opening = turns.prefix(6).map { ($0.role == .user ? "User: " : "Assistant: ") + String(ConduitAppLink.removingLinks(from: $0.text).prefix(300)) }.joined(separator: "\n")
         guard let client, !opening.isEmpty,
               let title = try? await client.oneshot(
                 task: "title_generation",
@@ -13582,14 +13604,18 @@ final class AppState: ObservableObject {
         await performSessionOpen(sessionId, reusing: nil)
     }
 
+    /// `onFailure` runs when the open failed (not when a newer navigation
+    /// superseded it).
     @discardableResult
-    func requestOpenSession(_ sessionId: String) -> Task<Bool, Never> {
+    func requestOpenSession(_ sessionId: String, onFailure: (@MainActor () -> Void)? = nil) -> Task<Bool, Never> {
         cancelExplicitSessionOpen()
         let requestID = UUID()
         explicitSessionOpenRequestID = requestID
         let task = Task { @MainActor [weak self] in
             guard let self else { return false }
-            let opened = await self.openSession(sessionId)
+            let outcome = await self.openSessionOutcome(sessionId)
+            if outcome == .failed, !Task.isCancelled { onFailure?() }
+            let opened = outcome == .opened
             guard self.explicitSessionOpenRequestID == requestID else { return opened }
             self.explicitSessionOpenRequestID = nil
             self.explicitSessionOpenTask = nil

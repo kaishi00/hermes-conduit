@@ -114,6 +114,13 @@ struct ConduitApp: App {
             }
             .preferredColorScheme(appState.themePreference.colorScheme)
             .tint(.conduitAccent)
+            // Links Conduit writes into chats (a voice call's job link)
+            // open inside the app; every other link goes to the system.
+            .environment(\.openURL, OpenURLAction { url in
+                guard let link = ConduitAppLink(url: url) else { return .systemAction }
+                Task { @MainActor in appState.openAppLink(link) }
+                return .handled
+            })
             .task { await PushNotificationService.shared.refresh() }
             // Siri learns the cached profile names for its profile phrases.
             .task { SiriProfileShortcuts.refresh() }

@@ -23,6 +23,15 @@ a job. At most three jobs run at once.
 - Each job is a new, ordinary Hermes session (`session.create` +
   `prompt.submit`), titled from the task. It shows up in the session list
   with a waveform badge and can be opened like any chat.
+- A saved live call gets a line where it started the job ("Started a
+  background job: <title>.") with an **Open job** link to the job's chat, so
+  the full result is a tap away even when the voice model only summarized it.
+  The link is `conduit://session/<id>`, handled in-app by the root view's
+  `openURL` action (no URL scheme is registered); other clients show it as an
+  inert link. It is stripped from resumed-call context and title prompts. A
+  job on another profile gets the line without a link. The link holds only
+  the session id and opens on the profile in use, which is the call's own
+  profile whenever its transcript is open.
 - `VoiceBackgroundJobSupervisor` follows the job through gateway events
   (observed before AppState's active-session filter). `session.active_list`
   is polled as a fallback for a completion event that never arrived.
