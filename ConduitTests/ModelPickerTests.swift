@@ -250,4 +250,16 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertEqual(result, .failed("Unable to change YOLO mode: offline", ModelPickerApplyProgress()))
         XCTAssertEqual(gateway.calls, ["yolo"])
     }
+
+    @MainActor
+    func testUnchangedYoloSkipsTheWrite() async {
+        let gateway = GatewayRecorder()
+        var unchangedYolo = draft
+        unchangedYolo.yoloChanged = false
+
+        let result = await runModelPickerApply(unchangedYolo, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
+
+        XCTAssertEqual(gateway.calls, ["reasoning", "fast"])
+        XCTAssertEqual(result, .completed(ModelPickerApplyProgress(reasoningApplied: true, fastApplied: true)))
+    }
 }
