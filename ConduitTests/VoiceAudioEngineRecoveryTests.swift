@@ -393,8 +393,7 @@ extension VoiceAudioSessionCoordinatorTests {
         service.stop()
         service.stop()
 
-        XCTAssertEqual(probe.ioNodeReads, 0, "stop must not build the input I/O unit")
-        XCTAssertEqual(probe.stops, 0, "an engine that never rendered is not stopped")
+        probe.assertUntouched()
     }
 
     func testStoppingPlaybackThatNeverStartedNeverReachesCoreAudio() {
@@ -407,8 +406,7 @@ extension VoiceAudioSessionCoordinatorTests {
         service.stop()
         service.stop()
 
-        XCTAssertEqual(probe.ioNodeReads, 0, "stop must not build the output I/O unit")
-        XCTAssertEqual(probe.stops, 0, "an engine that never rendered is not stopped")
+        probe.assertUntouched()
     }
 
     // MARK: - Playback drain watchdog
@@ -503,6 +501,10 @@ private final class FormatRejectingEngine: AVAudioEngine {
     /// CoreAudio abort the test process ("Initialize: RPC timeout").
     override func prepare() {}
 
+    /// No-op for the same reason: the failed attempts leave connected graphs
+    /// that the service then stops.
+    override func stop() {}
+
     override func start() throws {
         onStart()
         throw NSError(
@@ -512,30 +514,47 @@ private final class FormatRejectingEngine: AVAudioEngine {
     }
 }
 
-/// Records every access that would reach CoreAudio: building the input or
-/// output I/O unit, and stopping the engine.
+/// Records every engine access that can reach the audio server: the I/O
+/// nodes (and the main mixer, which pulls in the output node), prepare, and
+/// stop.
 private final class AudioEngineProbe: AVAudioEngine {
-    private(set) var ioNodeReads = 0
+    private(set) var inputNodeReads = 0
+    private(set) var outputNodeReads = 0
+    private(set) var mixerReads = 0
+    private(set) var prepares = 0
     private(set) var stops = 0
 
     override var inputNode: AVAudioInputNode {
-        ioNodeReads += 1
+        inputNodeReads += 1
         return super.inputNode
     }
 
     override var outputNode: AVAudioOutputNode {
-        ioNodeReads += 1
+        outputNodeReads += 1
         return super.outputNode
     }
 
     override var mainMixerNode: AVAudioMixerNode {
-        ioNodeReads += 1
+        mixerReads += 1
         return super.mainMixerNode
+    }
+
+    override func prepare() {
+        prepares += 1
+        super.prepare()
     }
 
     override func stop() {
         stops += 1
         super.stop()
+    }
+
+    func assertUntouched(file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(inputNodeReads, 0, "the input node was built", file: file, line: line)
+        XCTAssertEqual(outputNodeReads, 0, "the output node was built", file: file, line: line)
+        XCTAssertEqual(mixerReads, 0, "the main mixer was built", file: file, line: line)
+        XCTAssertEqual(prepares, 0, "the engine was prepared", file: file, line: line)
+        XCTAssertEqual(stops, 0, "an engine that never rendered was stopped", file: file, line: line)
     }
 }
 

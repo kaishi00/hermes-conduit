@@ -576,7 +576,8 @@ private extension FixedWidthInteger {
 /// The slice of `AVAudioEngine` capture drives: the input node's formats and
 /// tap, plus the engine lifecycle. A seam so ConduitTests can exercise the
 /// rebuild/retry/tap-format paths without an `AVAudioInputNode`, which
-/// cannot be constructed or faked.
+/// cannot be constructed or faked. Driven only from the MainActor
+/// `AVAudioCaptureService`; implementations may keep unsynchronized state.
 protocol VoiceCaptureEngine: AnyObject {
     var isRunning: Bool { get }
     /// The live hardware input format (`inputNode.inputFormat(forBus: 0)`).

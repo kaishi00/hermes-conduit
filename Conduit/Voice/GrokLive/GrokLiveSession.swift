@@ -41,7 +41,10 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     private let functions: [GeminiLiveProtocol.FunctionDeclaration]
     private let voice: String?
     private let openSocket: @MainActor (URLRequest) -> GeminiLiveSocket
-    private let reconnectDelay: @Sendable (Int) async throws -> Void
+    /// MainActor like the session: a nonisolated delay would hop to the
+    /// cooperative pool and back on every retry, which tests' fixed
+    /// `Task.yield` settles cannot always cover on a loaded runner.
+    private let reconnectDelay: @MainActor @Sendable (Int) async throws -> Void
 
     private var socket: GeminiLiveSocket?
     /// Identity of the current connection; frames from any other are ignored.
@@ -86,7 +89,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         openSocket: @escaping @MainActor (URLRequest) -> GeminiLiveSocket = { URLSessionGeminiLiveSocket(request: $0) },
         setupTimeout: Duration = .seconds(15),
         responseTimeout: Duration = .seconds(30),
-        reconnectDelay: @escaping @Sendable (Int) async throws -> Void = { attempt in
+        reconnectDelay: @escaping @MainActor @Sendable (Int) async throws -> Void = { attempt in
             try await Task.sleep(for: .seconds(min(8, 1 << attempt)))
         }
     ) {

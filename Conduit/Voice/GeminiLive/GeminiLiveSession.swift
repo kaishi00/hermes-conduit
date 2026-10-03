@@ -222,7 +222,10 @@ final class GeminiLiveSession {
     private let usesGoogleSearch: Bool
     /// The prebuilt voice Gemini speaks with; nil is Gemini's default.
     private let voice: String?
-    private let reconnectDelay: @Sendable (Int) async throws -> Void
+    /// MainActor like the session: a nonisolated delay would hop to the
+    /// cooperative pool and back on every retry, which tests' fixed
+    /// `Task.yield` settles cannot always cover on a loaded runner.
+    private let reconnectDelay: @MainActor @Sendable (Int) async throws -> Void
 
     private var socket: GeminiLiveSocket?
     /// Identity of the connection whose frames are current. Frames from any
@@ -257,7 +260,7 @@ final class GeminiLiveSession {
         googleSearch: Bool = true,
         voice: String? = nil,
         openSocket: @escaping @MainActor (URL) -> GeminiLiveSocket = { URLSessionGeminiLiveSocket(url: $0) },
-        reconnectDelay: @escaping @Sendable (Int) async throws -> Void = { attempt in
+        reconnectDelay: @escaping @MainActor @Sendable (Int) async throws -> Void = { attempt in
             try await Task.sleep(for: .seconds(min(8, 1 << attempt)))
         }
     ) {

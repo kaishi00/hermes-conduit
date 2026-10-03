@@ -357,10 +357,7 @@ extension VoiceConversationControllerTests {
                 sockets.append(socket)
                 return socket
             },
-            // MainActor, like the rest of the session: a nonisolated delay hops to
-            // the cooperative pool and back, which a fixed `settle` count does not
-            // always cover on a loaded runner.
-            reconnectDelay: { @MainActor _ in }
+            reconnectDelay: { _ in }
         )
         return (session, { sockets })
     }
@@ -1310,7 +1307,7 @@ extension HermesVoiceGatewayTimeoutTests {
                 sockets.append(socket)
                 return socket
             },
-            reconnectDelay: { @MainActor _ in }
+            reconnectDelay: { _ in }
         )
         session.start()
         await settle()

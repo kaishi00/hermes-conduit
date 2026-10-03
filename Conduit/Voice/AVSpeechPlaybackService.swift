@@ -253,11 +253,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     func stop() {
         playbackGeneration &+= 1
         isFinishing = false
-        if engineHasGraph {
-            player.stop()
-            engine.stop()
-            engineHasGraph = false
-        }
+        teardownGraph()
         encodedPlayer?.stop()
         encodedPlayer = nil
         format = nil
@@ -271,14 +267,20 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         releaseOwnership()
     }
 
+    /// Stops the player and engine if this engine's graph was built. The
+    /// player can only hold scheduled audio once `engineHasGraph` is set, so
+    /// skipping an untouched engine never strands a buffer.
+    private func teardownGraph() {
+        guard engineHasGraph else { return }
+        player.stop()
+        engine.stop()
+        engineHasGraph = false
+    }
+
     /// Replaces the engine and player with fresh instances so the new graph
     /// is built against the session's current hardware format.
     private func rebuildEngine() {
-        if engineHasGraph {
-            player.stop()
-            engine.stop()
-            engineHasGraph = false
-        }
+        teardownGraph()
         engine = makeEngine()
         player = AVAudioPlayerNode()
         engine.attach(player)
