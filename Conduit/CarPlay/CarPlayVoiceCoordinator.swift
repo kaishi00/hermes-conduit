@@ -306,7 +306,8 @@ final class CarPlayVoiceCoordinator {
 
     /// The buttons' handlers, fenced to the connection whose template they
     /// are on: a tap queued across a reconnect never acts on the new
-    /// connection's conversation.
+    /// connection's conversation. Internal so the stale-tap test can hold
+    /// an earlier connection's handlers.
     func makeHandlers() -> CarPlayVoiceActionHandlers {
         let generation = connectionGeneration
         func fenced(_ action: @escaping (CarPlayVoiceCoordinator) -> Void) -> () -> Void {
@@ -453,13 +454,22 @@ final class CarPlayVoiceCoordinator {
         }
     }
 
-    private func makeBrowseHandlers() -> CarPlayBrowseHandlers {
-        CarPlayBrowseHandlers(
-            openChat: { [weak self] row in self?.openChat(row) },
-            replayJob: { [weak self] jobID in self?.replayJob(jobID) },
-            runShortcut: { [weak self] shortcut in self?.runShortcut(shortcut) },
-            selectMode: { [weak self] mode in self?.selectVoiceMode(mode) },
-            selectAgent: { [weak self] index in self?.selectAgent(at: index) }
+    /// The browse screens' row handlers, fenced like the voice buttons to
+    /// the connection the screen was built for.
+    func makeBrowseHandlers() -> CarPlayBrowseHandlers {
+        let generation = connectionGeneration
+        func fenced<Value>(_ action: @escaping (CarPlayVoiceCoordinator, Value) -> Void) -> (Value) -> Void {
+            { [weak self] value in
+                guard let self, self.isCurrent(generation) else { return }
+                action(self, value)
+            }
+        }
+        return CarPlayBrowseHandlers(
+            openChat: fenced { $0.openChat($1) },
+            replayJob: fenced { $0.replayJob($1) },
+            runShortcut: fenced { $0.runShortcut($1) },
+            selectMode: fenced { $0.selectVoiceMode($1) },
+            selectAgent: fenced { $0.selectAgent(at: $1) }
         )
     }
 

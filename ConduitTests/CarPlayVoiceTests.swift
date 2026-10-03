@@ -891,13 +891,21 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         await harness.controller.startListening()
         harness.coordinator.handleConnect(harness.spy)
         let staleButtons = harness.coordinator.makeHandlers()
+        let staleRows = harness.coordinator.makeBrowseHandlers()
         harness.coordinator.handleDisconnect()
         harness.coordinator.handleConnect(harness.spy)
 
         staleButtons.endConversation()
         staleButtons.startNewChat()
         staleButtons.toggleMicrophone()
+        staleButtons.startListening()
+        staleRows.selectMode(.gptLive)
+        staleRows.openChat(CarPlayChatRow(sessionID: "other", storedSessionID: nil, title: "Other", detail: ""))
         await Task.yield()
+
+        XCTAssertFalse(harness.appState.isGPTLiveEnabled, "a stale row never changes the mode")
+        XCTAssertTrue(harness.spy.pushedTemplates.isEmpty)
+        XCTAssertEqual(harness.spy.popToRootCount, 0, "a stale row never navigates")
 
         XCTAssertTrue(harness.controller.hasLiveVoiceSession, "a tap from the old template never ends the new connection's conversation")
         XCTAssertFalse(harness.controller.isMicrophonePaused, "nor mutes it")
