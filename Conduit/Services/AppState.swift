@@ -2211,6 +2211,13 @@ final class AppState: ObservableObject {
                 self.voiceConversationController.deliverPendingBackgroundJobNoticeIfIdle()
             }
         }
+        supervisor.liveCallTranscript = { [weak self] in
+            guard let self else { return nil }
+            if self.isGeminiLiveActive { return self.geminiLiveController.transcript }
+            if self.isGPTLiveActive { return self.gptLiveController.transcript }
+            if self.isGrokLiveActive { return self.grokLiveController.transcript }
+            return nil
+        }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
             if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }),
@@ -3659,6 +3666,8 @@ final class AppState: ObservableObject {
     /// Resume Call makes it continue that row.
     private func beginVoiceCallRecording(engine: VoiceCallEngine) {
         finishVoiceCallRecording()
+        // The call screen shows the jobs this call starts, saved or not.
+        voiceBackgroundJobSupervisor.beginLiveCall()
         let resume = pendingVoiceResume
         pendingVoiceResume = nil
         liveVoiceResumeContext = resume?.context
