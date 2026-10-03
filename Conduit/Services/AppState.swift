@@ -13530,7 +13530,7 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func openSession(_ sessionId: String) async -> Bool {
-        await performSessionOpen(sessionId, reusing: nil) == .opened
+        await openSessionOutcome(sessionId) == .opened
     }
 
     /// `openSession` with its outcome, for a caller that must tell a

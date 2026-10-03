@@ -754,6 +754,13 @@ final class CarPlayVoiceCoordinator {
                     handleControllerState(.listening)
                     return
                 }
+                // A resume that failed leaves the microphone paused, and a
+                // listening turn would open with it closed, so the car shows
+                // the error instead.
+                guard !controller.isMicrophonePaused else {
+                    handleControllerState(.failed(""))
+                    return
+                }
             }
         } else {
             outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
