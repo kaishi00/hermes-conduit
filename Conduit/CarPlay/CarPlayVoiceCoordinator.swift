@@ -283,6 +283,10 @@ final class CarPlayVoiceCoordinator {
                 // Re-assert the top bar for the presented state, so it never
                 // rests on buttons set before the template was on screen.
                 self.updateBrowseButtons(for: self.pendingPresentationState ?? .ready, force: true)
+                // The template is installed before the AppState resolves,
+                // so its buttons were built for the classic mode; they are
+                // re-applied for the mode the profile actually uses.
+                CarPlayVoiceTemplateFactory.apply(self.controls, to: template, handlers: self.makeHandlers())
                 // The template presents its FIRST state (ready) by default;
                 // activate a retained pending state exactly once when it
                 // differs, then resume normal dedupe against the presented
@@ -452,6 +456,7 @@ final class CarPlayVoiceCoordinator {
         // newest screen (the car's back button reports nothing).
         jobsObservation?.cancel()
         jobsObservation = nil
+        jobsTemplate = nil
         guard let interfacing else { return }
         interfacing.pushTemplate(browseTemplate, animated: true, completion: nil)
     }
@@ -469,6 +474,7 @@ final class CarPlayVoiceCoordinator {
     private func returnToVoiceScreen() {
         jobsObservation?.cancel()
         jobsObservation = nil
+        jobsTemplate = nil
         interfacing?.popToRootTemplate(animated: true, completion: nil)
     }
 
