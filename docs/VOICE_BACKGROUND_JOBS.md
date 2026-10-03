@@ -36,8 +36,10 @@ a job. At most three jobs run at once.
   transcript panel where it was shown; the model says it's on screen and
   gives the gist. Cards live only on the phone, for the call (the last 20,
   each up to 20,000 characters), and are not part of the saved call.
-  Pictures depend on the model finding a direct image URL. GPT-Live has no
-  screen tool yet.
+  Pictures depend on the model finding a direct image URL. When the phone's
+  call screen isn't up (a call only CarPlay shows, a minimised call, the app
+  in the background) the tool refuses and the model says it instead.
+  GPT-Live has no screen tool yet.
 - A saved live call gets a line where it started the job ("Started a
   background job: <title>.") with an **Open job** link to the job's chat, so
   the full result is a tap away even when the voice model only summarized it.

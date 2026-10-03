@@ -254,15 +254,20 @@ extension VoiceConversationControllerTests {
             "```mermaid\n" + String(repeating: "y", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
         )
         XCTAssertTrue(fenced.hasSuffix("\n```"), "A fence the cut leaves open is closed")
-        let nested = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
-            "````md\n```\ninner\n```\n" + String(repeating: "z\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        let closed = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
+            "```md\ncode\n```\n" + String(repeating: "z\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
         )
-        XCTAssertTrue(nested.hasSuffix("\n````"), "Inner fences don't close a longer one")
+        XCTAssertFalse(closed.hasSuffix("```"), "A closed fence gets no extra closer")
         let tilde = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
-            "> ~~~\n" + String(repeating: "w\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+            "~~~\n" + String(repeating: "w\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
         )
-        XCTAssertTrue(tilde.hasSuffix("\n~~~"), "Tilde and quoted fences are closed too")
+        XCTAssertTrue(tilde.hasSuffix("\n~~~"), "Tilde fences are closed too")
         XCTAssertEqual(VoiceBackgroundJobSupervisor.clippedScreenMarkdown("short"), "short")
+
+        var screenIsVisible = false
+        supervisor.liveCallScreenIsVisible = { screenIsVisible }
+        XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: "pie"), "No call screen (CarPlay, minimised), nothing to show it on")
+        screenIsVisible = true
 
         let call = supervisor.liveCallID
         let labels = LiveVoiceCallTimeline<EmptyView>.items(

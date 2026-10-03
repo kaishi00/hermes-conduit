@@ -277,6 +277,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The running live call's transcript, so a new job can be placed
     /// among its lines; nil while no live call runs.
     var liveCallTranscript: (@MainActor () -> [VoiceConversationTranscriptEntry]?)?
+    /// Whether the phone's call screen is up, so a screen card can be seen.
+    /// A call only CarPlay shows, a minimised one, or a backgrounded app
+    /// has nowhere to show it. Nil counts as up.
+    var liveCallScreenIsVisible: (@MainActor () -> Bool)?
     /// The running (or last) live call; jobs it starts carry it, so the
     /// call screen shows only its own jobs.
     @Published private(set) var liveCallID: UUID?
@@ -332,7 +336,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     @discardableResult
     func showOnScreen(title: String, markdown: String) -> VoiceScreenCard? {
         let body = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty, let anchor = currentCallAnchor else { return nil }
+        guard !body.isEmpty, liveCallScreenIsVisible?() ?? true, let anchor = currentCallAnchor else { return nil }
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let card = VoiceScreenCard(
             id: UUID(),
@@ -356,23 +360,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         var lines = String(markdown.prefix(maximumScreenCardCharacters - 16)).components(separatedBy: "\n")
         // A last line cut mid-way may be half a fence; drop it.
         if lines.count > 1 { lines.removeLast() }
+        // Read fences as MarkdownText does: a line starting ``` or ~~~
+        // opens one, and the next line starting the same way closes it.
         var openFence: String?
         for line in lines {
-            // Fences in a block quote count too, as the renderer reads them.
-            var trimmed = Substring(line.trimmingCharacters(in: .whitespaces))
-            while trimmed.hasPrefix(">") {
-                trimmed = trimmed.dropFirst().drop(while: { $0 == " " })
-            }
-            guard let mark = trimmed.first, mark == "`" || mark == "~" else { continue }
-            let run = String(trimmed.prefix(while: { $0 == mark }))
-            guard run.count >= 3 else { continue }
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
             if let fence = openFence {
-                // Only a bare fence of the same kind, at least as long, closes it.
-                if fence.first == mark, run.count >= fence.count, trimmed.allSatisfy({ $0 == mark || $0 == " " }) {
-                    openFence = nil
-                }
-            } else {
-                openFence = run
+                if trimmed.hasPrefix(fence) { openFence = nil }
+            } else if trimmed.hasPrefix("```") {
+                openFence = "```"
+            } else if trimmed.hasPrefix("~~~") {
+                openFence = "~~~"
             }
         }
         let clipped = lines.joined(separator: "\n")
