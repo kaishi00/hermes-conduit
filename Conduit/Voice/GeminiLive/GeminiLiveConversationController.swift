@@ -305,7 +305,7 @@ final class GeminiLiveConversationController: ObservableObject {
         now: @escaping () -> Date = Date.init,
         routePolicy: @escaping @MainActor () -> VoiceBargeInRoutePolicy = { VoiceBargeInRoutePolicy.current() },
         endConversationPhrases: @escaping @MainActor () -> [String] = { [] },
-        headsetMute: HeadsetMicrophoneMute = .shared
+        headsetMute: HeadsetMicrophoneMute? = nil
     ) {
         self.makeSession = makeSession
         self.availability = availability
@@ -315,7 +315,9 @@ final class GeminiLiveConversationController: ObservableObject {
         self.now = now
         self.routePolicy = routePolicy
         self.endConversationPhrases = endConversationPhrases
-        self.headsetMute = headsetMute
+        // Resolved here, not as a default argument: those are evaluated
+        // outside the main actor.
+        self.headsetMute = headsetMute ?? .shared
     }
 
     /// The Interrupt button: stop the model now. On an open speaker this is

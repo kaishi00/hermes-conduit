@@ -723,7 +723,7 @@ extension VoiceConversationControllerTests {
         route: VoiceBargeInRoutePolicy = .fullDuplex,
         endPhrases: [String] = [],
         webSearch: GeminiLiveWebSearching? = nil,
-        headsetMute: HeadsetMicrophoneMute = HeadsetMicrophoneMute(system: FakeSystemInputMute()),
+        headsetMute: HeadsetMicrophoneMute? = nil,
         clock: @escaping () -> Date
     ) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl, FakeGeminiLiveInput, FakeGeminiLiveOutput, VoiceBackgroundJobSupervisor) {
         let tokens = providedTokens ?? FakeGeminiLiveTokens()
@@ -740,7 +740,7 @@ extension VoiceConversationControllerTests {
             now: clock,
             routePolicy: { route },
             endConversationPhrases: { endPhrases },
-            headsetMute: headsetMute
+            headsetMute: headsetMute ?? HeadsetMicrophoneMute(system: FakeSystemInputMute())
         )
         return (controller, session, input, output, supervisor)
     }

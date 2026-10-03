@@ -157,7 +157,7 @@ final class GPTLiveConversationController: ObservableObject {
         requestPermission: @escaping @MainActor () async -> Bool = { await AVAudioApplication.requestRecordPermission() },
         now: @escaping () -> Date = Date.init,
         endConversationPhrases: @escaping @MainActor () -> [String] = { [] },
-        headsetMute: HeadsetMicrophoneMute = .shared
+        headsetMute: HeadsetMicrophoneMute? = nil
     ) {
         self.makeSession = makeSession
         self.availability = availability
@@ -167,7 +167,9 @@ final class GPTLiveConversationController: ObservableObject {
         self.requestPermission = requestPermission
         self.now = now
         self.endConversationPhrases = endConversationPhrases
-        self.headsetMute = headsetMute
+        // Resolved here, not as a default argument: those are evaluated
+        // outside the main actor.
+        self.headsetMute = headsetMute ?? .shared
     }
 
     // MARK: Lifecycle

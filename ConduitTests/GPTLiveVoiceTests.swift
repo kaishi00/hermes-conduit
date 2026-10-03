@@ -616,7 +616,7 @@ extension VoiceConversationControllerTests {
         client providedClient: FakeGPTLiveClient? = nil,
         endPhrases: [String] = [],
         permission: Bool = true,
-        headsetMute: HeadsetMicrophoneMute = HeadsetMicrophoneMute(system: FakeSystemInputMute()),
+        headsetMute: HeadsetMicrophoneMute? = nil,
         clock: @escaping () -> Date
     ) -> (GPTLiveConversationController, FakeGPTLiveSessionControl, VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
         let client = providedClient ?? FakeGPTLiveClient()
@@ -631,7 +631,7 @@ extension VoiceConversationControllerTests {
             requestPermission: { permission },
             now: clock,
             endConversationPhrases: { endPhrases },
-            headsetMute: headsetMute
+            headsetMute: headsetMute ?? HeadsetMicrophoneMute(system: FakeSystemInputMute())
         )
         return (controller, session, supervisor, fake)
     }
