@@ -528,8 +528,12 @@ final class CarPlayVoiceCoordinator {
             endConversation()
             // The phone shows the chat the call is attached to, as when the
             // call starts from that chat there.
-            _ = await appState.openSession(row.sessionID)
+            let opened = await appState.openSession(row.sessionID)
             guard isCurrent(generation), isConnected else { return }
+            guard opened else {
+                handleControllerState(.failed(""))
+                return
+            }
             await establishLiveVoice(liveMode, appState: appState, generation: generation, attachingTo: row.thread)
             return
         }
@@ -582,6 +586,9 @@ final class CarPlayVoiceCoordinator {
     /// Switches the profile's voice mode from the car. The running
     /// conversation ends first, as switching on the phone does.
     func selectVoiceMode(_ mode: CarPlayVoiceMode) {
+        // A tap from a list left behind by a disconnect never changes the
+        // saved mode.
+        guard isConnected else { return }
         returnToVoiceScreen()
         let appState = lastBoundAppState ?? appStateProvider()
         guard mode != CarPlayVoiceMode.current(in: appState) else { return }
