@@ -427,9 +427,9 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
     }
 
     func testTheLiquidOrbLightsUpWhileTheCallIsLiveAndSwellsWhenItSpeaks() {
-        XCTAssertEqual(LiveVoiceOrb.liquidLook(for: .listening), .init(state: .active, speech: 0))
-        XCTAssertEqual(LiveVoiceOrb.liquidLook(for: .connecting).state, .active)
-        XCTAssertEqual(LiveVoiceOrb.liquidLook(for: .speaking), .init(state: .active, speech: 1))
+        XCTAssertEqual(LiveVoiceOrb.liquidLook(for: .listening), .init(state: .listening, speech: 0))
+        XCTAssertEqual(LiveVoiceOrb.liquidLook(for: .connecting).state, .listening)
+        XCTAssertEqual(LiveVoiceOrb.liquidLook(for: .speaking), .init(state: .speaking, speech: 1))
         for phase in [LiveVoiceCallPhase.idle, .muted, .ending, .failed] {
             XCTAssertEqual(LiveVoiceOrb.liquidLook(for: phase), .init(state: .idle, speech: 0), "\(phase)")
         }
@@ -455,6 +455,8 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         var speaking: [Float] = Array(repeating: 0.5, count: 136)
         LiquidOrbAudio(all: 0.5).apply(to: &speaking)
         XCTAssertGreaterThan(speaking[3], 0.5, "speech speeds the orb up")
+        LiquidOrbAudio(all: 1).applyPulse(to: &speaking)
+        XCTAssertEqual(speaking[4], 0.54, accuracy: 0.0001, "the sphere swells 8% at full speech")
     }
 
     func testTheLiquidOrbShaderCompilesWhereMetalExists() throws {

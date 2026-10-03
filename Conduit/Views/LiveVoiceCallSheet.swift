@@ -375,9 +375,10 @@ private struct LiveVoiceTranscriptBubble: View {
 }
 
 /// The call's orb. Where Metal is available it is the liquid glass orb (see
-/// LiquidOrbView): calm and grey-gold at rest, lit while the call listens,
-/// swelling as the assistant speaks. Otherwise, for a failed call, and for
-/// the small still accessory orb, it is a soft sphere drawn from gradients that breathes and
+/// LiquidOrbView): calm and grey-gold at rest, a slow cool blue while the
+/// call listens, fast bright gold swelling as the assistant speaks; the small
+/// accessory orb is a still frame of the same look. Otherwise, and for a
+/// failed call, it is a soft sphere drawn from gradients that breathes and
 /// pulses the same way. Phase decides colour and motion; there is no audio
 /// level feed common to every engine.
 struct LiveVoiceOrb: View {
@@ -414,8 +415,8 @@ struct LiveVoiceOrb: View {
 
     static func liquidLook(for phase: LiveVoiceCallPhase) -> LiquidLook {
         switch phase {
-        case .connecting, .listening: return LiquidLook(state: .active, speech: 0)
-        case .speaking: return LiquidLook(state: .active, speech: 1)
+        case .connecting, .listening: return LiquidLook(state: .listening, speech: 0)
+        case .speaking: return LiquidLook(state: .speaking, speech: 1)
         case .idle, .muted, .ending, .failed: return LiquidLook(state: .idle, speech: 0)
         }
     }
@@ -431,7 +432,7 @@ struct LiveVoiceOrb: View {
 
     var body: some View {
         // A failed call keeps the red gradient orb, the clearest failure signal.
-        if animates, phase != .failed, let pipeline = LiquidOrbPipeline.shared {
+        if phase != .failed, let pipeline = LiquidOrbPipeline.shared {
             liquidOrb(pipeline)
         } else {
             gradientOrb
@@ -445,7 +446,7 @@ struct LiveVoiceOrb: View {
             // The sphere fills 72% of its canvas and the glow the rest: draw
             // it larger than the frame so the sphere itself keeps the old
             // orb's size, without the glow taking layout space.
-            LiquidOrbView(pipeline: pipeline, state: look.state, speech: look.speech, animates: !reduceMotion)
+            LiquidOrbView(pipeline: pipeline, state: look.state, speech: look.speech, animates: animates && !reduceMotion)
                 .frame(width: size * 1.3, height: size * 1.3)
                 .frame(width: proxy.size.width, height: proxy.size.height)
         }
