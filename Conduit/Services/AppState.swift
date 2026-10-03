@@ -1443,7 +1443,7 @@ final class AppState: ObservableObject {
     lazy var geminiLiveController: GeminiLiveConversationController = {
         geminiLiveControllerCreated = true
         let tokens = geminiLiveTokenClient
-        let audio = makeLiveVoiceAudio()
+        let audio = makeLiveVoiceAudio(outputSampleRate: GeminiLiveProtocol.outputSampleRate)
         let controller = GeminiLiveConversationController(
             makeSession: { [weak self] in
                 let search = self?.geminiLiveSearchSource ?? .google
@@ -1961,7 +1961,7 @@ final class AppState: ObservableObject {
         let client = grokLiveClient
         // Memory, persona and web search come from the host routes Gemini Live reads.
         let hostContext = geminiLiveTokenClient
-        let audio = makeLiveVoiceAudio()
+        let audio = makeLiveVoiceAudio(outputSampleRate: GrokLiveProtocol.outputSampleRate)
         let controller = GeminiLiveConversationController(
             makeSession: { [weak self] in
                 let search = self?.grokLiveSearchSource ?? GeminiLiveSearchSource.none
@@ -3454,7 +3454,7 @@ final class AppState: ObservableObject {
     /// The live controllers' audio: the default capture and playback, or
     /// one echo-cancelling engine when speaker barge-in is on, chosen for
     /// each call.
-    private func makeLiveVoiceAudio() -> LiveVoiceAudioSelector {
+    private func makeLiveVoiceAudio(outputSampleRate: Double) -> LiveVoiceAudioSelector {
         LiveVoiceAudioSelector(
             wantsEchoCancellation: { [weak self] in self?.liveVoiceSpeakerBargeInEnabled ?? false },
             makeStandard: {
@@ -3462,7 +3462,7 @@ final class AppState: ObservableObject {
                  PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService()))
             },
             makeEchoCancelling: {
-                let audio = EchoCancellingLiveVoiceAudio()
+                let audio = EchoCancellingLiveVoiceAudio(outputSampleRate: outputSampleRate)
                 return (audio.input, audio.output)
             }
         )

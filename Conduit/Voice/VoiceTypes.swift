@@ -302,7 +302,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)
         saveVoiceCalls = try? container.decodeIfPresent(Bool.self, forKey: .saveVoiceCalls)
-        liveVoiceSpeakerBargeIn = (try? container.decodeIfPresent(Bool.self, forKey: .liveVoiceSpeakerBargeIn)) ?? nil
+        liveVoiceSpeakerBargeIn = try? container.decodeIfPresent(Bool.self, forKey: .liveVoiceSpeakerBargeIn)
     }
 
     /// What a voice job's `session.create` asks for: the chosen voice-job

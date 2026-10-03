@@ -65,7 +65,11 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     /// `isPlaying` can't stay stuck.
     private var drainDeadline: Date?
     private var drainWatchdog: Task<Void, Never>?
-    static let drainWatchdogGrace: TimeInterval = 2
+    /// Slack past the scheduled audio before the watchdog clears the
+    /// queue. Internal so ConduitTests can shorten it.
+    var drainWatchdogGrace: TimeInterval = 2
+    /// The rate the speaker side starts at, before the first chunk says.
+    private let defaultOutputSampleRate: Double
 
     var onChunk: (@MainActor (Data) -> Void)?
     var onInterrupted: (@MainActor () -> Void)?
@@ -78,8 +82,9 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     /// Optional injection instead of a default `.shared` argument: default
     /// parameter values are evaluated in a nonisolated context, which
     /// cannot read the MainActor-isolated singleton.
-    init(coordinator: VoiceAudioSessionCoordinator? = nil) {
+    init(coordinator: VoiceAudioSessionCoordinator? = nil, outputSampleRate: Double) {
         self.coordinator = coordinator ?? .shared
+        defaultOutputSampleRate = outputSampleRate
         super.init()
         NotificationCenter.default.addObserver(
             self,
@@ -125,7 +130,10 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
 
     /// Stops sending microphone audio. Echo cancellation needs both
     /// directions on one unit, so the engine keeps running while the
-    /// speaker side still needs it; its frames are just dropped.
+    /// speaker side still needs it; its frames are just dropped. So once
+    /// the model has spoken, a muted call keeps the microphone hardware
+    /// (the system input mute, mirrored by the controller, zeroes it) until
+    /// the call ends; unmuting is then instant.
     func stopInput() {
         inputWanted = false
         teardownIfUnused()
@@ -146,6 +154,8 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         if playerFormat.map({ abs($0.sampleRate - sampleRate) >= 1 }) ?? true {
             // The model changed rates: reconnect the player at the new one.
             guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
+                outputWanted = false
+                teardownIfUnused()
                 throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format."))
             }
             interrupt()
@@ -191,7 +201,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         guard drainWatchdog == nil else { return }
         drainWatchdog = Task { @MainActor [weak self] in
             while let deadline = self?.drainDeadline {
-                let wait = deadline.timeIntervalSinceNow + Self.drainWatchdogGrace
+                let wait = deadline.timeIntervalSinceNow + (self?.drainWatchdogGrace ?? 0)
                 if wait > 0 {
                     try? await Task.sleep(for: .seconds(wait))
                     guard !Task.isCancelled else { return }
@@ -200,8 +210,11 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
                 guard let self else { return }
                 if self.pendingBuffers > 0 {
                     echoCancellingAudioLogger.notice("Live speech never finished playing; clearing the queue")
+                    // Stopping also unschedules the queue, so a recovered
+                    // engine can't play it untracked later.
                     self.playbackGeneration &+= 1
                     self.pendingBuffers = 0
+                    self.player?.stop()
                 }
                 self.drainDeadline = nil
                 self.drainWatchdog = nil
@@ -252,7 +265,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         engine.attach(player)
         // Connected up front so the speaker side is part of the graph (and
         // of the echo reference) from the start.
-        let format = playerFormat ?? AVAudioFormat(standardFormatWithSampleRate: GeminiLiveProtocol.outputSampleRate, channels: 1)!
+        let format = playerFormat ?? AVAudioFormat(standardFormatWithSampleRate: defaultOutputSampleRate, channels: 1)!
         engine.connect(player, to: engine.mainMixerNode, format: format)
 
         let hardwareFormat = input.inputFormat(forBus: 0)
