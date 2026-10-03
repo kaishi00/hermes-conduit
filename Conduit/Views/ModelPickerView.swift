@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 func sessionYoloSelectionChanged(from initial: Bool?, to selected: Bool) -> Bool {
     guard let initial else { return false }
@@ -123,6 +124,11 @@ struct ModelPickerView: View {
             refreshYoloToggle(force: true)
         }
         .task { await loadModels() }
+        .onChange(of: applyError) { _, message in
+            // The error row appears silently; tell VoiceOver the apply failed.
+            guard let message else { return }
+            UIAccessibility.post(notification: .announcement, argument: message)
+        }
         .alert(
             "Switch model?",
             isPresented: Binding(
@@ -459,7 +465,7 @@ struct ModelPickerView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Button {
-                Task { await applyModel() }
+                Task { @MainActor in await applyModel() }
             } label: {
                 Group {
                     if isApplying {
@@ -588,16 +594,9 @@ struct ModelPickerView: View {
             // before reasoning/fast; a retry re-sends neither the model nor
             // an already-applied YOLO change.
             if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
-                // setYoloMode reports through the composer banner, hidden
-                // behind this sheet. Move only this call's error into the
-                // sheet and give the banner back what it held before.
-                let priorError = appState.errorMessage
-                appState.errorMessage = nil
-                let applied = await appState.setYoloMode(yoloEnabled)
-                let yoloError = appState.errorMessage
-                appState.errorMessage = priorError
-                guard applied else {
-                    applyError = yoloError ?? AppLocalization.string("Unable to change YOLO mode.")
+                // The composer banner sits behind this sheet; report here.
+                if let failure = await appState.setYoloModeReportingFailure(yoloEnabled) {
+                    applyError = failure.message ?? AppLocalization.string("Unable to change YOLO mode.")
                     return
                 }
                 initialYoloEnabled = yoloEnabled
