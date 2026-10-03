@@ -58,11 +58,21 @@ struct ComposerBar: View {
     @StateObject private var dictation = ComposerDictationService()
     /// The draft as it was when dictation began; dictated text goes after it.
     @State private var dictationPrefix = ""
+    /// The full-screen editor for long drafts (#335).
+    @State private var isShowingFullEditor = false
 
     struct AsyncAttachmentContext: Equatable {
         let editorIdentity: UUID
         let draftKey: ComposerDraftKey
         let attachmentGeneration: UInt64
+    }
+
+    /// About three lines of body text: below this a draft is short enough
+    /// to read in place, so the expand icon stays out of the way.
+    static let fullEditorThreshold: CGFloat = 80
+
+    static func showsFullEditorButton(measuredHeight: CGFloat) -> Bool {
+        measuredHeight >= fullEditorThreshold
     }
 
     static func composerDraftKey(for sessionID: String?, profile: String) -> ComposerDraftKey {
@@ -454,10 +464,51 @@ struct ComposerBar: View {
                 }
             )
             .id(editorIdentity)
-            .padding(.horizontal, 5)
+            .padding(.leading, 5)
+            // Room for the expand icon, so the text wraps before it.
+            .padding(.trailing, showsFullEditorButton ? 36 : 5)
             .frame(height: composerTextHeight)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .overlay(alignment: .topTrailing) {
+            if showsFullEditorButton {
+                Button {
+                    Haptics.selection()
+                    isFocused = false
+                    isShowingSlashSuggestions = false
+                    isShowingFullEditor = true
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Expand editor"))
+                .transition(.opacity)
+            }
+        }
+        .sheet(isPresented: $isShowingFullEditor, onDismiss: {
+            // The inline editor only takes programmatic changes, so hand it
+            // what was written in the sheet, cursor at the end.
+            replaceComposerText(text, cursorAtEnd: true)
+        }) {
+            ComposerFullEditor(
+                text: $text,
+                placeholder: appState.composerPlaceholder,
+                enabled: appState.composerIsEnabled,
+                onUserEdit: { appState.noteComposerUserEdit() },
+                onCollapse: { isShowingFullEditor = false }
+            ) {
+                composerActionButton
+            }
+            .preferredColorScheme(appState.themePreference.colorScheme)
+        }
+    }
+
+    private var showsFullEditorButton: Bool {
+        Self.showsFullEditorButton(measuredHeight: composerTextHeight)
     }
 
     /// Attach, model and session status on the left; dictate and the
@@ -881,6 +932,7 @@ struct ComposerBar: View {
         // The send haptic stands for both.
         dictation.onFinish = nil
         dictation.cancel()
+        isShowingFullEditor = false
         let submittedText = text
         let submittedAttachments = attachments
         let submittedAction = action
