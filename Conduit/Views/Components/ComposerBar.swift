@@ -1301,9 +1301,7 @@ struct ComposerBar: View {
         let completionGeneration = photoImportGeneration
         let limitMegabytes = attachmentLimitMegabytes
         Task {
-            var oversized: [String] = []
-            var failed: [String] = []
-            var stagedAny = false
+            var tally = ImportTally()
             for (index, item) in items.enumerated() {
                 guard shouldAcceptPhotoPickerCompletion(openedIn: origin) else { break }
                 // File copies and JPEG re-encodes stay off the main actor;
@@ -1315,19 +1313,10 @@ struct ComposerBar: View {
                     if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
                     break
                 }
-                switch outcome {
-                case .staged(let attachment):
-                    attachments.append(attachment)
-                    stagedAny = true
-                case .tooLarge(let name):
-                    oversized.append(name)
-                case .failed(let name):
-                    failed.append(name)
-                }
+                record(outcome, in: &tally)
             }
-            if stagedAny { Haptics.light() }
             if shouldAcceptPhotoPickerCompletion(openedIn: origin) {
-                reportImportProblems(oversized: oversized, failed: failed, limitMegabytes: limitMegabytes)
+                finishImport(tally, limitMegabytes: limitMegabytes)
             }
             clearPhotoImportContextIfCurrent(
                 completingGeneration: completionGeneration,
@@ -1340,6 +1329,34 @@ struct ComposerBar: View {
         case staged(Attachment)
         case tooLarge(String)
         case failed(String)
+    }
+
+    struct ImportTally {
+        var stagedAny = false
+        var oversized: [String] = []
+        var failed: [String] = []
+    }
+
+    private func record(_ outcome: StagedImport, in tally: inout ImportTally) {
+        switch outcome {
+        case .staged(let attachment):
+            attachments.append(attachment)
+            tally.stagedAny = true
+        case .tooLarge(let name):
+            tally.oversized.append(name)
+        case .failed(let name):
+            tally.failed.append(name)
+        }
+    }
+
+    /// One cue per selection: the error haptic and message when anything
+    /// was left out, otherwise a light tap if something was staged.
+    private func finishImport(_ tally: ImportTally, limitMegabytes: Int) {
+        if tally.oversized.isEmpty && tally.failed.isEmpty {
+            if tally.stagedAny { Haptics.light() }
+            return
+        }
+        reportImportProblems(oversized: tally.oversized, failed: tally.failed, limitMegabytes: limitMegabytes)
     }
 
     /// Copies one picked item into the staging folder under its real name
@@ -1379,6 +1396,12 @@ struct ComposerBar: View {
             try? FileManager.default.removeItem(at: url)
             return .tooLarge(name)
         }
+        // The bytes decide, not the extension: a HEIC named .png still
+        // gets re-encoded.
+        if type == nil || type?.conforms(to: .image) == true,
+           let sniffed = AttachmentStaging.imageType(at: url) {
+            type = sniffed
+        }
         if AttachmentTypePolicy.needsJPEGTranscode(type) {
             let jpegName = AttachmentTypePolicy.jpegFilename(for: name)
             guard let jpegURL = try? AttachmentStaging.destination(for: jpegName),
@@ -1391,12 +1414,12 @@ struct ComposerBar: View {
             name = jpegName
             type = .jpeg
         }
-        let size = AttachmentSizeLimit.fileSize(at: url) ?? 0
-        guard size > 0 else {
+        let size = AttachmentSizeLimit.fileSize(at: url)
+        if size == 0 {
             try? FileManager.default.removeItem(at: url)
             return .failed(name)
         }
-        guard AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) else {
+        if let size, !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
             try? FileManager.default.removeItem(at: url)
             return .tooLarge(name)
         }
@@ -1449,30 +1472,50 @@ struct ComposerBar: View {
         guard let origin,
               shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { return }
         guard case .success(let urls) = result else { return }
-        var oversized: [String] = []
-        var failed: [String] = []
-        for url in urls {
-            let didAccess = url.startAccessingSecurityScopedResource()
-            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-            // Checked before reading so an oversized file is never loaded.
-            if let size = AttachmentSizeLimit.fileSize(at: url),
-               !AttachmentSizeLimit.allows(byteCount: size, megabytes: attachmentLimitMegabytes) {
-                oversized.append(url.lastPathComponent)
-                continue
+        let limitMegabytes = attachmentLimitMegabytes
+        Task {
+            var tally = ImportTally()
+            for url in urls {
+                guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { break }
+                // Copied, checked and (for images) re-encoded off the main
+                // actor, like picked photos.
+                let outcome = await Task.detached(priority: .userInitiated) {
+                    Self.stageDocument(at: url, limitMegabytes: limitMegabytes)
+                }.value
+                guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
+                    if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                    break
+                }
+                record(outcome, in: &tally)
             }
-            guard let data = try? Data(contentsOf: url) else {
-                failed.append(url.lastPathComponent)
-                continue
+            if shouldAcceptAsyncAttachmentCompletion(startedIn: origin) {
+                finishImport(tally, limitMegabytes: limitMegabytes)
             }
-            let type = UTType(filenameExtension: url.pathExtension)
-            addAttachment(
-                data: data,
-                name: url.lastPathComponent,
-                mimeType: type?.preferredMIMEType ?? "application/octet-stream",
-                kind: AttachmentTypePolicy.kind(for: type)
-            )
         }
-        reportImportProblems(oversized: oversized, failed: failed, limitMegabytes: attachmentLimitMegabytes)
+    }
+
+    /// Stages a file from the document picker the same way as a picked
+    /// photo: size checked before it is read, copied rather than loaded.
+    nonisolated private static func stageDocument(at url: URL, limitMegabytes: Int) -> StagedImport {
+        let name = url.lastPathComponent
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        if let size = AttachmentSizeLimit.fileSize(at: url),
+           !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
+            return .tooLarge(name)
+        }
+        do {
+            let staged = try AttachmentStaging.destination(for: name)
+            try FileManager.default.copyItem(at: url, to: staged)
+            return finishStaging(
+                fileAt: staged,
+                name: name,
+                type: UTType(filenameExtension: url.pathExtension),
+                limitMegabytes: limitMegabytes
+            )
+        } catch {
+            return .failed(name)
+        }
     }
 
     private func clearDocumentImportContextIfCurrent(_ completingContext: AsyncAttachmentContext?) {
@@ -1486,14 +1529,24 @@ struct ComposerBar: View {
             reportImportProblems(oversized: [name], failed: [], limitMegabytes: attachmentLimitMegabytes)
             return
         }
-        do {
-            let url = try AttachmentStaging.destination(for: name)
-            try data.write(to: url, options: .atomic)
-            attachments.append(Attachment(id: UUID().uuidString, name: name, uri: url.absoluteString, mimeType: mimeType, kind: kind))
+        let origin = asyncAttachmentContext
+        Task {
+            let staged: URL? = await Task.detached(priority: .userInitiated) {
+                guard let url = try? AttachmentStaging.destination(for: name),
+                      (try? data.write(to: url, options: .atomic)) != nil else { return nil }
+                return url
+            }.value
+            guard let staged else {
+                appState.errorMessage = AppLocalization.string("Could not prepare \(name) for upload.")
+                Haptics.error()
+                return
+            }
+            guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
+                try? FileManager.default.removeItem(at: staged)
+                return
+            }
+            attachments.append(Attachment(id: UUID().uuidString, name: name, uri: staged.absoluteString, mimeType: mimeType, kind: kind))
             Haptics.light()
-        } catch {
-            appState.errorMessage = AppLocalization.string("Could not prepare \(name) for upload.")
-            Haptics.error()
         }
     }
 

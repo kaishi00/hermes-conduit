@@ -44,7 +44,8 @@ enum AttachmentSizeLimit {
     }
 
     static func formattedSize(_ byteCount: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
+        // Binary, like the limit, so a file at exactly 16 MB reads "16 MB".
+        ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .binary)
     }
 
     static func tooLargeMessage(names: [String], megabytes: Int) -> String {
@@ -167,7 +168,35 @@ enum AttachmentStaging {
               ) else { return false }
         let options = [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary
         CGImageDestinationAddImageFromSource(target, imageSource, 0, options)
-        return CGImageDestinationFinalize(target)
+        guard CGImageDestinationFinalize(target) else {
+            try? FileManager.default.removeItem(at: destination)
+            return false
+        }
+        return true
+    }
+
+    /// The image format the file's bytes actually hold, if it is an image.
+    static func imageType(at url: URL) -> UTType? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let identifier = CGImageSourceGetType(source) else { return nil }
+        return UTType(identifier as String)
+    }
+
+    /// Staged files outlive their drafts (the sent bubble previews from
+    /// them), so old ones are cleared at launch. Drafts live only in
+    /// memory, so nothing from a previous launch still needs them.
+    static func sweepStaleFiles(olderThan age: TimeInterval = 3 * 24 * 60 * 60, now: Date = Date()) {
+        let fileManager = FileManager.default
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return }
+        for file in files {
+            let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            if let modified, now.timeIntervalSince(modified) > age {
+                try? fileManager.removeItem(at: file)
+            }
+        }
     }
 }
 

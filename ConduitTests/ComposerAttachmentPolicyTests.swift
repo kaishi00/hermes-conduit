@@ -63,7 +63,7 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
 
     func testDetailLabelShowsTypeAndSize() {
         let video = Attachment(id: "a", name: "clip.mp4", uri: "file:///tmp/clip.mp4", mimeType: "video/mp4", kind: .video)
-        let label = AttachmentTypePolicy.detailLabel(for: video, byteCount: 21 * 1_000_000)
+        let label = AttachmentTypePolicy.detailLabel(for: video, byteCount: 21 * 1024 * 1024)
         XCTAssertTrue(label.hasPrefix("MP4 · "), label)
         XCTAssertTrue(label.contains("21"), label)
         XCTAssertEqual(AttachmentTypePolicy.symbolName(for: video), "film")

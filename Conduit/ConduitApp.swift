@@ -13,6 +13,9 @@ import UserNotifications
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        Task.detached(priority: .background) {
+            AttachmentStaging.sweepStaleFiles()
+        }
         if let payload = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             Task { @MainActor in
                 PushNotificationService.shared.receiveNotificationPayload(payload)
