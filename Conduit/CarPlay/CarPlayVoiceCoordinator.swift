@@ -580,18 +580,13 @@ final class CarPlayVoiceCoordinator {
         await completeListenTurn(generation: generation, outcome: outcome)
     }
 
-    /// A chat open that did not land: a superseded one (another chat was
-    /// opened meanwhile) is navigation, so the car returns to Ready; only a
-    /// failed one shows Error.
+    /// A chat open that did not land: only a failed one shows Error. A
+    /// superseded one (another chat was opened meanwhile) is navigation, and
+    /// the navigation that won publishes the car's next state, so nothing is
+    /// shown over it.
     private func settleUnopenedChat(_ outcome: AppState.SessionOpenOutcome) {
-        guard outcome == .superseded else {
-            handleControllerState(.failed(""))
-            return
-        }
-        // The navigation that superseded this one may already have a
-        // conversation running; its state stays on the car.
-        guard !hasOpenConversation(in: lastBoundAppState ?? appStateProvider()) else { return }
-        handleControllerState(.idle)
+        guard outcome == .failed else { return }
+        handleControllerState(.failed(""))
     }
 
     /// A settled Voice Job: its outcome is spoken again in the conversation
