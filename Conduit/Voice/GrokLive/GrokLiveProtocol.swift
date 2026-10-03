@@ -105,6 +105,17 @@ enum GrokLiveProtocol {
                     "content": [["type": "input_text", "text": text]],
                 ] as [String: Any],
             ]], true)
+        case .contextNote(let text):
+            // Added to the conversation with no response.create: the model
+            // keeps it for the user's next turn without answering it now.
+            return ([[
+                "type": "conversation.item.create",
+                "item": [
+                    "type": "message",
+                    "role": "user",
+                    "content": [["type": "input_text", "text": text]],
+                ] as [String: Any],
+            ]], false)
         case .toolResponse(let id, _, let result, let scheduling):
             let output = (try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]))
                 .map { String(decoding: $0, as: UTF8.self) } ?? "{}"

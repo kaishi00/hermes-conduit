@@ -141,8 +141,9 @@ final class GPTLiveConversationController: ObservableObject {
     private var lastUserSpeechAt: Date?
     private var lastModelOutputAt: Date?
     private var lastModelTurnEndedAt: Date?
-    /// Idle-only session context (job notices) waiting to be sent.
-    private var pendingContext: [(text: String, jobID: UUID?)] = []
+    /// Idle-only session context (job notices, typed exchanges) waiting to
+    /// be sent.
+    private var pendingContext: [(text: String, channel: GPTLiveProtocol.Channel, jobID: UUID?)] = []
     private var idleFlushTask: Task<Void, Never>?
     /// Entries still taking streamed fragments. The other speaker starting
     /// closes one, as in Gemini Live.
@@ -250,6 +251,7 @@ final class GPTLiveConversationController: ObservableObject {
         retireSession()
         modelTurnActive = false
         // Unspoken job notices go back to the supervisor, not the bin.
+        // Typed exchanges (no job) are best effort: the chat still has them.
         bridge.returnUnsent(jobIDs: pendingContext.map(\.jobID))
         pendingContext = []
         bridge.connectionReplaced()
@@ -282,7 +284,13 @@ final class GPTLiveConversationController: ObservableObject {
         guard isActive, endRequestedAt == nil, session?.isReady == true else { return }
         let outgoing = bridge.pendingUpdates()
         dispatch(outgoing)
-        if !outgoing.isEmpty { sendJobStatus() }
+        // Job news refreshes the model's job list; a typed exchange alone
+        // (quiet context with no job) changes no job.
+        let changesJobs = outgoing.contains { item in
+            if case .sessionContext(_, .commentary, _, nil) = item { return false }
+            return true
+        }
+        if changesJobs { sendJobStatus() }
     }
 
     // MARK: Hands-free end
@@ -520,7 +528,7 @@ final class GPTLiveConversationController: ObservableObject {
                 }
             case .sessionContext(let text, let channel, let whenIdle, let jobID):
                 if whenIdle {
-                    pendingContext.append((text, jobID))
+                    pendingContext.append((text, channel, jobID))
                 } else {
                     session?.appendContext(text, channel: channel, delegationID: nil)
                 }
@@ -539,17 +547,22 @@ final class GPTLiveConversationController: ObservableObject {
         return true
     }
 
-    /// Sends at most one queued update, and only while idle.
+    /// Sends queued updates while idle: quiet context (typed exchanges)
+    /// starts no turn, so it doesn't stop the line; a spoken one ends it.
     func flushPendingContextIfIdle() {
-        guard !pendingContext.isEmpty, endRequestedAt == nil, isConversationIdle, let session else { return }
-        let item = pendingContext.removeFirst()
-        if session.appendContext(item.text, channel: .speakable, delegationID: nil) {
+        while !pendingContext.isEmpty, endRequestedAt == nil, isConversationIdle, let session {
+            let item = pendingContext.removeFirst()
+            guard session.appendContext(item.text, channel: item.channel, delegationID: nil) else {
+                pendingContext.insert(item, at: 0)
+                return
+            }
             bridge.contextDelivered(jobID: item.jobID)
-            // The model speaks it next: wait for that turn before another.
-            modelTurnActive = true
-            lastModelOutputAt = now()
-        } else {
-            pendingContext.insert(item, at: 0)
+            guard item.channel == .commentary else {
+                // The model speaks it next: wait for that turn before another.
+                modelTurnActive = true
+                lastModelOutputAt = now()
+                return
+            }
         }
     }
 
