@@ -343,6 +343,12 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         repeated.receive("I think so too", endsUtterance: false)
         XCTAssertEqual(repeated.text, "I agree. I think so too", "a new utterance may start with the same word")
 
+        var sameStart = DictationTranscript()
+        sameStart.receive("Yes please.", endsUtterance: true)
+        sameStart.receive("Yes I'd like that", endsUtterance: false)
+        XCTAssertEqual(sameStart.text, "Yes please. Yes I'd like that",
+                       "repeating only half of a closed utterance starts a new one")
+
         // A restart the recognizer didn't mark is still caught when it drops
         // most of the words and the first one.
         var unmarked = DictationTranscript()

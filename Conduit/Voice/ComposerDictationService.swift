@@ -324,8 +324,8 @@ struct DictationTranscript: Equatable {
     }
 
     /// Whether `next` begins a new utterance rather than revising `previous`.
-    /// A continuation repeats most of what came before. After the recognizer
-    /// marked a boundary, a result that doesn't, or is shorter, is new
+    /// A continuation repeats more than half of what came before. After the
+    /// recognizer marked a boundary, a result that doesn't, or is shorter, is new
     /// (continuing past a boundary only grows). Without that mark
     /// only a much shorter result that also changes the first word is: a
     /// revision can rewrite words, but rarely discards most of them.
@@ -335,7 +335,7 @@ struct DictationTranscript: Equatable {
         let after = words(next)
         let shared = zip(before, after).prefix(while: { $0.0 == $0.1 }).count
         if shared == before.count { return false }
-        if afterBoundary { return after.count < before.count || shared * 2 < before.count }
+        if afterBoundary { return after.count < before.count || shared * 2 <= before.count }
         guard before.count >= 3, after.count * 2 <= before.count else { return false }
         return shared == 0
     }

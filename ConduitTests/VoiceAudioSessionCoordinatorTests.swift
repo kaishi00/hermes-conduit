@@ -419,10 +419,10 @@ extension VoiceAudioSessionCoordinatorTests {
     func testWakeListeningYieldsBeforeAnotherOwnerAcquires() throws {
         var wake: VoiceAudioLease? = try coordinator.acquire(.wakeListening)
         var yields = 0
-        coordinator.onWakeListenerMustYield = { [unowned self] in
+        coordinator.onWakeListenerMustYield = { [weak self] in
             yields += 1
             // The listener lets go inside the call, as AppState's does.
-            if let lease = wake { self.coordinator.release(lease) }
+            if let self, let lease = wake { self.coordinator.release(lease) }
             wake = nil
         }
 
