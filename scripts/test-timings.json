@@ -19,6 +19,7 @@
     "CloudflareAccessTests": 0.048,
     "ComposerAttachmentPolicyTests": 0.05,
     "ComposerDraftStoreTests": 0.027,
+    "ComposerFullEditorTests": 0.05,
     "ComposerPasteTextViewTests": 0.543,
     "ConnectionRepairUITests": 232.5,
     "ConnectionSetupSettingsUITests": 296.8,

@@ -201,6 +201,36 @@
         }
       }
     },
+    "Dictation is unavailable while a voice conversation has the microphone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音对话占用麦克风时无法听写"
+          }
+        }
+      }
+    },
+    "Collapse editor" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起编辑器"
+          }
+        }
+      }
+    },
+    "Expand editor" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开编辑器"
+          }
+        }
+      }
+    },
     "Types what you say into the message" : {
       "localizations" : {
         "zh-Hans" : {

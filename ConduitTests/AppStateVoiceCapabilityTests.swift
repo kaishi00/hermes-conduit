@@ -305,7 +305,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
 
     /// Dictation has its own button (#335): once dictated words make the
     /// draft sendable, Send takes the slot even while still listening.
-    func testDictatedTextBringsSendBackWhileDictating() {
+    func testSendableDraftTakesTheSlotFromVoice() {
         XCTAssertEqual(ComposerBar.trailingControl(action: .send, showsVoiceButton: true), .action)
     }
 

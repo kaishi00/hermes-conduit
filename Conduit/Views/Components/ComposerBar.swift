@@ -58,11 +58,21 @@ struct ComposerBar: View {
     @StateObject private var dictation = ComposerDictationService()
     /// The draft as it was when dictation began; dictated text goes after it.
     @State private var dictationPrefix = ""
+    /// The full-screen editor for long drafts (#335).
+    @State private var isShowingFullEditor = false
 
     struct AsyncAttachmentContext: Equatable {
         let editorIdentity: UUID
         let draftKey: ComposerDraftKey
         let attachmentGeneration: UInt64
+    }
+
+    /// About three lines of body text: below this a draft is short enough
+    /// to read in place, so the expand icon stays out of the way.
+    static let fullEditorThreshold: CGFloat = 80
+
+    static func showsFullEditorButton(measuredHeight: CGFloat) -> Bool {
+        measuredHeight >= fullEditorThreshold
     }
 
     static func composerDraftKey(for sessionID: String?, profile: String) -> ComposerDraftKey {
@@ -315,6 +325,11 @@ struct ComposerBar: View {
                 saveDraft(for: activeDraftKey)
             }
         }
+        .onChange(of: appState.composerIsEnabled) { _, enabled in
+            // The sheet has no room for the composer's notices; the inline
+            // composer explains why it is locked.
+            if !enabled { isShowingFullEditor = false }
+        }
         .onChange(of: appState.isVoiceInUse) { _, inUse in
             // Voice took the microphone: dictation steps aside.
             guard inUse else { return }
@@ -454,10 +469,67 @@ struct ComposerBar: View {
                 }
             )
             .id(editorIdentity)
-            .padding(.horizontal, 5)
+            .padding(.leading, 5)
+            // Room for the expand icon, so the text wraps before it.
+            .padding(.trailing, showsFullEditorButton ? 40 : 5)
             .frame(height: composerTextHeight)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .overlay(alignment: .topTrailing) {
+            if showsFullEditorButton {
+                Button {
+                    Haptics.selection()
+                    // The sheet's editor can't tell dictated words from typed
+                    // ones, so dictation ends here with the words so far
+                    // (one haptic: this tap's).
+                    dictation.onFinish = nil
+                    dictation.cancel()
+                    isFocused = false
+                    isShowingSlashSuggestions = false
+                    isShowingFullEditor = true
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!appState.composerIsEnabled)
+                .accessibilityLabel(Text("Expand editor"))
+                .accessibilityIdentifier("composer.expand-editor")
+                .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : ConduitMotion.response, value: showsFullEditorButton)
+        .sheet(isPresented: $isShowingFullEditor, onDismiss: {
+            // The inline editor only takes programmatic changes, so hand it
+            // what was written in the sheet, cursor at the end. An unchanged
+            // draft keeps the cursor where it was.
+            replaceComposerText(text, cursorAtEnd: true)
+            // Typing a slash command in the sheet arms suggestions the sheet
+            // never shows; they'd pop up over the unfocused inline field.
+            isShowingSlashSuggestions = false
+        }) {
+            ComposerFullEditor(
+                text: $text,
+                placeholder: appState.composerPlaceholder,
+                enabled: appState.composerIsEnabled,
+                onUserEdit: { appState.noteComposerUserEdit() },
+                onCollapse: { isShowingFullEditor = false },
+                attachments: {
+                    if !attachments.isEmpty {
+                        attachmentStrip
+                    }
+                },
+                actionButton: { composerActionButton }
+            )
+            .preferredColorScheme(appState.themePreference.colorScheme)
+        }
+    }
+
+    private var showsFullEditorButton: Bool {
+        Self.showsFullEditorButton(measuredHeight: composerTextHeight)
     }
 
     /// Attach, model and session status on the left; dictate and the
@@ -478,7 +550,7 @@ struct ComposerBar: View {
             } label: {
                 ContextRingView(percent: appState.runtime.contextPercent)
                     .frame(width: 32, height: 32)
-                    .frame(minWidth: 36, minHeight: 44)
+                    .frame(minWidth: 44, minHeight: 44)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Context usage, \(Int(appState.runtime.contextPercent.rounded())) percent")
@@ -491,7 +563,7 @@ struct ComposerBar: View {
                     Label("\(appState.activeAgents)", systemImage: "person.2")
                         .font(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.conduitAccent)
-                        .frame(minWidth: 36, minHeight: 44)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(AppLocalization.string("Delegate agents, \(String(appState.activeAgents)) active"))
@@ -788,6 +860,7 @@ struct ComposerBar: View {
         Button {
             if stopOnly {
                 dismissComposer()
+                isShowingFullEditor = false
                 Haptics.warning()
                 Task { await appState.cancelCurrent() }
             } else {
@@ -881,6 +954,7 @@ struct ComposerBar: View {
         // The send haptic stands for both.
         dictation.onFinish = nil
         dictation.cancel()
+        isShowingFullEditor = false
         let submittedText = text
         let submittedAttachments = attachments
         let submittedAction = action
@@ -984,8 +1058,8 @@ struct ComposerBar: View {
     /// slot stays the one "go" control.
     private var dictateButton: some View {
         let canDictate = canDictateFromComposer
-        let isDictating = dictation.isCapturing
-        let isActive = isDictating || dictation.isStarting
+        let isCapturing = dictation.isCapturing
+        let isActive = isCapturing || dictation.isStarting
         return Button {
             switch ComposerDictation.tap(
                 isCapturing: dictation.isCapturing,
@@ -999,9 +1073,9 @@ struct ComposerBar: View {
             case .nothing: break
             }
         } label: {
-            Image(systemName: isDictating ? "mic.fill" : "mic")
+            Image(systemName: isCapturing ? "mic.fill" : "mic")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(isDictating ? Color.red : (canDictate ? Color.primary : Color.secondary))
+                .foregroundStyle(isCapturing ? Color.red : (canDictate ? Color.primary : Color.secondary))
                 // Pulses from the tap, so a start still waiting on
                 // permission or the microphone shows it's in flight.
                 .symbolEffect(.pulse, isActive: isActive && !reduceMotion)
@@ -1013,15 +1087,17 @@ struct ComposerBar: View {
         .disabled(!canDictate && !isActive)
         .conduitGlassControl(
             cornerRadius: 22,
-            tint: isDictating ? .red.opacity(0.16) : .primary.opacity(0.025),
+            tint: isCapturing ? .red.opacity(0.16) : .primary.opacity(0.025),
             interactive: canDictate || isActive
         )
-        .accessibilityLabel(isDictating
+        .accessibilityLabel(isCapturing
             ? Text("Stop dictation")
             : (dictation.isStarting ? Text("Cancel dictation") : Text("Dictate")))
-        .accessibilityHint(isDictating
+        .accessibilityHint(isCapturing
             ? AppLocalization.string("Stops dictating; the words stay in the message")
-            : (dictation.isStarting ? "" : AppLocalization.string("Types what you say into the message")))
+            : (dictation.isStarting ? "" : (appState.isVoiceInUse
+                ? AppLocalization.string("Dictation is unavailable while a voice conversation has the microphone")
+                : AppLocalization.string("Types what you say into the message"))))
     }
 
     private func openVoiceFromComposer() {
@@ -1184,8 +1260,10 @@ struct ComposerBar: View {
 
     private func handoffComposer(to destinationKey: ComposerDraftKey) {
         guard loadedDraftKey != destinationKey else { return }
-        // Dictated words belong to the draft they started in.
+        // Dictated words belong to the draft they started in, and the full
+        // editor to the chat it was opened in.
         dictation.cancel()
+        isShowingFullEditor = false
         if let loadedDraftKey {
             saveDraft(for: loadedDraftKey)
             if Self.draftKeysAreEquivalent(
