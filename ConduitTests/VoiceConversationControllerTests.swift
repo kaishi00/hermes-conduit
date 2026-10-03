@@ -81,7 +81,7 @@ final class VoiceConversationControllerTests: XCTestCase {
 
         await controller.startListening()
 
-        XCTAssertEqual(controller.state, .failed("Microphone access is required for voice conversations."))
+        XCTAssertEqual(controller.state, .failed("Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit."))
         XCTAssertFalse(capture.didStart)
     }
 
@@ -97,7 +97,7 @@ final class VoiceConversationControllerTests: XCTestCase {
         let result = await controller.runTranscriptionTest(duration: 0)
 
         XCTAssertFalse(result.passed)
-        XCTAssertEqual(result.message, "Microphone access is required for voice conversations.")
+        XCTAssertEqual(result.message, "Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit.")
     }
 
     func testTranscriptionTestReportsCaptureStartFailureBeforeProviderCall() async {
@@ -212,7 +212,7 @@ final class VoiceConversationControllerTests: XCTestCase {
         let result = await controller.requestOnDeviceTranscriptionPermissions()
 
         XCTAssertFalse(result.passed)
-        XCTAssertEqual(result.message, "Microphone access is required for voice conversations.")
+        XCTAssertEqual(result.message, "Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit.")
         XCTAssertEqual(deviceTranscriber.permissionRequestCount, 0, "Speech permission should not be requested after microphone denial")
     }
 

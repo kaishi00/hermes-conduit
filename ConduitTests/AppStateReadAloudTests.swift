@@ -163,7 +163,7 @@ final class AppStateReadAloudTests: XCTestCase {
         )
         XCTAssertEqual(
             harness.appState.readAloudUnavailableReason,
-            "This Hermes profile has no ready text-to-speech provider."
+            "This Hermes profile has no ready text-to-speech provider. Set one up in Settings > Voice."
         )
 
         harness.appState.installVoiceCapabilityStateForTesting(
@@ -173,7 +173,7 @@ final class AppStateReadAloudTests: XCTestCase {
         )
         XCTAssertEqual(
             harness.appState.readAloudUnavailableReason,
-            "Enable voice for this profile in Settings."
+            "Voice is off for this profile. Turn on \"Enable voice on this device\" in Settings > Voice."
         )
 
         harness.appState.installVoiceCapabilityStateForTesting(

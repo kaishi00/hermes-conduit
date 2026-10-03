@@ -15,7 +15,8 @@
 //  on the car's screen (the top bar's buttons may be). Replacing them in
 //  place left the car with buttons the app no longer held, so Mute did
 //  nothing (#361). New controls get a new template
-//  instead, built to open on the state the car is showing.
+//  instead, built to open on the state the car is showing. The same goes
+//  for the Error state's title, which names what to fix.
 //
 
 import CarPlay
@@ -54,6 +55,10 @@ struct CarPlayVoiceControls: Equatable {
     /// The classic voice mode, as opposed to a live call.
     var isClassic: Bool
     var isMicrophoneMuted: Bool
+    /// What the Error state names as the thing to fix; nil shows the
+    /// generic Error title. A state's title is as fixed as its buttons, so
+    /// a new issue also needs a new template.
+    var errorIssue: VoiceSetupIssue? = nil
 
     /// The classic mode's Listen continues the current chat, so a new chat
     /// is its own button. A live call always starts fresh.
@@ -118,7 +123,7 @@ enum CarPlayVoiceTemplateFactory {
     ) -> CPVoiceControlState {
         let voiceControlState = CPVoiceControlState(
             identifier: state.identifier,
-            titleVariants: state.titleVariants,
+            titleVariants: state.titleVariants(errorIssue: controls.errorIssue),
             image: CarPlayVoiceArtwork.image(for: state),
             repeats: CarPlayVoiceArtwork.isAnimated(state)
         )

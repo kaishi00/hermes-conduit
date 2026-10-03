@@ -587,7 +587,7 @@ enum VoiceAudioError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .microphonePermissionDenied: return AppLocalization.string("Microphone access is required for voice conversations.")
+        case .microphonePermissionDenied: return AppLocalization.string("Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit.")
         case .noAudioCaptured: return AppLocalization.string("No speech was captured.")
         case .unavailable(let detail): return detail
         }

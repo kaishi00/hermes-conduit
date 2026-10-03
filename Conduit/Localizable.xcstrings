@@ -20481,6 +20481,286 @@
           }
         }
       }
+    },
+    "%@ isn't set up on Hermes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 上未设置 %@"
+          }
+        }
+      }
+    },
+    "%@ isn't set up on your Hermes server. Settings > Voice shows what it needs." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 服务器上未设置 %@。请在「设置」>「语音」中查看所需配置。"
+          }
+        }
+      }
+    },
+    "%@ not set up" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 未设置"
+          }
+        }
+      }
+    },
+    "Can't reach Hermes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接 Hermes"
+          }
+        }
+      }
+    },
+    "Can't reach Hermes. Check your iPhone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接 Hermes，请查看 iPhone。"
+          }
+        }
+      }
+    },
+    "Allow Speech Recognition for Conduit in iPhone Settings > Conduit, or choose another speech-to-text option in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 iPhone「设置」>「Conduit」中允许语音识别，或在「设置」>「语音」中选择其他语音转文字方式。"
+          }
+        }
+      }
+    },
+    "Allow Speech Recognition for Conduit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请为 Conduit 允许语音识别"
+          }
+        }
+      }
+    },
+    "Allow the mic in iPhone Settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 iPhone 设置中允许麦克风"
+          }
+        }
+      }
+    },
+    "Change speech to text in Conduit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Conduit 中更换语音转文字"
+          }
+        }
+      }
+    },
+    "Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音需要麦克风权限。请在 iPhone「设置」>「Conduit」中允许。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes before starting voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先连接 Hermes 再开始语音。"
+          }
+        }
+      }
+    },
+    "Microphone not allowed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允许使用麦克风"
+          }
+        }
+      }
+    },
+    "No assistant voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有助手语音"
+          }
+        }
+      }
+    },
+    "No speech to text" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有语音转文字"
+          }
+        }
+      }
+    },
+    "Plugin update needed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要更新插件"
+          }
+        }
+      }
+    },
+    "Set up assistant voice in Conduit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Conduit 中设置助手语音"
+          }
+        }
+      }
+    },
+    "Set up speech to text in Conduit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Conduit 中设置语音转文字"
+          }
+        }
+      }
+    },
+    "Something went wrong" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "出了点问题"
+          }
+        }
+      }
+    },
+    "Something went wrong. See your iPhone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "出了点问题，请查看 iPhone。"
+          }
+        }
+      }
+    },
+    "Speech Recognition is off" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音识别已关闭"
+          }
+        }
+      }
+    },
+    "Speech to text unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音转文字不可用"
+          }
+        }
+      }
+    },
+    "This Hermes profile has no ready speech-to-text provider. Set one up in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 配置没有可用的语音转文字服务。请在「设置」>「语音」中设置。"
+          }
+        }
+      }
+    },
+    "This Hermes profile has no ready text-to-speech provider. Set one up in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 配置没有可用的文字转语音服务。请在「设置」>「语音」中设置。"
+          }
+        }
+      }
+    },
+    "Turn on Voice in Conduit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Conduit 中开启语音"
+          }
+        }
+      }
+    },
+    "Update the Hermes notifier plugin" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 通知插件"
+          }
+        }
+      }
+    },
+    "Voice is off for this profile. Turn on \"Enable voice on this device\" in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此配置的语音已关闭。请在「设置」>「语音」中开启「在此设备上启用语音」。"
+          }
+        }
+      }
+    },
+    "Voice is off" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音已关闭"
+          }
+        }
+      }
+    },
+    "Voice is off: Conduit Settings > Voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音已关闭：Conduit 设置 > 语音"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -175,6 +175,10 @@ final class CarPlayVoiceCoordinator {
     /// The profiles the open Voice list offered, in row order.
     private var listedAgentProfiles: [String] = []
 
+    /// Test seam over what the Error state names as the thing to fix.
+    var setupIssueProvider: @MainActor (AppState, CarPlayVoiceMode) -> VoiceSetupIssue? = {
+        CarPlayVoiceCoordinator.setupIssue(in: $0, mode: $1)
+    }
     /// Test seam; production reads the device's CarPlay settings.
     var preferencesProvider: @MainActor () -> CarPlayPreferences = { CarPlayPreferences.shared }
     /// Test seam over the status sounds.
@@ -459,7 +463,11 @@ final class CarPlayVoiceCoordinator {
         controlsObservation = muted
             .removeDuplicates()
             .sink { [weak self] isMuted in
-                self?.updateControls(CarPlayVoiceControls(isClassic: mode == .classic, isMicrophoneMuted: isMuted))
+                guard let self else { return }
+                var updated = self.controls
+                updated.isClassic = mode == .classic
+                updated.isMicrophoneMuted = isMuted
+                self.updateControls(updated)
             }
     }
 
@@ -503,7 +511,17 @@ final class CarPlayVoiceCoordinator {
     }
 
     private func forward(_ target: CarPlayVoiceState) {
-        guard isConnected else { return }
+        guard isConnected, template != nil else { return }
+        var replacedFrom: CarPlayVoiceState?
+        if target == .error {
+            // The Error title names what to fix. A different one than the
+            // car's template was built with means a new template, opening
+            // on the state the car shows; Error then follows it.
+            let shownBefore = shownState
+            let wasPresented = isTemplatePresented
+            noteErrorIssue()
+            if wasPresented, !isTemplatePresented { replacedFrom = shownBefore }
+        }
         guard let template else { return }
         updateBrowseButtons(for: target)
         guard isTemplatePresented else {
@@ -512,6 +530,8 @@ final class CarPlayVoiceCoordinator {
             // activated would suppress the real post-presentation activation
             // and freeze the surface on the template's default state.
             pendingPresentationState = target
+            // The failure sound is not held back by the new template.
+            if let replacedFrom { playEarcon(from: replacedFrom, to: target) }
             return
         }
         guard let activated = CarPlayVoiceStateActivation.activationTarget(
@@ -522,6 +542,41 @@ final class CarPlayVoiceCoordinator {
         lastActivatedState = activated
         stateActivator(template, activated)
         playEarcon(from: previous, to: activated)
+    }
+
+    /// Records what the Error state should name as the thing to fix.
+    private func noteErrorIssue() {
+        let appState = lastBoundAppState ?? appStateProvider()
+        var updated = controls
+        updated.errorIssue = setupIssueProvider(appState, CarPlayVoiceMode.current(in: appState))
+        updateControls(updated)
+    }
+
+    /// What stops Voice in `mode`, as far as the app can tell: no Hermes
+    /// connection, a denied microphone, then the mode's own setup (classic
+    /// Voice's switch and speech providers, or a live mode's host). nil
+    /// when nothing in the setup explains the failure.
+    static func setupIssue(
+        in appState: AppState,
+        mode: CarPlayVoiceMode,
+        isMicrophoneDenied: Bool = VoiceSetupIssue.isMicrophoneDenied
+    ) -> VoiceSetupIssue? {
+        if !appState.isConnected { return .notConnected }
+        if isMicrophoneDenied { return .microphoneDenied }
+        switch mode {
+        case .classic: return appState.voiceSetupIssue
+        case .geminiLive: return liveIssue(appState.geminiLiveController.hostIssue, .geminiLive)
+        case .gptLive: return liveIssue(appState.gptLiveController.hostIssue, .gptLive)
+        case .grokLive: return liveIssue(appState.grokLiveController.hostIssue, .grokLive)
+        }
+    }
+
+    private static func liveIssue(_ hostIssue: LiveVoiceHostIssue?, _ mode: LiveVoiceModeName) -> VoiceSetupIssue? {
+        switch hostIssue {
+        case .pluginMissing: return .notifierPluginMissing
+        case .notSetUp: return .liveModeNotSetUp(mode)
+        case nil: return nil
+        }
     }
 
     /// Status sounds, classic mode only (see `CarPlayEarcon`).

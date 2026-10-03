@@ -8,6 +8,8 @@
 //  CarPlay is a state/control surface, never a mirrored chat window: no
 //  transcript text, reasoning, or failure detail ever crosses this boundary —
 //  the associated failure message of `.failed` is deliberately dropped here.
+//  The Error state instead names what to fix (`VoiceSetupIssue`), which the
+//  coordinator works out from the app's own state.
 //
 
 enum CarPlayVoiceState: String, CaseIterable, Equatable {
@@ -29,8 +31,19 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
         case .listening: return [AppLocalization.string("Listening…")]
         case .processing: return [AppLocalization.string("Thinking…")]
         case .responding: return [AppLocalization.string("Responding…")]
-        case .error: return [AppLocalization.string("Voice unavailable")]
+        case .error: return [
+            AppLocalization.string("Something went wrong. See your iPhone."),
+            AppLocalization.string("Something went wrong"),
+        ]
         }
+    }
+
+    /// The titles for this state, with the Error state naming what to fix
+    /// when the cause is known. A bare "Voice unavailable" read as CarPlay
+    /// itself not working to a driver who had never turned Voice on.
+    func titleVariants(errorIssue: VoiceSetupIssue?) -> [String] {
+        guard self == .error, let errorIssue else { return titleVariants }
+        return errorIssue.carPlayTitleVariants
     }
 
     /// Approximate mapping from the authoritative controller state. Both

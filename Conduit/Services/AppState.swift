@@ -22127,27 +22127,31 @@ final class AppState: ObservableObject {
         )
     }
 
-    var voiceUnavailableReason: String? {
-        if !isConnected { return "Connect to Hermes before starting voice." }
-        if !isVoiceEnabled { return "Enable voice for this profile in Settings." }
+    /// What stops the classic Voice conversation from starting, as a cause
+    /// the phone and CarPlay can each name with where to fix it.
+    var voiceSetupIssue: VoiceSetupIssue? {
+        if !isConnected { return .notConnected }
+        if !isVoiceEnabled { return .voiceOff }
         if voiceTranscriptionMode == .appleOnDevice, !appleSpeechAvailability.canAttemptRecognition {
             switch appleSpeechAvailability {
             case .permissionDenied:
-                return "Allow Speech Recognition in iOS Settings to use on-device transcription."
+                return .speechRecognitionDenied
             case .unsupported(let localeIdentifier):
-                return AppLocalization.string("On-device Apple speech recognition is unavailable for \(localeIdentifier).")
+                return .speechRecognitionUnsupported(locale: localeIdentifier)
             case .ready, .permissionRequired:
                 break
             }
         }
         if voiceTranscriptionMode == .hermes, !voiceCapabilitySnapshot.supportsTranscription {
-            return voiceCapabilitySnapshot.unavailableReason ?? AppLocalization.string("This Hermes profile has no ready speech-to-text provider.")
+            return .noSpeechToText(detail: voiceCapabilitySnapshot.unavailableReason)
         }
         if !voiceCapabilitySnapshot.supportsSpeech {
-            return "This Hermes profile has no ready text-to-speech provider."
+            return .noTextToSpeech
         }
         return nil
     }
+
+    var voiceUnavailableReason: String? { voiceSetupIssue?.message }
 
     var canStartVoiceConversation: Bool { voiceUnavailableReason == nil }
 
@@ -22159,7 +22163,7 @@ final class AppState: ObservableObject {
     /// `voiceUnavailableReason`.
     var phoneVoiceUnavailableReason: String? {
         if isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled {
-            return isConnected ? nil : "Connect to Hermes before starting voice."
+            return isConnected ? nil : VoiceSetupIssue.notConnected.message
         }
         return voiceUnavailableReason
     }
