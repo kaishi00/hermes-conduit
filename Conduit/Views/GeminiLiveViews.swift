@@ -195,114 +195,36 @@ struct GeminiLiveVoiceSheet: View {
     let onRetry: () -> Void
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                VStack(spacing: 16) {
-                    statusHeader
-                    LiveVoiceQuickHint(jobs: jobs)
-                    transcriptList
-                    controls
-                }
-                .padding(16)
-            }
-            .navigationTitle(engine == .grok ? "Grok Live" : "Gemini Live")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // Swiping down only minimises a running call: this is
-                // the hang-up.
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(role: .destructive, action: onClose) {
-                        Label("End", systemImage: "phone.down.fill")
-                            .labelStyle(.titleAndIcon)
-                    }
-                    .tint(.red)
-                }
-            }
-        }
+        LiveVoiceCallSheet(
+            title: engine == .grok ? "Grok Live" : "Gemini Live",
+            phase: Self.callPhase(controller.phase, microphoneMuted: controller.isMicrophoneMuted),
+            statusText: statusText,
+            transcript: controller.transcript,
+            assistantLabel: speakerLabel,
+            jobs: jobs,
+            isMicrophoneMuted: controller.isMicrophoneMuted,
+            canMute: controller.isActive && !controller.isEnding,
+            canInterrupt: controller.phase == .speaking,
+            onToggleMute: { controller.setMicrophoneMuted(!controller.isMicrophoneMuted) },
+            onInterrupt: { controller.interruptSpeaking() },
+            onEnd: onClose,
+            onRetry: onRetry
+        )
     }
 
-    private var statusHeader: some View {
-        VStack(spacing: 6) {
-            Image(systemName: statusSymbol)
-                .font(.system(size: 34, weight: .semibold))
-                .foregroundStyle(Color.conduitAura)
-                .accessibilityHidden(true)
-            Text(statusText)
-                .font(.headline)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var transcriptList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
-                ForEach(controller.transcript) { entry in
-                    Text(entry.text)
-                        .font(.body)
-                        .foregroundStyle(entry.speaker == .user ? Color.primary : Color.conduitAccent)
-                        .frame(maxWidth: .infinity, alignment: entry.speaker == .user ? .trailing : .leading)
-                        // Color and alignment alone don't tell VoiceOver who spoke.
-                        .accessibilityLabel(entry.speaker == .user
-                            ? AppLocalization.string("You: \(entry.text)")
-                            : speakerLabel(entry.text))
-                }
-            }
-        }
-        .defaultScrollAnchor(.bottom)
-    }
-
-    @ViewBuilder
-    private var controls: some View {
-        if case .failed = controller.phase {
-            Button(action: onRetry) {
-                Label("Try again", systemImage: "arrow.clockwise")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-            }
-            .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent.opacity(0.14))
-        } else {
-            if controller.phase == .speaking {
-                // On an open speaker the mic is closed while Gemini talks,
-                // so this is the way to cut in.
-                Button {
-                    controller.interruptSpeaking()
-                } label: {
-                    Label("Interrupt", systemImage: "hand.raised.fill")
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                }
-                .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent.opacity(0.14))
-            }
-            Button {
-                controller.setMicrophoneMuted(!controller.isMicrophoneMuted)
-            } label: {
-                Label(
-                    controller.isMicrophoneMuted ? AppLocalization.string("Unmute microphone") : AppLocalization.string("Mute microphone"),
-                    systemImage: controller.isMicrophoneMuted ? "mic.slash.fill" : "mic.fill"
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-            }
-            .disabled(!controller.isActive || controller.isEnding)
-            .conduitGlassControl(cornerRadius: 18, tint: .conduitAura.opacity(0.14))
+    static func callPhase(_ phase: GeminiLiveConversationController.Phase, microphoneMuted: Bool) -> LiveVoiceCallPhase {
+        switch phase {
+        case .idle: return .idle
+        case .connecting, .reconnecting: return .connecting
+        case .listening: return microphoneMuted ? .muted : .listening
+        case .speaking: return .speaking
+        case .ending: return .ending
+        case .failed: return .failed
         }
     }
 
     private func speakerLabel(_ text: String) -> String {
         engine == .grok ? AppLocalization.string("Grok: \(text)") : AppLocalization.string("Gemini: \(text)")
-    }
-
-    private var statusSymbol: String {
-        switch controller.phase {
-        case .idle, .connecting, .reconnecting: return "antenna.radiowaves.left.and.right"
-        case .listening: return controller.isMicrophoneMuted ? "mic.slash" : "waveform"
-        case .speaking: return "speaker.wave.3.fill"
-        case .ending: return "hand.wave.fill"
-        case .failed: return "exclamationmark.triangle.fill"
-        }
     }
 
     private var statusText: String {
