@@ -36,6 +36,10 @@ protocol SystemInputMuteControlling: AnyObject {
 final class SystemInputMute: SystemInputMuteControlling {
     private var observer: NSObjectProtocol?
 
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
     func observeInputMute(_ handler: (@MainActor (Bool) -> Void)?) {
         if let observer {
             NotificationCenter.default.removeObserver(observer)
@@ -92,12 +96,12 @@ final class HeadsetMicrophoneMute {
         if self.owner != id || ownerObject == nil {
             self.owner = id
             ownerObject = owner
-            self.onChange = onChange
             reflectedMuted = nil
             system.observeInputMute { [weak self] muted in
                 self?.systemMuteChanged(muted, for: id)
             }
         }
+        self.onChange = onChange
         reflect(muted)
     }
 
@@ -125,6 +129,9 @@ final class HeadsetMicrophoneMute {
         }
     }
 
+    /// Any change the system reports is taken as the user's: on iOS the
+    /// input mute only moves when the app sets it or the user mutes from an
+    /// accessory, so there is no system reset to tell apart from a gesture.
     private func systemMuteChanged(_ muted: Bool, for id: ObjectIdentifier) {
         // A gesture queued for a call that has since ended goes nowhere, and
         // the echo of Conduit's own change is already reflected.
