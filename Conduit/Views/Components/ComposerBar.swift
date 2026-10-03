@@ -495,6 +495,7 @@ struct ComposerBar: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .disabled(!appState.composerIsEnabled)
                 .accessibilityLabel(Text("Expand editor"))
                 .accessibilityIdentifier("composer.expand-editor")
                 .transition(.opacity)
@@ -506,6 +507,9 @@ struct ComposerBar: View {
             // what was written in the sheet, cursor at the end. An unchanged
             // draft keeps the cursor where it was.
             replaceComposerText(text, cursorAtEnd: true)
+            // Typing a slash command in the sheet arms suggestions the sheet
+            // never shows; they'd pop up over the unfocused inline field.
+            isShowingSlashSuggestions = false
         }) {
             ComposerFullEditor(
                 text: $text,
