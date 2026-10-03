@@ -523,7 +523,7 @@ struct ChatMessage: Identifiable, Equatable {
     /// …). Nil for ordinary rows. Normalization already reduced the row to its
     /// final display role/content; this only lets the timeline UI style the
     /// notice without re-deriving it from text.
-    let displayKind: String?
+    var displayKind: String?
 
     // Non-codable because it contains closures in some uses; serialization
     // is handled by the gateway, not by us. We construct these from RPC results.
