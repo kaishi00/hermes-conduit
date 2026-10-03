@@ -107,6 +107,8 @@ final class HeadsetMicrophoneMute {
 
     /// Hands the system mute back when `owner`'s call ends. The system is
     /// left unmuted: a mute belongs to the call it was set in.
+    /// Best effort: if AVFAudio refuses the unmute it is logged, and the
+    /// next call's claim sets the system state again.
     func release(by owner: AnyObject) {
         guard self.owner == ObjectIdentifier(owner) else { return }
         reflect(false)

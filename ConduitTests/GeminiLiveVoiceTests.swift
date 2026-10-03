@@ -860,7 +860,7 @@ extension VoiceConversationControllerTests {
         XCTAssertNotNil(system.handler)
         XCTAssertEqual(system.muted, true)
 
-        system.handler?(false)
+        system.press(muted: false)
         XCTAssertEqual(firstChanges, [])
         XCTAssertEqual(secondChanges, [false])
 
