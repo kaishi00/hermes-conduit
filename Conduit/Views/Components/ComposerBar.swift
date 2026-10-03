@@ -1021,7 +1021,9 @@ struct ComposerBar: View {
             : (dictation.isStarting ? Text("Cancel dictation") : Text("Dictate")))
         .accessibilityHint(isDictating
             ? AppLocalization.string("Stops dictating; the words stay in the message")
-            : (dictation.isStarting ? "" : AppLocalization.string("Types what you say into the message")))
+            : (dictation.isStarting ? "" : (appState.isVoiceInUse
+                ? AppLocalization.string("Dictation is unavailable while a voice conversation has the microphone")
+                : AppLocalization.string("Types what you say into the message"))))
     }
 
     private func openVoiceFromComposer() {
