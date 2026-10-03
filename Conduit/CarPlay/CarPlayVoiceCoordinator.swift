@@ -301,6 +301,14 @@ final class CarPlayVoiceCoordinator {
                 }
                 guard success, error == nil else {
                     carPlayLogger.error("root template install failed: \(String(describing: error), privacy: .public)")
+                    // A chat list waiting on this screen would never show,
+                    // so Voice starts as it did before the list existed.
+                    if self.isChatPickerPending {
+                        self.isChatPickerPending = false
+                        Task { @MainActor [weak self] in
+                            await self?.establishVoice(generation: generation)
+                        }
+                    }
                     return
                 }
                 self.isTemplatePresented = true
@@ -321,7 +329,9 @@ final class CarPlayVoiceCoordinator {
                     self.reinstallRootTemplate()
                     return
                 }
-                if pending != initialState {
+                // A replacement template is also told its state outright,
+                // rather than relying only on it opening on its first one.
+                if pending != initialState || initialState != .ready {
                     self.stateActivator(template, pending)
                 }
                 if self.isChatPickerPending {
@@ -505,12 +515,15 @@ final class CarPlayVoiceCoordinator {
                 action(self, value)
             }
         }
+        func fencedAction(_ action: @escaping (CarPlayVoiceCoordinator) -> Void) -> () -> Void {
+            { [weak self] in
+                guard let self, self.isCurrent(generation) else { return }
+                action(self)
+            }
+        }
         return CarPlayBrowseHandlers(
             openChat: fenced { $0.openChat($1) },
-            newVoiceChat: { [weak self] in
-                guard let self, self.isCurrent(generation) else { return }
-                self.startNewVoiceChat()
-            },
+            newVoiceChat: fencedAction { $0.startNewVoiceChat() },
             replayJob: fenced { $0.replayJob($1) },
             runShortcut: fenced { $0.runShortcut($1) },
             selectMode: fenced { $0.selectVoiceMode($1) },
@@ -519,6 +532,9 @@ final class CarPlayVoiceCoordinator {
     }
 
     private func push(_ browseTemplate: CPTemplate) {
+        // A screen the driver opens wins over a chat list still waiting
+        // for the voice screen.
+        isChatPickerPending = false
         // Only the Jobs list is kept current, and only while it is the
         // newest screen (the car's back button reports nothing).
         jobsObservation?.cancel()

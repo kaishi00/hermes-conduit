@@ -47,8 +47,8 @@ struct CarPlayVoiceActionHandlers {
 }
 
 /// What the buttons depend on besides the state: the Voice mode and the
-/// microphone. The template's states are fixed at creation, so their buttons
-/// are replaced in place when this changes.
+/// microphone. A template's buttons are fixed once it is on the car, so the
+/// coordinator installs a new template when this changes (#361).
 struct CarPlayVoiceControls: Equatable {
     /// The classic voice mode, as opposed to a live call.
     var isClassic: Bool

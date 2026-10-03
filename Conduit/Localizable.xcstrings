@@ -2521,16 +2521,6 @@
         }
       }
     },
-    "No chats yet" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "还没有聊天"
-          }
-        }
-      }
-    },
     "No shortcuts yet" : {
       "localizations" : {
         "zh-Hans" : {
