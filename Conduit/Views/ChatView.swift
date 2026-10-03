@@ -1074,7 +1074,7 @@ private struct UserDocumentAttachmentChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Label(attachment.name, systemImage: "doc")
+            Label(attachment.name, systemImage: AttachmentTypePolicy.symbolName(for: attachment))
                 .lineLimit(1)
             if loading {
                 ProgressView()
