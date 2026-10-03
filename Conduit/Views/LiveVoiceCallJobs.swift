@@ -94,8 +94,6 @@ struct LiveVoiceCallJobStrip: View {
     @ObservedObject var jobs: VoiceBackgroundJobSupervisor
     let onSelect: (UUID) -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
         let callJobs = jobs.callJobs(jobs.liveCallID)
         if let latest = callJobs.last {
@@ -107,8 +105,7 @@ struct LiveVoiceCallJobStrip: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .transition(.opacity)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: latest)
+            .accessibilityElement(children: .combine)
         }
     }
 }
@@ -152,18 +149,13 @@ struct LiveVoiceCallTimeline<Line: View>: View {
         for (index, entry) in transcript.enumerated() where positions[entry.id] == nil {
             positions[entry.id] = index
         }
-        struct Placed {
-            let order: Int
-            let job: VoiceBackgroundJob
-            let position: Int
-        }
-        var placed: [Placed] = []
+        var placed: [LiveVoiceTimelinePlacement] = []
         for (order, job) in jobs.enumerated() {
             var position = job.callAnchor?.transcriptIndex ?? 0
             if let after = job.callAnchor?.afterEntryID, let index = positions[after] {
                 position = index + 1
             }
-            placed.append(Placed(order: order, job: job, position: position))
+            placed.append(LiveVoiceTimelinePlacement(order: order, job: job, position: position))
         }
         placed.sort { lhs, rhs in
             lhs.position == rhs.position ? lhs.order < rhs.order : lhs.position < rhs.position
@@ -182,6 +174,13 @@ struct LiveVoiceCallTimeline<Line: View>: View {
         }
         return items
     }
+}
+
+/// A job and the transcript position it goes before.
+private struct LiveVoiceTimelinePlacement {
+    let order: Int
+    let job: VoiceBackgroundJob
+    let position: Int
 }
 
 /// A job's full result over the call. Follows the job, so it fills in when
