@@ -471,6 +471,36 @@
         }
       }
     },
+    "Hangs up the call" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "挂断通话"
+          }
+        }
+      }
+    },
+    "Stops the assistant so you can speak" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让助手停下，你可以开口说话"
+          }
+        }
+      }
+    },
+    "Available while the assistant is speaking" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "助手说话时可用"
+          }
+        }
+      }
+    },
     "End call" : {
       "localizations" : {
         "zh-Hans" : {

@@ -214,6 +214,9 @@ struct GeminiLiveVoiceSheet: View {
         .onChange(of: controller.phase) { _, _ in
             AccessibilityNotification.Announcement(statusText).post()
         }
+        .onChange(of: controller.isMicrophoneMuted) { _, _ in
+            AccessibilityNotification.Announcement(statusText).post()
+        }
         // Each line once, with its final text (not the first fragment).
         .onChange(of: controller.finishedTurn) { _, turn in
             guard let turn else { return }
