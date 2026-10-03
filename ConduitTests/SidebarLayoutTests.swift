@@ -164,4 +164,69 @@ final class SidebarLayoutTests: XCTestCase {
             chatResumeLifecycleOperations: .live
         )
     }
+
+    // MARK: - Projects view Pinned section (#338)
+    //
+    // Pinned chats from every project and source, archived ones skipped,
+    // narrowed by the search field.
+
+    private func pinnedTestSession(_ id: String, title: String? = nil, source: SessionSource = .chat, archived: Bool = false) -> SessionSummary {
+        SessionSummary(
+            id: id,
+            alternateIds: [],
+            title: title ?? id,
+            model: "Hermes",
+            updatedLabel: "now",
+            profile: "default",
+            source: source,
+            isActive: false,
+            isArchived: archived,
+            lineageRootId: nil
+        )
+    }
+
+    private func titleMatches(_ session: SessionSummary, _ query: String) -> Bool {
+        session.title.localizedCaseInsensitiveContains(query)
+    }
+
+    func testListsPinnedChatsFromEverySourceInOrderAndSkipsArchived() {
+        let sessions = [
+            pinnedTestSession("a", source: .chat),
+            pinnedTestSession("b", source: .telegram),
+            pinnedTestSession("c", source: .voice),
+            pinnedTestSession("d", archived: true),
+            pinnedTestSession("e")
+        ]
+        let pinned: Set<String> = ["a", "b", "c", "d"]
+
+        let result = SidebarPinnedSessions.forProjectsView(
+            sessions,
+            query: "",
+            isPinned: { pinned.contains($0.id) },
+            matches: titleMatches
+        )
+
+        XCTAssertEqual(result.map(\.id), ["a", "b", "c"])
+    }
+
+    func testSearchNarrowsPinnedChatsAndBlankSearchKeepsAll() {
+        let sessions = [pinnedTestSession("a", title: "Release notes"), pinnedTestSession("b", title: "Groceries")]
+
+        let narrowed = SidebarPinnedSessions.forProjectsView(
+            sessions, query: "  release ", isPinned: { _ in true }, matches: titleMatches
+        )
+        XCTAssertEqual(narrowed.map(\.id), ["a"])
+
+        let blank = SidebarPinnedSessions.forProjectsView(
+            sessions, query: "   ", isPinned: { _ in true }, matches: titleMatches
+        )
+        XCTAssertEqual(blank.map(\.id), ["a", "b"])
+    }
+
+    func testNothingPinnedGivesAnEmptySection() {
+        let result = SidebarPinnedSessions.forProjectsView(
+            [pinnedTestSession("a")], query: "", isPinned: { _ in false }, matches: titleMatches
+        )
+        XCTAssertTrue(result.isEmpty)
+    }
 }
