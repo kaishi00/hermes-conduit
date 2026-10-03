@@ -38,6 +38,8 @@ struct LiveVoiceStyleSettingsSection: View {
     @State private var preview: LiveVoiceInstructionsPreviewContent?
     @State private var showsPreview = false
     @State private var greetingSave: Task<Void, Never>?
+    /// The typed greeting not saved yet, pinned to its style and profile.
+    @State private var pendingSave: (() -> Void)?
     /// The style this view last saved, so its own change isn't mistaken
     /// for one made elsewhere (another profile).
     @State private var lastSaved: LiveVoiceStyle?
@@ -58,7 +60,16 @@ struct LiveVoiceStyleSettingsSection: View {
         )
     }
 
+    /// Saves the typed greeting now, to the profile it was typed in.
+    private func flushPendingSave() {
+        greetingSave?.cancel()
+        pendingSave?()
+        pendingSave = nil
+    }
+
     private func save() {
+        greetingSave?.cancel()
+        pendingSave = nil
         let current = style
         lastSaved = current
         model.setStyle(current)
@@ -81,24 +92,26 @@ struct LiveVoiceStyleSettingsSection: View {
                         if newValue.count > LiveVoiceStyle.maxGreetingCharacters {
                             greeting = String(newValue.prefix(LiveVoiceStyle.maxGreetingCharacters))
                         }
-                        // Saved once typing pauses, not on every keystroke.
+                        // Saved once typing pauses, not on every keystroke:
+                        // the style as typed, to the profile it was typed in,
+                        // even if the section shows another one by then.
                         greetingSave?.cancel()
+                        let pending = style
+                        let setStyle = model.setStyle
+                        lastSaved = pending
+                        pendingSave = { setStyle(pending) }
                         greetingSave = Task { @MainActor in
                             try? await Task.sleep(for: .milliseconds(600))
                             guard !Task.isCancelled else { return }
-                            save()
+                            flushPendingSave()
                         }
                     }
                     .onSubmit {
-                        greetingSave?.cancel()
                         // Shows what is saved and sent (one line, no double quotes).
                         greeting = LiveVoiceStyle.cleanedGreeting(greeting)
                         save()
                     }
-                    .onDisappear {
-                        greetingSave?.cancel()
-                        save()
-                    }
+                    .onDisappear { flushPendingSave() }
             }
             Text("The voice model greets you as soon as a call connects, so you know it's live. Leave the greeting empty for one in its own words. GPT-Live needs an up-to-date Hermes notifier plugin for this. Applies to the next call.")
                 .font(.caption)
@@ -150,7 +163,6 @@ struct LiveVoiceStyleSettingsSection: View {
                 if stored != LiveVoiceStyle.cleanedGreeting(greeting) { greeting = stored }
             } else {
                 // Off (or another profile without one): its text mustn't carry over.
-                greetingSave?.cancel()
                 greeting = ""
             }
             tone = newValue.tone?.rawValue ?? ""
@@ -159,9 +171,9 @@ struct LiveVoiceStyleSettingsSection: View {
             lastSaved = newValue
         }
         .onChange(of: model.profile) { _, _ in
-            // Another profile, even one with the same style: a pending save
-            // still goes to the earlier one (its model is pinned to it), and
-            // the fields show this one's.
+            // Another profile, even one with the same style: what was typed
+            // is saved to the earlier one first, then the fields show this one's.
+            flushPendingSave()
             let style = model.style
             greets = style.greeting != nil
             greeting = style.greeting ?? ""

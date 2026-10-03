@@ -1275,7 +1275,7 @@ enum VoiceThreadRouting {
     /// ("tell me about the last message") rather than for it.
     static let lastReplyConjunctions: Set<String> = [
         "and", "then", "also", "but", "or", "about",
-        "think", "thought", "feel", "felt", "opinion", "take", "like", "liked", "your",
+        "think", "thought", "thoughts", "feel", "felt", "opinion", "take",
         "why", "how", "mean", "meant",
     ]
     /// Where the reply is, after the phrase ("…from the chat").
