@@ -751,6 +751,12 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(scheduling, "show_on_screen is a BLOCKING answer")
         XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).map(\.title), ["Weather"])
         XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).first?.markdown, "| Day | High |")
+
+        let long = String(repeating: "row\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        let clipped = await bridge.handle(.init(id: "c4", name: "show_on_screen", arguments: ["title": "Rows", "markdown": long]))
+        guard case .toolResponse(_, _, let partial, _)? = clipped.first else { return XCTFail("\(clipped)") }
+        XCTAssertEqual(partial["status"], "shown")
+        XCTAssertTrue(partial["message"]?.contains("Only the start") == true, "The model hears that the card was cut")
     }
 
     func testGeminiLiveResultOfAJobWhoseCallWasLostArrivesAsAnIdleTextUpdate() async {

@@ -347,14 +347,26 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     /// `markdown` within the card limit; a code fence the cut leaves open
-    /// is closed, so the rest doesn't render as code.
+    /// is closed with a matching fence, so the rest doesn't render as code.
     static func clippedScreenMarkdown(_ markdown: String) -> String {
         guard markdown.count > maximumScreenCardCharacters else { return markdown }
-        let clipped = String(markdown.prefix(maximumScreenCardCharacters))
-        let fences = clipped.components(separatedBy: "\n").filter {
-            $0.trimmingCharacters(in: .whitespaces).hasPrefix("```")
-        }.count
-        return fences % 2 == 1 ? clipped + "\n```" : clipped
+        var lines = String(markdown.prefix(maximumScreenCardCharacters)).components(separatedBy: "\n")
+        // A last line cut mid-way may be half a fence; drop it.
+        if lines.count > 1 { lines.removeLast() }
+        var openFence: String?
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let ticks = String(trimmed.prefix(while: { $0 == "`" }))
+            guard ticks.count >= 3 else { continue }
+            if let fence = openFence {
+                // Only a bare fence at least as long closes it.
+                if ticks.count >= fence.count, trimmed.allSatisfy({ $0 == "`" }) { openFence = nil }
+            } else {
+                openFence = ticks
+            }
+        }
+        let clipped = lines.joined(separator: "\n")
+        return openFence.map { clipped + "\n" + $0 } ?? clipped
     }
 
     private var currentCallAnchor: VoiceJobCallAnchor? {

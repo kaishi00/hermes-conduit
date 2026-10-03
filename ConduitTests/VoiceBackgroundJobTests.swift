@@ -247,13 +247,17 @@ extension VoiceConversationControllerTests {
         _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
         let card = supervisor.showOnScreen(title: "  Chart ", markdown: String(repeating: "x", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters + 10))
         XCTAssertEqual(card?.title, "Chart")
-        XCTAssertEqual(card?.markdown.count, VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        XCTAssertLessThanOrEqual(card?.markdown.count ?? .max, VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
         XCTAssertEqual(card?.callAnchor.afterEntryID, lines.last?.id)
         XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: " \n "), "Nothing to show")
         let fenced = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
             "```mermaid\n" + String(repeating: "y", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
         )
         XCTAssertTrue(fenced.hasSuffix("\n```"), "A fence the cut leaves open is closed")
+        let nested = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
+            "````md\n```\ninner\n```\n" + String(repeating: "z\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        )
+        XCTAssertTrue(nested.hasSuffix("\n````"), "Inner fences don't close a longer one")
         XCTAssertEqual(VoiceBackgroundJobSupervisor.clippedScreenMarkdown("short"), "short")
 
         let call = supervisor.liveCallID
