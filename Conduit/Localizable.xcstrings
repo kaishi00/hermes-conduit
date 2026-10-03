@@ -14626,12 +14626,12 @@
         }
       }
     },
-    "Search projects" : {
+    "Search projects and pinned chats" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "搜索项目…"
+            "value" : "搜索项目和置顶对话…"
           }
         }
       }
