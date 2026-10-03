@@ -2,8 +2,8 @@
 //  ComposerDictationService.swift
 //  Conduit
 //
-//  Hold the composer's mic to dictate (issue #290). Apple's speech
-//  recognizer turns the hold into text in the draft; nothing is sent. It
+//  The composer's dictate button (issues #290, #335). Apple's speech
+//  recognizer turns what is said into text in the draft; nothing is sent. It
 //  runs on the device when the language supports it. The microphone is
 //  taken through the shared audio coordinator, so wake listening steps
 //  aside while it runs.
@@ -183,8 +183,8 @@ final class ComposerDictationService: ObservableObject {
             producedText = true
             onTranscript?(transcript.text)
         }
-        // A final result after the release ends it; one while still
-        // holding (a recognizer error) does too.
+        // A final result after the stop ends it; one while still
+        // listening (a recognizer error) does too.
         if isFinal { finish() }
     }
 
@@ -257,32 +257,23 @@ final class ComposerDictationService: ObservableObject {
     }
 }
 
-/// Where dictated text goes in the draft: after what was there when the
-/// hold began, replacing only what this dictation wrote.
+/// Where dictated text goes in the draft: after what was there when
+/// dictation began, replacing only what this dictation wrote.
 enum ComposerDictation {
-    /// How long the mic is held before it dictates instead of opening Voice.
-    static let holdDuration: Double = 0.35
-    /// Set once a dictation has produced text: the tip has done its job.
-    static let tipDoneKey = "conduit.composerDictationTipDone"
-
-    /// What lifting the finger off the composer mic does.
-    enum Release: Equatable {
-        /// The hold had become a dictation: stop listening.
-        case stopDictation
-        /// A short press: open Voice, as the mic always has.
-        case openVoice
+    /// What a tap on the composer's dictate button does (#335).
+    enum Tap: Equatable {
+        case start
+        /// Listening: stop, keeping the words.
+        case stop
+        /// Still coming up (permission, microphone): call it off.
+        case cancelStart
         case nothing
     }
 
-    /// A short press stops a dictation that is still listening (the
-    /// VoiceOver Dictate action has no finger to lift) and otherwise opens
-    /// Voice.
-    /// A hold that never captured (it opened Voice, or dictation is still
-    /// starting) does nothing more: the start sees the lift and stops.
-    static func release(heldPastThreshold: Bool, isCapturing: Bool, canOpenVoice: Bool) -> Release {
-        if isCapturing { return .stopDictation }
-        if heldPastThreshold { return .nothing }
-        return canOpenVoice ? .openVoice : .nothing
+    static func tap(isCapturing: Bool, isStarting: Bool, canDictate: Bool) -> Tap {
+        if isCapturing { return .stop }
+        if isStarting { return .cancelStart }
+        return canDictate ? .start : .nothing
     }
 
     static func draft(before prefix: String, dictated: String) -> String {
