@@ -17150,7 +17150,7 @@ final class AppState: ObservableObject {
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
         let outboundText = mentionAnnotatedOutboundText(text)
-        let persistedTwinsBefore = persistedSteerCount(matching: outboundText)
+        let persistedTwinsBefore = persistedSteerIDs(matching: outboundText)
         do {
             if let steer = chatResumeLifecycleOperations.steer {
                 try await steer(client, sessionId, outboundText)
@@ -17315,26 +17315,30 @@ final class AppState: ObservableObject {
               messages[index].role == .user,
               messages[index].attachments?.isEmpty ?? true else { return }
         messages[index].displayKind = ChatMessage.steerDisplayKind
+        // Match the persisted twin's visible text (image tokens moved out).
+        messages[index].content = MessageNormalizer.visibleUserText(messages[index].content)
         cacheMessagePresentation()
     }
 
-    /// Durable steer rows on screen whose visible text matches `text`.
-    private func persistedSteerCount(matching text: String) -> Int {
+    /// Ids of durable steer rows on screen whose visible text matches `text`.
+    private func persistedSteerIDs(matching text: String) -> Set<String> {
         let visible = MessageNormalizer.visibleUserText(text)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return messages.filter {
+        return Set(messages.lazy.filter {
             $0.isSteer
                 && !$0.id.hasPrefix("local-")
                 && $0.content.trimmingCharacters(in: .whitespacesAndNewlines) == visible
-        }.count
+        }.map(\.id))
     }
 
-    private func appendLocalSteerMessage(_ text: String, persistedTwinsBefore: Int) {
+    private func appendLocalSteerMessage(_ text: String, persistedTwinsBefore: Set<String>) {
         // A reconcile while the steer RPC was suspended may already have
         // adopted THIS steer's persisted row; don't confirm it twice. Only a
         // matching row that appeared during the RPC counts, so repeating an
-        // earlier steer word for word still gets its own confirmation.
-        if persistedSteerCount(matching: text) > persistedTwinsBefore {
+        // earlier steer word for word still gets its own confirmation. (The
+        // RPC returns no row identity, so an identical steer persisted from
+        // another surface in that window also suppresses it.)
+        if !persistedSteerIDs(matching: text).isSubset(of: persistedTwinsBefore) {
             return
         }
         // Same ordering rule as a redirect correction: the steer sits above

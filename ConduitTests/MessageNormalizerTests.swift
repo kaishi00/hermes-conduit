@@ -1937,6 +1937,15 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(row?.isSteer, true)
     }
 
+    func testVisibleUserTextMovesImageTokensOut() {
+        XCTAssertEqual(
+            MessageNormalizer.visibleUserText("Here is the screenshot.\n@image:/root/x.png")
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            "Here is the screenshot."
+        )
+        XCTAssertEqual(MessageNormalizer.visibleUserText("No images"), "No images")
+    }
+
     func testSteerTextWithoutMarkerIsKept() {
         XCTAssertEqual(MessageNormalizer.steerText(fromMarker: "  plain steer \n"), "plain steer")
     }
