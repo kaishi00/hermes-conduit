@@ -253,9 +253,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private(set) var pendingChatContext: [String] = []
     /// Older exchanges are dropped past this: the chat still has them.
     static let maximumPendingChatContext = 3
-    /// Turns already noted (message id, else the reply), so a replayed
-    /// completion isn't heard twice.
+    /// Message ids of turns already noted, so a replayed completion isn't
+    /// heard twice.
     private var notedChatTurns: [String] = []
+    /// The last reply noted without a message id: a gateway that sends none
+    /// is deduped only against an immediate repeat.
+    private var lastUnidentifiedChatReply: String?
 
     @Published private(set) var jobs: [VoiceBackgroundJob] = []
 
@@ -484,6 +487,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         liveThread = nil
         pendingChatContext.removeAll()
         notedChatTurns.removeAll()
+        lastUnidentifiedChatReply = nil
         // Every turn of the ending call, settled ones too: none is read back
         // or announced to a later call.
         for index in jobs.indices where jobs[index].isThreadTurn && !jobs[index].isDetachedThreadTurn {
@@ -811,6 +815,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         threadTargets.removeAll()
         pendingChatContext.removeAll()
         notedChatTurns.removeAll()
+        lastUnidentifiedChatReply = nil
     }
 
     // MARK: Events
@@ -879,10 +884,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard !jobs.contains(where: { job in
             job.isThreadTurn && job.result?.trimmingCharacters(in: .whitespacesAndNewlines) == reply
         }) else { return }
-        let key = messageID.flatMap { $0.isEmpty ? nil : "id:" + $0 } ?? "text:" + reply
-        guard !notedChatTurns.contains(key) else { return }
-        notedChatTurns.append(key)
-        if notedChatTurns.count > 10 { notedChatTurns.removeFirst() }
+        if let messageID, !messageID.isEmpty {
+            guard !notedChatTurns.contains(messageID) else { return }
+            notedChatTurns.append(messageID)
+            if notedChatTurns.count > 10 { notedChatTurns.removeFirst() }
+        } else {
+            guard lastUnidentifiedChatReply != reply else { return }
+            lastUnidentifiedChatReply = reply
+        }
         // A voice request's own text is never passed off as typed.
         let prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
             .flatMap { $0.isEmpty || $0.hasPrefix(Self.threadTurnText(for: "")) ? nil : $0 }

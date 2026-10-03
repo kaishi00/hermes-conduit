@@ -675,6 +675,24 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.pendingChatContext.count, 2, "another turn with the same words still counts")
     }
 
+    func testTypedPromptIsTheOneMessageSinceTheLastReply() {
+        func message(_ id: String, _ role: MessageRole) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: id, rawContent: nil, timestamp: "", author: nil, attachments: nil)
+        }
+        XCTAssertEqual(AppState.liveVoiceUnansweredPrompt(in: [message("q1", .user), message("a1", .assistant), message("q2", .user)])?.id, "q2")
+        XCTAssertEqual(AppState.liveVoiceUnansweredPrompt(in: [message("q1", .user)])?.id, "q1")
+        XCTAssertNil(AppState.liveVoiceUnansweredPrompt(in: [message("q1", .user), message("q2", .user)]), "a queued second message isn't the answered one")
+        XCTAssertNil(AppState.liveVoiceUnansweredPrompt(in: [message("q1", .user), message("a1", .assistant)]), "typed on another device: no bubble here")
+    }
+
+    func testRepliesWithoutIDsDedupeOnlyAnImmediateRepeat() {
+        let (supervisor, _) = makeThreadSupervisor()
+        for reply in ["Done.", "Done.", "Other.", "Done."] {
+            supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: reply, reasoning: nil))
+        }
+        XCTAssertEqual(supervisor.pendingChatContext.count, 3)
+    }
+
     func testTypedContextKeepsTheNewestFewAndNeverPassesAVoiceRequestOffAsTyped() {
         let (supervisor, fake) = makeThreadSupervisor()
         fake.threadPrompt = "(voice) check the build"

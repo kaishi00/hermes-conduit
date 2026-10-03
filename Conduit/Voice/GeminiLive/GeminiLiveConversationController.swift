@@ -880,20 +880,19 @@ final class GeminiLiveConversationController: ObservableObject {
         })
     }
 
-    /// Typed exchanges go out together: none asks the model for a turn, so
-    /// the conversation stays idle. One that fails waits, in order, for the
-    /// next try on this call; a call that ended drops it.
+    /// Typed exchanges go out together in one message, oldest first: none
+    /// asks the model for a turn, so the conversation stays idle. One that
+    /// fails is retried whole, ahead of newer ones, on this call; a call that
+    /// ended drops it.
     private func sendPendingContextNotes(on session: GeminiLiveSessionControlling) {
+        guard !pendingContextNotes.isEmpty else { return }
         let notes = pendingContextNotes
         pendingContextNotes = []
-        for note in notes {
-            session.send(.contextNote(note), onSent: nil, onFailure: { [weak self, weak session] in
-                // Only this call's: a late failure from an earlier call is dropped.
-                guard let self, self.isActive, self.endRequestedAt == nil, let session, self.session === session else { return }
-                self.pendingContextNotes.append(note)
-                self.scheduleIdleFlush()
-            })
-        }
+        session.send(.contextNote(notes.joined(separator: "\n\n")), onSent: nil, onFailure: { [weak self, weak session] in
+            guard let self, self.isActive, self.endRequestedAt == nil, let session, self.session === session else { return }
+            self.pendingContextNotes.insert(contentsOf: notes, at: 0)
+            self.scheduleIdleFlush()
+        })
     }
 
     private func scheduleIdleFlush() {

@@ -2203,13 +2203,9 @@ final class AppState: ObservableObject {
                 return self.knownSessionIDs(for: sessionID).union([sessionID]).contains { thread.owns(sessionID: $0) }
             },
             latestThreadPrompt: { [weak self] thread in
-                guard let self, self.isOpenChat(thread) else { return nil }
-                // Only a prompt this turn's reply hasn't answered yet: a turn
-                // typed on another device has no bubble here, and an older
-                // one must not be passed off as its question.
-                guard let index = self.messages.lastIndex(where: { $0.role == .user }),
-                      !self.messages[(index + 1)...].contains(where: { $0.role == .assistant }) else { return nil }
-                return Self.liveVoiceTypedPrompt(self.messages[index])
+                guard let self, self.isOpenChat(thread),
+                      let message = Self.liveVoiceUnansweredPrompt(in: self.messages) else { return nil }
+                return Self.liveVoiceTypedPrompt(message)
             }
         ))
         supervisor.onNoticePending = { [weak self] in
@@ -4251,6 +4247,16 @@ final class AppState: ObservableObject {
             .filter { $0.role == .assistant && $0.tool == nil }
             .map { $0.content.trimmingCharacters(in: .whitespacesAndNewlines) }
             .last { !$0.isEmpty }
+    }
+
+    /// The user message a just-finished turn answered: the only one since
+    /// the last reply. None when the turn was typed on another device (no
+    /// bubble here) or a second message is queued behind it, which would
+    /// pair the reply with the wrong question.
+    static func liveVoiceUnansweredPrompt(in messages: [ChatMessage]) -> ChatMessage? {
+        let afterReply = messages.lastIndex(where: { $0.role == .assistant }).map { $0 + 1 } ?? messages.startIndex
+        let unanswered = messages[afterReply...].filter { $0.role == .user }
+        return unanswered.count == 1 ? unanswered.first : nil
     }
 
     /// A typed message as the live call's note shows it (#363). The live
