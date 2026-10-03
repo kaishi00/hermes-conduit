@@ -305,14 +305,15 @@ struct SessionList: View {
                 if showingProjects {
                     // Pinned chats from every project stay one tap away
                     // without leaving the folder view (#338).
-                    if !projectsViewPinnedSessions.isEmpty {
+                    let pinned = projectsViewPinnedSessions
+                    if !pinned.isEmpty {
                         Section("Pinned") {
-                            ForEach(projectsViewPinnedSessions) { session in
+                            ForEach(pinned) { session in
                                 sessionRow(session)
                             }
                         }
                     }
-                    projectContent
+                    projectContent(hasPinnedSessions: !pinned.isEmpty)
                 }
                 if layout.savedSection, let offline = appState.offlineChatPresentation {
                     // While the saved copy is up (#99), its saved session list
@@ -354,7 +355,7 @@ struct SessionList: View {
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: showingProjects ? AppLocalization.string("Search projects") : AppLocalization.string("Search sessions"))
+            .searchable(text: $searchText, prompt: showingProjects ? AppLocalization.string("Search projects and pinned chats") : AppLocalization.string("Search sessions"))
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
             .refreshable {
@@ -472,13 +473,17 @@ struct SessionList: View {
         )
     }
 
+    /// A search that only matches pinned chats shows them without a "No
+    /// Matching Projects" state under them.
     @ViewBuilder
-    private var projectContent: some View {
+    private func projectContent(hasPinnedSessions: Bool) -> some View {
         if appState.projectsLoading && displayedProjects.isEmpty {
             ProgressView("Loading projects…")
                 .frame(maxWidth: .infinity, minHeight: 140)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
+        } else if displayedProjects.isEmpty && hasPinnedSessions && !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            EmptyView()
         } else if displayedProjects.isEmpty {
             ContentUnavailableView(
                 searchText.isEmpty ? AppLocalization.string("No Projects") : AppLocalization.string("No Matching Projects"),

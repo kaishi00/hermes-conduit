@@ -14556,6 +14556,16 @@
         }
       }
     },
+    "Search projects and pinned chats" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索项目和置顶对话…"
+          }
+        }
+      }
+    },
     "Search providers or models" : {
       "localizations" : {
         "zh-Hans" : {
