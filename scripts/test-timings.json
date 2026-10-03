@@ -17,6 +17,7 @@
     "ChatTextSelectionTests": 0.321,
     "ChatTitleScrollTests": 0.006,
     "CloudflareAccessTests": 0.048,
+    "ComposerAttachmentPolicyTests": 0.05,
     "ComposerDraftStoreTests": 0.027,
     "ComposerPasteTextViewTests": 0.543,
     "ConnectionRepairUITests": 232.5,
