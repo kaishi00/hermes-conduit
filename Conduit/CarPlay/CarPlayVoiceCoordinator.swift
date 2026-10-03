@@ -358,7 +358,11 @@ final class CarPlayVoiceCoordinator {
                 }
                 if self.isChatPickerPending {
                     self.isChatPickerPending = false
-                    self.showChats()
+                    // Never over a conversation that started meanwhile.
+                    let appState = self.lastBoundAppState ?? self.appStateProvider()
+                    if !Self.hasRunningConversation(in: appState) {
+                        self.showChats()
+                    }
                 }
             }
         }
@@ -384,6 +388,8 @@ final class CarPlayVoiceCoordinator {
     /// Goes back to the template still on the car after its replacement
     /// failed, and shows it the state that arrived meanwhile.
     private func restore(_ previous: PresentedTemplate) {
+        // A list still waiting is not opened from a failed replacement.
+        isChatPickerPending = false
         template = previous.template
         templateControls = previous.controls
         isTemplatePresented = true
