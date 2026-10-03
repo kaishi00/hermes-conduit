@@ -47,6 +47,7 @@ struct ComposerFullEditor<ActionButton: View>: View {
                         .padding(.horizontal, 5)
                         .padding(.vertical, 8)
                         .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                 }
                 TextEditor(text: $text)
                     .font(.body)

@@ -325,6 +325,11 @@ struct ComposerBar: View {
                 saveDraft(for: activeDraftKey)
             }
         }
+        .onChange(of: appState.composerIsEnabled) { _, enabled in
+            // The sheet has no room for the composer's notices; the inline
+            // composer explains why it is locked.
+            if !enabled { isShowingFullEditor = false }
+        }
         .onChange(of: appState.isVoiceInUse) { _, inUse in
             // Voice took the microphone: dictation steps aside.
             guard inUse else { return }
@@ -466,7 +471,7 @@ struct ComposerBar: View {
             .id(editorIdentity)
             .padding(.leading, 5)
             // Room for the expand icon, so the text wraps before it.
-            .padding(.trailing, showsFullEditorButton ? 36 : 5)
+            .padding(.trailing, showsFullEditorButton ? 40 : 5)
             .frame(height: composerTextHeight)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -484,7 +489,7 @@ struct ComposerBar: View {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -492,6 +497,7 @@ struct ComposerBar: View {
                 .transition(.opacity)
             }
         }
+        .animation(reduceMotion ? nil : ConduitMotion.response, value: showsFullEditorButton)
         .sheet(isPresented: $isShowingFullEditor, onDismiss: {
             // The inline editor only takes programmatic changes, so hand it
             // what was written in the sheet, cursor at the end.
@@ -842,6 +848,7 @@ struct ComposerBar: View {
         Button {
             if stopOnly {
                 dismissComposer()
+                isShowingFullEditor = false
                 Haptics.warning()
                 Task { await appState.cancelCurrent() }
             } else {
