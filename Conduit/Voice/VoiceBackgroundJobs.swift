@@ -499,6 +499,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             jobs[index].outcomeDelivered = true
             jobs[index].isDetachedThreadTurn = true
+            jobs[index].settledByPoll = false
         }
         pruneSettledJobs()
     }
@@ -846,7 +847,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         case .approval, .clarify, .inputPrompt:
             jobs[index].status = .needsInput
             jobs[index].inputRequestDelivered = false
-        case .messageComplete(_, _, let content, _):
+        case .messageComplete(_, let messageID, let content, _):
+            // A replay of a voice turn's own completion, once it no longer
+            // owns the chat, is not a typed turn.
+            if before.isThreadTurn { rememberChatTurn(messageID) }
             // Contract: Hermes emits message.complete once per turn, after
             // the tool loop ends (intermediate assistant text arrives as
             // deltas around tool.start/tool.complete). Voice turns rely on
@@ -886,7 +890,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // already came back to the call as that turn's reply. Matched once,
         // so a later typed turn with the same words still counts.
         if let late = jobs.firstIndex(where: { job in
-            job.isThreadTurn && job.settledByPoll
+            job.isThreadTurn && job.settledByPoll && !job.isDetachedThreadTurn
                 && job.result?.trimmingCharacters(in: .whitespacesAndNewlines) == reply
         }) {
             jobs[late].settledByPoll = false
@@ -894,8 +898,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         if let messageID, !messageID.isEmpty {
             guard !notedChatTurns.contains(messageID) else { return }
-            notedChatTurns.append(messageID)
-            if notedChatTurns.count > 10 { notedChatTurns.removeFirst() }
+            rememberChatTurn(messageID)
         } else {
             guard lastUnidentifiedChatReply != reply else { return }
             lastUnidentifiedChatReply = reply
@@ -908,6 +911,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             pendingChatContext.removeFirst(pendingChatContext.count - Self.maximumPendingChatContext)
         }
         onNoticePending?()
+    }
+
+    private func rememberChatTurn(_ messageID: String?) {
+        guard let messageID, !messageID.isEmpty, !notedChatTurns.contains(messageID) else { return }
+        notedChatTurns.append(messageID)
+        if notedChatTurns.count > 10 { notedChatTurns.removeFirst() }
     }
 
     /// Removes and returns the oldest exchange waiting for the call.

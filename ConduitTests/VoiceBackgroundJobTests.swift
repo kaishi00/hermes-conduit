@@ -650,6 +650,17 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.threadSubmissions.count, 1)
     }
 
+    func testAReplayedVoiceTurnCompletionIsNotTypedContext() async {
+        let (supervisor, _) = makeThreadSupervisor()
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "v1", content: "Green.", reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "v1", content: "Green.", reasoning: nil))
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "a replay of the voice turn's own reply")
+    }
+
     func testTypedContextNeedsAnAttachedCallAndThatChat() {
         let (supervisor, fake) = makeThreadSupervisor()
         fake.threadPrompt = "hi"
