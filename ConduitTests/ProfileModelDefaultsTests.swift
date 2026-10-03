@@ -111,6 +111,13 @@ final class ProfileModelDefaultsTests: XCTestCase {
         XCTAssertEqual(provider("anthropic", models: []).title, "anthropic")
     }
 
+    func testDelegateModelWithInheritedProviderIsKept() {
+        let value = defaults([provider("anthropic", models: ["claude-a"])], provider: "anthropic", model: "claude-a")
+        let selection = value.delegateSelection(provider: "  ", model: "cheap-model")
+        XCTAssertEqual(selection.provider, "")
+        XCTAssertEqual(selection.model, "cheap-model")
+    }
+
     func testDelegateInheritStaysEmpty() {
         let value = defaults([provider("anthropic", models: ["claude-a"])], provider: "anthropic", model: "claude-a")
         let selection = value.delegateSelection(provider: "", model: "")

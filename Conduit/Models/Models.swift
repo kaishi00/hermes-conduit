@@ -871,12 +871,13 @@ struct ProfileModelDefaults: Equatable {
     }
 
     /// The delegate picker selection for saved `delegation.provider` and
-    /// `delegation.model`. Empty values mean "inherit the chat model" and stay
-    /// empty; a saved provider resolves to its row like `selection`, and an
-    /// unknown provider or unlisted model is kept as saved rather than
-    /// replaced by the first catalog entry.
+    /// `delegation.model`. Empty values mean "inherit from the chat" and stay
+    /// empty; Hermes accepts a model with an inherited provider, so the model
+    /// is kept even then. A saved provider resolves to its row like
+    /// `selection`, and an unknown provider or unlisted model is kept as
+    /// saved rather than replaced by the first catalog entry.
     func delegateSelection(provider savedProvider: String, model savedModel: String) -> (provider: String, model: String) {
-        guard !savedProvider.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return ("", "") }
+        guard !ProviderInfo.normalized(savedProvider).isEmpty else { return ("", savedModel) }
         let row = providers.first(where: { $0.matches(savedProvider) })
         return (row?.name ?? savedProvider, savedModel)
     }

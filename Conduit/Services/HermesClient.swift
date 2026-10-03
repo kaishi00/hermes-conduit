@@ -2443,7 +2443,7 @@ struct ProviderInfo: Equatable {
         return display.isEmpty ? name : display
     }
 
-    private static func normalized(_ value: String) -> String {
+    static func normalized(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

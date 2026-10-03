@@ -1301,7 +1301,7 @@ struct ConduitMenuPicker<Label: View>: View {
                 label
                 Spacer(minLength: 8)
                 Text(displayedTitle.isEmpty ? "Default" : displayedTitle)
-                Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary)
+                Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary).accessibilityHidden(true)
             }
             .font(.subheadline.weight(.medium))
             .padding(.horizontal, 12)
@@ -1429,7 +1429,7 @@ private struct DelegationModelSettings: View {
                 ) {
                     Text("Delegate provider").foregroundStyle(.secondary)
                 }
-                if !provider.isEmpty {
+                if !provider.isEmpty || !model.isEmpty {
                     ConduitMenuPicker(
                         value: model,
                         choices: modelChoices,
