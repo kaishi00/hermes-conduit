@@ -904,8 +904,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             lastUnidentifiedChatReply = reply
         }
         // A voice request's own text is never passed off as typed.
-        let prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            .flatMap { $0.isEmpty || $0.hasPrefix(Self.threadTurnText(for: "")) ? nil : $0 }
+        var prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let typed = prompt, typed.isEmpty || typed.hasPrefix(Self.threadTurnText(for: "")) { prompt = nil }
         pendingChatContext.append(Self.chatContextPrompt(typed: prompt, reply: reply))
         if pendingChatContext.count > Self.maximumPendingChatContext {
             pendingChatContext.removeFirst(pendingChatContext.count - Self.maximumPendingChatContext)
