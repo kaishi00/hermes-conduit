@@ -48,6 +48,9 @@ struct LiveVoiceCallSheet: View {
     @Environment(\.openURL) private var openURL
     @State private var showsTranscript = false
     @State private var selectedJob: SelectedJob?
+    /// The job chat to open once the result sheet has gone, so the call
+    /// sheet isn't dismissed while its child is still animating out.
+    @State private var pendingJobChat: String?
 
     private struct SelectedJob: Identifiable {
         let id: UUID
@@ -71,12 +74,16 @@ struct LiveVoiceCallSheet: View {
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showsTranscript)
-        .sheet(item: $selectedJob) { selected in
+        .sheet(item: $selectedJob, onDismiss: {
+            // Leaving for the job's chat minimises the call.
+            guard let chatID = pendingJobChat else { return }
+            pendingJobChat = nil
+            dismiss()
+            openURL(ConduitAppLink.session(id: chatID).url)
+        }) { selected in
             LiveVoiceJobResultSheet(jobs: jobs, jobID: selected.id) { chatID in
-                // Leaving for the job's chat minimises the call.
+                pendingJobChat = chatID
                 selectedJob = nil
-                dismiss()
-                openURL(ConduitAppLink.session(id: chatID).url)
             }
             .presentationDetents([.medium, .large])
         }

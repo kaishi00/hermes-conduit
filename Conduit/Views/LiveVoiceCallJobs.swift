@@ -223,7 +223,10 @@ struct LiveVoiceJobResultSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
-                if let id = job.flatMap(Self.chatID) {
+                // A job on another profile opens from that profile; the
+                // link only reaches chats on the one in use.
+                if let job, job.profile == nil || job.profile == appState.activeProfile,
+                   let id = Self.chatID(job) {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Open chat") { onOpenChat(id) }
                     }

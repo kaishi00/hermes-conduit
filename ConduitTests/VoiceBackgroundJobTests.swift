@@ -8,6 +8,7 @@
 //  is at capacity for new XCTestCase classes.
 //
 
+import SwiftUI
 import XCTest
 @testable import Conduit
 
