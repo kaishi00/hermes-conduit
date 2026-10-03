@@ -274,7 +274,9 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         engine.attach(player)
         // Connected up front so the speaker side is part of the graph (and
         // of the echo reference) from the start.
-        let format = playerFormat ?? AVAudioFormat(standardFormatWithSampleRate: defaultOutputSampleRate, channels: 1)!
+        guard let format = playerFormat ?? AVAudioFormat(standardFormatWithSampleRate: defaultOutputSampleRate, channels: 1) else {
+            throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format."))
+        }
         engine.connect(player, to: engine.mainMixerNode, format: format)
 
         let hardwareFormat = input.inputFormat(forBus: 0)
@@ -292,7 +294,9 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         )
         tapGeneration &+= 1
         let frameGeneration = tapGeneration
-        input.installTap(onBus: 0, bufferSize: 1_024, format: tapFormat) { [weak self] buffer, _ in
+        // Runs on the audio thread: @Sendable keeps it from inheriting the
+        // main actor's isolation.
+        input.installTap(onBus: 0, bufferSize: 1_024, format: tapFormat) { @Sendable [weak self] buffer, _ in
             // The engine reuses tap buffers once this block returns: copy
             // before hopping to the main actor.
             guard let copy = Self.copy(buffer) else { return }
