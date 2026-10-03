@@ -137,11 +137,25 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// A thread turn the liveness poll settled before its completion event
     /// arrived. That late event is its own reply, not a typed turn's.
     var settledByPoll = false
+    /// The live call that started this job and where in its transcript,
+    /// so the call screen can show the job there. Nil outside a live call.
+    var callAnchor: VoiceJobCallAnchor?
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
         return sessionID == runtimeSessionID || sessionID == storedSessionID
     }
+}
+
+/// A job's place in the live call that started it.
+struct VoiceJobCallAnchor: Equatable {
+    let callID: UUID
+    /// Transcript lines the call had when the job started; the job shows
+    /// after them.
+    let transcriptIndex: Int
+    /// The last of those lines. Preferred over the count: GPT-Live folds a
+    /// turn's fragments into one line, which shifts later counts.
+    var afterEntryID: UUID? = nil
 }
 
 /// What the voice conversation should do with a pending job update.
@@ -271,6 +285,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Called with every id of a newly created job session so the host can
     /// badge it in the session list.
     var onJobSessionCreated: (@MainActor (_ sessionIDs: [String]) -> Void)?
+    /// The running live call's transcript, so a new job can be placed
+    /// among its lines; nil while no live call runs.
+    var liveCallTranscript: (@MainActor () -> [VoiceConversationTranscriptEntry]?)?
+    /// The running (or last) live call; jobs it starts carry it, so the
+    /// call screen shows only its own jobs.
+    @Published private(set) var liveCallID: UUID?
 
     private let backend: VoiceBackgroundJobBackend
     private let pollInterval: Duration
@@ -292,6 +312,22 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     deinit {
         pollTask?.cancel()
         threadTask?.cancel()
+    }
+
+    /// A new live call begins: jobs started from now on are its own.
+    func beginLiveCall() {
+        liveCallID = UUID()
+    }
+
+    /// The jobs and chat requests the live call `callID` started, in order.
+    func callJobs(_ callID: UUID?) -> [VoiceBackgroundJob] {
+        guard let callID else { return [] }
+        return jobs.filter { $0.callAnchor?.callID == callID }
+    }
+
+    private var currentCallAnchor: VoiceJobCallAnchor? {
+        guard let liveCallID, let transcript = liveCallTranscript?() else { return nil }
+        return VoiceJobCallAnchor(callID: liveCallID, transcriptIndex: transcript.count, afterEntryID: transcript.last?.id)
     }
 
     /// Background jobs only: thread turns run in the attached chat.
@@ -367,7 +403,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             status: .starting,
             startedAt: Date()
         )
-        jobs.append(job)
+        var anchored = job
+        anchored.callAnchor = currentCallAnchor
+        jobs.append(anchored)
         onJobCreated?(job.id)
         let generation = generation
         var createdSessionID: String?
@@ -466,7 +504,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             storedSessionID: thread.storedSessionID,
             status: .starting,
             startedAt: Date(),
-            isThreadTurn: true
+            isThreadTurn: true,
+            callAnchor: currentCallAnchor
         )
         jobs.append(job)
         threadTargets[job.id] = thread
@@ -816,6 +855,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         jobs.removeAll()
         noticesInFlight.removeAll()
         liveThread = nil
+        liveCallID = nil
         threadTargets.removeAll()
         pendingChatContext.removeAll()
         notedChatTurns.removeAll()
@@ -850,7 +890,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         case .messageComplete(_, let messageID, let content, _):
             // A replay of a voice turn's own completion, once it no longer
             // owns the chat, is not a typed turn.
-            if before.isThreadTurn { rememberChatTurn(messageID) }
+            if before.isThreadTurn { rememberChatTurn(messageID, reply: content) }
             // Contract: Hermes emits message.complete once per turn, after
             // the tool loop ends (intermediate assistant text arrives as
             // deltas around tool.start/tool.complete). Voice turns rely on
@@ -894,16 +934,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 && job.result?.trimmingCharacters(in: .whitespacesAndNewlines) == reply
         }) {
             jobs[late].settledByPoll = false
-            rememberChatTurn(messageID)
+            rememberChatTurn(messageID, reply: reply)
             return
         }
         if let messageID, !messageID.isEmpty {
             guard !notedChatTurns.contains(messageID) else { return }
-            rememberChatTurn(messageID)
         } else {
             guard lastUnidentifiedChatReply != reply else { return }
-            lastUnidentifiedChatReply = reply
         }
+        rememberChatTurn(messageID, reply: reply)
         // A voice request's own text is never passed off as typed.
         var prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let typed = prompt, typed.isEmpty || typed.hasPrefix(Self.threadTurnText(for: "")) { prompt = nil }
@@ -914,8 +953,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         onNoticePending?()
     }
 
-    private func rememberChatTurn(_ messageID: String?) {
-        guard let messageID, !messageID.isEmpty, !notedChatTurns.contains(messageID) else { return }
+    /// Records a turn the call has heard (as a note, or as a voice turn's
+    /// reply), so a replay of it is skipped: by message id, or without one
+    /// by its reply, against the very next completion only.
+    private func rememberChatTurn(_ messageID: String?, reply: String?) {
+        guard let messageID, !messageID.isEmpty else {
+            lastUnidentifiedChatReply = reply?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return
+        }
+        lastUnidentifiedChatReply = nil
+        guard !notedChatTurns.contains(messageID) else { return }
         notedChatTurns.append(messageID)
         if notedChatTurns.count > 10 { notedChatTurns.removeFirst() }
     }

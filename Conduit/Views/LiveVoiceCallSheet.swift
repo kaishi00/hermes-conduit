@@ -45,7 +45,16 @@ struct LiveVoiceCallSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.openURL) private var openURL
     @State private var showsTranscript = false
+    @State private var selectedJob: SelectedJob?
+    /// The job chat to open once the result sheet has gone, so the call
+    /// sheet isn't dismissed while its child is still animating out.
+    @State private var pendingJobChat: String?
+
+    private struct SelectedJob: Identifiable {
+        let id: UUID
+    }
 
     var body: some View {
         ZStack {
@@ -65,6 +74,23 @@ struct LiveVoiceCallSheet: View {
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showsTranscript)
+        .sheet(item: $selectedJob, onDismiss: {
+            // Leaving for the job's chat minimises the call.
+            guard let chatID = pendingJobChat else { return }
+            pendingJobChat = nil
+            dismiss()
+            openURL(ConduitAppLink.session(id: chatID).url)
+        }) { selected in
+            LiveVoiceJobResultSheet(jobs: jobs, jobID: selected.id) { chatID in
+                pendingJobChat = chatID
+                selectedJob = nil
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    private func select(_ jobID: UUID) {
+        selectedJob = SelectedJob(id: jobID)
     }
 
     /// Only a running call minimises; dismissing any other closes it.
@@ -136,6 +162,8 @@ struct LiveVoiceCallSheet: View {
             Spacer(minLength: 12)
             LiveVoiceQuickHint(jobs: jobs)
                 .padding(.horizontal, 24)
+            LiveVoiceCallJobStrip(jobs: jobs, onSelect: select)
+                .padding(.horizontal, 24)
             captions
         }
         .transition(.opacity)
@@ -203,9 +231,12 @@ struct LiveVoiceCallSheet: View {
                             .frame(maxWidth: .infinity)
                             .padding(.top, 24)
                     }
-                    ForEach(transcript) { entry in
-                        LiveVoiceTranscriptBubble(entry: entry, label: label(for: entry))
-                    }
+                    LiveVoiceCallTimeline(
+                        transcript: transcript,
+                        jobs: jobs,
+                        line: { entry in LiveVoiceTranscriptBubble(entry: entry, label: label(for: entry)) },
+                        onSelectJob: select
+                    )
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)

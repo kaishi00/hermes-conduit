@@ -23,6 +23,12 @@ a job. At most three jobs run at once.
 - Each job is a new, ordinary Hermes session (`session.create` +
   `prompt.submit`), titled from the task. It shows up in the session list
   with a waveform badge and can be opened like any chat.
+- During a live call, the call screen shows each job the call started: the
+  latest above the captions, and every one in the transcript panel where it
+  started (`VoiceJobCallAnchor`). Tapping one shows its status and, once it
+  finishes, its full final reply over the call, with **Open chat** to leave
+  for the job's chat. The reply is already on the phone, so nothing is
+  written to the host mid-call (mid-call saves stalled Gemini Live, PR #281).
 - A saved live call gets a line where it started the job ("Started a
   background job: <title>.") with an **Open job** link to the job's chat, so
   the full result is a tap away even when the voice model only summarized it.
