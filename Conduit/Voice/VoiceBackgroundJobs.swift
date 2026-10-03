@@ -134,11 +134,22 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// A thread turn whose call ended. It keeps running in its chat, but no
     /// later call hears about it, reads its reply, or loses events to it.
     var isDetachedThreadTurn = false
+    /// The live call that started this job and where in its transcript,
+    /// so the call screen can show the job there. Nil outside a live call.
+    var callAnchor: VoiceJobCallAnchor?
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
         return sessionID == runtimeSessionID || sessionID == storedSessionID
     }
+}
+
+/// A job's place in the live call that started it.
+struct VoiceJobCallAnchor: Equatable {
+    let callID: UUID
+    /// Transcript lines the call had when the job started; the job shows
+    /// after them.
+    let transcriptIndex: Int
 }
 
 /// What the voice conversation should do with a pending job update.
@@ -250,6 +261,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Called with every id of a newly created job session so the host can
     /// badge it in the session list.
     var onJobSessionCreated: (@MainActor (_ sessionIDs: [String]) -> Void)?
+    /// How many transcript lines the running live call has, so a new job
+    /// can be placed among them; nil while no live call runs.
+    var liveCallTranscriptCount: (@MainActor () -> Int?)?
+    /// The running (or last) live call; jobs it starts carry it, so the
+    /// call screen shows only its own jobs.
+    @Published private(set) var liveCallID: UUID?
 
     private let backend: VoiceBackgroundJobBackend
     private let pollInterval: Duration
@@ -271,6 +288,22 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     deinit {
         pollTask?.cancel()
         threadTask?.cancel()
+    }
+
+    /// A new live call begins: jobs started from now on are its own.
+    func beginLiveCall() {
+        liveCallID = UUID()
+    }
+
+    /// The jobs and chat requests the live call `callID` started, in order.
+    func callJobs(_ callID: UUID?) -> [VoiceBackgroundJob] {
+        guard let callID else { return [] }
+        return jobs.filter { $0.callAnchor?.callID == callID }
+    }
+
+    private var currentCallAnchor: VoiceJobCallAnchor? {
+        guard let liveCallID, let count = liveCallTranscriptCount?() else { return nil }
+        return VoiceJobCallAnchor(callID: liveCallID, transcriptIndex: count)
     }
 
     /// Background jobs only: thread turns run in the attached chat.
@@ -346,7 +379,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             status: .starting,
             startedAt: Date()
         )
-        jobs.append(job)
+        var anchored = job
+        anchored.callAnchor = currentCallAnchor
+        jobs.append(anchored)
         onJobCreated?(job.id)
         let generation = generation
         var createdSessionID: String?
@@ -445,7 +480,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             storedSessionID: thread.storedSessionID,
             status: .starting,
             startedAt: Date(),
-            isThreadTurn: true
+            isThreadTurn: true,
+            callAnchor: currentCallAnchor
         )
         jobs.append(job)
         threadTargets[job.id] = thread
@@ -791,6 +827,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         jobs.removeAll()
         noticesInFlight.removeAll()
         liveThread = nil
+        liveCallID = nil
         threadTargets.removeAll()
     }
 

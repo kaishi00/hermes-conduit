@@ -3193,6 +3193,56 @@
         }
       }
     },
+    "%lld more in the transcript" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "转录中还有 %lld 项"
+          }
+        }
+      }
+    },
+    "Hermes is still working on this. The result will show here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 仍在处理中，结果会显示在这里。"
+          }
+        }
+      }
+    },
+    "Open chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开对话"
+          }
+        }
+      }
+    },
+    "Shows the full result" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示完整结果"
+          }
+        }
+      }
+    },
+    "The full result is in its chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完整结果在它的对话中。"
+          }
+        }
+      }
+    },
     "Started a background job: %@." : {
       "localizations" : {
         "en" : {

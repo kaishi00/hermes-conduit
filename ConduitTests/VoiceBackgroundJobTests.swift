@@ -173,6 +173,49 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.takePendingNotice(), "a running job has nothing to hand back")
     }
 
+    func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {
+        let (supervisor, _) = makeSupervisor()
+        var lines: Int? = nil
+        supervisor.liveCallTranscriptCount = { lines }
+
+        // Outside a live call a job belongs to no call.
+        supervisor.beginLiveCall()
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        XCTAssertNil(supervisor.jobs.first?.callAnchor)
+
+        lines = 3
+        _ = await supervisor.performVoiceCommand(.start(instructions: "find a dinner recipe"))
+        let call = supervisor.liveCallID
+        XCTAssertEqual(supervisor.callJobs(call).map(\.title), ["find a dinner recipe"])
+        XCTAssertEqual(supervisor.callJobs(call).first?.callAnchor?.transcriptIndex, 3)
+
+        // A later call shows only its own jobs.
+        supervisor.beginLiveCall()
+        XCTAssertTrue(supervisor.callJobs(supervisor.liveCallID).isEmpty)
+        XCTAssertTrue(supervisor.callJobs(nil).isEmpty)
+    }
+
+    func testCallTimelinePlacesEachJobAfterTheLinesBeforeIt() {
+        let lines = (0..<3).map { VoiceConversationTranscriptEntry(speaker: $0 % 2 == 0 ? .user : .assistant, text: "line \($0)") }
+        let call = UUID()
+        func job(_ title: String, at index: Int) -> VoiceBackgroundJob {
+            var job = VoiceBackgroundJob(id: UUID(), title: title, instructions: title, status: .running, startedAt: Date())
+            job.callAnchor = VoiceJobCallAnchor(callID: call, transcriptIndex: index)
+            return job
+        }
+        let items = LiveVoiceCallTimeline<EmptyView>.items(
+            transcript: lines,
+            jobs: [job("late", at: 5), job("first", at: 1), job("second", at: 1), job("start", at: 0)]
+        )
+        let labels = items.map { item -> String in
+            switch item {
+            case .line(let entry): return entry.text
+            case .job(let job): return job.title
+            }
+        }
+        XCTAssertEqual(labels, ["start", "line 0", "first", "second", "line 1", "line 2", "late"])
+    }
+
     func testLeadingProfileNameRoutesTheJobToThatProfile() async {
         let (supervisor, fake) = makeSupervisor()
         fake.profileTargets = ["fam": .other("fam")]
