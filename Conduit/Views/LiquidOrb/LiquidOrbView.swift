@@ -159,6 +159,8 @@ final class LiquidOrbPipeline {
     }
 }
 
+/// Main-thread only: SwiftUI updates it and MTKView calls its delegate on
+/// the main thread, so its state needs no lock.
 final class LiquidOrbRenderer: NSObject, MTKViewDelegate {
     private let pipeline: LiquidOrbPipeline
     private var currentState: LiquidOrbState
@@ -188,7 +190,14 @@ final class LiquidOrbRenderer: NSObject, MTKViewDelegate {
     func update(state: LiquidOrbState, speech: Float, animates: Bool) {
         self.animates = animates
         speechTarget = max(0, min(1, speech))
-        if !animates { speechLevel = 0 }
+        if !animates {
+            speechLevel = 0
+            // A still orb never sits partway through a transition.
+            if transitionDuration > 0 {
+                fromUniforms = targetUniforms
+                transitionDuration = 0
+            }
+        }
         guard state != currentState else { return }
         let now = CACurrentMediaTime()
         fromUniforms = sampleTransition(at: now)
@@ -286,7 +295,6 @@ struct LiquidOrbView: UIViewRepresentable {
         // The shader is soft-edged: 2x is indistinguishable from 3x here and
         // shades less than half the pixels.
         view.contentScaleFactor = 2
-        view.preferredFramesPerSecond = 60
         view.delegate = context.coordinator
         view.isAccessibilityElement = false
         configure(view, renderer: context.coordinator)
@@ -299,6 +307,8 @@ struct LiquidOrbView: UIViewRepresentable {
     }
 
     private func configure(_ view: MTKView, renderer: LiquidOrbRenderer) {
+        // The resting orb barely drifts: half the frames is enough there.
+        view.preferredFramesPerSecond = state == .idle && speech == 0 ? 30 : 60
         view.isPaused = !animates
         view.enableSetNeedsDisplay = !animates
         if !animates { view.setNeedsDisplay() }

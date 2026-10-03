@@ -376,8 +376,8 @@ private struct LiveVoiceTranscriptBubble: View {
 
 /// The call's orb. Where Metal is available it is the liquid glass orb (see
 /// LiquidOrbView): calm and grey-gold at rest, lit while the call listens,
-/// swelling as the assistant speaks. Otherwise, and for the small still
-/// accessory orb, it is a soft sphere drawn from gradients that breathes and
+/// swelling as the assistant speaks. Otherwise, for a failed call, and for
+/// the small still accessory orb, it is a soft sphere drawn from gradients that breathes and
 /// pulses the same way. Phase decides colour and motion; there is no audio
 /// level feed common to every engine.
 struct LiveVoiceOrb: View {
@@ -430,7 +430,8 @@ struct LiveVoiceOrb: View {
     }
 
     var body: some View {
-        if animates, let pipeline = LiquidOrbPipeline.shared {
+        // A failed call keeps the red gradient orb, the clearest failure signal.
+        if animates, phase != .failed, let pipeline = LiquidOrbPipeline.shared {
             liquidOrb(pipeline)
         } else {
             gradientOrb

@@ -398,9 +398,12 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
             }
             var values: [Float] = Array(repeating: 0.5, count: 136)
             bands.apply(to: &values)
-            XCTAssertGreaterThan(values[3], 0.5, "speech speeds the orb up")
+            XCTAssertGreaterThanOrEqual(values[3], 0.5, "speech never slows the orb")
             XCTAssertLessThanOrEqual(values[6], 7, "warp stays under its ceiling")
         }
+        var speaking: [Float] = Array(repeating: 0.5, count: 136)
+        LiquidOrbAudio(all: 0.5).apply(to: &speaking)
+        XCTAssertGreaterThan(speaking[3], 0.5, "speech speeds the orb up")
     }
 
     func testTheLiquidOrbShaderCompilesWhereMetalExists() throws {
