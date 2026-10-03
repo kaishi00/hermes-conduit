@@ -35,6 +35,96 @@ func modelPickerSelectionChanged(
         || ProviderInfo.normalized(selectedProvider) != ProviderInfo.normalized(runtimeProvider)
 }
 
+/// The settings an Apply sends, captured from the sheet's draft.
+struct ModelPickerApplyDraft: Equatable {
+    var model: String
+    var provider: String
+    var yoloChanged: Bool
+    var yolo: Bool
+    /// The effort word sent to Hermes ("none" turns reasoning off).
+    var reasoningEffort: String
+    var fast: Bool
+}
+
+/// The gateway writes one Apply makes, in order. Injected so the apply flow
+/// is testable without a gateway.
+struct ModelPickerApplyActions {
+    var setModel: @MainActor (_ model: String, _ provider: String, _ confirmed: Bool) async throws -> ModelSwitchOutcome
+    var setYolo: @MainActor (_ enabled: Bool) async -> AppState.YoloWriteFailure?
+    var setReasoning: @MainActor (_ effort: String) async throws -> Void
+    var setFast: @MainActor (_ enabled: Bool) async throws -> Void
+}
+
+/// How far an Apply got. Steps already applied stay applied when a later one
+/// fails, so the sheet records them and a retry does not send them again.
+struct ModelPickerApplyProgress: Equatable {
+    /// The model Hermes resolved the pick to, when this apply switched it.
+    var switchedModel: String?
+    var yoloApplied = false
+    var reasoningApplied = false
+    var fastApplied = false
+}
+
+enum ModelPickerApplyResult: Equatable {
+    case completed(ModelPickerApplyProgress)
+    /// Nothing was applied; Hermes wants this message confirmed first.
+    case needsConfirmation(String)
+    case failed(String, ModelPickerApplyProgress)
+}
+
+/// Runs one Apply: the model switch first, as the confirmation gate, then
+/// YOLO, reasoning and fast. A guarded switch stops before anything else is
+/// written, so cancelling its confirmation leaves the session untouched.
+@MainActor
+func runModelPickerApply(
+    _ draft: ModelPickerApplyDraft,
+    sendModelSwitch: Bool,
+    confirmedModelSwitch: Bool,
+    actions: ModelPickerApplyActions
+) async -> ModelPickerApplyResult {
+    var progress = ModelPickerApplyProgress()
+    do {
+        // A confirmed retry always re-sends: the runtime may have moved while
+        // the alert was up, and the confirmation must reach Hermes.
+        if sendModelSwitch || confirmedModelSwitch {
+            let outcome = try await actions.setModel(draft.model, draft.provider, confirmedModelSwitch)
+            if outcome.confirmRequired {
+                // A gateway that still asks after a confirmed retry would
+                // loop the alert forever; report it instead.
+                if confirmedModelSwitch {
+                    return .failed(
+                        outcome.confirmMessage.isEmpty
+                            ? AppLocalization.string("Hermes did not accept the model switch.")
+                            : outcome.confirmMessage,
+                        progress
+                    )
+                }
+                return .needsConfirmation(
+                    outcome.confirmMessage.isEmpty
+                        ? AppLocalization.string("Hermes asks you to confirm switching to \(draft.model).")
+                        : outcome.confirmMessage
+                )
+            }
+            // A deferred switch (mid-turn) applies at the next turn start;
+            // Hermes' session.info reports the pending pick meanwhile.
+            progress.switchedModel = outcome.model
+        }
+        if draft.yoloChanged {
+            if let failure = await actions.setYolo(draft.yolo) {
+                return .failed(failure.message ?? AppLocalization.string("Unable to change YOLO mode."), progress)
+            }
+            progress.yoloApplied = true
+        }
+        try await actions.setReasoning(draft.reasoningEffort)
+        progress.reasoningApplied = true
+        try await actions.setFast(draft.fast)
+        progress.fastApplied = true
+        return .completed(progress)
+    } catch {
+        return .failed(error.localizedDescription, progress)
+    }
+}
+
 struct ModelPickerYoloDraft: Equatable {
     let initial: Bool
     let selected: Bool
@@ -48,6 +138,22 @@ struct ModelPickerYoloDraft: Equatable {
         guard initial == nil else { return nil }
         return ModelPickerYoloDraft(runtimeYolo: runtimeYolo)
     }
+}
+
+struct ModelPickerSelection: Equatable {
+    var model: String
+    var provider: String
+}
+
+/// Everything an Apply would send. An error shown for one draft is stale as
+/// soon as the draft changes.
+private struct ModelPickerDraftKey: Equatable {
+    var model: String
+    var provider: String
+    var reasoningEnabled: Bool
+    var reasoningEffort: String
+    var fast: Bool
+    var yolo: Bool
 }
 
 struct ModelPickerView: View {
@@ -72,6 +178,10 @@ struct ModelPickerView: View {
     @State private var applyError: String?
     /// The gateway's guard message for a pick it will not switch to unconfirmed.
     @State private var pendingModelConfirmation: String?
+    /// The catalog row this sheet last switched Hermes to. Hermes may resolve
+    /// it to another name (an alias), so the row id and `runtime.model` can
+    /// differ; this stops a retry from switching to it again.
+    @State private var switchedSelection: ModelPickerSelection?
 
     var body: some View {
         NavigationStack {
@@ -124,6 +234,9 @@ struct ModelPickerView: View {
             refreshYoloToggle(force: true)
         }
         .task { await loadModels() }
+        .onChange(of: draftKey) { _, _ in
+            applyError = nil
+        }
         .onChange(of: applyError) { _, message in
             // The error row appears silently; tell VoiceOver the apply failed.
             guard let message else { return }
@@ -486,6 +599,17 @@ struct ModelPickerView: View {
         }
     }
 
+    private var draftKey: ModelPickerDraftKey {
+        ModelPickerDraftKey(
+            model: selectedModel,
+            provider: selectedProvider,
+            reasoningEnabled: reasoningEnabled,
+            reasoningEffort: reasoningEffort,
+            fast: fastEnabled,
+            yolo: yoloEnabled
+        )
+    }
+
     private var rowFoundation: Color {
         colorScheme == .dark ? Color.white.opacity(0.055) : Color.black.opacity(0.035)
     }
@@ -547,67 +671,66 @@ struct ModelPickerView: View {
         applyError = nil
         defer { isApplying = false }
 
-        do {
-            // A confirmed retry always re-sends: the runtime may have moved
-            // while the alert was up, and the confirmation must reach Hermes.
-            if confirmedModelSwitch || modelPickerSelectionChanged(
-                selectedModel: selectedModel,
-                selectedProvider: selectedProvider,
-                runtimeModel: appState.runtime.model,
-                runtimeProvider: appState.runtime.provider
-            ) {
-                let outcome = try await client.setModel(
-                    sessionId,
-                    model: selectedModel,
-                    provider: selectedProvider,
-                    confirmed: confirmedModelSwitch
-                )
-                // A guarded pick switches nothing until confirmed. Stop before
-                // the other settings so the sheet's state stays coherent and
-                // ask; Switch repeats the apply with the confirmation flag.
-                if outcome.confirmRequired {
-                    // A gateway that still asks after a confirmed retry would
-                    // loop the alert forever; report it instead.
-                    if confirmedModelSwitch {
-                        applyError = outcome.confirmMessage.isEmpty
-                            ? AppLocalization.string("Hermes did not accept the model switch.")
-                            : outcome.confirmMessage
-                        return
-                    }
-                    pendingModelConfirmation = outcome.confirmMessage.isEmpty
-                        ? AppLocalization.string("Hermes asks you to confirm switching to \(selectedModel).")
-                        : outcome.confirmMessage
-                    return
-                }
-                // A deferred switch (mid-turn) applies at the next turn start;
-                // Hermes' session.info reports the pending pick meanwhile, so
-                // the label can show it now either way.
-                appState.runtime.model = outcome.model
-                appState.runtime.provider = selectedProvider
-                // Hermes may expand an alias; track what it resolved so a
-                // retry after a later failure does not switch again.
-                selectedModel = outcome.model
-            }
-            // YOLO goes after the model gate so a cancelled confirmation
-            // leaves nothing applied. setYoloMode persists the session
-            // override only after the gateway accepts it, and a failure stops
-            // before reasoning/fast; a retry re-sends neither the model nor
-            // an already-applied YOLO change.
-            if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
-                // The composer banner sits behind this sheet; report here.
-                if let failure = await appState.setYoloModeReportingFailure(yoloEnabled) {
-                    applyError = failure.message ?? AppLocalization.string("Unable to change YOLO mode.")
-                    return
-                }
-                initialYoloEnabled = yoloEnabled
-            }
-            try await client.setReasoning(sessionId, effort: reasoningEnabled ? reasoningEffort : "none")
-            appState.runtime.reasoningEffort = reasoningEnabled ? reasoningEffort : ""
-            try await client.setFast(sessionId, enabled: fastEnabled)
-            appState.runtime.fast = fastEnabled
+        let selection = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
+        let draft = ModelPickerApplyDraft(
+            model: selection.model,
+            provider: selection.provider,
+            yoloChanged: sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled),
+            yolo: yoloEnabled,
+            reasoningEffort: reasoningEnabled ? reasoningEffort : "none",
+            fast: fastEnabled
+        )
+        let sendModelSwitch = switchedSelection != selection && modelPickerSelectionChanged(
+            selectedModel: selection.model,
+            selectedProvider: selection.provider,
+            runtimeModel: appState.runtime.model,
+            runtimeProvider: appState.runtime.provider
+        )
+        let actions = ModelPickerApplyActions(
+            setModel: { model, provider, confirmed in
+                try await client.setModel(sessionId, model: model, provider: provider, confirmed: confirmed)
+            },
+            // The composer banner sits behind this sheet; the failure is
+            // reported here instead.
+            setYolo: { enabled in await appState.setYoloModeReportingFailure(enabled) },
+            setReasoning: { effort in try await client.setReasoning(sessionId, effort: effort) },
+            setFast: { enabled in try await client.setFast(sessionId, enabled: enabled) }
+        )
+
+        let result = await runModelPickerApply(
+            draft,
+            sendModelSwitch: sendModelSwitch,
+            confirmedModelSwitch: confirmedModelSwitch,
+            actions: actions
+        )
+        switch result {
+        case .completed(let progress):
+            record(progress, for: selection, draft: draft)
             appState.showModelPicker = false
-        } catch {
-            applyError = error.localizedDescription
+        case .needsConfirmation(let message):
+            pendingModelConfirmation = message
+        case .failed(let message, let progress):
+            record(progress, for: selection, draft: draft)
+            applyError = message
+        }
+    }
+
+    /// Reflect the steps Hermes accepted, so the composer shows them and a
+    /// retry does not send them again.
+    private func record(_ progress: ModelPickerApplyProgress, for selection: ModelPickerSelection, draft: ModelPickerApplyDraft) {
+        if let model = progress.switchedModel {
+            appState.runtime.model = model
+            appState.runtime.provider = selection.provider
+            switchedSelection = selection
+        }
+        if progress.yoloApplied {
+            initialYoloEnabled = draft.yolo
+        }
+        if progress.reasoningApplied {
+            appState.runtime.reasoningEffort = draft.reasoningEffort == "none" ? "" : draft.reasoningEffort
+        }
+        if progress.fastApplied {
+            appState.runtime.fast = draft.fast
         }
     }
 }

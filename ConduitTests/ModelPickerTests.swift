@@ -144,4 +144,110 @@ final class ModelPickerTests: XCTestCase {
 
         XCTAssertEqual(outcome.confirmMessage, "Expensive model")
     }
+
+    // MARK: - Apply flow
+
+    private let draft = ModelPickerApplyDraft(
+        model: "big-model", provider: "openrouter",
+        yoloChanged: true, yolo: true,
+        reasoningEffort: "high", fast: false
+    )
+
+    /// Records the order of gateway writes and answers each model switch
+    /// with the next queued outcome.
+    @MainActor
+    private final class GatewayRecorder {
+        var calls: [String] = []
+        var modelOutcomes: [ModelSwitchOutcome] = []
+        var yoloFailure: AppState.YoloWriteFailure?
+        var reasoningError: Error?
+
+        var actions: ModelPickerApplyActions {
+            ModelPickerApplyActions(
+                setModel: { model, _, confirmed in
+                    self.calls.append(confirmed ? "model(confirmed)" : "model")
+                    return self.modelOutcomes.isEmpty ? ModelSwitchOutcome(model: model) : self.modelOutcomes.removeFirst()
+                },
+                setYolo: { _ in
+                    self.calls.append("yolo")
+                    return self.yoloFailure
+                },
+                setReasoning: { _ in
+                    self.calls.append("reasoning")
+                    if let error = self.reasoningError { throw error }
+                },
+                setFast: { _ in self.calls.append("fast") }
+            )
+        }
+    }
+
+    private struct StubError: LocalizedError {
+        var errorDescription: String? { "reasoning failed" }
+    }
+
+    @MainActor
+    func testGuardedSwitchStopsBeforeAnyOtherWrite() async {
+        let gateway = GatewayRecorder()
+        gateway.modelOutcomes = [ModelSwitchOutcome(model: "big-model", confirmRequired: true, confirmMessage: "Expensive")]
+
+        let result = await runModelPickerApply(draft, sendModelSwitch: true, confirmedModelSwitch: false, actions: gateway.actions)
+
+        XCTAssertEqual(result, .needsConfirmation("Expensive"))
+        XCTAssertEqual(gateway.calls, ["model"])
+    }
+
+    @MainActor
+    func testConfirmedRetrySendsTheFlagThenTheRestInOrder() async {
+        let gateway = GatewayRecorder()
+
+        let result = await runModelPickerApply(draft, sendModelSwitch: false, confirmedModelSwitch: true, actions: gateway.actions)
+
+        XCTAssertEqual(gateway.calls, ["model(confirmed)", "yolo", "reasoning", "fast"])
+        XCTAssertEqual(result, .completed(ModelPickerApplyProgress(
+            switchedModel: "big-model", yoloApplied: true, reasoningApplied: true, fastApplied: true)))
+    }
+
+    @MainActor
+    func testGatewayThatKeepsAskingAfterConfirmationIsReportedNotLooped() async {
+        let gateway = GatewayRecorder()
+        gateway.modelOutcomes = [ModelSwitchOutcome(model: "big-model", confirmRequired: true, confirmMessage: "Still no")]
+
+        let result = await runModelPickerApply(draft, sendModelSwitch: true, confirmedModelSwitch: true, actions: gateway.actions)
+
+        XCTAssertEqual(result, .failed("Still no", ModelPickerApplyProgress()))
+        XCTAssertEqual(gateway.calls, ["model(confirmed)"])
+    }
+
+    @MainActor
+    func testUnchangedModelSkipsTheSwitch() async {
+        let gateway = GatewayRecorder()
+
+        _ = await runModelPickerApply(draft, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
+
+        XCTAssertEqual(gateway.calls, ["yolo", "reasoning", "fast"])
+    }
+
+    @MainActor
+    func testLaterFailureKeepsTheStepsAlreadyApplied() async {
+        let gateway = GatewayRecorder()
+        gateway.modelOutcomes = [ModelSwitchOutcome(model: "anthropic/claude-sonnet")]
+        gateway.reasoningError = StubError()
+
+        let result = await runModelPickerApply(draft, sendModelSwitch: true, confirmedModelSwitch: false, actions: gateway.actions)
+
+        XCTAssertEqual(result, .failed("reasoning failed", ModelPickerApplyProgress(
+            switchedModel: "anthropic/claude-sonnet", yoloApplied: true)))
+        XCTAssertEqual(gateway.calls, ["model", "yolo", "reasoning"])
+    }
+
+    @MainActor
+    func testYoloFailureStopsBeforeReasoning() async {
+        let gateway = GatewayRecorder()
+        gateway.yoloFailure = AppState.YoloWriteFailure(message: "Unable to change YOLO mode: offline")
+
+        let result = await runModelPickerApply(draft, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
+
+        XCTAssertEqual(result, .failed("Unable to change YOLO mode: offline", ModelPickerApplyProgress()))
+        XCTAssertEqual(gateway.calls, ["yolo"])
+    }
 }
