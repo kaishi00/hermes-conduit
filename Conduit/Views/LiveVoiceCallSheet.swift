@@ -374,10 +374,12 @@ private struct LiveVoiceTranscriptBubble: View {
     }
 }
 
-/// A soft glowing sphere drawn from gradients: it breathes while listening,
-/// pulses faster while the assistant speaks, and goes still and grey when
-/// muted. Phase decides colour and motion; there is no audio level feed
-/// common to every engine.
+/// The call's orb. Where Metal is available it is the liquid glass orb (see
+/// LiquidOrbView): calm and grey-gold at rest, lit while the call listens,
+/// swelling as the assistant speaks. Otherwise, and for the small still
+/// accessory orb, it is a soft sphere drawn from gradients that breathes and
+/// pulses the same way. Phase decides colour and motion; there is no audio
+/// level feed common to every engine.
 struct LiveVoiceOrb: View {
     let phase: LiveVoiceCallPhase
     /// Off for a small accessory orb: it keeps its colour but stays still.
@@ -404,6 +406,20 @@ struct LiveVoiceOrb: View {
         }
     }
 
+    struct LiquidLook: Equatable {
+        var state: LiquidOrbState
+        /// How strongly it swells as if speaking, 0...1.
+        var speech: Float
+    }
+
+    static func liquidLook(for phase: LiveVoiceCallPhase) -> LiquidLook {
+        switch phase {
+        case .connecting, .listening: return LiquidLook(state: .active, speech: 0)
+        case .speaking: return LiquidLook(state: .active, speech: 1)
+        case .idle, .muted, .ending, .failed: return LiquidLook(state: .idle, speech: 0)
+        }
+    }
+
     private var tint: Color {
         switch phase {
         case .connecting, .listening: return .conduitAura
@@ -414,6 +430,30 @@ struct LiveVoiceOrb: View {
     }
 
     var body: some View {
+        if animates, let pipeline = LiquidOrbPipeline.shared {
+            liquidOrb(pipeline)
+        } else {
+            gradientOrb
+        }
+    }
+
+    private func liquidOrb(_ pipeline: LiquidOrbPipeline) -> some View {
+        let look = Self.liquidLook(for: phase)
+        return GeometryReader { proxy in
+            let size = min(proxy.size.width, proxy.size.height)
+            // The sphere fills 72% of its canvas and the glow the rest: draw
+            // it larger than the frame so the sphere itself keeps the old
+            // orb's size, without the glow taking layout space.
+            LiquidOrbView(pipeline: pipeline, state: look.state, speech: look.speech, animates: !reduceMotion)
+                .frame(width: size * 1.3, height: size * 1.3)
+                .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .opacity(Self.motion(for: phase).opacity)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: phase)
+    }
+
+    @ViewBuilder
+    private var gradientOrb: some View {
         let motion = Self.motion(for: phase)
         let moves = animates && !reduceMotion && motion.amplitude > 0
         // 30 fps is plenty for a slow swell and spares ProMotion's 120 Hz.

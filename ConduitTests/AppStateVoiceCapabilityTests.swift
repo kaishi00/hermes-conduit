@@ -10,6 +10,7 @@
 
 import XCTest
 @testable import Conduit
+import Metal
 
 @MainActor
 final class AppStateVoiceCapabilityTests: XCTestCase {
@@ -372,6 +373,41 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(LiveVoiceOrb.motion(for: .idle).amplitude, 0)
         XCTAssertGreaterThan(LiveVoiceOrb.motion(for: .speaking).speed, LiveVoiceOrb.motion(for: .listening).speed,
                              "speaking pulses faster than listening")
+    }
+
+    func testTheLiquidOrbLightsUpWhileTheCallIsLiveAndSwellsWhenItSpeaks() {
+        XCTAssertEqual(LiveVoiceOrb.liquidLook(for: .listening), .init(state: .active, speech: 0))
+        XCTAssertEqual(LiveVoiceOrb.liquidLook(for: .connecting).state, .active)
+        XCTAssertEqual(LiveVoiceOrb.liquidLook(for: .speaking), .init(state: .active, speech: 1))
+        for phase in [LiveVoiceCallPhase.idle, .muted, .ending, .failed] {
+            XCTAssertEqual(LiveVoiceOrb.liquidLook(for: phase), .init(state: .idle, speech: 0), "\(phase)")
+        }
+    }
+
+    func testTheLiquidOrbSpeechSwellIsSilentAtZeroAndStaysInRange() {
+        XCTAssertEqual(LiquidOrbAudio.speech(intensity: 0, at: 12.3), LiquidOrbAudio())
+        var untouched: [Float] = Array(repeating: 0.5, count: 136)
+        LiquidOrbAudio().apply(to: &untouched)
+        XCTAssertEqual(untouched, Array(repeating: 0.5, count: 136), "silence leaves the preset alone")
+
+        for time in stride(from: 0.0, through: 6.0, by: 0.37) {
+            let bands = LiquidOrbAudio.speech(intensity: 1, at: time)
+            for level in [bands.low, bands.mid, bands.high, bands.all] {
+                XCTAssertGreaterThanOrEqual(level, 0)
+                XCTAssertLessThanOrEqual(level, 1)
+            }
+            var values: [Float] = Array(repeating: 0.5, count: 136)
+            bands.apply(to: &values)
+            XCTAssertGreaterThan(values[3], 0.5, "speech speeds the orb up")
+            XCTAssertLessThanOrEqual(values[6], 7, "warp stays under its ceiling")
+        }
+    }
+
+    func testTheLiquidOrbShaderCompilesWhereMetalExists() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else {
+            throw XCTSkip("No Metal device on this simulator")
+        }
+        XCTAssertNotNil(LiquidOrbPipeline.shared, "LiquidOrb.metal builds into the app's default library")
     }
 
     func testTheLiveCallCaptionsAreTheLastTwoLines() {
