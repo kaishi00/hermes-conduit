@@ -894,6 +894,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 && job.result?.trimmingCharacters(in: .whitespacesAndNewlines) == reply
         }) {
             jobs[late].settledByPoll = false
+            rememberChatTurn(messageID)
             return
         }
         if let messageID, !messageID.isEmpty {
