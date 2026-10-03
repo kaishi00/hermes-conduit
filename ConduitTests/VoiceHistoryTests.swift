@@ -340,6 +340,7 @@ extension HermesVoiceGatewayTimeoutTests {
         var job = VoiceBackgroundJob(id: UUID(), title: "Find a dinner recipe", instructions: "x", status: .running, startedAt: Date())
         XCTAssertEqual(AppState.voiceJobStartedNote(job), "Started a background job: Find a dinner recipe.")
         job.runtimeSessionID = "runtime-1"
+        job.storedSessionID = ""
         XCTAssertEqual(AppState.voiceJobStartedNote(job), "Started a background job: Find a dinner recipe. [Open job](conduit://session/runtime-1)")
         job.storedSessionID = "stored-1"
         XCTAssertEqual(AppState.voiceJobStartedNote(job), "Started a background job: Find a dinner recipe. [Open job](conduit://session/stored-1)")

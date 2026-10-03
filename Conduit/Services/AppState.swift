@@ -3874,14 +3874,12 @@ final class AppState: ObservableObject {
         AppLocalization.string("Voice call · \(date.formatted(date: .abbreviated, time: .shortened))")
     }
 
-    /// A short title from the call's opening, like a chat's; the time-stamped
-    /// fallback when Hermes can't make one.
     /// The line a saved call gets where it started a job: the job's title
     /// and a link that opens the job's chat, so its full result is a tap
     /// away from the transcript.
     static func voiceJobStartedNote(_ job: VoiceBackgroundJob) -> String {
         let line = AppLocalization.string("Started a background job: \(job.title).")
-        guard let id = job.storedSessionID ?? job.runtimeSessionID, !id.isEmpty else { return line }
+        guard let id = [job.storedSessionID, job.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return line }
         return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open job"))
     }
 
@@ -3898,6 +3896,8 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// A short title from the call's opening, like a chat's; the time-stamped
+    /// fallback when Hermes can't make one.
     private func voiceCallTitle(turns: [VoiceTranscriptTurn], profile: String) async -> String {
         let opening = turns.prefix(6).map { ($0.role == .user ? "User: " : "Assistant: ") + String(ConduitAppLink.removingLinks(from: $0.text).prefix(300)) }.joined(separator: "\n")
         guard let client, !opening.isEmpty,

@@ -5,7 +5,8 @@
 //  Links Conduit writes into saved text that open inside the app, such as
 //  the link to a background job a voice call started. They are handled by
 //  the root view's `openURL` action, so no URL scheme is registered and
-//  another app can't open them.
+//  another app can't open them. A model's reply could write one too; a tap
+//  on it only opens a chat on the profile in use, as the sidebar would.
 //
 
 import Foundation
@@ -53,7 +54,7 @@ enum ConduitAppLink: Equatable {
     /// a title generator has no use for them.
     static func removingLinks(from text: String) -> String {
         let stripped = text.replacingOccurrences(
-            of: #"[ \t]*\[(?:\\.|[^\]\\])*\]\(conduit://[^)\s]*\)"#,
+            of: #"[ \t]*\[(?:\\.|[^\]\\\n])*\]\(conduit://[^)\s]*\)"#,
             with: "",
             options: [.regularExpression, .caseInsensitive]
         )
