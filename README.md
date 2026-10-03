@@ -136,6 +136,8 @@ No analytics. No telemetry. No ad frameworks.
 
 MIT
 
+The live voice orb uses the shader from [Liquid Orb Editor](https://github.com/lersent001/orb) by LerSent001 (MIT); its notice is in `Conduit/Views/LiquidOrb/LiquidOrb.metal`.
+
 ## Disclaimer
 
 Hermes Conduit is an independent project and is not affiliated with or endorsed by Nous Research.
