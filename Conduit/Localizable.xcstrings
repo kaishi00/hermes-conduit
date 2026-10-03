@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Talk over it on the speaker" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在扬声器上也可打断"
+          }
+        }
+      }
+    },
+    "Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Gemini Live and Grok Live. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实验功能。Gemini 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Gemini 不断打断自己，请关闭此选项。Gemini Live 与 Grok Live 共用此设置。从下一次对话开始生效。"
+          }
+        }
+      }
+    },
+    "Experimental. Keeps the microphone open while Grok talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Grok keeps cutting itself off. Shared by Gemini Live and Grok Live. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实验功能。Grok 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Grok 不断打断自己，请关闭此选项。Gemini Live 与 Grok Live 共用此设置。从下一次对话开始生效。"
+          }
+        }
+      }
+    },
     "Could not open the file: %@" : {
       "localizations" : {
         "zh-Hans" : {
