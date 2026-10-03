@@ -887,6 +887,35 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertTrue(harness.spy.pushedTemplates.allSatisfy { $0 is CPListTemplate }, "no shortcuts yet shows the empty list")
     }
 
+    func testLeavingTheJobsListStopsKeepingItCurrent() async throws {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+
+        harness.coordinator.showJobs()
+        XCTAssertTrue(harness.coordinator.isObservingJobs)
+        let jobs = try XCTUnwrap(harness.spy.pushedTemplates.last)
+
+        harness.coordinator.handleTemplateDidDisappear(try XCTUnwrap(harness.coordinator.template))
+        XCTAssertTrue(harness.coordinator.isObservingJobs, "another screen leaving changes nothing")
+        harness.coordinator.handleTemplateDidDisappear(jobs)
+        XCTAssertFalse(harness.coordinator.isObservingJobs, "the car's back button ends the observation")
+    }
+
+    func testABrowseTapAfterADisconnectDoesNothing() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        harness.coordinator.handleDisconnect()
+
+        harness.coordinator.showChats()
+        harness.coordinator.showJobs()
+        harness.coordinator.selectVoiceMode(.gptLive)
+        harness.coordinator.selectAgent(at: 0)
+
+        XCTAssertTrue(harness.spy.pushedTemplates.isEmpty)
+        XCTAssertFalse(harness.coordinator.isObservingJobs)
+        XCTAssertFalse(harness.appState.isGPTLiveEnabled, "a stale list never changes the saved mode")
+    }
+
     func testPickingAVoiceModeFromTheCarSwitchesTheProfileMode() async {
         let harness = makeHarness()
         harness.coordinator.handleConnect(harness.spy)

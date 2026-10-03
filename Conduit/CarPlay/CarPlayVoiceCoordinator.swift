@@ -160,6 +160,8 @@ final class CarPlayVoiceCoordinator {
     /// The Voice Jobs list last opened, kept current as jobs change.
     private weak var jobsTemplate: CPListTemplate?
     private var jobsObservation: AnyCancellable?
+    /// Whether the Jobs list on screen is being kept current.
+    var isObservingJobs: Bool { jobsObservation != nil }
     /// The profiles the open Voice list offered, in row order.
     private var listedAgentProfiles: [String] = []
 
@@ -454,6 +456,15 @@ final class CarPlayVoiceCoordinator {
         interfacing.pushTemplate(browseTemplate, animated: true, completion: nil)
     }
 
+    /// A screen left the car's display (the back button included). The Jobs
+    /// list stops being kept current once it is gone.
+    func handleTemplateDidDisappear(_ disappeared: CPTemplate) {
+        guard let jobsTemplate, disappeared === jobsTemplate else { return }
+        jobsObservation?.cancel()
+        jobsObservation = nil
+        self.jobsTemplate = nil
+    }
+
     /// Back to the voice screen before Voice starts.
     private func returnToVoiceScreen() {
         jobsObservation?.cancel()
@@ -587,9 +598,16 @@ final class CarPlayVoiceCoordinator {
     func performRunShortcut(_ shortcut: CarPlayShortcut, generation: UInt64) async {
         guard isCurrent(generation), isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
-        // A refusal (too many jobs running) has no place on the car's
-        // screen, so it is dropped; the conversation still opens.
-        _ = await appState.voiceBackgroundJobSupervisor.startJob(instructions: shortcut.prompt)
+        // A refused job (too many running) has no outcome to wait for, so
+        // the car shows Error instead of opening a conversation.
+        let supervisor = appState.voiceBackgroundJobSupervisor
+        let existing = Set(supervisor.jobs.map(\.id))
+        _ = await supervisor.startJob(instructions: shortcut.prompt)
+        guard isCurrent(generation), isConnected else { return }
+        guard supervisor.jobs.contains(where: { !existing.contains($0.id) }) else {
+            handleControllerState(.failed(""))
+            return
+        }
         await performStartListeningTurn(generation: generation)
     }
 
@@ -784,11 +802,22 @@ final class CarPlayVoiceCoordinator {
         case .classic:
             return appState.voiceConversationController.hasLiveVoiceSession
         case .geminiLive:
-            return CarPlayGeminiLiveListenAction.forPhase(appState.geminiLiveController.phase) != .start
+            return Self.canTakeNotice(appState.geminiLiveController.phase)
         case .gptLive:
-            return CarPlayGPTLiveListenAction.forPhase(appState.gptLiveController.phase) != .start
+            switch appState.gptLiveController.phase {
+            case .connecting, .listening, .speaking: return true
+            case .idle, .failed, .ending: return false
+            }
         case .grokLive:
-            return CarPlayGeminiLiveListenAction.forPhase(appState.grokLiveController.phase) != .start
+            return Self.canTakeNotice(appState.grokLiveController.phase)
+        }
+    }
+
+    /// A call that is ending never speaks a notice, so it is not open.
+    private static func canTakeNotice(_ phase: GeminiLiveConversationController.Phase) -> Bool {
+        switch phase {
+        case .connecting, .reconnecting, .listening, .speaking: return true
+        case .idle, .failed, .ending: return false
         }
     }
 
