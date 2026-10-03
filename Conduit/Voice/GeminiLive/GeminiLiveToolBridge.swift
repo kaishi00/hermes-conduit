@@ -115,7 +115,7 @@ final class GeminiLiveToolBridge {
 
     static let showOnScreenDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.showOnScreen.rawValue,
-        description: "Show something on the user's phone screen during the call. Use it for anything better seen than heard: charts, tables, forecasts, recipes and other step-by-step instructions, lists, comparisons, images and links, and whenever the user asks to see, show or chart something. Write Markdown: tables for data, numbered lists for steps, ```mermaid blocks for charts (xychart-beta for bar and line charts, pie for shares), ![description](url) for images using only direct image URLs you actually found, and [title](url) for links. Then tell the user in a sentence that it's on their screen and give the gist; don't read it out. If it says the screen isn't available, don't try again this call; tell the user instead.",
+        description: "Show something on the user's phone screen during the call. Use it for anything better seen than heard: charts, tables, forecasts, recipes and other step-by-step instructions, lists, comparisons, images and links, and whenever the user asks to see, show or chart something. Write Markdown: tables for data, numbered lists for steps, ```mermaid blocks for charts (xychart-beta for bar and line charts, pie for shares), ![description](url) for images using only direct image URLs you actually found, and [title](url) for links. Then tell the user in a sentence that it's on their screen and give the gist; don't read it out. If it says the screen isn't available, tell the user instead and don't retry the same thing; the screen can come back later in the call.",
         parameters: [
             "type": "OBJECT",
             "properties": [
