@@ -131,7 +131,7 @@ struct ModelPickerView: View {
             ),
             presenting: pendingModelConfirmation
         ) { _ in
-            Button("Switch", role: .destructive) {
+            Button("Switch") {
                 Task { await applyModel(confirmedModelSwitch: true) }
             }
             Button("Cancel", role: .cancel) {}
@@ -547,7 +547,11 @@ struct ModelPickerView: View {
             // the other settings are mutated — otherwise the sheet hangs open
             // showing a partially-applied configuration with no rollback.
             if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
-                guard await appState.setYoloMode(yoloEnabled) else { return }
+                guard await appState.setYoloMode(yoloEnabled) else {
+                    applyError = appState.errorMessage
+                        ?? AppLocalization.string("Unable to change YOLO mode.")
+                    return
+                }
                 // Applied: a confirmed retry of a guarded model switch must
                 // not send it again.
                 initialYoloEnabled = yoloEnabled
@@ -578,6 +582,9 @@ struct ModelPickerView: View {
                 // the label can show it now either way.
                 appState.runtime.model = outcome.model
                 appState.runtime.provider = selectedProvider
+                // Hermes may expand an alias; track what it resolved so a
+                // retry after a later failure does not switch again.
+                selectedModel = outcome.model
             }
             try await client.setReasoning(sessionId, effort: reasoningEnabled ? reasoningEffort : "none")
             appState.runtime.reasoningEffort = reasoningEnabled ? reasoningEffort : ""

@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Unable to change YOLO mode." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更改 YOLO 模式。"
+          }
+        }
+      }
+    },
     "Applying configuration" : {
       "localizations" : {
         "zh-Hans" : {
