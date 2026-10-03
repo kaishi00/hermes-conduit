@@ -58,7 +58,7 @@ enum AttachmentSizeLimit {
     }
 
     static func fileSize(at url: URL) -> Int64? {
-        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .totalFileAllocatedSizeKey])
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
         if let size = values?.fileSize { return Int64(size) }
         return nil
     }
@@ -153,7 +153,8 @@ enum AttachmentStaging {
     static func destination(for name: String) throws -> URL {
         let folder = directory
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent("\(UUID().uuidString)-\(name)")
+        let safeName = name.replacingOccurrences(of: "/", with: "_")
+        return folder.appendingPathComponent("\(UUID().uuidString)-\(safeName)")
     }
 
     /// Re-encodes an image file as JPEG through ImageIO, keeping its
@@ -273,6 +274,14 @@ enum AttachmentThumbnailLoader {
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: maxPixelSize, height: maxPixelSize)
+        // A moment in, so a clip that fades in from black still shows
+        // something; the very first frame is the fallback.
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
+        let early = CMTime(seconds: 0.1, preferredTimescale: 600)
+        if let frame = try? await generator.image(at: early) {
+            return UIImage(cgImage: frame.image)
+        }
         guard let frame = try? await generator.image(at: .zero) else { return nil }
         return UIImage(cgImage: frame.image)
     }
@@ -313,6 +322,11 @@ struct ComposerAttachmentChip: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    // A full-size tap target without growing the chip.
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, -10)
+                    .padding(.horizontal, -12)
             }
             .buttonStyle(.plain)
             .disabled(!canRemove)
