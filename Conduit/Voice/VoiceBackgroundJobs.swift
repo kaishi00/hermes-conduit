@@ -335,7 +335,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let card = VoiceScreenCard(
             id: UUID(),
             title: String(trimmedTitle.prefix(Self.maximumTitleCharacters)),
-            markdown: String(body.prefix(Self.maximumScreenCardCharacters)),
+            markdown: Self.clippedScreenMarkdown(body),
             callAnchor: anchor,
             shownAt: Date()
         )
@@ -344,6 +344,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             screenCards.removeFirst(screenCards.count - Self.maximumScreenCards)
         }
         return card
+    }
+
+    /// `markdown` within the card limit; a code fence the cut leaves open
+    /// is closed, so the rest doesn't render as code.
+    static func clippedScreenMarkdown(_ markdown: String) -> String {
+        guard markdown.count > maximumScreenCardCharacters else { return markdown }
+        let clipped = String(markdown.prefix(maximumScreenCardCharacters))
+        let fences = clipped.components(separatedBy: "\n").filter {
+            $0.trimmingCharacters(in: .whitespaces).hasPrefix("```")
+        }.count
+        return fences % 2 == 1 ? clipped + "\n```" : clipped
     }
 
     private var currentCallAnchor: VoiceJobCallAnchor? {

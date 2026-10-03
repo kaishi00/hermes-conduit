@@ -250,6 +250,11 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(card?.markdown.count, VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
         XCTAssertEqual(card?.callAnchor.afterEntryID, lines.last?.id)
         XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: " \n "), "Nothing to show")
+        let fenced = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
+            "```mermaid\n" + String(repeating: "y", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        )
+        XCTAssertTrue(fenced.hasSuffix("\n```"), "A fence the cut leaves open is closed")
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.clippedScreenMarkdown("short"), "short")
 
         let call = supervisor.liveCallID
         let labels = LiveVoiceCallTimeline<EmptyView>.items(

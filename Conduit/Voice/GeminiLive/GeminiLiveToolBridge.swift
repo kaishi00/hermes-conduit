@@ -316,6 +316,7 @@ final class GeminiLiveToolBridge {
             }
             return [.toolResponse(id: call.id, name: call.name, result: ["reply": Self.clipped(reply)], scheduling: .whenIdle)]
         case .showOnScreen:
+            guard !isEnding else { return [] }
             let markdown = call.arguments["markdown"] ?? ""
             guard supervisor.showOnScreen(title: call.arguments["title"] ?? "", markdown: markdown) != nil else {
                 let reason = markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -323,10 +324,14 @@ final class GeminiLiveToolBridge {
                     : "The screen isn't available right now; tell the user instead."
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": reason], scheduling: nil)]
             }
-            return [.toolResponse(id: call.id, name: call.name, result: [
+            var shown = [
                 "status": "shown",
                 "message": "It's on the user's screen. Say so in a sentence and give the gist; don't read it out.",
-            ], scheduling: nil)]
+            ]
+            if markdown.trimmingCharacters(in: .whitespacesAndNewlines).count > VoiceBackgroundJobSupervisor.maximumScreenCardCharacters {
+                shown["message"] = "Only the start of it fit on the user's screen. Say it's on their screen, give the gist, and offer to show the rest separately."
+            }
+            return [.toolResponse(id: call.id, name: call.name, result: shown, scheduling: nil)]
         case .listJobs:
             return [.toolResponse(id: call.id, name: call.name, result: listResult(), scheduling: nil)]
         case .cancelJob:

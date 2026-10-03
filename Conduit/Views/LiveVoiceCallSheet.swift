@@ -115,6 +115,11 @@ struct LiveVoiceCallSheet: View {
         }
     }
 
+    private var isShowingJob: Bool {
+        if case .job = selection { return true }
+        return false
+    }
+
     private func selectJob(_ jobID: UUID) {
         selection = .job(jobID)
     }
@@ -123,10 +128,13 @@ struct LiveVoiceCallSheet: View {
         selection = .screen(card)
     }
 
-    /// Opens what the voice model just put on screen, over whatever else
-    /// is open; the model tells the user it's there.
+    /// Opens what the voice model just put on screen; the model tells the
+    /// user it's there. A result already open, or a chat being opened,
+    /// isn't replaced: the card waits in the strip and the transcript.
     private func showNewScreenCard(_ cards: [VoiceScreenCard]) {
         guard let card = cards.last,
+              pendingJobChat == nil,
+              !isShowingJob,
               card.callAnchor.callID == jobs.liveCallID,
               card.id != lastShownCardID,
               Date().timeIntervalSince(card.shownAt) < Self.screenCardFreshness else { return }

@@ -152,7 +152,7 @@ struct LiveVoiceScreenCardRow: View {
         .buttonStyle(.plain)
         .conduitGlassControl(cornerRadius: 16)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: Self.title(for: card)))
+        .accessibilityLabel(Text(verbatim: "\(Self.title(for: card)), \(AppLocalization.string("On screen"))"))
         .accessibilityHint(Text("Shows it again"))
         .accessibilityAddTraits(.isButton)
     }
