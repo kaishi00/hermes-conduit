@@ -569,7 +569,7 @@ final class CarPlayVoiceCoordinator {
             // is not queued for whichever chat Voice opens next.
             guard self.isCurrent(generation), self.isConnected,
                   self.hasOpenConversation(in: appState),
-                  self.shownState != .error else { return }
+                  let shown = self.shownState, shown != .error else { return }
             appState.voiceBackgroundJobSupervisor.replayOutcome(jobID: jobID)
         }
     }
@@ -630,9 +630,17 @@ final class CarPlayVoiceCoordinator {
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             guard let self, self.isCurrent(generation), self.isConnected else { return }
+            // A profile change replaces the voice gateway, so the
+            // conversation ends first, as switching on the phone does.
             self.endConversation()
             await appState.switchProfile(to: profile)
             guard self.isCurrent(generation), self.isConnected else { return }
+            // A switch that failed (and rolled back) shows Error rather
+            // than a closed conversation with no explanation.
+            guard appState.activeProfile == profile else {
+                self.handleControllerState(.failed(""))
+                return
+            }
             self.observeCurrentVoiceMode(appState)
         }
     }
@@ -742,7 +750,13 @@ final class CarPlayVoiceCoordinator {
         case .classic:
             let controller = appState.voiceConversationController
             if controller.isMicrophonePaused {
-                Task { await controller.resumeMicrophone() }
+                // A failed resume settles the controller into .failed, which
+                // the state observation forwards to the car.
+                let generation = connectionGeneration
+                Task { @MainActor [weak self] in
+                    guard let self, self.isCurrent(generation), self.isConnected else { return }
+                    await controller.resumeMicrophone()
+                }
             } else {
                 controller.pauseMicrophone()
             }
@@ -808,7 +822,12 @@ final class CarPlayVoiceCoordinator {
         case .geminiLive:
             // A conversation already running (started on the phone) is
             // just shown; otherwise the CarPlay launch starts one.
-            guard !appState.geminiLiveController.isActive else { return }
+            let gemini = appState.geminiLiveController
+            guard !gemini.isActive else {
+                // Unmuted for the driver as with GPT-Live.
+                gemini.setMicrophoneMuted(false)
+                return
+            }
             await establishLiveVoice(.geminiLive, appState: appState, generation: generation)
             return
         case .gptLive:
