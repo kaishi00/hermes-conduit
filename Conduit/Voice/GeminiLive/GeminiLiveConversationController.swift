@@ -304,6 +304,11 @@ final class GeminiLiveConversationController: ObservableObject {
     /// shorten it.
     var lateEndPhraseDelay: TimeInterval = 1.5
 
+    /// The turn that greets the user when a call connects, when they asked
+    /// for one (#290). Sent once per call, never again on a reconnect.
+    private let openingPrompt: @MainActor () -> String?
+    private var hasSentOpening = false
+
     init(
         makeSession: @escaping @MainActor () -> GeminiLiveSessionControlling,
         availability: @escaping @MainActor () async throws -> GeminiLiveAvailability,
@@ -313,10 +318,12 @@ final class GeminiLiveConversationController: ObservableObject {
         now: @escaping () -> Date = Date.init,
         routePolicy: @escaping @MainActor () -> VoiceBargeInRoutePolicy = { VoiceBargeInRoutePolicy.current() },
         endConversationPhrases: @escaping @MainActor () -> [String] = { [] },
+        openingPrompt: @escaping @MainActor () -> String? = { nil },
         headsetMute: HeadsetMicrophoneMute? = nil
     ) {
         self.makeSession = makeSession
         self.availability = availability
+        self.openingPrompt = openingPrompt
         self.tools = tools
         self.input = input
         self.output = output
@@ -357,6 +364,7 @@ final class GeminiLiveConversationController: ObservableObject {
         phase = .connecting
         transcript = []
         finishedTurn = nil
+        hasSentOpening = false
         // A retry after a failure mid-goodbye starts clean: the old end
         // must not close this conversation or keep its microphone shut.
         endTask?.cancel()
@@ -609,6 +617,10 @@ final class GeminiLiveConversationController: ObservableObject {
             if !isMicrophoneMuted, !startInput() { return }
             // Ending: the microphone is closed, so it isn't listening.
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
+            if endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() {
+                hasSentOpening = true
+                session?.send(.textTurn(opening))
+            }
             // Anything that settled while (re)connecting goes out now,
             // unless the conversation is ending: then it stays pending.
             if endRequestedAt == nil { dispatch(tools.pendingUpdates()) }

@@ -623,6 +623,13 @@ struct SettingsView: View {
                         speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
                         setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
                     ),
+                    liveStyle: appState.isGeminiLiveEnabled || appState.isGPTLiveEnabled || appState.isGrokLiveEnabled
+                        ? LiveVoiceStyleSettingsModel(
+                            style: appState.liveVoiceStyle,
+                            setStyle: { appState.setLiveVoiceStyle($0) },
+                            preview: { appState.liveVoiceInstructionsPreview() }
+                        )
+                        : nil,
                     voiceJobs: VoiceJobModelSettingsModel(
                         provider: voicePreferences.voiceJobProvider,
                         model: voicePreferences.voiceJobModel,

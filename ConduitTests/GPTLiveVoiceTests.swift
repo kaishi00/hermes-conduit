@@ -23,12 +23,14 @@ final class FakeGPTLiveClient: GPTLiveSessionProviding {
     private(set) var histories: [[[String: Any]]] = []
     private(set) var voices: [String?] = []
     private(set) var briefings: [String?] = []
+    private(set) var greetings: [String?] = []
 
     func availability() async throws -> GPTLiveAvailability { try availabilityResult.get() }
 
-    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?) async throws -> GPTLiveSessionAnswer {
+    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?) async throws -> GPTLiveSessionAnswer {
         offers.append(offer)
         briefings.append(briefing)
+        greetings.append(greeting)
         voices.append(voice)
         histories.append(history)
         return try answerResult.get()
@@ -80,6 +82,7 @@ final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
     var isReady = false
     var voiceNote: String?
     var briefingApplied = false
+    var greetingApplied = false
     var failAppends = false
     private(set) var started = 0
     private(set) var stopped = 0
@@ -617,6 +620,7 @@ extension VoiceConversationControllerTests {
         endPhrases: [String] = [],
         permission: Bool = true,
         headsetMute: HeadsetMicrophoneMute? = nil,
+        openingPrompt: String? = nil,
         clock: @escaping () -> Date
     ) -> (GPTLiveConversationController, FakeGPTLiveSessionControl, VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
         let client = providedClient ?? FakeGPTLiveClient()
@@ -627,6 +631,7 @@ extension VoiceConversationControllerTests {
             makeSession: { session },
             availability: { try await client.availability() },
             briefing: { "[rules]" },
+            openingPrompt: { openingPrompt },
             supervisor: supervisor,
             requestPermission: { permission },
             now: clock,
@@ -684,6 +689,37 @@ extension VoiceConversationControllerTests {
         await older.start()
         olderSession.becomeReady()
         XCTAssertEqual(olderSession.appended.first?.text, "[rules]", "An older plugin still gets it as context")
+        older.stop()
+    }
+
+    func testGPTLiveGreetingGoesWithTheCallAndIsAskedForWhenAnOlderHostKeepsItSilent() async throws {
+        var bodies: [[String: Any]?] = []
+        let client = GPTLiveClient(request: { _, _, body, _ in
+            bodies.append(body)
+            return ["ok": true, "auth": "subscription", "session": ["id": "rtc_abc"],
+                    "transport": ["type": "webrtc", "sdp": "v=0 answer"], "greeting_applied": true]
+        })
+        let answer = try await client.createSession(offer: "v=0 offer", history: [], voice: nil, briefing: nil, greeting: "Hi")
+        XCTAssertEqual(bodies[0]?["greeting"] as? String, "Hi")
+        XCTAssertTrue(answer.greetingApplied)
+        _ = try await client.createSession(offer: "v=0 offer", history: [])
+        XCTAssertNil(bodies[1]?["greeting"])
+
+        let (applied, appliedSession, _, _) = makeGPTController(openingPrompt: "[greet]", clock: Date.init)
+        appliedSession.briefingApplied = true
+        appliedSession.greetingApplied = true
+        await applied.start()
+        appliedSession.becomeReady()
+        XCTAssertTrue(appliedSession.appended.isEmpty, "The host already greets first")
+        applied.stop()
+
+        let (older, olderSession, _, _) = makeGPTController(openingPrompt: "[greet]", clock: Date.init)
+        olderSession.briefingApplied = true
+        await older.start()
+        olderSession.becomeReady()
+        XCTAssertEqual(olderSession.speakable.map(\.text), ["[greet]"])
+        olderSession.becomeReady()
+        XCTAssertEqual(olderSession.speakable.map(\.text), ["[greet]"], "Once per call")
         older.stop()
     }
 

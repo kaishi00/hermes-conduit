@@ -729,6 +729,7 @@ extension VoiceConversationControllerTests {
         route: VoiceBargeInRoutePolicy = .fullDuplex,
         endPhrases: [String] = [],
         webSearch: GeminiLiveWebSearching? = nil,
+        openingPrompt: String? = nil,
         headsetMute: HeadsetMicrophoneMute? = nil,
         clock: @escaping () -> Date
     ) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl, FakeGeminiLiveInput, FakeGeminiLiveOutput, VoiceBackgroundJobSupervisor) {
@@ -746,9 +747,46 @@ extension VoiceConversationControllerTests {
             now: clock,
             routePolicy: { route },
             endConversationPhrases: { endPhrases },
+            openingPrompt: { openingPrompt },
             headsetMute: headsetMute ?? HeadsetMicrophoneMute(system: FakeSystemInputMute())
         )
         return (controller, session, input, output, supervisor)
+    }
+
+    func testLiveCallGreetsOnceWhenItFirstConnectsAndNeverOnAReconnect() async {
+        let (controller, session, _, _, _) = makeGeminiController(openingPrompt: "[greet]", clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        XCTAssertEqual(session.textTurns, ["[greet]"])
+        session.becomeReady()
+        XCTAssertEqual(session.textTurns, ["[greet]"], "A reconnect doesn't greet again")
+        controller.stop()
+
+        let (quiet, quietSession, _, _, _) = makeGeminiController(clock: Date.init)
+        await quiet.start()
+        quietSession.becomeReady()
+        XCTAssertTrue(quietSession.textTurns.isEmpty, "No greeting unless the user asked for one")
+        quiet.stop()
+    }
+
+    func testLiveVoiceStyleAddsNothingUntilTheUserChoosesSomething() {
+        XCTAssertEqual(LiveVoiceStyle().instructions, "")
+        XCTAssertNil(LiveVoiceStyle().openingPrompt)
+
+        let style = LiveVoiceStyle(tone: .professional, backchannels: false, greeting: "Hey Neal, I'm here.")
+        XCTAssertTrue(style.instructions.contains("replaces any tone"))
+        XCTAssertTrue(style.instructions.contains("Tone: professional"))
+        XCTAssertTrue(style.instructions.contains("Backchannels: none"))
+        XCTAssertEqual(style.openingPrompt?.contains("Say: \"Hey Neal, I'm here.\""), true)
+
+        let ownWords = LiveVoiceStyle(greeting: "")
+        XCTAssertEqual(ownWords.instructions, "")
+        XCTAssertEqual(ownWords.openingPrompt?.contains("Say:"), false)
+    }
+
+    func testLiveVoiceGreetingIsKeptToOneQuotableLine() {
+        XCTAssertEqual(LiveVoiceStyle.cleanedGreeting("  Hey \"Neal\",\n  what's up? "), "Hey 'Neal', what's up?")
+        XCTAssertEqual(LiveVoiceStyle.cleanedGreeting(String(repeating: "a", count: 500)).count, LiveVoiceStyle.maxGreetingCharacters)
     }
 
     func testGeminiLiveUnavailableHostFailsWithTheReasonAndNeverConnects() async {
@@ -898,6 +936,19 @@ extension ContinuousConversationPreferenceTests {
         enabled.liveVoiceSpeakerBargeIn = true
         let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(enabled))
         XCTAssertEqual(roundTrip.liveVoiceSpeakerBargeIn, true)
+    }
+
+    func testLiveVoiceStyleRoundTripsAndAnUnknownToneKeepsTheModelsOwn() throws {
+        XCTAssertEqual(VoiceProfilePreferences().liveVoiceStyle, LiveVoiceStyle())
+        var chosen = VoiceProfilePreferences()
+        chosen.liveVoiceTone = .relaxed
+        chosen.liveVoiceBackchannels = false
+        chosen.liveVoiceGreeting = ""
+        let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(chosen))
+        XCTAssertEqual(roundTrip.liveVoiceStyle, LiveVoiceStyle(tone: .relaxed, backchannels: false, greeting: ""))
+        let newer = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"liveVoiceTone":"sarcastic","liveVoiceGreeting":"Hi"}"#.utf8))
+        XCTAssertNil(newer.liveVoiceTone)
+        XCTAssertEqual(newer.liveVoiceGreeting, "Hi")
     }
 }
 

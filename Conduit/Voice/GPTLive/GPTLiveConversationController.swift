@@ -27,6 +27,8 @@ protocol GPTLiveSessionControlling: AnyObject {
     var voiceNote: String? { get }
     /// True when the host already gave the model the briefing.
     var briefingApplied: Bool { get }
+    /// True when the host already made the model greet first.
+    var greetingApplied: Bool { get }
     func start()
     /// Ends the call (telling GPT-Live, when it can hear it).
     func stop()
@@ -34,6 +36,10 @@ protocol GPTLiveSessionControlling: AnyObject {
     @discardableResult
     func appendContext(_ text: String, channel: GPTLiveProtocol.Channel, delegationID: String?) -> Bool
     func setMicrophoneEnabled(_ enabled: Bool)
+}
+
+extension GPTLiveSessionControlling {
+    var greetingApplied: Bool { false }
 }
 
 extension GPTLiveSession: GPTLiveSessionControlling {}
@@ -117,6 +123,10 @@ final class GPTLiveConversationController: ObservableObject {
     /// Conduit's rules plus the persona and memory the user allowed, read
     /// when the call starts.
     private let briefing: @MainActor () -> String
+    /// The turn that greets the user when a call connects, when they asked
+    /// for one and the host didn't already (#290). Once per call.
+    private let openingPrompt: @MainActor () -> String?
+    private var hasSentOpening = false
     private let bridge: GPTLiveDelegationBridge
     private let supervisor: GeminiLiveJobSupervising
     private let requestPermission: @MainActor () async -> Bool
@@ -153,6 +163,7 @@ final class GPTLiveConversationController: ObservableObject {
         makeSession: @escaping @MainActor () -> GPTLiveSessionControlling,
         availability: @escaping @MainActor () async throws -> GPTLiveAvailability,
         briefing: @escaping @MainActor () -> String = { GPTLiveConversationController.briefing() },
+        openingPrompt: @escaping @MainActor () -> String? = { nil },
         supervisor: GeminiLiveJobSupervising,
         requestPermission: @escaping @MainActor () async -> Bool = { await AVAudioApplication.requestRecordPermission() },
         now: @escaping () -> Date = Date.init,
@@ -162,6 +173,7 @@ final class GPTLiveConversationController: ObservableObject {
         self.makeSession = makeSession
         self.availability = availability
         self.briefing = briefing
+        self.openingPrompt = openingPrompt
         self.supervisor = supervisor
         self.bridge = GPTLiveDelegationBridge(supervisor: supervisor, now: now)
         self.requestPermission = requestPermission
@@ -187,6 +199,7 @@ final class GPTLiveConversationController: ObservableObject {
         phase = .connecting
         transcript = []
         voiceNote = nil
+        hasSentOpening = false
         finishedTurn = nil
         endTask?.cancel()
         endTask = nil
@@ -323,6 +336,14 @@ final class GPTLiveConversationController: ObservableObject {
             // the call starts, the model answers each piece out loud.
             if session?.briefingApplied != true {
                 session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
+            }
+            // An older plugin keeps the model silent until the user speaks:
+            // ask for the greeting now instead.
+            if endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() {
+                hasSentOpening = true
+                if session?.greetingApplied != true {
+                    session?.appendContext(opening, channel: .speakable, delegationID: nil)
+                }
             }
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
             if endRequestedAt == nil { deliverPendingJobUpdates() }

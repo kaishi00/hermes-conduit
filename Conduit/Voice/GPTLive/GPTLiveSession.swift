@@ -39,6 +39,8 @@ final class GPTLiveSession {
     /// True when the host already gave the model the briefing (see
     /// `GPTLiveSessionAnswer.briefingApplied`).
     private(set) var briefingApplied = false
+    /// True when the host made the model greet first.
+    private(set) var greetingApplied = false
 
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
     var onStateChange: (@MainActor (State) -> Void)?
@@ -49,6 +51,8 @@ final class GPTLiveSession {
     private let voice: String?
     /// Conduit's rules for this call, offered to the host with the offer.
     private let briefing: String?
+    /// The greeting the user asked for when the call connects (#290).
+    private let greeting: String?
     private let makePeer: @MainActor () -> GPTLivePeer
     private let startTimeout: Duration
     private let reconnectGrace: Duration
@@ -64,6 +68,7 @@ final class GPTLiveSession {
         history: [[String: Any]] = [],
         voice: String? = nil,
         briefing: String? = nil,
+        greeting: String? = nil,
         makePeer: @escaping @MainActor () -> GPTLivePeer = { WebRTCGPTLivePeer() },
         startTimeout: Duration = GPTLiveSession.startTimeout,
         reconnectGrace: Duration = GPTLiveSession.reconnectGrace
@@ -72,6 +77,7 @@ final class GPTLiveSession {
         self.history = history
         self.voice = voice
         self.briefing = briefing
+        self.greeting = greeting
         self.makePeer = makePeer
         self.startTimeout = startTimeout
         self.reconnectGrace = reconnectGrace
@@ -152,10 +158,11 @@ final class GPTLiveSession {
         do {
             let offer = try await peer.makeOffer()
             guard isCurrent(peer) else { return }
-            let answer = try await client.createSession(offer: offer, history: history, voice: voice, briefing: briefing)
+            let answer = try await client.createSession(offer: offer, history: history, voice: voice, briefing: briefing, greeting: greeting)
             guard isCurrent(peer) else { return }
             sessionID = answer.sessionID
             briefingApplied = answer.briefingApplied
+            greetingApplied = answer.greetingApplied
             voiceNote = Self.voiceNote(requested: voice, applied: answer.voice)
             try await peer.acceptAnswer(answer.sdp)
             guard isCurrent(peer) else { return }

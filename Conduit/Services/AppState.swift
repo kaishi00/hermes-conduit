@@ -1455,7 +1455,8 @@ final class AppState: ObservableObject {
                         memory: memory,
                         personality: self?.geminiLivePersonality
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
-                        + (self?.liveVoiceThreadInstructions(delegation: false) ?? ""),
+                        + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
+                        + (self?.liveVoiceStyle.instructions ?? ""),
                     functions: GeminiLiveToolBridge.declarations(
                         webSearch: search == .hermes,
                         memoryRecall: memory?.canRecall == true,
@@ -1492,7 +1493,8 @@ final class AppState: ObservableObject {
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
                 return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
-            }
+            },
+            openingPrompt: { [weak self] in self?.liveVoiceStyle.openingPrompt }
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeGeminiLiveConversation() }
@@ -1732,6 +1734,8 @@ final class AppState: ObservableObject {
                     briefing: GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
                         + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
+                        + (self?.liveVoiceStyle.instructions ?? ""),
+                    greeting: self?.liveVoiceStyle.greeting
                 )
             },
             availability: { [weak self] in
@@ -1746,7 +1750,9 @@ final class AppState: ObservableObject {
                 GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
                     + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                     + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
+                    + (self?.liveVoiceStyle.instructions ?? "")
             },
+            openingPrompt: { [weak self] in self?.liveVoiceStyle.openingPrompt },
             supervisor: self.voiceBackgroundJobSupervisor,
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
@@ -1973,7 +1979,8 @@ final class AppState: ObservableObject {
                         memory: memory,
                         personality: self?.grokLivePersonality
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
-                        + (self?.liveVoiceThreadInstructions(delegation: false) ?? ""),
+                        + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
+                        + (self?.liveVoiceStyle.instructions ?? ""),
                     functions: GeminiLiveToolBridge.declarations(
                         webSearch: search == .hermes,
                         memoryRecall: memory?.canRecall == true,
@@ -2011,7 +2018,8 @@ final class AppState: ObservableObject {
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
                 return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
-            }
+            },
+            openingPrompt: { [weak self] in self?.liveVoiceStyle.openingPrompt }
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeGrokLiveConversation() }
@@ -3449,6 +3457,65 @@ final class AppState: ObservableObject {
         objectWillChange.send()
         preferences.liveVoiceSpeakerBargeIn = stored
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// How live calls sound on this profile (#290).
+    var liveVoiceStyle: LiveVoiceStyle {
+        loadVoiceProfilePreferences(profile: activeProfile).liveVoiceStyle
+    }
+
+    /// Applies from the next call.
+    func setLiveVoiceStyle(_ style: LiveVoiceStyle) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let greeting = style.greeting.map(LiveVoiceStyle.cleanedGreeting)
+        let backchannels: Bool? = style.backchannels ? nil : false
+        guard preferences.liveVoiceTone != style.tone
+            || preferences.liveVoiceBackchannels != backchannels
+            || preferences.liveVoiceGreeting != greeting else { return }
+        objectWillChange.send()
+        preferences.liveVoiceTone = style.tone
+        preferences.liveVoiceBackchannels = backchannels
+        preferences.liveVoiceGreeting = greeting
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// What Conduit tells the live voice mode in use, for Voice settings:
+    /// the text as the next call would send it, with the host's memory and
+    /// persona shown as placeholders (they are read when a call starts).
+    /// Nil when no live mode is on.
+    func liveVoiceInstructionsPreview() -> (mode: String, text: String)? {
+        let placeholderMemory = GeminiLiveMemoryContext(text: AppLocalization.string("(What your Hermes agent remembers about you, read when the call starts.)"), canRecall: false)
+        let placeholderPersona = AppLocalization.string("(This profile's SOUL.md, read when the call starts.)")
+        let thread = liveVoiceThreadInstructions(delegation: isGPTLiveEnabled)
+        let style = liveVoiceStyle
+        var text: String
+        let mode: String
+        if isGPTLiveEnabled {
+            mode = "GPT-Live"
+            text = GPTLiveConversationController.briefing(
+                memory: gptLiveMemoryEnabled ? placeholderMemory : nil,
+                personality: gptLivePersonalityEnabled ? placeholderPersona : nil
+            )
+        } else if isGrokLiveEnabled {
+            mode = "Grok Live"
+            text = GeminiLiveConversationController.instructions(
+                search: grokLiveSearchSource,
+                memory: grokLiveMemoryEnabled ? placeholderMemory : nil,
+                personality: grokLivePersonalityEnabled ? placeholderPersona : nil
+            )
+        } else if isGeminiLiveEnabled {
+            mode = "Gemini Live"
+            text = GeminiLiveConversationController.instructions(
+                search: geminiLiveSearchSource,
+                memory: geminiLiveMemoryEnabled ? placeholderMemory : nil,
+                personality: geminiLivePersonalityEnabled ? placeholderPersona : nil
+            )
+        } else {
+            return nil
+        }
+        text += thread + style.instructions
+        if let opening = style.openingPrompt { text += "\n\n" + opening }
+        return (mode, text)
     }
 
     /// The live controllers' audio: the default capture and playback, or

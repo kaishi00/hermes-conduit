@@ -94,6 +94,15 @@ Classic Voice, Gemini Live and Grok Live close the microphone while the agent ta
 
 "Talk over it on the speaker" (in the Gemini Live and Grok Live sections, shared by both, off by default) is the experimental way out: the call runs its microphone and speaker on one iOS voice-processing engine, so the agent's own voice is cancelled out of the microphone, and the microphone stays open on every route. If the agent keeps cutting itself off, turn it off. It applies from the next call. Classic Voice is unchanged.
 
+## Live call style
+
+"Live call style" in Voice settings (shown once a live mode is on, shared by Gemini Live, Grok Live and GPT-Live) sets how calls sound, per profile, from the next call:
+
+- **Greet me when a call connects**: the model greets you as soon as the call is live, in one short sentence, then waits. Leave the greeting text empty for one in its own words, or type your own (one line, up to 200 characters). Off by default: the call stays silent until you speak. GPT-Live needs the up-to-date Hermes notifier plugin, which swaps its "wait for the user" opening for a greeting; with an older plugin Conduit asks for the greeting once the call is ready instead. Gemini and Grok get it as the first turn of the call, never again on a reconnect.
+- **Tone**: Model default, Relaxed, Neutral or Professional. Model default leaves the model's tone and your Hermes server's voice persona alone; the others add a short style block after the persona that replaces its tone and pace guidance.
+- **Backchannels**: on by default. Off tells the model not to say "mm-hmm", "right" and the like while you talk.
+- **What Conduit sends** shows the text Conduit adds to the current live mode's instructions, with the style applied. Memory and personality are shown as placeholders, since they are read when a call starts.
+
 ## Dictate into the composer
 
 The composer has two buttons on the right of its bottom row. The plain mic dictates: tap it and the words appear in the draft as you speak, after anything already typed; tap it again to stop. Nothing is sent until you send it, and Send shows up beside the mic as soon as there are words, so you can send without stopping first. The waveform button (in the same spot Send takes) opens Voice. Recognition uses Apple's speech recognizer, on the device when the language supports it. Dictation is unavailable while a voice conversation has the microphone. A phone call, Siri, an audio route change or a voice conversation taking the microphone ends dictation, keeping the words so far.
