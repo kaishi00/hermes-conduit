@@ -450,6 +450,10 @@ final class GPTLiveConversationController: ObservableObject {
     /// The work a delegation asks for: its own text when it carries any,
     /// otherwise the user's words since the last delegation, with the
     /// recent conversation for context. Not UI copy.
+    /// Separates a delegation's own words from the recent conversation
+    /// added for context; routing reads only the words before it.
+    static let delegationContextMarker = "\n\n[Recent voice conversation, for context:]\n"
+
     func delegationRequest(itemText: String) -> String {
         // By entry, not index: a finished turn can fold entries away.
         let start = lastDelegatedEntry.flatMap { id in transcript.firstIndex { $0.id == id } }.map { $0 + 1 } ?? 0
@@ -469,7 +473,7 @@ final class GPTLiveConversationController: ObservableObject {
             context = line + context
         }
         guard !context.isEmpty else { return request }
-        return "\(request)\n\n[Recent voice conversation, for context:]\n\(context)"
+        return request + Self.delegationContextMarker + context
     }
 
     private func sendJobStatus() {

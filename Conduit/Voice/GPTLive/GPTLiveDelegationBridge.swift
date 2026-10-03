@@ -66,7 +66,10 @@ final class GPTLiveDelegationBridge {
         let task = VoiceThreadRouting.removingQuickMarker(instructions)
         // Attached to a chat: hearing the last reply reads it, quick or
         // background work is a job, and anything else is the chat's next turn.
-        if supervisor.liveThread != nil, VoiceThreadRouting.wantsLastReply(task) {
+        // Routed on the delegation's own words, not the conversation added
+        // for context (which would end with whatever was said last).
+        let ownWords = task.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? task
+        if supervisor.liveThread != nil, VoiceThreadRouting.wantsLastReply(ownWords) {
             if readBackIsRecent {
                 return [.delegationReply(delegationID: id, text: Self.readBackAlreadySent, channel: .commentary)]
             }

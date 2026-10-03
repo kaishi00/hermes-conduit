@@ -1248,7 +1248,7 @@ enum VoiceThreadRouting {
 
     static func wantsLastReply(_ request: String) -> Bool {
         // Commas set off fillers and asides ("the last, um, reply").
-        let folded = withoutFillers(fold(request).replacingOccurrences(of: ",", with: ""))
+        let folded = withoutFillers(fold(request).replacingOccurrences(of: ",", with: " "))
         if wantsRepeat(folded) { return true }
         guard lastReplyPhrases.contains(where: { contains(folded, phrase: $0) }) else { return false }
         if wantsCJKLastReply(folded) { return true }
@@ -1266,7 +1266,7 @@ enum VoiceThreadRouting {
 
     /// Words that may follow the reply phrase in a plain read request
     /// ("read the last message from Hermes out loud").
-    static let lastReplyTrailers = repeatTrailers.union(["aloud", "now", "from", "hermes", "the", "this", "chat", "here"])
+    static let lastReplyTrailers = repeatTrailers.union(["aloud", "now", "from", "hermes"])
 
     /// "Read the last message" is a read; "read the last message from Sam
     /// and draft a reply" or "say the last message in Spanish" is work.

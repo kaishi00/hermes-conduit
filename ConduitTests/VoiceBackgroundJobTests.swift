@@ -851,6 +851,19 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(afterDelegation.isEmpty, "the delegation already asked for this one")
         XCTAssertEqual(fake.threadSubmissions.count, 0, "reading asks Hermes nothing")
 
+        // The controller adds the recent conversation for context: routing
+        // reads only the delegation's own words.
+        clock += GPTLiveDelegationBridge.readBackWindow + 1
+        let withContext = await bridge.handleDelegation(
+            id: "del_ctx",
+            request: "read the last reply" + GPTLiveConversationController.delegationContextMarker + "User: what's the weather\nAssistant: Sunny.\n"
+        )
+        guard case .delegationReply("del_ctx", let contextText, .speakable)? = withContext.first else {
+            return XCTFail("\(withContext)")
+        }
+        XCTAssertTrue(contextText.contains("The full reply."))
+        XCTAssertEqual(fake.threadSubmissions.count, 0)
+
         // A read-back that never reached the model doesn't hold back a retry.
         clock += GPTLiveDelegationBridge.readBackWindow + 1
         let first = await bridge.userAskedForLastReply()
@@ -879,14 +892,14 @@ extension VoiceConversationControllerTests {
             "read the last message", "read the last uh message", "Read me the last, um, reply",
             "say it again word for word", "okay repeat what you just said", "read it back to me",
             "could you please read the full answer", "read the last uh? message",
-            "read the last message from Hermes out loud", "read me the latest reply in the chat",
+            "read the last message from Hermes out loud", "read the last,uh message",
         ] {
             XCTAssertTrue(VoiceThreadRouting.wantsLastReply(request), request)
         }
         for request in [
             "repeat that test with the new config", "say that again to Sam in an email",
             "the last message was wrong, fix it", "summarize the last message", "umbrella forecast",
-            "read the last message from Sam and draft a reply", "say the last message in Spanish",
+            "read the last message from Sam and draft a reply", "say the last message in Spanish", "say the last message to the chat",
         ] {
             XCTAssertFalse(VoiceThreadRouting.wantsLastReply(request), request)
         }
