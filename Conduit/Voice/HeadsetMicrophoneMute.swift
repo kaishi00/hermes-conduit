@@ -44,7 +44,7 @@ final class SystemInputMute: SystemInputMuteControlling {
         guard let handler else { return }
         observer = NotificationCenter.default.addObserver(
             forName: AVAudioApplication.inputMuteStateChangeNotification,
-            object: nil,
+            object: AVAudioApplication.shared,
             queue: .main
         ) { _ in
             MainActor.assumeIsolated {
@@ -71,6 +71,10 @@ final class HeadsetMicrophoneMute {
 
     private let system: SystemInputMuteControlling
     private var owner: ObjectIdentifier?
+    /// The owning controller itself, held weakly: a controller freed without
+    /// releasing counts as released, so a new object at the same address
+    /// can't inherit its (dead) claim.
+    private weak var ownerObject: AnyObject?
     private var onChange: (@MainActor (Bool) -> Void)?
     /// The system mute state as Conduit last set or saw it, so repeated
     /// syncs don't call into AVFAudio again and echoes are ignored.
@@ -85,8 +89,9 @@ final class HeadsetMicrophoneMute {
     /// the owner only updates the mirrored state.
     func claim(by owner: AnyObject, muted: Bool, onChange: @escaping @MainActor (Bool) -> Void) {
         let id = ObjectIdentifier(owner)
-        if self.owner != id {
+        if self.owner != id || ownerObject == nil {
             self.owner = id
+            ownerObject = owner
             self.onChange = onChange
             reflectedMuted = nil
             system.observeInputMute { [weak self] muted in
@@ -103,16 +108,19 @@ final class HeadsetMicrophoneMute {
         reflect(false)
         system.observeInputMute(nil)
         self.owner = nil
+        ownerObject = nil
         onChange = nil
         reflectedMuted = nil
     }
 
     private func reflect(_ muted: Bool) {
         guard reflectedMuted != muted else { return }
-        reflectedMuted = muted
         do {
             try system.setInputMuted(muted)
+            reflectedMuted = muted
         } catch {
+            // Unknown now: the next sync or gesture is applied, not skipped.
+            reflectedMuted = nil
             headsetMuteLogger.error("Setting the system input mute failed: \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -120,7 +128,7 @@ final class HeadsetMicrophoneMute {
     private func systemMuteChanged(_ muted: Bool, for id: ObjectIdentifier) {
         // A gesture queued for a call that has since ended goes nowhere, and
         // the echo of Conduit's own change is already reflected.
-        guard owner == id, muted != reflectedMuted else { return }
+        guard owner == id, ownerObject != nil, muted != reflectedMuted else { return }
         reflectedMuted = muted
         onChange?(muted)
     }

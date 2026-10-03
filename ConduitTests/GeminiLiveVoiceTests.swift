@@ -106,27 +106,6 @@ final class FakeGeminiLiveSocket: GeminiLiveSocket {
     }
 }
 
-/// The system input mute (AirPods / headset gesture) without AVFAudio.
-@MainActor
-final class FakeSystemInputMute: SystemInputMuteControlling {
-    private(set) var handler: (@MainActor (Bool) -> Void)?
-    private(set) var muted = false
-
-    func observeInputMute(_ handler: (@MainActor (Bool) -> Void)?) {
-        self.handler = handler
-    }
-
-    func setInputMuted(_ muted: Bool) throws {
-        self.muted = muted
-    }
-
-    /// The user pressing the headset's mute control.
-    func press(muted: Bool) {
-        self.muted = muted
-        handler?(muted)
-    }
-}
-
 @MainActor
 final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     var onEvent: (@MainActor (GeminiLiveProtocol.ServerEvent) -> Void)?

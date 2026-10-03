@@ -441,6 +441,9 @@ final class GeminiLiveConversationController: ObservableObject {
     func setMicrophoneMuted(_ muted: Bool) {
         guard muted != isMicrophoneMuted else { return }
         isMicrophoneMuted = muted
+        // Ending: capture is already closed for good, and the user's turn
+        // already ended.
+        guard endRequestedAt == nil else { return }
         if muted {
             stopInput()
             // End the user's turn now instead of waiting for more audio.

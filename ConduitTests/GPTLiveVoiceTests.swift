@@ -743,6 +743,16 @@ extension VoiceConversationControllerTests {
         controller.stop()
         XCTAssertNil(system.handler)
         XCTAssertEqual(system.muted, false)
+
+        // So does a call that fails.
+        await controller.start()
+        session.becomeReady()
+        controller.setMicrophoneMuted(true)
+        XCTAssertNotNil(system.handler)
+        session.onStateChange?(.failed("The GPT-Live connection was lost."))
+        XCTAssertFalse(controller.isActive)
+        XCTAssertNil(system.handler)
+        XCTAssertEqual(system.muted, false)
     }
 
     func testGPTLiveDelegationWithoutTextHandsHermesTheUsersWords() async {
