@@ -11,6 +11,11 @@
 //  the coordinator and converge on the existing shared teardown/listen/mute
 //  paths — CarPlay adds no parallel Voice business logic.
 //
+//  A template's buttons are never changed once it is on the car's screen.
+//  Replacing them in place left the car with buttons the app no longer
+//  held, so Mute did nothing (#361). New controls get a new template
+//  instead, built to open on the state the car is showing.
+//
 
 import CarPlay
 import UIKit
@@ -122,28 +127,19 @@ enum CarPlayVoiceTemplateFactory {
         return voiceControlState
     }
 
+    /// The template, opening on `initialState`: the template presents its
+    /// first state, so that state goes first and a replacement template
+    /// shows the conversation where it is instead of flashing Ready.
     static func makeTemplate(
         controls: CarPlayVoiceControls = .initial,
+        presenting initialState: CarPlayVoiceState = .ready,
         handlers: CarPlayVoiceActionHandlers
     ) -> CPVoiceControlTemplate {
-        let states = CarPlayVoiceState.allCases.map {
+        let ordered = [initialState] + CarPlayVoiceState.allCases.filter { $0 != initialState }
+        let states = ordered.map {
             makeVoiceControlState(for: $0, controls: controls, handlers: handlers)
         }
         return CPVoiceControlTemplate(voiceControlStates: states)
-    }
-
-    /// Replaces every state's buttons for new controls (a mode switch, or the
-    /// microphone muted from the car or the phone).
-    static func apply(
-        _ controls: CarPlayVoiceControls,
-        to template: CPVoiceControlTemplate,
-        handlers: CarPlayVoiceActionHandlers
-    ) {
-        guard #available(iOS 26.4, *) else { return }
-        for voiceControlState in template.voiceControlStates {
-            guard let state = CarPlayVoiceState(rawValue: voiceControlState.identifier) else { continue }
-            voiceControlState.actionButtons = actionButtons(for: state, controls: controls, handlers: handlers)
-        }
     }
 
     private static func actionButtons(

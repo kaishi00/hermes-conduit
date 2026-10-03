@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "New voice chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建语音聊天"
+          }
+        }
+      }
+    },
+    "Choose a chat first" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先选择聊天"
+          }
+        }
+      }
+    },
+    "CarPlay opens on your pinned and recent chats, with New voice chat at the top. Off: Voice starts as soon as CarPlay opens." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CarPlay 打开时显示置顶和最近的聊天，顶部是“新建语音聊天”。关闭后，CarPlay 一打开就开始语音。"
+          }
+        }
+      }
+    },
     "Applying configuration" : {
       "localizations" : {
         "zh-Hans" : {

@@ -152,8 +152,15 @@ final class CarPlayVoiceCoordinator {
     private var controlsObservation: AnyCancellable?
     /// Which mode's controller `stateObservation` follows.
     private(set) var observedVoiceMode: CarPlayVoiceMode?
-    /// What the template's buttons currently offer.
+    /// What the template's buttons should offer.
     private(set) var controls: CarPlayVoiceControls = .initial
+    /// What the root template on the car was built with. Its buttons are
+    /// never changed in place (see `CarPlayVoiceTemplateFactory`), so new
+    /// controls install a new template.
+    private(set) var templateControls: CarPlayVoiceControls = .initial
+    /// The chat list waits for the voice screen to be on the car before it
+    /// is pushed over it.
+    private(set) var isChatPickerPending = false
     /// Whether the top bar's browse buttons are showing. They show only at
     /// Ready and Error: Apple requires the voice screen while Voice runs.
     private(set) var showsBrowseButtons = false
@@ -193,6 +200,8 @@ final class CarPlayVoiceCoordinator {
         controlsObservation = nil
         observedVoiceMode = nil
         controls = .initial
+        templateControls = .initial
+        isChatPickerPending = false
         showsBrowseButtons = false
         jobsObservation?.cancel()
         jobsObservation = nil
@@ -218,7 +227,7 @@ final class CarPlayVoiceCoordinator {
 
         if autoEstablishOnConnect {
             Task { @MainActor [weak self] in
-                await self?.establishVoice(generation: generation)
+                await self?.establishOnConnect(generation: generation)
             }
         }
     }
@@ -240,6 +249,8 @@ final class CarPlayVoiceCoordinator {
         controlsObservation = nil
         observedVoiceMode = nil
         controls = .initial
+        templateControls = .initial
+        isChatPickerPending = false
         showsBrowseButtons = false
         jobsObservation?.cancel()
         jobsObservation = nil
@@ -258,22 +269,33 @@ final class CarPlayVoiceCoordinator {
 
     // MARK: - Template
 
-    private func installRootTemplate() {
+    /// Installs a voice template built for the current controls, opening on
+    /// `initialState`. Used on connect, and again whenever the controls
+    /// change (a template's buttons are never replaced on the car).
+    private func installRootTemplate(presenting initialState: CarPlayVoiceState = .ready) {
         guard let interfacing else { return }
         let generation = connectionGeneration
-        let template = CarPlayVoiceTemplateFactory.makeTemplate(controls: controls, handlers: makeHandlers())
+        let builtControls = controls
+        let template = CarPlayVoiceTemplateFactory.makeTemplate(
+            controls: builtControls,
+            presenting: initialState,
+            handlers: makeHandlers()
+        )
         self.template = template
-        // The template opens on Ready.
-        updateBrowseButtons(for: .ready)
+        templateControls = builtControls
+        isTemplatePresented = false
+        updateBrowseButtons(for: initialState, force: true)
         interfacing.setRootTemplate(template, animated: false) { [weak self] success, error in
             // MainActor Task hop (never a trapping assumeIsolated): the
             // completion is expected on the main queue, but a wrong-queue
             // delivery must degrade to a hop, not crash the process in a car.
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                // A completion from a superseded connection must never mark
-                // the new connection's template presented.
-                guard self.isCurrent(generation), self.interfacing === interfacing else {
+                // A completion from a superseded connection, or for a
+                // template already replaced, must never mark the current
+                // template presented.
+                guard self.isCurrent(generation), self.interfacing === interfacing,
+                      self.template === template else {
                     carPlayLogger.notice("stale root-template install completion ignored")
                     return
                 }
@@ -282,26 +304,41 @@ final class CarPlayVoiceCoordinator {
                     return
                 }
                 self.isTemplatePresented = true
-                // Re-assert the top bar for the presented state, so it never
-                // rests on buttons set before the template was on screen.
-                self.updateBrowseButtons(for: self.pendingPresentationState ?? .ready, force: true)
-                // The template is installed before the AppState resolves,
-                // so its buttons were built for the classic mode; they are
-                // re-applied for the mode the profile actually uses.
-                CarPlayVoiceTemplateFactory.apply(self.controls, to: template, handlers: self.makeHandlers())
-                // The template presents its FIRST state (ready) by default;
-                // activate a retained pending state exactly once when it
-                // differs, then resume normal dedupe against the presented
-                // state. If the factory ever changes its default first state,
-                // keep this coupling in sync.
-                let pending = self.pendingPresentationState ?? .ready
+                // The template presents its FIRST state (`initialState`) by
+                // itself; activate a retained pending state exactly once when
+                // it differs, then resume normal dedupe against it.
+                let pending = self.pendingPresentationState ?? initialState
                 self.pendingPresentationState = nil
                 self.lastActivatedState = pending
-                if pending != .ready {
+                // Re-assert the top bar for the presented state, so it never
+                // rests on buttons set before the template was on screen.
+                self.updateBrowseButtons(for: pending, force: true)
+                // The first template is installed before the AppState
+                // resolves, so it was built for the classic mode; the
+                // controls may also have changed while it was on its way.
+                // Either way the car gets a template built for them.
+                guard self.controls == builtControls else {
+                    self.reinstallRootTemplate()
+                    return
+                }
+                if pending != initialState {
                     self.stateActivator(template, pending)
+                }
+                if self.isChatPickerPending {
+                    self.isChatPickerPending = false
+                    self.showChats()
                 }
             }
         }
+    }
+
+    /// Replaces the voice template for new controls, opening on the state
+    /// the car is showing.
+    private func reinstallRootTemplate() {
+        let shown = shownState ?? .ready
+        pendingPresentationState = nil
+        lastActivatedState = nil
+        installRootTemplate(presenting: shown)
     }
 
     /// The buttons' handlers, fenced to the connection whose template they
@@ -324,14 +361,18 @@ final class CarPlayVoiceCoordinator {
         )
     }
 
-    /// Replaces the buttons when the mode or the microphone changes. The
-    /// buttons carry no state of their own (Mute and Unmute both toggle the
-    /// live value), so a label that lags never sends the wrong action.
+    /// New buttons when the mode or the microphone changes, as a new
+    /// template (#361). The buttons carry no state of their own (Mute and
+    /// Unmute both toggle the live value), so a label that lags never sends
+    /// the wrong action.
     func updateControls(_ newControls: CarPlayVoiceControls) {
         guard newControls != controls else { return }
         controls = newControls
-        guard isConnected, let template else { return }
-        CarPlayVoiceTemplateFactory.apply(newControls, to: template, handlers: makeHandlers())
+        // Before presentation the install completion compares the controls
+        // and reinstalls itself.
+        guard isConnected, template != nil, isTemplatePresented,
+              templateControls != newControls else { return }
+        reinstallRootTemplate()
     }
 
     /// Follows the controller for the profile's current Voice mode. The
@@ -466,6 +507,10 @@ final class CarPlayVoiceCoordinator {
         }
         return CarPlayBrowseHandlers(
             openChat: fenced { $0.openChat($1) },
+            newVoiceChat: { [weak self] in
+                guard let self, self.isCurrent(generation) else { return }
+                self.startNewVoiceChat()
+            },
             replayJob: fenced { $0.replayJob($1) },
             runShortcut: fenced { $0.runShortcut($1) },
             selectMode: fenced { $0.selectVoiceMode($1) },
@@ -500,11 +545,32 @@ final class CarPlayVoiceCoordinator {
         interfacing?.popToRootTemplate(animated: true, completion: nil)
     }
 
+    /// The chat list: New voice chat, then pinned chats, then recent ones.
     func showChats() {
         guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
-        let rows = CarPlayBrowse.recentChats(from: appState.activeProfileSessions)
-        push(CarPlayBrowseTemplateFactory.chatsTemplate(rows: rows, handlers: makeBrowseHandlers()))
+        let chats = CarPlayBrowse.chatList(
+            from: appState.activeProfileSessions,
+            isPinned: { appState.isSessionPinned($0) }
+        )
+        push(CarPlayBrowseTemplateFactory.chatsTemplate(chats: chats, handlers: makeBrowseHandlers()))
+    }
+
+    /// Shows the chat list over the voice screen once that is on the car.
+    func showChatPicker() {
+        guard isConnected else { return }
+        guard isTemplatePresented, templateControls == controls else {
+            isChatPickerPending = true
+            return
+        }
+        showChats()
+    }
+
+    /// New voice chat, from the chat list: Voice starts in a new chat, the
+    /// one tap the car used to open with.
+    func startNewVoiceChat() {
+        returnToVoiceScreen()
+        startNewChat()
     }
 
     func showJobs() {
@@ -900,6 +966,31 @@ final class CarPlayVoiceCoordinator {
     }
 
     // MARK: - Voice establishment
+
+    /// What CarPlay opening does. A conversation already running on the
+    /// phone is shown as before; otherwise, with "Choose a chat first" on,
+    /// the driver picks the chat Voice opens in (#361) instead of Voice
+    /// starting straight away.
+    func establishOnConnect(generation: UInt64) async {
+        guard isCurrent(generation), isConnected else { return }
+        let appState = lastBoundAppState ?? appStateProvider()
+        if preferencesProvider().choosesChatFirst, !Self.hasRunningConversation(in: appState) {
+            showChatPicker()
+            return
+        }
+        await establishVoice(generation: generation)
+    }
+
+    /// Whether the profile's Voice mode has a conversation going, which
+    /// CarPlay shows rather than asking for a chat.
+    static func hasRunningConversation(in appState: AppState) -> Bool {
+        switch CarPlayVoiceMode.current(in: appState) {
+        case .classic: return appState.voiceConversationController.hasLiveVoiceSession
+        case .geminiLive: return appState.geminiLiveController.isActive
+        case .gptLive: return appState.gptLiveController.isActive
+        case .grokLive: return appState.grokLiveController.isActive
+        }
+    }
 
     /// Connect-time Voice establishment. A live conversation is attached
     /// display-only (no restart, no new session, no listen start — the phone
