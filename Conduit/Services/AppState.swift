@@ -2209,7 +2209,7 @@ final class AppState: ObservableObject {
                 // one must not be passed off as its question.
                 guard let index = self.messages.lastIndex(where: { $0.role == .user }),
                       !self.messages[(index + 1)...].contains(where: { $0.role == .assistant }) else { return nil }
-                return self.messages[index].content
+                return Self.liveVoiceTypedPrompt(self.messages[index])
             }
         ))
         supervisor.onNoticePending = { [weak self] in
@@ -4251,6 +4251,16 @@ final class AppState: ObservableObject {
             .filter { $0.role == .assistant && $0.tool == nil }
             .map { $0.content.trimmingCharacters(in: .whitespacesAndNewlines) }
             .last { !$0.isEmpty }
+    }
+
+    /// A typed message as the live call's note shows it (#363). The live
+    /// model can't see attachments: naming them gives Hermes' reply about
+    /// them its context.
+    static func liveVoiceTypedPrompt(_ message: ChatMessage) -> String {
+        let attached = (message.attachments ?? []).map { "[Attached: \($0.name) (\($0.kind.rawValue))]" }
+        return ([message.content.trimmingCharacters(in: .whitespacesAndNewlines)] + attached)
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 
     /// Instructions for a call attached to a chat. Written for the live

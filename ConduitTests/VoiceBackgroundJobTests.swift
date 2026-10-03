@@ -688,6 +688,14 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(note.contains(long))
     }
 
+    func testTypedPromptNamesAttachmentsTheVoiceModelCantSee() {
+        let photo = Attachment(id: "a1", name: "board.jpg", uri: "file:///board.jpg", mimeType: "image/jpeg", kind: .image)
+        let withText = ChatMessage(id: "m1", role: .user, content: "what's wrong here?", rawContent: nil, timestamp: "", author: nil, attachments: [photo])
+        XCTAssertEqual(AppState.liveVoiceTypedPrompt(withText), "what's wrong here?\n[Attached: board.jpg (image)]")
+        let photoOnly = ChatMessage(id: "m2", role: .user, content: " ", rawContent: nil, timestamp: "", author: nil, attachments: [photo])
+        XCTAssertEqual(AppState.liveVoiceTypedPrompt(photoOnly), "[Attached: board.jpg (image)]")
+    }
+
     func testBridgesSendTypedContextQuietly() {
         let (supervisor, _) = makeThreadSupervisor()
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Typed reply.", reasoning: nil))
