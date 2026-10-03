@@ -258,6 +258,10 @@ extension VoiceConversationControllerTests {
             "````md\n```\ninner\n```\n" + String(repeating: "z\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
         )
         XCTAssertTrue(nested.hasSuffix("\n````"), "Inner fences don't close a longer one")
+        let tilde = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
+            "> ~~~\n" + String(repeating: "w\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        )
+        XCTAssertTrue(tilde.hasSuffix("\n~~~"), "Tilde and quoted fences are closed too")
         XCTAssertEqual(VoiceBackgroundJobSupervisor.clippedScreenMarkdown("short"), "short")
 
         let call = supervisor.liveCallID
@@ -273,6 +277,13 @@ extension VoiceConversationControllerTests {
             }
         }
         XCTAssertEqual(labels, ["line 0", "line 1", "check the router", "Chart", "it's on your screen"])
+
+        for index in 0...VoiceBackgroundJobSupervisor.maximumScreenCards {
+            supervisor.showOnScreen(title: "Card \(index)", markdown: "body")
+        }
+        XCTAssertEqual(supervisor.screenCards.count, VoiceBackgroundJobSupervisor.maximumScreenCards)
+        XCTAssertEqual(supervisor.screenCards.last?.title, "Card \(VoiceBackgroundJobSupervisor.maximumScreenCards)")
+        XCTAssertFalse(supervisor.screenCards.contains { $0.title == "Chart" }, "The oldest cards go first")
 
         supervisor.beginLiveCall()
         XCTAssertTrue(supervisor.callScreenCards(supervisor.liveCallID).isEmpty, "A later call shows only its own cards")

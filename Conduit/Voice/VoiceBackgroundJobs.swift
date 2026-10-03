@@ -358,14 +358,21 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         if lines.count > 1 { lines.removeLast() }
         var openFence: String?
         for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            let ticks = String(trimmed.prefix(while: { $0 == "`" }))
-            guard ticks.count >= 3 else { continue }
+            // Fences in a block quote count too, as the renderer reads them.
+            var trimmed = Substring(line.trimmingCharacters(in: .whitespaces))
+            while trimmed.hasPrefix(">") {
+                trimmed = trimmed.dropFirst().drop(while: { $0 == " " })
+            }
+            guard let mark = trimmed.first, mark == "`" || mark == "~" else { continue }
+            let run = String(trimmed.prefix(while: { $0 == mark }))
+            guard run.count >= 3 else { continue }
             if let fence = openFence {
-                // Only a bare fence at least as long closes it.
-                if ticks.count >= fence.count, trimmed.allSatisfy({ $0 == "`" }) { openFence = nil }
+                // Only a bare fence of the same kind, at least as long, closes it.
+                if fence.first == mark, run.count >= fence.count, trimmed.allSatisfy({ $0 == mark || $0 == " " }) {
+                    openFence = nil
+                }
             } else {
-                openFence = ticks
+                openFence = run
             }
         }
         let clipped = lines.joined(separator: "\n")
