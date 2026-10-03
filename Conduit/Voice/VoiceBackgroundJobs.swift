@@ -150,6 +150,9 @@ struct VoiceJobCallAnchor: Equatable {
     /// Transcript lines the call had when the job started; the job shows
     /// after them.
     let transcriptIndex: Int
+    /// The last of those lines. Preferred over the count: GPT-Live folds a
+    /// turn's fragments into one line, which shifts later counts.
+    var afterEntryID: UUID? = nil
 }
 
 /// What the voice conversation should do with a pending job update.
@@ -261,9 +264,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Called with every id of a newly created job session so the host can
     /// badge it in the session list.
     var onJobSessionCreated: (@MainActor (_ sessionIDs: [String]) -> Void)?
-    /// How many transcript lines the running live call has, so a new job
-    /// can be placed among them; nil while no live call runs.
-    var liveCallTranscriptCount: (@MainActor () -> Int?)?
+    /// The running live call's transcript, so a new job can be placed
+    /// among its lines; nil while no live call runs.
+    var liveCallTranscript: (@MainActor () -> [VoiceConversationTranscriptEntry]?)?
     /// The running (or last) live call; jobs it starts carry it, so the
     /// call screen shows only its own jobs.
     @Published private(set) var liveCallID: UUID?
@@ -302,8 +305,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     private var currentCallAnchor: VoiceJobCallAnchor? {
-        guard let liveCallID, let count = liveCallTranscriptCount?() else { return nil }
-        return VoiceJobCallAnchor(callID: liveCallID, transcriptIndex: count)
+        guard let liveCallID, let transcript = liveCallTranscript?() else { return nil }
+        return VoiceJobCallAnchor(callID: liveCallID, transcriptIndex: transcript.count, afterEntryID: transcript.last?.id)
     }
 
     /// Background jobs only: thread turns run in the attached chat.

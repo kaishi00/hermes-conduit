@@ -94,6 +94,8 @@ struct LiveVoiceCallJobStrip: View {
     @ObservedObject var jobs: VoiceBackgroundJobSupervisor
     let onSelect: (UUID) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         let callJobs = jobs.callJobs(jobs.liveCallID)
         if let latest = callJobs.last {
@@ -105,7 +107,8 @@ struct LiveVoiceCallJobStrip: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .transition(.opacity)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: latest)
         }
     }
 }
@@ -142,24 +145,28 @@ struct LiveVoiceCallTimeline<Line: View>: View {
         }
     }
 
-    /// Lines in order, each job after the lines the call had when it
-    /// started; a job anchored past the end goes last.
+    /// Lines in order, each job after the line it started after (by id,
+    /// else by count); a job anchored past the end goes last.
     static func items(transcript: [VoiceConversationTranscriptEntry], jobs: [VoiceBackgroundJob]) -> [Item] {
-        let sorted = jobs.enumerated().sorted { lhs, rhs in
-            let left = lhs.element.callAnchor?.transcriptIndex ?? 0
-            let right = rhs.element.callAnchor?.transcriptIndex ?? 0
-            return left == right ? lhs.offset < rhs.offset : left < right
-        }.map(\.element)
+        let positions = Dictionary(uniqueKeysWithValues: transcript.enumerated().map { ($1.id, $0) })
+        func position(_ job: VoiceBackgroundJob) -> Int {
+            guard let anchor = job.callAnchor else { return 0 }
+            if let after = anchor.afterEntryID, let index = positions[after] { return index + 1 }
+            return anchor.transcriptIndex
+        }
+        let sorted = jobs.enumerated()
+            .map { (offset: $0.offset, job: $0.element, position: position($0.element)) }
+            .sorted { $0.position == $1.position ? $0.offset < $1.offset : $0.position < $1.position }
         var items: [Item] = []
         var next = sorted.startIndex
         for (index, entry) in transcript.enumerated() {
-            while next < sorted.endIndex, (sorted[next].callAnchor?.transcriptIndex ?? 0) <= index {
-                items.append(.job(sorted[next]))
+            while next < sorted.endIndex, sorted[next].position <= index {
+                items.append(.job(sorted[next].job))
                 next += 1
             }
             items.append(.line(entry))
         }
-        items.append(contentsOf: sorted[next...].map(Item.job))
+        items.append(contentsOf: sorted[next...].map { Item.job($0.job) })
         return items
     }
 }
@@ -171,9 +178,13 @@ struct LiveVoiceJobResultSheet: View {
     let jobID: UUID
     let onOpenChat: (String) -> Void
 
+    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    /// The job as last seen, so a job the ledger prunes while open (it only
+    /// keeps the latest settled ones) stays readable.
+    @State private var lastSeen: VoiceBackgroundJob?
 
-    private var job: VoiceBackgroundJob? { jobs.jobs.first { $0.id == jobID } }
+    private var job: VoiceBackgroundJob? { jobs.jobs.first { $0.id == jobID } ?? lastSeen }
 
     var body: some View {
         NavigationStack {
@@ -191,6 +202,10 @@ struct LiveVoiceJobResultSheet: View {
             }
             .navigationTitle(job?.title ?? "")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear { lastSeen = job }
+            .onChange(of: jobs.jobs.first { $0.id == jobID }) { _, current in
+                if let current { lastSeen = current }
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -214,12 +229,20 @@ struct LiveVoiceJobResultSheet: View {
         .font(.subheadline)
         .foregroundStyle(.secondary)
         if let result = job.result, LiveVoiceJobCard.hasResult(job) {
-            MarkdownText(source: result)
+            // Hermes' own images (MEDIA: paths) load through the gateway,
+            // from the profile the job ran in.
+            let profile = job.profile ?? appState.activeProfile
+            MarkdownText(source: result, gatewayMediaDataURL: { path in
+                await appState.gatewayMediaDataURL(for: path, profile: profile)
+            })
         } else if job.status.isActive {
             Text("Hermes is still working on this. The result will show here.")
                 .foregroundStyle(.secondary)
         } else if case .failed(let reason) = job.status {
             Text(verbatim: reason)
+                .foregroundStyle(.secondary)
+        } else if job.status == .cancelled {
+            Text("This job was cancelled.")
                 .foregroundStyle(.secondary)
         } else {
             Text("The full result is in its chat.")

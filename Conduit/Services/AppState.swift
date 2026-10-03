@@ -2211,11 +2211,11 @@ final class AppState: ObservableObject {
                 self.voiceConversationController.deliverPendingBackgroundJobNoticeIfIdle()
             }
         }
-        supervisor.liveCallTranscriptCount = { [weak self] in
+        supervisor.liveCallTranscript = { [weak self] in
             guard let self else { return nil }
-            if self.isGeminiLiveActive { return self.geminiLiveController.transcript.count }
-            if self.isGPTLiveActive { return self.gptLiveController.transcript.count }
-            if self.isGrokLiveActive { return self.grokLiveController.transcript.count }
+            if self.isGeminiLiveActive { return self.geminiLiveController.transcript }
+            if self.isGPTLiveActive { return self.gptLiveController.transcript }
+            if self.isGrokLiveActive { return self.grokLiveController.transcript }
             return nil
         }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in

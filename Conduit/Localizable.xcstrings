@@ -3243,6 +3243,16 @@
         }
       }
     },
+    "This job was cancelled." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此任务已取消。"
+          }
+        }
+      }
+    },
     "Started a background job: %@." : {
       "localizations" : {
         "en" : {
