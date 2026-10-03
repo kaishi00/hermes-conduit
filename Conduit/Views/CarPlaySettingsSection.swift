@@ -2,8 +2,9 @@
 //  CarPlaySettingsSection.swift
 //  Conduit
 //
-//  Settings > Voice > CarPlay: the shortcuts the car's Shortcuts grid
-//  offers, and the voice screen's status sounds. Saved on this device.
+//  Settings > Voice > CarPlay: whether the car opens on the chat list, the
+//  shortcuts the car's Shortcuts grid offers, and the voice screen's
+//  status sounds. Saved on this device.
 //
 
 import SwiftUI
@@ -23,6 +24,15 @@ struct CarPlaySettingsSection: View {
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("CarPlay"), symbol: "car.fill", tint: .conduitAura) {
+            Toggle("Choose a chat first", isOn: Binding(
+                get: { preferences.choosesChatFirst },
+                set: { preferences.setChoosesChatFirst($0) }
+            ))
+            .accessibilityIdentifier("voice.carPlayChooseChat")
+            Text("CarPlay opens on your pinned and recent chats, with New voice chat at the top. Off: Voice starts as soon as CarPlay opens.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Toggle("Status sounds", isOn: Binding(
                 get: { preferences.playsSounds },
                 set: { preferences.setPlaysSounds($0) }
