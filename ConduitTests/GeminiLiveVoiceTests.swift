@@ -769,6 +769,20 @@ extension VoiceConversationControllerTests {
         quiet.stop()
     }
 
+    func testLiveCallGreetingThatFailedToSendIsTriedAgainOnTheNextReady() async {
+        let (controller, session, _, _, _) = makeGeminiController(openingPrompt: "[greet]", clock: Date.init)
+        await controller.start()
+        session.failSends = true
+        session.becomeReady()
+        XCTAssertEqual(session.textTurns, ["[greet]"], "The greeting was attempted")
+        session.failSends = false
+        session.becomeReady()
+        XCTAssertEqual(session.textTurns, ["[greet]", "[greet]"], "A greeting that never went out is sent again")
+        session.becomeReady()
+        XCTAssertEqual(session.textTurns, ["[greet]", "[greet]"], "Once it's sent, a reconnect doesn't greet again")
+        controller.stop()
+    }
+
     func testLiveVoiceStyleAddsNothingUntilTheUserChoosesSomething() {
         XCTAssertEqual(LiveVoiceStyle().instructions, "")
         XCTAssertNil(LiveVoiceStyle().openingPrompt)

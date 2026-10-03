@@ -861,6 +861,31 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGPTLiveSecondJobStillSkipsAFirstRequestWhoseTurnFoldedAfterItWasDelegated() async {
+        let (controller, session, _, fake) = makeGPTController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.inputTranscript("Check my"))
+        session.onEvent?(.outputTranscript("Sure"))
+        session.onEvent?(.inputTranscript("emails"))
+        // Delegated mid-turn: the last entry is a fragment turn.done folds away.
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+        session.onEvent?(.turnDone(role: "user", transcript: "Check my emails."))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Sure, checking."))
+        session.onEvent?(.turnDone(role: "user", transcript: "What's in the news?"))
+        session.onEvent?(.delegation(id: "del_2", text: ""))
+        await settle(40)
+
+        XCTAssertEqual(fake.submissions.count, 2)
+        let second = fake.submissions[1].1
+        let ownWords = second.components(separatedBy: GPTLiveConversationController.delegationContextMarker)[0]
+        XCTAssertTrue(ownWords.contains("What's in the news?"), second)
+        XCTAssertFalse(ownWords.contains("emails"), "only the second request is this job's")
+        XCTAssertTrue(second.contains("User (handled separately): Check my emails."), second)
+        controller.stop()
+    }
+
     func testGPTLiveNeverTalksOverTheUser() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, supervisor, _) = makeGPTController(clock: { current })

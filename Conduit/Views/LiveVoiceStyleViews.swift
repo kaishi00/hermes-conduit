@@ -88,6 +88,8 @@ struct LiveVoiceStyleSettingsSection: View {
                     }
                     .onSubmit {
                         greetingSave?.cancel()
+                        // Shows what is saved and sent (one line, no double quotes).
+                        greeting = LiveVoiceStyle.cleanedGreeting(greeting)
                         save()
                     }
                     .onDisappear {

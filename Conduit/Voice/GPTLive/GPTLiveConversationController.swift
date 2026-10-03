@@ -153,8 +153,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// back into one.
     private var userTurnEntries: [UUID] = []
     private var assistantTurnEntries: [UUID] = []
-    /// The last transcript entry already handed to a delegation.
-    private var lastDelegatedEntry: UUID?
+    /// Transcript entries already handed to a delegation. A set, not a
+    /// boundary entry: a finished turn can fold the boundary away.
+    private var delegatedEntries: Set<UUID> = []
     private var endRequestedAt: Date?
     private var endTask: Task<Void, Never>?
     private var activeEndPhrases: [String] = []
@@ -210,7 +211,7 @@ final class GPTLiveConversationController: ObservableObject {
         lastUserSpeechAt = nil
         lastModelOutputAt = nil
         lastModelTurnEndedAt = nil
-        lastDelegatedEntry = nil
+        delegatedEntries = []
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
         do {
@@ -478,11 +479,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// are marked, so a second job doesn't redo the first one's work.
     /// Not UI copy.
     func delegationRequest(itemText: String) -> String {
-        // By entry, not index: a finished turn can fold entries away.
-        let start = lastDelegatedEntry.flatMap { id in transcript.firstIndex { $0.id == id } }.map { $0 + 1 } ?? 0
-        let handled = Set(transcript[..<min(start, transcript.count)].map(\.id))
-        let recent = Array(transcript[min(start, transcript.count)...])
-        lastDelegatedEntry = transcript.last?.id ?? lastDelegatedEntry
+        let handled = delegatedEntries
+        let recent = transcript.filter { !handled.contains($0.id) }
+        delegatedEntries.formUnion(transcript.map(\.id))
         let userWords = recent.filter { $0.speaker == .user }.map(\.text).joined(separator: " ")
         let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
         let request = own.isEmpty ? userWords : own
