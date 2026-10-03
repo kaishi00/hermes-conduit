@@ -39,6 +39,9 @@ final class GPTLiveDelegationBridge {
     /// When the chat's last reply was last sent to be read out. The user's
     /// own words and the model's delegation can both ask for one read-back.
     private var lastReadBackAt: Date?
+    /// The delegation the latest read-back answers, so an undelivered one
+    /// doesn't hold back a retry.
+    private var readBackDelegationID: String?
     private let now: () -> Date
 
     /// A second request for the last reply within this long is the same one.
@@ -78,6 +81,7 @@ final class GPTLiveDelegationBridge {
             guard callGeneration == call, !isEnding else { return [] }
             // Nothing read yet: asking again isn't a duplicate.
             if reply == nil { lastReadBackAt = nil }
+            readBackDelegationID = id
             let text = reply.map(Self.lastReplyText) ?? Self.relay("Hermes hasn't replied in this chat yet.")
             return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
         }
@@ -215,6 +219,7 @@ final class GPTLiveDelegationBridge {
     /// A delegation answer that never reached GPT-Live: its outcome becomes
     /// pending again, for the next conversation or Hermes to report.
     func replyUndelivered(delegationID: String) {
+        if delegationID == readBackDelegationID { readBackNotDelivered() }
         guard let jobID = deliveredReplies.removeValue(forKey: delegationID) else { return }
         supervisor.returnUndeliveredNotice(jobID: jobID)
     }

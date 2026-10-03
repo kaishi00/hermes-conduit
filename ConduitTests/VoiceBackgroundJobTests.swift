@@ -863,6 +863,10 @@ extension VoiceConversationControllerTests {
         }
         XCTAssertTrue(contextText.contains("The full reply."))
         XCTAssertEqual(fake.threadSubmissions.count, 0)
+        // That read-back never reached the model: the user's retry goes out.
+        bridge.replyUndelivered(delegationID: "del_ctx")
+        let afterUndelivered = await bridge.userAskedForLastReply()
+        XCTAssertFalse(afterUndelivered.isEmpty)
 
         // A read-back that never reached the model doesn't hold back a retry.
         clock += GPTLiveDelegationBridge.readBackWindow + 1
@@ -899,7 +903,7 @@ extension VoiceConversationControllerTests {
         for request in [
             "repeat that test with the new config", "say that again to Sam in an email",
             "the last message was wrong, fix it", "summarize the last message", "umbrella forecast",
-            "read the last message from Sam and draft a reply", "say the last message in Spanish", "say the last message to the chat",
+            "read the last message from Sam and draft a reply", "say the last message in Spanish", "say the last message to the chat", "read the file and then say the last message",
         ] {
             XCTAssertFalse(VoiceThreadRouting.wantsLastReply(request), request)
         }
