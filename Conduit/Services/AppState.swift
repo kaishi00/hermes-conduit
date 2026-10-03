@@ -3484,11 +3484,11 @@ final class AppState: ObservableObject {
     /// the text as the next call would send it, with the host's memory and
     /// persona shown as placeholders (they are read when a call starts).
     /// Nil when no live mode is on.
-    func liveVoiceInstructionsPreview() -> LiveVoiceInstructionsPreviewContent? {
+    func liveVoiceInstructionsPreview(profile: String? = nil) -> LiveVoiceInstructionsPreviewContent? {
         let placeholderMemory = GeminiLiveMemoryContext(text: AppLocalization.string("(What your Hermes agent remembers about you, read when the call starts.)"), canRecall: false)
         let placeholderPersona = AppLocalization.string("(This profile's SOUL.md, read when the call starts.)")
         let thread = liveVoiceThreadInstructions(delegation: isGPTLiveEnabled)
-        let style = liveVoiceStyle
+        let style = loadVoiceProfilePreferences(profile: profile ?? activeProfile).liveVoiceStyle
         var text: String
         let mode: String
         if isGPTLiveEnabled {

@@ -630,7 +630,9 @@ struct SettingsView: View {
                             setStyle: { [profile = appState.activeProfile] style in
                                 appState.setLiveVoiceStyle(style, profile: profile)
                             },
-                            preview: { appState.liveVoiceInstructionsPreview() }
+                            preview: { [profile = appState.activeProfile] in
+                                appState.liveVoiceInstructionsPreview(profile: profile)
+                            }
                         )
                         : nil,
                     voiceJobs: VoiceJobModelSettingsModel(
