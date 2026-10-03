@@ -2,9 +2,11 @@
 // Conduit
 //
 // The liquid glass orb shader from Liquid Orb Editor
-// (https://github.com/lersent001/orb, commit 8d1736e), vendored verbatim from
-// its effect.metal. Conduit only draws the non-ribbon pipeline (vs_main and
-// fs_main); see LiquidOrbView.swift for how the uniforms are built.
+// (https://github.com/lersent001/orb, commit 8d1736e), vendored from its
+// effect.metal. One change: ribbon_fs_main's discard_fragment() is qualified
+// as metal::discard_fragment(), which Xcode's offline Metal compiler requires.
+// Conduit only draws the non-ribbon pipeline (vs_main and fs_main); see
+// LiquidOrbView.swift for how the uniforms are built.
 //
 // MIT License
 //
@@ -1882,7 +1884,7 @@ fragment ribbon_fs_mainOutput ribbon_fs_main(
     constant Uniforms& u [[buffer(0)]]
 ) {
     float distanceSquared = metal::dot(in.local, in.local);
-    if (distanceSquared > 1.0) discard_fragment();
+    if (distanceSquared > 1.0) metal::discard_fragment();
     float core = metal::exp(-distanceSquared * 4.8);
     float halo = metal::exp(-distanceSquared * 1.35);
     float bloom = metal::clamp(u.particleBloom, 0.0, 2.0);
