@@ -2953,6 +2953,16 @@
         }
       }
     },
+    "Open job" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开任务"
+          }
+        }
+      }
+    },
     "Started a background job: %@." : {
       "localizations" : {
         "en" : {

@@ -2223,7 +2223,7 @@ final class AppState: ObservableObject {
             if let recorder = self.voiceCallRecorder,
                let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }) {
                 self.captureVoiceCall()
-                recorder.note(AppLocalization.string("Started a background job: \(job.title)."))
+                recorder.note(Self.voiceJobStartedNote(job))
             }
             // A job while the classic Voice sheet is up is that chat's.
             let closing = self.closingVoiceCallUntil.map { Date() < $0 } == true && !self.showVoiceSheet ? self.closingVoiceCallRecorder : nil
@@ -3876,8 +3876,25 @@ final class AppState: ObservableObject {
 
     /// A short title from the call's opening, like a chat's; the time-stamped
     /// fallback when Hermes can't make one.
+    /// The line a saved call gets where it started a job: the job's title
+    /// and a link that opens the job's chat, so its full result is a tap
+    /// away from the transcript.
+    static func voiceJobStartedNote(_ job: VoiceBackgroundJob) -> String {
+        let line = AppLocalization.string("Started a background job: \(job.title).")
+        guard let id = job.storedSessionID ?? job.runtimeSessionID, !id.isEmpty else { return line }
+        return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open job"))
+    }
+
+    /// Opens a link Conduit wrote into a chat (a voice call's job link).
+    func openAppLink(_ link: ConduitAppLink) {
+        switch link {
+        case .session(let id):
+            requestOpenSession(id)
+        }
+    }
+
     private func voiceCallTitle(turns: [VoiceTranscriptTurn], profile: String) async -> String {
-        let opening = turns.prefix(6).map { ($0.role == .user ? "User: " : "Assistant: ") + String($0.text.prefix(300)) }.joined(separator: "\n")
+        let opening = turns.prefix(6).map { ($0.role == .user ? "User: " : "Assistant: ") + String(ConduitAppLink.removingLinks(from: $0.text).prefix(300)) }.joined(separator: "\n")
         guard let client, !opening.isEmpty,
               let title = try? await client.oneshot(
                 task: "title_generation",

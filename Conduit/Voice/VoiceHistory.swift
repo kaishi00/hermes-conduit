@@ -474,7 +474,9 @@ enum VoiceResumePlan: Equatable {
             case .assistant: speaker = .assistant
             default: return nil
             }
-            let text = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            // A started job's link is for reading the transcript, not for
+            // the voice model.
+            let text = ConduitAppLink.removingLinks(from: message.content).trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? nil : VoiceResumeTurn(speaker: speaker, text: text)
         }
     }

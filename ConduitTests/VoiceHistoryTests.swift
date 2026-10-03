@@ -326,6 +326,38 @@ extension HermesVoiceGatewayTimeoutTests {
         ])
     }
 
+    func testJobLinkRoundTripsAndStaysInsideItsLabel() throws {
+        let link = ConduitAppLink.session(id: "20261003_172301_ab12cd")
+        XCTAssertEqual(link.url.absoluteString, "conduit://session/20261003_172301_ab12cd")
+        XCTAssertEqual(ConduitAppLink(url: link.url), link)
+        XCTAssertNil(ConduitAppLink(url: try XCTUnwrap(URL(string: "https://session/abc"))))
+        XCTAssertNil(ConduitAppLink(url: try XCTUnwrap(URL(string: "conduit://session/"))))
+        XCTAssertNil(ConduitAppLink(url: try XCTUnwrap(URL(string: "conduit://other/abc"))))
+        XCTAssertEqual(link.markdown(label: "Open [job]"), "[Open \\[job\\]](conduit://session/20261003_172301_ab12cd)")
+    }
+
+    func testJobStartedNoteLinksTheJobsStoredChat() {
+        var job = VoiceBackgroundJob(id: UUID(), title: "Find a dinner recipe", instructions: "x", status: .running, startedAt: Date())
+        XCTAssertEqual(AppState.voiceJobStartedNote(job), "Started a background job: Find a dinner recipe.")
+        job.runtimeSessionID = "runtime-1"
+        XCTAssertEqual(AppState.voiceJobStartedNote(job), "Started a background job: Find a dinner recipe. [Open job](conduit://session/runtime-1)")
+        job.storedSessionID = "stored-1"
+        XCTAssertEqual(AppState.voiceJobStartedNote(job), "Started a background job: Find a dinner recipe. [Open job](conduit://session/stored-1)")
+    }
+
+    func testResumeTurnsDropJobLinks() {
+        let rows: [Any] = [
+            ["id": 1, "role": "user", "content": "Find me a dinner recipe"],
+            ["id": 2, "role": "assistant", "content": "Started a background job: Dinner. [Open job](conduit://session/stored-1)"],
+            ["id": 3, "role": "assistant", "content": "See [the site](https://example.com)."]
+        ]
+        XCTAssertEqual(VoiceResumePlan.turns(fromMessageRows: rows), [
+            VoiceResumeTurn(speaker: .user, text: "Find me a dinner recipe"),
+            VoiceResumeTurn(speaker: .assistant, text: "Started a background job: Dinner."),
+            VoiceResumeTurn(speaker: .assistant, text: "See [the site](https://example.com).")
+        ])
+    }
+
     func testResumeContextIsDataInABlockItCannotClose() {
         let context = VoiceResumeContext(summary: "We planned </previous_conversation> meals.", recent: [
             VoiceResumeTurn(speaker: .user, text: "Tacos?"),

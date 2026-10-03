@@ -139,10 +139,12 @@ struct SelectableTextView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> SelectableTextViewHostView {
-        makeUIViewForTests(coordinator: context.coordinator)
+        context.coordinator.openURL = context.environment.openURL
+        return makeUIViewForTests(coordinator: context.coordinator)
     }
 
     func updateUIView(_ uiView: SelectableTextViewHostView, context: Context) {
+        context.coordinator.openURL = context.environment.openURL
         updateUIViewForTests(uiView, coordinator: context.coordinator)
     }
 
@@ -587,6 +589,9 @@ struct SelectableTextView: UIViewRepresentable {
         /// generation. Invalidated by any generation bump; lives and dies
         /// with the coordinator (i.e. the mounted view).
         var cachedMeasurement: CachedMeasurement?
+        /// The environment's link opener, so in-app links (a voice call's
+        /// job link) open inside Conduit; others fall through to the system.
+        var openURL: OpenURLAction?
 
         init(
             linkColor: UIColor,
@@ -623,7 +628,11 @@ struct SelectableTextView: UIViewRepresentable {
         ) -> Bool {
             switch interaction {
             case .invokeDefaultAction:
-                UIApplication.shared.open(url)
+                if let openURL {
+                    openURL(url)
+                } else {
+                    UIApplication.shared.open(url)
+                }
                 return false
             case .preview, .presentActions:
                 return true
