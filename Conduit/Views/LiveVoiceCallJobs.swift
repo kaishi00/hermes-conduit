@@ -148,25 +148,38 @@ struct LiveVoiceCallTimeline<Line: View>: View {
     /// Lines in order, each job after the line it started after (by id,
     /// else by count); a job anchored past the end goes last.
     static func items(transcript: [VoiceConversationTranscriptEntry], jobs: [VoiceBackgroundJob]) -> [Item] {
-        let positions = Dictionary(uniqueKeysWithValues: transcript.enumerated().map { ($1.id, $0) })
-        func position(_ job: VoiceBackgroundJob) -> Int {
-            guard let anchor = job.callAnchor else { return 0 }
-            if let after = anchor.afterEntryID, let index = positions[after] { return index + 1 }
-            return anchor.transcriptIndex
+        var positions: [UUID: Int] = [:]
+        for (index, entry) in transcript.enumerated() where positions[entry.id] == nil {
+            positions[entry.id] = index
         }
-        let sorted = jobs.enumerated()
-            .map { (offset: $0.offset, job: $0.element, position: position($0.element)) }
-            .sorted { $0.position == $1.position ? $0.offset < $1.offset : $0.position < $1.position }
+        struct Placed {
+            let order: Int
+            let job: VoiceBackgroundJob
+            let position: Int
+        }
+        var placed: [Placed] = []
+        for (order, job) in jobs.enumerated() {
+            var position = job.callAnchor?.transcriptIndex ?? 0
+            if let after = job.callAnchor?.afterEntryID, let index = positions[after] {
+                position = index + 1
+            }
+            placed.append(Placed(order: order, job: job, position: position))
+        }
+        placed.sort { lhs, rhs in
+            lhs.position == rhs.position ? lhs.order < rhs.order : lhs.position < rhs.position
+        }
         var items: [Item] = []
-        var next = sorted.startIndex
+        var next = 0
         for (index, entry) in transcript.enumerated() {
-            while next < sorted.endIndex, sorted[next].position <= index {
-                items.append(.job(sorted[next].job))
+            while next < placed.count, placed[next].position <= index {
+                items.append(.job(placed[next].job))
                 next += 1
             }
             items.append(.line(entry))
         }
-        items.append(contentsOf: sorted[next...].map { Item.job($0.job) })
+        for remaining in placed[next...] {
+            items.append(.job(remaining.job))
+        }
         return items
     }
 }
