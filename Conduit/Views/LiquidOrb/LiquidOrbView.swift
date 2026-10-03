@@ -222,7 +222,10 @@ final class LiquidOrbRenderer: NSObject, MTKViewDelegate {
         return displayedUniforms
     }
 
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        // A paused orb's first request can land before it has a size.
+        if !animates { view.setNeedsDisplay() }
+    }
 
     func draw(in view: MTKView) {
         guard view.drawableSize.width > 0, view.drawableSize.height > 0,
