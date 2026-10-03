@@ -1036,6 +1036,9 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         harness.capture.resumeError = URLError(.unknown)
 
         await harness.coordinator.performStartListeningTurn(generation: harness.coordinator.connectionGeneration)
+        // The mute changes install new voice templates (#361), so Error
+        // reaches the car once the latest one is up.
+        for _ in 0..<200 where harness.activations.last != .error { await Task.yield() }
 
         XCTAssertTrue(harness.controller.isMicrophonePaused, "the microphone never reopened")
         XCTAssertEqual(harness.activations.last, .error, "never Listening with a closed microphone")
