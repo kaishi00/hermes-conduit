@@ -1,6 +1,206 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Asked for when the call connects (an older notifier plugin sends it as the first turn):" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话接通时请求的开场（旧版通知插件会将其作为第一轮发送）："
+          }
+        }
+      }
+    },
+    "Sent as the call's first turn when it connects:" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话接通时作为第一轮发送："
+          }
+        }
+      }
+    },
+    "Live call style" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实时通话风格"
+          }
+        }
+      }
+    },
+    "Greet me when a call connects" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话接通时向我问候"
+          }
+        }
+      }
+    },
+    "Greeting" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问候语"
+          }
+        }
+      }
+    },
+    "A short greeting of its own" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由模型自己说一句简短问候"
+          }
+        }
+      }
+    },
+    "The voice model greets you as soon as a call connects, so you know it's live. Leave the greeting empty for one in its own words. GPT-Live needs an up-to-date Hermes notifier plugin for this. Applies to the next call." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话一接通，语音模型就会向你问候，让你知道已经连上。问候语留空则由模型用自己的话问候。GPT-Live 需要最新版的 Hermes notifier 插件。下次通话生效。"
+          }
+        }
+      }
+    },
+    "Tone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语气"
+          }
+        }
+      }
+    },
+    "Model default" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模型默认"
+          }
+        }
+      }
+    },
+    "Relaxed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻松"
+          }
+        }
+      }
+    },
+    "Neutral" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中性"
+          }
+        }
+      }
+    },
+    "Professional" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "专业"
+          }
+        }
+      }
+    },
+    "How live calls sound. Model default keeps the voice model's tone and your Hermes server's persona. Applies to the next call." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实时通话的说话风格。“模型默认”保留语音模型的语气和 Hermes 服务器的人设。下次通话生效。"
+          }
+        }
+      }
+    },
+    "Backchannels" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附和声"
+          }
+        }
+      }
+    },
+    "Short sounds like “mm-hmm” while you talk. Turn them off for a quieter listener. Applies to the next call." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你说话时模型发出的“嗯嗯”之类的简短回应。关闭后它会更安静地听你说。下次通话生效。"
+          }
+        }
+      }
+    },
+    "What Conduit sends" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 发送的内容"
+          }
+        }
+      }
+    },
+    "Conduit adds this to %@'s instructions for every call. Your Hermes server adds its own voice persona before it. Memory and personality are read when a call starts." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次通话时，Conduit 会把以下内容加入 %@ 的指令。Hermes 服务器会在其前面加上自己的语音人设。记忆和个性在通话开始时读取。"
+          }
+        }
+      }
+    },
+    "Turn on a live voice mode to see what Conduit sends." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启一种实时语音模式后即可查看 Conduit 发送的内容。"
+          }
+        }
+      }
+    },
+    "(What your Hermes agent remembers about you, read when the call starts.)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（Hermes 智能体记住的关于你的内容，在通话开始时读取。）"
+          }
+        }
+      }
+    },
+    "(This profile's SOUL.md, read when the call starts.)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（此配置的 SOUL.md，在通话开始时读取。）"
+          }
+        }
+      }
+    },
     "New voice chat" : {
       "localizations" : {
         "zh-Hans" : {

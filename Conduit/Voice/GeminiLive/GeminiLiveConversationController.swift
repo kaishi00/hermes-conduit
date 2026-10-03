@@ -304,6 +304,11 @@ final class GeminiLiveConversationController: ObservableObject {
     /// shorten it.
     var lateEndPhraseDelay: TimeInterval = 1.5
 
+    /// The turn that greets the user when a call connects, when they asked
+    /// for one (#290). Sent once per call, never again on a reconnect.
+    private let openingPrompt: @MainActor () -> String?
+    private var hasSentOpening = false
+
     init(
         makeSession: @escaping @MainActor () -> GeminiLiveSessionControlling,
         availability: @escaping @MainActor () async throws -> GeminiLiveAvailability,
@@ -313,10 +318,12 @@ final class GeminiLiveConversationController: ObservableObject {
         now: @escaping () -> Date = Date.init,
         routePolicy: @escaping @MainActor () -> VoiceBargeInRoutePolicy = { VoiceBargeInRoutePolicy.current() },
         endConversationPhrases: @escaping @MainActor () -> [String] = { [] },
+        openingPrompt: @escaping @MainActor () -> String? = { nil },
         headsetMute: HeadsetMicrophoneMute? = nil
     ) {
         self.makeSession = makeSession
         self.availability = availability
+        self.openingPrompt = openingPrompt
         self.tools = tools
         self.input = input
         self.output = output
@@ -357,6 +364,7 @@ final class GeminiLiveConversationController: ObservableObject {
         phase = .connecting
         transcript = []
         finishedTurn = nil
+        hasSentOpening = false
         // A retry after a failure mid-goodbye starts clean: the old end
         // must not close this conversation or keep its microphone shut.
         endTask?.cancel()
@@ -602,6 +610,24 @@ final class GeminiLiveConversationController: ObservableObject {
 
     // MARK: Session
 
+    /// The greeting, once per call. Marked sent before it goes out, so a
+    /// reconnect never greets twice; a send that fails re-arms it.
+    private func sendOpeningIfNeeded() {
+        guard endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() else { return }
+        hasSentOpening = true
+        let sentOn = session.map(ObjectIdentifier.init)
+        let connection = session?.connectionGeneration
+        session?.send(.textTurn(opening), onFailure: { [weak self] in
+            // Only for this call's session: a late failure from an
+            // earlier call must not re-arm a later one.
+            guard let self, self.session.map(ObjectIdentifier.init) == sentOn else { return }
+            self.hasSentOpening = false
+            // It failed after a reconnect was already ready: greet on that
+            // connection now rather than waiting for another ready.
+            if self.session?.connectionGeneration != connection, self.session?.isReady == true { self.sendOpeningIfNeeded() }
+        })
+    }
+
     private func sessionStateChanged(_ state: GeminiLiveSession.State) {
         switch state {
         case .ready:
@@ -609,6 +635,7 @@ final class GeminiLiveConversationController: ObservableObject {
             if !isMicrophoneMuted, !startInput() { return }
             // Ending: the microphone is closed, so it isn't listening.
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
+            sendOpeningIfNeeded()
             // Anything that settled while (re)connecting goes out now,
             // unless the conversation is ending: then it stays pending.
             if endRequestedAt == nil { dispatch(tools.pendingUpdates()) }

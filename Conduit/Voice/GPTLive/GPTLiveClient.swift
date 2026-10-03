@@ -51,6 +51,10 @@ struct GPTLiveSessionAnswer: Equatable {
     /// instructions; an older plugin ignores it and the briefing must be sent
     /// as context after the call starts.
     var briefingApplied: Bool = false
+    /// True when the host made the model greet first (#290); an older
+    /// plugin keeps it silent and the greeting is asked for after the call
+    /// starts.
+    var greetingApplied: Bool = false
 }
 
 enum GPTLiveClientError: LocalizedError, Equatable {
@@ -83,8 +87,9 @@ protocol GPTLiveSessionProviding: AnyObject {
     /// conversation (the host passes it as `initial_items`).
     /// `voice` overrides the host's configured voice for this call.
     /// `briefing` is Conduit's rules, persona and memory for this call: the
-    /// host adds it to the session's instructions.
-    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?) async throws -> GPTLiveSessionAnswer
+    /// host adds it to the session's instructions. `greeting` (nil for none,
+    /// empty for the model's own words) makes the model greet first.
+    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?) async throws -> GPTLiveSessionAnswer
 }
 
 @MainActor
@@ -123,9 +128,10 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         return Self.availability(from: response)
     }
 
-    func createSession(offer: String, history: [[String: Any]], voice: String? = nil, briefing: String? = nil) async throws -> GPTLiveSessionAnswer {
+    func createSession(offer: String, history: [[String: Any]], voice: String? = nil, briefing: String? = nil, greeting: String? = nil) async throws -> GPTLiveSessionAnswer {
         var body: [String: Any] = ["sdp": offer]
         if let briefing, !briefing.isEmpty { body["briefing"] = briefing }
+        if let greeting { body["greeting"] = greeting }
         if !history.isEmpty { body["history"] = history }
         if let voice, !voice.isEmpty { body["voice"] = voice }
         let response: [String: Any]
@@ -174,6 +180,12 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         }
         let sessionID = (response["session"] as? [String: Any])?["id"] as? String
         let voice = (response["voice"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        return GPTLiveSessionAnswer(sessionID: sessionID, sdp: sdp, voice: voice, briefingApplied: response["briefing_applied"] as? Bool == true)
+        return GPTLiveSessionAnswer(
+            sessionID: sessionID,
+            sdp: sdp,
+            voice: voice,
+            briefingApplied: response["briefing_applied"] as? Bool == true,
+            greetingApplied: response["greeting_applied"] as? Bool == true
+        )
     }
 }

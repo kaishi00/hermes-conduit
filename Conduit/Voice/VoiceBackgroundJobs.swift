@@ -1266,24 +1266,48 @@ enum VoiceThreadRouting {
 
     /// Words that may follow the reply phrase in a plain read request
     /// ("read the last message from Hermes out loud").
-    static let lastReplyTrailers = repeatTrailers.union(["aloud", "now", "from", "hermes"])
+    static let lastReplyTrailers = repeatTrailers.union([
+        "aloud", "now", "from", "hermes",
+        "that", "sent", "wrote", "gave", "said", "posted", "you", "just",
+    ])
+
+    /// Before the reply phrase: a second request, or one about the reply
+    /// ("tell me about the last message") rather than for it.
+    static let lastReplyConjunctions: Set<String> = [
+        "and", "then", "also", "but", "or", "about",
+        "think", "thought", "thoughts", "feel", "felt", "opinion", "take",
+        "why", "how", "mean", "meant",
+    ]
+    /// Where the reply is, after the phrase ("…from the chat").
+    static let lastReplyPlaces: [[String]] = [["from", "the", "chat"], ["in", "the", "chat"], ["in", "this", "chat"]]
 
     /// "Read the last message" is a read; "read the last message from Sam
     /// and draft a reply" or "say the last message in Spanish" is work.
     private static func endsWithTheReply(_ request: String) -> Bool {
         let words = request.split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") }).map(String.init)
-        var phraseEnd: Int?
-        for phrase in lastReplyPhrases {
-            let phraseWords = phrase.split(separator: " ").map(String.init)
+        var phrase: Range<Int>?
+        for candidate in lastReplyPhrases {
+            let phraseWords = candidate.split(separator: " ").map(String.init)
             guard !phraseWords.isEmpty, words.count >= phraseWords.count else { continue }
             for start in stride(from: words.count - phraseWords.count, through: 0, by: -1)
             where Array(words[start..<(start + phraseWords.count)]) == phraseWords {
-                phraseEnd = max(phraseEnd ?? 0, start + phraseWords.count)
+                if start + phraseWords.count > (phrase?.upperBound ?? 0) {
+                    phrase = start..<(start + phraseWords.count)
+                }
                 break
             }
         }
-        guard let phraseEnd else { return false }
-        return words[phraseEnd...].allSatisfy { lastReplyTrailers.contains($0) }
+        guard let phrase else { return false }
+        // "Read the file and then say the last message" is two requests.
+        guard !words[..<phrase.lowerBound].contains(where: { lastReplyConjunctions.contains($0) }) else { return false }
+        var tail = Array(words[phrase.upperBound...])
+        for place in lastReplyPlaces where tail.count >= place.count {
+            if let start = (0...(tail.count - place.count)).first(where: { Array(tail[$0..<($0 + place.count)]) == place }) {
+                tail.removeSubrange(start..<(start + place.count))
+                break
+            }
+        }
+        return tail.allSatisfy { lastReplyTrailers.contains($0) }
     }
 
     private static func wantsRepeat(_ folded: String) -> Bool {

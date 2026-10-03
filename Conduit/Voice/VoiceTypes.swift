@@ -246,6 +246,17 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// the model speaks on the loudspeaker or in the car, with echo
     /// cancellation. Nil is off (experimental).
     var liveVoiceSpeakerBargeIn: Bool? = nil
+    /// How every live mode sounds (#290). Nil tone keeps the model's own.
+    var liveVoiceTone: LiveVoiceTone? = nil
+    /// Whether live models say "mm-hmm" while the user talks. Nil is on.
+    var liveVoiceBackchannels: Bool? = nil
+    /// Greeting when a live call connects. Nil is off; empty is a short
+    /// greeting in the model's own words.
+    var liveVoiceGreeting: String? = nil
+
+    var liveVoiceStyle: LiveVoiceStyle {
+        LiveVoiceStyle(tone: liveVoiceTone, backchannels: liveVoiceBackchannels ?? true, greeting: liveVoiceGreeting)
+    }
 
     var resolvedTranscriptionMode: VoiceTranscriptionMode {
         transcriptionMode ?? .hermes
@@ -303,6 +314,10 @@ struct VoiceProfilePreferences: Codable, Equatable {
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)
         saveVoiceCalls = try? container.decodeIfPresent(Bool.self, forKey: .saveVoiceCalls)
         liveVoiceSpeakerBargeIn = try? container.decodeIfPresent(Bool.self, forKey: .liveVoiceSpeakerBargeIn)
+        // An unknown tone (a newer build's) keeps the model's own.
+        liveVoiceTone = try? container.decodeIfPresent(LiveVoiceTone.self, forKey: .liveVoiceTone)
+        liveVoiceBackchannels = try? container.decodeIfPresent(Bool.self, forKey: .liveVoiceBackchannels)
+        liveVoiceGreeting = try? container.decodeIfPresent(String.self, forKey: .liveVoiceGreeting)
     }
 
     /// What a voice job's `session.create` asks for: the chosen voice-job

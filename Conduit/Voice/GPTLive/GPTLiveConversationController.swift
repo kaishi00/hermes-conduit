@@ -27,6 +27,8 @@ protocol GPTLiveSessionControlling: AnyObject {
     var voiceNote: String? { get }
     /// True when the host already gave the model the briefing.
     var briefingApplied: Bool { get }
+    /// True when the host already made the model greet first.
+    var greetingApplied: Bool { get }
     func start()
     /// Ends the call (telling GPT-Live, when it can hear it).
     func stop()
@@ -34,6 +36,10 @@ protocol GPTLiveSessionControlling: AnyObject {
     @discardableResult
     func appendContext(_ text: String, channel: GPTLiveProtocol.Channel, delegationID: String?) -> Bool
     func setMicrophoneEnabled(_ enabled: Bool)
+}
+
+extension GPTLiveSessionControlling {
+    var greetingApplied: Bool { false }
 }
 
 extension GPTLiveSession: GPTLiveSessionControlling {}
@@ -117,6 +123,10 @@ final class GPTLiveConversationController: ObservableObject {
     /// Conduit's rules plus the persona and memory the user allowed, read
     /// when the call starts.
     private let briefing: @MainActor () -> String
+    /// The turn that greets the user when a call connects, when they asked
+    /// for one and the host didn't already (#290). Once per call.
+    private let openingPrompt: @MainActor () -> String?
+    private var hasSentOpening = false
     private let bridge: GPTLiveDelegationBridge
     private let supervisor: GeminiLiveJobSupervising
     private let requestPermission: @MainActor () async -> Bool
@@ -143,8 +153,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// back into one.
     private var userTurnEntries: [UUID] = []
     private var assistantTurnEntries: [UUID] = []
-    /// The last transcript entry already handed to a delegation.
-    private var lastDelegatedEntry: UUID?
+    /// Transcript entries already handed to a delegation. A set, not a
+    /// boundary entry: a finished turn can fold the boundary away.
+    private var delegatedEntries: Set<UUID> = []
     private var endRequestedAt: Date?
     private var endTask: Task<Void, Never>?
     private var activeEndPhrases: [String] = []
@@ -153,6 +164,7 @@ final class GPTLiveConversationController: ObservableObject {
         makeSession: @escaping @MainActor () -> GPTLiveSessionControlling,
         availability: @escaping @MainActor () async throws -> GPTLiveAvailability,
         briefing: @escaping @MainActor () -> String = { GPTLiveConversationController.briefing() },
+        openingPrompt: @escaping @MainActor () -> String? = { nil },
         supervisor: GeminiLiveJobSupervising,
         requestPermission: @escaping @MainActor () async -> Bool = { await AVAudioApplication.requestRecordPermission() },
         now: @escaping () -> Date = Date.init,
@@ -162,6 +174,7 @@ final class GPTLiveConversationController: ObservableObject {
         self.makeSession = makeSession
         self.availability = availability
         self.briefing = briefing
+        self.openingPrompt = openingPrompt
         self.supervisor = supervisor
         self.bridge = GPTLiveDelegationBridge(supervisor: supervisor, now: now)
         self.requestPermission = requestPermission
@@ -187,6 +200,7 @@ final class GPTLiveConversationController: ObservableObject {
         phase = .connecting
         transcript = []
         voiceNote = nil
+        hasSentOpening = false
         finishedTurn = nil
         endTask?.cancel()
         endTask = nil
@@ -197,7 +211,7 @@ final class GPTLiveConversationController: ObservableObject {
         lastUserSpeechAt = nil
         lastModelOutputAt = nil
         lastModelTurnEndedAt = nil
-        lastDelegatedEntry = nil
+        delegatedEntries = []
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
         do {
@@ -324,6 +338,13 @@ final class GPTLiveConversationController: ObservableObject {
             if session?.briefingApplied != true {
                 session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
             }
+            // An older plugin keeps the model silent until the user speaks:
+            // ask for the greeting now instead.
+            if endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() {
+                // Not sent (the channel failed): the next ready tries again.
+                hasSentOpening = session?.greetingApplied == true
+                    || session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
+            }
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
             if endRequestedAt == nil { deliverPendingJobUpdates() }
             scheduleIdleFlush()
@@ -447,28 +468,32 @@ final class GPTLiveConversationController: ObservableObject {
         }
     }
 
+    /// Separates a delegation's own words from the recent conversation
+    /// added for context; routing reads only the words before it. Not UI
+    /// copy.
+    static let delegationContextMarker = "\n\n[Recent voice conversation, for context only. Do just the request above: earlier requests marked \"handled separately\" were passed on before (to a job, the chat, or an answer, or turned down), so skip them unless the request above asks for them.]\n"
+
     /// The work a delegation asks for: its own text when it carries any,
     /// otherwise the user's words since the last delegation, with the
-    /// recent conversation for context. Not UI copy.
-    /// Separates a delegation's own words from the recent conversation
-    /// added for context; routing reads only the words before it.
-    static let delegationContextMarker = "\n\n[Recent voice conversation, for context:]\n"
-
+    /// recent conversation for context. Earlier requests in that context
+    /// are marked, so a second job doesn't redo the first one's work.
+    /// Not UI copy.
     func delegationRequest(itemText: String) -> String {
-        // By entry, not index: a finished turn can fold entries away.
-        let start = lastDelegatedEntry.flatMap { id in transcript.firstIndex { $0.id == id } }.map { $0 + 1 } ?? 0
-        let recent = Array(transcript[min(start, transcript.count)...])
-        lastDelegatedEntry = transcript.last?.id ?? lastDelegatedEntry
+        let handled = delegatedEntries
+        let recent = transcript.filter { !handled.contains($0.id) }
+        delegatedEntries.formUnion(transcript.map(\.id))
         let userWords = recent.filter { $0.speaker == .user }.map(\.text).joined(separator: " ")
         let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
         let request = own.isEmpty ? userWords : own
-        guard !request.isEmpty else {
-            // Nothing new since the last delegation: the latest user words.
-            return transcript.last(where: { $0.speaker == .user })?.text ?? ""
-        }
+        // Nothing new since the last delegation: no request, so Hermes asks
+        // the user rather than redoing the one already passed on.
+        guard !request.isEmpty else { return "" }
         var context = ""
         for entry in transcript.suffix(8).reversed() {
-            let line = (entry.speaker == .user ? "User: " : "Assistant: ") + entry.text + "\n"
+            let speaker = entry.speaker == .user
+                ? (handled.contains(entry.id) ? "User (handled separately): " : "User: ")
+                : "Assistant: "
+            let line = speaker + entry.text + "\n"
             guard context.count + line.count <= Self.delegationContextCharacters else { break }
             context = line + context
         }

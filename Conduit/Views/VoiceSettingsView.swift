@@ -26,6 +26,7 @@ struct VoiceSettingsRoute: View {
     let geminiLive: GeminiLiveSettingsModel?
     let gptLive: GPTLiveSettingsModel?
     let grokLive: GrokLiveSettingsModel?
+    let liveStyle: LiveVoiceStyleSettingsModel?
     let voiceJobs: VoiceJobModelSettingsModel?
     let wake: WakePhraseSettingsModel?
     let lockedListening: VoiceLockedListeningSettingsModel?
@@ -50,6 +51,7 @@ struct VoiceSettingsRoute: View {
         geminiLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
+        liveStyle: LiveVoiceStyleSettingsModel? = nil,
         voiceJobs: VoiceJobModelSettingsModel? = nil,
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
@@ -58,6 +60,7 @@ struct VoiceSettingsRoute: View {
         self.geminiLive = geminiLive
         self.gptLive = gptLive
         self.grokLive = grokLive
+        self.liveStyle = liveStyle
         self.voiceJobs = voiceJobs
         self.wake = wake
         self.lockedListening = lockedListening
@@ -97,6 +100,7 @@ struct VoiceSettingsRoute: View {
             geminiLive: geminiLive,
             gptLive: gptLive,
             grokLive: grokLive,
+            liveStyle: liveStyle,
             voiceJobs: voiceJobs,
             wake: wake,
             lockedListening: lockedListening,
@@ -152,6 +156,7 @@ struct VoiceSettingsView: View {
     var geminiLive: GeminiLiveSettingsModel?
     var gptLive: GPTLiveSettingsModel?
     var grokLive: GrokLiveSettingsModel?
+    var liveStyle: LiveVoiceStyleSettingsModel?
     var voiceJobs: VoiceJobModelSettingsModel?
     var wake: WakePhraseSettingsModel?
     var lockedListening: VoiceLockedListeningSettingsModel?
@@ -176,6 +181,7 @@ struct VoiceSettingsView: View {
         geminiLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
+        liveStyle: LiveVoiceStyleSettingsModel? = nil,
         voiceJobs: VoiceJobModelSettingsModel? = nil,
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
@@ -184,6 +190,7 @@ struct VoiceSettingsView: View {
         self.geminiLive = geminiLive
         self.gptLive = gptLive
         self.grokLive = grokLive
+        self.liveStyle = liveStyle
         self.voiceJobs = voiceJobs
         self.wake = wake
         self.lockedListening = lockedListening
@@ -223,6 +230,9 @@ struct VoiceSettingsView: View {
                     }
                     if let grokLive {
                         GrokLiveSettingsSection(model: grokLive)
+                    }
+                    if let liveStyle {
+                        LiveVoiceStyleSettingsSection(model: liveStyle)
                     }
                     if let voiceJobs {
                         VoiceJobModelSettingsSection(settings: voiceJobs)

@@ -39,6 +39,9 @@ final class GPTLiveDelegationBridge {
     /// When the chat's last reply was last sent to be read out. The user's
     /// own words and the model's delegation can both ask for one read-back.
     private var lastReadBackAt: Date?
+    /// The delegation the latest read-back answers, so an undelivered one
+    /// doesn't hold back a retry.
+    private var readBackDelegationID: String?
     private let now: () -> Date
 
     /// A second request for the last reply within this long is the same one.
@@ -68,7 +71,8 @@ final class GPTLiveDelegationBridge {
         // background work is a job, and anything else is the chat's next turn.
         // Routed on the delegation's own words, not the conversation added
         // for context (which would end with whatever was said last).
-        let ownWords = task.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? task
+        let routingWords = instructions.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? instructions
+        let ownWords = VoiceThreadRouting.removingQuickMarker(routingWords)
         if supervisor.liveThread != nil, VoiceThreadRouting.wantsLastReply(ownWords) {
             if readBackIsRecent {
                 return [.delegationReply(delegationID: id, text: Self.readBackAlreadySent, channel: .commentary)]
@@ -78,10 +82,11 @@ final class GPTLiveDelegationBridge {
             guard callGeneration == call, !isEnding else { return [] }
             // Nothing read yet: asking again isn't a duplicate.
             if reply == nil { lastReadBackAt = nil }
+            readBackDelegationID = id
             let text = reply.map(Self.lastReplyText) ?? Self.relay("Hermes hasn't replied in this chat yet.")
             return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
         }
-        if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(instructions) {
+        if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(routingWords) {
             let sent = supervisor.startThreadTurn(request: instructions)
             guard let jobID = sent.jobID else {
                 return [.delegationReply(delegationID: id, text: Self.relay(sent.refusal ?? ""), channel: .speakable)]
@@ -147,6 +152,7 @@ final class GPTLiveDelegationBridge {
     /// retry must go out.
     func readBackNotDelivered() {
         lastReadBackAt = nil
+        readBackDelegationID = nil
     }
 
     private var readBackIsRecent: Bool {
@@ -165,6 +171,7 @@ final class GPTLiveDelegationBridge {
         openDelegations.removeAll()
         seenDelegations.removeAll()
         lastReadBackAt = nil
+        readBackDelegationID = nil
         isEnding = false
     }
 
@@ -172,6 +179,7 @@ final class GPTLiveDelegationBridge {
     /// stays pending (and unannounced) for Hermes to report.
     func beginEnding() {
         openDelegations.removeAll()
+        readBackDelegationID = nil
         isEnding = true
     }
 
@@ -215,6 +223,7 @@ final class GPTLiveDelegationBridge {
     /// A delegation answer that never reached GPT-Live: its outcome becomes
     /// pending again, for the next conversation or Hermes to report.
     func replyUndelivered(delegationID: String) {
+        if delegationID == readBackDelegationID { readBackNotDelivered() }
         guard let jobID = deliveredReplies.removeValue(forKey: delegationID) else { return }
         supervisor.returnUndeliveredNotice(jobID: jobID)
     }
@@ -222,6 +231,7 @@ final class GPTLiveDelegationBridge {
     /// A delegation answer reached GPT-Live.
     func replyDelivered(delegationID: String) {
         deliveredReplies[delegationID] = nil
+        if delegationID == readBackDelegationID { readBackDelegationID = nil }
     }
 
     /// Settled delegations whose answer is on its way, by delegation.
