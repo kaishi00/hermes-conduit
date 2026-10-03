@@ -22,6 +22,11 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// process ("AURemoteIO: RPC timeout. Apparently deadlocked.").
     private var engineHasGraph = false
     private let makeEngine: () -> AVAudioEngine
+    /// Identity of the current engine, bumped by every rebuild. The
+    /// configuration-change observer captures it so a change from a replaced
+    /// engine can never stop the live one.
+    private var engineGeneration: UInt64 = 0
+    private var engineObserver: NSObjectProtocol?
     private var format: AVAudioFormat?
     private var remainder = Data()
     /// Internal so ConduitTests can drive the drain fence without audio
@@ -86,17 +91,13 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             name: AVAudioSession.mediaServicesWereResetNotification,
             object: AVAudioSession.sharedInstance()
         )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleEngineConfigurationChange(_:)),
-            name: .AVAudioEngineConfigurationChange,
-            // Engines are replaced per stream, so observe every engine and
-            // filter to the live one in the handler.
-            object: nil
-        )
+        observeEngineConfiguration()
     }
 
-    deinit { NotificationCenter.default.removeObserver(self) }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
+    }
 
     func start(sampleRate: Double) throws {
         stop()
@@ -281,9 +282,41 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// is built against the session's current hardware format.
     private func rebuildEngine() {
         teardownGraph()
+        stopObservingEngineConfiguration()
         engine = makeEngine()
         player = AVAudioPlayerNode()
         engine.attach(player)
+        observeEngineConfiguration()
+    }
+
+    /// Observes only the current engine. Observing every engine (object: nil)
+    /// delivered other engines' changes too, including the echo-cancelling
+    /// live-voice engine's while it was being torn down and freed; touching
+    /// that notification's engine from the posting thread aborted the app
+    /// ("Cannot form weak reference"). The handler never reads the
+    /// notification's object: the captured generation says whose change it
+    /// was.
+    private func observeEngineConfiguration() {
+        stopObservingEngineConfiguration()
+        engineGeneration &+= 1
+        let generation = engineGeneration
+        engineObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { [weak self] _ in
+            // The outer weak capture matters: without it the inner one
+            // captures self strongly here, and the center keeps the service
+            // alive through this block.
+            Task { @MainActor [weak self] in self?.engineConfigurationChanged(generation: generation) }
+        }
+    }
+
+    /// Runs before the engine it observes is released.
+    private func stopObservingEngineConfiguration() {
+        guard let engineObserver else { return }
+        NotificationCenter.default.removeObserver(engineObserver)
+        self.engineObserver = nil
     }
 
     /// Read Aloud offers 1x–2x. Slower than 1x is never played: the drain
@@ -313,7 +346,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         coordinator.release(lease)
     }
 
-    /// Both notification handlers hop through `Task { @MainActor }`: session
+    /// The notification handlers (these selectors and the engine observer's
+    /// block) hop through `Task { @MainActor }`: session and engine
     /// notifications are not guaranteed to arrive on the main thread, and
     /// every reachable entry point below (stop, coordinator release, waiter
     /// resumption) is MainActor-isolated state.
@@ -334,26 +368,30 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         Task { @MainActor [weak self] in self?.stop() }
     }
 
-    @objc private func handleEngineConfigurationChange(_ notification: Notification) {
-        guard let changedEngine = notification.object as? AVAudioEngine else { return }
-        // Weak, not an address: a replaced engine that has since been freed
-        // reads back nil and can never alias the live engine.
-        let changed = WeakAudioEngineReference(changedEngine)
-        Task { @MainActor [weak self] in
-            // A route change can stop the rendering engine under a live lease
-            // (AirPods disconnect, dock/undock). Settle instead of leaving
-            // buffers undrained and ownership claimed by audio that can never
-            // play. A conversation drain self-heals: the next PCM buffer
-            // reacquires ownership and restarts the engine on a fresh graph.
-            // Changes from replaced engines (or the capture service's engine)
-            // are not this stream's.
-            guard let self,
-                  let changedEngine = changed.engine,
-                  changedEngine === self.engine,
-                  self.lease != nil,
-                  !self.engine.isRunning else { return }
-            self.stop()
-        }
+    /// A route change can stop the rendering engine under a live lease
+    /// (AirPods disconnect, dock/undock). Settle instead of leaving buffers
+    /// undrained and ownership claimed by audio that can never play. A
+    /// conversation drain self-heals: the next PCM buffer reacquires
+    /// ownership and restarts the engine on a fresh graph. Changes from
+    /// replaced engines are not this stream's.
+    private func engineConfigurationChanged(generation: UInt64) {
+        guard Self.settlesOnConfigurationChange(
+            from: generation,
+            liveEngine: engineGeneration,
+            holdsLease: lease != nil,
+            engineRunning: engine.isRunning
+        ) else { return }
+        stop()
+    }
+
+    /// Internal for tests: whether a configuration change ends the stream.
+    nonisolated static func settlesOnConfigurationChange(
+        from generation: UInt64,
+        liveEngine: UInt64,
+        holdsLease: Bool,
+        engineRunning: Bool
+    ) -> Bool {
+        generation == liveEngine && holdsLease && !engineRunning
     }
 
     /// Internal for tests: the drain-fence regression drives this directly.
@@ -390,11 +428,4 @@ extension AVSpeechPlaybackService: AVAudioPlayerDelegate {
             self.stop()
         }
     }
-}
-
-/// Carries a configuration-change notification's engine across the MainActor
-/// hop without retaining it or comparing raw addresses.
-private final class WeakAudioEngineReference: @unchecked Sendable {
-    weak var engine: AVAudioEngine?
-    init(_ engine: AVAudioEngine) { self.engine = engine }
 }

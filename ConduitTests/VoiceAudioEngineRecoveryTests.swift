@@ -191,6 +191,21 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(factory.startAttempts, 4)
     }
 
+    /// A configuration change settles the stream only when it comes from the
+    /// live engine and that engine stopped rendering under a lease: one from
+    /// a replaced engine (delivered after the rebuild) leaves the new stream
+    /// alone.
+    func testOnlyTheLiveEnginesConfigurationChangeSettlesPlayback() {
+        typealias Service = AVSpeechPlaybackService
+        XCTAssertTrue(Service.settlesOnConfigurationChange(from: 2, liveEngine: 2, holdsLease: true, engineRunning: false))
+        XCTAssertFalse(Service.settlesOnConfigurationChange(from: 1, liveEngine: 2, holdsLease: true, engineRunning: false),
+                       "a replaced engine's change must not stop the live stream")
+        XCTAssertFalse(Service.settlesOnConfigurationChange(from: 2, liveEngine: 2, holdsLease: false, engineRunning: false),
+                       "nothing is playing")
+        XCTAssertFalse(Service.settlesOnConfigurationChange(from: 2, liveEngine: 2, holdsLease: true, engineRunning: true),
+                       "the engine kept rendering through the change")
+    }
+
     // MARK: - Capture engine recovery (fake capture graph)
 
     private func makeCaptureService(_ factory: FakeCaptureEngineFactory) -> AVAudioCaptureService {
