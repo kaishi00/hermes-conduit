@@ -1345,12 +1345,14 @@ struct ComposerBar: View {
             return .tooLarge(name)
         }
         // The bytes decide, not the extension: a HEIC named .png still
-        // gets re-encoded.
-        if type == nil || type?.conforms(to: .image) == true,
-           let sniffed = AttachmentStaging.imageType(at: url) {
-            type = sniffed
+        // gets re-encoded. Only formats ImageIO reads are re-encoded; an
+        // SVG keeps attaching as before.
+        var sniffed: UTType?
+        if type == nil || type?.conforms(to: .image) == true {
+            sniffed = AttachmentStaging.imageType(at: url)
+            if let sniffed { type = sniffed }
         }
-        if AttachmentTypePolicy.needsJPEGTranscode(type) {
+        if sniffed != nil, AttachmentTypePolicy.needsJPEGTranscode(type) {
             let jpegName = AttachmentTypePolicy.jpegFilename(for: name)
             guard let jpegURL = try? AttachmentStaging.destination(for: jpegName),
                   AttachmentStaging.writeJPEG(from: url, to: jpegURL) else {
@@ -1419,7 +1421,15 @@ struct ComposerBar: View {
     ) {
         guard let origin,
               shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { return }
-        guard case .success(let urls) = result else { return }
+        let urls: [URL]
+        switch result {
+        case .success(let picked):
+            urls = picked
+        case .failure(let error):
+            composerErrorMessage = AppLocalization.string("Could not open the file: \(error.localizedDescription)")
+            Haptics.error()
+            return
+        }
         let limitMegabytes = attachmentLimitMegabytes
         Task {
             var tally = ImportTally()
@@ -1471,30 +1481,30 @@ struct ComposerBar: View {
         documentImportContext = nil
     }
 
+    /// Pasted images: written to the staging folder off the main actor and
+    /// normalized like picked photos (a pasted HEIC goes up as JPEG).
     private func addAttachment(data: Data, name: String, mimeType: String, kind: Attachment.Kind) {
         guard !data.isEmpty else { return }
-        guard AttachmentSizeLimit.allows(byteCount: Int64(data.count), megabytes: attachmentLimitMegabytes) else {
-            reportImportProblems(oversized: [name], failed: [], limitMegabytes: attachmentLimitMegabytes)
+        let limitMegabytes = attachmentLimitMegabytes
+        guard AttachmentSizeLimit.allows(byteCount: Int64(data.count), megabytes: limitMegabytes) else {
+            reportImportProblems(oversized: [name], failed: [], limitMegabytes: limitMegabytes)
             return
         }
         let origin = asyncAttachmentContext
+        let type = UTType(mimeType: mimeType)
         Task {
-            let staged: URL? = await Task.detached(priority: .userInitiated) {
+            let outcome = await Task.detached(priority: .userInitiated) { () -> StagedImport in
                 guard let url = try? AttachmentStaging.destination(for: name),
-                      (try? data.write(to: url, options: .atomic)) != nil else { return nil }
-                return url
+                      (try? data.write(to: url, options: .atomic)) != nil else { return .failed(name) }
+                return Self.finishStaging(fileAt: url, name: name, type: type, limitMegabytes: limitMegabytes)
             }.value
-            guard let staged else {
-                appState.errorMessage = AppLocalization.string("Could not prepare \(name) for upload.")
-                Haptics.error()
-                return
-            }
             guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
-                try? FileManager.default.removeItem(at: staged)
+                if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
                 return
             }
-            attachments.append(Attachment(id: UUID().uuidString, name: name, uri: staged.absoluteString, mimeType: mimeType, kind: kind))
-            Haptics.light()
+            var tally = ImportTally()
+            record(outcome, in: &tally)
+            finishImport(tally, limitMegabytes: limitMegabytes)
         }
     }
 
