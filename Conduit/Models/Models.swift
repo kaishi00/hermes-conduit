@@ -857,15 +857,28 @@ struct ProfileModelDefaults: Equatable {
     /// or `auto`), so match like Hermes Desktop and then fall back to the row
     /// Hermes marks current or the row listing the saved model, before the
     /// first row. A saved model missing from the row's list is kept as is
-    /// rather than replaced by the row's first model.
+    /// rather than replaced by the row's first model, except on the last
+    /// resort first row, which never vouched for it.
     var selection: (provider: String, model: String) {
-        let row = providers.first(where: { $0.matches(provider) })
+        if let row = providers.first(where: { $0.matches(provider) })
             ?? providers.first(where: \.isCurrent)
-            ?? uniqueRow(listing: model)
-            ?? providers.first
-        guard let row else { return (provider, model) }
-        if !model.isEmpty { return (row.name, model) }
-        return (row.name, row.models.first?.id ?? "")
+            ?? uniqueRow(listing: model) {
+            return (row.name, model.isEmpty ? row.models.first?.id ?? "" : model)
+        }
+        guard let row = providers.first else { return (provider, model) }
+        let listed = row.models.contains(where: { $0.id == model })
+        return (row.name, listed ? model : row.models.first?.id ?? "")
+    }
+
+    /// The delegate picker selection for saved `delegation.provider` and
+    /// `delegation.model`. Empty values mean "inherit the chat model" and stay
+    /// empty; a saved provider resolves to its row like `selection`, and an
+    /// unknown provider or unlisted model is kept as saved rather than
+    /// replaced by the first catalog entry.
+    func delegateSelection(provider savedProvider: String, model savedModel: String) -> (provider: String, model: String) {
+        guard !savedProvider.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return ("", "") }
+        let row = providers.first(where: { $0.matches(savedProvider) })
+        return (row?.name ?? savedProvider, savedModel)
     }
 
     private func uniqueRow(listing model: String) -> ProviderInfo? {

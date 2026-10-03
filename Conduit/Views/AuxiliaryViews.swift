@@ -1339,7 +1339,7 @@ private struct ProfileModelSettingsDetail: View {
                 if let defaults, !defaults.providers.isEmpty {
                     ConduitMenuPicker(
                         value: provider,
-                        choices: defaults.providers.map { (id: $0.name, title: $0.name) },
+                        choices: defaults.providers.map { (id: $0.name, title: $0.title) },
                         onSelect: chooseProvider
                     ) {
                         Text("Provider").foregroundStyle(.secondary)
@@ -1404,6 +1404,18 @@ private struct DelegationModelSettings: View {
     @State private var saving = false
     @State private var error: String?
     private var models: [ModelInfo] { defaults?.providers.first(where: { $0.name == provider })?.models ?? [] }
+    /// A saved provider or model the catalog does not list stays visible
+    /// instead of the picker silently showing a different one.
+    private var providerChoices: [(id: String, title: String)] {
+        let listed = (defaults?.providers ?? []).map { (id: $0.name, title: $0.title) }
+        let unlisted = provider.isEmpty || listed.contains(where: { $0.id == provider }) ? [] : [(id: provider, title: provider)]
+        return [(id: "", title: AppLocalization.string("Inherit chat provider"))] + unlisted + listed
+    }
+    private var modelChoices: [(id: String, title: String)] {
+        let listed = models.map { (id: $0.id, title: $0.label ?? $0.id) }
+        let unlisted = model.isEmpty || models.contains(where: { $0.id == model }) ? [] : [(id: model, title: model)]
+        return [(id: "", title: AppLocalization.string("Inherit chat model"))] + unlisted + listed
+    }
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Delegate model"), symbol: "point.3.connected.trianglepath.dotted", tint: .conduitAccent) {
@@ -1412,7 +1424,7 @@ private struct DelegationModelSettings: View {
             if let defaults, !defaults.providers.isEmpty {
                 ConduitMenuPicker(
                     value: provider,
-                    choices: [(id: "", title: AppLocalization.string("Inherit chat provider"))] + defaults.providers.map { (id: $0.name, title: $0.name) },
+                    choices: providerChoices,
                     onSelect: chooseProvider
                 ) {
                     Text("Delegate provider").foregroundStyle(.secondary)
@@ -1420,7 +1432,7 @@ private struct DelegationModelSettings: View {
                 if !provider.isEmpty {
                     ConduitMenuPicker(
                         value: model,
-                        choices: [(id: "", title: AppLocalization.string("Inherit chat model"))] + models.map { (id: $0.id, title: $0.label ?? $0.id) },
+                        choices: modelChoices,
                         onSelect: { model = $0 }
                     ) {
                         Text("Delegate model").foregroundStyle(.secondary)
@@ -1447,10 +1459,9 @@ private struct DelegationModelSettings: View {
         let (loaded, settings) = await (modelRequest, settingRequest)
         defaults = loaded
         let configuredProvider = settings["delegation.provider"]?.textValue ?? ""
-        provider = loaded?.providers.contains(where: { $0.name == configuredProvider }) == true ? configuredProvider : loaded?.providers.first?.name ?? ""
         let configuredModel = settings["delegation.model"]?.textValue ?? ""
-        let availableModels = loaded?.providers.first(where: { $0.name == provider })?.models ?? []
-        model = availableModels.contains(where: { $0.id == configuredModel }) ? configuredModel : availableModels.first?.id ?? ""
+        (provider, model) = loaded?.delegateSelection(provider: configuredProvider, model: configuredModel)
+            ?? (configuredProvider, configuredModel)
         reasoning = settings["delegation.reasoning_effort"]?.textValue ?? ""
     }
     private func chooseProvider(_ next: String) { provider = next; model = next.isEmpty ? "" : defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? "" }
