@@ -369,6 +369,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         try engine.start()
     }
 
+    /// Tap first, then the engine: each guards on its own state.
     private func teardownRendering() {
         engine.removeInputTap()
         engine.stop()
@@ -576,7 +577,8 @@ private extension FixedWidthInteger {
 /// The slice of `AVAudioEngine` capture drives: the input node's formats and
 /// tap, plus the engine lifecycle. A seam so ConduitTests can exercise the
 /// rebuild/retry/tap-format paths without an `AVAudioInputNode`, which
-/// cannot be constructed or faked.
+/// cannot be constructed or faked. Driven only from the MainActor
+/// `AVAudioCaptureService`; implementations may keep unsynchronized state.
 protocol VoiceCaptureEngine: AnyObject {
     var isRunning: Bool { get }
     /// The live hardware input format (`inputNode.inputFormat(forBus: 0)`).
@@ -591,7 +593,16 @@ protocol VoiceCaptureEngine: AnyObject {
 }
 
 final class SystemVoiceCaptureEngine: VoiceCaptureEngine {
-    private let engine = AVAudioEngine()
+    private let engine: AVAudioEngine
+    /// Whether this engine's input node holds a tap Conduit installed.
+    private var hasInputTap = false
+    /// Whether the graph was prepared or started since the last stop.
+    private var hasRenderResources = false
+
+    /// `engine` is a ConduitTests seam; production always uses a new engine.
+    init(engine: AVAudioEngine = AVAudioEngine()) {
+        self.engine = engine
+    }
 
     var isRunning: Bool { engine.isRunning }
     var hardwareInputFormat: AVAudioFormat { engine.inputNode.inputFormat(forBus: 0) }
@@ -599,10 +610,34 @@ final class SystemVoiceCaptureEngine: VoiceCaptureEngine {
 
     func installInputTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat?, block: @escaping AVAudioNodeTapBlock) {
         engine.inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: format, block: block)
+        hasInputTap = true
     }
 
-    func removeInputTap() { engine.inputNode.removeTap(onBus: 0) }
-    func prepare() { engine.prepare() }
-    func start() throws { try engine.start() }
-    func stop() { engine.stop() }
+    // Teardown of a graph that never rendered must not reach CoreAudio:
+    // `inputNode` builds the input AURemoteIO on first access, and stopping
+    // talks to the audio server. Every Voice teardown (server switch,
+    // disconnect, Close) runs these on the placeholder engine, and when the
+    // audio server stalls CoreAudio aborts the whole process ("AURemoteIO:
+    // RPC timeout. Apparently deadlocked.").
+    func removeInputTap() {
+        guard hasInputTap else { return }
+        engine.inputNode.removeTap(onBus: 0)
+        hasInputTap = false
+    }
+
+    func prepare() {
+        hasRenderResources = true
+        engine.prepare()
+    }
+
+    func start() throws {
+        hasRenderResources = true
+        try engine.start()
+    }
+
+    func stop() {
+        guard hasRenderResources else { return }
+        engine.stop()
+        hasRenderResources = false
+    }
 }

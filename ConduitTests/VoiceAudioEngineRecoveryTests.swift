@@ -375,6 +375,40 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(samples, [0, 0.5, -1, Float(32_767) / 32_768])
     }
 
+    // MARK: - Teardown of a graph that never rendered
+
+    // Every Voice teardown (server switch, disconnect, Close) stops capture
+    // and playback whether or not they ever ran. On a hosted simulator a
+    // stalled audio server turns any CoreAudio call there into a process
+    // abort ("AURemoteIO: RPC timeout. Apparently deadlocked."), which took
+    // down AppStateMultiDashboardTests mid-run.
+
+    func testStoppingCaptureThatNeverStartedNeverReachesCoreAudio() {
+        let probe = AudioEngineProbe()
+        let service = AVAudioCaptureService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: { SystemVoiceCaptureEngine(engine: probe) }
+        )
+
+        service.stop()
+        service.stop()
+
+        probe.assertUntouched()
+    }
+
+    func testStoppingPlaybackThatNeverStartedNeverReachesCoreAudio() {
+        let probe = AudioEngineProbe()
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: { probe }
+        )
+
+        service.stop()
+        service.stop()
+
+        probe.assertUntouched()
+    }
+
     // MARK: - Playback drain watchdog
 
     func testDrainSettlesWhenRenderingDiesWithoutANotification() async {
@@ -462,12 +496,61 @@ private final class FormatRejectingEngine: AVAudioEngine {
         super.init()
     }
 
+    /// No-op: the real prepare initializes the output AURemoteIO through the
+    /// audio server, and on a hosted simulator a stalled server makes
+    /// CoreAudio abort the test process ("Initialize: RPC timeout").
+    override func prepare() {}
+
+    /// No-op for the same reason: the failed attempts leave connected graphs
+    /// that the service then stops.
+    override func stop() {}
+
     override func start() throws {
         onStart()
         throw NSError(
             domain: "com.apple.coreaudio.avfaudio",
             code: VoiceAudioEngineRecovery.formatNotSupported
         )
+    }
+}
+
+/// Counts the engine calls teardown could make to the audio server: the I/O
+/// nodes (and the main mixer, which pulls in the output node), prepare, and
+/// stop. prepare and stop only count. The node getters must return a real
+/// node, so a node-read regression may abort the process rather than fail
+/// the assertion.
+private final class AudioEngineProbe: AVAudioEngine {
+    private(set) var inputNodeReads = 0
+    private(set) var outputNodeReads = 0
+    private(set) var mixerReads = 0
+    private(set) var prepares = 0
+    private(set) var stops = 0
+
+    override var inputNode: AVAudioInputNode {
+        inputNodeReads += 1
+        return super.inputNode
+    }
+
+    override var outputNode: AVAudioOutputNode {
+        outputNodeReads += 1
+        return super.outputNode
+    }
+
+    override var mainMixerNode: AVAudioMixerNode {
+        mixerReads += 1
+        return super.mainMixerNode
+    }
+
+    override func prepare() { prepares += 1 }
+
+    override func stop() { stops += 1 }
+
+    func assertUntouched(file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(inputNodeReads, 0, "the input node was built", file: file, line: line)
+        XCTAssertEqual(outputNodeReads, 0, "the output node was built", file: file, line: line)
+        XCTAssertEqual(mixerReads, 0, "the main mixer was built", file: file, line: line)
+        XCTAssertEqual(prepares, 0, "the engine was prepared", file: file, line: line)
+        XCTAssertEqual(stops, 0, "an engine that never rendered was stopped", file: file, line: line)
     }
 }
 
