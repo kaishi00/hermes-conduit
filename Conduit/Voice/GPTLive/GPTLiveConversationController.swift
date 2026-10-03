@@ -180,6 +180,7 @@ final class GPTLiveConversationController: ObservableObject {
         // from CarPlay, which has no mute control, included) is heard.
         isMicrophoneMuted = false
         voiceNote = nil
+        finishedTurn = nil
         endTask?.cancel()
         endTask = nil
         endRequestedAt = nil

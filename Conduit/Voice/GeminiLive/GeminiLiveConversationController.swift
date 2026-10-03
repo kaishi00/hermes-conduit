@@ -338,6 +338,7 @@ final class GeminiLiveConversationController: ObservableObject {
         guard !isActive else { return }
         phase = .connecting
         transcript = []
+        finishedTurn = nil
         // A mute belongs to the conversation it was set in: a new one (one
         // started from CarPlay, which has no mute control, included) is heard.
         isMicrophoneMuted = false
@@ -498,6 +499,9 @@ final class GeminiLiveConversationController: ObservableObject {
         let grace = awaitingReply ? Self.endReplyGrace : Self.endGrace
         let drained = !output.isPlaying && current.timeIntervalSince(lastSound) >= grace
         guard drained || elapsed >= Self.endTimeout else { return false }
+        // An end that no turnComplete closed: its last lines are final now.
+        publishFinished(openUserEntry)
+        publishFinished(openAssistantEntry)
         let close = onEndConversation
         endTask = nil
         stop()

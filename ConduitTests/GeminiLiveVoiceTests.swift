@@ -1666,6 +1666,10 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(controller.finishedTurn?.speaker, .assistant, "the last reply of a call is read too")
         XCTAssertEqual(controller.finishedTurn?.text, "Sunny all day.")
         controller.stop()
+
+        await controller.start()
+        XCTAssertNil(controller.finishedTurn, "a new call starts with nothing to announce")
+        controller.stop()
     }
 
     func testGeminiLiveGoodbyeTranscriptThatArrivesAfterTheReplyStillEnds() async {

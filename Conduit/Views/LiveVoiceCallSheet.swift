@@ -57,6 +57,7 @@ struct LiveVoiceCallSheet: View {
                 } else if dynamicTypeSize >= .xxLarge {
                     // Large text can outgrow a small screen.
                     ScrollView { stage }
+                        .scrollBounceBehavior(.basedOnSize)
                 } else {
                     stage
                 }
@@ -64,6 +65,14 @@ struct LiveVoiceCallSheet: View {
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showsTranscript)
+    }
+
+    /// Only a running call minimises; dismissing any other closes it.
+    private var isMinimisable: Bool {
+        switch phase {
+        case .idle, .failed: return false
+        case .connecting, .listening, .speaking, .muted, .ending: return true
+        }
     }
 
     // MARK: Header
@@ -74,7 +83,7 @@ struct LiveVoiceCallSheet: View {
                 // The sheet's dismissal minimises a running call.
                 dismiss()
             } label: {
-                Image(systemName: "chevron.down")
+                Image(systemName: isMinimisable ? "chevron.down" : "xmark")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 44, height: 44)
@@ -82,7 +91,8 @@ struct LiveVoiceCallSheet: View {
             }
             .buttonStyle(.plain)
             .conduitGlassControl(cornerRadius: 22)
-            .accessibilityLabel(Text("Minimise call"))
+            // A call that isn't running closes instead of minimising.
+            .accessibilityLabel(isMinimisable ? Text("Minimise call") : Text("Close"))
 
             VStack(spacing: 2) {
                 Text(verbatim: title)
@@ -163,7 +173,7 @@ struct LiveVoiceCallSheet: View {
     private var transcriptList: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
-                LiveVoiceOrb(phase: phase)
+                LiveVoiceOrb(phase: phase, animates: false)
                     .frame(width: 28, height: 28)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
@@ -229,8 +239,15 @@ struct LiveVoiceCallSheet: View {
                 // On an open speaker the mic is closed while the assistant
                 // talks, so this is the way to cut in.
                 if let onInterrupt {
-                    LiveVoiceCallButton(symbol: "hand.raised.fill", title: AppLocalization.string("Interrupt"), action: onInterrupt)
-                        .disabled(!canInterrupt)
+                    LiveVoiceCallButton(
+                        symbol: "hand.raised.fill",
+                        title: AppLocalization.string("Interrupt"),
+                        voiceOverHint: canInterrupt
+                            ? AppLocalization.string("Stops the assistant so you can speak")
+                            : AppLocalization.string("Available while the assistant is speaking"),
+                        action: onInterrupt
+                    )
+                    .disabled(!canInterrupt)
                 }
             }
             LiveVoiceCallButton(
@@ -245,6 +262,7 @@ struct LiveVoiceCallSheet: View {
                 title: AppLocalization.string("End"),
                 style: .destructive,
                 voiceOverLabel: AppLocalization.string("End call"),
+                voiceOverHint: AppLocalization.string("Hangs up the call"),
                 action: onEnd
             )
         }
@@ -280,6 +298,7 @@ private struct LiveVoiceCallButton: View {
     let title: String
     var style: Style = .normal
     var voiceOverLabel: String?
+    var voiceOverHint: String?
     let action: () -> Void
 
     @Environment(\.isEnabled) private var isEnabled
@@ -305,6 +324,7 @@ private struct LiveVoiceCallButton: View {
         .buttonStyle(.plain)
         .opacity(isEnabled ? 1 : 0.4)
         .accessibilityLabel(Text(verbatim: voiceOverLabel ?? title))
+        .accessibilityHint(Text(verbatim: voiceOverHint ?? ""))
     }
 
     @ViewBuilder
@@ -321,10 +341,12 @@ private struct LiveVoiceCallButton: View {
             glyph
                 .foregroundStyle(Color(.systemBackground))
                 .background(Circle().fill(Color.primary))
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
         case .destructive:
             glyph
                 .foregroundStyle(.white)
                 .background(Circle().fill(Color.red))
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
         }
     }
 }
@@ -358,6 +380,8 @@ private struct LiveVoiceTranscriptBubble: View {
 /// common to every engine.
 struct LiveVoiceOrb: View {
     let phase: LiveVoiceCallPhase
+    /// Off for a small accessory orb: it keeps its colour but stays still.
+    var animates = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -391,7 +415,7 @@ struct LiveVoiceOrb: View {
 
     var body: some View {
         let motion = Self.motion(for: phase)
-        let moves = !reduceMotion && motion.amplitude > 0
+        let moves = animates && !reduceMotion && motion.amplitude > 0
         // 30 fps is plenty for a slow swell and spares ProMotion's 120 Hz.
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !moves)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
