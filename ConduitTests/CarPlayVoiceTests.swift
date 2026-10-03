@@ -942,6 +942,37 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertTrue(harness.controller.hasLiveVoiceSession)
     }
 
+    func testAFailedVoiceScreenInstallStartsVoiceInsteadOfTheChatList() async throws {
+        for listFirst in [true, false] {
+            let harness = makeHarness()
+            let suite = "CarPlayChooseChat.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+            let preferences = CarPlayPreferences(defaults: defaults)
+            harness.coordinator.preferencesProvider = { preferences }
+            harness.appState.activeSessionId = "existing-session"
+            harness.spy.completesImmediately = false
+            harness.coordinator.handleConnect(harness.spy)
+            let generation = harness.coordinator.connectionGeneration
+
+            // Either order: the list asked for before or after the failure.
+            if listFirst {
+                await harness.coordinator.establishOnConnect(generation: generation)
+                XCTAssertTrue(harness.coordinator.isChatPickerPending)
+            }
+            harness.spy.completeParkedInstall(success: false, error: URLError(.badURL))
+            for _ in 0..<50 where !harness.coordinator.didTemplateInstallFail { await Task.yield() }
+            if !listFirst {
+                await harness.coordinator.establishOnConnect(generation: generation)
+            }
+            for _ in 0..<200 where !harness.controller.hasLiveVoiceSession { await Task.yield() }
+
+            XCTAssertFalse(harness.coordinator.isChatPickerPending, "listFirst=\(listFirst)")
+            XCTAssertTrue(harness.spy.pushedTemplates.isEmpty, "listFirst=\(listFirst)")
+            XCTAssertTrue(harness.controller.hasLiveVoiceSession, "Voice starts as before, listFirst=\(listFirst)")
+        }
+    }
+
     func testCarPlayShowsARunningConversationInsteadOfTheChatList() async throws {
         let harness = makeHarness()
         let suite = "CarPlayChooseChat.\(UUID().uuidString)"

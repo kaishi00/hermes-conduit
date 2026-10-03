@@ -11,9 +11,10 @@
 //  the coordinator and converge on the existing shared teardown/listen/mute
 //  paths — CarPlay adds no parallel Voice business logic.
 //
-//  A template's buttons are never changed once it is on the car's screen.
-//  Replacing them in place left the car with buttons the app no longer
-//  held, so Mute did nothing (#361). New controls get a new template
+//  A voice state's action buttons are never changed once the template is
+//  on the car's screen (the top bar's buttons may be). Replacing them in
+//  place left the car with buttons the app no longer held, so Mute did
+//  nothing (#361). New controls get a new template
 //  instead, built to open on the state the car is showing.
 //
 
@@ -47,7 +48,7 @@ struct CarPlayVoiceActionHandlers {
 }
 
 /// What the buttons depend on besides the state: the Voice mode and the
-/// microphone. A template's buttons are fixed once it is on the car, so the
+/// microphone. A state's action buttons are fixed once on the car, so the
 /// coordinator installs a new template when this changes (#361).
 struct CarPlayVoiceControls: Equatable {
     /// The classic voice mode, as opposed to a live call.
