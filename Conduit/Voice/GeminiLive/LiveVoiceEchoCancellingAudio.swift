@@ -22,6 +22,7 @@
 import AVFAudio
 import Foundation
 import OSLog
+import os
 
 private let echoCancellingAudioLogger = Logger(subsystem: "com.milim.relay", category: "LiveVoiceAudio")
 
@@ -67,7 +68,15 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     private var drainWatchdog: Task<Void, Never>?
     /// Slack past the scheduled audio before the watchdog clears the
     /// queue. Internal so ConduitTests can shorten it.
-    var drainWatchdogGrace: TimeInterval = 2
+    /// Generous, as AVSpeechPlaybackService's: a late-starting output
+    /// must never have its speech cut off as "stalled".
+    var drainWatchdogGrace: TimeInterval = 10
+    /// Identity of the current audio lifetime, bumped by every full stop.
+    /// Session notifications read it synchronously on their own thread, so
+    /// one queued from an earlier call can't stop the next.
+    private var lifetime: UInt64 = 0
+    private let observedLifetime = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+    nonisolated private var lifetimeForObservers: UInt64 { observedLifetime.withLock { $0 } }
     /// The rate the speaker side starts at, before the first chunk says.
     private let defaultOutputSampleRate: Double
 
@@ -345,6 +354,9 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     private func tearDown() {
         inputWanted = false
         outputWanted = false
+        lifetime &+= 1
+        let current = lifetime
+        observedLifetime.withLock { $0 = current }
         tearDownEngine()
         playerFormat = nil
         if let lease {
@@ -389,7 +401,8 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     /// stops and the session lease goes back; the controller restarts the
     /// microphone once the system lets go, as it does for the default
     /// capture.
-    private func stopAfterInterruption() {
+    private func stopAfterInterruption(observed: UInt64? = nil) {
+        if let observed, observed != lifetime { return }
         guard inputWanted || outputWanted else { return }
         let wasListening = inputWanted
         tearDown()
@@ -403,11 +416,13 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     @objc private func handleInterruption(_ notification: Notification) {
         guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
               AVAudioSession.InterruptionType(rawValue: raw) == .began else { return }
-        Task { @MainActor [weak self] in self?.stopAfterInterruption() }
+        let observed = lifetimeForObservers
+        Task { @MainActor [weak self] in self?.stopAfterInterruption(observed: observed) }
     }
 
     @objc private func handleMediaServicesReset(_ notification: Notification) {
-        Task { @MainActor [weak self] in self?.stopAfterInterruption() }
+        let observed = lifetimeForObservers
+        Task { @MainActor [weak self] in self?.stopAfterInterruption(observed: observed) }
     }
 
     nonisolated private static func copy(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
