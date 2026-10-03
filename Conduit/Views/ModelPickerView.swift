@@ -547,16 +547,23 @@ struct ModelPickerView: View {
             // the other settings are mutated — otherwise the sheet hangs open
             // showing a partially-applied configuration with no rollback.
             if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
+                // setYoloMode reports through the composer banner, hidden
+                // behind this sheet. Start clean so only this call's error
+                // is moved into the sheet, and leave none behind.
+                appState.errorMessage = nil
                 guard await appState.setYoloMode(yoloEnabled) else {
                     applyError = appState.errorMessage
                         ?? AppLocalization.string("Unable to change YOLO mode.")
+                    appState.errorMessage = nil
                     return
                 }
                 // Applied: a confirmed retry of a guarded model switch must
                 // not send it again.
                 initialYoloEnabled = yoloEnabled
             }
-            if modelPickerSelectionChanged(
+            // A confirmed retry always re-sends: the runtime may have moved
+            // while the alert was up, and the confirmation must reach Hermes.
+            if confirmedModelSwitch || modelPickerSelectionChanged(
                 selectedModel: selectedModel,
                 selectedProvider: selectedProvider,
                 runtimeModel: appState.runtime.model,
