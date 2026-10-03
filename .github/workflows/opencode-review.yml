@@ -30,9 +30,6 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - name: Debounce (wait for rapid commits to settle)
-        if: github.event_name == 'pull_request_target'
-        run: sleep 60
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
