@@ -21,6 +21,9 @@ struct GrokLiveSettingsModel {
     /// Save calls to the Hermes host's session history (Sessions > Voice).
     var saveCalls: Bool = true
     var setSaveCalls: (Bool) -> Void = { _ in }
+    /// Talk over the model on the loudspeaker (echo-cancelling audio).
+    var speakerBargeIn: Bool = false
+    var setSpeakerBargeIn: (Bool) -> Void = { _ in }
 }
 
 struct GrokLiveSettingsSection: View {
@@ -29,6 +32,7 @@ struct GrokLiveSettingsSection: View {
     @State private var memory: Bool
     @State private var personality: Bool
     @State private var saveCalls: Bool
+    @State private var speakerBargeIn: Bool
     @State private var status: String?
     @State private var isAvailable: Bool?
     @State private var isChecking = false
@@ -39,6 +43,7 @@ struct GrokLiveSettingsSection: View {
         _memory = State(initialValue: model.memory)
         _personality = State(initialValue: model.personality)
         _saveCalls = State(initialValue: model.saveCalls)
+        _speakerBargeIn = State(initialValue: model.speakerBargeIn)
     }
 
     var body: some View {
@@ -98,6 +103,16 @@ struct GrokLiveSettingsSection: View {
                 Text("Grok Live talks with the personality in this profile's SOUL.md. SOUL.md is sent to xAI with the conversation. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("Talk over it on the speaker", isOn: Binding(
+                    get: { speakerBargeIn },
+                    set: { requested in
+                        speakerBargeIn = requested
+                        model.setSpeakerBargeIn(requested)
+                    }
+                ))
+                Text("Experimental. Keeps the microphone open while Grok talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Grok keeps cutting itself off. Shared by Gemini Live and Grok Live. Applies to the next conversation.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle("Save calls to Sessions", isOn: Binding(
                     get: { saveCalls },
                     set: { requested in
@@ -115,6 +130,7 @@ struct GrokLiveSettingsSection: View {
         .onChange(of: model.memory) { _, newValue in memory = newValue }
         .onChange(of: model.personality) { _, newValue in personality = newValue }
         .onChange(of: model.saveCalls) { _, newValue in saveCalls = newValue }
+        .onChange(of: model.speakerBargeIn) { _, newValue in speakerBargeIn = newValue }
     }
 
     private func check() async {

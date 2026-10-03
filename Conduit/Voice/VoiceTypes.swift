@@ -242,6 +242,10 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// Whether live voice calls (Gemini Live, GPT-Live, Grok Live) are saved to the Hermes
     /// host's session history. Nil is on.
     var saveVoiceCalls: Bool? = nil
+    /// Whether Gemini Live and Grok Live keep the microphone open while
+    /// the model speaks on the loudspeaker or in the car, with echo
+    /// cancellation. Nil is off (experimental).
+    var liveVoiceSpeakerBargeIn: Bool? = nil
 
     var resolvedTranscriptionMode: VoiceTranscriptionMode {
         transcriptionMode ?? .hermes
@@ -298,6 +302,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)
         saveVoiceCalls = try? container.decodeIfPresent(Bool.self, forKey: .saveVoiceCalls)
+        liveVoiceSpeakerBargeIn = (try? container.decodeIfPresent(Bool.self, forKey: .liveVoiceSpeakerBargeIn)) ?? nil
     }
 
     /// What a voice job's `session.create` asks for: the chosen voice-job

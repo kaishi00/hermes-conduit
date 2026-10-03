@@ -581,7 +581,9 @@ struct SettingsView: View {
                         personality: appState.geminiLivePersonalityEnabled,
                         setPersonality: { appState.setGeminiLivePersonalityEnabled($0) },
                         saveCalls: appState.voiceCallSavingEnabled,
-                        setSaveCalls: { appState.setVoiceCallSavingEnabled($0) }
+                        setSaveCalls: { appState.setVoiceCallSavingEnabled($0) },
+                        speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
+                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
                     ),
                     gptLive: GPTLiveSettingsModel(
                         enabled: appState.isGPTLiveEnabled,
@@ -617,7 +619,9 @@ struct SettingsView: View {
                         personality: appState.grokLivePersonalityEnabled,
                         setPersonality: { appState.setGrokLivePersonalityEnabled($0) },
                         saveCalls: appState.voiceCallSavingEnabled,
-                        setSaveCalls: { appState.setVoiceCallSavingEnabled($0) }
+                        setSaveCalls: { appState.setVoiceCallSavingEnabled($0) },
+                        speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
+                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
                     ),
                     voiceJobs: VoiceJobModelSettingsModel(
                         provider: voicePreferences.voiceJobProvider,

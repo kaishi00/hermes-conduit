@@ -1443,6 +1443,7 @@ final class AppState: ObservableObject {
     lazy var geminiLiveController: GeminiLiveConversationController = {
         geminiLiveControllerCreated = true
         let tokens = geminiLiveTokenClient
+        let audio = makeLiveVoiceAudio()
         let controller = GeminiLiveConversationController(
             makeSession: { [weak self] in
                 let search = self?.geminiLiveSearchSource ?? .google
@@ -1485,8 +1486,8 @@ final class AppState: ObservableObject {
                 return status
             },
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens),
-            input: CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
-            output: PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService()),
+            input: audio.input,
+            output: audio.output,
             // The same "End conversation" phrases as the classic Voice mode.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
@@ -1960,6 +1961,7 @@ final class AppState: ObservableObject {
         let client = grokLiveClient
         // Memory, persona and web search come from the host routes Gemini Live reads.
         let hostContext = geminiLiveTokenClient
+        let audio = makeLiveVoiceAudio()
         let controller = GeminiLiveConversationController(
             makeSession: { [weak self] in
                 let search = self?.grokLiveSearchSource ?? GeminiLiveSearchSource.none
@@ -2003,8 +2005,8 @@ final class AppState: ObservableObject {
             // xAI has no non-blocking calls: start_job is answered once the
             // job runs, and its outcome follows as a text update.
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false),
-            input: CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
-            output: PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService()),
+            input: audio.input,
+            output: audio.output,
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
@@ -3430,6 +3432,40 @@ final class AppState: ObservableObject {
         objectWillChange.send()
         preferences.saveVoiceCalls = stored
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// Whether Gemini Live and Grok Live calls let the user talk over the
+    /// model on the loudspeaker and in the car (echo-cancelling audio).
+    /// Off until the user turns it on.
+    var liveVoiceSpeakerBargeInEnabled: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).liveVoiceSpeakerBargeIn ?? false
+    }
+
+    /// Applies from the next call.
+    func setLiveVoiceSpeakerBargeInEnabled(_ enabled: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = enabled ? true : nil
+        guard preferences.liveVoiceSpeakerBargeIn != stored else { return }
+        objectWillChange.send()
+        preferences.liveVoiceSpeakerBargeIn = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The live controllers' audio: the default capture and playback, or
+    /// one echo-cancelling engine when speaker barge-in is on, chosen for
+    /// each call.
+    private func makeLiveVoiceAudio() -> LiveVoiceAudioSelector {
+        LiveVoiceAudioSelector(
+            wantsEchoCancellation: { [weak self] in self?.liveVoiceSpeakerBargeInEnabled ?? false },
+            makeStandard: {
+                (CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
+                 PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService()))
+            },
+            makeEchoCancelling: {
+                let audio = EchoCancellingLiveVoiceAudio()
+                return (audio.input, audio.output)
+            }
+        )
     }
 
     /// The row's voice tag, matched through every id the row answers to.

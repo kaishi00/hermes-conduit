@@ -48,9 +48,17 @@ protocol GeminiLiveAudioInput: AnyObject {
     var onChunk: (@MainActor (Data) -> Void)? { get set }
     /// The system stopped capture (an audio interruption: a call, Siri…).
     var onInterrupted: (@MainActor () -> Void)? { get set }
+    /// The microphone hears the speaker with its echo cancelled (the
+    /// speaker barge-in audio): the model's own voice can't read as the
+    /// user, so the microphone stays open while it speaks on any route.
+    var cancelsEcho: Bool { get }
     func requestPermission() async -> Bool
     func start() throws
     func stop()
+}
+
+extension GeminiLiveAudioInput {
+    var cancelsEcho: Bool { false }
 }
 
 @MainActor
@@ -720,9 +728,10 @@ final class GeminiLiveConversationController: ObservableObject {
     /// microphone; streamed, it reads as the user barging in and the model
     /// interrupts itself in a loop. So the mic is held back while the model
     /// speaks and for a short echo tail — the same half duplex the classic
-    /// Voice mode uses on the speaker. Headsets stay full duplex.
+    /// Voice mode uses on the speaker. Headsets stay full duplex, and so
+    /// does audio that cancels the speaker's echo (speaker barge-in).
     var isMicrophoneGatedForSpeaker: Bool {
-        guard routePolicy() == .speakerSafeHalfDuplex else { return false }
+        guard routePolicy() == .speakerSafeHalfDuplex, !input.cancelsEcho else { return false }
         if output.isPlaying {
             lastPlaybackAt = now()
             return true

@@ -144,11 +144,17 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
 final class FakeGeminiLiveInput: GeminiLiveAudioInput {
     var onChunk: (@MainActor (Data) -> Void)?
     var onInterrupted: (@MainActor () -> Void)?
+    var cancelsEcho = false
     private(set) var starts = 0
     var permission = true
+    var startError: Error?
     private(set) var running = false
     func requestPermission() async -> Bool { permission }
-    func start() throws { running = true; starts += 1 }
+    func start() throws {
+        if let startError { throw startError }
+        running = true
+        starts += 1
+    }
     func stop() { running = false }
 }
 
@@ -883,6 +889,16 @@ extension ContinuousConversationPreferenceTests {
         let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(enabled))
         XCTAssertTrue(roundTrip.geminiLiveEnabled)
     }
+
+    func testSpeakerBargeInIsOffByDefaultAndRoundTrips() throws {
+        XCTAssertNil(VoiceProfilePreferences().liveVoiceSpeakerBargeIn)
+        let legacy = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"geminiLiveEnabled":true}"#.utf8))
+        XCTAssertNil(legacy.liveVoiceSpeakerBargeIn)
+        var enabled = VoiceProfilePreferences()
+        enabled.liveVoiceSpeakerBargeIn = true
+        let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(enabled))
+        XCTAssertEqual(roundTrip.liveVoiceSpeakerBargeIn, true)
+    }
 }
 
 // MARK: - AppState mode switch
@@ -1009,6 +1025,112 @@ extension VoiceConversationControllerTests {
         input.onChunk?(Data([1]))
         XCTAssertEqual(session.sent.count, 1, "With a headset the user can barge in by voice")
         controller.stop()
+    }
+
+    func testGeminiLiveKeepsTheMicOpenOnTheSpeakerWhenItsAudioCancelsEcho() async {
+        let (controller, session, input, output, _) = makeGeminiController(route: .speakerSafeHalfDuplex, clock: Date.init)
+        input.cancelsEcho = true
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        XCTAssertTrue(output.isPlaying)
+        XCTAssertFalse(controller.isMicrophoneGatedForSpeaker)
+        input.onChunk?(Data([1]))
+        XCTAssertEqual(session.sent.count, 1, "With echo cancellation the user can barge in on the speaker")
+        controller.stop()
+    }
+
+    func testLiveVoiceAudioChoosesEchoCancellationPerCallAndKeepsItForTheCall() throws {
+        var wantsEchoCancellation = false
+        var built: [String] = []
+        let standardInput = FakeGeminiLiveInput()
+        let standardOutput = FakeGeminiLiveOutput()
+        let echoInput = FakeGeminiLiveInput()
+        echoInput.cancelsEcho = true
+        let echoOutput = FakeGeminiLiveOutput()
+        let selector = LiveVoiceAudioSelector(
+            wantsEchoCancellation: { wantsEchoCancellation },
+            makeStandard: { built.append("standard"); return (standardInput, standardOutput) },
+            makeEchoCancelling: { built.append("echo"); return (echoInput, echoOutput) }
+        )
+        let input = selector.input
+        let output = selector.output
+        var chunks: [Data] = []
+        input.onChunk = { chunks.append($0) }
+        XCTAssertEqual(built, [], "Nothing is built before a call uses audio")
+
+        // A call with the setting off runs on the default audio.
+        try input.start()
+        XCTAssertTrue(standardInput.running)
+        XCTAssertFalse(input.cancelsEcho)
+        standardInput.onChunk?(Data([1]))
+        XCTAssertEqual(chunks, [Data([1])])
+        try output.play(Data([0, 0]), sampleRate: 24_000)
+        XCTAssertEqual(standardOutput.played, 1)
+
+        // Turned on mid-call (a mute and unmute included): the call keeps its audio.
+        wantsEchoCancellation = true
+        input.stop()
+        try input.start()
+        XCTAssertEqual(standardInput.starts, 2)
+        XCTAssertEqual(echoInput.starts, 0)
+        XCTAssertEqual(built, ["standard"])
+
+        // The next call uses echo cancellation.
+        input.stop()
+        output.stop()
+        try input.start()
+        XCTAssertTrue(echoInput.running)
+        XCTAssertTrue(input.cancelsEcho)
+        XCTAssertEqual(built, ["standard", "echo"])
+        echoInput.onChunk?(Data([2]))
+        XCTAssertEqual(chunks, [Data([1]), Data([2])])
+        try output.play(Data([0, 0]), sampleRate: 24_000)
+        XCTAssertTrue(output.isPlaying)
+        output.interrupt()
+        XCTAssertEqual(echoOutput.interrupts, 1)
+        input.stop()
+        output.stop()
+        XCTAssertFalse(input.cancelsEcho, "Between calls nothing is chosen")
+
+        // Turned off again: the default audio is reused, not rebuilt.
+        wantsEchoCancellation = false
+        try input.start()
+        XCTAssertEqual(standardInput.starts, 3)
+        XCTAssertEqual(built, ["standard", "echo"])
+        input.stop()
+        output.stop()
+    }
+
+    func testLiveVoiceAudioChoosesAgainAfterAFailedStartOrAnInterruption() throws {
+        var wantsEchoCancellation = false
+        let standardInput = FakeGeminiLiveInput()
+        let echoInput = FakeGeminiLiveInput()
+        let selector = LiveVoiceAudioSelector(
+            wantsEchoCancellation: { wantsEchoCancellation },
+            makeStandard: { (standardInput, FakeGeminiLiveOutput()) },
+            makeEchoCancelling: { (echoInput, FakeGeminiLiveOutput()) }
+        )
+        let input = selector.input
+        var interruptions = 0
+        input.onInterrupted = { interruptions += 1 }
+
+        // A microphone that never started holds no choice.
+        standardInput.startError = VoiceAudioError.noAudioCaptured
+        XCTAssertThrowsError(try input.start())
+        standardInput.startError = nil
+        wantsEchoCancellation = true
+        try input.start()
+        XCTAssertEqual(echoInput.starts, 1)
+
+        // An interruption reaches the controller and ends the call's audio
+        // when nothing else is in use.
+        echoInput.onInterrupted?()
+        XCTAssertEqual(interruptions, 1)
+        wantsEchoCancellation = false
+        try input.start()
+        XCTAssertEqual(standardInput.starts, 1)
+        input.stop()
     }
 
     func testGeminiLivePromptsAnAcknowledgementOnlyWhenTheModelStayedSilent() async {
