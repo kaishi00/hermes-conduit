@@ -468,16 +468,20 @@ final class GPTLiveConversationController: ObservableObject {
         }
     }
 
+    /// Separates a delegation's own words from the recent conversation
+    /// added for context; routing reads only the words before it. Not UI
+    /// copy.
+    static let delegationContextMarker = "\n\n[Recent voice conversation, for context only. Do just the request above: requests marked \"handled separately\" already went to their own job, so don't do or report them again.]\n"
+
     /// The work a delegation asks for: its own text when it carries any,
     /// otherwise the user's words since the last delegation, with the
-    /// recent conversation for context. Not UI copy.
-    /// Separates a delegation's own words from the recent conversation
-    /// added for context; routing reads only the words before it.
-    static let delegationContextMarker = "\n\n[Recent voice conversation, for context:]\n"
-
+    /// recent conversation for context. Earlier requests in that context
+    /// are marked, so a second job doesn't redo the first one's work.
+    /// Not UI copy.
     func delegationRequest(itemText: String) -> String {
         // By entry, not index: a finished turn can fold entries away.
         let start = lastDelegatedEntry.flatMap { id in transcript.firstIndex { $0.id == id } }.map { $0 + 1 } ?? 0
+        let handled = Set(transcript[..<min(start, transcript.count)].map(\.id))
         let recent = Array(transcript[min(start, transcript.count)...])
         lastDelegatedEntry = transcript.last?.id ?? lastDelegatedEntry
         let userWords = recent.filter { $0.speaker == .user }.map(\.text).joined(separator: " ")
@@ -489,7 +493,10 @@ final class GPTLiveConversationController: ObservableObject {
         }
         var context = ""
         for entry in transcript.suffix(8).reversed() {
-            let line = (entry.speaker == .user ? "User: " : "Assistant: ") + entry.text + "\n"
+            let speaker = entry.speaker == .user
+                ? (handled.contains(entry.id) ? "User (handled separately): " : "User: ")
+                : "Assistant: "
+            let line = speaker + entry.text + "\n"
             guard context.count + line.count <= Self.delegationContextCharacters else { break }
             context = line + context
         }
