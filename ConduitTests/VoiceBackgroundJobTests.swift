@@ -789,7 +789,8 @@ extension VoiceConversationControllerTests {
 
     func testGPTLiveDelegationGoesToTheAttachedChatUnlessItAsksForBackgroundWork() async {
         let (supervisor, fake) = makeThreadSupervisor()
-        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor, now: { clock })
 
         let immediate = await bridge.handleDelegation(id: "del_1", request: "what failed in the build?")
         guard case .delegationReply(_, _, .commentary)? = immediate.first else {
@@ -811,12 +812,97 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(text.contains("The last reply."))
         XCTAssertEqual(fake.threadSubmissions.count, 1, "reading the last reply asks Hermes nothing")
 
+        clock += GPTLiveDelegationBridge.readBackWindow + 1
         let quickRead = await bridge.handleDelegation(id: "del_4", request: "Quick: read the last reply")
         guard case .delegationReply("del_4", let quickText, .speakable)? = quickRead.first else {
             return XCTFail("\(quickRead)")
         }
         XCTAssertTrue(quickText.contains("The last reply."), "a quick read still reads the chat")
         XCTAssertEqual(fake.created, 2)
+    }
+
+    func testTheUsersOwnRequestToHearTheLastReplyIsReadOnce() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor, now: { clock })
+        fake.threadReply = "The full reply."
+
+        // The model answered from memory; the user's words still bring
+        // Hermes' reply (#290).
+        let spoken = await bridge.userAskedForLastReply()
+        guard case .sessionContext(let text, .speakable, false, nil)? = spoken.first else {
+            return XCTFail("\(spoken)")
+        }
+        XCTAssertTrue(text.contains("The full reply."))
+
+        // The model delegates the same request too: not read twice.
+        let delegated = await bridge.handleDelegation(id: "del_1", request: "read the last reply")
+        guard case .delegationReply("del_1", _, .commentary)? = delegated.first else {
+            return XCTFail("\(delegated)")
+        }
+
+        clock += GPTLiveDelegationBridge.readBackWindow + 1
+        let again = await bridge.handleDelegation(id: "del_2", request: "say that again")
+        guard case .delegationReply("del_2", let againText, .speakable)? = again.first else {
+            return XCTFail("\(again)")
+        }
+        XCTAssertTrue(againText.contains("The full reply."), "a later request reads it again")
+        let afterDelegation = await bridge.userAskedForLastReply()
+        XCTAssertTrue(afterDelegation.isEmpty, "the delegation already asked for this one")
+        XCTAssertEqual(fake.threadSubmissions.count, 0, "reading asks Hermes nothing")
+
+        // The controller adds the recent conversation for context: routing
+        // reads only the delegation's own words.
+        clock += GPTLiveDelegationBridge.readBackWindow + 1
+        let withContext = await bridge.handleDelegation(
+            id: "del_ctx",
+            request: "read the last reply" + GPTLiveConversationController.delegationContextMarker + "User: what's the weather\nAssistant: Sunny.\n"
+        )
+        guard case .delegationReply("del_ctx", let contextText, .speakable)? = withContext.first else {
+            return XCTFail("\(withContext)")
+        }
+        XCTAssertTrue(contextText.contains("The full reply."))
+        XCTAssertEqual(fake.threadSubmissions.count, 0)
+
+        // A read-back that never reached the model doesn't hold back a retry.
+        clock += GPTLiveDelegationBridge.readBackWindow + 1
+        let first = await bridge.userAskedForLastReply()
+        XCTAssertFalse(first.isEmpty)
+        bridge.readBackNotDelivered()
+        let retried = await bridge.userAskedForLastReply()
+        XCTAssertFalse(retried.isEmpty, "the first one was never heard")
+
+        // Nothing to read yet: asking again isn't a duplicate.
+        clock += GPTLiveDelegationBridge.readBackWindow + 1
+        fake.threadReply = nil
+        let none = await bridge.userAskedForLastReply()
+        XCTAssertFalse(none.isEmpty)
+        let noneAgain = await bridge.userAskedForLastReply()
+        XCTAssertFalse(noneAgain.isEmpty)
+
+        supervisor.liveThread = nil
+        clock += GPTLiveDelegationBridge.readBackWindow + 1
+        let unattached = await bridge.userAskedForLastReply()
+        XCTAssertTrue(unattached.isEmpty, "a call not attached to a chat has no reply to read")
+    }
+
+    func testNaturalRequestsToHearTheLastReplyAgain() {
+        for request in [
+            "repeat that", "Say that again, please.", "Can you repeat exactly what you said?",
+            "read the last message", "read the last uh message", "Read me the last, um, reply",
+            "say it again word for word", "okay repeat what you just said", "read it back to me",
+            "could you please read the full answer", "read the last uh? message",
+            "read the last message from Hermes out loud", "read the last,uh message",
+        ] {
+            XCTAssertTrue(VoiceThreadRouting.wantsLastReply(request), request)
+        }
+        for request in [
+            "repeat that test with the new config", "say that again to Sam in an email",
+            "the last message was wrong, fix it", "summarize the last message", "umbrella forecast",
+            "read the last message from Sam and draft a reply", "say the last message in Spanish", "say the last message to the chat",
+        ] {
+            XCTAssertFalse(VoiceThreadRouting.wantsLastReply(request), request)
+        }
     }
 
     func testThreadRoutingPhrases() {

@@ -163,7 +163,7 @@ final class GPTLiveConversationController: ObservableObject {
         self.availability = availability
         self.briefing = briefing
         self.supervisor = supervisor
-        self.bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        self.bridge = GPTLiveDelegationBridge(supervisor: supervisor, now: now)
         self.requestPermission = requestPermission
         self.now = now
         self.endConversationPhrases = endConversationPhrases
@@ -415,6 +415,22 @@ final class GPTLiveConversationController: ObservableObject {
             requestEnd()
             return
         }
+        // Asked to hear the chat's last reply: Hermes' own words follow,
+        // even when the model answers from memory instead of delegating.
+        if VoiceThreadRouting.wantsLastReply(text) {
+            Task { [weak self] in
+                guard let self else { return }
+                let outgoing = await self.bridge.userAskedForLastReply()
+                guard self.isActive, self.endRequestedAt == nil else { return }
+                for case .sessionContext(let text, let channel, _, _) in outgoing {
+                    // Not ready yet: asking again must still be heard.
+                    if self.session?.appendContext(text, channel: channel, delegationID: nil) != true {
+                        self.bridge.readBackNotDelivered()
+                    }
+                }
+            }
+            return
+        }
         switch VoiceBackgroundJobCommands.parse(text) {
         case .status?:
             session?.appendContext(bridge.statusContext(), channel: .commentary, delegationID: nil)
@@ -434,6 +450,10 @@ final class GPTLiveConversationController: ObservableObject {
     /// The work a delegation asks for: its own text when it carries any,
     /// otherwise the user's words since the last delegation, with the
     /// recent conversation for context. Not UI copy.
+    /// Separates a delegation's own words from the recent conversation
+    /// added for context; routing reads only the words before it.
+    static let delegationContextMarker = "\n\n[Recent voice conversation, for context:]\n"
+
     func delegationRequest(itemText: String) -> String {
         // By entry, not index: a finished turn can fold entries away.
         let start = lastDelegatedEntry.flatMap { id in transcript.firstIndex { $0.id == id } }.map { $0 + 1 } ?? 0
@@ -453,7 +473,7 @@ final class GPTLiveConversationController: ObservableObject {
             context = line + context
         }
         guard !context.isEmpty else { return request }
-        return "\(request)\n\n[Recent voice conversation, for context:]\n\(context)"
+        return request + Self.delegationContextMarker + context
     }
 
     private func sendJobStatus() {

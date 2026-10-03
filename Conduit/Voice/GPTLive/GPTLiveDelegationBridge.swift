@@ -36,9 +36,17 @@ final class GPTLiveDelegationBridge {
     private(set) var isEnding = false
     /// Bumped whenever the call is replaced.
     private var callGeneration: UInt64 = 0
+    /// When the chat's last reply was last sent to be read out. The user's
+    /// own words and the model's delegation can both ask for one read-back.
+    private var lastReadBackAt: Date?
+    private let now: () -> Date
 
-    init(supervisor: GeminiLiveJobSupervising) {
+    /// A second request for the last reply within this long is the same one.
+    static let readBackWindow: TimeInterval = 10
+
+    init(supervisor: GeminiLiveJobSupervising, now: @escaping () -> Date = Date.init) {
         self.supervisor = supervisor
+        self.now = now
     }
 
     var openDelegationCount: Int { openDelegations.count }
@@ -58,9 +66,18 @@ final class GPTLiveDelegationBridge {
         let task = VoiceThreadRouting.removingQuickMarker(instructions)
         // Attached to a chat: hearing the last reply reads it, quick or
         // background work is a job, and anything else is the chat's next turn.
-        if supervisor.liveThread != nil, VoiceThreadRouting.wantsLastReply(task) {
+        // Routed on the delegation's own words, not the conversation added
+        // for context (which would end with whatever was said last).
+        let ownWords = task.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? task
+        if supervisor.liveThread != nil, VoiceThreadRouting.wantsLastReply(ownWords) {
+            if readBackIsRecent {
+                return [.delegationReply(delegationID: id, text: Self.readBackAlreadySent, channel: .commentary)]
+            }
+            lastReadBackAt = now()
             let reply = await supervisor.lastThreadReply()
             guard callGeneration == call, !isEnding else { return [] }
+            // Nothing read yet: asking again isn't a duplicate.
+            if reply == nil { lastReadBackAt = nil }
             let text = reply.map(Self.lastReplyText) ?? Self.relay("Hermes hasn't replied in this chat yet.")
             return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
         }
@@ -111,12 +128,43 @@ final class GPTLiveDelegationBridge {
         return outgoing + settleOpenDelegations()
     }
 
+    /// The user asked to hear the chat's last reply (#290): sent to be read
+    /// out whether or not the model delegates, so a reply it answers from
+    /// memory is followed by Hermes' own words. Nothing when the model's
+    /// delegation already asked for it.
+    func userAskedForLastReply() async -> [Outgoing] {
+        guard supervisor.liveThread != nil, !isEnding, !readBackIsRecent else { return [] }
+        lastReadBackAt = now()
+        let call = callGeneration
+        let reply = await supervisor.lastThreadReply()
+        guard callGeneration == call, !isEnding else { return [] }
+        if reply == nil { lastReadBackAt = nil }
+        let text = reply.map(Self.lastReplyText) ?? Self.relay("Hermes hasn't replied in this chat yet.")
+        return [.sessionContext(text: text, channel: .speakable, whenIdle: false, jobID: nil)]
+    }
+
+    /// The read-back never reached the model (the call wasn't ready): a
+    /// retry must go out.
+    func readBackNotDelivered() {
+        lastReadBackAt = nil
+    }
+
+    private var readBackIsRecent: Bool {
+        guard let lastReadBackAt else { return false }
+        let elapsed = now().timeIntervalSince(lastReadBackAt)
+        return elapsed >= 0 && elapsed < Self.readBackWindow
+    }
+
+    /// Not UI copy.
+    static let readBackAlreadySent = "Conduit already sent Hermes' latest reply in the chat for this request. Read that word for word; don't answer from memory or read it twice."
+
     /// The call ended or was replaced: open delegations can no longer be
     /// answered, so their outcomes go out as session context later.
     func connectionReplaced() {
         callGeneration &+= 1
         openDelegations.removeAll()
         seenDelegations.removeAll()
+        lastReadBackAt = nil
         isEnding = false
     }
 
