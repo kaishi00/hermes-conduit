@@ -375,6 +375,42 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(samples, [0, 0.5, -1, Float(32_767) / 32_768])
     }
 
+    // MARK: - Teardown of a graph that never rendered
+
+    // Every Voice teardown (server switch, disconnect, Close) stops capture
+    // and playback whether or not they ever ran. On a hosted simulator a
+    // stalled audio server turns any CoreAudio call there into a process
+    // abort ("AURemoteIO: RPC timeout. Apparently deadlocked."), which took
+    // down AppStateMultiDashboardTests mid-run.
+
+    func testStoppingCaptureThatNeverStartedNeverReachesCoreAudio() {
+        let probe = AudioEngineProbe()
+        let service = AVAudioCaptureService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: { SystemVoiceCaptureEngine(engine: probe) }
+        )
+
+        service.stop()
+        service.stop()
+
+        XCTAssertEqual(probe.ioNodeReads, 0, "stop must not build the input I/O unit")
+        XCTAssertEqual(probe.stops, 0, "an engine that never rendered is not stopped")
+    }
+
+    func testStoppingPlaybackThatNeverStartedNeverReachesCoreAudio() {
+        let probe = AudioEngineProbe()
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: { probe }
+        )
+
+        service.stop()
+        service.stop()
+
+        XCTAssertEqual(probe.ioNodeReads, 0, "stop must not build the output I/O unit")
+        XCTAssertEqual(probe.stops, 0, "an engine that never rendered is not stopped")
+    }
+
     // MARK: - Playback drain watchdog
 
     func testDrainSettlesWhenRenderingDiesWithoutANotification() async {
@@ -462,12 +498,44 @@ private final class FormatRejectingEngine: AVAudioEngine {
         super.init()
     }
 
+    /// No-op: the real prepare initializes the output AURemoteIO through the
+    /// audio server, and on a hosted simulator a stalled server makes
+    /// CoreAudio abort the test process ("Initialize: RPC timeout").
+    override func prepare() {}
+
     override func start() throws {
         onStart()
         throw NSError(
             domain: "com.apple.coreaudio.avfaudio",
             code: VoiceAudioEngineRecovery.formatNotSupported
         )
+    }
+}
+
+/// Records every access that would reach CoreAudio: building the input or
+/// output I/O unit, and stopping the engine.
+private final class AudioEngineProbe: AVAudioEngine {
+    private(set) var ioNodeReads = 0
+    private(set) var stops = 0
+
+    override var inputNode: AVAudioInputNode {
+        ioNodeReads += 1
+        return super.inputNode
+    }
+
+    override var outputNode: AVAudioOutputNode {
+        ioNodeReads += 1
+        return super.outputNode
+    }
+
+    override var mainMixerNode: AVAudioMixerNode {
+        ioNodeReads += 1
+        return super.mainMixerNode
+    }
+
+    override func stop() {
+        stops += 1
+        super.stop()
     }
 }
 

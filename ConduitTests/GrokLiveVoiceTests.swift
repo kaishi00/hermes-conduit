@@ -187,7 +187,10 @@ extension VoiceConversationControllerTests {
                 sockets.append(socket)
                 return socket
             },
-            reconnectDelay: { _ in }
+            // MainActor, like the rest of the session: a nonisolated delay hops to
+            // the cooperative pool and back, which a fixed `grokSettle` count does not
+            // always cover on a loaded runner.
+            reconnectDelay: { @MainActor _ in }
         )
         return (session, { sockets })
     }
@@ -273,7 +276,7 @@ extension VoiceConversationControllerTests {
                 return socket
             },
             setupTimeout: .zero,
-            reconnectDelay: { _ in }
+            reconnectDelay: { @MainActor _ in }
         )
         session.start()
         for _ in 0..<50 {
@@ -347,7 +350,7 @@ extension VoiceConversationControllerTests {
                 return socket
             },
             responseTimeout: .zero,
-            reconnectDelay: { _ in }
+            reconnectDelay: { @MainActor _ in }
         )
         session.start()
         await grokSettle()

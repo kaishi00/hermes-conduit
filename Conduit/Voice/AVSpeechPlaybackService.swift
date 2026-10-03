@@ -15,6 +15,12 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// output format and fails with -10868 as the assistant begins to speak.
     private var engine: AVAudioEngine
     private var player: AVAudioPlayerNode
+    /// Whether the current engine's graph was connected or started. An
+    /// untouched engine is never stopped: stopping reaches CoreAudio, and
+    /// every Voice teardown stops this service whether or not it ever
+    /// played. When the audio server stalls, CoreAudio aborts the whole
+    /// process ("AURemoteIO: RPC timeout. Apparently deadlocked.").
+    private var engineHasGraph = false
     private let makeEngine: () -> AVAudioEngine
     private var format: AVAudioFormat?
     private var remainder = Data()
@@ -112,6 +118,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
                 rebuild: { rebuildEngine() },
                 reassert: { try coordinator.reassert() },
                 start: {
+                    engineHasGraph = true
                     if stretched {
                         let timePitch = AVAudioUnitTimePitch()
                         timePitch.rate = rate
@@ -246,10 +253,13 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     func stop() {
         playbackGeneration &+= 1
         isFinishing = false
-        player.stop()
+        if engineHasGraph {
+            player.stop()
+            engine.stop()
+            engineHasGraph = false
+        }
         encodedPlayer?.stop()
         encodedPlayer = nil
-        engine.stop()
         format = nil
         remainder.removeAll(keepingCapacity: true)
         pendingBuffers = 0
@@ -264,8 +274,11 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// Replaces the engine and player with fresh instances so the new graph
     /// is built against the session's current hardware format.
     private func rebuildEngine() {
-        player.stop()
-        engine.stop()
+        if engineHasGraph {
+            player.stop()
+            engine.stop()
+            engineHasGraph = false
+        }
         engine = makeEngine()
         player = AVAudioPlayerNode()
         engine.attach(player)
