@@ -29,6 +29,15 @@ a job. At most three jobs run at once.
   finishes, its full final reply over the call, with **Open chat** to leave
   for the job's chat. The reply is already on the phone, so nothing is
   written to the host mid-call (mid-call saves stalled Gemini Live, PR #281).
+- Gemini Live and Grok Live also have a `show_on_screen` tool (title and
+  Markdown) for anything better seen than heard: tables, Mermaid charts
+  (`xychart-beta`, `pie`), steps, image and web links. The card opens over
+  the call as it arrives, rendered like a chat reply, and stays in the
+  transcript panel where it was shown; the model says it's on screen and
+  gives the gist. Cards live only on the phone, for the call (the last 20,
+  each up to 20,000 characters), and are not part of the saved call.
+  Pictures depend on the model finding a direct image URL. GPT-Live has no
+  screen tool yet.
 - A saved live call gets a line where it started the job ("Started a
   background job: <title>.") with an **Open job** link to the job's chat, so
   the full result is a tap away even when the voice model only summarized it.

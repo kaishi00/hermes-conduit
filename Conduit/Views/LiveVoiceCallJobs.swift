@@ -2,11 +2,11 @@
 //  LiveVoiceCallJobs.swift
 //  Conduit
 //
-//  The jobs a live call starts, on the call screen: the latest one above
-//  the captions, each one in the transcript where it started, and its full
-//  result in a sheet over the call. The voice model only reads a summary
-//  aloud; the result is already on the phone, so nothing is written to the
-//  host mid-call.
+//  The jobs a live call starts and what its voice model puts on screen, on
+//  the call screen: the latest one above the captions, each one in the
+//  transcript where it started, and its full content in a sheet over the
+//  call. The voice model only reads a summary aloud; the content is already
+//  on the phone, so nothing is written to the host mid-call.
 //
 
 import SwiftUI
@@ -87,20 +87,27 @@ struct LiveVoiceJobCard: View {
     }
 }
 
-/// The latest job of the call, above the captions, with how many more
-/// there are. Observes the jobs itself so their progress doesn't redraw
-/// the whole call.
+/// The newest job or screen card of the call, above the captions, with how
+/// many more there are. Observes the jobs itself so their progress doesn't
+/// redraw the whole call.
 struct LiveVoiceCallJobStrip: View {
     @ObservedObject var jobs: VoiceBackgroundJobSupervisor
-    let onSelect: (UUID) -> Void
+    let onSelectJob: (UUID) -> Void
+    let onSelectScreen: (VoiceScreenCard) -> Void
 
     var body: some View {
         let callJobs = jobs.callJobs(jobs.liveCallID)
-        if let latest = callJobs.last {
+        let cards = jobs.callScreenCards(jobs.liveCallID)
+        let count = callJobs.count + cards.count
+        if count > 0 {
             VStack(spacing: 6) {
-                LiveVoiceJobCard(job: latest) { onSelect(latest.id) }
-                if callJobs.count > 1 {
-                    Text("\(callJobs.count - 1) more in the transcript")
+                if let card = cards.last, card.shownAt >= (callJobs.last?.startedAt ?? .distantPast) {
+                    LiveVoiceScreenCardRow(card: card) { onSelectScreen(card) }
+                } else if let latest = callJobs.last {
+                    LiveVoiceJobCard(job: latest) { onSelectJob(latest.id) }
+                }
+                if count > 1 {
+                    Text("\(count - 1) more in the transcript")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -110,27 +117,84 @@ struct LiveVoiceCallJobStrip: View {
     }
 }
 
-/// The call's transcript with each job placed where it started.
+/// A card the voice model put on screen, as a row to open it again.
+struct LiveVoiceScreenCardRow: View {
+    let card: VoiceScreenCard
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 10) {
+                Image(systemName: "rectangle.on.rectangle")
+                    .foregroundStyle(Color.conduitAccent)
+                    .frame(width: 22, height: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: Self.title(for: card))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text("On screen")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .conduitGlassControl(cornerRadius: 16)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: Self.title(for: card)))
+        .accessibilityHint(Text("Shows it again"))
+        .accessibilityAddTraits(.isButton)
+    }
+
+    static func title(for card: VoiceScreenCard) -> String {
+        card.title.isEmpty ? AppLocalization.string("On screen") : card.title
+    }
+}
+
+/// One row of a live call's transcript panel.
+enum LiveVoiceCallItem: Identifiable, Equatable {
+    case line(VoiceConversationTranscriptEntry)
+    case job(VoiceBackgroundJob)
+    case screen(VoiceScreenCard)
+
+    var id: UUID {
+        switch self {
+        case .line(let entry): return entry.id
+        case .job(let job): return job.id
+        case .screen(let card): return card.id
+        }
+    }
+}
+
+/// The call's transcript with each job and screen card placed where it
+/// started.
 struct LiveVoiceCallTimeline<Line: View>: View {
     let transcript: [VoiceConversationTranscriptEntry]
     @ObservedObject var jobs: VoiceBackgroundJobSupervisor
     let line: (VoiceConversationTranscriptEntry) -> Line
     let onSelectJob: (UUID) -> Void
+    let onSelectScreen: (VoiceScreenCard) -> Void
 
-    enum Item: Identifiable, Equatable {
-        case line(VoiceConversationTranscriptEntry)
-        case job(VoiceBackgroundJob)
-
-        var id: UUID {
-            switch self {
-            case .line(let entry): return entry.id
-            case .job(let job): return job.id
-            }
-        }
-    }
+    typealias Item = LiveVoiceCallItem
 
     var body: some View {
-        ForEach(Self.items(transcript: transcript, jobs: jobs.callJobs(jobs.liveCallID))) { item in
+        let items = Self.items(
+            transcript: transcript,
+            jobs: jobs.callJobs(jobs.liveCallID),
+            screens: jobs.callScreenCards(jobs.liveCallID)
+        )
+        ForEach(items) { item in
             switch item {
             case .line(let entry):
                 line(entry)
@@ -138,49 +202,101 @@ struct LiveVoiceCallTimeline<Line: View>: View {
                 LiveVoiceJobCard(job: job) { onSelectJob(job.id) }
                     .frame(maxWidth: 320, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            case .screen(let card):
+                LiveVoiceScreenCardRow(card: card) { onSelectScreen(card) }
+                    .frame(maxWidth: 320, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 
-    /// Lines in order, each job after the line it started after (by id,
-    /// else by count); a job anchored past the end goes last.
-    static func items(transcript: [VoiceConversationTranscriptEntry], jobs: [VoiceBackgroundJob]) -> [Item] {
+    /// Lines in order, each job or card after the line it started after
+    /// (by id, else by count), earlier ones first; one anchored past the
+    /// end goes last.
+    static func items(
+        transcript: [VoiceConversationTranscriptEntry],
+        jobs: [VoiceBackgroundJob],
+        screens: [VoiceScreenCard] = []
+    ) -> [Item] {
         var positions: [UUID: Int] = [:]
         for (index, entry) in transcript.enumerated() where positions[entry.id] == nil {
             positions[entry.id] = index
         }
-        var placed: [LiveVoiceTimelinePlacement] = []
-        for (order, job) in jobs.enumerated() {
-            var position = job.callAnchor?.transcriptIndex ?? 0
-            if let after = job.callAnchor?.afterEntryID, let index = positions[after] {
-                position = index + 1
+        func position(of anchor: VoiceJobCallAnchor?) -> Int {
+            if let after = anchor?.afterEntryID, let index = positions[after] {
+                return index + 1
             }
-            placed.append(LiveVoiceTimelinePlacement(order: order, job: job, position: position))
+            return anchor?.transcriptIndex ?? 0
         }
-        placed.sort { lhs, rhs in
-            lhs.position == rhs.position ? lhs.order < rhs.order : lhs.position < rhs.position
+        var placed: [LiveVoiceTimelinePlacement] = []
+        for job in jobs {
+            placed.append(LiveVoiceTimelinePlacement(
+                order: placed.count, item: .job(job), position: position(of: job.callAnchor), time: job.startedAt
+            ))
         }
+        for card in screens {
+            placed.append(LiveVoiceTimelinePlacement(
+                order: placed.count, item: .screen(card), position: position(of: card.callAnchor), time: card.shownAt
+            ))
+        }
+        placed.sort(by: LiveVoiceTimelinePlacement.precedes)
         var items: [Item] = []
         var next = 0
         for (index, entry) in transcript.enumerated() {
             while next < placed.count, placed[next].position <= index {
-                items.append(.job(placed[next].job))
+                items.append(placed[next].item)
                 next += 1
             }
             items.append(.line(entry))
         }
         for remaining in placed[next...] {
-            items.append(.job(remaining.job))
+            items.append(remaining.item)
         }
         return items
     }
 }
 
-/// A job and the transcript position it goes before.
+/// A job or card and the transcript position it goes before.
 private struct LiveVoiceTimelinePlacement {
     let order: Int
-    let job: VoiceBackgroundJob
+    let item: LiveVoiceCallItem
     let position: Int
+    let time: Date
+
+    static func precedes(_ lhs: Self, _ rhs: Self) -> Bool {
+        if lhs.position != rhs.position { return lhs.position < rhs.position }
+        if lhs.time != rhs.time { return lhs.time < rhs.time }
+        return lhs.order < rhs.order
+    }
+}
+
+/// What the voice model put on screen, over the call.
+struct LiveVoiceScreenCardSheet: View {
+    let card: VoiceScreenCard
+
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                // Hermes' own images (MEDIA: paths) load through the gateway.
+                let profile = appState.activeProfile
+                MarkdownText(source: card.markdown, gatewayMediaDataURL: { path in
+                    await appState.gatewayMediaDataURL(for: path, profile: profile)
+                })
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .navigationTitle(LiveVoiceScreenCardRow.title(for: card))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
 }
 
 /// A job's full result over the call. Follows the job, so it fills in when

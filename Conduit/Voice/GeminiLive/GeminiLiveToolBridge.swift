@@ -41,6 +41,8 @@ protocol GeminiLiveJobSupervising: AnyObject {
     var liveThread: VoiceThreadTarget? { get }
     func startThreadTurn(request: String) -> (jobID: UUID?, refusal: String?)
     func lastThreadReply() async -> String?
+    @discardableResult
+    func showOnScreen(title: String, markdown: String) -> VoiceScreenCard?
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -56,6 +58,7 @@ final class GeminiLiveToolBridge {
         case endConversation = "end_conversation"
         case askThread = "ask_thread"
         case readLastReply = "read_last_reply"
+        case showOnScreen = "show_on_screen"
     }
 
     /// What the bridge asks the session to send.
@@ -109,6 +112,26 @@ final class GeminiLiveToolBridge {
             behavior: .nonBlocking
         ),
     ]
+
+    static let showOnScreenDeclaration = GeminiLiveProtocol.FunctionDeclaration(
+        name: Tool.showOnScreen.rawValue,
+        description: "Show something on the user's phone screen during the call. Use it for anything better seen than heard: charts, tables, forecasts, recipes and other step-by-step instructions, lists, comparisons, images and links, and whenever the user asks to see, show or chart something. Write Markdown: tables for data, numbered lists for steps, ```mermaid blocks for charts (xychart-beta for bar and line charts, pie for shares), ![description](url) for images using only direct image URLs you actually found, and [title](url) for links. Then tell the user in a sentence that it's on their screen and give the gist; don't read it out.",
+        parameters: [
+            "type": "OBJECT",
+            "properties": [
+                "title": [
+                    "type": "STRING",
+                    "description": "A short heading, a few words.",
+                ],
+                "markdown": [
+                    "type": "STRING",
+                    "description": "What to show, as Markdown.",
+                ],
+            ],
+            "required": ["title", "markdown"],
+        ],
+        behavior: .blocking
+    )
 
     static let recallMemoryDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.recallMemory.rawValue,
@@ -182,6 +205,7 @@ final class GeminiLiveToolBridge {
             ],
             behavior: .blocking
         ),
+        showOnScreenDeclaration,
         .init(
             name: Tool.endConversation.rawValue,
             description: "End this voice conversation and close it. Call only when the user says goodbye or asks to end, hang up, or close the conversation, after you have said a short goodbye. Background jobs keep running on Hermes.",
@@ -291,6 +315,18 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "Hermes hasn't replied in this chat yet."], scheduling: .whenIdle)]
             }
             return [.toolResponse(id: call.id, name: call.name, result: ["reply": Self.clipped(reply)], scheduling: .whenIdle)]
+        case .showOnScreen:
+            let markdown = call.arguments["markdown"] ?? ""
+            guard supervisor.showOnScreen(title: call.arguments["title"] ?? "", markdown: markdown) != nil else {
+                let reason = markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "markdown is required"
+                    : "The screen isn't available right now; tell the user instead."
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": reason], scheduling: nil)]
+            }
+            return [.toolResponse(id: call.id, name: call.name, result: [
+                "status": "shown",
+                "message": "It's on the user's screen. Say so in a sentence and give the gist; don't read it out.",
+            ], scheduling: nil)]
         case .listJobs:
             return [.toolResponse(id: call.id, name: call.name, result: listResult(), scheduling: nil)]
         case .cancelJob:

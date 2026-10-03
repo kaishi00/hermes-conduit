@@ -155,6 +155,16 @@ struct VoiceJobCallAnchor: Equatable {
     var afterEntryID: UUID? = nil
 }
 
+/// Something a live voice model put on the call screen (its
+/// `show_on_screen` tool): a chart, a table, steps, images, as Markdown.
+struct VoiceScreenCard: Identifiable, Equatable {
+    let id: UUID
+    let title: String
+    let markdown: String
+    let callAnchor: VoiceJobCallAnchor
+    let shownAt: Date
+}
+
 /// What the voice conversation should do with a pending job update.
 enum VoiceBackgroundJobNotice: Equatable {
     /// Speak a fixed notice locally; no Hermes turn is involved.
@@ -270,6 +280,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The running (or last) live call; jobs it starts carry it, so the
     /// call screen shows only its own jobs.
     @Published private(set) var liveCallID: UUID?
+    /// What live calls put on screen, newest last.
+    @Published private(set) var screenCards: [VoiceScreenCard] = []
+    /// Screen cards kept, across calls.
+    static let maximumScreenCards = 20
+    static let maximumScreenCardCharacters = 20_000
 
     private let backend: VoiceBackgroundJobBackend
     private let pollInterval: Duration
@@ -302,6 +317,33 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func callJobs(_ callID: UUID?) -> [VoiceBackgroundJob] {
         guard let callID else { return [] }
         return jobs.filter { $0.callAnchor?.callID == callID }
+    }
+
+    /// The cards the live call `callID` put on screen, in order.
+    func callScreenCards(_ callID: UUID?) -> [VoiceScreenCard] {
+        guard let callID else { return [] }
+        return screenCards.filter { $0.callAnchor.callID == callID }
+    }
+
+    /// Puts `markdown` on the running live call's screen. Nil when no live
+    /// call is running or there is nothing to show.
+    @discardableResult
+    func showOnScreen(title: String, markdown: String) -> VoiceScreenCard? {
+        let body = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty, let anchor = currentCallAnchor else { return nil }
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let card = VoiceScreenCard(
+            id: UUID(),
+            title: String(trimmedTitle.prefix(Self.maximumTitleCharacters)),
+            markdown: String(body.prefix(Self.maximumScreenCardCharacters)),
+            callAnchor: anchor,
+            shownAt: Date()
+        )
+        screenCards.append(card)
+        if screenCards.count > Self.maximumScreenCards {
+            screenCards.removeFirst(screenCards.count - Self.maximumScreenCards)
+        }
+        return card
     }
 
     private var currentCallAnchor: VoiceJobCallAnchor? {
@@ -831,6 +873,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         noticesInFlight.removeAll()
         liveThread = nil
         liveCallID = nil
+        screenCards.removeAll()
         threadTargets.removeAll()
     }
 
