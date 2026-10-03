@@ -88,9 +88,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// Transcript text a delegation hands Hermes as context.
     static let delegationContextCharacters = 4_000
 
-    @Published private(set) var phase: Phase = .idle
+    @Published private(set) var phase: Phase = .idle { didSet { syncHeadsetMute() } }
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
-    @Published private(set) var isMicrophoneMuted = false
+    @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
     /// Why the chosen voice isn't the one speaking, when the host didn't use it.
     @Published private(set) var voiceNote: String?
 
@@ -122,6 +122,7 @@ final class GPTLiveConversationController: ObservableObject {
     private let requestPermission: @MainActor () async -> Bool
     private let now: () -> Date
     private let endConversationPhrases: @MainActor () -> [String]
+    private let headsetMute: HeadsetMicrophoneMute
     /// Closes the conversation's surface once a hands-free end finishes.
     var onEndConversation: (@MainActor () -> Void)?
 
@@ -155,7 +156,8 @@ final class GPTLiveConversationController: ObservableObject {
         supervisor: GeminiLiveJobSupervising,
         requestPermission: @escaping @MainActor () async -> Bool = { await AVAudioApplication.requestRecordPermission() },
         now: @escaping () -> Date = Date.init,
-        endConversationPhrases: @escaping @MainActor () -> [String] = { [] }
+        endConversationPhrases: @escaping @MainActor () -> [String] = { [] },
+        headsetMute: HeadsetMicrophoneMute = .shared
     ) {
         self.makeSession = makeSession
         self.availability = availability
@@ -165,6 +167,7 @@ final class GPTLiveConversationController: ObservableObject {
         self.requestPermission = requestPermission
         self.now = now
         self.endConversationPhrases = endConversationPhrases
+        self.headsetMute = headsetMute
     }
 
     // MARK: Lifecycle
@@ -174,11 +177,13 @@ final class GPTLiveConversationController: ObservableObject {
     /// voice mode (or to API billing) on its own.
     func start() async {
         guard !isActive else { return }
-        phase = .connecting
-        transcript = []
         // A mute belongs to the call it was set in: a new call (one started
         // from CarPlay, which has no mute control, included) is heard.
+        // Cleared before the call goes active so the headset mute starts
+        // the call unmuted too.
         isMicrophoneMuted = false
+        phase = .connecting
+        transcript = []
         voiceNote = nil
         finishedTurn = nil
         endTask?.cancel()
@@ -241,6 +246,18 @@ final class GPTLiveConversationController: ObservableObject {
         isMicrophoneMuted = muted
         guard endRequestedAt == nil else { return }
         session?.setMicrophoneEnabled(!muted)
+    }
+
+    /// Keeps the AirPods / headset mute gesture (#331) pointed at this
+    /// call while it is active, mirroring the on-screen mute to the system.
+    private func syncHeadsetMute() {
+        if isActive {
+            headsetMute.claim(by: self, muted: isMicrophoneMuted) { [weak self] muted in
+                self?.setMicrophoneMuted(muted)
+            }
+        } else {
+            headsetMute.release(by: self)
+        }
     }
 
     /// Background-job updates became pending (the supervisor's

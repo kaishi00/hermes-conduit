@@ -106,6 +106,27 @@ final class FakeGeminiLiveSocket: GeminiLiveSocket {
     }
 }
 
+/// The system input mute (AirPods / headset gesture) without AVFAudio.
+@MainActor
+final class FakeSystemInputMute: SystemInputMuteControlling {
+    private(set) var handler: (@MainActor (Bool) -> Void)?
+    private(set) var muted = false
+
+    func observeInputMute(_ handler: (@MainActor (Bool) -> Void)?) {
+        self.handler = handler
+    }
+
+    func setInputMuted(_ muted: Bool) throws {
+        self.muted = muted
+    }
+
+    /// The user pressing the headset's mute control.
+    func press(muted: Bool) {
+        self.muted = muted
+        handler?(muted)
+    }
+}
+
 @MainActor
 final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     var onEvent: (@MainActor (GeminiLiveProtocol.ServerEvent) -> Void)?
@@ -723,6 +744,7 @@ extension VoiceConversationControllerTests {
         route: VoiceBargeInRoutePolicy = .fullDuplex,
         endPhrases: [String] = [],
         webSearch: GeminiLiveWebSearching? = nil,
+        headsetMute: HeadsetMicrophoneMute = HeadsetMicrophoneMute(system: FakeSystemInputMute()),
         clock: @escaping () -> Date
     ) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl, FakeGeminiLiveInput, FakeGeminiLiveOutput, VoiceBackgroundJobSupervisor) {
         let tokens = providedTokens ?? FakeGeminiLiveTokens()
@@ -738,7 +760,8 @@ extension VoiceConversationControllerTests {
             output: output,
             now: clock,
             routePolicy: { route },
-            endConversationPhrases: { endPhrases }
+            endConversationPhrases: { endPhrases },
+            headsetMute: headsetMute
         )
         return (controller, session, input, output, supervisor)
     }
@@ -819,6 +842,52 @@ extension VoiceConversationControllerTests {
         input.onChunk?(Data([1, 2]))
         XCTAssertEqual(session.sent.count, 2, "Muted audio is never sent")
         controller.stop()
+    }
+
+    func testGeminiLiveHeadsetMuteGestureTogglesTheMicrophone() async {
+        let system = FakeSystemInputMute()
+        let (controller, session, input, _, _) = makeGeminiController(headsetMute: HeadsetMicrophoneMute(system: system), clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        XCTAssertTrue(input.running)
+
+        system.press(muted: true)
+        XCTAssertTrue(controller.isMicrophoneMuted)
+        XCTAssertFalse(input.running)
+        system.press(muted: false)
+        XCTAssertFalse(controller.isMicrophoneMuted)
+        XCTAssertTrue(input.running)
+
+        // A failed call lets go of the headset mute as well as a stopped one.
+        controller.setMicrophoneMuted(true)
+        session.onStateChange?(.failed("Connection lost"))
+        XCTAssertFalse(controller.isActive)
+        XCTAssertNil(system.handler)
+        XCTAssertEqual(system.muted, false)
+        controller.stop()
+    }
+
+    func testHeadsetMuteOnlyFollowsTheCallThatOwnsIt() {
+        let system = FakeSystemInputMute()
+        let headsetMute = HeadsetMicrophoneMute(system: system)
+        let first = NSObject(), second = NSObject()
+        var firstChanges: [Bool] = [], secondChanges: [Bool] = []
+        headsetMute.claim(by: first, muted: false) { firstChanges.append($0) }
+        headsetMute.claim(by: second, muted: true) { secondChanges.append($0) }
+        XCTAssertEqual(system.muted, true)
+
+        // The older call going idle can't take the newer call's handler.
+        headsetMute.release(by: first)
+        XCTAssertNotNil(system.handler)
+        XCTAssertEqual(system.muted, true)
+
+        system.handler?(false)
+        XCTAssertEqual(firstChanges, [])
+        XCTAssertEqual(secondChanges, [false])
+
+        headsetMute.release(by: second)
+        XCTAssertNil(system.handler)
+        XCTAssertEqual(system.muted, false)
     }
 }
 

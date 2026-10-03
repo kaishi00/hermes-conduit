@@ -616,6 +616,7 @@ extension VoiceConversationControllerTests {
         client providedClient: FakeGPTLiveClient? = nil,
         endPhrases: [String] = [],
         permission: Bool = true,
+        headsetMute: HeadsetMicrophoneMute = HeadsetMicrophoneMute(system: FakeSystemInputMute()),
         clock: @escaping () -> Date
     ) -> (GPTLiveConversationController, FakeGPTLiveSessionControl, VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
         let client = providedClient ?? FakeGPTLiveClient()
@@ -629,7 +630,8 @@ extension VoiceConversationControllerTests {
             supervisor: supervisor,
             requestPermission: { permission },
             now: clock,
-            endConversationPhrases: { endPhrases }
+            endConversationPhrases: { endPhrases },
+            headsetMute: headsetMute
         )
         return (controller, session, supervisor, fake)
     }
@@ -714,6 +716,33 @@ extension VoiceConversationControllerTests {
         controller.stop()
         XCTAssertEqual(session.stopped, 1)
         XCTAssertEqual(controller.phase, .idle)
+    }
+
+    func testGPTLiveHeadsetMuteGestureTogglesTheCallMicrophone() async {
+        let system = FakeSystemInputMute()
+        let (controller, session, _, _) = makeGPTController(headsetMute: HeadsetMicrophoneMute(system: system), clock: Date.init)
+        XCTAssertNil(system.handler, "No call, no headset mute")
+        await controller.start()
+        session.becomeReady()
+        XCTAssertNotNil(system.handler)
+        XCTAssertEqual(system.muted, false)
+
+        // AirPods stem press: the call mutes like the on-screen button.
+        system.press(muted: true)
+        XCTAssertTrue(controller.isMicrophoneMuted)
+        XCTAssertEqual(session.microphoneEnabled, false)
+        system.press(muted: false)
+        XCTAssertFalse(controller.isMicrophoneMuted)
+        XCTAssertEqual(session.microphoneEnabled, true)
+
+        // The on-screen button keeps the system in step for the next press.
+        controller.setMicrophoneMuted(true)
+        XCTAssertEqual(system.muted, true)
+
+        // The call ending hands the system mute back, unmuted.
+        controller.stop()
+        XCTAssertNil(system.handler)
+        XCTAssertEqual(system.muted, false)
     }
 
     func testGPTLiveDelegationWithoutTextHandsHermesTheUsersWords() async {

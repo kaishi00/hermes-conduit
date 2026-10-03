@@ -219,9 +219,9 @@ final class GeminiLiveConversationController: ObservableObject {
     /// gives the model this long to start its own goodbye before closing.
     static let endReplyGrace: TimeInterval = 2.5
 
-    @Published private(set) var phase: Phase = .idle
+    @Published private(set) var phase: Phase = .idle { didSet { syncHeadsetMute() } }
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
-    @Published private(set) var isMicrophoneMuted = false
+    @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
 
     /// A transcript line that just finished, with its final text: what
     /// VoiceOver announces (the streamed fragments before it aren't).
@@ -248,6 +248,7 @@ final class GeminiLiveConversationController: ObservableObject {
     private let routePolicy: @MainActor () -> VoiceBargeInRoutePolicy
     /// The profile's spoken end phrases ("goodbye", "that's all"…).
     private let endConversationPhrases: @MainActor () -> [String]
+    private let headsetMute: HeadsetMicrophoneMute
     /// Closes the conversation's surface once a hands-free end finishes.
     /// Without one the controller just stops.
     var onEndConversation: (@MainActor () -> Void)?
@@ -303,7 +304,8 @@ final class GeminiLiveConversationController: ObservableObject {
         output: GeminiLiveAudioOutput,
         now: @escaping () -> Date = Date.init,
         routePolicy: @escaping @MainActor () -> VoiceBargeInRoutePolicy = { VoiceBargeInRoutePolicy.current() },
-        endConversationPhrases: @escaping @MainActor () -> [String] = { [] }
+        endConversationPhrases: @escaping @MainActor () -> [String] = { [] },
+        headsetMute: HeadsetMicrophoneMute = .shared
     ) {
         self.makeSession = makeSession
         self.availability = availability
@@ -313,6 +315,7 @@ final class GeminiLiveConversationController: ObservableObject {
         self.now = now
         self.routePolicy = routePolicy
         self.endConversationPhrases = endConversationPhrases
+        self.headsetMute = headsetMute
     }
 
     /// The Interrupt button: stop the model now. On an open speaker this is
@@ -336,12 +339,14 @@ final class GeminiLiveConversationController: ObservableObject {
     /// another voice mode on its own.
     func start() async {
         guard !isActive else { return }
+        // A mute belongs to the conversation it was set in: a new one (one
+        // started from CarPlay, which has no mute control, included) is heard.
+        // Cleared before the call goes active so the headset mute starts
+        // the call unmuted too.
+        isMicrophoneMuted = false
         phase = .connecting
         transcript = []
         finishedTurn = nil
-        // A mute belongs to the conversation it was set in: a new one (one
-        // started from CarPlay, which has no mute control, included) is heard.
-        isMicrophoneMuted = false
         // A retry after a failure mid-goodbye starts clean: the old end
         // must not close this conversation or keep its microphone shut.
         endTask?.cancel()
@@ -442,6 +447,18 @@ final class GeminiLiveConversationController: ObservableObject {
             if session?.isReady == true { session?.send(.audioStreamEnd) }
         } else if session?.isReady == true {
             startInput()
+        }
+    }
+
+    /// Keeps the AirPods / headset mute gesture (#331) pointed at this
+    /// call while it is active, mirroring the on-screen mute to the system.
+    private func syncHeadsetMute() {
+        if isActive {
+            headsetMute.claim(by: self, muted: isMicrophoneMuted) { [weak self] muted in
+                self?.setMicrophoneMuted(muted)
+            }
+        } else {
+            headsetMute.release(by: self)
         }
     }
 
