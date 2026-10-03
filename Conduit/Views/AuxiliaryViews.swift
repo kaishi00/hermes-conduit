@@ -974,6 +974,7 @@ struct ChatSettingsDetail: View {
                 VStack(spacing: 14) {
                     ChatTextSizeSettings()
                     ComposerReturnKeySettings()
+                    AttachmentLimitSettings()
                     ChatTakeoverSettings()
                     DeviceHapticsSettings()
                 }
@@ -1072,6 +1073,41 @@ private struct ComposerReturnKeySettings: View {
             Toggle("Return key sends", isOn: $returnKeySends)
                 .tint(.conduitAccent)
                 .accessibilityHint("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged.")
+        }
+    }
+}
+
+/// Device-only cap on files staged in the composer (#334). Mirrors Hermes
+/// Desktop: 16 MB by default, up to the 256 MB the Hermes host accepts.
+private struct AttachmentLimitSettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @AppStorage(AttachmentSizeLimit.preferenceKey) private var megabytes = AttachmentSizeLimit.defaultMegabytes
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("Attachments"),
+            symbol: "paperclip",
+            tint: .conduitAura
+        ) {
+            Text("Photos, videos and files larger than this are not attached.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Picker("Maximum file size", selection: $megabytes) {
+                ForEach(AttachmentSizeLimit.choices, id: \.self) { value in
+                    Text(verbatim: "\(value) MB").tag(value)
+                }
+            }
+            .tint(.conduitAccent)
+            if AttachmentSizeLimit.isRisky(megabytes: megabytes) {
+                Label {
+                    Text("Large files are held in memory while they upload. A high limit may make Conduit freeze or crash.")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
         }
     }
 }

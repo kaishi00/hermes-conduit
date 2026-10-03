@@ -91,6 +91,7 @@ struct Attachment: Codable, Identifiable, Equatable {
 
     enum Kind: String, Codable {
         case image
+        case video
         case document
     }
 }

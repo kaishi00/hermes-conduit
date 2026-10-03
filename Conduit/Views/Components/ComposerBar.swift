@@ -20,7 +20,7 @@ struct ComposerBar: View {
     @State private var composerTextHeight = ComposerPasteTextView.minimumHeight
     @State private var attachments: [Attachment] = []
     @State private var showAttachmentMenu = false
-    @State private var photoItem: PhotosPickerItem?
+    @State private var photoItems: [PhotosPickerItem] = []
     @State private var showDocumentPicker = false
     @State private var isFocused = false
     @State private var isShowingSlashSuggestions = false
@@ -50,6 +50,7 @@ struct ComposerBar: View {
     /// Local, device-only input preference. Defaults to off so existing
     /// users keep Return inserting a newline after updating.
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = false
+    @AppStorage(AttachmentSizeLimit.preferenceKey) private var attachmentLimitMegabytes = AttachmentSizeLimit.defaultMegabytes
     @Namespace private var glassNamespace
     /// Hold the mic to dictate into the draft (#290).
     @StateObject private var dictation = ComposerDictationService()
@@ -299,7 +300,7 @@ struct ComposerBar: View {
             isFocused = !text.isEmpty
             isShowingSlashSuggestions = slashPrefix != nil
         }
-        .onChange(of: photoItem) { _, _ in
+        .onChange(of: photoItems) { _, _ in
             handlePhotoSelection()
         }
         .onChange(of: appState.chatTakeover?.readyToken) { _, _ in
@@ -658,34 +659,25 @@ struct ComposerBar: View {
         .padding(.bottom, 2)
     }
 
+    /// Scrolls inside the composer card: clipped to the card's width so a
+    /// long row never runs past its rounded edges or off-screen (#334).
     private var attachmentStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(attachments) { attachment in
-                    HStack(spacing: 4) {
-                        Image(systemName: attachment.kind == .image ? "photo" : "doc")
-                            .font(.caption)
-                        Text(attachment.name)
-                            .font(.caption)
-                            .lineLimit(1)
-                        Button {
-                            Haptics.light()
-                            attachments.removeAll { $0.id == attachment.id }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .disabled(!appState.composerIsEnabled)
+                    ComposerAttachmentChip(
+                        attachment: attachment,
+                        canRemove: appState.composerIsEnabled
+                    ) {
+                        attachments.removeAll { $0.id == attachment.id }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.07))
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
         }
+        .frame(maxWidth: .infinity)
+        .clipShape(Rectangle())
     }
 
     private var attachmentButton: some View {
@@ -714,7 +706,13 @@ struct ComposerBar: View {
         }
         .disabled(!appState.composerIsEnabled || appState.isBusy)
         .conduitGlassControl(cornerRadius: 22, tint: .conduitAccent.opacity(0.08))
-        .photosPicker(isPresented: $showAttachmentMenu, selection: $photoItem)
+        .photosPicker(
+            isPresented: $showAttachmentMenu,
+            selection: $photoItems,
+            maxSelectionCount: Self.photoPickerSelectionLimit,
+            selectionBehavior: .ordered,
+            matching: .any(of: [.images, .videos])
+        )
     }
 
     /// What the single trailing slot of the input row holds.
@@ -1212,6 +1210,9 @@ struct ComposerBar: View {
     }
 
     private func openPhotoLibraryPicker() {
+        // A fresh selection each time, so items an earlier import is still
+        // staging aren't picked up again.
+        photoItems = []
         photoImportContext = asyncAttachmentContext
         photoImportGeneration &+= 1
         showAttachmentMenu = true
@@ -1259,7 +1260,7 @@ struct ComposerBar: View {
     private func rotateAttachmentGeneration() {
         attachmentGeneration &+= 1
         photoImportGeneration &+= 1
-        photoItem = nil
+        photoItems = []
         photoImportContext = nil
         documentImportContext = nil
         editorIdentity = UUID()
@@ -1285,23 +1286,131 @@ struct ComposerBar: View {
         Haptics.error()
     }
 
+    /// Photos and videos picked together, numbered in the order they were
+    /// tapped (#334).
+    static let photoPickerSelectionLimit = 10
+
     private func handlePhotoSelection() {
-        guard let item = photoItem else { return }
+        let items = photoItems
+        guard !items.isEmpty else { return }
         guard let origin = photoImportContext else {
-            photoItem = nil
+            photoItems = []
             return
         }
         let completionGeneration = photoImportGeneration
+        let limitMegabytes = attachmentLimitMegabytes
         Task {
-            if let data = try? await item.loadTransferable(type: Data.self),
-               shouldAcceptPhotoPickerCompletion(openedIn: origin) {
-                addAttachment(data: data, name: "photo.jpg", mimeType: "image/jpeg", kind: .image)
+            var oversized: [String] = []
+            var failed: [String] = []
+            for (index, item) in items.enumerated() {
+                guard shouldAcceptPhotoPickerCompletion(openedIn: origin) else { break }
+                let outcome = await Self.stagePickedItem(item, ordinal: index + 1, limitMegabytes: limitMegabytes)
+                guard shouldAcceptPhotoPickerCompletion(openedIn: origin) else {
+                    if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                    break
+                }
+                switch outcome {
+                case .staged(let attachment):
+                    attachments.append(attachment)
+                    Haptics.light()
+                case .tooLarge(let name):
+                    oversized.append(name)
+                case .failed(let name):
+                    failed.append(name)
+                }
+            }
+            if shouldAcceptPhotoPickerCompletion(openedIn: origin) {
+                reportImportProblems(oversized: oversized, failed: failed, limitMegabytes: limitMegabytes)
             }
             clearPhotoImportContextIfCurrent(
                 completingGeneration: completionGeneration,
                 completingContext: origin
             )
         }
+    }
+
+    enum StagedImport {
+        case staged(Attachment)
+        case tooLarge(String)
+        case failed(String)
+    }
+
+    /// Copies one picked item into the staging folder under its real name
+    /// and type. Videos stay files end to end; images in a format model
+    /// providers can't read (HEIC...) are re-encoded as JPEG.
+    private static func stagePickedItem(_ item: PhotosPickerItem, ordinal: Int, limitMegabytes: Int) async -> StagedImport {
+        let pickedType = item.supportedContentTypes.first
+        let fallbackName = AttachmentTypePolicy.filename(suggested: nil, type: pickedType, ordinal: ordinal)
+        if let file = try? await item.loadTransferable(type: PickedMediaFile.self) {
+            let type = UTType(filenameExtension: file.url.pathExtension) ?? pickedType
+            let name = AttachmentTypePolicy.filename(suggested: file.originalName, type: type, ordinal: ordinal)
+            return finishStaging(fileAt: file.url, name: name, type: type, limitMegabytes: limitMegabytes)
+        }
+        // Some items only hand over their bytes.
+        guard let data = try? await item.loadTransferable(type: Data.self), !data.isEmpty else {
+            return .failed(fallbackName)
+        }
+        do {
+            let url = try AttachmentStaging.destination(for: fallbackName)
+            try data.write(to: url, options: .atomic)
+            return finishStaging(fileAt: url, name: fallbackName, type: pickedType, limitMegabytes: limitMegabytes)
+        } catch {
+            return .failed(fallbackName)
+        }
+    }
+
+    private static func finishStaging(fileAt url: URL, name: String, type: UTType?, limitMegabytes: Int) -> StagedImport {
+        var url = url
+        var name = name
+        var type = type
+        if AttachmentTypePolicy.needsJPEGTranscode(type) {
+            guard let data = try? Data(contentsOf: url),
+                  let jpeg = UIImage(data: data)?.jpegData(compressionQuality: 0.9),
+                  let jpegURL = try? AttachmentStaging.destination(for: AttachmentTypePolicy.jpegFilename(for: name)),
+                  (try? jpeg.write(to: jpegURL, options: .atomic)) != nil else {
+                try? FileManager.default.removeItem(at: url)
+                return .failed(name)
+            }
+            try? FileManager.default.removeItem(at: url)
+            url = jpegURL
+            name = AttachmentTypePolicy.jpegFilename(for: name)
+            type = .jpeg
+        }
+        let size = AttachmentSizeLimit.fileSize(at: url) ?? 0
+        guard size > 0 else {
+            try? FileManager.default.removeItem(at: url)
+            return .failed(name)
+        }
+        guard AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) else {
+            try? FileManager.default.removeItem(at: url)
+            return .tooLarge(name)
+        }
+        return .staged(Attachment(
+            id: UUID().uuidString,
+            name: name,
+            uri: url.absoluteString,
+            mimeType: AttachmentTypePolicy.mimeType(for: type),
+            kind: AttachmentTypePolicy.kind(for: type)
+        ))
+    }
+
+    private static func discardStagedFile(_ attachment: Attachment) {
+        guard let url = URL(string: attachment.uri), url.isFileURL else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private func reportImportProblems(oversized: [String], failed: [String], limitMegabytes: Int) {
+        var messages: [String] = []
+        if !oversized.isEmpty {
+            messages.append(AttachmentSizeLimit.tooLargeMessage(names: oversized, megabytes: limitMegabytes))
+        }
+        if !failed.isEmpty {
+            let list = failed.joined(separator: ", ")
+            messages.append(AppLocalization.string("Could not prepare \(list) for upload."))
+        }
+        guard !messages.isEmpty else { return }
+        composerErrorMessage = messages.joined(separator: "\n")
+        Haptics.error()
     }
 
     private func clearPhotoImportContextIfCurrent(
@@ -1314,7 +1423,7 @@ struct ComposerBar: View {
             currentGeneration: photoImportGeneration,
             currentContext: photoImportContext
         ) else { return }
-        photoItem = nil
+        photoItems = []
         photoImportContext = nil
     }
 
@@ -1325,18 +1434,26 @@ struct ComposerBar: View {
         guard let origin,
               shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { return }
         guard case .success(let urls) = result else { return }
+        var oversized: [String] = []
         for url in urls {
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+            // Checked before reading so an oversized file is never loaded.
+            if let size = AttachmentSizeLimit.fileSize(at: url),
+               !AttachmentSizeLimit.allows(byteCount: size, megabytes: attachmentLimitMegabytes) {
+                oversized.append(url.lastPathComponent)
+                continue
+            }
             guard let data = try? Data(contentsOf: url) else { continue }
             let type = UTType(filenameExtension: url.pathExtension)
             addAttachment(
                 data: data,
                 name: url.lastPathComponent,
                 mimeType: type?.preferredMIMEType ?? "application/octet-stream",
-                kind: type?.conforms(to: .image) == true ? .image : .document
+                kind: AttachmentTypePolicy.kind(for: type)
             )
         }
+        reportImportProblems(oversized: oversized, failed: [], limitMegabytes: attachmentLimitMegabytes)
     }
 
     private func clearDocumentImportContextIfCurrent(_ completingContext: AsyncAttachmentContext?) {
@@ -1346,10 +1463,12 @@ struct ComposerBar: View {
 
     private func addAttachment(data: Data, name: String, mimeType: String, kind: Attachment.Kind) {
         guard !data.isEmpty else { return }
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Hermes-Conduit-Attachments", isDirectory: true)
+        guard AttachmentSizeLimit.allows(byteCount: Int64(data.count), megabytes: attachmentLimitMegabytes) else {
+            reportImportProblems(oversized: [name], failed: [], limitMegabytes: attachmentLimitMegabytes)
+            return
+        }
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let url = directory.appendingPathComponent("\(UUID().uuidString)-\(name)")
+            let url = try AttachmentStaging.destination(for: name)
             try data.write(to: url, options: .atomic)
             attachments.append(Attachment(id: UUID().uuidString, name: name, uri: url.absoluteString, mimeType: mimeType, kind: kind))
             Haptics.light()

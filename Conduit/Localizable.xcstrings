@@ -1,6 +1,76 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ is larger than the %@ MB attachment limit. You can raise the limit in Settings › Chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 超过了 %2$@ MB 的附件大小上限。你可以在“设置 › 聊天”中提高上限。"
+          }
+        }
+      }
+    },
+    "These files are larger than the %@ MB attachment limit: %@. You can raise the limit in Settings › Chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以下文件超过了 %1$@ MB 的附件大小上限：%2$@。你可以在“设置 › 聊天”中提高上限。"
+          }
+        }
+      }
+    },
+    "Attachments" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附件"
+          }
+        }
+      }
+    },
+    "Large files are held in memory while they upload. A high limit may make Conduit freeze or crash." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大文件在上传时会保存在内存中。上限设得过高可能导致 Conduit 卡住或崩溃。"
+          }
+        }
+      }
+    },
+    "Maximum file size" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最大文件大小"
+          }
+        }
+      }
+    },
+    "Photos, videos and files larger than this are not attached." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "超过此大小的照片、视频和文件将不会被附加。"
+          }
+        }
+      }
+    },
+    "Remove %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除 %@"
+          }
+        }
+      }
+    },
     "Starts a voice call; in a chat with messages, the call works in that chat" : {
       "localizations" : {
         "zh-Hans" : {
