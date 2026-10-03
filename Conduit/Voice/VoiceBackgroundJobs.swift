@@ -1271,7 +1271,11 @@ enum VoiceThreadRouting {
         "that", "sent", "wrote", "gave", "said", "posted", "you", "just",
     ])
 
-    static let lastReplyConjunctions: Set<String> = ["and", "then", "also", "but", "or"]
+    /// Before the reply phrase: a second request, or one about the reply
+    /// ("tell me about the last message") rather than for it.
+    static let lastReplyConjunctions: Set<String> = ["and", "then", "also", "but", "or", "about"]
+    /// Where the reply is, after the phrase ("…from the chat").
+    static let lastReplyPlaces: [[String]] = [["from", "the", "chat"], ["in", "the", "chat"], ["in", "this", "chat"]]
 
     /// "Read the last message" is a read; "read the last message from Sam
     /// and draft a reply" or "say the last message in Spanish" is work.
@@ -1292,7 +1296,14 @@ enum VoiceThreadRouting {
         guard let phrase else { return false }
         // "Read the file and then say the last message" is two requests.
         guard !words[..<phrase.lowerBound].contains(where: { lastReplyConjunctions.contains($0) }) else { return false }
-        return words[phrase.upperBound...].allSatisfy { lastReplyTrailers.contains($0) }
+        var tail = Array(words[phrase.upperBound...])
+        for place in lastReplyPlaces where tail.count >= place.count {
+            if let start = (0...(tail.count - place.count)).first(where: { Array(tail[$0..<($0 + place.count)]) == place }) {
+                tail.removeSubrange(start..<(start + place.count))
+                break
+            }
+        }
+        return tail.allSatisfy { lastReplyTrailers.contains($0) }
     }
 
     private static func wantsRepeat(_ folded: String) -> Bool {

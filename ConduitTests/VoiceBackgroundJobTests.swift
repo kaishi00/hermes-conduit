@@ -896,14 +896,14 @@ extension VoiceConversationControllerTests {
             "read the last message", "read the last uh message", "Read me the last, um, reply",
             "say it again word for word", "okay repeat what you just said", "read it back to me",
             "could you please read the full answer", "read the last uh? message",
-            "read the last message from Hermes out loud", "read the last,uh message", "read the last reply that Hermes sent",
+            "read the last message from Hermes out loud", "read the last,uh message", "read the last reply that Hermes sent", "read the last message from the chat",
         ] {
             XCTAssertTrue(VoiceThreadRouting.wantsLastReply(request), request)
         }
         for request in [
             "repeat that test with the new config", "say that again to Sam in an email",
             "the last message was wrong, fix it", "summarize the last message", "umbrella forecast",
-            "read the last message from Sam and draft a reply", "say the last message in Spanish", "say the last message to the chat", "read the file and then say the last message",
+            "read the last message from Sam and draft a reply", "say the last message in Spanish", "say the last message to the chat", "read the file and then say the last message", "tell me about the last message",
         ] {
             XCTAssertFalse(VoiceThreadRouting.wantsLastReply(request), request)
         }
