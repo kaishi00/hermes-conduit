@@ -17327,6 +17327,16 @@ final class AppState: ObservableObject {
     }
 
     private func appendLocalSteerMessage(_ text: String) {
+        // A reconcile while the steer RPC was suspended may already have
+        // adopted Hermes' persisted steer row; don't confirm it twice.
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if messages.contains(where: {
+            $0.isSteer
+                && !$0.id.hasPrefix("local-")
+                && $0.content.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed
+        }) {
+            return
+        }
         // Same ordering rule as a redirect correction: the steer sits above
         // the live reasoning card's eventual commit.
         settleReasoningSegmentIntoTranscript()
@@ -17339,6 +17349,7 @@ final class AppState: ObservableObject {
             author: nil,
             displayKind: ChatMessage.steerDisplayKind
         ))
+        requestChatScrollToLatest()
         cacheMessagePresentation()
     }
 

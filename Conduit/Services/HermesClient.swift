@@ -3300,7 +3300,10 @@ enum MessageNormalizer {
         var body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let opener = "[OUT-OF-BAND USER MESSAGE"
         let closer = "[/OUT-OF-BAND USER MESSAGE]"
-        if body.hasPrefix(opener), let end = body.firstIndex(of: "]") {
+        // The header ends at its own `]` on the first line; never scan into
+        // the user's text, which may contain brackets.
+        let headerLine = body.prefix(while: { $0 != "\n" })
+        if body.hasPrefix(opener), let end = headerLine.firstIndex(of: "]") {
             body = String(body[body.index(after: end)...])
         }
         if body.hasSuffix(closer) {

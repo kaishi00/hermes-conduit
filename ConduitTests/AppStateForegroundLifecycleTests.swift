@@ -5051,8 +5051,12 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(steerCount, 1, "The text routed through the configured busy action")
         XCTAssertEqual(transcriptReads, 3, "No retry loop behind the routed submission")
         XCTAssertEqual(
-            harness.appState.messages.map(\.id), ["100", "101"],
+            Array(harness.appState.messages.map(\.id).prefix(2)), ["100", "101"],
             "No optimistic new-turn row is appended into the running turn"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.dropFirst(2).map(\.isSteer), [true],
+            "Only the steer confirmation (issue #337) follows the transcript"
         )
         XCTAssertEqual(harness.appState.turnState, .running)
         XCTAssertTrue(
@@ -6773,9 +6777,9 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(probeCount, 1)
         XCTAssertEqual(submitCount, 0, "No ordinary prompt.submit into the running turn")
         XCTAssertEqual(steerCount, 1, "The text routed through the configured busy action")
-        XCTAssertTrue(
-            harness.appState.messages.isEmpty,
-            "No optimistic new-turn row is appended into the running turn"
+        XCTAssertEqual(
+            harness.appState.messages.map(\.isSteer), [true],
+            "No optimistic new-turn row is appended into the running turn; only the steer confirmation (issue #337)"
         )
         XCTAssertEqual(harness.appState.turnState, .running)
     }

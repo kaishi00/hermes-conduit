@@ -1,22 +1,22 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Steered: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已引导：%@"
-          }
-        }
-      }
-    },
     "Starts a voice call; in a chat with messages, the call works in that chat" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "开始语音通话；在有消息的聊天中，通话会在该聊天里进行"
+          }
+        }
+      }
+    },
+    "Steered: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已引导：%@"
           }
         }
       }
