@@ -303,6 +303,15 @@ struct SessionList: View {
             )
             List {
                 if showingProjects {
+                    // Pinned chats from every project stay one tap away
+                    // without leaving the folder view (#338).
+                    if !projectsViewPinnedSessions.isEmpty {
+                        Section("Pinned") {
+                            ForEach(projectsViewPinnedSessions) { session in
+                                sessionRow(session)
+                            }
+                        }
+                    }
                     projectContent
                 }
                 if layout.savedSection, let offline = appState.offlineChatPresentation {
@@ -444,10 +453,23 @@ struct SessionList: View {
     private var displayedSessions: [SessionSummary] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return allSessions }
-        return allSessions.filter { session in
-            [session.title, session.model, session.id, appState.sessionCategory(for: session).label]
-                .contains { $0.localizedCaseInsensitiveContains(query) }
-        }
+        return allSessions.filter { sessionMatches($0, query: query) }
+    }
+
+    private func sessionMatches(_ session: SessionSummary, query: String) -> Bool {
+        [session.title, session.model, session.id, appState.sessionCategory(for: session).label]
+            .contains { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    /// The Projects view hides the source filters, so its Pinned section
+    /// ignores them and lists pinned chats from every project.
+    private var projectsViewPinnedSessions: [SessionSummary] {
+        SidebarPinnedSessions.forProjectsView(
+            appState.activeProfileSessions,
+            query: searchText,
+            isPinned: appState.isSessionPinned,
+            matches: sessionMatches
+        )
     }
 
     @ViewBuilder
@@ -1541,6 +1563,23 @@ private struct CronJobDetailSheet: View {
             }
         }
         .task { await appState.loadCronRuns(for: job) }
+    }
+}
+
+/// The Projects view's Pinned section (#338): every non-archived pinned chat
+/// in the profile, whatever its project or source, narrowed by the search
+/// field like the project list below it.
+enum SidebarPinnedSessions {
+    static func forProjectsView(
+        _ sessions: [SessionSummary],
+        query: String,
+        isPinned: (SessionSummary) -> Bool,
+        matches: (SessionSummary, String) -> Bool
+    ) -> [SessionSummary] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return sessions.filter { session in
+            !session.isArchived && isPinned(session) && (query.isEmpty || matches(session, query))
+        }
     }
 }
 
