@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Could not open the file: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开文件：%@"
+          }
+        }
+      }
+    },
     "%@ is larger than the %@ MB attachment limit. You can raise the limit in Settings › Chat." : {
       "localizations" : {
         "zh-Hans" : {
