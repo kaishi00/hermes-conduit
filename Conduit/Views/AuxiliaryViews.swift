@@ -235,8 +235,8 @@ private struct LegacySettingsView: View {
 
             ConduitGlassGroup(spacing: 10) {
                 HStack(spacing: 10) {
-                    busyModeChoice(.steer, symbol: "arrow.triangle.branch", detail: AppLocalization.string("Guide safely"))
-                    busyModeChoice(.interrupt, symbol: "arrow.uturn.backward", detail: AppLocalization.string("Stop and correct"))
+                    busyModeChoice(.steer, symbol: BusyInputMode.steer.symbol, detail: AppLocalization.string("Guide safely"))
+                    busyModeChoice(.interrupt, symbol: BusyInputMode.interrupt.symbol, detail: AppLocalization.string("Stop and correct"))
                 }
             }
             .disabled(!isConnected || isSavingBusyInputMode)
@@ -1278,7 +1278,7 @@ private struct ResponseBehaviorSettings: View {
     }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("During a response"), symbol: "arrow.triangle.branch", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("During a response"), symbol: BusyInputMode.steer.symbol, tint: .conduitAccent) {
             Text("Steer adds guidance to the active turn. Interrupt stops it before handling the new message.")
                 .font(.footnote).foregroundStyle(.secondary)
             Picker("Messages during a response", selection: Binding(get: { mode }, set: choose)) {

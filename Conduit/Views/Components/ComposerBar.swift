@@ -226,8 +226,8 @@ struct ComposerBar: View {
     private var actionSymbol: String {
         switch action {
         case .stop: return "stop.fill"
-        case .steer: return "arrow.triangle.branch"
-        case .interrupt: return "arrow.uturn.backward"
+        case .steer: return BusyInputMode.steer.symbol
+        case .interrupt: return BusyInputMode.interrupt.symbol
         case .send: return "arrow.up"
         case .unavailable: return "lock"
         }

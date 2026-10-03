@@ -81,6 +81,16 @@
         }
       }
     },
+    "Steered: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已引导：%@"
+          }
+        }
+      }
+    },
     "New voice call" : {
       "localizations" : {
         "zh-Hans" : {

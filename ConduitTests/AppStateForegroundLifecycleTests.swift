@@ -2880,6 +2880,51 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         )
         XCTAssertEqual(harness.appState.turnState, .running)
         XCTAssertFalse(harness.appState.turnStateIsStale)
+        let confirmation = harness.appState.messages.last
+        XCTAssertEqual(confirmation?.isSteer, true, "An accepted steer is confirmed in the transcript (issue #337)")
+        XCTAssertEqual(confirmation?.content, "Follow-up")
+    }
+
+    func testFailedSteerAddsNoTranscriptConfirmation() async {
+        let active = session("stored-a")
+        struct SteerFailure: Error {}
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in .accepted },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                },
+                steer: { _, _, _ in throw SteerFailure() }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        harness.appState.handleScenePhase(.background)
+
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+
+        XCTAssertFalse(submitted)
+        XCTAssertFalse(harness.appState.messages.contains(where: \.isSteer))
+    }
+
+    func testLocalSteerTwinMatchesPersistedSteerByText() {
+        let local = ChatMessage(
+            id: "local-steer-1", role: .user, content: "Use staging", timestamp: "",
+            displayKind: ChatMessage.steerDisplayKind
+        )
+        let persisted = ChatMessage(
+            id: "412", role: .user, content: "Use staging\n", timestamp: "",
+            displayKind: ChatMessage.steerDisplayKind
+        )
+        let ordinary = ChatMessage(id: "local-2", role: .user, content: "Use staging", timestamp: "")
+        XCTAssertTrue(AppState.isLocalSteerTwin(local, of: persisted))
+        XCTAssertFalse(AppState.isLocalSteerTwin(persisted, of: persisted), "A durable row is never a local twin")
+        XCTAssertFalse(AppState.isLocalSteerTwin(ordinary, of: persisted))
     }
 
     // MARK: - K. Two genuinely idle turns stay independent
@@ -5006,8 +5051,12 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(steerCount, 1, "The text routed through the configured busy action")
         XCTAssertEqual(transcriptReads, 3, "No retry loop behind the routed submission")
         XCTAssertEqual(
-            harness.appState.messages.map(\.id), ["100", "101"],
+            Array(harness.appState.messages.map(\.id).prefix(2)), ["100", "101"],
             "No optimistic new-turn row is appended into the running turn"
+        )
+        XCTAssertEqual(
+            harness.appState.messages.dropFirst(2).map(\.isSteer), [true],
+            "Only the steer confirmation (issue #337) follows the transcript"
         )
         XCTAssertEqual(harness.appState.turnState, .running)
         XCTAssertTrue(
@@ -6728,9 +6777,9 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(probeCount, 1)
         XCTAssertEqual(submitCount, 0, "No ordinary prompt.submit into the running turn")
         XCTAssertEqual(steerCount, 1, "The text routed through the configured busy action")
-        XCTAssertTrue(
-            harness.appState.messages.isEmpty,
-            "No optimistic new-turn row is appended into the running turn"
+        XCTAssertEqual(
+            harness.appState.messages.map(\.isSteer), [true],
+            "No optimistic new-turn row is appended into the running turn; only the steer confirmation (issue #337)"
         )
         XCTAssertEqual(harness.appState.turnState, .running)
     }

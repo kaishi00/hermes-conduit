@@ -1917,6 +1917,42 @@ final class MessageNormalizerTests: XCTestCase {
     /// at the normalization boundary instead of mapping the physical role
     /// straight onto a human user bubble.
 
+    func testSteerRowStaysUserRowWithMarkerRemoved() {
+        // Hermes persists a mid-turn steer as its own user row, wrapped in
+        // the out-of-band marker the model trusts (issue #337).
+        let marker = "\n\n[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]\nUse the staging database instead\n[/OUT-OF-BAND USER MESSAGE]"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(310),
+                "role": .string("user"),
+                "content": .string(marker),
+                "display_kind": .string("steer")
+            ])
+        ])
+
+        let row = messages.first
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(row?.role, .user)
+        XCTAssertEqual(row?.content, "Use the staging database instead")
+        XCTAssertEqual(row?.isSteer, true)
+    }
+
+    func testSteerTextWithoutMarkerIsKept() {
+        XCTAssertEqual(MessageNormalizer.steerText(fromMarker: "  plain steer \n"), "plain steer")
+    }
+
+    func testOrdinaryUserRowIsNotSteer() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(311),
+                "role": .string("user"),
+                "content": .string("Hello")
+            ])
+        ])
+
+        XCTAssertEqual(messages.first?.isSteer, false)
+    }
+
     func testHiddenUserRowIsDroppedEntirely() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([
