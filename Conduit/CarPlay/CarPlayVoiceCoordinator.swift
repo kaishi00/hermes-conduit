@@ -279,9 +279,10 @@ final class CarPlayVoiceCoordinator {
     /// change (a template's buttons are never replaced on the car).
     private func installRootTemplate(
         presenting initialState: CarPlayVoiceState = .ready,
-        isReplacement: Bool = false
+        replacing previous: PresentedTemplate? = nil
     ) {
         guard let interfacing else { return }
+        let isReplacement = previous != nil
         let generation = connectionGeneration
         let builtControls = controls
         let template = CarPlayVoiceTemplateFactory.makeTemplate(
@@ -310,6 +311,14 @@ final class CarPlayVoiceCoordinator {
                 }
                 guard success, error == nil else {
                     carPlayLogger.error("root template install failed: \(String(describing: error), privacy: .public)")
+                    // A replacement that failed leaves the previous
+                    // template on the car, so it stays the one the car is
+                    // driven through; the next change of controls tries
+                    // again.
+                    if let previous {
+                        self.restore(previous)
+                        return
+                    }
                     self.didTemplateInstallFail = true
                     // A chat list waiting on this screen would never show,
                     // so Voice starts as it did before the list existed
@@ -355,13 +364,34 @@ final class CarPlayVoiceCoordinator {
         }
     }
 
+    /// The voice template on the car, kept while its replacement installs.
+    struct PresentedTemplate {
+        let template: CPVoiceControlTemplate
+        let controls: CarPlayVoiceControls
+        let shownState: CarPlayVoiceState
+    }
+
     /// Replaces the voice template for new controls, opening on the state
     /// the car is showing.
     private func reinstallRootTemplate() {
         let shown = shownState ?? .ready
+        let previous = template.map { PresentedTemplate(template: $0, controls: templateControls, shownState: shown) }
         pendingPresentationState = nil
         lastActivatedState = nil
-        installRootTemplate(presenting: shown, isReplacement: true)
+        installRootTemplate(presenting: shown, replacing: previous)
+    }
+
+    /// Goes back to the template still on the car after its replacement
+    /// failed, and shows it the state that arrived meanwhile.
+    private func restore(_ previous: PresentedTemplate) {
+        template = previous.template
+        templateControls = previous.controls
+        isTemplatePresented = true
+        lastActivatedState = previous.shownState
+        let pending = pendingPresentationState
+        pendingPresentationState = nil
+        updateBrowseButtons(for: previous.shownState, force: true)
+        if let pending { forward(pending) }
     }
 
     /// The buttons' handlers, fenced to the connection whose template they

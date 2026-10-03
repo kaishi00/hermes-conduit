@@ -914,6 +914,27 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertTrue(harness.coordinator.isTemplatePresented)
     }
 
+    func testAFailedReplacementKeepsTheTemplateOnTheCar() async throws {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.coordinator.handleControllerState(harness.controller.state)
+        let onCar = try XCTUnwrap(harness.coordinator.template)
+
+        harness.spy.completesImmediately = false
+        harness.coordinator.toggleMicrophone()
+        XCTAssertFalse(harness.coordinator.template === onCar, "a replacement is on its way")
+        harness.spy.completeParkedInstall(success: false, error: URLError(.badURL))
+        await harness.coordinator.waitForPresentation()
+
+        XCTAssertTrue(harness.coordinator.template === onCar, "the template still on the car is driven again")
+        XCTAssertTrue(harness.coordinator.isTemplatePresented)
+        XCTAssertNotNil(harness.coordinator.lastActivatedState)
+        XCTAssertFalse(harness.coordinator.didTemplateInstallFail, "the first install did not fail")
+    }
+
     func testCarPlayOpensOnTheChatListWhenNothingIsRunning() async throws {
         let harness = makeHarness()
         let suite = "CarPlayChooseChat.\(UUID().uuidString)"

@@ -64,7 +64,7 @@ enum CarPlayBrowse {
         isPinned: (SessionSummary) -> Bool
     ) -> CarPlayChatList {
         let pinnedSessions = sessions.filter(isPinned)
-        let pinned = Array(recentChats(from: pinnedSessions).prefix(maximumChats))
+        let pinned = recentChats(from: pinnedSessions)
         let others = sessions.filter { !isPinned($0) }
         let recent = Array(recentChats(from: others).prefix(maximumChats - pinned.count))
         return CarPlayChatList(pinned: pinned, recent: recent)
