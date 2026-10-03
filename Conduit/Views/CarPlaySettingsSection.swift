@@ -59,7 +59,7 @@ struct CarPlaySettingsSection: View {
                             Button("Cancel", action: clearDraft)
                         }
                         Spacer()
-                        Button(editingID == nil ? "Add" : "Save", action: commitDraft)
+                        Button(editingID == nil ? AppLocalization.string("Add") : AppLocalization.string("Save"), action: commitDraft)
                             .disabled(!canCommit)
                     }
                 } else {

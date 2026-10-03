@@ -468,6 +468,9 @@ final class CarPlayVoiceCoordinator {
     }
 
     func showJobs() {
+        // A tap from a top bar left behind by a disconnect pushes nothing,
+        // so it arms no observation either.
+        guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
         let supervisor = appState.voiceBackgroundJobSupervisor
         let handlers = makeBrowseHandlers()
@@ -559,7 +562,10 @@ final class CarPlayVoiceCoordinator {
             // The conversation opens first, so the replayed notice meets a
             // session that can speak it (a live call takes it once ready).
             await self.performStartListeningTurn(generation: generation)
-            guard self.isCurrent(generation), self.isConnected else { return }
+            // A conversation that did not open shows its error; the outcome
+            // is not queued for whichever chat Voice opens next.
+            guard self.isCurrent(generation), self.isConnected,
+                  self.hasOpenConversation(in: appState) else { return }
             appState.voiceBackgroundJobSupervisor.replayOutcome(jobID: jobID)
         }
     }
@@ -721,6 +727,7 @@ final class CarPlayVoiceCoordinator {
     /// Mute/Unmute button. Toggles the same microphone mute the phone's
     /// controls use (the classic mode's microphone pause).
     func toggleMicrophone() {
+        guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
         switch CarPlayVoiceMode.current(in: appState) {
         case .classic:
@@ -739,6 +746,21 @@ final class CarPlayVoiceCoordinator {
         case .grokLive:
             let grok = appState.grokLiveController
             grok.setMicrophoneMuted(!grok.isMicrophoneMuted)
+        }
+    }
+
+    /// Whether the current mode's conversation is open (or connecting), so
+    /// it can take a notice.
+    private func hasOpenConversation(in appState: AppState) -> Bool {
+        switch CarPlayVoiceMode.current(in: appState) {
+        case .classic:
+            return appState.voiceConversationController.hasLiveVoiceSession
+        case .geminiLive:
+            return CarPlayGeminiLiveListenAction.forPhase(appState.geminiLiveController.phase) != .start
+        case .gptLive:
+            return CarPlayGPTLiveListenAction.forPhase(appState.gptLiveController.phase) != .start
+        case .grokLive:
+            return CarPlayGeminiLiveListenAction.forPhase(appState.grokLiveController.phase) != .start
         }
     }
 
