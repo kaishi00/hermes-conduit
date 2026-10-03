@@ -214,19 +214,13 @@ struct GeminiLiveVoiceSheet: View {
         .onChange(of: controller.phase) { _, _ in
             AccessibilityNotification.Announcement(statusText).post()
         }
-        // A line is final once the next one starts, so each is read once
-        // with its whole text.
-        .onChange(of: controller.transcript.count) { old, new in
-            guard new > old, let entry = Self.finishedLine(in: controller.transcript) else { return }
-            AccessibilityNotification.Announcement(entry.speaker == .user
-                ? AppLocalization.string("You: \(entry.text)")
-                : speakerLabel(entry.text)).post()
+        // Each line once, with its final text (not the first fragment).
+        .onChange(of: controller.finishedTurn) { _, turn in
+            guard let turn else { return }
+            AccessibilityNotification.Announcement(turn.speaker == .user
+                ? AppLocalization.string("You: \(turn.text)")
+                : speakerLabel(turn.text)).post()
         }
-    }
-
-    /// The line before the newest: the one that just finished.
-    static func finishedLine(in transcript: [VoiceConversationTranscriptEntry]) -> VoiceConversationTranscriptEntry? {
-        transcript.count >= 2 ? transcript[transcript.count - 2] : nil
     }
 
     static func callPhase(_ phase: GeminiLiveConversationController.Phase, microphoneMuted: Bool) -> LiveVoiceCallPhase {

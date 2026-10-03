@@ -366,17 +366,6 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(GPTLiveVoiceSheet.callPhase(.ending, microphoneMuted: false), .ending)
     }
 
-    func testGeminiAnnouncesTheLineThatJustFinished() {
-        XCTAssertNil(GeminiLiveVoiceSheet.finishedLine(in: []))
-        XCTAssertNil(GeminiLiveVoiceSheet.finishedLine(in: [VoiceConversationTranscriptEntry(speaker: .user, text: "hi")]),
-                     "the only line may still be streaming")
-        let lines = [
-            VoiceConversationTranscriptEntry(speaker: .user, text: "hi"),
-            VoiceConversationTranscriptEntry(speaker: .assistant, text: "hello")
-        ]
-        XCTAssertEqual(GeminiLiveVoiceSheet.finishedLine(in: lines)?.text, "hi")
-    }
-
     func testTheLiveCallOrbOnlyMovesWhileTheCallIsLive() {
         XCTAssertEqual(LiveVoiceOrb.motion(for: .muted).amplitude, 0)
         XCTAssertEqual(LiveVoiceOrb.motion(for: .failed).amplitude, 0)

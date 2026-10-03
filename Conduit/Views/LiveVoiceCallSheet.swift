@@ -54,8 +54,8 @@ struct LiveVoiceCallSheet: View {
                 header
                 if showsTranscript {
                     transcriptList
-                } else if dynamicTypeSize.isAccessibilitySize {
-                    // The largest text sizes can outgrow the screen.
+                } else if dynamicTypeSize >= .xxLarge {
+                    // Large text can outgrow a small screen.
                     ScrollView { stage }
                 } else {
                     stage
@@ -166,9 +166,17 @@ struct LiveVoiceCallSheet: View {
                 LiveVoiceOrb(phase: phase)
                     .frame(width: 28, height: 28)
                     .accessibilityHidden(true)
-                Text(statusText)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(statusText)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    if let note {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 20)

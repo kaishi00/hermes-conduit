@@ -223,6 +223,15 @@ final class GeminiLiveConversationController: ObservableObject {
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false
 
+    /// A transcript line that just finished, with its final text: what
+    /// VoiceOver announces (the streamed fragments before it aren't).
+    struct FinishedTurn: Equatable {
+        let id = UUID()
+        let speaker: VoiceConversationTranscriptEntry.Speaker
+        let text: String
+    }
+    @Published private(set) var finishedTurn: FinishedTurn?
+
     var isActive: Bool {
         switch phase {
         case .idle, .failed: return false
@@ -627,6 +636,8 @@ final class GeminiLiveConversationController: ObservableObject {
             lastModelTurnEndedAt = now()
             if let exchangeUserEntry { endIfUserSaidGoodbye(exchangeUserEntry) }
             exchangeUserEntry = nil
+            publishFinished(openUserEntry)
+            publishFinished(openAssistantEntry)
             closeOpenEntries()
             // Ending: the microphone is closed, so it isn't listening.
             if endRequestedAt == nil { phase = .listening }
@@ -883,6 +894,8 @@ final class GeminiLiveConversationController: ObservableObject {
                 : transcript[index].text + text
             return
         }
+        // A new line from one side finishes the other side's open line.
+        publishFinished(speaker == .user ? openAssistantEntry : openUserEntry)
         let entry = VoiceConversationTranscriptEntry(speaker: speaker, text: text.trimmingCharacters(in: .whitespaces))
         transcript.append(entry)
         if speaker == .user {
@@ -929,6 +942,13 @@ final class GeminiLiveConversationController: ObservableObject {
         default:
             return true
         }
+    }
+
+    private func publishFinished(_ entryID: UUID?) {
+        guard let entryID,
+              let entry = transcript.first(where: { $0.id == entryID }),
+              !entry.text.isEmpty else { return }
+        finishedTurn = FinishedTurn(speaker: entry.speaker, text: entry.text)
     }
 
     private func closeOpenEntries() {
