@@ -3,8 +3,9 @@
 //  Conduit
 //
 //  On-device CarPlay settings, edited in Settings > Voice on the phone:
-//  the shortcuts the car's Shortcuts grid offers, and whether the voice
-//  screen plays its status sounds. Device-wide, like the car itself.
+//  the shortcuts the car's Shortcuts grid offers, whether the voice
+//  screen plays its status sounds, and whether CarPlay opens on the chat
+//  list. Device-wide, like the car itself.
 //
 
 import Combine
@@ -32,9 +33,13 @@ final class CarPlayPreferences: ObservableObject {
     static let maximumShortcuts = 8
     static let shortcutsKey = "conduit.carplay.shortcuts.v1"
     static let soundsKey = "conduit.carplay.sounds.v1"
+    static let chooseChatFirstKey = "conduit.carplay.chooseChatFirst.v1"
 
     @Published private(set) var shortcuts: [CarPlayShortcut]
     @Published private(set) var playsSounds: Bool
+    /// CarPlay opens on the chat list (New voice chat, pinned, recent)
+    /// instead of starting Voice at once (#361).
+    @Published private(set) var choosesChatFirst: Bool
 
     private let defaults: UserDefaults
 
@@ -47,6 +52,7 @@ final class CarPlayPreferences: ObservableObject {
             shortcuts = []
         }
         playsSounds = defaults.object(forKey: Self.soundsKey) as? Bool ?? true
+        choosesChatFirst = defaults.object(forKey: Self.chooseChatFirstKey) as? Bool ?? true
     }
 
     var canAddShortcut: Bool { shortcuts.count < Self.maximumShortcuts }
@@ -77,6 +83,11 @@ final class CarPlayPreferences: ObservableObject {
     func setPlaysSounds(_ enabled: Bool) {
         playsSounds = enabled
         defaults.set(enabled, forKey: Self.soundsKey)
+    }
+
+    func setChoosesChatFirst(_ enabled: Bool) {
+        choosesChatFirst = enabled
+        defaults.set(enabled, forKey: Self.chooseChatFirstKey)
     }
 
     private func store(_ updated: [CarPlayShortcut]) {

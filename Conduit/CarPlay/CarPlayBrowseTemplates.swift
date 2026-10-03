@@ -46,8 +46,29 @@ struct CarPlayModeRow: Equatable {
     let isSelected: Bool
 }
 
+/// The chats the car's chat list offers: pinned ones first, then recent.
+struct CarPlayChatList: Equatable {
+    var pinned: [CarPlayChatRow]
+    var recent: [CarPlayChatRow]
+}
+
 enum CarPlayBrowse {
-    static let maximumChats = 12
+    /// Chats in the list; with the New voice chat row the list holds twelve,
+    /// what CarPlay shows of a list while driving.
+    static let maximumChats = 11
+
+    /// Pinned chats first, then the most recent others, together at most
+    /// `maximumChats`. Pinned chats are newest first too.
+    static func chatList(
+        from sessions: [SessionSummary],
+        isPinned: (SessionSummary) -> Bool
+    ) -> CarPlayChatList {
+        let pinnedSessions = sessions.filter(isPinned)
+        let pinned = recentChats(from: pinnedSessions)
+        let others = sessions.filter { !isPinned($0) }
+        let recent = Array(recentChats(from: others).prefix(maximumChats - pinned.count))
+        return CarPlayChatList(pinned: pinned, recent: recent)
+    }
 
     /// The most recent unarchived chats, newest first. Rows without an
     /// activity time keep their listed order after the dated ones.
@@ -140,6 +161,7 @@ extension CarPlayVoiceMode {
 @MainActor
 struct CarPlayBrowseHandlers {
     var openChat: (CarPlayChatRow) -> Void = { _ in }
+    var newVoiceChat: () -> Void = {}
     var replayJob: (UUID) -> Void = { _ in }
     var runShortcut: (CarPlayShortcut) -> Void = { _ in }
     var selectMode: (CarPlayVoiceMode) -> Void = { _ in }
@@ -148,8 +170,36 @@ struct CarPlayBrowseHandlers {
 
 @MainActor
 enum CarPlayBrowseTemplateFactory {
-    static func chatsTemplate(rows: [CarPlayChatRow], handlers: CarPlayBrowseHandlers) -> CPListTemplate {
-        let items = rows.map { row in
+    static func chatsTemplate(chats: CarPlayChatList, handlers: CarPlayBrowseHandlers) -> CPListTemplate {
+        let newChat = CPListItem(
+            text: AppLocalization.string("New voice chat"),
+            detailText: nil,
+            image: UIImage(systemName: "square.and.pencil")
+        )
+        newChat.handler = { _, completion in
+            handlers.newVoiceChat()
+            completion()
+        }
+        var sections = [CPListSection(items: [newChat])]
+        if !chats.pinned.isEmpty {
+            sections.append(CPListSection(
+                items: chatItems(chats.pinned, handlers: handlers),
+                header: AppLocalization.string("Pinned"),
+                sectionIndexTitle: nil
+            ))
+        }
+        if !chats.recent.isEmpty {
+            sections.append(CPListSection(
+                items: chatItems(chats.recent, handlers: handlers),
+                header: AppLocalization.string("Recent"),
+                sectionIndexTitle: nil
+            ))
+        }
+        return CPListTemplate(title: AppLocalization.string("Chats"), sections: sections)
+    }
+
+    private static func chatItems(_ rows: [CarPlayChatRow], handlers: CarPlayBrowseHandlers) -> [CPListItem] {
+        rows.map { row in
             let item = CPListItem(text: row.title, detailText: row.detail.isEmpty ? nil : row.detail)
             item.handler = { _, completion in
                 handlers.openChat(row)
@@ -157,9 +207,6 @@ enum CarPlayBrowseTemplateFactory {
             }
             return item
         }
-        let template = CPListTemplate(title: AppLocalization.string("Chats"), sections: [CPListSection(items: items)])
-        template.emptyViewTitleVariants = [AppLocalization.string("No chats yet")]
-        return template
     }
 
     static func jobsTemplate(rows: [CarPlayJobRow], handlers: CarPlayBrowseHandlers) -> CPListTemplate {
