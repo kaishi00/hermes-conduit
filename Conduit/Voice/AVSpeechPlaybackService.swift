@@ -282,6 +282,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// is built against the session's current hardware format.
     private func rebuildEngine() {
         teardownGraph()
+        stopObservingEngineConfiguration()
         engine = makeEngine()
         player = AVAudioPlayerNode()
         engine.attach(player)
@@ -296,7 +297,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// notification's object: the captured generation says whose change it
     /// was.
     private func observeEngineConfiguration() {
-        if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
+        stopObservingEngineConfiguration()
         engineGeneration &+= 1
         let generation = engineGeneration
         engineObserver = NotificationCenter.default.addObserver(
@@ -304,8 +305,18 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             object: engine,
             queue: nil
         ) { [weak self] _ in
+            // The outer weak capture matters: without it the inner one
+            // captures self strongly here, and the center keeps the service
+            // alive through this block.
             Task { @MainActor [weak self] in self?.engineConfigurationChanged(generation: generation) }
         }
+    }
+
+    /// Runs before the engine it observes is released.
+    private func stopObservingEngineConfiguration() {
+        guard let engineObserver else { return }
+        NotificationCenter.default.removeObserver(engineObserver)
+        self.engineObserver = nil
     }
 
     /// Read Aloud offers 1x–2x. Slower than 1x is never played: the drain
