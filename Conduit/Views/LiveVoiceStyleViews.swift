@@ -35,6 +35,9 @@ struct LiveVoiceStyleSettingsSection: View {
     @State private var preview: LiveVoiceInstructionsPreviewContent?
     @State private var showsPreview = false
     @State private var greetingSave: Task<Void, Never>?
+    /// The style this view last saved, so its own change isn't mistaken
+    /// for one made elsewhere (another profile).
+    @State private var lastSaved: LiveVoiceStyle?
 
     init(model: LiveVoiceStyleSettingsModel) {
         self.model = model
@@ -52,13 +55,19 @@ struct LiveVoiceStyleSettingsSection: View {
         )
     }
 
+    private func save() {
+        let current = style
+        lastSaved = current
+        model.setStyle(current)
+    }
+
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Live call style"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
             Toggle("Greet me when a call connects", isOn: Binding(
                 get: { greets },
                 set: { requested in
                     greets = requested
-                    model.setStyle(style)
+                    save()
                 }
             ))
             if greets {
@@ -74,16 +83,16 @@ struct LiveVoiceStyleSettingsSection: View {
                         greetingSave = Task { @MainActor in
                             try? await Task.sleep(for: .milliseconds(600))
                             guard !Task.isCancelled else { return }
-                            model.setStyle(style)
+                            save()
                         }
                     }
                     .onSubmit {
                         greetingSave?.cancel()
-                        model.setStyle(style)
+                        save()
                     }
                     .onDisappear {
                         greetingSave?.cancel()
-                        model.setStyle(style)
+                        save()
                     }
             }
             Text("The voice model greets you as soon as a call connects, so you know it's live. Leave the greeting empty for one in its own words. GPT-Live needs an up-to-date Hermes notifier plugin for this. Applies to the next call.")
@@ -93,7 +102,7 @@ struct LiveVoiceStyleSettingsSection: View {
                 get: { tone },
                 set: { chosen in
                     tone = chosen
-                    model.setStyle(style)
+                    save()
                 }
             )) {
                 Text("Model default").tag("")
@@ -109,7 +118,7 @@ struct LiveVoiceStyleSettingsSection: View {
                 get: { backchannels },
                 set: { requested in
                     backchannels = requested
-                    model.setStyle(style)
+                    save()
                 }
             ))
             Text("Short sounds like “mm-hmm” while you talk. Turn them off for a quieter listener. Applies to the next call.")
@@ -126,6 +135,9 @@ struct LiveVoiceStyleSettingsSection: View {
             .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
         }
         .onChange(of: model.style) { _, newValue in
+            // This view's own save: the fields already show it (and turning
+            // the greeting off keeps its text for turning it back on).
+            guard newValue != lastSaved else { return }
             greets = newValue.greeting != nil
             // Changed elsewhere (another profile's settings): never while the
             // stored text is just this field's, cleaned.
