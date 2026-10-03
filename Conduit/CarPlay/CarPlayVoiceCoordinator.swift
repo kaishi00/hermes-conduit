@@ -304,12 +304,23 @@ final class CarPlayVoiceCoordinator {
         }
     }
 
-    private func makeHandlers() -> CarPlayVoiceActionHandlers {
-        CarPlayVoiceActionHandlers(
-            startListening: { [weak self] in self?.startListeningTurn() },
-            startNewChat: { [weak self] in self?.startNewChat() },
-            toggleMicrophone: { [weak self] in self?.toggleMicrophone() },
-            endConversation: { [weak self] in self?.endConversation() }
+    /// The buttons' handlers, fenced to the connection whose template they
+    /// are on: a tap queued across a reconnect never acts on the new
+    /// connection's conversation. Internal so the stale-tap test can hold
+    /// an earlier connection's handlers.
+    func makeHandlers() -> CarPlayVoiceActionHandlers {
+        let generation = connectionGeneration
+        func fenced(_ action: @escaping (CarPlayVoiceCoordinator) -> Void) -> () -> Void {
+            { [weak self] in
+                guard let self, self.isCurrent(generation) else { return }
+                action(self)
+            }
+        }
+        return CarPlayVoiceActionHandlers(
+            startListening: fenced { $0.startListeningTurn() },
+            startNewChat: fenced { $0.startNewChat() },
+            toggleMicrophone: fenced { $0.toggleMicrophone() },
+            endConversation: fenced { $0.endConversation() }
         )
     }
 
@@ -443,13 +454,22 @@ final class CarPlayVoiceCoordinator {
         }
     }
 
-    private func makeBrowseHandlers() -> CarPlayBrowseHandlers {
-        CarPlayBrowseHandlers(
-            openChat: { [weak self] row in self?.openChat(row) },
-            replayJob: { [weak self] jobID in self?.replayJob(jobID) },
-            runShortcut: { [weak self] shortcut in self?.runShortcut(shortcut) },
-            selectMode: { [weak self] mode in self?.selectVoiceMode(mode) },
-            selectAgent: { [weak self] index in self?.selectAgent(at: index) }
+    /// The browse screens' row handlers, fenced like the voice buttons to
+    /// the connection the screen was built for.
+    func makeBrowseHandlers() -> CarPlayBrowseHandlers {
+        let generation = connectionGeneration
+        func fenced<Value>(_ action: @escaping (CarPlayVoiceCoordinator, Value) -> Void) -> (Value) -> Void {
+            { [weak self] value in
+                guard let self, self.isCurrent(generation) else { return }
+                action(self, value)
+            }
+        }
+        return CarPlayBrowseHandlers(
+            openChat: fenced { $0.openChat($1) },
+            replayJob: fenced { $0.replayJob($1) },
+            runShortcut: fenced { $0.runShortcut($1) },
+            selectMode: fenced { $0.selectVoiceMode($1) },
+            selectAgent: fenced { $0.selectAgent(at: $1) }
         )
     }
 
@@ -747,14 +767,16 @@ final class CarPlayVoiceCoordinator {
             // microphone button does.
             if controller.isMicrophonePaused {
                 await controller.resumeMicrophone()
-                guard isCurrent(generation), isConnected else { return }
-                // The car may show an Error the controller never had, so the
-                // reopened listening window is shown again; a controller
-                // that did not reach listening (it had failed) starts a
-                // listening turn, so one tap always listens or errors.
+                // A mode switch during the resume leaves the car to the new
+                // mode's controller.
+                guard isCurrent(generation), isConnected,
+                      CarPlayVoiceMode.current(in: appState) == .classic else { return }
                 // A resume that failed or was refused leaves the microphone
                 // paused, and listening would run with it closed, so the car
-                // shows the error instead.
+                // shows the error instead. Otherwise the reopened listening
+                // window is shown again (the car may show an Error the
+                // controller never had), or a controller that did not reach
+                // listening starts a listening turn.
                 guard !controller.isMicrophonePaused else {
                     handleControllerState(.failed(""))
                     return

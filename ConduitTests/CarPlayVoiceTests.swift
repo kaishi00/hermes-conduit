@@ -858,6 +858,60 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertFalse(harness.controller.isMicrophonePaused, "Listen reopens the microphone instead of a silent window")
     }
 
+    func testListenShowsErrorWhenThePausedMicrophoneCannotReopen() async {
+        let harness = makeHarness(continuousConversation: false)
+        harness.appState.activeSessionId = "existing-session"
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.establishVoice(generation: harness.coordinator.connectionGeneration)
+        await harness.coordinator.waitForPresentation()
+        harness.controller.pauseMicrophone()
+        harness.capture.resumeError = URLError(.unknown)
+
+        await harness.coordinator.performStartListeningTurn(generation: harness.coordinator.connectionGeneration)
+
+        XCTAssertTrue(harness.controller.isMicrophonePaused, "the microphone never reopened")
+        XCTAssertEqual(harness.activations.last, .error, "never Listening with a closed microphone")
+    }
+
+    func testAChatThatFailsToOpenShowsError() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        let row = CarPlayChatRow(sessionID: "missing", storedSessionID: nil, title: "Chat", detail: "")
+
+        // The harness has no client, so the open fails.
+        await harness.coordinator.performOpenChat(row, generation: harness.coordinator.connectionGeneration)
+
+        XCTAssertEqual(harness.activations.last, .error)
+    }
+
+    func testButtonsFromAnEarlierConnectionDoNothing() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        harness.coordinator.handleConnect(harness.spy)
+        let staleButtons = harness.coordinator.makeHandlers()
+        let staleRows = harness.coordinator.makeBrowseHandlers()
+        harness.coordinator.handleDisconnect()
+        harness.coordinator.handleConnect(harness.spy)
+
+        staleButtons.endConversation()
+        staleButtons.startNewChat()
+        staleButtons.toggleMicrophone()
+        staleButtons.startListening()
+        staleRows.selectMode(.gptLive)
+        staleRows.openChat(CarPlayChatRow(sessionID: "other", storedSessionID: nil, title: "Other", detail: ""))
+        await Task.yield()
+
+        XCTAssertFalse(harness.appState.isGPTLiveEnabled, "a stale row never changes the mode")
+        XCTAssertTrue(harness.spy.pushedTemplates.isEmpty)
+        XCTAssertEqual(harness.spy.popToRootCount, 0, "a stale row never navigates")
+
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "a tap from the old template never ends the new connection's conversation")
+        XCTAssertFalse(harness.controller.isMicrophonePaused, "nor mutes it")
+        XCTAssertEqual(harness.controller.state, .listening)
+    }
+
     func testNewChatClosesTheCurrentConversationAndPreparesAFreshOne() async {
         let harness = makeHarness()
         harness.openVoice(session: "session-1")

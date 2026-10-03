@@ -307,6 +307,8 @@ final class MockCapture: AudioCaptureService {
     private(set) var holdCount = 0
     private(set) var isHeldForPlayback = false
     private(set) var resumeCount = 0
+    /// When set, `resume()` throws it and the capture stays paused.
+    var resumeError: Error?
     private(set) var stopCount = 0
     private(set) var finishUtteranceCount = 0
     private let starts = AwaitableCounter()
@@ -361,6 +363,7 @@ final class MockCapture: AudioCaptureService {
         captureGeneration &+= 1
     }
     func resume() throws {
+        if let resumeError { throw resumeError }
         mockPaused = false
         isHeldForPlayback = false
         resumeCount += 1
