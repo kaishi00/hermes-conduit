@@ -552,8 +552,11 @@ final class CarPlayVoiceCoordinator {
         Task { @MainActor [weak self] in
             guard let self, self.isCurrent(generation), self.isConnected else { return }
             let appState = self.lastBoundAppState ?? self.appStateProvider()
-            guard appState.voiceBackgroundJobSupervisor.replayOutcome(jobID: jobID) else { return }
+            // The conversation opens first, so the replayed notice meets a
+            // session that can speak it (a live call takes it once ready).
             await self.performStartListeningTurn(generation: generation)
+            guard self.isCurrent(generation), self.isConnected else { return }
+            appState.voiceBackgroundJobSupervisor.replayOutcome(jobID: jobID)
         }
     }
 
@@ -605,8 +608,9 @@ final class CarPlayVoiceCoordinator {
         endConversation()
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
-            await appState.switchProfile(to: profile)
             guard let self, self.isCurrent(generation), self.isConnected else { return }
+            await appState.switchProfile(to: profile)
+            guard self.isCurrent(generation), self.isConnected else { return }
             self.observeCurrentVoiceMode(appState)
         }
     }

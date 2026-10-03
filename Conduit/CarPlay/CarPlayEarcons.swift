@@ -64,7 +64,7 @@ final class CarPlayEarconPlayer {
             let count = Int(sampleRate * duration)
             let fade = max(1, Int(sampleRate * 0.012))
             for index in 0..<count {
-                let envelope = min(1, Double(index) / Double(fade), Double(count - index) / Double(fade))
+                let envelope = min(1, Double(index) / Double(fade), Double(count - 1 - index) / Double(fade))
                 let value = sin(2 * .pi * frequency * Double(index) / sampleRate) * envelope * 0.6
                 samples.append(Int16(value * Double(Int16.max)))
             }
