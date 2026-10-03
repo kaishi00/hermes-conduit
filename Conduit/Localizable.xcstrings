@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Steered: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已引导：%@"
+          }
+        }
+      }
+    },
     "Starts a voice call; in a chat with messages, the call works in that chat" : {
       "localizations" : {
         "zh-Hans" : {

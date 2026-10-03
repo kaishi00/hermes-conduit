@@ -2918,6 +2918,16 @@ enum MessageNormalizer {
 
             let rawRole = (obj["role"]?.stringValue ?? obj["type"]?.stringValue ?? "").lowercased()
             let isToolResult = rawRole == "tool" || rawRole.contains("tool_result") || rawRole.contains("tool-result")
+            // A mid-turn steer is persisted as its own `role=user` row typed
+            // `display_kind: "steer"`, its text wrapped in Hermes'
+            // out-of-band marker. It stays a user row (it IS the user's
+            // words, and ordering evidence keeps counting it as a user
+            // boundary); only the model-facing marker is removed and the
+            // row is tagged so the transcript renders it as a steer.
+            let isSteerRow = !isToolResult
+                && rawRole == "user"
+                && (obj["display_kind"]?.stringValue ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) == ChatMessage.steerDisplayKind
             var role: MessageRole
             switch rawRole {
             case "user": role = .user
@@ -2965,8 +2975,11 @@ enum MessageNormalizer {
                     isToolResult: isToolResult
                 )
             }
-            guard let rawContent else {
+            guard var rawContent else {
                 continue
+            }
+            if isSteerRow {
+                rawContent = steerText(fromMarker: rawContent)
             }
             let modelChange = modelChangeActivity(fromText: rawContent)
             let systemNotice = systemNoticeText(fromText: rawContent)
@@ -3083,6 +3096,7 @@ enum MessageNormalizer {
                 review: review,
                 attachments: userContent.attachments,
                 displayKind: displayKind?.rawValue
+                    ?? (isSteerRow && role == .user ? ChatMessage.steerDisplayKind : nil)
             )
 
             // External session history occasionally includes a role-less
@@ -3276,6 +3290,23 @@ enum MessageNormalizer {
             return "Response interrupted by a user correction."
         }
         return nil
+    }
+
+    /// Hermes wraps a delivered steer as
+    /// `[OUT-OF-BAND USER MESSAGE — …]\n<text>\n[/OUT-OF-BAND USER MESSAGE]`
+    /// so the model trusts it. Returns the user's own text; anything that
+    /// does not carry the marker is returned trimmed but otherwise as is.
+    static func steerText(fromMarker text: String) -> String {
+        var body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let opener = "[OUT-OF-BAND USER MESSAGE"
+        let closer = "[/OUT-OF-BAND USER MESSAGE]"
+        if body.hasPrefix(opener), let end = body.firstIndex(of: "]") {
+            body = String(body[body.index(after: end)...])
+        }
+        if body.hasSuffix(closer) {
+            body = String(body.dropLast(closer.count))
+        }
+        return body.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func isUserCorrectionInterruptionNotice(_ text: String) -> Bool {

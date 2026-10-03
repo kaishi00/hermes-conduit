@@ -12197,6 +12197,13 @@ final class AppState: ObservableObject {
         var merged = messages
         merged.reserveCapacity(merged.count + newRows.count)
         for row in newRows where knownIDs.insert(row.id).inserted {
+            // The persisted twin of a steer Conduit already confirmed
+            // locally takes the local row's place instead of repeating it.
+            if row.isSteer,
+               let localIndex = merged.firstIndex(where: { Self.isLocalSteerTwin($0, of: row) }) {
+                merged[localIndex] = row
+                continue
+            }
             merged.append(row)
         }
         messages = merged
@@ -15402,6 +15409,7 @@ final class AppState: ObservableObject {
                     // before the next ordinary local turn and reconcile if a
                     // promoted steer produced a user boundary.
                     locallyOwnedInFlightTurn = nil
+                    markOptimisticRowAsSteer(userMessage.id)
                     recordLocalOrderingDebt(
                         sessionIDs: submissionSessionIDs,
                         baseline: preSubmitOrderingBaseline,
@@ -17167,6 +17175,11 @@ final class AppState: ObservableObject {
                     revision: turnLifecycleEvidence.revision &+ 1,
                     running: true
                 )
+                // Confirm the steer in the transcript (issue #337): Hermes
+                // persists it as a `display_kind: "steer"` user row only
+                // when the agent next reaches a tool boundary, so without
+                // this the text just vanished from the composer.
+                appendLocalSteerMessage(outboundText)
             }
             // A successful steer is accepted by Hermes even if the user
             // switched sessions while the RPC was suspended. Apart from the
@@ -17283,6 +17296,50 @@ final class AppState: ObservableObject {
             return false
         }
         return await sendMessage(text, attachments: [], context: currentContext)
+    }
+
+    static func isLocalSteerTwin(_ candidate: ChatMessage, of persisted: ChatMessage) -> Bool {
+        candidate.isSteer
+            && candidate.id.hasPrefix("local-")
+            && candidate.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                == persisted.content.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The gateway applied its busy policy and steered a prompt Conduit sent
+    /// as a new turn: restyle its optimistic bubble as a steer so it reads
+    /// the same as one sent with the Steer button. Attachment rows keep
+    /// their ordinary bubble, since the steer row cannot show attachments.
+    private func markOptimisticRowAsSteer(_ id: String) {
+        guard let index = messages.firstIndex(where: { $0.id == id }),
+              messages[index].role == .user,
+              messages[index].attachments?.isEmpty ?? true else { return }
+        let row = messages[index]
+        messages[index] = ChatMessage(
+            id: row.id,
+            role: .user,
+            content: row.content,
+            rawContent: row.rawContent,
+            timestamp: row.timestamp,
+            author: row.author,
+            displayKind: ChatMessage.steerDisplayKind
+        )
+        cacheMessagePresentation()
+    }
+
+    private func appendLocalSteerMessage(_ text: String) {
+        // Same ordering rule as a redirect correction: the steer sits above
+        // the live reasoning card's eventual commit.
+        settleReasoningSegmentIntoTranscript()
+        messages.append(ChatMessage(
+            id: "local-steer-\(UUID().uuidString)",
+            role: .user,
+            content: text,
+            rawContent: nil,
+            timestamp: Self.localTimestamp(),
+            author: nil,
+            displayKind: ChatMessage.steerDisplayKind
+        ))
+        cacheMessagePresentation()
     }
 
     private func appendLocalUserMessage(_ text: String) {
