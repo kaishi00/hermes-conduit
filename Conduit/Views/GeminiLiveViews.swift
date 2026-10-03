@@ -214,8 +214,11 @@ struct GeminiLiveVoiceSheet: View {
         .onChange(of: controller.phase) { _, _ in
             AccessibilityNotification.Announcement(statusText).post()
         }
-        .onChange(of: controller.isMicrophoneMuted) { _, _ in
-            AccessibilityNotification.Announcement(statusText).post()
+        // Said outright: the status only mentions the mute while listening.
+        .onChange(of: controller.isMicrophoneMuted) { _, muted in
+            AccessibilityNotification.Announcement(muted
+                ? AppLocalization.string("Microphone muted")
+                : AppLocalization.string("Microphone unmuted")).post()
         }
         // Each line once, with its final text (not the first fragment).
         .onChange(of: controller.finishedTurn) { _, turn in

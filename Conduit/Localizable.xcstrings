@@ -501,6 +501,16 @@
         }
       }
     },
+    "Microphone unmuted" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风已取消静音"
+          }
+        }
+      }
+    },
     "End call" : {
       "localizations" : {
         "zh-Hans" : {

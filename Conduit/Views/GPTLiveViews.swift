@@ -194,8 +194,11 @@ struct GPTLiveVoiceSheet: View {
         .onChange(of: controller.phase) { _, _ in
             AccessibilityNotification.Announcement(statusText).post()
         }
-        .onChange(of: controller.isMicrophoneMuted) { _, _ in
-            AccessibilityNotification.Announcement(statusText).post()
+        // Said outright: the status only mentions the mute while listening.
+        .onChange(of: controller.isMicrophoneMuted) { _, muted in
+            AccessibilityNotification.Announcement(muted
+                ? AppLocalization.string("Microphone muted")
+                : AppLocalization.string("Microphone unmuted")).post()
         }
         .onChange(of: controller.voiceNote) { _, note in
             if let note { AccessibilityNotification.Announcement(note).post() }
