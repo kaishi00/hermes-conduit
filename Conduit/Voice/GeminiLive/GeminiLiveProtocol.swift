@@ -18,6 +18,9 @@ enum LiveVoiceClientMessage: Equatable {
     case audioStreamEnd
     /// A text turn from the client (a background-job update).
     case textTurn(String)
+    /// Context the model keeps without answering it (#363): a turn typed in
+    /// the attached chat.
+    case contextNote(String)
     /// The answer to a function call.
     case toolResponse(id: String, name: String, result: [String: String], scheduling: GeminiLiveProtocol.Scheduling?)
 }
@@ -144,6 +147,19 @@ enum GeminiLiveProtocol {
         ]
     }
 
+    /// Context added to the conversation without asking for a reply:
+    /// `turnComplete: false` leaves generation to the user's next turn.
+    static func contextNoteMessage(_ text: String) -> [String: Any] {
+        [
+            "clientContent": [
+                "turns": [
+                    ["role": "user", "parts": [["text": text]]],
+                ],
+                "turnComplete": false,
+            ] as [String: Any],
+        ]
+    }
+
     static func toolResponseMessage(
         id: String,
         name: String,
@@ -175,6 +191,7 @@ enum GeminiLiveProtocol {
         case .audio(let pcm16): return audioMessage(pcm16: pcm16)
         case .audioStreamEnd: return audioStreamEndMessage()
         case .textTurn(let text): return textTurnMessage(text)
+        case .contextNote(let text): return contextNoteMessage(text)
         case .toolResponse(let id, let name, let result, let scheduling):
             return toolResponseMessage(id: id, name: name, result: result, scheduling: scheduling)
         }

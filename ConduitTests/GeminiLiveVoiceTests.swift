@@ -229,6 +229,14 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(((audio["realtimeInput"] as? [String: Any])?["audio"] as? [String: Any])?["mimeType"] as? String, "audio/pcm;rate=16000")
     }
 
+    func testGeminiLiveContextNoteAddsContextWithoutEndingTheTurn() {
+        let note = GeminiLiveProtocol.message(for: .contextNote("typed"))
+        let content = note["clientContent"] as? [String: Any]
+        XCTAssertEqual(content?["turnComplete"] as? Bool, false, "the model keeps it without answering")
+        XCTAssertEqual(((content?["turns"] as? [[String: Any]])?.first?["parts"] as? [[String: Any]])?.first?["text"] as? String, "typed")
+        XCTAssertEqual((GeminiLiveProtocol.message(for: .textTurn("x"))["clientContent"] as? [String: Any])?["turnComplete"] as? Bool, true)
+    }
+
     func testGeminiLiveDecodesEveryServerEventItActsOn() throws {
         let pcm = Data([0, 1, 2, 3])
         let frame: [String: Any] = [
@@ -914,6 +922,25 @@ extension VoiceConversationControllerTests {
         controller.stop()
         XCTAssertFalse(input.running)
         XCTAssertEqual(session.stopped, 1)
+    }
+
+    func testGeminiLiveTypedChatTurnGoesOutAsContextWithoutStartingATurn() async {
+        let (controller, session, _, _, supervisor) = makeGeminiController(clock: { Date(timeIntervalSince1970: 1_000) })
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build")
+        await controller.start()
+        session.becomeReady()
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Typed reply.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        controller.flushPendingTextIfIdle()
+
+        let notes = session.sent.compactMap { $0["clientContent"] as? [String: Any] }
+        XCTAssertEqual(notes.count, 1)
+        XCTAssertEqual(notes.first?["turnComplete"] as? Bool, false)
+        XCTAssertTrue(session.textTurns.first?.contains("Typed reply.") == true)
+        XCTAssertEqual(controller.phase, .listening, "the model wasn't asked to speak")
+        XCTAssertEqual(controller.pendingTextTurnCountForTesting, 0)
+        controller.stop()
     }
 
     func testGeminiLiveNewConversationStartsWithTheMicrophoneOpen() async {

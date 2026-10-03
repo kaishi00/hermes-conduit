@@ -280,6 +280,9 @@ final class GeminiLiveConversationController: ObservableObject {
     private var lastUserSpeechAt: Date?
     private var lastModelTurnEndedAt: Date?
     private var pendingTextTurns: [String] = []
+    /// Typed exchanges in the attached chat (#363), sent while idle as
+    /// context the model keeps without answering.
+    private var pendingContextNotes: [String] = []
     private var idleFlushTask: Task<Void, Never>?
     private var openUserEntry: UUID?
     /// The user's latest utterance in this exchange. Unlike openUserEntry,
@@ -376,6 +379,8 @@ final class GeminiLiveConversationController: ObservableObject {
         lateEndPhraseTask = nil
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
+        // Best effort, as on GPT-Live: the chat still has the exchange.
+        pendingContextNotes = []
         withdrawnCallIDs = []
         // Nothing from a previous attempt may gate or attach to this one.
         modelTurnActive = false
@@ -451,6 +456,8 @@ final class GeminiLiveConversationController: ObservableObject {
         // Unspoken job notices go back to the supervisor, not the bin.
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
+        // Best effort, as on GPT-Live: the chat still has the exchange.
+        pendingContextNotes = []
         withdrawnCallIDs = []
         tools.connectionReplaced()
         closeOpenEntries()
@@ -512,6 +519,8 @@ final class GeminiLiveConversationController: ObservableObject {
         stopInput()
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
+        // Best effort, as on GPT-Live: the chat still has the exchange.
+        pendingContextNotes = []
         // Job outcomes stay pending for Hermes to report instead of being
         // spent on a conversation that is closing.
         tools.beginEnding()
@@ -824,12 +833,16 @@ final class GeminiLiveConversationController: ObservableObject {
                 ), onFailure: onFailure)
             case .textWhenIdle(let text):
                 pendingTextTurns.append(text)
+            case .contextWhenIdle(let text):
+                pendingContextNotes.append(text)
             case .endConversation:
                 requestEnd()
             }
         }
-        if !pendingTextTurns.isEmpty { scheduleIdleFlush() }
+        if hasPendingIdleSends { scheduleIdleFlush() }
     }
+
+    private var hasPendingIdleSends: Bool { !pendingTextTurns.isEmpty || !pendingContextNotes.isEmpty }
 
     /// Whether Conduit may start a turn of its own right now: connected,
     /// the model silent (and done playing), and the user quiet.
@@ -844,7 +857,9 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Sends at most one queued update, and only while idle; the model's
     /// reply to it ends a turn, which schedules the next check.
     func flushPendingTextIfIdle() {
-        guard !pendingTextTurns.isEmpty, endRequestedAt == nil, isConversationIdle, let session else { return }
+        guard hasPendingIdleSends, endRequestedAt == nil, isConversationIdle, let session else { return }
+        sendPendingContextNotes(on: session)
+        guard !pendingTextTurns.isEmpty else { return }
         let text = pendingTextTurns.removeFirst()
         let noticeJobID = tools.textUpdateSending(text)
         modelTurnActive = true
@@ -866,14 +881,29 @@ final class GeminiLiveConversationController: ObservableObject {
         })
     }
 
+    /// Typed exchanges go out together in one message, oldest first: none
+    /// asks the model for a turn, so the conversation stays idle. One that
+    /// fails is retried whole, ahead of newer ones, on this call; a call that
+    /// ended drops it.
+    private func sendPendingContextNotes(on session: GeminiLiveSessionControlling) {
+        guard !pendingContextNotes.isEmpty else { return }
+        let notes = pendingContextNotes
+        pendingContextNotes = []
+        session.send(.contextNote(notes.joined(separator: "\n\n")), onSent: nil, onFailure: { [weak self, weak session] in
+            guard let self, self.isActive, self.endRequestedAt == nil, let session, self.session === session else { return }
+            self.pendingContextNotes.insert(contentsOf: notes, at: 0)
+            self.scheduleIdleFlush()
+        })
+    }
+
     private func scheduleIdleFlush() {
-        guard idleFlushTask == nil, !pendingTextTurns.isEmpty else { return }
+        guard idleFlushTask == nil, hasPendingIdleSends else { return }
         idleFlushTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(500))
                 guard let self, !Task.isCancelled else { return }
                 self.flushPendingTextIfIdle()
-                if self.pendingTextTurns.isEmpty || !self.isActive {
+                if !self.hasPendingIdleSends || !self.isActive {
                     self.idleFlushTask = nil
                     return
                 }

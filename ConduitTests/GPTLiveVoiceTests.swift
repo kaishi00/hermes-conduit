@@ -813,6 +813,26 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGPTLiveTypedChatTurnIsQuietCommentary() async {
+        let (controller, session, supervisor, _) = makeGPTController(clock: { Date(timeIntervalSince1970: 1_000) })
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build")
+        await controller.start()
+        session.becomeReady()
+        let before = session.appended.count
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Typed reply.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        controller.flushPendingContextIfIdle()
+
+        let added = session.appended.dropFirst(before)
+        XCTAssertEqual(added.count, 1, "no job status refresh for a typed turn")
+        XCTAssertEqual(added.first?.channel, .commentary)
+        XCTAssertTrue(added.first?.text.contains("Typed reply.") == true)
+        XCTAssertTrue(session.speakable.isEmpty)
+        XCTAssertEqual(controller.pendingContextCountForTesting, 0)
+        controller.stop()
+    }
+
     func testGPTLiveReadsTheLastReplyWhenTheUserAsksAndRetriesOneThatWasNeverHeard() async {
         let (controller, session, supervisor, fake) = makeGPTController(clock: Date.init)
         supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")

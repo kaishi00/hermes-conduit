@@ -43,6 +43,8 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func lastThreadReply() async -> String?
     @discardableResult
     func showOnScreen(title: String, markdown: String) -> VoiceScreenCard?
+    /// Exchanges typed in the attached chat, for the call to keep quietly.
+    func takePendingChatContext() -> String?
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -68,6 +70,9 @@ final class GeminiLiveToolBridge {
         /// A text turn for an update with no open call to answer on. The
         /// host sends it only while the conversation is idle.
         case textWhenIdle(String)
+        /// Context the model keeps without answering (a typed exchange in
+        /// the attached chat). Also sent only while idle.
+        case contextWhenIdle(String)
         /// Close the conversation once the model's goodbye has played.
         case endConversation
 
@@ -407,6 +412,9 @@ final class GeminiLiveToolBridge {
             }
             queuedNotices.append((text, item.jobID))
             outgoing.append(.textWhenIdle(text))
+        }
+        while let context = supervisor.takePendingChatContext() {
+            outgoing.append(.contextWhenIdle(context))
         }
         return outgoing
     }

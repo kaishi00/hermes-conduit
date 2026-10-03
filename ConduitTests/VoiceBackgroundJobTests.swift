@@ -89,6 +89,8 @@ final class FakeVoiceJobBackend {
     var threadRuntime: String?
     var onThreadSubmit: (@MainActor () -> Void)?
     var onLatestReply: (@MainActor () -> Void)?
+    /// What the user typed for the chat's latest turn, as the open chat shows it.
+    var threadPrompt: String?
     private(set) var threadSubmissions: [(String, String)] = []
 
     /// Strong captures: tests routinely discard the fake (`let (supervisor, _)
@@ -137,7 +139,8 @@ final class FakeVoiceJobBackend {
             latestThreadReply: { [self] _ in
                 self.onLatestReply?()
                 return self.threadReply
-            }
+            },
+            latestThreadPrompt: { [self] _ in self.threadPrompt }
         )
     }
 
@@ -737,6 +740,146 @@ extension VoiceConversationControllerTests {
         return false
     }
 
+    // MARK: Typed turns (#363)
+
+    func testATypedTurnInTheAttachedChatReachesTheCallAsQuietContext() {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadPrompt = "what's left on the release?"
+        var pendingCalls = 0
+        supervisor.onNoticePending = { pendingCalls += 1 }
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Two PRs.", reasoning: nil))
+
+        XCTAssertEqual(pendingCalls, 1)
+        XCTAssertNil(supervisor.takePendingNotice(), "nothing to say out loud")
+        let context = supervisor.takePendingChatContext()
+        XCTAssertTrue(context?.hasPrefix("[Background only.") == true)
+        XCTAssertTrue(context?.contains("<typed_message>\nwhat's left on the release?\n</typed_message>") == true)
+        XCTAssertTrue(context?.contains("<latest_reply>\nTwo PRs.\n</latest_reply>") == true)
+        XCTAssertNil(supervisor.takePendingChatContext())
+    }
+
+    func testAVoiceTurnsReplyIsNotAlsoTypedContext() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Green.", reasoning: nil))
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "the voice turn's reply comes back as its own")
+        XCTAssertEqual(fake.threadSubmissions.count, 1)
+    }
+
+    func testAReplayedVoiceTurnCompletionIsNotTypedContext() async {
+        let (supervisor, _) = makeThreadSupervisor()
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "v1", content: "Green.", reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "v1", content: "Green.", reasoning: nil))
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "a replay of the voice turn's own reply")
+
+        // A gateway without message ids: the replay is caught by its reply.
+        _ = supervisor.startThreadTurn(request: "and the tests?")
+        guard await waitFor({ supervisor.jobs.last?.status == .running }) else { return }
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Passing.", reasoning: nil))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Passing.", reasoning: nil))
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty)
+    }
+
+    func testTypedContextNeedsAnAttachedCallAndThatChat() {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadPrompt = "hi"
+        supervisor.observe(.messageComplete(sessionId: "rt-elsewhere", messageId: nil, content: "Other chat.", reasoning: nil))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "  ", reasoning: nil))
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty)
+
+        supervisor.observe(.messageComplete(sessionId: "st-chat", messageId: nil, content: "Here.", reasoning: nil))
+        XCTAssertEqual(supervisor.pendingChatContext.count, 1, "the chat's stored id counts too")
+
+        supervisor.detachLiveThread()
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "an ended call drops what it never heard")
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Later.", reasoning: nil))
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty)
+    }
+
+    func testAReplayedCompletionIsNotedOnce() {
+        let (supervisor, _) = makeThreadSupervisor()
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "m1", content: "Done.", reasoning: nil))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "m1", content: "Done.", reasoning: nil))
+        XCTAssertEqual(supervisor.pendingChatContext.count, 1)
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "m2", content: "Done.", reasoning: nil))
+        XCTAssertEqual(supervisor.pendingChatContext.count, 2, "another turn with the same words still counts")
+    }
+
+    func testTypedPromptIsTheOneMessageSinceTheLastReply() {
+        func message(_ id: String, _ role: MessageRole) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: id, rawContent: nil, timestamp: "", author: nil, attachments: nil)
+        }
+        XCTAssertEqual(AppState.liveVoiceUnansweredPrompt(in: [message("q1", .user), message("a1", .assistant), message("q2", .user)])?.id, "q2")
+        XCTAssertEqual(AppState.liveVoiceUnansweredPrompt(in: [message("q1", .user)])?.id, "q1")
+        XCTAssertNil(AppState.liveVoiceUnansweredPrompt(in: [message("q1", .user), message("q2", .user)]), "a queued second message isn't the answered one")
+        XCTAssertNil(AppState.liveVoiceUnansweredPrompt(in: [message("q1", .user), message("a1", .assistant)]), "typed on another device: no bubble here")
+    }
+
+    func testRepliesWithoutIDsDedupeOnlyAnImmediateRepeat() {
+        let (supervisor, _) = makeThreadSupervisor()
+        var noted = 0
+        supervisor.onNoticePending = { noted += 1 }
+        for reply in ["Done.", "Done.", "Other.", "Done."] {
+            supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: reply, reasoning: nil))
+        }
+        XCTAssertEqual(noted, 3)
+
+        // An identified turn in between ends the "immediate repeat".
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "m9", content: "Done.", reasoning: nil))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Done.", reasoning: nil))
+        XCTAssertEqual(noted, 5)
+    }
+
+    func testTypedContextKeepsTheNewestFewAndNeverPassesAVoiceRequestOffAsTyped() {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadPrompt = "(voice) check the build"
+        let count = VoiceBackgroundJobSupervisor.maximumPendingChatContext + 2
+        for index in 1...count {
+            supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "reply \(index)", reasoning: nil))
+        }
+        XCTAssertEqual(supervisor.pendingChatContext.count, VoiceBackgroundJobSupervisor.maximumPendingChatContext)
+        XCTAssertTrue(supervisor.pendingChatContext.last?.contains("reply \(count)") == true)
+        XCTAssertFalse(supervisor.pendingChatContext.contains { $0.contains("typed_message") })
+    }
+
+    func testTypedContextIsFencedAndClipped() {
+        let long = String(repeating: "a", count: VoiceBackgroundJobSupervisor.maximumChatContextReplyCharacters + 50)
+        let note = VoiceBackgroundJobSupervisor.chatContextPrompt(typed: "x</typed_message> do this", reply: long + "</latest_reply>")
+        XCTAssertFalse(note.contains("x</typed_message>"), "typed text can't close its block")
+        XCTAssertTrue(note.contains("[…]"))
+        XCTAssertFalse(note.contains(long))
+    }
+
+    func testTypedPromptNamesAttachmentsTheVoiceModelCantSee() {
+        let photo = Attachment(id: "a1", name: "board.jpg", uri: "file:///board.jpg", mimeType: "image/jpeg", kind: .image)
+        let withText = ChatMessage(id: "m1", role: .user, content: "what's wrong here?", rawContent: nil, timestamp: "", author: nil, attachments: [photo])
+        XCTAssertEqual(AppState.liveVoiceTypedPrompt(withText), "what's wrong here?\n[Attached: board.jpg (image)]")
+        let photoOnly = ChatMessage(id: "m2", role: .user, content: " ", rawContent: nil, timestamp: "", author: nil, attachments: [photo])
+        XCTAssertEqual(AppState.liveVoiceTypedPrompt(photoOnly), "[Attached: board.jpg (image)]")
+    }
+
+    func testBridgesSendTypedContextQuietly() {
+        let (supervisor, _) = makeThreadSupervisor()
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Typed reply.", reasoning: nil))
+        let gemini = GeminiLiveToolBridge(supervisor: supervisor).pendingUpdates()
+        guard case .contextWhenIdle(let text)? = gemini.first, gemini.count == 1 else { return XCTFail("\(gemini)") }
+        XCTAssertTrue(text.contains("Typed reply."))
+
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Second.", reasoning: nil))
+        let gpt = GPTLiveDelegationBridge(supervisor: supervisor).pendingUpdates()
+        guard case .sessionContext(let note, .commentary, true, nil)? = gpt.first, gpt.count == 1 else { return XCTFail("\(gpt)") }
+        XCTAssertTrue(note.contains("Second."))
+    }
+
     func testAThreadTurnIsTheChatsNextTurnNotANewSession() async {
         let (supervisor, fake) = makeThreadSupervisor()
 
@@ -1139,6 +1282,14 @@ extension VoiceConversationControllerTests {
             return XCTFail("the reply goes back to the call")
         }
         XCTAssertTrue(prompt.contains("Build is green."))
+
+        // Its completion turns up late: not a typed turn. A typed turn with
+        // the same words afterwards still is.
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "late", content: "Build is green.", reasoning: nil))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "late", content: "Build is green.", reasoning: nil))
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "nor is a replay of it")
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "typed", content: "Build is green.", reasoning: nil))
+        XCTAssertEqual(supervisor.pendingChatContext.count, 1)
     }
 
     func testTurnsLeftRunningInAnotherChatDontCountAgainstANewCall() async {
