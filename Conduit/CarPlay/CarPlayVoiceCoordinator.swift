@@ -196,6 +196,7 @@ final class CarPlayVoiceCoordinator {
         showsBrowseButtons = false
         jobsObservation?.cancel()
         jobsObservation = nil
+        jobsTemplate = nil
         self.interfacing = interfacing
         lastActivatedState = nil
         isTemplatePresented = false
@@ -242,6 +243,7 @@ final class CarPlayVoiceCoordinator {
         showsBrowseButtons = false
         jobsObservation?.cancel()
         jobsObservation = nil
+        jobsTemplate = nil
         lastActivatedState = nil
         isTemplatePresented = false
         pendingPresentationState = nil
@@ -557,10 +559,10 @@ final class CarPlayVoiceCoordinator {
             endConversation()
             // The phone shows the chat the call is attached to, as when the
             // call starts from that chat there.
-            let opened = await appState.openSession(row.sessionID)
+            let opened = await appState.openSessionOutcome(row.sessionID)
             guard isCurrent(generation), isConnected else { return }
-            guard opened else {
-                handleControllerState(.failed(""))
+            guard opened == .opened else {
+                settleUnopenedChat(opened)
                 return
             }
             await establishLiveVoice(liveMode, appState: appState, generation: generation, attachingTo: row.thread)
@@ -569,12 +571,20 @@ final class CarPlayVoiceCoordinator {
         if appState.voiceConversationController.hasLiveVoiceSession {
             appState.closeVoiceConversation()
         }
-        guard await appState.openSession(row.sessionID) else {
-            if isCurrent(generation), isConnected { handleControllerState(.failed("")) }
+        let opened = await appState.openSessionOutcome(row.sessionID)
+        guard opened == .opened else {
+            if isCurrent(generation), isConnected { settleUnopenedChat(opened) }
             return
         }
         let outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
         await completeListenTurn(generation: generation, outcome: outcome)
+    }
+
+    /// A chat open that did not land: a superseded one (another chat was
+    /// opened meanwhile) is navigation, so the car returns to Ready; only a
+    /// failed one shows Error.
+    private func settleUnopenedChat(_ outcome: AppState.SessionOpenOutcome) {
+        handleControllerState(outcome == .superseded ? .idle : .failed(""))
     }
 
     /// A settled Voice Job: its outcome is spoken again in the conversation
@@ -735,7 +745,15 @@ final class CarPlayVoiceCoordinator {
             // microphone button does.
             if controller.isMicrophonePaused {
                 await controller.resumeMicrophone()
-                return
+                guard isCurrent(generation), isConnected else { return }
+                // The car may show an Error the controller never had, so the
+                // reopened listening window is shown again; a controller
+                // that did not reach listening (it had failed) starts a
+                // listening turn, so one tap always listens or errors.
+                if controller.state == .listening {
+                    handleControllerState(.listening)
+                    return
+                }
             }
         } else {
             outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
@@ -838,6 +856,9 @@ final class CarPlayVoiceCoordinator {
     /// End button. Converges on the authoritative Close teardown — no
     /// parallel CarPlay teardown exists.
     func endConversation() {
+        // A tap delivered across a disconnect never closes a conversation
+        // the phone kept.
+        guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
         switch CarPlayVoiceMode.current(in: appState) {
         case .classic: appState.closeVoiceConversation()
