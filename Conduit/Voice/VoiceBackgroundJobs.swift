@@ -134,6 +134,9 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// A thread turn whose call ended. It keeps running in its chat, but no
     /// later call hears about it, reads its reply, or loses events to it.
     var isDetachedThreadTurn = false
+    /// A thread turn the liveness poll settled before its completion event
+    /// arrived. That late event is its own reply, not a typed turn's.
+    var settledByPoll = false
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
@@ -880,10 +883,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let reply = (content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !reply.isEmpty else { return }
         // A voice turn the liveness poll settled first: its late completion
-        // already came back to the call as that turn's reply.
-        guard !jobs.contains(where: { job in
-            job.isThreadTurn && job.result?.trimmingCharacters(in: .whitespacesAndNewlines) == reply
-        }) else { return }
+        // already came back to the call as that turn's reply. Matched once,
+        // so a later typed turn with the same words still counts.
+        if let late = jobs.firstIndex(where: { job in
+            job.isThreadTurn && job.settledByPoll
+                && job.result?.trimmingCharacters(in: .whitespacesAndNewlines) == reply
+        }) {
+            jobs[late].settledByPoll = false
+            return
+        }
         if let messageID, !messageID.isEmpty {
             guard !notedChatTurns.contains(messageID) else { return }
             notedChatTurns.append(messageID)
@@ -1093,6 +1101,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 continue
             }
             jobs[index].status = .finished
+            if job.isThreadTurn { jobs[index].settledByPoll = true }
             changed = true
         }
         for id in settledThreadTurns {
@@ -1110,6 +1119,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard let current = job(id), current.status.isActive else { continue }
             update(id) {
                 $0.status = .finished
+                $0.settledByPoll = true
                 if let reply, !reply.isEmpty { $0.result = reply }
             }
             changed = true

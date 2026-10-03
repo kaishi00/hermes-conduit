@@ -1136,6 +1136,13 @@ extension VoiceConversationControllerTests {
             return XCTFail("the reply goes back to the call")
         }
         XCTAssertTrue(prompt.contains("Build is green."))
+
+        // Its completion turns up late: not a typed turn. A typed turn with
+        // the same words afterwards still is.
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "late", content: "Build is green.", reasoning: nil))
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty)
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "typed", content: "Build is green.", reasoning: nil))
+        XCTAssertEqual(supervisor.pendingChatContext.count, 1)
     }
 
     func testTurnsLeftRunningInAnotherChatDontCountAgainstANewCall() async {
