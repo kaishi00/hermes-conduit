@@ -885,18 +885,23 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.activations.last, .error)
     }
 
-    func testAnEndTapFromAnEarlierConnectionKeepsTheNewConversation() async {
+    func testButtonsFromAnEarlierConnectionDoNothing() async {
         let harness = makeHarness()
         harness.openVoice(session: "session-1")
         await harness.controller.startListening()
         harness.coordinator.handleConnect(harness.spy)
-        let staleGeneration = harness.coordinator.connectionGeneration
+        let staleButtons = harness.coordinator.makeHandlers()
         harness.coordinator.handleDisconnect()
         harness.coordinator.handleConnect(harness.spy)
 
-        harness.coordinator.endConversation(generation: staleGeneration)
+        staleButtons.endConversation()
+        staleButtons.startNewChat()
+        staleButtons.toggleMicrophone()
+        await Task.yield()
 
         XCTAssertTrue(harness.controller.hasLiveVoiceSession, "a tap from the old template never ends the new connection's conversation")
+        XCTAssertFalse(harness.controller.isMicrophonePaused, "nor mutes it")
+        XCTAssertEqual(harness.controller.state, .listening)
     }
 
     func testNewChatClosesTheCurrentConversationAndPreparesAFreshOne() async {

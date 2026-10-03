@@ -304,15 +304,22 @@ final class CarPlayVoiceCoordinator {
         }
     }
 
-    private func makeHandlers() -> CarPlayVoiceActionHandlers {
-        // End is fenced to the connection whose template the button is on,
-        // so a tap queued across a reconnect never ends the new conversation.
+    /// The buttons' handlers, fenced to the connection whose template they
+    /// are on: a tap queued across a reconnect never acts on the new
+    /// connection's conversation.
+    func makeHandlers() -> CarPlayVoiceActionHandlers {
         let generation = connectionGeneration
+        func fenced(_ action: @escaping (CarPlayVoiceCoordinator) -> Void) -> () -> Void {
+            { [weak self] in
+                guard let self, self.isCurrent(generation) else { return }
+                action(self)
+            }
+        }
         return CarPlayVoiceActionHandlers(
-            startListening: { [weak self] in self?.startListeningTurn() },
-            startNewChat: { [weak self] in self?.startNewChat() },
-            toggleMicrophone: { [weak self] in self?.toggleMicrophone() },
-            endConversation: { [weak self] in self?.endConversation(generation: generation) }
+            startListening: fenced { $0.startListeningTurn() },
+            startNewChat: fenced { $0.startNewChat() },
+            toggleMicrophone: fenced { $0.toggleMicrophone() },
+            endConversation: fenced { $0.endConversation() }
         )
     }
 
@@ -869,12 +876,6 @@ final class CarPlayVoiceCoordinator {
 
     /// End button. Converges on the authoritative Close teardown — no
     /// parallel CarPlay teardown exists.
-    /// The End button of one connection's template.
-    func endConversation(generation: UInt64) {
-        guard isCurrent(generation) else { return }
-        endConversation()
-    }
-
     func endConversation() {
         // A tap delivered across a disconnect never closes a conversation
         // the phone kept.
