@@ -16000,17 +16000,36 @@ final class AppState: ObservableObject {
         _ enabled: Bool,
         context: ComposerSubmissionContext? = nil
     ) async -> Bool {
+        let failure = await setYoloModeReportingFailure(enabled, context: context)
+        if let message = failure?.message {
+            errorMessage = message
+        }
+        return failure == nil
+    }
+
+    /// Why a session YOLO write did not apply. `message` is nil when the
+    /// write was abandoned (stale submission, no session) rather than refused.
+    struct YoloWriteFailure: Equatable {
+        let message: String?
+    }
+
+    /// `setYoloMode` without the composer banner: the caller decides where
+    /// the failure is shown (the Model sheet covers the banner).
+    func setYoloModeReportingFailure(
+        _ enabled: Bool,
+        context: ComposerSubmissionContext? = nil
+    ) async -> YoloWriteFailure? {
         let submissionContext = context ?? composerSubmissionContext()
-        guard isCurrentComposerSubmission(submissionContext) else { return false }
+        guard isCurrentComposerSubmission(submissionContext) else { return YoloWriteFailure(message: nil) }
         guard runtime.approvalsMode?.lowercased() != "off" else {
             // Hermes auto-approves globally under approvals.mode == "off"; the
             // per-session write is a server-side no-op, and persisting an
             // override here would silently resurface when the profile mode
             // changes back. Send nothing and keep the effective floor state.
             runtime.yolo = true
-            return true
+            return nil
         }
-        guard let client, let sessionId = activeSessionId else { return false }
+        guard let client, let sessionId = activeSessionId else { return YoloWriteFailure(message: nil) }
         let persistedSessionID = canonicalSessionID(for: sessionId) ?? sessionId
         // Ownership is captured ONCE, before the await, from the originating
         // submission profile. begin and the deferred cleanup therefore touch
@@ -16030,7 +16049,7 @@ final class AppState: ObservableObject {
             }
             // Hermes accepted the setting. Avoid publishing it into a new
             // session if the composer origin was handed off while awaiting.
-            guard isCurrentComposerSubmission(submissionContext) else { return true }
+            guard isCurrentComposerSubmission(submissionContext) else { return nil }
             sessionYoloStore.setOverride(
                 enabled,
                 for: activeProfile,
@@ -16039,11 +16058,12 @@ final class AppState: ObservableObject {
             recordSessionYoloWrite(for: [sessionId, persistedSessionID])
             lastReportedSessionYolo = enabled
             runtime.yolo = enabled
-            return true
+            return nil
         } catch {
-            guard isCurrentComposerSubmission(submissionContext) else { return false }
-            errorMessage = AppLocalization.string("Unable to change YOLO mode: \(error.localizedDescription)")
-            return false
+            guard isCurrentComposerSubmission(submissionContext) else { return YoloWriteFailure(message: nil) }
+            return YoloWriteFailure(
+                message: AppLocalization.string("Unable to change YOLO mode: \(error.localizedDescription)")
+            )
         }
     }
 

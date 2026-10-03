@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 func sessionYoloSelectionChanged(from initial: Bool?, to selected: Bool) -> Bool {
     guard let initial else { return false }
@@ -17,6 +18,21 @@ func sessionYoloSelectionChanged(from initial: Bool?, to selected: Bool) -> Bool
 /// discard an in-progress draft.
 func yoloFloorBoundaryCrossed(from previousMode: String?, to newMode: String?) -> Bool {
     (previousMode?.lowercased() == "off") != (newMode?.lowercased() == "off")
+}
+
+/// Whether Apply should ask Hermes to switch models. Re-sending the current
+/// model on every Apply (e.g. when only the reasoning level changed) would
+/// re-trigger the gateway's expensive-model confirmation for no reason.
+func modelPickerSelectionChanged(
+    selectedModel: String,
+    selectedProvider: String,
+    runtimeModel: String,
+    runtimeProvider: String
+) -> Bool {
+    let model = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !model.isEmpty, !ProviderInfo.normalized(selectedProvider).isEmpty else { return false }
+    return model != runtimeModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        || ProviderInfo.normalized(selectedProvider) != ProviderInfo.normalized(runtimeProvider)
 }
 
 struct ModelPickerYoloDraft: Equatable {
@@ -52,6 +68,10 @@ struct ModelPickerView: View {
     @State private var expandedVisibilityProvider: String?
     @State private var showAllModelsFor: Set<String> = []
     @State private var visibility = ModelVisibility()
+    @State private var isApplying = false
+    @State private var applyError: String?
+    /// The gateway's guard message for a pick it will not switch to unconfirmed.
+    @State private var pendingModelConfirmation: String?
 
     var body: some View {
         NavigationStack {
@@ -104,6 +124,26 @@ struct ModelPickerView: View {
             refreshYoloToggle(force: true)
         }
         .task { await loadModels() }
+        .onChange(of: applyError) { _, message in
+            // The error row appears silently; tell VoiceOver the apply failed.
+            guard let message else { return }
+            UIAccessibility.post(notification: .announcement, argument: message)
+        }
+        .alert(
+            "Switch model?",
+            isPresented: Binding(
+                get: { pendingModelConfirmation != nil },
+                set: { if !$0 { pendingModelConfirmation = nil } }
+            ),
+            presenting: pendingModelConfirmation
+        ) { _ in
+            Button("Switch") {
+                Task { @MainActor in await applyModel(confirmedModelSwitch: true) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { message in
+            Text(message)
+        }
     }
 
     private var modelSection: some View {
@@ -415,16 +455,35 @@ struct ModelPickerView: View {
     }
 
     private var applyButton: some View {
-        Button {
-            Task { await applyModel() }
-        } label: {
-            Label("Apply configuration", systemImage: "checkmark")
+        VStack(spacing: 10) {
+            // The composer's error banner sits behind this sheet, so a failed
+            // apply has to be reported here.
+            if let applyError {
+                Label(applyError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Button {
+                Task { @MainActor in await applyModel() }
+            } label: {
+                Group {
+                    if isApplying {
+                        ProgressView()
+                            .tint(.white)
+                            .accessibilityLabel(AppLocalization.string("Applying configuration"))
+                    } else {
+                        Label("Apply configuration", systemImage: "checkmark")
+                    }
+                }
                 .font(.headline)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
+            }
+            .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: true)
+            .disabled(isApplying)
         }
-        .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: true)
     }
 
     private var rowFoundation: Color {
@@ -478,21 +537,69 @@ struct ModelPickerView: View {
         }
     }
 
-    private func applyModel() async {
-        guard let client = appState.client, let sessionId = appState.activeSessionId else { return }
+    private func applyModel(confirmedModelSwitch: Bool = false) async {
+        guard !isApplying else { return }
+        guard let client = appState.client, let sessionId = appState.activeSessionId else {
+            applyError = AppLocalization.string("Not connected to a conversation.")
+            return
+        }
+        isApplying = true
+        applyError = nil
+        defer { isApplying = false }
 
         do {
-            // Apply YOLO first. setYoloMode persists the session override only
-            // after the gateway accepts it, so a failure must bail before any of
-            // the other settings are mutated — otherwise the sheet hangs open
-            // showing a partially-applied configuration with no rollback.
-            if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
-                guard await appState.setYoloMode(yoloEnabled) else { return }
-            }
-            if !selectedModel.isEmpty && !selectedProvider.isEmpty {
-                try await client.setModel(sessionId, model: selectedModel, provider: selectedProvider)
-                appState.runtime.model = selectedModel
+            // A confirmed retry always re-sends: the runtime may have moved
+            // while the alert was up, and the confirmation must reach Hermes.
+            if confirmedModelSwitch || modelPickerSelectionChanged(
+                selectedModel: selectedModel,
+                selectedProvider: selectedProvider,
+                runtimeModel: appState.runtime.model,
+                runtimeProvider: appState.runtime.provider
+            ) {
+                let outcome = try await client.setModel(
+                    sessionId,
+                    model: selectedModel,
+                    provider: selectedProvider,
+                    confirmed: confirmedModelSwitch
+                )
+                // A guarded pick switches nothing until confirmed. Stop before
+                // the other settings so the sheet's state stays coherent and
+                // ask; Switch repeats the apply with the confirmation flag.
+                if outcome.confirmRequired {
+                    // A gateway that still asks after a confirmed retry would
+                    // loop the alert forever; report it instead.
+                    if confirmedModelSwitch {
+                        applyError = outcome.confirmMessage.isEmpty
+                            ? AppLocalization.string("Hermes did not accept the model switch.")
+                            : outcome.confirmMessage
+                        return
+                    }
+                    pendingModelConfirmation = outcome.confirmMessage.isEmpty
+                        ? AppLocalization.string("Hermes asks you to confirm switching to \(selectedModel).")
+                        : outcome.confirmMessage
+                    return
+                }
+                // A deferred switch (mid-turn) applies at the next turn start;
+                // Hermes' session.info reports the pending pick meanwhile, so
+                // the label can show it now either way.
+                appState.runtime.model = outcome.model
                 appState.runtime.provider = selectedProvider
+                // Hermes may expand an alias; track what it resolved so a
+                // retry after a later failure does not switch again.
+                selectedModel = outcome.model
+            }
+            // YOLO goes after the model gate so a cancelled confirmation
+            // leaves nothing applied. setYoloMode persists the session
+            // override only after the gateway accepts it, and a failure stops
+            // before reasoning/fast; a retry re-sends neither the model nor
+            // an already-applied YOLO change.
+            if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
+                // The composer banner sits behind this sheet; report here.
+                if let failure = await appState.setYoloModeReportingFailure(yoloEnabled) {
+                    applyError = failure.message ?? AppLocalization.string("Unable to change YOLO mode.")
+                    return
+                }
+                initialYoloEnabled = yoloEnabled
             }
             try await client.setReasoning(sessionId, effort: reasoningEnabled ? reasoningEffort : "none")
             appState.runtime.reasoningEffort = reasoningEnabled ? reasoningEffort : ""
@@ -500,7 +607,7 @@ struct ModelPickerView: View {
             appState.runtime.fast = fastEnabled
             appState.showModelPicker = false
         } catch {
-            appState.errorMessage = error.localizedDescription
+            applyError = error.localizedDescription
         }
     }
 }
