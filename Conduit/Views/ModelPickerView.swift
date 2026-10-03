@@ -125,6 +125,35 @@ func runModelPickerApply(
     }
 }
 
+/// What this sheet last switched Hermes to: the catalog row picked and the
+/// name Hermes resolved it to (an alias can resolve to another name).
+struct ModelPickerSwitchedRow: Equatable {
+    var selection: ModelPickerSelection
+    var resolvedModel: String
+}
+
+/// Whether Apply sends a model switch for `selection`. A row this sheet
+/// already switched to is skipped only while the runtime still runs what
+/// Hermes resolved it to; any outside change re-syncs it.
+func modelPickerShouldSwitch(
+    _ selection: ModelPickerSelection,
+    lastSwitched: ModelPickerSwitchedRow?,
+    runtimeModel: String,
+    runtimeProvider: String
+) -> Bool {
+    if let lastSwitched, lastSwitched.selection == selection,
+       lastSwitched.resolvedModel == runtimeModel,
+       ProviderInfo.normalized(selection.provider) == ProviderInfo.normalized(runtimeProvider) {
+        return false
+    }
+    return modelPickerSelectionChanged(
+        selectedModel: selection.model,
+        selectedProvider: selection.provider,
+        runtimeModel: runtimeModel,
+        runtimeProvider: runtimeProvider
+    )
+}
+
 struct ModelPickerYoloDraft: Equatable {
     let initial: Bool
     let selected: Bool
@@ -178,12 +207,9 @@ struct ModelPickerView: View {
     @State private var applyError: String?
     /// The gateway's guard message for a pick it will not switch to unconfirmed.
     @State private var pendingModelConfirmation: String?
-    /// The catalog row this sheet last switched Hermes to. Hermes may resolve
-    /// it to another name (an alias), so the row id and `runtime.model` can
-    /// differ; this stops a retry from switching to it again.
-    @State private var switchedSelection: ModelPickerSelection?
-    /// The name Hermes resolved `switchedSelection` to.
-    @State private var switchedModel: String?
+    /// The catalog row this sheet last switched Hermes to, so a retry does
+    /// not switch to it again while the row id and `runtime.model` differ.
+    @State private var switchedRow: ModelPickerSwitchedRow?
 
     var body: some View {
         NavigationStack {
@@ -682,12 +708,9 @@ struct ModelPickerView: View {
             reasoningEffort: reasoningEnabled ? reasoningEffort : "none",
             fast: fastEnabled
         )
-        // Skip a row this sheet already switched to only while the runtime
-        // still runs what Hermes resolved it to; an outside change re-syncs.
-        let alreadySwitched = switchedSelection == selection && switchedModel == appState.runtime.model
-        let sendModelSwitch = !alreadySwitched && modelPickerSelectionChanged(
-            selectedModel: selection.model,
-            selectedProvider: selection.provider,
+        let sendModelSwitch = modelPickerShouldSwitch(
+            selection,
+            lastSwitched: switchedRow,
             runtimeModel: appState.runtime.model,
             runtimeProvider: appState.runtime.provider
         )
@@ -726,8 +749,7 @@ struct ModelPickerView: View {
         if let model = progress.switchedModel {
             appState.runtime.model = model
             appState.runtime.provider = selection.provider
-            switchedSelection = selection
-            switchedModel = model
+            switchedRow = ModelPickerSwitchedRow(selection: selection, resolvedModel: model)
         }
         if progress.yoloApplied {
             initialYoloEnabled = draft.yolo

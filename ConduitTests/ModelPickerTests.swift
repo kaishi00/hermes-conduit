@@ -262,4 +262,30 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertEqual(gateway.calls, ["reasoning", "fast"])
         XCTAssertEqual(result, .completed(ModelPickerApplyProgress(reasoningApplied: true, fastApplied: true)))
     }
+
+    // MARK: - Switched row
+
+    private let sonnetRow = ModelPickerSelection(model: "sonnet", provider: "anthropic")
+
+    func testAliasRowAlreadySwitchedIsNotSentAgain() {
+        let last = ModelPickerSwitchedRow(selection: sonnetRow, resolvedModel: "anthropic/claude-sonnet")
+
+        XCTAssertFalse(modelPickerShouldSwitch(
+            sonnetRow, lastSwitched: last,
+            runtimeModel: "anthropic/claude-sonnet", runtimeProvider: "anthropic"))
+    }
+
+    func testSwitchedRowResyncsWhenTheRuntimeMoved() {
+        let last = ModelPickerSwitchedRow(selection: sonnetRow, resolvedModel: "anthropic/claude-sonnet")
+
+        XCTAssertTrue(modelPickerShouldSwitch(
+            sonnetRow, lastSwitched: last,
+            runtimeModel: "gpt-5", runtimeProvider: "openrouter"))
+    }
+
+    func testAliasRowIsSentWhenNothingWasSwitchedYet() {
+        XCTAssertTrue(modelPickerShouldSwitch(
+            sonnetRow, lastSwitched: nil,
+            runtimeModel: "anthropic/claude-sonnet", runtimeProvider: "anthropic"))
+    }
 }
