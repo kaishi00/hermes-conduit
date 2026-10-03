@@ -210,6 +210,23 @@ struct GeminiLiveVoiceSheet: View {
             onEnd: onClose,
             onRetry: onRetry
         )
+        // The status and new turns change without focus moving.
+        .onChange(of: controller.phase) { _, _ in
+            AccessibilityNotification.Announcement(statusText).post()
+        }
+        // A line is final once the next one starts, so each is read once
+        // with its whole text.
+        .onChange(of: controller.transcript.count) { old, new in
+            guard new > old, let entry = Self.finishedLine(in: controller.transcript) else { return }
+            AccessibilityNotification.Announcement(entry.speaker == .user
+                ? AppLocalization.string("You: \(entry.text)")
+                : speakerLabel(entry.text)).post()
+        }
+    }
+
+    /// The line before the newest: the one that just finished.
+    static func finishedLine(in transcript: [VoiceConversationTranscriptEntry]) -> VoiceConversationTranscriptEntry? {
+        transcript.count >= 2 ? transcript[transcript.count - 2] : nil
     }
 
     static func callPhase(_ phase: GeminiLiveConversationController.Phase, microphoneMuted: Bool) -> LiveVoiceCallPhase {

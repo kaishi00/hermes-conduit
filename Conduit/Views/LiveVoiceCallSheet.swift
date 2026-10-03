@@ -44,6 +44,7 @@ struct LiveVoiceCallSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showsTranscript = false
 
     var body: some View {
@@ -53,6 +54,9 @@ struct LiveVoiceCallSheet: View {
                 header
                 if showsTranscript {
                     transcriptList
+                } else if dynamicTypeSize.isAccessibilitySize {
+                    // The largest text sizes can outgrow the screen.
+                    ScrollView { stage }
                 } else {
                     stage
                 }
@@ -87,6 +91,8 @@ struct LiveVoiceCallSheet: View {
                 LiveVoiceCallThreadLabel(jobs: jobs)
             }
             .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
 
             // Balances the chevron so the title stays centred.
             Color.clear.frame(width: 44, height: 44)
@@ -139,6 +145,8 @@ struct LiveVoiceCallSheet: View {
                     .accessibilityLabel(label(for: entry))
             }
         }
+        // Room for the first lines is kept from the start, so the orb
+        // doesn't jump when speech arrives.
         .frame(maxWidth: .infinity, minHeight: 96, alignment: .bottom)
         .padding(.horizontal, 24)
         .padding(.bottom, 8)
@@ -279,8 +287,9 @@ private struct LiveVoiceCallButton: View {
                 Text(verbatim: title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -419,6 +428,6 @@ struct LiveVoiceOrb: View {
             }
         }
         .opacity(motion.opacity)
-        .animation(.easeInOut(duration: 0.45), value: phase)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.45), value: phase)
     }
 }
