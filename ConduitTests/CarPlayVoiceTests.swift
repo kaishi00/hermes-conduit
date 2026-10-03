@@ -901,6 +901,44 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertFalse(harness.coordinator.isObservingJobs, "the car's back button ends the observation")
     }
 
+    func testAShortcutStartsItsPromptAsAVoiceJob() async {
+        let harness = makeHarness()
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))
+        harness.appState.voiceBackgroundJobSupervisor = supervisor
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+
+        await harness.coordinator.performRunShortcut(
+            CarPlayShortcut(title: "Brief", prompt: "give me my morning brief"),
+            generation: harness.coordinator.connectionGeneration
+        )
+
+        XCTAssertEqual(supervisor.jobs.count, 1)
+        XCTAssertTrue(fake.submissions.first?.1.hasSuffix("give me my morning brief") == true)
+    }
+
+    func testARefusedShortcutShowsErrorWithoutOpeningAConversation() async {
+        let harness = makeHarness()
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))
+        harness.appState.voiceBackgroundJobSupervisor = supervisor
+        for index in 0..<VoiceBackgroundJobSupervisor.maximumActiveJobs {
+            _ = await supervisor.startJob(instructions: "job \(index)")
+        }
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+
+        await harness.coordinator.performRunShortcut(
+            CarPlayShortcut(title: "Brief", prompt: "give me my morning brief"),
+            generation: harness.coordinator.connectionGeneration
+        )
+
+        XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumActiveJobs, "no job was added")
+        XCTAssertEqual(harness.activations.last, .error)
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession, "no conversation opens for a refused job")
+    }
+
     func testABrowseTapAfterADisconnectDoesNothing() async {
         let harness = makeHarness()
         harness.coordinator.handleConnect(harness.spy)

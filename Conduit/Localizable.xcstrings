@@ -2251,6 +2251,26 @@
         }
       }
     },
+    "Shortcut name" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快捷指令名称"
+          }
+        }
+      }
+    },
+    "Shortcut prompt" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快捷指令内容"
+          }
+        }
+      }
+    },
     "Start one from a shortcut or by asking during a call." : {
       "localizations" : {
         "zh-Hans" : {

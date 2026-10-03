@@ -501,7 +501,13 @@ final class CarPlayVoiceCoordinator {
         jobsObservation = supervisor.$jobs
             .dropFirst()
             .sink { [weak self] jobs in
-                guard let list = self?.jobsTemplate else { return }
+                guard let self else { return }
+                // A list CarPlay already released ends its own observation.
+                guard let list = self.jobsTemplate else {
+                    self.jobsObservation?.cancel()
+                    self.jobsObservation = nil
+                    return
+                }
                 list.updateSections(CarPlayBrowseTemplateFactory.jobSections(
                     rows: CarPlayBrowse.jobRows(from: jobs),
                     handlers: handlers
@@ -606,11 +612,13 @@ final class CarPlayVoiceCoordinator {
         let appState = lastBoundAppState ?? appStateProvider()
         // A refused job (too many running) has no outcome to wait for, so
         // the car shows Error instead of opening a conversation.
-        let supervisor = appState.voiceBackgroundJobSupervisor
-        let existing = Set(supervisor.jobs.map(\.id))
-        _ = await supervisor.startJob(instructions: shortcut.prompt)
+        let created = CreatedJobBox()
+        _ = await appState.voiceBackgroundJobSupervisor.startJob(
+            instructions: shortcut.prompt,
+            onJobCreated: { created.id = $0 }
+        )
         guard isCurrent(generation), isConnected else { return }
-        guard supervisor.jobs.contains(where: { !existing.contains($0.id) }) else {
+        guard created.id != nil else {
             handleControllerState(.failed(""))
             return
         }
@@ -1075,4 +1083,11 @@ final class CarPlayVoiceCoordinator {
     private func isCurrent(_ generation: UInt64) -> Bool {
         connectionGeneration == generation
     }
+}
+
+/// The id of the Voice Job a shortcut started, set when the supervisor
+/// creates it.
+@MainActor
+private final class CreatedJobBox {
+    var id: UUID?
 }

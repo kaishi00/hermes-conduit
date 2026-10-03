@@ -49,10 +49,12 @@ struct CarPlaySettingsSection: View {
                 if editingID != nil || preferences.canAddShortcut {
                     TextField(AppLocalization.string("Name, like Morning brief"), text: $draftTitle)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel(Text(AppLocalization.string("Shortcut name")))
                         .accessibilityIdentifier("voice.carPlayShortcutTitle")
                     TextField(AppLocalization.string("What to ask Hermes"), text: $draftPrompt, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1...4)
+                        .accessibilityLabel(Text(AppLocalization.string("Shortcut prompt")))
                         .accessibilityIdentifier("voice.carPlayShortcutPrompt")
                     HStack {
                         if editingID != nil {
