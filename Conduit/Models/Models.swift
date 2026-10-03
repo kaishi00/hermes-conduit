@@ -851,6 +851,28 @@ struct ProfileModelDefaults: Equatable {
     var model: String
     var provider: String
     var reasoning: String
+
+    /// The picker selection for the saved default. The saved provider can be
+    /// spelled differently from the row slug (display name, `custom:<key>`,
+    /// or `auto`), so match like Hermes Desktop and then fall back to the row
+    /// Hermes marks current or the row listing the saved model, before the
+    /// first row. A saved model missing from the row's list is kept as is
+    /// rather than replaced by the row's first model.
+    var selection: (provider: String, model: String) {
+        let row = providers.first(where: { $0.matches(provider) })
+            ?? providers.first(where: \.isCurrent)
+            ?? uniqueRow(listing: model)
+            ?? providers.first
+        guard let row else { return (provider, model) }
+        if !model.isEmpty { return (row.name, model) }
+        return (row.name, row.models.first?.id ?? "")
+    }
+
+    private func uniqueRow(listing model: String) -> ProviderInfo? {
+        guard !model.isEmpty else { return nil }
+        let rows = providers.filter { $0.models.contains(where: { $0.id == model }) }
+        return rows.count == 1 ? rows[0] : nil
+    }
 }
 
 /// Device-local model picker filtering. It mirrors the React client's

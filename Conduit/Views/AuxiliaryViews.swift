@@ -1324,6 +1324,12 @@ private struct ProfileModelSettingsDetail: View {
     @State private var error: String?
 
     private var models: [ModelInfo] { defaults?.providers.first(where: { $0.name == provider })?.models ?? [] }
+    /// Keeps a saved model the catalog no longer lists visible instead of
+    /// silently showing a different one.
+    private var modelChoices: [(id: String, title: String)] {
+        let listed = models.map { (id: $0.id, title: $0.label ?? $0.id) }
+        return model.isEmpty || models.contains(where: { $0.id == model }) ? listed : [(id: model, title: model)] + listed
+    }
 
     var body: some View {
         SettingsDetailContainer {
@@ -1340,12 +1346,12 @@ private struct ProfileModelSettingsDetail: View {
                     }
                     ConduitMenuPicker(
                         value: model,
-                        choices: models.map { (id: $0.id, title: $0.label ?? $0.id) },
+                        choices: modelChoices,
                         onSelect: { model = $0 }
                     ) {
                         Text("Model").foregroundStyle(.secondary)
                     }
-                    .disabled(models.isEmpty)
+                    .disabled(modelChoices.isEmpty)
                 } else {
                     ProgressView("Loading available models…")
                 }
@@ -1370,9 +1376,7 @@ private struct ProfileModelSettingsDetail: View {
     private func reload() async {
         guard let loaded = await load() else { return }
         defaults = loaded
-        provider = loaded.providers.contains(where: { $0.name == loaded.provider }) ? loaded.provider : loaded.providers.first?.name ?? ""
-        let availableModels = loaded.providers.first(where: { $0.name == provider })?.models ?? []
-        model = availableModels.contains(where: { $0.id == loaded.model }) ? loaded.model : availableModels.first?.id ?? ""
+        (provider, model) = loaded.selection
         reasoning = loaded.reasoning
     }
     private func chooseProvider(_ next: String) { provider = next; model = defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? "" }
