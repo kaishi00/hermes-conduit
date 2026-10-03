@@ -38,6 +38,8 @@ struct ComposerBar: View {
     /// an UNCHANGED revision and can never rewrite the editor or move the
     /// cursor mid-typing.
     @State private var composerRevision: UInt64 = 0
+    /// The latest replacement puts the cursor after the text.
+    @State private var composerCursorAtEnd = false
     @State private var loadedDraftKey: ComposerDraftKey?
     @State private var photoImportContext: AsyncAttachmentContext?
     @State private var photoImportGeneration: UInt64 = 0
@@ -179,8 +181,9 @@ struct ComposerBar: View {
     /// can keep these replacements from ever surfacing as user input — the
     /// user-edit ownership signal lives in that bridge's
     /// `textViewDidChange`, guarded by the same machinery.
-    private func replaceComposerText(_ newValue: String) {
+    private func replaceComposerText(_ newValue: String, cursorAtEnd: Bool = false) {
         text = newValue
+        composerCursorAtEnd = cursorAtEnd
         composerRevision &+= 1
     }
 
@@ -438,6 +441,7 @@ struct ComposerBar: View {
                         },
                         editorIdentity: editorIdentity,
                         programmaticRevision: composerRevision,
+                        programmaticCursorAtEnd: composerCursorAtEnd,
                         returnKeySends: returnKeySends,
                         // May lag one render behind fast typing; the safe
                         // failure mode is newline insertion, and
@@ -1089,7 +1093,9 @@ struct ComposerBar: View {
         dictationPrefix = text
         Haptics.medium()
         dictation.onTranscript = { transcript in
-            replaceComposerText(ComposerDictation.draft(before: dictationPrefix, dictated: transcript))
+            // The cursor follows the words, so the next hold or typing
+            // carries on after them.
+            replaceComposerText(ComposerDictation.draft(before: dictationPrefix, dictated: transcript), cursorAtEnd: true)
         }
         dictation.onFinish = { producedText in
             Haptics.light()

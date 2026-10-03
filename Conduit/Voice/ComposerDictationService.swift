@@ -41,6 +41,7 @@ final class ComposerDictationService: ObservableObject {
     private var finishTask: Task<Void, Never>?
     private var generation: UInt64 = 0
     private var producedText = false
+    private var transcript = DictationTranscript()
     /// Bumped by `cancel()` so a reserved start that hasn't run, or is
     /// still awaiting permission, gives up.
     private var startToken: UInt64 = 0
@@ -88,6 +89,7 @@ final class ComposerDictationService: ObservableObject {
         generation &+= 1
         let generation = generation
         producedText = false
+        transcript = DictationTranscript()
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.taskHint = .dictation
@@ -111,9 +113,12 @@ final class ComposerDictationService: ObservableObject {
         isDictating = true
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             let transcript = result?.bestTranscription.formattedString
+            // Set on the result that closes an utterance (a pause); the
+            // recognizer may start the next one from empty.
+            let endsUtterance = result?.speechRecognitionMetadata != nil
             let isFinal = (result?.isFinal ?? false) || error != nil
             Task { @MainActor [weak self] in
-                self?.receive(transcript: transcript, isFinal: isFinal, generation: generation)
+                self?.receive(transcript: transcript, endsUtterance: endsUtterance, isFinal: isFinal, generation: generation)
             }
         }
     }
@@ -171,11 +176,12 @@ final class ComposerDictationService: ObservableObject {
         ]
     }
 
-    private func receive(transcript: String?, isFinal: Bool, generation: UInt64) {
+    private func receive(transcript text: String?, endsUtterance: Bool, isFinal: Bool, generation: UInt64) {
         guard isDictating, generation == self.generation else { return }
-        if let transcript, !transcript.isEmpty {
+        if let text, !text.isEmpty {
+            transcript.receive(text, endsUtterance: endsUtterance)
             producedText = true
-            onTranscript?(transcript)
+            onTranscript?(transcript.text)
         }
         // A final result after the release ends it; one while still
         // holding (a recognizer error) does too.
@@ -284,6 +290,68 @@ enum ComposerDictation {
         guard !dictated.isEmpty else { return prefix }
         guard let last = prefix.last else { return dictated }
         return last.isWhitespace ? prefix + dictated : prefix + " " + dictated
+    }
+}
+
+/// The whole of one dictation. After a pause the recognizer can start its
+/// next utterance from empty, so each result is either the current
+/// utterance growing or a new one; the finished ones are kept (#333).
+struct DictationTranscript: Equatable {
+    /// Utterances the recognizer has moved past.
+    private(set) var committed = ""
+    /// The utterance still being recognized.
+    private(set) var current = ""
+    /// The last result closed its utterance.
+    private var atBoundary = false
+
+    var text: String { Self.join(committed, current) }
+
+    mutating func receive(_ result: String, endsUtterance: Bool) {
+        defer { atBoundary = endsUtterance }
+        // A result that repeats the kept utterances, rather than growing the
+        // current one, is the whole text again (some final results are).
+        let words = Self.words(result)
+        if !committed.isEmpty, !words.starts(with: Self.words(current)),
+           words.starts(with: Self.words(committed)) {
+            committed = ""
+            current = result
+            return
+        }
+        if Self.startsOver(from: current, to: result, afterBoundary: atBoundary) {
+            committed = Self.join(committed, current)
+        }
+        current = result
+    }
+
+    /// Whether `next` begins a new utterance rather than revising `previous`.
+    /// A continuation repeats more than half of what came before. After the
+    /// recognizer marked a boundary, a result that doesn't, or is shorter, is new
+    /// (continuing past a boundary only grows). Without that mark
+    /// only a much shorter result that also changes the first word is: a
+    /// revision can rewrite words, but rarely discards most of them.
+    static func startsOver(from previous: String, to next: String, afterBoundary: Bool) -> Bool {
+        let before = words(previous)
+        guard !before.isEmpty else { return false }
+        let after = words(next)
+        let shared = zip(before, after).prefix(while: { $0.0 == $0.1 }).count
+        if shared == before.count { return false }
+        if afterBoundary { return after.count < before.count || shared * 2 <= before.count }
+        guard before.count >= 3, after.count * 2 <= before.count else { return false }
+        return shared == 0
+    }
+
+    private static func words(_ text: String) -> [String] {
+        text.lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" })
+            .map(String.init)
+    }
+
+    private static func join(_ first: String, _ second: String) -> String {
+        let first = first.trimmingCharacters(in: .whitespacesAndNewlines)
+        let second = second.trimmingCharacters(in: .whitespacesAndNewlines)
+        if first.isEmpty { return second }
+        if second.isEmpty { return first }
+        return first + " " + second
     }
 }
 

@@ -35,6 +35,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
     /// bridge tells them apart from a deliberate replacement and from the
     /// echo of a user edit: they may not rewrite the editor.
     var programmaticRevision: UInt64 = 0
+    /// The replacement at `programmaticRevision` puts the cursor after the
+    /// text (dictation) instead of keeping its position (#333).
+    var programmaticCursorAtEnd = false
     /// Hardware-keyboard Return behavior. When true, a plain Return press
     /// submits through the composer action path; Shift-Return and every
     /// non-submittable state keep the default newline insertion.
@@ -103,6 +106,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         context.coordinator.apply(
             text: text,
             programmaticRevision: programmaticRevision,
+            cursorAtEnd: programmaticCursorAtEnd,
             editorIdentity: editorIdentity,
             to: uiView
         )
@@ -144,7 +148,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         /// An intentional replacement that arrived while IME marked text was
         /// active. Composition is never silently replaced; this lands as
         /// soon as it ends.
-        private var pendingProgrammatic: (text: String, revision: UInt64)?
+        private var pendingProgrammatic: (text: String, revision: UInt64, cursorAtEnd: Bool)?
         private var editorIdentity: UUID?
 
         init(_ parent: ComposerPasteTextView) {
@@ -193,6 +197,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         func apply(
             text: String,
             programmaticRevision: UInt64,
+            cursorAtEnd: Bool = false,
             editorIdentity: UUID,
             to textView: UITextView
         ) {
@@ -215,6 +220,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
                     performProgrammaticReplacement(
                         text: text,
                         revision: programmaticRevision,
+                        cursorAtEnd: cursorAtEnd,
                         into: textView
                     )
                     return
@@ -230,7 +236,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
             // composition ends and stays the newest instruction.
             if textView.markedTextRange != nil {
                 TranscriptPerf.note(.composerMarkedTextDeferral)
-                pendingProgrammatic = (text, programmaticRevision)
+                pendingProgrammatic = (text, programmaticRevision, cursorAtEnd)
                 return
             }
 
@@ -252,6 +258,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
             performProgrammaticReplacement(
                 text: text,
                 revision: programmaticRevision,
+                cursorAtEnd: cursorAtEnd,
                 into: textView
             )
         }
@@ -296,6 +303,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
             performProgrammaticReplacement(
                 text: pending.text,
                 revision: pending.revision,
+                cursorAtEnd: pending.cursorAtEnd,
                 into: textView
             )
         }
@@ -303,12 +311,13 @@ struct ComposerPasteTextView: UIViewRepresentable {
         private func performProgrammaticReplacement(
             text: String,
             revision: UInt64,
+            cursorAtEnd: Bool,
             into textView: UITextView
         ) {
-            let clampedSelection = clampedSelectionRange(
-                textView.selectedRange,
-                maxLength: (text as NSString).length
-            )
+            let length = (text as NSString).length
+            let clampedSelection = cursorAtEnd
+                ? NSRange(location: length, length: 0)
+                : clampedSelectionRange(textView.selectedRange, maxLength: length)
 
             TranscriptPerf.note(.composerProgrammaticTextAssignment)
             TranscriptPerf.lastComposerSelectionBeforeAssignment = textView.selectedRange.location

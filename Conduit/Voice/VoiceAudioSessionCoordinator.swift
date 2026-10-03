@@ -115,6 +115,14 @@ final class VoiceAudioSessionCoordinator {
     /// re-entering the coordinator mid-transition.
     var onOwnersChanged: (@MainActor () -> Void)?
 
+    /// Single consumer: AppState's wake lifecycle. Called synchronously,
+    /// before anything changes, when another owner acquires while the wake
+    /// listener holds the session, so the listener stops its microphone and
+    /// releases first. Waiting for `onOwnersChanged` left both microphones
+    /// running for a turn, and dictation started under wake listening never
+    /// heard anything (#333).
+    var onWakeListenerMustYield: (@MainActor () -> Void)?
+
     /// True while anything other than the wake listener holds the session.
     var hasOwnersOtherThanWakeListening: Bool {
         leases.values.contains { $0 != .wakeListening }
@@ -139,6 +147,11 @@ final class VoiceAudioSessionCoordinator {
         _ intent: VoiceAudioIntent,
         onTakenOver: (@MainActor () -> Void)? = nil
     ) throws -> VoiceAudioLease {
+        // Before this acquisition touches any state, so the listener's own
+        // release is an ordinary one.
+        if intent != .wakeListening, leases.values.contains(.wakeListening) {
+            onWakeListenerMustYield?()
+        }
         let lease = VoiceAudioLease(id: UUID())
         let displaced = intent == .conversationCapture ? Array(takeoverHandlers.values) : []
         leases[lease.id] = intent
