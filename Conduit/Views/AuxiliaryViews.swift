@@ -1379,7 +1379,13 @@ private struct ProfileModelSettingsDetail: View {
         (provider, model) = loaded.selection
         reasoning = loaded.reasoning
     }
-    private func chooseProvider(_ next: String) { provider = next; model = defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? "" }
+    /// Menus fire on the current item too; re-picking it must not swap out
+    /// a saved model.
+    private func chooseProvider(_ next: String) {
+        guard next != provider else { return }
+        provider = next
+        model = defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? ""
+    }
     private func persist() {
         Task {
             saving = true
@@ -1403,7 +1409,14 @@ private struct DelegationModelSettings: View {
     @State private var reasoning = "medium"
     @State private var saving = false
     @State private var error: String?
-    private var models: [ModelInfo] { defaults?.providers.first(where: { $0.name == provider })?.models ?? [] }
+    /// An inherited provider offers the chat row's models, since that is the
+    /// provider the delegate will run on.
+    private var models: [ModelInfo] {
+        let row = provider.isEmpty
+            ? defaults?.providers.first(where: \.isCurrent)
+            : defaults?.providers.first(where: { $0.name == provider })
+        return row?.models ?? []
+    }
     /// A saved provider or model the catalog does not list stays visible
     /// instead of the picker silently showing a different one.
     private var providerChoices: [(id: String, title: String)] {
@@ -1464,7 +1477,11 @@ private struct DelegationModelSettings: View {
             ?? (configuredProvider, configuredModel)
         reasoning = settings["delegation.reasoning_effort"]?.textValue ?? ""
     }
-    private func chooseProvider(_ next: String) { provider = next; model = next.isEmpty ? "" : defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? "" }
+    private func chooseProvider(_ next: String) {
+        guard next != provider else { return }
+        provider = next
+        model = next.isEmpty ? "" : defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? ""
+    }
     private func persist() {
         Task {
             saving = true
