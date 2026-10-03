@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Hermes did not accept the model switch." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未接受模型切换。"
+          }
+        }
+      }
+    },
     "Unable to change YOLO mode." : {
       "localizations" : {
         "zh-Hans" : {

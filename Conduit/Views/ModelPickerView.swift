@@ -572,6 +572,14 @@ struct ModelPickerView: View {
                 // the other settings so the sheet's state stays coherent and
                 // ask; Switch repeats the apply with the confirmation flag.
                 if outcome.confirmRequired {
+                    // A gateway that still asks after a confirmed retry would
+                    // loop the alert forever; report it instead.
+                    if confirmedModelSwitch {
+                        applyError = outcome.confirmMessage.isEmpty
+                            ? AppLocalization.string("Hermes did not accept the model switch.")
+                            : outcome.confirmMessage
+                        return
+                    }
                     pendingModelConfirmation = outcome.confirmMessage.isEmpty
                         ? AppLocalization.string("Hermes asks you to confirm switching to \(selectedModel).")
                         : outcome.confirmMessage
