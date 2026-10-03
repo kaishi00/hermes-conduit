@@ -14,16 +14,16 @@
         }
       }
     },
-    "commandcode": {
+    "zai-custom": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Command Code",
+      "name": "Z.ai",
       "options": {
-        "baseURL": "https://api.commandcode.ai/provider/v1",
-        "apiKey": "{env:COMMANDCODE_API_KEY}"
+        "baseURL": "https://api.z.ai/api/coding/paas/v4",
+        "apiKey": "{env:ZAI_API_KEY}"
       },
       "models": {
-        "xiaomi/mimo-v2.6-flash": {
-          "name": "Xiaomi MiMo V2.6 Flash"
+        "glm-5.3-flashx": {
+          "name": "GLM-5.3-FlashX"
         }
       }
     }
