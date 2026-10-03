@@ -2421,6 +2421,21 @@ final class HermesClient: ObservableObject {
 struct ProviderInfo: Equatable {
     let name: String
     let models: [ModelInfo]
+    /// Display name and alternate spellings Hermes accepts for this row. A
+    /// saved `model.provider` can use any of them (e.g. `custom:<key>` for a
+    /// row whose slug is the bare key), so matching on `name` alone misses it.
+    var displayName: String? = nil
+    var aliases: [String] = []
+    /// Hermes marks the row backing the configured main model.
+    var isCurrent = false
+
+    /// True when `provider` names this row by slug, display name or alias,
+    /// mirroring Hermes Desktop's `catalogProviderMatches`.
+    func matches(_ provider: String) -> Bool {
+        let wanted = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !wanted.isEmpty else { return false }
+        return ([name, displayName ?? ""] + aliases).contains { $0.lowercased() == wanted }
+    }
 }
 
 struct ModelInfo: Equatable {
@@ -2435,6 +2450,9 @@ extension ProviderInfo {
         guard let name = object["slug"]?.stringValue ?? object["id"]?.stringValue ?? object["name"]?.stringValue,
               !name.isEmpty else { return nil }
         self.name = name
+        self.displayName = object["name"]?.stringValue
+        self.aliases = (object["aliases"]?.arrayValue ?? []).compactMap(\.stringValue)
+        self.isCurrent = object["is_current"]?.boolValue ?? false
         self.models = (object["models"]?.arrayValue ?? []).compactMap { model in
             if let id = model.stringValue, !id.isEmpty {
                 return ModelInfo(id: id, label: nil, reasoningCapable: false)

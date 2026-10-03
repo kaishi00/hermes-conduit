@@ -19675,11 +19675,16 @@ final class AppState: ObservableObject {
             guard profile == activeProfile else { return nil }
             let providers = (AnyCodable.from(options).objectValue?["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))
             // Profile config is the persisted default. Hermes stores it under
-            // `model.default` and `model.provider`; `/api/model/info` can
-            // instead report a currently running session's override.
+            // `model.default` and `model.provider`, but `/api/config` flattens
+            // `model` to the bare model string and drops the provider, so the
+            // provider comes from `/api/model/info` (read from the same config)
+            // or the options payload's current selection.
             let modelConfig = config["model"] as? [String: Any] ?? [:]
-            let model = modelConfig["default"] as? String ?? info["model"] as? String ?? ""
-            let provider = modelConfig["provider"] as? String ?? info["provider"] as? String ?? ""
+            let optionsObject = AnyCodable.from(options).objectValue ?? [:]
+            let model = [modelConfig["default"] as? String, config["model"] as? String, info["model"] as? String, optionsObject["model"]?.stringValue]
+                .compactMap { $0 }.first(where: { !$0.isEmpty }) ?? ""
+            let provider = [modelConfig["provider"] as? String, info["provider"] as? String, optionsObject["provider"]?.stringValue]
+                .compactMap { $0 }.first(where: { !$0.isEmpty }) ?? ""
             let reasoning = config["reasoning"] as? String ?? config["reasoning_effort"] as? String ?? "medium"
             return ProfileModelDefaults(providers: providers, model: model, provider: provider, reasoning: reasoning)
         } catch {
