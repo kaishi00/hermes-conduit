@@ -853,6 +853,11 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(ownWords.contains("emails"), "only the second request is this job's")
         XCTAssertTrue(second.contains("User (handled separately): Can you look at my emails?"), second)
         XCTAssertTrue(second.contains("User: In the meantime, what's in the news?"), second)
+
+        // A third delegation with nothing new said doesn't redo either.
+        session.onEvent?(.delegation(id: "del_3", text: ""))
+        await settle(40)
+        XCTAssertEqual(fake.submissions.count, 2)
         controller.stop()
     }
 

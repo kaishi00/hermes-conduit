@@ -486,10 +486,9 @@ final class GPTLiveConversationController: ObservableObject {
         let userWords = recent.filter { $0.speaker == .user }.map(\.text).joined(separator: " ")
         let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
         let request = own.isEmpty ? userWords : own
-        guard !request.isEmpty else {
-            // Nothing new since the last delegation: the latest user words.
-            return transcript.last(where: { $0.speaker == .user })?.text ?? ""
-        }
+        // Nothing new since the last delegation: no request, so Hermes asks
+        // the user rather than redoing the one already passed on.
+        guard !request.isEmpty else { return "" }
         var context = ""
         for entry in transcript.suffix(8).reversed() {
             let speaker = entry.speaker == .user

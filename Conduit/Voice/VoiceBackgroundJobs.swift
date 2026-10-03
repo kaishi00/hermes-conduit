@@ -1273,7 +1273,10 @@ enum VoiceThreadRouting {
 
     /// Before the reply phrase: a second request, or one about the reply
     /// ("tell me about the last message") rather than for it.
-    static let lastReplyConjunctions: Set<String> = ["and", "then", "also", "but", "or", "about"]
+    static let lastReplyConjunctions: Set<String> = [
+        "and", "then", "also", "but", "or", "about",
+        "think", "feel", "opinion", "why", "how", "mean", "meant",
+    ]
     /// Where the reply is, after the phrase ("…from the chat").
     static let lastReplyPlaces: [[String]] = [["from", "the", "chat"], ["in", "the", "chat"], ["in", "this", "chat"]]
 
