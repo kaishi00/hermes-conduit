@@ -54,21 +54,10 @@ struct ComposerBar: View {
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = false
     @AppStorage(AttachmentSizeLimit.preferenceKey) private var attachmentLimitMegabytes = AttachmentSizeLimit.defaultMegabytes
     @Namespace private var glassNamespace
-    /// Hold the mic to dictate into the draft (#290).
+    /// The dictate button types into the draft (#290, #335).
     @StateObject private var dictation = ComposerDictationService()
-    /// The draft as it was when the hold began; dictated text goes after it.
+    /// The draft as it was when dictation began; dictated text goes after it.
     @State private var dictationPrefix = ""
-    @State private var isHoldingMic = false
-    /// The pending hold on the mic: fires after the threshold unless the
-    /// finger lifts first, which makes the press a tap.
-    @State private var micHoldTask: Task<Void, Never>?
-    /// True while a finger is on the mic. Unlike `onEnded`, it also resets
-    /// when the touch is cancelled (an alert, the app leaving).
-    @GestureState private var isMicPressed = false
-    /// The one-time "Tap for Voice · Hold to dictate" tip stays until a
-    /// dictation has produced text.
-    @AppStorage(ComposerDictation.tipDoneKey) private var dictationTipDone = false
-    @State private var dictationTipHidden = false
 
     struct AsyncAttachmentContext: Equatable {
         let editorIdentity: UUID
@@ -261,14 +250,6 @@ struct ComposerBar: View {
         colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.09)
     }
 
-    private var fieldFoundation: Color {
-        colorScheme == .dark ? Color.white.opacity(0.065) : Color.black.opacity(0.035)
-    }
-
-    private var fieldStroke: Color {
-        colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.08)
-    }
-
     var body: some View {
         let _ = TranscriptPerf.note(.composerBarBody)
         Group {
@@ -337,11 +318,9 @@ struct ComposerBar: View {
         .onChange(of: appState.isVoiceInUse) { _, inUse in
             // Voice took the microphone: dictation steps aside.
             guard inUse else { return }
-            endMicPress()
             dictation.cancel()
         }
         .onDisappear {
-            endMicPress()
             dictation.cancel()
             // Dependable second hook: whether this view leaves for a room,
             // a session switch, or teardown, the typed text lands in the
@@ -394,8 +373,6 @@ struct ComposerBar: View {
                 attachmentStrip
             }
 
-            sessionControls
-
             if isShowingSlashSuggestions && !filteredSlashCommands.isEmpty {
                 SlashSuggestionsOverlay(
                     commands: filteredSlashCommands,
@@ -405,7 +382,7 @@ struct ComposerBar: View {
                     }
                 )
                 .padding(.horizontal, 10)
-                .padding(.bottom, 4)
+                .padding(.top, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
@@ -414,58 +391,17 @@ struct ComposerBar: View {
                     replaceComposerText(MentionAutocomplete.completing(text, with: candidate))
                 }
                 .padding(.horizontal, 10)
-                .padding(.bottom, 4)
+                .padding(.top, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                attachmentButton
+            // The field spans the card; every control sits in the row
+            // below it, so a long draft wraps across the full width (#335).
+            composerField
+                .padding(.horizontal, 6)
+                .padding(.top, 6)
 
-                ZStack(alignment: .topLeading) {
-                    let currentEditorIdentity = editorIdentity
-                    if text.isEmpty {
-                        Text(appState.composerPlaceholder)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                    }
-                    ComposerPasteTextView(
-                        text: $text,
-                        isFocused: $isFocused,
-                        measuredHeight: $composerTextHeight,
-                        enabled: appState.composerIsEnabled,
-                        onPastedImage: { pastedImage in
-                            handlePastedImage(pastedImage, editorIdentity: currentEditorIdentity)
-                        },
-                        onPastedImageError: { message in
-                            handlePastedImageError(message, editorIdentity: currentEditorIdentity)
-                        },
-                        editorIdentity: editorIdentity,
-                        programmaticRevision: composerRevision,
-                        programmaticCursorAtEnd: composerCursorAtEnd,
-                        returnKeySends: returnKeySends,
-                        // May lag one render behind fast typing; the safe
-                        // failure mode is newline insertion, and
-                        // submitFromReturnKey() re-checks the live gate.
-                        canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action),
-                        onSubmitFromReturn: { submitFromReturnKey() },
-                        onUserEdit: { appState.noteComposerUserEdit() }
-                    )
-                    .id(editorIdentity)
-                    .padding(.horizontal, 5)
-                    .frame(height: composerTextHeight)
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .background(fieldFoundation, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 19, style: .continuous)
-                        .strokeBorder(fieldStroke, lineWidth: 1)
-                }
-                .animation(ConduitMotion.response, value: isFocused)
-
-                trailingSlot
-            }
-            .padding(10)
+            controlsRow
         }
         .background(composerFoundation, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
         .overlay {
@@ -478,6 +414,96 @@ struct ComposerBar: View {
         .sheet(item: $repairContext) { context in
             ConnectionRepairSetupSheet(context: context)
         }
+    }
+
+    private var composerField: some View {
+        ZStack(alignment: .topLeading) {
+            let currentEditorIdentity = editorIdentity
+            if text.isEmpty {
+                Text(appState.composerPlaceholder)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+            }
+            ComposerPasteTextView(
+                text: $text,
+                isFocused: $isFocused,
+                measuredHeight: $composerTextHeight,
+                enabled: appState.composerIsEnabled,
+                onPastedImage: { pastedImage in
+                    handlePastedImage(pastedImage, editorIdentity: currentEditorIdentity)
+                },
+                onPastedImageError: { message in
+                    handlePastedImageError(message, editorIdentity: currentEditorIdentity)
+                },
+                editorIdentity: editorIdentity,
+                programmaticRevision: composerRevision,
+                programmaticCursorAtEnd: composerCursorAtEnd,
+                returnKeySends: returnKeySends,
+                // May lag one render behind fast typing; the safe
+                // failure mode is newline insertion, and
+                // submitFromReturnKey() re-checks the live gate.
+                canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action),
+                onSubmitFromReturn: { submitFromReturnKey() },
+                onUserEdit: {
+                    appState.noteComposerUserEdit()
+                    // Typing ends a dictation: its next result would rewrite
+                    // the draft from where it began and drop the keystrokes.
+                    // The words so far stay.
+                    if dictation.isDictating || dictation.isStarting { dictation.cancel() }
+                }
+            )
+            .id(editorIdentity)
+            .padding(.horizontal, 5)
+            .frame(height: composerTextHeight)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    /// Attach, model and session status on the left; dictate and the
+    /// voice/send slot on the right, like the Codex composer (#335).
+    private var controlsRow: some View {
+        HStack(spacing: 8) {
+            attachmentButton
+
+            modelButton
+
+            if let callID = appState.activeVoiceCallSessionID, appState.canResumeVoiceCall {
+                resumeVoiceCallButton(callID)
+            }
+
+            Button {
+                Haptics.selection()
+                appState.showContextSheet = true
+            } label: {
+                ContextRingView(percent: appState.runtime.contextPercent)
+                    .frame(width: 32, height: 32)
+                    .frame(minWidth: 36, minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Context usage, \(Int(appState.runtime.contextPercent.rounded())) percent")
+
+            if appState.activeAgents > 0 {
+                Button {
+                    Haptics.selection()
+                    appState.showAgentsSheet = true
+                } label: {
+                    Label("\(appState.activeAgents)", systemImage: "person.2")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.conduitAccent)
+                        .frame(minWidth: 36, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(AppLocalization.string("Delegate agents, \(String(appState.activeAgents)) active"))
+            }
+
+            dictateButton
+
+            trailingSlot
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
@@ -726,24 +752,21 @@ struct ComposerBar: View {
         case action
     }
 
-    /// Mic and send share one trailing slot, like Messages (#194): with
+    /// Voice and send share one trailing slot, like Messages (#194): with
     /// nothing to send the slot offers voice (when it's enabled for the
     /// profile), and any sendable draft or live turn swaps it for the
-    /// action button. The slot itself never disappears, so the field keeps
-    /// its width as the first character is typed.
-    /// While dictating the mic keeps the slot even though the draft is now
-    /// sendable: the finger is still on it.
-    static func trailingControl(action: ComposerAction, showsVoiceButton: Bool, isDictating: Bool = false) -> TrailingControl {
-        if isDictating { return .voice }
-        return action == .unavailable && showsVoiceButton ? .voice : .action
+    /// action button. The slot itself never disappears, so the row keeps
+    /// its layout as the first character is typed. Dictation has its own
+    /// button beside it (#335), so Send shows up as soon as words land.
+    static func trailingControl(action: ComposerAction, showsVoiceButton: Bool) -> TrailingControl {
+        action == .unavailable && showsVoiceButton ? .voice : .action
     }
 
     @ViewBuilder
     private var trailingSlot: some View {
         let control = Self.trailingControl(
             action: action,
-            showsVoiceButton: appState.showsComposerVoiceButton,
-            isDictating: dictation.isCapturing || isHoldingMic
+            showsVoiceButton: appState.showsComposerVoiceButton
         )
         if #available(iOS 26.0, *) {
             trailingControlButton(control)
@@ -796,79 +819,42 @@ struct ComposerBar: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
-    private var sessionControls: some View {
-        HStack(spacing: 10) {
-            Button {
-                Haptics.selection()
-                appState.showModelPicker = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "cpu")
-                        .foregroundStyle(Color.conduitAccent)
-                        .symbolEffect(
-                            .variableColor.iterative,
-                            options: .repeating,
-                            isActive: appState.turnState == .running && !reduceMotion
-                        )
-                    Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
-                        .lineLimit(1)
-                    if !appState.runtime.reasoningEffort.isEmpty {
-                        Text("/")
-                            .foregroundStyle(.secondary)
-                        Text(formatEffort(appState.runtime.reasoningEffort))
-                            .foregroundStyle(Color.conduitAccent)
-                            .lineLimit(1)
-                    }
-                    if appState.runtime.yolo {
-                        Image(systemName: "shield.slash.fill")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(Color.orange)
-                    }
-                    Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.bold))
+    /// The model and effort, truncating first when the row is crowded.
+    private var modelButton: some View {
+        Button {
+            Haptics.selection()
+            appState.showModelPicker = true
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "cpu")
+                    .foregroundStyle(Color.conduitAccent)
+                    .symbolEffect(
+                        .variableColor.iterative,
+                        options: .repeating,
+                        isActive: appState.turnState == .running && !reduceMotion
+                    )
+                Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if !appState.runtime.reasoningEffort.isEmpty {
+                    // The model name gives way first, then the effort.
+                    Text(formatEffort(appState.runtime.reasoningEffort))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .layoutPriority(1)
                 }
-                .font(.footnote.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(modelAccessibilityLabel)
-
-            if let callID = appState.activeVoiceCallSessionID, appState.canResumeVoiceCall {
-                resumeVoiceCallButton(callID)
-            }
-
-            Button {
-                Haptics.selection()
-                appState.showContextSheet = true
-            } label: {
-                HStack(spacing: 5) {
-                    ContextRingView(percent: appState.runtime.contextPercent)
-                        .frame(width: 32, height: 32)
+                if appState.runtime.yolo {
+                    Image(systemName: "shield.slash.fill")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Color.orange)
                 }
-                .frame(minWidth: 36, minHeight: 36)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Context usage, \(Int(appState.runtime.contextPercent.rounded())) percent")
-
-            if appState.activeAgents > 0 {
-                Button {
-                    Haptics.selection()
-                    appState.showAgentsSheet = true
-                } label: {
-                    Label("\(appState.activeAgents)", systemImage: "person.2")
-                        .font(.caption.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.conduitAccent)
-                        .frame(minWidth: 36, minHeight: 36)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(AppLocalization.string("Delegate agents, \(String(appState.activeAgents)) active"))
-            }
+            .font(.footnote.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 7)
-        .padding(.bottom, 1)
+        .buttonStyle(.plain)
+        .accessibilityLabel(modelAccessibilityLabel)
     }
 
     /// Return-shortcut entry point. Invokes the exact same submission path
@@ -889,6 +875,12 @@ struct ComposerBar: View {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty else { return }
 
+        // Send is beside the dictate button, so it can be tapped mid-dictation:
+        // the words so far go out, and late results must not refill the
+        // emptied field.
+        // The send haptic stands for both.
+        dictation.onFinish = nil
+        dictation.cancel()
         let submittedText = text
         let submittedAttachments = attachments
         let submittedAction = action
@@ -932,92 +924,104 @@ struct ComposerBar: View {
     }
 
     /// A saved live call: pick it up with a new live call that continues
-    /// the same row. Labeled, beside the model, so it isn't mistaken for
-    /// the mic, which always starts a new call.
+    /// the same row. A phone glyph, not the waveform, so it isn't mistaken
+    /// for the voice button, which always starts a new call.
     private func resumeVoiceCallButton(_ callID: String) -> some View {
         Button {
             dismissComposer()
             Haptics.selection()
             Task { await appState.resumeVoiceCall(sessionID: callID) }
         } label: {
-            HStack(spacing: 6) {
+            Group {
                 if appState.isPreparingVoiceResume {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Image(systemName: "waveform")
+                    Image(systemName: "phone.arrow.up.right")
                 }
-                Text(AppLocalization.string("Resume call"))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
             }
-            .font(.footnote.weight(.semibold))
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 36)
+            .frame(width: 36, height: 36)
         }
         .buttonStyle(.plain)
         .disabled(appState.isPreparingVoiceResume || appState.isBusy)
         .conduitGlassControl(cornerRadius: 18, tint: .conduitAura.opacity(0.14), interactive: true)
+        // A 44pt target around the smaller glass chip.
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
         .accessibilityLabel(AppLocalization.string("Resume call"))
         .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
     }
 
-    /// Tap opens Voice; press and hold dictates into the draft, never sent
-    /// on its own.
+    /// Opens Voice. A waveform, so it reads as "talk live", apart from the
+    /// plain mic that dictates.
     private var voiceButton: some View {
         let canOpenVoice = canOpenVoiceFromComposer
+        return Button {
+            openVoiceFromComposer()
+        } label: {
+            Image(systemName: appState.canStartPhoneVoiceConversation ? "waveform" : "waveform.slash")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(canOpenVoice ? Color.accentColor : Color.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canOpenVoice)
+        .conduitGlassControl(
+            cornerRadius: 22,
+            tint: appState.canStartPhoneVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06),
+            interactive: canOpenVoice
+        )
+        .accessibilityLabel(Text("Start voice conversation"))
+        .accessibilityHint(appState.phoneVoiceUnavailableReason
+            ?? AppLocalization.string("Starts a voice call; in a chat with messages, the call works in that chat"))
+    }
+
+    /// Tap to dictate into the draft, tap again to stop; the words are
+    /// never sent on their own. Neutral glass, so the tinted voice/send
+    /// slot stays the one "go" control.
+    private var dictateButton: some View {
         let canDictate = canDictateFromComposer
-        // Capturing only: once the finger lifts, the mic is a mic again and
-        // Send comes back while the last words settle.
         let isDictating = dictation.isCapturing
-        return Image(systemName: isDictating ? "waveform" : (appState.canStartPhoneVoiceConversation ? "mic.fill" : "mic.slash"))
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(isDictating ? Color.red : (canOpenVoice || canDictate ? Color.accentColor : Color.secondary))
-            .symbolEffect(.pulse, isActive: isDictating && !reduceMotion)
-            .frame(width: 44, height: 44)
-            .contentShape(Circle())
-            .conduitGlassControl(
-                cornerRadius: 22,
-                tint: isDictating ? .red.opacity(0.16) : (appState.canStartPhoneVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06)),
-                interactive: canOpenVoice || canDictate
-            )
-            .gesture(micPress())
-            .onChange(of: isMicPressed) { _, pressed in
-                guard !pressed else { return }
-                // On the next turn, so a normal lift's onEnded has already
-                // run; anything still pending is a cancelled touch, which
-                // ends like a lift but never counts as a tap.
-                Task { @MainActor in
-                    guard micHoldTask != nil || isHoldingMic else { return }
-                    endMicPress()
-                    dictation.stop()
-                }
+        let isActive = isDictating || dictation.isStarting
+        return Button {
+            switch ComposerDictation.tap(
+                isCapturing: dictation.isCapturing,
+                isStarting: dictation.isStarting,
+                canDictate: canDictate
+            ) {
+            case .start: beginDictation()
+            case .stop: dictation.stop()
+            // Tapped again before the microphone came up.
+            case .cancelStart: dictation.cancel()
+            case .nothing: break
             }
-            .overlay(alignment: .topTrailing) { dictationTip(canDictate: canDictate) }
-            .accessibilityElement()
-            .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(isDictating || dictation.isStarting ? Text("Stop dictation") : Text("Start voice conversation"))
-            .accessibilityHint(isDictating || dictation.isStarting
-                ? AppLocalization.string("Stops dictating; the words stay in the message")
-                : appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Starts a voice call; in a chat with messages, the call works in that chat"))
-            .accessibilityAction {
-                if isDictating {
-                    dictation.stop()
-                } else if dictation.isStarting {
-                    // Activated again before the microphone came up.
-                    dictation.cancel()
-                } else if canOpenVoice {
-                    openVoiceFromComposer()
-                }
-            }
-            .accessibilityActions {
-                if canDictate, !isDictating, !dictation.isStarting {
-                    Button(AppLocalization.string("Dictate")) {
-                        beginDictation(stopsWhenReleased: false)
-                    }
-                }
-            }
+        } label: {
+            Image(systemName: isDictating ? "mic.fill" : "mic")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(isDictating ? Color.red : (canDictate ? Color.primary : Color.secondary))
+                // Pulses from the tap, so a start still waiting on
+                // permission or the microphone shows it's in flight.
+                .symbolEffect(.pulse, isActive: isActive && !reduceMotion)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canDictate && !isActive)
+        .conduitGlassControl(
+            cornerRadius: 22,
+            tint: isDictating ? .red.opacity(0.16) : .primary.opacity(0.025),
+            interactive: canDictate || isActive
+        )
+        .accessibilityLabel(isDictating
+            ? Text("Stop dictation")
+            : (dictation.isStarting ? Text("Cancel dictation") : Text("Dictate")))
+        .accessibilityHint(isDictating
+            ? AppLocalization.string("Stops dictating; the words stay in the message")
+            : (dictation.isStarting ? "" : AppLocalization.string("Types what you say into the message")))
     }
 
     private func openVoiceFromComposer() {
@@ -1042,90 +1046,26 @@ struct ComposerBar: View {
         appState.composerIsEnabled && !appState.isVoiceInUse
     }
 
-    /// One touch, timed here: lifted before the threshold it is a tap that
-    /// opens Voice; held past it, it dictates until the finger lifts. While
-    /// a voice conversation has the microphone, a hold acts as a tap.
-    /// (A long press exclusively before a tap left the tap unrecognized.)
-    private func micPress() -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .updating($isMicPressed) { _, pressed, _ in pressed = true }
-            .onChanged { _ in
-                guard micHoldTask == nil, !isHoldingMic else { return }
-                micHoldTask = Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(ComposerDictation.holdDuration))
-                    guard !Task.isCancelled else { return }
-                    micHoldTask = nil
-                    if canDictateFromComposer {
-                        isHoldingMic = true
-                        beginDictation(stopsWhenReleased: true)
-                    } else if canOpenVoiceFromComposer {
-                        isHoldingMic = true
-                        openVoiceFromComposer()
-                    }
-                }
-            }
-            .onEnded { _ in
-                let release = ComposerDictation.release(
-                    heldPastThreshold: isHoldingMic,
-                    isCapturing: dictation.isCapturing,
-                    canOpenVoice: canOpenVoiceFromComposer
-                )
-                endMicPress()
-                switch release {
-                case .stopDictation: dictation.stop()
-                case .openVoice: openVoiceFromComposer()
-                case .nothing: break
-                }
-            }
-    }
-
-    private func endMicPress() {
-        micHoldTask?.cancel()
-        micHoldTask = nil
-        isHoldingMic = false
-    }
-
-    private func beginDictation(stopsWhenReleased: Bool) {
+    private func beginDictation() {
         // Reserved first: it ends a dictation still settling, whose
         // callbacks must not be the new ones.
         guard let token = dictation.reserveStart() else { return }
         dictationPrefix = text
         Haptics.medium()
         dictation.onTranscript = { transcript in
-            // The cursor follows the words, so the next hold or typing
+            // The cursor follows the words, so the next dictation or typing
             // carries on after them.
             replaceComposerText(ComposerDictation.draft(before: dictationPrefix, dictated: transcript), cursorAtEnd: true)
         }
-        dictation.onFinish = { producedText in
+        dictation.onFinish = { _ in
             Haptics.light()
-            if producedText { dictationTipDone = true }
         }
         Task {
             do {
                 try await dictation.start(token: token)
-                // Released while permission or the microphone was coming up.
-                if stopsWhenReleased, !isHoldingMic { dictation.stop() }
             } catch {
-                isHoldingMic = false
                 composerErrorMessage = error.localizedDescription
             }
-        }
-    }
-
-    @ViewBuilder
-    private func dictationTip(canDictate: Bool) -> some View {
-        if canDictate, !dictationTipDone, !dictationTipHidden, !dictation.isDictating, !dictation.isStarting {
-            Text("Tap for Voice · Hold to dictate")
-                .font(.caption.weight(.semibold))
-                .fixedSize()
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(.regularMaterial))
-                .overlay(Capsule().strokeBorder(Color.conduitAura.opacity(0.35), lineWidth: 1))
-                .offset(y: -40)
-                .onTapGesture { dictationTipHidden = true }
-                .accessibilityHidden(true)
-                .transition(.opacity)
         }
     }
 
@@ -1244,6 +1184,8 @@ struct ComposerBar: View {
 
     private func handoffComposer(to destinationKey: ComposerDraftKey) {
         guard loadedDraftKey != destinationKey else { return }
+        // Dictated words belong to the draft they started in.
+        dictation.cancel()
         if let loadedDraftKey {
             saveDraft(for: loadedDraftKey)
             if Self.draftKeysAreEquivalent(

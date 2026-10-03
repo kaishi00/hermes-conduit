@@ -654,6 +654,30 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.threadSubmissions.count, 1)
     }
 
+    /// #332: a live call delivers a settled turn's reply from inside
+    /// `observe`, and marking it delivered prunes the oldest settled jobs
+    /// once there are more than `maximumSettledJobs`. The event must not
+    /// read the ledger by its old index afterwards.
+    func testALongAttachedCallSurvivesThePruneOfSettledTurns() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        var delivered: [String] = []
+        supervisor.onNoticePending = { [weak supervisor] in
+            if case .submit(let prompt, _)? = supervisor?.takePendingNotice() { delivered.append(prompt) }
+        }
+        let turns = VoiceBackgroundJobSupervisor.maximumSettledJobs + 3
+        for index in 1...turns {
+            XCTAssertNotNil(supervisor.startThreadTurn(request: "request \(index)").jobID)
+            guard await waitFor({ fake.threadSubmissions.count == index }) else { return }
+            guard await waitFor({ supervisor.jobs.last?.status == .running }) else { return }
+            supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "reply \(index)", reasoning: nil))
+        }
+
+        XCTAssertEqual(delivered.count, turns)
+        XCTAssertTrue(delivered.last?.contains("reply \(turns)") == true)
+        XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumSettledJobs)
+        XCTAssertEqual(supervisor.jobs.last?.status, .finished)
+    }
+
     func testThreadTurnsGoOutOneAtATimeAndTooManyAreRefused() async {
         let (supervisor, fake) = makeThreadSupervisor()
         for index in 1...VoiceBackgroundJobSupervisor.maximumThreadTurns {

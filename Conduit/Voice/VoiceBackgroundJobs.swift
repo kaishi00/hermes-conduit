@@ -833,8 +833,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return
         }
         if jobs[index] != before {
+            // Read before notifying: the host delivers the notice right away,
+            // and marking it delivered can prune settled jobs, which shifts
+            // `index` (or leaves it past the end: #332).
+            let settledThreadTurn = before.isThreadTurn && !jobs[index].status.isActive
             noticeMayBePending()
-            if before.isThreadTurn, !jobs[index].status.isActive { pumpThreadTurns() }
+            if settledThreadTurn { pumpThreadTurns() }
         }
     }
 

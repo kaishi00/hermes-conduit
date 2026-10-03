@@ -221,12 +221,22 @@
         }
       }
     },
-    "Tap for Voice · Hold to dictate" : {
+    "Cancel dictation" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻点使用语音 · 按住听写"
+            "value" : "取消听写"
+          }
+        }
+      }
+    },
+    "Types what you say into the message" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将你说的话输入到消息中"
           }
         }
       }

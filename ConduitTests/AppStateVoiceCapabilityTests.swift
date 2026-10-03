@@ -287,7 +287,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertFalse(appState.showsComposerVoiceButton)
     }
 
-    // MARK: - Shared mic/send trailing slot (#194)
+    // MARK: - Shared voice/send trailing slot (#194, #335)
 
     func testEmptyIdleComposerOffersVoiceInTheTrailingSlot() {
         XCTAssertEqual(
@@ -303,11 +303,10 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         )
     }
 
-    /// Dictated text makes the draft sendable while the finger is still on
-    /// the mic: the mic must stay put until the hold ends.
-    func testDictationKeepsTheMicInTheSlotUntilReleased() {
-        XCTAssertEqual(ComposerBar.trailingControl(action: .send, showsVoiceButton: true, isDictating: true), .voice)
-        XCTAssertEqual(ComposerBar.trailingControl(action: .send, showsVoiceButton: true, isDictating: false), .action)
+    /// Dictation has its own button (#335): once dictated words make the
+    /// draft sendable, Send takes the slot even while still listening.
+    func testDictatedTextBringsSendBackWhileDictating() {
+        XCTAssertEqual(ComposerBar.trailingControl(action: .send, showsVoiceButton: true), .action)
     }
 
     func testDictatedTextGoesAfterTheDraftAndReplacesOnlyItsOwnSpan() {
@@ -474,29 +473,23 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(LiveVoiceCallSheet.captionLines(from: Array(lines.prefix(1))).map(\.text), ["one"])
     }
 
-    func testAShortPressOnTheMicOpensVoiceAndAHoldStopsDictating() {
+    func testTheDictateButtonStartsStopsAndCallsOffAStart() {
+        XCTAssertEqual(ComposerDictation.tap(isCapturing: false, isStarting: false, canDictate: true), .start)
         XCTAssertEqual(
-            ComposerDictation.release(heldPastThreshold: false, isCapturing: false, canOpenVoice: true),
-            .openVoice,
-            "a tap still opens Voice"
-        )
-        XCTAssertEqual(
-            ComposerDictation.release(heldPastThreshold: false, isCapturing: false, canOpenVoice: false),
-            .nothing
-        )
-        XCTAssertEqual(
-            ComposerDictation.release(heldPastThreshold: true, isCapturing: true, canOpenVoice: true),
-            .stopDictation
-        )
-        XCTAssertEqual(
-            ComposerDictation.release(heldPastThreshold: true, isCapturing: false, canOpenVoice: true),
+            ComposerDictation.tap(isCapturing: false, isStarting: false, canDictate: false),
             .nothing,
-            "a hold never opens Voice on the lift"
+            "no dictation while Voice has the microphone"
+        )
+        XCTAssertEqual(ComposerDictation.tap(isCapturing: true, isStarting: false, canDictate: true), .stop)
+        XCTAssertEqual(
+            ComposerDictation.tap(isCapturing: true, isStarting: false, canDictate: false),
+            .stop,
+            "a running dictation can always be stopped"
         )
         XCTAssertEqual(
-            ComposerDictation.release(heldPastThreshold: false, isCapturing: true, canOpenVoice: true),
-            .stopDictation,
-            "a tap ends a VoiceOver dictation instead of opening Voice over it"
+            ComposerDictation.tap(isCapturing: false, isStarting: true, canDictate: true),
+            .cancelStart,
+            "a second tap before the microphone came up calls it off"
         )
     }
 
@@ -515,7 +508,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertFalse(dictation.isStarting)
         XCTAssertNil(dictation.onFinish, "callbacks don't outlive a cancelled start")
         XCTAssertFalse(finished)
-        XCTAssertNotNil(dictation.reserveStart(), "a later hold can start again")
+        XCTAssertNotNil(dictation.reserveStart(), "a later tap can start again")
         dictation.cancel()
     }
 

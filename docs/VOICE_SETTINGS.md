@@ -84,7 +84,7 @@ voice calls" section saying why, with Save Now to retry at once.
 
 ## Minimising a live call
 
-Swiping down the Gemini Live, Grok Live or GPT-Live sheet minimises the call instead of ending it. The call keeps running, and a bar above the composer shows its state, with mute and end controls. When the call is attached to a chat, the bar also names that chat. Tapping the bar, or the composer's mic, brings the sheet back. End (in the sheet or on the bar), a spoken goodbye, sign-out and server or profile changes still end the call. While minimised the screen can lock as usual; only the full sheet keeps the phone awake. Classic Voice is unchanged: swiping its sheet away still closes it.
+Swiping down the Gemini Live, Grok Live or GPT-Live sheet minimises the call instead of ending it. The call keeps running, and a bar above the composer shows its state, with mute and end controls. When the call is attached to a chat, the bar also names that chat. Tapping the bar, or the composer's voice button, brings the sheet back. End (in the sheet or on the bar), a spoken goodbye, sign-out and server or profile changes still end the call. While minimised the screen can lock as usual; only the full sheet keeps the phone awake. Classic Voice is unchanged: swiping its sheet away still closes it.
 
 ## Talking over the agent (barge-in)
 
@@ -94,6 +94,6 @@ Classic Voice, Gemini Live and Grok Live close the microphone while the agent ta
 
 "Talk over it on the speaker" (in the Gemini Live and Grok Live sections, shared by both, off by default) is the experimental way out: the call runs its microphone and speaker on one iOS voice-processing engine, so the agent's own voice is cancelled out of the microphone, and the microphone stays open on every route. If the agent keeps cutting itself off, turn it off. It applies from the next call. Classic Voice is unchanged.
 
-## Hold the mic to dictate
+## Dictate into the composer
 
-Tapping the composer's mic opens Voice as before. Pressing and holding it dictates into the message instead: the words appear in the draft while you hold, after anything already typed, and nothing is sent until you send it. Recognition uses Apple's speech recognizer, on the device when the language supports it. While a voice conversation has the microphone, a hold acts like a tap. A phone call, Siri, an audio route change or a voice conversation taking the microphone ends dictation, keeping the words so far. A small "Tap for Voice · Hold to dictate" tip sits above the mic until the first dictation that produces text; tapping the tip hides it until the next launch. VoiceOver users get a Dictate action on the mic.
+The composer has two buttons on the right of its bottom row. The plain mic dictates: tap it and the words appear in the draft as you speak, after anything already typed; tap it again to stop. Nothing is sent until you send it, and Send shows up beside the mic as soon as there are words, so you can send without stopping first. The waveform button (in the same spot Send takes) opens Voice. Recognition uses Apple's speech recognizer, on the device when the language supports it. Dictation is unavailable while a voice conversation has the microphone. A phone call, Siri, an audio route change or a voice conversation taking the microphone ends dictation, keeping the words so far.
