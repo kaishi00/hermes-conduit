@@ -51,9 +51,10 @@ struct LiveVoiceCallSheet: View {
     /// The job chat to open once the result sheet has gone, so the call
     /// sheet isn't dismissed while its child is still animating out.
     @State private var pendingJobChat: String?
-    /// The last card the voice model put on screen that opened by itself,
-    /// so it opens only once.
-    @State private var lastShownCardID: UUID?
+    /// The cards that opened by themselves, so each opens only once.
+    @State private var autoOpenedCardIDs: Set<UUID> = []
+    /// Whether what's open opened by itself, so a newer card may replace it.
+    @State private var selectionIsAutomatic = false
 
     /// What the sheet over the call shows.
     private enum Selection: Identifiable {
@@ -115,18 +116,19 @@ struct LiveVoiceCallSheet: View {
         }
     }
 
-    /// Nothing is open, or only the card that last opened by itself: what
-    /// the user opened stays until they close it.
+    /// Nothing is open, or only a card that opened by itself: what the
+    /// user opened stays until they close it.
     private var canReplaceSelection: Bool {
-        guard let selection else { return true }
-        return selection.id == lastShownCardID
+        selection == nil || selectionIsAutomatic
     }
 
     private func selectJob(_ jobID: UUID) {
+        selectionIsAutomatic = false
         selection = .job(jobID)
     }
 
     private func selectScreen(_ card: VoiceScreenCard) {
+        selectionIsAutomatic = false
         selection = .screen(card)
     }
 
@@ -138,9 +140,10 @@ struct LiveVoiceCallSheet: View {
               pendingJobChat == nil,
               canReplaceSelection,
               card.callAnchor.callID == jobs.liveCallID,
-              card.id != lastShownCardID,
+              !autoOpenedCardIDs.contains(card.id),
               Date().timeIntervalSince(card.shownAt) < Self.screenCardFreshness else { return }
-        lastShownCardID = card.id
+        autoOpenedCardIDs.insert(card.id)
+        selectionIsAutomatic = true
         selection = .screen(card)
     }
 

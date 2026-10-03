@@ -282,7 +282,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     @Published private(set) var liveCallID: UUID?
     /// What live calls put on screen, newest last.
     @Published private(set) var screenCards: [VoiceScreenCard] = []
-    /// Screen cards kept, across calls.
+    /// Screen cards kept for the call.
     static let maximumScreenCards = 20
     static let maximumScreenCardCharacters = 20_000
 
@@ -311,6 +311,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A new live call begins: jobs started from now on are its own.
     func beginLiveCall() {
         liveCallID = UUID()
+        // Only the running call's cards are ever shown.
+        screenCards.removeAll()
     }
 
     /// The jobs and chat requests the live call `callID` started, in order.
@@ -350,7 +352,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// is closed with a matching fence, so the rest doesn't render as code.
     static func clippedScreenMarkdown(_ markdown: String) -> String {
         guard markdown.count > maximumScreenCardCharacters else { return markdown }
-        var lines = String(markdown.prefix(maximumScreenCardCharacters)).components(separatedBy: "\n")
+        // Room for a closing fence, so the card stays within the limit.
+        var lines = String(markdown.prefix(maximumScreenCardCharacters - 16)).components(separatedBy: "\n")
         // A last line cut mid-way may be half a fence; drop it.
         if lines.count > 1 { lines.removeLast() }
         var openFence: String?
