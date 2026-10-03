@@ -5,7 +5,7 @@
 //  The live call orb: Liquid Orb Editor's "Siri" liquid glass preset
 //  (https://github.com/lersent001/orb, MIT, issue #336), recoloured to
 //  Conduit's gold accent and blue aura. The shader is LiquidOrb.metal; this
-//  file holds the two uniform snapshots the editor exported and a small
+//  file holds the uniform snapshots the editor exported and a small
 //  MTKView renderer adapted from its SwiftUI export.
 //
 //  To retune it, open the editor with these settings, adjust, and re-export
@@ -151,6 +151,7 @@ struct LiquidOrbAudio: Equatable {
     }
 
     /// Conduit's addition: the sphere itself breathes with speech, up to 8%.
+    /// It deliberately skips the editor's 0.8 style strength.
     func applyPulse(to values: inout [Float]) {
         let level = all.isFinite ? max(0, min(1, all)) : 0
         values[4] *= 1 + 0.08 * level

@@ -439,6 +439,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(LiquidOrbAudio.speech(intensity: 0, at: 12.3), LiquidOrbAudio())
         var untouched: [Float] = Array(repeating: 0.5, count: 136)
         LiquidOrbAudio().apply(to: &untouched)
+        LiquidOrbAudio().applyPulse(to: &untouched)
         XCTAssertEqual(untouched, Array(repeating: 0.5, count: 136), "silence leaves the preset alone")
 
         for time in stride(from: 0.0, through: 6.0, by: 0.37) {
