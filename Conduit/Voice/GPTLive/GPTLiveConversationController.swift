@@ -163,7 +163,7 @@ final class GPTLiveConversationController: ObservableObject {
         self.availability = availability
         self.briefing = briefing
         self.supervisor = supervisor
-        self.bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        self.bridge = GPTLiveDelegationBridge(supervisor: supervisor, now: now)
         self.requestPermission = requestPermission
         self.now = now
         self.endConversationPhrases = endConversationPhrases
@@ -413,6 +413,17 @@ final class GPTLiveConversationController: ObservableObject {
         guard endRequestedAt == nil else { return }
         if VoiceSpokenCommands.matches(text, phrases: activeEndPhrases) {
             requestEnd()
+            return
+        }
+        // Asked to hear the chat's last reply: Hermes' own words follow,
+        // even when the model answers from memory instead of delegating.
+        if VoiceThreadRouting.wantsLastReply(text) {
+            Task { [weak self] in
+                guard let self else { return }
+                let outgoing = await self.bridge.userAskedForLastReply()
+                guard self.isActive, self.endRequestedAt == nil else { return }
+                self.dispatch(outgoing)
+            }
             return
         }
         switch VoiceBackgroundJobCommands.parse(text) {

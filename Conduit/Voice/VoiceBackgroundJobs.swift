@@ -1153,13 +1153,41 @@ enum VoiceThreadRouting {
         "full reply",
         "said last",
         "last said",
+        "last message",
+        "latest message",
+        "previous message",
+        "full message",
+        "last answer",
+        "latest answer",
+        "previous answer",
+        "full answer",
+        "full response",
+        "whole reply",
+        "whole answer",
+        "entire reply",
         "上一条回复",
         "最后一条回复",
     ]
     /// Said as the request itself ("read me…", "can you repeat…"), not
     /// mentioned along the way ("they hear the last reply was wrong").
-    static let readVerbs = ["read", "repeat", "tell me", "let me hear", "play back"]
-    static let politePrefixes = ["please ", "can you ", "could you ", "would you ", "hey, ", "ok, ", "okay, "]
+    static let readVerbs = ["read", "repeat", "tell me", "let me hear", "play back", "say"]
+    static let politePrefixes = ["please ", "can you ", "could you ", "would you ", "hey, ", "hey ", "ok, ", "ok ", "okay, ", "okay ", "so "]
+    /// A whole request to hear it again, with nothing naming the reply
+    /// ("repeat that", "say it again"). What may follow is in
+    /// `repeatTrailers`.
+    static let repeatRequests = [
+        "repeat that", "repeat it", "repeat yourself",
+        "repeat what you said", "repeat what you just said", "repeat exactly what you said",
+        "repeat what hermes said",
+        "say that again", "say it again",
+        "read that again", "read it again", "read that back", "read it back", "read that out", "read it out",
+    ]
+    static let repeatTrailers: Set<String> = [
+        "please", "again", "exactly", "verbatim", "word", "for", "back", "out", "loud",
+        "in", "full", "to", "me", "one", "more", "time",
+    ]
+    /// Hesitations transcribed with the words ("read the last uh message").
+    static let fillers: Set<String> = ["uh", "uhh", "um", "umm", "uhm", "er", "erm", "ah", "hmm"]
     /// CJK has no word breaks: the request is read only when it is just a
     /// verb and the reply phrase ("朗读上一条回复"), not a sentence about it.
     static let cjkReadVerbs = ["朗读", "读一下", "读给我听", "读给我", "读", "告诉我", "重复"]
@@ -1219,7 +1247,9 @@ enum VoiceThreadRouting {
     }
 
     static func wantsLastReply(_ request: String) -> Bool {
-        let folded = fold(request)
+        // Commas set off fillers and asides ("the last, um, reply").
+        let folded = withoutFillers(fold(request).replacingOccurrences(of: ",", with: ""))
+        if wantsRepeat(folded) { return true }
         guard lastReplyPhrases.contains(where: { contains(folded, phrase: $0) }) else { return false }
         if wantsCJKLastReply(folded) { return true }
         var request = Substring(folded.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -1231,6 +1261,27 @@ enum VoiceThreadRouting {
             let rest = request.dropFirst(verb.count)
             return rest.first.map { !($0.isLetter || $0.isNumber) } ?? true
         }
+    }
+
+    private static func wantsRepeat(_ folded: String) -> Bool {
+        var request = Substring(folded.trimmingCharacters(in: .whitespacesAndNewlines))
+        while let prefix = politePrefixes.first(where: { request.hasPrefix($0) }) {
+            request = request.dropFirst(prefix.count)
+        }
+        return repeatRequests.contains { phrase in
+            guard request.hasPrefix(phrase) else { return false }
+            let rest = request.dropFirst(phrase.count)
+            if let next = rest.first, next.isLetter || next.isNumber { return false }
+            return rest.split(whereSeparator: { !($0.isLetter || $0.isNumber) })
+                .allSatisfy { repeatTrailers.contains(String($0)) }
+        }
+    }
+
+    /// Drops hesitation words so they don't break a phrase apart.
+    private static func withoutFillers(_ folded: String) -> String {
+        folded.split(separator: " ", omittingEmptySubsequences: true)
+            .filter { !fillers.contains($0.trimmingCharacters(in: CharacterSet(charactersIn: "."))) }
+            .joined(separator: " ")
     }
 
     private static func wantsCJKLastReply(_ folded: String) -> Bool {
