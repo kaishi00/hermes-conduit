@@ -2474,12 +2474,20 @@ struct ModelSwitchOutcome: Equatable {
 
     init(from result: AnyCodable, requestedModel: String) {
         let object = result.objectValue ?? [:]
-        let value = object["value"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let message = object["confirm_message"]?.stringValue ?? object["warning"]?.stringValue ?? ""
+        // Hermes reports the resolved model name, but a gateway that echoes
+        // the raw request would hand back "<model> --provider <p> --session";
+        // keep only the model part so the flags never reach `runtime.model`.
+        let rawValue = object["value"]?.stringValue ?? ""
+        let value = (rawValue.range(of: " --").map { String(rawValue[..<$0.lowerBound]) } ?? rawValue)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // `warning` is Hermes' legacy alias for `confirm_message`.
+        let message = [object["confirm_message"]?.stringValue, object["warning"]?.stringValue]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
         self.init(
             model: value.isEmpty ? requestedModel : value,
             confirmRequired: object["confirm_required"]?.boolValue ?? false,
-            confirmMessage: message.trimmingCharacters(in: .whitespacesAndNewlines),
+            confirmMessage: message,
             deferred: object["deferred"]?.boolValue ?? false
         )
     }

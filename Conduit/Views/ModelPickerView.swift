@@ -28,8 +28,9 @@ func modelPickerSelectionChanged(
     runtimeModel: String,
     runtimeProvider: String
 ) -> Bool {
-    guard !selectedModel.isEmpty, !selectedProvider.isEmpty else { return false }
-    return selectedModel != runtimeModel
+    let model = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !model.isEmpty, !ProviderInfo.normalized(selectedProvider).isEmpty else { return false }
+    return model != runtimeModel.trimmingCharacters(in: .whitespacesAndNewlines)
         || ProviderInfo.normalized(selectedProvider) != ProviderInfo.normalized(runtimeProvider)
 }
 
@@ -462,7 +463,9 @@ struct ModelPickerView: View {
             } label: {
                 Group {
                     if isApplying {
-                        ProgressView().tint(.white)
+                        ProgressView()
+                            .tint(.white)
+                            .accessibilityLabel(AppLocalization.string("Applying configuration"))
                     } else {
                         Label("Apply configuration", systemImage: "checkmark")
                     }
@@ -545,6 +548,9 @@ struct ModelPickerView: View {
             // showing a partially-applied configuration with no rollback.
             if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
                 guard await appState.setYoloMode(yoloEnabled) else { return }
+                // Applied: a confirmed retry of a guarded model switch must
+                // not send it again.
+                initialYoloEnabled = yoloEnabled
             }
             if modelPickerSelectionChanged(
                 selectedModel: selectedModel,
@@ -567,6 +573,9 @@ struct ModelPickerView: View {
                         : outcome.confirmMessage
                     return
                 }
+                // A deferred switch (mid-turn) applies at the next turn start;
+                // Hermes' session.info reports the pending pick meanwhile, so
+                // the label can show it now either way.
                 appState.runtime.model = outcome.model
                 appState.runtime.provider = selectedProvider
             }

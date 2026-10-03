@@ -121,4 +121,27 @@ final class ModelPickerTests: XCTestCase {
 
         XCTAssertEqual(outcome, ModelSwitchOutcome(model: "m"))
     }
+
+    func testEchoedRequestFlagsNeverBecomeTheModelName() {
+        let result: AnyCodable = .object([
+            "value": .string("gpt-5 --provider openrouter --session")
+        ])
+
+        let outcome = ModelSwitchOutcome(from: result, requestedModel: "gpt-5")
+
+        XCTAssertEqual(outcome.model, "gpt-5")
+    }
+
+    func testLegacyWarningCarriesTheConfirmationMessage() {
+        let result: AnyCodable = .object([
+            "value": .string("big-model"),
+            "warning": .string("Expensive model"),
+            "confirm_required": .bool(true),
+            "confirm_message": .string("")
+        ])
+
+        let outcome = ModelSwitchOutcome(from: result, requestedModel: "big-model")
+
+        XCTAssertEqual(outcome.confirmMessage, "Expensive model")
+    }
 }

@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Applying configuration" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在应用配置"
+          }
+        }
+      }
+    },
     "Switch model?" : {
       "localizations" : {
         "zh-Hans" : {
