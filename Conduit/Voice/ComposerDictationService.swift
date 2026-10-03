@@ -123,7 +123,7 @@ final class ComposerDictationService: ObservableObject {
         }
     }
 
-    /// The finger lifted: stop listening and let the recognizer settle its
+    /// Tapped again: stop listening and let the recognizer settle its
     /// last words, briefly. The microphone is let go at once.
     func stop() {
         guard isCapturing else { return }

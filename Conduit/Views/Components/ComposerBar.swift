@@ -445,7 +445,13 @@ struct ComposerBar: View {
                 // submitFromReturnKey() re-checks the live gate.
                 canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action),
                 onSubmitFromReturn: { submitFromReturnKey() },
-                onUserEdit: { appState.noteComposerUserEdit() }
+                onUserEdit: {
+                    appState.noteComposerUserEdit()
+                    // Typing ends a dictation: its next result would rewrite
+                    // the draft from where it began and drop the keystrokes.
+                    // The words so far stay.
+                    if dictation.isDictating || dictation.isStarting { dictation.cancel() }
+                }
             )
             .id(editorIdentity)
             .padding(.horizontal, 5)
@@ -471,7 +477,7 @@ struct ComposerBar: View {
                 appState.showContextSheet = true
             } label: {
                 ContextRingView(percent: appState.runtime.contextPercent)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 32, height: 32)
                     .frame(minWidth: 36, minHeight: 44)
             }
             .buttonStyle(.plain)
@@ -872,6 +878,8 @@ struct ComposerBar: View {
         // Send is beside the dictate button, so it can be tapped mid-dictation:
         // the words so far go out, and late results must not refill the
         // emptied field.
+        // The send haptic stands for both.
+        dictation.onFinish = nil
         dictation.cancel()
         let submittedText = text
         let submittedAttachments = attachments
@@ -932,13 +940,16 @@ struct ComposerBar: View {
                     Image(systemName: "phone.arrow.up.right")
                 }
             }
-            .font(.system(size: 15, weight: .semibold))
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
             .frame(width: 36, height: 36)
         }
         .buttonStyle(.plain)
         .disabled(appState.isPreparingVoiceResume || appState.isBusy)
         .conduitGlassControl(cornerRadius: 18, tint: .conduitAura.opacity(0.14), interactive: true)
+        // A 44pt target around the smaller glass chip.
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
         .accessibilityLabel(AppLocalization.string("Resume call"))
         .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
     }
@@ -988,10 +999,12 @@ struct ComposerBar: View {
             case .nothing: break
             }
         } label: {
-            Image(systemName: isDictating ? "waveform" : "mic")
+            Image(systemName: isDictating ? "mic.fill" : "mic")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(isDictating ? Color.red : (canDictate ? Color.primary : Color.secondary))
-                .symbolEffect(.pulse, isActive: isDictating && !reduceMotion)
+                // Pulses from the tap, so a start still waiting on
+                // permission or the microphone shows it's in flight.
+                .symbolEffect(.pulse, isActive: isActive && !reduceMotion)
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
@@ -1003,10 +1016,12 @@ struct ComposerBar: View {
             tint: isDictating ? .red.opacity(0.16) : .primary.opacity(0.025),
             interactive: canDictate || isActive
         )
-        .accessibilityLabel(isActive ? Text("Stop dictation") : Text("Dictate"))
-        .accessibilityHint(isActive
+        .accessibilityLabel(isDictating
+            ? Text("Stop dictation")
+            : (dictation.isStarting ? Text("Cancel dictation") : Text("Dictate")))
+        .accessibilityHint(isDictating
             ? AppLocalization.string("Stops dictating; the words stay in the message")
-            : AppLocalization.string("Types what you say into the message"))
+            : (dictation.isStarting ? "" : AppLocalization.string("Types what you say into the message")))
     }
 
     private func openVoiceFromComposer() {

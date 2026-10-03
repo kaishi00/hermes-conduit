@@ -286,7 +286,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertFalse(appState.showsComposerVoiceButton)
     }
 
-    // MARK: - Shared mic/send trailing slot (#194)
+    // MARK: - Shared voice/send trailing slot (#194, #335)
 
     func testEmptyIdleComposerOffersVoiceInTheTrailingSlot() {
         XCTAssertEqual(
@@ -469,7 +469,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertFalse(dictation.isStarting)
         XCTAssertNil(dictation.onFinish, "callbacks don't outlive a cancelled start")
         XCTAssertFalse(finished)
-        XCTAssertNotNil(dictation.reserveStart(), "a later hold can start again")
+        XCTAssertNotNil(dictation.reserveStart(), "a later tap can start again")
         dictation.cancel()
     }
 
