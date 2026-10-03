@@ -12,14 +12,23 @@
 import CarPlay
 import UIKit
 
-final class CarPlayVoiceSceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
+final class CarPlayVoiceSceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, CPInterfaceControllerDelegate {
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
         didConnect interfaceController: CPInterfaceController
     ) {
         // UISceneDelegate callbacks run on the main thread.
         MainActor.assumeIsolated {
+            interfaceController.delegate = self
             CarPlayVoiceCoordinator.shared.handleConnect(interfaceController)
+        }
+    }
+
+    /// The car's back button reports here, so a list that leaves the screen
+    /// stops being kept current.
+    func templateDidDisappear(_ aTemplate: CPTemplate, animated: Bool) {
+        MainActor.assumeIsolated {
+            CarPlayVoiceCoordinator.shared.handleTemplateDidDisappear(aTemplate)
         }
     }
 
