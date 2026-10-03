@@ -43,6 +43,7 @@ struct LiveVoiceCallSheet: View {
     let onRetry: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsTranscript = false
 
     var body: some View {
@@ -58,7 +59,7 @@ struct LiveVoiceCallSheet: View {
                 controls
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: showsTranscript)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showsTranscript)
     }
 
     // MARK: Header
@@ -72,11 +73,11 @@ struct LiveVoiceCallSheet: View {
                 Image(systemName: "chevron.down")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .conduitGlassControl(cornerRadius: 20)
+            .conduitGlassControl(cornerRadius: 22)
             .accessibilityLabel(Text("Minimise call"))
 
             VStack(spacing: 2) {
@@ -88,7 +89,7 @@ struct LiveVoiceCallSheet: View {
             .frame(maxWidth: .infinity)
 
             // Balances the chevron so the title stays centred.
-            Color.clear.frame(width: 40, height: 40)
+            Color.clear.frame(width: 44, height: 44)
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
@@ -100,7 +101,8 @@ struct LiveVoiceCallSheet: View {
         VStack(spacing: 18) {
             Spacer(minLength: 12)
             LiveVoiceOrb(phase: phase)
-                .frame(width: 184, height: 184)
+                // Shrinks to make room when large text needs the height.
+                .frame(minWidth: 88, maxWidth: 184, minHeight: 88, maxHeight: 184)
                 .accessibilityHidden(true)
             VStack(spacing: 6) {
                 Text(statusText)
@@ -140,7 +142,7 @@ struct LiveVoiceCallSheet: View {
         .frame(maxWidth: .infinity, minHeight: 96, alignment: .bottom)
         .padding(.horizontal, 24)
         .padding(.bottom, 8)
-        .animation(.easeOut(duration: 0.2), value: lines.map(\.id))
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: lines.map(\.id))
     }
 
     /// The captions under the orb: the last two lines said.
@@ -265,7 +267,10 @@ private struct LiveVoiceCallButton: View {
     let action: () -> Void
 
     @Environment(\.isEnabled) private var isEnabled
-    @ScaledMetric(relativeTo: .title3) private var diameter: CGFloat = 62
+    @ScaledMetric(relativeTo: .title3) private var scaledDiameter: CGFloat = 62
+    /// Capped so four buttons still fit across a phone at the largest
+    /// text sizes; the glyph inside keeps scaling.
+    private var diameter: CGFloat { min(scaledDiameter, 78) }
 
     var body: some View {
         Button(action: action) {
@@ -370,7 +375,8 @@ struct LiveVoiceOrb: View {
     var body: some View {
         let motion = Self.motion(for: phase)
         let moves = !reduceMotion && motion.amplitude > 0
-        TimelineView(.animation(paused: !moves)) { context in
+        // 30 fps is plenty for a slow swell and spares ProMotion's 120 Hz.
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !moves)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             // Two sines a little out of step read as breathing, not a metronome.
             let swing = moves
