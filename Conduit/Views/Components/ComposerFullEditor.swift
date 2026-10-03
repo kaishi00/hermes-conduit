@@ -10,12 +10,15 @@
 
 import SwiftUI
 
-struct ComposerFullEditor<ActionButton: View>: View {
+struct ComposerFullEditor<Attachments: View, ActionButton: View>: View {
     @Binding var text: String
     let placeholder: String
     let enabled: Bool
     let onUserEdit: () -> Void
     let onCollapse: () -> Void
+    /// The staged attachments, so what Send will include stays visible
+    /// and removable here.
+    @ViewBuilder let attachments: () -> Attachments
     @ViewBuilder let actionButton: () -> ActionButton
 
     @FocusState private var isFocused: Bool
@@ -36,6 +39,7 @@ struct ComposerFullEditor<ActionButton: View>: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Collapse editor"))
+                .accessibilityIdentifier("composer.collapse-editor")
             }
             .padding(.horizontal, 8)
             .padding(.top, 8)
@@ -49,6 +53,9 @@ struct ComposerFullEditor<ActionButton: View>: View {
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
+                // Return always inserts a newline here, whatever the
+                // Return-sends preference: this is the long-form editor,
+                // and Send is the button.
                 TextEditor(text: $text)
                     .font(.body)
                     .scrollContentBackground(.hidden)
@@ -63,6 +70,8 @@ struct ComposerFullEditor<ActionButton: View>: View {
             }
             .padding(.horizontal, 16)
 
+            attachments()
+
             HStack {
                 Spacer()
                 actionButton()
@@ -74,6 +83,7 @@ struct ComposerFullEditor<ActionButton: View>: View {
             // After the sheet has settled; focus set while it is still
             // presenting often leaves the keyboard down.
             try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
             isFocused = enabled
         }
         .presentationDetents([.large])

@@ -480,7 +480,9 @@ struct ComposerBar: View {
                 Button {
                     Haptics.selection()
                     // The sheet's editor can't tell dictated words from typed
-                    // ones, so dictation ends here with the words so far.
+                    // ones, so dictation ends here with the words so far
+                    // (one haptic: this tap's).
+                    dictation.onFinish = nil
                     dictation.cancel()
                     isFocused = false
                     isShowingSlashSuggestions = false
@@ -494,6 +496,7 @@ struct ComposerBar: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Expand editor"))
+                .accessibilityIdentifier("composer.expand-editor")
                 .transition(.opacity)
             }
         }
@@ -509,10 +512,14 @@ struct ComposerBar: View {
                 placeholder: appState.composerPlaceholder,
                 enabled: appState.composerIsEnabled,
                 onUserEdit: { appState.noteComposerUserEdit() },
-                onCollapse: { isShowingFullEditor = false }
-            ) {
-                composerActionButton
-            }
+                onCollapse: { isShowingFullEditor = false },
+                attachments: {
+                    if !attachments.isEmpty {
+                        attachmentStrip
+                    }
+                },
+                actionButton: { composerActionButton }
+            )
             .preferredColorScheme(appState.themePreference.colorScheme)
         }
     }
@@ -1249,8 +1256,10 @@ struct ComposerBar: View {
 
     private func handoffComposer(to destinationKey: ComposerDraftKey) {
         guard loadedDraftKey != destinationKey else { return }
-        // Dictated words belong to the draft they started in.
+        // Dictated words belong to the draft they started in, and the full
+        // editor to the chat it was opened in.
         dictation.cancel()
+        isShowingFullEditor = false
         if let loadedDraftKey {
             saveDraft(for: loadedDraftKey)
             if Self.draftKeysAreEquivalent(
