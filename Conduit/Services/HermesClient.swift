@@ -2096,12 +2096,19 @@ final class HermesClient: ObservableObject {
         return (model, provider, providers)
     }
 
-    func setModel(_ sessionId: String, model: String, provider: String) async throws {
-        _ = try await rpc("config.set", params: [
+    /// The gateway can answer without switching: a guarded pick (expensive
+    /// model, data-training tier, or a switch that abandons a large cached
+    /// context) comes back as `confirm_required` and nothing is applied until
+    /// the client repeats the call with `confirm_expensive_model`.
+    func setModel(_ sessionId: String, model: String, provider: String, confirmed: Bool = false) async throws -> ModelSwitchOutcome {
+        var params: [String: Any] = [
             "key": "model",
             "session_id": sessionId,
             "value": "\(model) --provider \(provider) --session"
-        ])
+        ]
+        if confirmed { params["confirm_expensive_model"] = true }
+        let result = try await rpc("config.set", params: params)
+        return ModelSwitchOutcome(from: result, requestedModel: model)
     }
 
     func setReasoning(_ sessionId: String, effort: String) async throws {
@@ -2445,6 +2452,36 @@ struct ProviderInfo: Equatable {
 
     static func normalized(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+/// The gateway's answer to `config.set model`.
+struct ModelSwitchOutcome: Equatable {
+    /// The model Hermes resolved the pick to (aliases expand).
+    let model: String
+    /// Nothing was switched; the user must confirm `confirmMessage` first.
+    let confirmRequired: Bool
+    let confirmMessage: String
+    /// The session is mid-turn; the switch applies when the next turn starts.
+    let deferred: Bool
+
+    init(model: String, confirmRequired: Bool = false, confirmMessage: String = "", deferred: Bool = false) {
+        self.model = model
+        self.confirmRequired = confirmRequired
+        self.confirmMessage = confirmMessage
+        self.deferred = deferred
+    }
+
+    init(from result: AnyCodable, requestedModel: String) {
+        let object = result.objectValue ?? [:]
+        let value = object["value"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let message = object["confirm_message"]?.stringValue ?? object["warning"]?.stringValue ?? ""
+        self.init(
+            model: value.isEmpty ? requestedModel : value,
+            confirmRequired: object["confirm_required"]?.boolValue ?? false,
+            confirmMessage: message.trimmingCharacters(in: .whitespacesAndNewlines),
+            deferred: object["deferred"]?.boolValue ?? false
+        )
     }
 }
 

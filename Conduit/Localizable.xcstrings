@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Switch model?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换模型？"
+          }
+        }
+      }
+    },
+    "Not connected to a conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未连接到对话。"
+          }
+        }
+      }
+    },
+    "Hermes asks you to confirm switching to %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 需要你确认切换到 %@。"
+          }
+        }
+      }
+    },
     "%@ is larger than the %@ MB attachment limit. You can raise the limit in Settings › Chat." : {
       "localizations" : {
         "zh-Hans" : {

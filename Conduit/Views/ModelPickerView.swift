@@ -19,6 +19,20 @@ func yoloFloorBoundaryCrossed(from previousMode: String?, to newMode: String?) -
     (previousMode?.lowercased() == "off") != (newMode?.lowercased() == "off")
 }
 
+/// Whether Apply should ask Hermes to switch models. Re-sending the current
+/// model on every Apply (e.g. when only the reasoning level changed) would
+/// re-trigger the gateway's expensive-model confirmation for no reason.
+func modelPickerSelectionChanged(
+    selectedModel: String,
+    selectedProvider: String,
+    runtimeModel: String,
+    runtimeProvider: String
+) -> Bool {
+    guard !selectedModel.isEmpty, !selectedProvider.isEmpty else { return false }
+    return selectedModel != runtimeModel
+        || ProviderInfo.normalized(selectedProvider) != ProviderInfo.normalized(runtimeProvider)
+}
+
 struct ModelPickerYoloDraft: Equatable {
     let initial: Bool
     let selected: Bool
@@ -52,6 +66,10 @@ struct ModelPickerView: View {
     @State private var expandedVisibilityProvider: String?
     @State private var showAllModelsFor: Set<String> = []
     @State private var visibility = ModelVisibility()
+    @State private var isApplying = false
+    @State private var applyError: String?
+    /// The gateway's guard message for a pick it will not switch to unconfirmed.
+    @State private var pendingModelConfirmation: String?
 
     var body: some View {
         NavigationStack {
@@ -104,6 +122,21 @@ struct ModelPickerView: View {
             refreshYoloToggle(force: true)
         }
         .task { await loadModels() }
+        .alert(
+            "Switch model?",
+            isPresented: Binding(
+                get: { pendingModelConfirmation != nil },
+                set: { if !$0 { pendingModelConfirmation = nil } }
+            ),
+            presenting: pendingModelConfirmation
+        ) { _ in
+            Button("Switch", role: .destructive) {
+                Task { await applyModel(confirmedModelSwitch: true) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { message in
+            Text(message)
+        }
     }
 
     private var modelSection: some View {
@@ -415,16 +448,33 @@ struct ModelPickerView: View {
     }
 
     private var applyButton: some View {
-        Button {
-            Task { await applyModel() }
-        } label: {
-            Label("Apply configuration", systemImage: "checkmark")
+        VStack(spacing: 10) {
+            // The composer's error banner sits behind this sheet, so a failed
+            // apply has to be reported here.
+            if let applyError {
+                Label(applyError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Button {
+                Task { await applyModel() }
+            } label: {
+                Group {
+                    if isApplying {
+                        ProgressView().tint(.white)
+                    } else {
+                        Label("Apply configuration", systemImage: "checkmark")
+                    }
+                }
                 .font(.headline)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
+            }
+            .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: true)
+            .disabled(isApplying)
         }
-        .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: true)
     }
 
     private var rowFoundation: Color {
@@ -478,8 +528,15 @@ struct ModelPickerView: View {
         }
     }
 
-    private func applyModel() async {
-        guard let client = appState.client, let sessionId = appState.activeSessionId else { return }
+    private func applyModel(confirmedModelSwitch: Bool = false) async {
+        guard !isApplying else { return }
+        guard let client = appState.client, let sessionId = appState.activeSessionId else {
+            applyError = AppLocalization.string("Not connected to a conversation.")
+            return
+        }
+        isApplying = true
+        applyError = nil
+        defer { isApplying = false }
 
         do {
             // Apply YOLO first. setYoloMode persists the session override only
@@ -489,9 +546,28 @@ struct ModelPickerView: View {
             if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
                 guard await appState.setYoloMode(yoloEnabled) else { return }
             }
-            if !selectedModel.isEmpty && !selectedProvider.isEmpty {
-                try await client.setModel(sessionId, model: selectedModel, provider: selectedProvider)
-                appState.runtime.model = selectedModel
+            if modelPickerSelectionChanged(
+                selectedModel: selectedModel,
+                selectedProvider: selectedProvider,
+                runtimeModel: appState.runtime.model,
+                runtimeProvider: appState.runtime.provider
+            ) {
+                let outcome = try await client.setModel(
+                    sessionId,
+                    model: selectedModel,
+                    provider: selectedProvider,
+                    confirmed: confirmedModelSwitch
+                )
+                // A guarded pick switches nothing until confirmed. Stop before
+                // the other settings so the sheet's state stays coherent and
+                // ask; Switch repeats the apply with the confirmation flag.
+                if outcome.confirmRequired {
+                    pendingModelConfirmation = outcome.confirmMessage.isEmpty
+                        ? AppLocalization.string("Hermes asks you to confirm switching to \(selectedModel).")
+                        : outcome.confirmMessage
+                    return
+                }
+                appState.runtime.model = outcome.model
                 appState.runtime.provider = selectedProvider
             }
             try await client.setReasoning(sessionId, effort: reasoningEnabled ? reasoningEffort : "none")
@@ -500,7 +576,7 @@ struct ModelPickerView: View {
             appState.runtime.fast = fastEnabled
             appState.showModelPicker = false
         } catch {
-            appState.errorMessage = error.localizedDescription
+            applyError = error.localizedDescription
         }
     }
 }
