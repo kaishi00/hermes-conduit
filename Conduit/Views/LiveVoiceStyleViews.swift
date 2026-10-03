@@ -150,6 +150,8 @@ struct LiveVoiceStyleSettingsSection: View {
             }
             tone = newValue.tone?.rawValue ?? ""
             backchannels = newValue.backchannels
+            // Now in sync: coming back to an earlier profile resyncs again.
+            lastSaved = newValue
         }
         .sheet(isPresented: $showsPreview) {
             LiveVoiceInstructionsPreview(preview: preview)

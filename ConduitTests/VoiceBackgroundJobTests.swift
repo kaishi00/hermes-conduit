@@ -903,7 +903,7 @@ extension VoiceConversationControllerTests {
         for request in [
             "repeat that test with the new config", "say that again to Sam in an email",
             "the last message was wrong, fix it", "summarize the last message", "umbrella forecast",
-            "read the last message from Sam and draft a reply", "say the last message in Spanish", "say the last message to the chat", "read the file and then say the last message", "tell me about the last message", "tell me what you think of the last message Hermes sent",
+            "read the last message from Sam and draft a reply", "say the last message in Spanish", "say the last message to the chat", "read the file and then say the last message", "tell me about the last message", "tell me what you think of the last message Hermes sent", "tell me what you thought of the last message", "tell me your take on the last message",
         ] {
             XCTAssertFalse(VoiceThreadRouting.wantsLastReply(request), request)
         }
