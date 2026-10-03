@@ -584,7 +584,14 @@ final class CarPlayVoiceCoordinator {
     /// opened meanwhile) is navigation, so the car returns to Ready; only a
     /// failed one shows Error.
     private func settleUnopenedChat(_ outcome: AppState.SessionOpenOutcome) {
-        handleControllerState(outcome == .superseded ? .idle : .failed(""))
+        guard outcome == .superseded else {
+            handleControllerState(.failed(""))
+            return
+        }
+        // The navigation that superseded this one may already have a
+        // conversation running; its state stays on the car.
+        guard !hasOpenConversation(in: lastBoundAppState ?? appStateProvider()) else { return }
+        handleControllerState(.idle)
     }
 
     /// A settled Voice Job: its outcome is spoken again in the conversation
@@ -750,15 +757,15 @@ final class CarPlayVoiceCoordinator {
                 // reopened listening window is shown again; a controller
                 // that did not reach listening (it had failed) starts a
                 // listening turn, so one tap always listens or errors.
-                if controller.state == .listening {
-                    handleControllerState(.listening)
-                    return
-                }
-                // A resume that failed leaves the microphone paused, and a
-                // listening turn would open with it closed, so the car shows
-                // the error instead.
+                // A resume that failed or was refused leaves the microphone
+                // paused, and listening would run with it closed, so the car
+                // shows the error instead.
                 guard !controller.isMicrophonePaused else {
                     handleControllerState(.failed(""))
+                    return
+                }
+                if controller.state == .listening {
+                    handleControllerState(.listening)
                     return
                 }
             }
