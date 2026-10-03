@@ -462,6 +462,7 @@ final class CarPlayVoiceCoordinator {
     }
 
     func showChats() {
+        guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
         let rows = CarPlayBrowse.recentChats(from: appState.activeProfileSessions)
         push(CarPlayBrowseTemplateFactory.chatsTemplate(rows: rows, handlers: makeBrowseHandlers()))
@@ -492,6 +493,7 @@ final class CarPlayVoiceCoordinator {
     }
 
     func showShortcuts() {
+        guard isConnected else { return }
         push(CarPlayBrowseTemplateFactory.shortcutsTemplate(
             shortcuts: preferencesProvider().shortcuts,
             handlers: makeBrowseHandlers()
@@ -499,6 +501,7 @@ final class CarPlayVoiceCoordinator {
     }
 
     func showVoiceOptions() {
+        guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
         listedAgentProfiles = appState.profiles.count > 1 ? appState.profiles : []
         push(CarPlayBrowseTemplateFactory.voiceTemplate(
@@ -565,7 +568,8 @@ final class CarPlayVoiceCoordinator {
             // A conversation that did not open shows its error; the outcome
             // is not queued for whichever chat Voice opens next.
             guard self.isCurrent(generation), self.isConnected,
-                  self.hasOpenConversation(in: appState) else { return }
+                  self.hasOpenConversation(in: appState),
+                  self.shownState != .error else { return }
             appState.voiceBackgroundJobSupervisor.replayOutcome(jobID: jobID)
         }
     }
@@ -613,15 +617,20 @@ final class CarPlayVoiceCoordinator {
 
     /// Switches the agent (Hermes profile) from the car.
     func selectAgent(at index: Int) {
+        // A tap from a list left behind by a disconnect never ends the
+        // conversation or switches the agent.
+        guard isConnected else { return }
         returnToVoiceScreen()
         guard listedAgentProfiles.indices.contains(index) else { return }
         let profile = listedAgentProfiles[index]
         let appState = lastBoundAppState ?? appStateProvider()
-        guard profile != appState.activeProfile else { return }
-        endConversation()
+        // A switch already under way would refuse this one, so the
+        // conversation is left alone.
+        guard profile != appState.activeProfile, !appState.isProfileSwitching else { return }
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             guard let self, self.isCurrent(generation), self.isConnected else { return }
+            self.endConversation()
             await appState.switchProfile(to: profile)
             guard self.isCurrent(generation), self.isConnected else { return }
             self.observeCurrentVoiceMode(appState)
@@ -747,6 +756,11 @@ final class CarPlayVoiceCoordinator {
             let grok = appState.grokLiveController
             grok.setMicrophoneMuted(!grok.isMicrophoneMuted)
         }
+    }
+
+    /// The state the car shows, or will show once the template is up.
+    private var shownState: CarPlayVoiceState? {
+        isTemplatePresented ? lastActivatedState : pendingPresentationState
     }
 
     /// Whether the current mode's conversation is open (or connecting), so
