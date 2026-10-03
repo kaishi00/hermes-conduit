@@ -227,6 +227,7 @@ final class GPTLiveDelegationBridge {
     /// A delegation answer reached GPT-Live.
     func replyDelivered(delegationID: String) {
         deliveredReplies[delegationID] = nil
+        if delegationID == readBackDelegationID { readBackDelegationID = nil }
     }
 
     /// Settled delegations whose answer is on its way, by delegation.

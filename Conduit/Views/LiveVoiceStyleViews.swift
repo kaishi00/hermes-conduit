@@ -26,6 +26,7 @@ struct LiveVoiceStyleSettingsSection: View {
     @State private var backchannels: Bool
     @State private var preview: (mode: String, text: String)?
     @State private var showsPreview = false
+    @State private var greetingSave: Task<Void, Never>?
 
     init(model: LiveVoiceStyleSettingsModel) {
         self.model = model
@@ -60,6 +61,20 @@ struct LiveVoiceStyleSettingsSection: View {
                         if newValue.count > LiveVoiceStyle.maxGreetingCharacters {
                             greeting = String(newValue.prefix(LiveVoiceStyle.maxGreetingCharacters))
                         }
+                        // Saved once typing pauses, not on every keystroke.
+                        greetingSave?.cancel()
+                        greetingSave = Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(600))
+                            guard !Task.isCancelled else { return }
+                            model.setStyle(style)
+                        }
+                    }
+                    .onSubmit {
+                        greetingSave?.cancel()
+                        model.setStyle(style)
+                    }
+                    .onDisappear {
+                        greetingSave?.cancel()
                         model.setStyle(style)
                     }
             }
@@ -98,7 +113,7 @@ struct LiveVoiceStyleSettingsSection: View {
             } label: {
                 Label(AppLocalization.string("What Conduit sends"), systemImage: "doc.text.magnifyingglass")
                     .frame(maxWidth: .infinity)
-                    .frame(height: 44)
+                    .frame(minHeight: 44)
             }
             .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
         }

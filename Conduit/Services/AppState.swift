@@ -3514,7 +3514,9 @@ final class AppState: ObservableObject {
             return nil
         }
         text += thread + style.instructions
-        if let opening = style.openingPrompt { text += "\n\n" + opening }
+        // GPT-Live's greeting goes to the host as the call's opening policy,
+        // not in these instructions.
+        if !isGPTLiveEnabled, let opening = style.openingPrompt { text += "\n\n" + opening }
         return (mode, text)
     }
 

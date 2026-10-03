@@ -340,10 +340,9 @@ final class GPTLiveConversationController: ObservableObject {
             // An older plugin keeps the model silent until the user speaks:
             // ask for the greeting now instead.
             if endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() {
-                hasSentOpening = true
-                if session?.greetingApplied != true {
-                    session?.appendContext(opening, channel: .speakable, delegationID: nil)
-                }
+                // Not sent (the channel failed): the next ready tries again.
+                hasSentOpening = session?.greetingApplied == true
+                    || session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
             }
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
             if endRequestedAt == nil { deliverPendingJobUpdates() }

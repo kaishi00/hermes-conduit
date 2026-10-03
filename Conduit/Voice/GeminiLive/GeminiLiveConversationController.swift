@@ -619,7 +619,8 @@ final class GeminiLiveConversationController: ObservableObject {
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
             if endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() {
                 hasSentOpening = true
-                session?.send(.textTurn(opening))
+                // Not sent: the next ready tries again.
+                session?.send(.textTurn(opening), onFailure: { [weak self] in self?.hasSentOpening = false })
             }
             // Anything that settled while (re)connecting goes out now,
             // unless the conversation is ending: then it stays pending.
