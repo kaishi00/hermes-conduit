@@ -478,7 +478,7 @@ struct ComposerBar: View {
             } label: {
                 ContextRingView(percent: appState.runtime.contextPercent)
                     .frame(width: 32, height: 32)
-                    .frame(minWidth: 36, minHeight: 44)
+                    .frame(minWidth: 44, minHeight: 44)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Context usage, \(Int(appState.runtime.contextPercent.rounded())) percent")
@@ -491,7 +491,7 @@ struct ComposerBar: View {
                     Label("\(appState.activeAgents)", systemImage: "person.2")
                         .font(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.conduitAccent)
-                        .frame(minWidth: 36, minHeight: 44)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(AppLocalization.string("Delegate agents, \(String(appState.activeAgents)) active"))
@@ -984,8 +984,8 @@ struct ComposerBar: View {
     /// slot stays the one "go" control.
     private var dictateButton: some View {
         let canDictate = canDictateFromComposer
-        let isDictating = dictation.isCapturing
-        let isActive = isDictating || dictation.isStarting
+        let isCapturing = dictation.isCapturing
+        let isActive = isCapturing || dictation.isStarting
         return Button {
             switch ComposerDictation.tap(
                 isCapturing: dictation.isCapturing,
@@ -999,9 +999,9 @@ struct ComposerBar: View {
             case .nothing: break
             }
         } label: {
-            Image(systemName: isDictating ? "mic.fill" : "mic")
+            Image(systemName: isCapturing ? "mic.fill" : "mic")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(isDictating ? Color.red : (canDictate ? Color.primary : Color.secondary))
+                .foregroundStyle(isCapturing ? Color.red : (canDictate ? Color.primary : Color.secondary))
                 // Pulses from the tap, so a start still waiting on
                 // permission or the microphone shows it's in flight.
                 .symbolEffect(.pulse, isActive: isActive && !reduceMotion)
@@ -1013,13 +1013,13 @@ struct ComposerBar: View {
         .disabled(!canDictate && !isActive)
         .conduitGlassControl(
             cornerRadius: 22,
-            tint: isDictating ? .red.opacity(0.16) : .primary.opacity(0.025),
+            tint: isCapturing ? .red.opacity(0.16) : .primary.opacity(0.025),
             interactive: canDictate || isActive
         )
-        .accessibilityLabel(isDictating
+        .accessibilityLabel(isCapturing
             ? Text("Stop dictation")
             : (dictation.isStarting ? Text("Cancel dictation") : Text("Dictate")))
-        .accessibilityHint(isDictating
+        .accessibilityHint(isCapturing
             ? AppLocalization.string("Stops dictating; the words stay in the message")
             : (dictation.isStarting ? "" : (appState.isVoiceInUse
                 ? AppLocalization.string("Dictation is unavailable while a voice conversation has the microphone")
