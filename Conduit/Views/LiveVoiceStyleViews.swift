@@ -19,7 +19,10 @@ struct LiveVoiceInstructionsPreviewContent: Equatable {
 
 /// What Voice settings needs to show the live call style.
 struct LiveVoiceStyleSettingsModel {
+    /// The profile these settings belong to.
+    var profile: String = ""
     var style: LiveVoiceStyle
+    /// Saves to `profile`, even when it lands after a profile switch.
     var setStyle: (LiveVoiceStyle) -> Void
     /// The instructions the next call would get, and the mode they're for.
     var preview: () -> LiveVoiceInstructionsPreviewContent?
@@ -154,6 +157,17 @@ struct LiveVoiceStyleSettingsSection: View {
             backchannels = newValue.backchannels
             // Now in sync: coming back to an earlier profile resyncs again.
             lastSaved = newValue
+        }
+        .onChange(of: model.profile) { _, _ in
+            // Another profile, even one with the same style: a pending save
+            // still goes to the earlier one (its model is pinned to it), and
+            // the fields show this one's.
+            let style = model.style
+            greets = style.greeting != nil
+            greeting = style.greeting ?? ""
+            tone = style.tone?.rawValue ?? ""
+            backchannels = style.backchannels
+            lastSaved = style
         }
         .sheet(isPresented: $showsPreview) {
             LiveVoiceInstructionsPreview(preview: preview)

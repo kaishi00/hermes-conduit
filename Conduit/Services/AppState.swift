@@ -3464,9 +3464,10 @@ final class AppState: ObservableObject {
         loadVoiceProfilePreferences(profile: activeProfile).liveVoiceStyle
     }
 
-    /// Applies from the next call.
-    func setLiveVoiceStyle(_ style: LiveVoiceStyle) {
-        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+    /// Applies from the next call. `profile` defaults to the active one.
+    func setLiveVoiceStyle(_ style: LiveVoiceStyle, profile: String? = nil) {
+        let profile = profile ?? activeProfile
+        var preferences = loadVoiceProfilePreferences(profile: profile)
         let greeting = style.greeting.map(LiveVoiceStyle.cleanedGreeting)
         let backchannels: Bool? = style.backchannels ? nil : false
         guard preferences.liveVoiceTone != style.tone
@@ -3476,7 +3477,7 @@ final class AppState: ObservableObject {
         preferences.liveVoiceTone = style.tone
         preferences.liveVoiceBackchannels = backchannels
         preferences.liveVoiceGreeting = greeting
-        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        saveVoiceProfilePreferences(preferences, profile: profile)
     }
 
     /// What Conduit tells the live voice mode in use, for Voice settings:

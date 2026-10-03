@@ -625,8 +625,11 @@ struct SettingsView: View {
                     ),
                     liveStyle: appState.isGeminiLiveEnabled || appState.isGPTLiveEnabled || appState.isGrokLiveEnabled
                         ? LiveVoiceStyleSettingsModel(
+                            profile: appState.activeProfile,
                             style: appState.liveVoiceStyle,
-                            setStyle: { appState.setLiveVoiceStyle($0) },
+                            setStyle: { [profile = appState.activeProfile] style in
+                                appState.setLiveVoiceStyle(style, profile: profile)
+                            },
                             preview: { appState.liveVoiceInstructionsPreview() }
                         )
                         : nil,

@@ -471,7 +471,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// Separates a delegation's own words from the recent conversation
     /// added for context; routing reads only the words before it. Not UI
     /// copy.
-    static let delegationContextMarker = "\n\n[Recent voice conversation, for context only. Do just the request above: earlier requests marked \"handled separately\" were already delegated (to a job, the chat, or an answer), so don't redo them unless the request above asks for them.]\n"
+    static let delegationContextMarker = "\n\n[Recent voice conversation, for context only. Do just the request above: earlier requests marked \"handled separately\" were passed on before (to a job, the chat, or an answer, or turned down), so skip them unless the request above asks for them.]\n"
 
     /// The work a delegation asks for: its own text when it carries any,
     /// otherwise the user's words since the last delegation, with the
