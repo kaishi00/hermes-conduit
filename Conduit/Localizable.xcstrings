@@ -1,26 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Hermes did not accept the model switch." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 未接受模型切换。"
-          }
-        }
-      }
-    },
-    "Unable to change YOLO mode." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法更改 YOLO 模式。"
-          }
-        }
-      }
-    },
     "Applying configuration" : {
       "localizations" : {
         "zh-Hans" : {
@@ -31,12 +11,22 @@
         }
       }
     },
-    "Switch model?" : {
+    "Hermes asks you to confirm switching to %@." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "切换模型？"
+            "value" : "Hermes 需要你确认切换到 %@。"
+          }
+        }
+      }
+    },
+    "Hermes did not accept the model switch." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未接受模型切换。"
           }
         }
       }
@@ -51,12 +41,42 @@
         }
       }
     },
-    "Hermes asks you to confirm switching to %@." : {
+    "Switch model?" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes 需要你确认切换到 %@。"
+            "value" : "切换模型？"
+          }
+        }
+      }
+    },
+    "Talk over it on the speaker" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在扬声器上也可打断"
+          }
+        }
+      }
+    },
+    "Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Gemini Live and Grok Live. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实验功能。Gemini 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Gemini 不断打断自己，请关闭此选项。Gemini Live 与 Grok Live 共用此设置。从下一次对话开始生效。"
+          }
+        }
+      }
+    },
+    "Experimental. Keeps the microphone open while Grok talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Grok keeps cutting itself off. Shared by Gemini Live and Grok Live. Applies to the next conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实验功能。Grok 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Grok 不断打断自己，请关闭此选项。Gemini Live 与 Grok Live 共用此设置。从下一次对话开始生效。"
           }
         }
       }
@@ -177,6 +197,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "开始一个不关联任何聊天的语音通话"
+          }
+        }
+      }
+    },
+    "Unable to change YOLO mode." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更改 YOLO 模式。"
           }
         }
       }
