@@ -122,10 +122,25 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     /// When set, sends are recorded but reported as failed.
     var failSends = false
 
+    /// When set too, a failure is held until `deliverHeldFailures()`
+    /// (one that lands after a reconnect).
+    var holdFailures = false
+    private var heldFailures: [@MainActor () -> Void] = []
+
+    func deliverHeldFailures() {
+        let held = heldFailures
+        heldFailures = []
+        held.forEach { $0() }
+    }
+
     func send(_ message: LiveVoiceClientMessage, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
         // Recorded as Gemini frames, so assertions read the wire shape.
         sent.append(GeminiLiveProtocol.message(for: message))
-        if failSends { onFailure?() } else { onSent?() }
+        if failSends {
+            if holdFailures { onFailure.map { heldFailures.append($0) } } else { onFailure?() }
+        } else {
+            onSent?()
+        }
     }
 
     func becomeReady() {
@@ -780,6 +795,25 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.textTurns, ["[greet]", "[greet]"], "A greeting that never went out is sent again")
         session.becomeReady()
         XCTAssertEqual(session.textTurns, ["[greet]", "[greet]"], "Once it's sent, a reconnect doesn't greet again")
+        controller.stop()
+    }
+
+    func testLiveCallGreetingWhoseFailureLandsAfterAReconnectGreetsOnTheNewConnection() async {
+        let (controller, session, _, _, _) = makeGeminiController(openingPrompt: "[greet]", clock: Date.init)
+        await controller.start()
+        session.failSends = true
+        session.holdFailures = true
+        session.becomeReady()
+        XCTAssertEqual(session.textTurns, ["[greet]"])
+        // Reconnected before the failure came back: the ready doesn't greet.
+        session.failSends = false
+        session.connectionGeneration += 1
+        session.becomeReady()
+        XCTAssertEqual(session.textTurns, ["[greet]"])
+        session.deliverHeldFailures()
+        XCTAssertEqual(session.textTurns, ["[greet]", "[greet]"], "Greets on the connection that's up")
+        session.becomeReady()
+        XCTAssertEqual(session.textTurns, ["[greet]", "[greet]"], "Once sent, never again")
         controller.stop()
     }
 

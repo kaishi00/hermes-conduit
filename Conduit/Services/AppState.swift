@@ -3516,13 +3516,13 @@ final class AppState: ObservableObject {
         }
         text += thread + style.instructions
         // Gemini and Grok get the greeting as the call's first turn; GPT-Live's
-        // goes to the host as the call's opening policy.
+        // goes to the host as the call's opening policy (an older plugin
+        // gets this ask as the first turn).
         return LiveVoiceInstructionsPreviewContent(
             mode: mode,
             instructions: text,
-            // GPT-Live: the host plugin opens with the same ask (an older
-            // plugin gets it as the first turn).
-            openingTurn: style.openingPrompt
+            openingTurn: style.openingPrompt,
+            openingIsHostSide: isGPTLiveEnabled
         )
     }
 

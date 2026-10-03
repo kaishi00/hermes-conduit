@@ -610,6 +610,24 @@ final class GeminiLiveConversationController: ObservableObject {
 
     // MARK: Session
 
+    /// The greeting, once per call. Marked sent before it goes out, so a
+    /// reconnect never greets twice; a send that fails re-arms it.
+    private func sendOpeningIfNeeded() {
+        guard endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() else { return }
+        hasSentOpening = true
+        let sentOn = session.map(ObjectIdentifier.init)
+        let connection = session?.connectionGeneration
+        session?.send(.textTurn(opening), onFailure: { [weak self] in
+            // Only for this call's session: a late failure from an
+            // earlier call must not re-arm a later one.
+            guard let self, self.session.map(ObjectIdentifier.init) == sentOn else { return }
+            self.hasSentOpening = false
+            // It failed after a reconnect was already ready: greet on that
+            // connection now rather than waiting for another ready.
+            if self.session?.connectionGeneration != connection, self.session?.isReady == true { self.sendOpeningIfNeeded() }
+        })
+    }
+
     private func sessionStateChanged(_ state: GeminiLiveSession.State) {
         switch state {
         case .ready:
@@ -617,17 +635,7 @@ final class GeminiLiveConversationController: ObservableObject {
             if !isMicrophoneMuted, !startInput() { return }
             // Ending: the microphone is closed, so it isn't listening.
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
-            if endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() {
-                hasSentOpening = true
-                // Not sent: the next ready tries again.
-                let sentOn = session.map(ObjectIdentifier.init)
-                session?.send(.textTurn(opening), onFailure: { [weak self] in
-                    // Only for this call's session: a late failure from an
-                    // earlier call must not re-arm a later one.
-                    guard let self, self.session.map(ObjectIdentifier.init) == sentOn else { return }
-                    self.hasSentOpening = false
-                })
-            }
+            sendOpeningIfNeeded()
             // Anything that settled while (re)connecting goes out now,
             // unless the conversation is ending: then it stays pending.
             if endRequestedAt == nil { dispatch(tools.pendingUpdates()) }
