@@ -134,10 +134,12 @@ struct LiveVoiceScreenCardRow: View {
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    Text("On screen")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if !card.title.isEmpty {
+                        Text("On screen")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
