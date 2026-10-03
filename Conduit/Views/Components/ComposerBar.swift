@@ -500,7 +500,8 @@ struct ComposerBar: View {
         .animation(reduceMotion ? nil : ConduitMotion.response, value: showsFullEditorButton)
         .sheet(isPresented: $isShowingFullEditor, onDismiss: {
             // The inline editor only takes programmatic changes, so hand it
-            // what was written in the sheet, cursor at the end.
+            // what was written in the sheet, cursor at the end. An unchanged
+            // draft keeps the cursor where it was.
             replaceComposerText(text, cursorAtEnd: true)
         }) {
             ComposerFullEditor(

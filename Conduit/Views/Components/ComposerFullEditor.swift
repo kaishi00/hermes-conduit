@@ -53,6 +53,7 @@ struct ComposerFullEditor<ActionButton: View>: View {
                     .font(.body)
                     .scrollContentBackground(.hidden)
                     .focused($isFocused)
+                    .accessibilityLabel(Text(placeholder))
                     .disabled(!enabled)
                     .onChange(of: text) { _, _ in
                         // Dictation ends when the sheet opens, so a change
@@ -69,7 +70,12 @@ struct ComposerFullEditor<ActionButton: View>: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        .onAppear { isFocused = enabled }
+        .task {
+            // After the sheet has settled; focus set while it is still
+            // presenting often leaves the keyboard down.
+            try? await Task.sleep(for: .milliseconds(300))
+            isFocused = enabled
+        }
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
     }
