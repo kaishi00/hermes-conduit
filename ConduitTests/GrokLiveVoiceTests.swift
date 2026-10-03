@@ -89,6 +89,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(output["output"] as? String, #"{"a":"1","b":"2"}"#)
         XCTAssertTrue(answer.wantsResponse)
         XCTAssertFalse(GrokLiveProtocol.frames(for: .toolResponse(id: "c1", name: "start_job", result: [:], scheduling: .silent)).wantsResponse, "a silent answer is absorbed")
+
+        let note = GrokLiveProtocol.frames(for: .contextNote("typed"))
+        XCTAssertEqual(note.frames.first?["type"] as? String, "conversation.item.create")
+        XCTAssertEqual(((note.frames.first?["item"] as? [String: Any])?["content"] as? [[String: Any]])?.first?["text"] as? String, "typed")
+        XCTAssertFalse(note.wantsResponse, "context is kept, not answered")
     }
 
     func testGrokLiveServerEventsDecodeToTheSharedConversationEvents() {

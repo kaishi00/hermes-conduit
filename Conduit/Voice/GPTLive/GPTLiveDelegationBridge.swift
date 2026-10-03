@@ -199,6 +199,11 @@ final class GPTLiveDelegationBridge {
             queuedNotices.insert(item.jobID)
             outgoing.append(.sessionContext(text: text, channel: .speakable, whenIdle: true, jobID: item.jobID))
         }
+        // Typed exchanges in the attached chat (#363): quiet context, never
+        // read out unless the user asks.
+        while let context = supervisor.takePendingChatContext() {
+            outgoing.append(.sessionContext(text: context, channel: .commentary, whenIdle: true, jobID: nil))
+        }
         return outgoing
     }
 

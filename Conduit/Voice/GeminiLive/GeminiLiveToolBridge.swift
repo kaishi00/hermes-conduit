@@ -41,6 +41,9 @@ protocol GeminiLiveJobSupervising: AnyObject {
     var liveThread: VoiceThreadTarget? { get }
     func startThreadTurn(request: String) -> (jobID: UUID?, refusal: String?)
     func lastThreadReply() async -> String?
+    /// Exchanges typed in the attached chat, for the call to keep quietly.
+    func takePendingChatContext() -> String?
+    func returnChatContext(_ text: String)
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -65,6 +68,9 @@ final class GeminiLiveToolBridge {
         /// A text turn for an update with no open call to answer on. The
         /// host sends it only while the conversation is idle.
         case textWhenIdle(String)
+        /// Context the model keeps without answering (a typed exchange in
+        /// the attached chat). Also sent only while idle.
+        case contextWhenIdle(String)
         /// Close the conversation once the model's goodbye has played.
         case endConversation
 
@@ -367,6 +373,9 @@ final class GeminiLiveToolBridge {
             queuedNotices.append((text, item.jobID))
             outgoing.append(.textWhenIdle(text))
         }
+        while let context = supervisor.takePendingChatContext() {
+            outgoing.append(.contextWhenIdle(context))
+        }
         return outgoing
     }
 
@@ -403,6 +412,11 @@ final class GeminiLiveToolBridge {
 
     /// The conversation is closing with these text updates unsent: any job
     /// notice among them becomes pending again for Hermes to report.
+    /// Typed exchanges that never went out, back to the supervisor in order.
+    func returnUnsentContext(_ texts: [String]) {
+        for text in texts.reversed() { supervisor.returnChatContext(text) }
+    }
+
     func returnUnsent(_ texts: [String]) {
         for text in texts {
             guard let index = queuedNotices.firstIndex(where: { $0.text == text }) else { continue }

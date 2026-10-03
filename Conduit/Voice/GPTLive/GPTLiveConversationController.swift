@@ -141,8 +141,9 @@ final class GPTLiveConversationController: ObservableObject {
     private var lastUserSpeechAt: Date?
     private var lastModelOutputAt: Date?
     private var lastModelTurnEndedAt: Date?
-    /// Idle-only session context (job notices) waiting to be sent.
-    private var pendingContext: [(text: String, jobID: UUID?)] = []
+    /// Idle-only session context (job notices, typed exchanges) waiting to
+    /// be sent.
+    private var pendingContext: [(text: String, channel: GPTLiveProtocol.Channel, jobID: UUID?)] = []
     private var idleFlushTask: Task<Void, Never>?
     /// Entries still taking streamed fragments. The other speaker starting
     /// closes one, as in Gemini Live.
@@ -282,7 +283,13 @@ final class GPTLiveConversationController: ObservableObject {
         guard isActive, endRequestedAt == nil, session?.isReady == true else { return }
         let outgoing = bridge.pendingUpdates()
         dispatch(outgoing)
-        if !outgoing.isEmpty { sendJobStatus() }
+        // Job news refreshes the model's job list; a typed exchange alone
+        // (quiet context with no job) changes no job.
+        let changesJobs = outgoing.contains { item in
+            if case .sessionContext(_, .commentary, _, nil) = item { return false }
+            return true
+        }
+        if changesJobs { sendJobStatus() }
     }
 
     // MARK: Hands-free end
@@ -520,7 +527,7 @@ final class GPTLiveConversationController: ObservableObject {
                 }
             case .sessionContext(let text, let channel, let whenIdle, let jobID):
                 if whenIdle {
-                    pendingContext.append((text, jobID))
+                    pendingContext.append((text, channel, jobID))
                 } else {
                     session?.appendContext(text, channel: channel, delegationID: nil)
                 }
@@ -543,8 +550,13 @@ final class GPTLiveConversationController: ObservableObject {
     func flushPendingContextIfIdle() {
         guard !pendingContext.isEmpty, endRequestedAt == nil, isConversationIdle, let session else { return }
         let item = pendingContext.removeFirst()
-        if session.appendContext(item.text, channel: .speakable, delegationID: nil) {
+        if session.appendContext(item.text, channel: item.channel, delegationID: nil) {
             bridge.contextDelivered(jobID: item.jobID)
+            // Quiet context starts no turn: the rest can follow now.
+            guard item.channel == .speakable else {
+                flushPendingContextIfIdle()
+                return
+            }
             // The model speaks it next: wait for that turn before another.
             modelTurnActive = true
             lastModelOutputAt = now()
