@@ -19673,14 +19673,14 @@ final class AppState: ObservableObject {
             async let configRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             let (options, info, config) = try await (optionsRequest, infoRequest, configRequest)
             guard profile == activeProfile else { return nil }
-            let providers = (AnyCodable.from(options).objectValue?["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))
+            let optionsObject = AnyCodable.from(options).objectValue ?? [:]
+            let providers = (optionsObject["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))
             // Profile config is the persisted default. Hermes stores it under
             // `model.default` and `model.provider`, but `/api/config` flattens
             // `model` to the bare model string and drops the provider, so the
             // provider comes from `/api/model/info` (read from the same config)
             // or the options payload's current selection.
             let modelConfig = config["model"] as? [String: Any] ?? [:]
-            let optionsObject = AnyCodable.from(options).objectValue ?? [:]
             let model = [modelConfig["default"] as? String, config["model"] as? String, info["model"] as? String, optionsObject["model"]?.stringValue]
                 .compactMap { $0 }.first(where: { !$0.isEmpty }) ?? ""
             let provider = [modelConfig["provider"] as? String, info["provider"] as? String, optionsObject["provider"]?.stringValue]

@@ -92,4 +92,60 @@ final class ProfileModelDefaultsTests: XCTestCase {
         XCTAssertEqual(value.selection.provider, "anthropic")
         XCTAssertEqual(value.selection.model, "claude-a")
     }
+
+    func testFirstRowFallbackDoesNotKeepAModelItDoesNotList() {
+        let value = defaults([
+            provider("anthropic", models: ["claude-a"]),
+            provider("openrouter", models: ["x"])
+        ], provider: "gone", model: "unlisted")
+        XCTAssertEqual(value.selection.provider, "anthropic")
+        XCTAssertEqual(value.selection.model, "claude-a")
+    }
+
+    func testMatchingTrimsCatalogValuesAndTitleUsesDisplayName() {
+        let row = provider("my-box", name: " My Box ", aliases: [" custom:my-box"], models: ["qwen"])
+        XCTAssertTrue(row.matches("custom:my-box"))
+        XCTAssertTrue(row.matches("my box"))
+        XCTAssertFalse(row.matches(""))
+        XCTAssertEqual(row.title, "My Box")
+        XCTAssertEqual(provider("anthropic", models: []).title, "anthropic")
+    }
+
+    func testDelegateModelWithInheritedProviderIsKept() {
+        let value = defaults([provider("anthropic", models: ["claude-a"])], provider: "anthropic", model: "claude-a")
+        let selection = value.delegateSelection(provider: "  ", model: "cheap-model")
+        XCTAssertEqual(selection.provider, "")
+        XCTAssertEqual(selection.model, "cheap-model")
+    }
+
+    func testDelegateInheritStaysEmpty() {
+        let value = defaults([provider("anthropic", models: ["claude-a"])], provider: "anthropic", model: "claude-a")
+        let selection = value.delegateSelection(provider: "", model: "")
+        XCTAssertEqual(selection.provider, "")
+        XCTAssertEqual(selection.model, "")
+    }
+
+    func testDelegateAliasResolvesToRowAndKeepsSavedModel() {
+        let value = defaults([
+            provider("anthropic", models: ["claude-a"]),
+            provider("my-box", aliases: ["custom:my-box"], models: ["qwen"])
+        ], provider: "anthropic", model: "claude-a")
+        let selection = value.delegateSelection(provider: "custom:my-box", model: "unlisted")
+        XCTAssertEqual(selection.provider, "my-box")
+        XCTAssertEqual(selection.model, "unlisted")
+    }
+
+    func testDelegateProviderModelLeftInheritedStaysEmpty() {
+        let value = defaults([provider("anthropic", models: ["claude-a"])], provider: "anthropic", model: "claude-a")
+        let selection = value.delegateSelection(provider: "anthropic", model: "")
+        XCTAssertEqual(selection.provider, "anthropic")
+        XCTAssertEqual(selection.model, "")
+    }
+
+    func testDelegateUnknownProviderIsKeptAsSaved() {
+        let value = defaults([provider("anthropic", models: ["claude-a"])], provider: "anthropic", model: "claude-a")
+        let selection = value.delegateSelection(provider: "gone", model: "m")
+        XCTAssertEqual(selection.provider, "gone")
+        XCTAssertEqual(selection.model, "m")
+    }
 }

@@ -2432,9 +2432,19 @@ struct ProviderInfo: Equatable {
     /// True when `provider` names this row by slug, display name or alias,
     /// mirroring Hermes Desktop's `catalogProviderMatches`.
     func matches(_ provider: String) -> Bool {
-        let wanted = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let wanted = Self.normalized(provider)
         guard !wanted.isEmpty else { return false }
-        return ([name, displayName ?? ""] + aliases).contains { $0.lowercased() == wanted }
+        return ([name, displayName ?? ""] + aliases).contains { Self.normalized($0) == wanted }
+    }
+
+    /// Picker label: the catalog's display name, else the slug.
+    var title: String {
+        let display = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return display.isEmpty ? name : display
+    }
+
+    static func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }
 
