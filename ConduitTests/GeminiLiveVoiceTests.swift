@@ -1102,7 +1102,7 @@ extension VoiceConversationControllerTests {
         output.stop()
     }
 
-    func testLiveVoiceAudioChoosesAgainAfterAFailedStartOrAnInterruption() throws {
+    func testLiveVoiceAudioKeepsTheCallsChoiceThroughMutesAndInterruptions() throws {
         var wantsEchoCancellation = false
         let standardInput = FakeGeminiLiveInput()
         let echoInput = FakeGeminiLiveInput()
@@ -1112,6 +1112,7 @@ extension VoiceConversationControllerTests {
             makeEchoCancelling: { (echoInput, FakeGeminiLiveOutput()) }
         )
         let input = selector.input
+        let output = selector.output
         var interruptions = 0
         input.onInterrupted = { interruptions += 1 }
 
@@ -1123,14 +1124,26 @@ extension VoiceConversationControllerTests {
         try input.start()
         XCTAssertEqual(echoInput.starts, 1)
 
-        // An interruption reaches the controller and ends the call's audio
-        // when nothing else is in use.
+        // Muted before the model said anything, then unmuted: same call, same audio.
+        wantsEchoCancellation = false
+        input.stop()
+        try input.start()
+        XCTAssertEqual(echoInput.starts, 2)
+        XCTAssertEqual(standardInput.starts, 0)
+
+        // An interruption reaches the controller; the restart stays on the call's audio.
         echoInput.onInterrupted?()
         XCTAssertEqual(interruptions, 1)
-        wantsEchoCancellation = false
+        try input.start()
+        XCTAssertEqual(echoInput.starts, 3)
+
+        // The call ends: the next one chooses again.
+        input.stop()
+        output.stop()
         try input.start()
         XCTAssertEqual(standardInput.starts, 1)
         input.stop()
+        output.stop()
     }
 
     func testGeminiLivePromptsAnAcknowledgementOnlyWhenTheModelStayedSilent() async {

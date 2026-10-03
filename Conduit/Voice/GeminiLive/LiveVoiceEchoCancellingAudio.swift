@@ -56,6 +56,16 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     /// dropped buffers don't count.
     private var playbackGeneration: UInt64 = 0
     private var pendingBuffers = 0
+    /// An odd trailing byte, carried into the next chunk as
+    /// AVSpeechPlaybackService does.
+    private var remainder = Data()
+    /// When everything scheduled should have played. Completions normally
+    /// drain the queue; if rendering died without a notification, the
+    /// watchdog clears it once this (plus a grace) has passed, so
+    /// `isPlaying` can't stay stuck.
+    private var drainDeadline: Date?
+    private var drainWatchdog: Task<Void, Never>?
+    static let drainWatchdogGrace: TimeInterval = 2
 
     var onChunk: (@MainActor (Data) -> Void)?
     var onInterrupted: (@MainActor () -> Void)?
@@ -83,25 +93,23 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
             name: AVAudioSession.mediaServicesWereResetNotification,
             object: session
         )
+        // Belt and braces next to the engine's configuration change: a
+        // route change that stopped the engine restarts it too.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConfigurationChange(_:)),
+            name: AVAudioSession.routeChangeNotification,
+            object: session
+        )
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
 
     // MARK: Input
 
-    func requestPermission() async -> Bool {
-        await withCheckedContinuation { continuation in
-            switch session.recordPermission {
-            case .granted:
-                continuation.resume(returning: true)
-            case .denied:
-                continuation.resume(returning: false)
-            case .undetermined:
-                session.requestRecordPermission { continuation.resume(returning: $0) }
-            @unknown default:
-                continuation.resume(returning: false)
-            }
-        }
+    /// Asks only while undetermined; answers at once otherwise.
+    static func requestPermission() async -> Bool {
+        await AVAudioApplication.requestRecordPermission()
     }
 
     func startInput() throws {
@@ -145,14 +153,18 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
             playerFormat = format
         }
         guard let format = playerFormat else { return }
-        let frames = AVAudioFrameCount(pcm.count / 2)
+        remainder.append(pcm)
+        let alignedBytes = remainder.count - (remainder.count % 2)
+        let frames = AVAudioFrameCount(alignedBytes / 2)
         guard frames > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
               let channel = buffer.floatChannelData?[0] else { return }
         buffer.frameLength = frames
-        pcm.withUnsafeBytes { raw in
+        remainder.prefix(alignedBytes).withUnsafeBytes { raw in
             AVSpeechPlaybackService.convertPCM16(raw, into: channel, frames: Int(frames))
         }
+        remainder.removeFirst(alignedBytes)
         pendingBuffers += 1
+        extendDrainDeadline(by: Double(frames) / format.sampleRate)
         let generation = playbackGeneration
         player.scheduleBuffer(buffer, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -168,7 +180,40 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     func interrupt() {
         playbackGeneration &+= 1
         pendingBuffers = 0
+        remainder.removeAll(keepingCapacity: true)
+        clearDrainWatchdog()
         player?.stop()
+    }
+
+    private func extendDrainDeadline(by seconds: TimeInterval) {
+        let start = max(drainDeadline ?? Date(), Date())
+        drainDeadline = start.addingTimeInterval(seconds)
+        guard drainWatchdog == nil else { return }
+        drainWatchdog = Task { @MainActor [weak self] in
+            while let deadline = self?.drainDeadline {
+                let wait = deadline.timeIntervalSinceNow + Self.drainWatchdogGrace
+                if wait > 0 {
+                    try? await Task.sleep(for: .seconds(wait))
+                    guard !Task.isCancelled else { return }
+                    continue
+                }
+                guard let self else { return }
+                if self.pendingBuffers > 0 {
+                    echoCancellingAudioLogger.notice("Live speech never finished playing; clearing the queue")
+                    self.playbackGeneration &+= 1
+                    self.pendingBuffers = 0
+                }
+                self.drainDeadline = nil
+                self.drainWatchdog = nil
+                return
+            }
+        }
+    }
+
+    private func clearDrainWatchdog() {
+        drainWatchdog?.cancel()
+        drainWatchdog = nil
+        drainDeadline = nil
     }
 
     /// The speaker side is done: drop the queue, and stop everything once
@@ -207,7 +252,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         engine.attach(player)
         // Connected up front so the speaker side is part of the graph (and
         // of the echo reference) from the start.
-        let format = playerFormat ?? AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
+        let format = playerFormat ?? AVAudioFormat(standardFormatWithSampleRate: GeminiLiveProtocol.outputSampleRate, channels: 1)!
         engine.connect(player, to: engine.mainMixerNode, format: format)
 
         let hardwareFormat = input.inputFormat(forBus: 0)
@@ -299,6 +344,8 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         tapGeneration &+= 1
         playbackGeneration &+= 1
         pendingBuffers = 0
+        remainder.removeAll(keepingCapacity: true)
+        clearDrainWatchdog()
         converter = nil
         guard let engine else { return }
         NotificationCenter.default.removeObserver(self, name: .AVAudioEngineConfigurationChange, object: engine)
@@ -378,7 +425,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
             set { audio.onInterrupted = newValue }
         }
         var cancelsEcho: Bool { true }
-        func requestPermission() async -> Bool { await audio.requestPermission() }
+        func requestPermission() async -> Bool { await EchoCancellingLiveVoiceAudio.requestPermission() }
         func start() throws { try audio.startInput() }
         func stop() { audio.stopInput() }
     }
@@ -399,9 +446,10 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
 /// The live controller's audio seams, choosing for each call between the
 /// default audio (separate microphone and speaker, half duplex on an open
 /// speaker) and the echo-cancelling one (speaker barge-in). The choice is
-/// made when the call first uses audio and kept until both directions have
-/// stopped, so a setting changed mid-call applies from the next call.
-/// Each kind is built on first use only.
+/// made when the call first uses audio and kept until the speaker side
+/// stops with the microphone off (the controller does that only when a
+/// call ends or fails), so a setting changed mid-call, mutes included,
+/// applies from the next call. Each kind is built on first use only.
 @MainActor
 final class LiveVoiceAudioSelector {
     typealias Pair = (input: GeminiLiveAudioInput, output: GeminiLiveAudioOutput)
@@ -413,7 +461,6 @@ final class LiveVoiceAudioSelector {
     private var echoCancelling: Pair?
     private var current: Pair?
     private var inputRunning = false
-    private var outputInUse = false
 
     var onChunk: (@MainActor (Data) -> Void)? {
         didSet { current?.input.onChunk = onChunk }
@@ -458,55 +505,61 @@ final class LiveVoiceAudioSelector {
         return chosen
     }
 
-    /// Both directions stopped: the call's audio is over, so the next use
-    /// chooses again.
-    private func releaseIfIdle() {
-        guard !inputRunning, !outputInUse, let released = current else { return }
+    /// The call's audio is over: the next use chooses again.
+    private func release() {
+        guard !inputRunning, let released = current else { return }
         released.input.onChunk = nil
         released.input.onInterrupted = nil
         current = nil
     }
 
+    /// Asked before a call has any audio, so it builds nothing.
     fileprivate func requestPermission() async -> Bool {
-        await (current ?? pair(echoCancelling: wantsEchoCancellation())).input.requestPermission()
+        await EchoCancellingLiveVoiceAudio.requestPermission()
     }
 
     fileprivate func startInput() throws {
+        let choosing = current == nil
         do {
             try selected().input.start()
             inputRunning = true
         } catch {
-            releaseIfIdle()
+            // A call whose audio never started holds no choice.
+            if choosing { release() }
             throw error
         }
     }
 
+    /// A mute or the end of the call: the call keeps its audio until the
+    /// speaker side stops too.
     fileprivate func stopInput() {
         current?.input.stop()
         inputRunning = false
-        releaseIfIdle()
     }
 
     /// An interruption stopped the microphone underneath the call.
     private func inputInterrupted() {
         inputRunning = false
         onInterrupted?()
-        releaseIfIdle()
     }
 
     fileprivate var isPlaying: Bool { current?.output.isPlaying ?? false }
 
     fileprivate func play(_ pcm: Data, sampleRate: Double) throws {
-        outputInUse = true
-        try selected().output.play(pcm, sampleRate: sampleRate)
+        let choosing = current == nil
+        do {
+            try selected().output.play(pcm, sampleRate: sampleRate)
+        } catch {
+            if choosing { release() }
+            throw error
+        }
     }
 
     fileprivate func interrupt() { current?.output.interrupt() }
 
     fileprivate func stopOutput() {
         current?.output.stop()
-        outputInUse = false
-        releaseIfIdle()
+        release()
     }
 
     @MainActor
