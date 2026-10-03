@@ -9,12 +9,20 @@
 
 import SwiftUI
 
+/// What "What Conduit sends" shows: the text added to the live model's
+/// instructions, and the greeting turn sent when a call connects.
+struct LiveVoiceInstructionsPreviewContent: Equatable {
+    var mode: String
+    var instructions: String
+    var openingTurn: String?
+}
+
 /// What Voice settings needs to show the live call style.
 struct LiveVoiceStyleSettingsModel {
     var style: LiveVoiceStyle
     var setStyle: (LiveVoiceStyle) -> Void
     /// The instructions the next call would get, and the mode they're for.
-    var preview: () -> (mode: String, text: String)?
+    var preview: () -> LiveVoiceInstructionsPreviewContent?
 }
 
 struct LiveVoiceStyleSettingsSection: View {
@@ -24,7 +32,7 @@ struct LiveVoiceStyleSettingsSection: View {
     /// Empty is the model's own tone (a Picker tag can't be nil).
     @State private var tone: String
     @State private var backchannels: Bool
-    @State private var preview: (mode: String, text: String)?
+    @State private var preview: LiveVoiceInstructionsPreviewContent?
     @State private var showsPreview = false
     @State private var greetingSave: Task<Void, Never>?
 
@@ -135,7 +143,7 @@ struct LiveVoiceStyleSettingsSection: View {
 
 /// The text Conduit adds to a live voice model's instructions.
 struct LiveVoiceInstructionsPreview: View {
-    let preview: (mode: String, text: String)?
+    let preview: LiveVoiceInstructionsPreviewContent?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -146,10 +154,19 @@ struct LiveVoiceInstructionsPreview: View {
                         Text(AppLocalization.string("Conduit adds this to \(preview.mode)'s instructions for every call. Your Hermes server adds its own voice persona before it. Memory and personality are read when a call starts."))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                        Text(verbatim: preview.text)
+                        Text(verbatim: preview.instructions)
                             .font(.system(.footnote, design: .monospaced))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        if let opening = preview.openingTurn {
+                            Text("Sent as the call's first turn when it connects:")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Text(verbatim: opening)
+                                .font(.system(.footnote, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     } else {
                         Text("Turn on a live voice mode to see what Conduit sends.")
                             .font(.footnote)

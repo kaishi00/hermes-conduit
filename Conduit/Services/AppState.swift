@@ -3483,7 +3483,7 @@ final class AppState: ObservableObject {
     /// the text as the next call would send it, with the host's memory and
     /// persona shown as placeholders (they are read when a call starts).
     /// Nil when no live mode is on.
-    func liveVoiceInstructionsPreview() -> (mode: String, text: String)? {
+    func liveVoiceInstructionsPreview() -> LiveVoiceInstructionsPreviewContent? {
         let placeholderMemory = GeminiLiveMemoryContext(text: AppLocalization.string("(What your Hermes agent remembers about you, read when the call starts.)"), canRecall: false)
         let placeholderPersona = AppLocalization.string("(This profile's SOUL.md, read when the call starts.)")
         let thread = liveVoiceThreadInstructions(delegation: isGPTLiveEnabled)
@@ -3514,10 +3514,13 @@ final class AppState: ObservableObject {
             return nil
         }
         text += thread + style.instructions
-        // GPT-Live's greeting goes to the host as the call's opening policy,
-        // not in these instructions.
-        if !isGPTLiveEnabled, let opening = style.openingPrompt { text += "\n\n" + opening }
-        return (mode, text)
+        // Gemini and Grok get the greeting as the call's first turn; GPT-Live's
+        // goes to the host as the call's opening policy.
+        return LiveVoiceInstructionsPreviewContent(
+            mode: mode,
+            instructions: text,
+            openingTurn: isGPTLiveEnabled ? nil : style.openingPrompt
+        )
     }
 
     /// The live controllers' audio: the default capture and playback, or

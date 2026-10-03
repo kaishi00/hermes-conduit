@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Sent as the call's first turn when it connects:" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话接通时作为第一轮发送："
+          }
+        }
+      }
+    },
     "Live call style" : {
       "localizations" : {
         "zh-Hans" : {

@@ -151,6 +151,7 @@ final class GPTLiveDelegationBridge {
     /// retry must go out.
     func readBackNotDelivered() {
         lastReadBackAt = nil
+        readBackDelegationID = nil
     }
 
     private var readBackIsRecent: Bool {
@@ -169,6 +170,7 @@ final class GPTLiveDelegationBridge {
         openDelegations.removeAll()
         seenDelegations.removeAll()
         lastReadBackAt = nil
+        readBackDelegationID = nil
         isEnding = false
     }
 
@@ -176,6 +178,7 @@ final class GPTLiveDelegationBridge {
     /// stays pending (and unannounced) for Hermes to report.
     func beginEnding() {
         openDelegations.removeAll()
+        readBackDelegationID = nil
         isEnding = true
     }
 

@@ -620,7 +620,13 @@ final class GeminiLiveConversationController: ObservableObject {
             if endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() {
                 hasSentOpening = true
                 // Not sent: the next ready tries again.
-                session?.send(.textTurn(opening), onFailure: { [weak self] in self?.hasSentOpening = false })
+                let sentOn = session.map(ObjectIdentifier.init)
+                session?.send(.textTurn(opening), onFailure: { [weak self] in
+                    // Only for this call's session: a late failure from an
+                    // earlier call must not re-arm a later one.
+                    guard let self, self.session.map(ObjectIdentifier.init) == sentOn else { return }
+                    self.hasSentOpening = false
+                })
             }
             // Anything that settled while (re)connecting goes out now,
             // unless the conversation is ending: then it stays pending.
