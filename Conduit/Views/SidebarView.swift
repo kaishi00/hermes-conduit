@@ -473,6 +473,10 @@ struct SessionList: View {
         )
     }
 
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// A search that only matches pinned chats shows them without a "No
     /// Matching Projects" state under them.
     @ViewBuilder
@@ -482,13 +486,13 @@ struct SessionList: View {
                 .frame(maxWidth: .infinity, minHeight: 140)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
-        } else if displayedProjects.isEmpty && hasPinnedSessions && !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        } else if displayedProjects.isEmpty && hasPinnedSessions && isSearching {
             EmptyView()
         } else if displayedProjects.isEmpty {
             ContentUnavailableView(
-                searchText.isEmpty ? AppLocalization.string("No Projects") : AppLocalization.string("No Matching Projects"),
+                isSearching ? AppLocalization.string("No Matching Projects") : AppLocalization.string("No Projects"),
                 systemImage: "folder",
-                description: Text(searchText.isEmpty
+                description: Text(!isSearching
                     ? AppLocalization.string("Projects created in Hermes Desktop will appear here.")
                     : AppLocalization.string("Try a different search."))
             )

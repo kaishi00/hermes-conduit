@@ -14546,16 +14546,6 @@
         }
       }
     },
-    "Search projects" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜索项目…"
-          }
-        }
-      }
-    },
     "Search projects and pinned chats" : {
       "localizations" : {
         "zh-Hans" : {
