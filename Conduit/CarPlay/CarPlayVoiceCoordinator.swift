@@ -305,11 +305,14 @@ final class CarPlayVoiceCoordinator {
     }
 
     private func makeHandlers() -> CarPlayVoiceActionHandlers {
-        CarPlayVoiceActionHandlers(
+        // End is fenced to the connection whose template the button is on,
+        // so a tap queued across a reconnect never ends the new conversation.
+        let generation = connectionGeneration
+        return CarPlayVoiceActionHandlers(
             startListening: { [weak self] in self?.startListeningTurn() },
             startNewChat: { [weak self] in self?.startNewChat() },
             toggleMicrophone: { [weak self] in self?.toggleMicrophone() },
-            endConversation: { [weak self] in self?.endConversation() }
+            endConversation: { [weak self] in self?.endConversation(generation: generation) }
         )
     }
 
@@ -747,14 +750,16 @@ final class CarPlayVoiceCoordinator {
             // microphone button does.
             if controller.isMicrophonePaused {
                 await controller.resumeMicrophone()
-                guard isCurrent(generation), isConnected else { return }
-                // The car may show an Error the controller never had, so the
-                // reopened listening window is shown again; a controller
-                // that did not reach listening (it had failed) starts a
-                // listening turn, so one tap always listens or errors.
+                // A mode switch during the resume leaves the car to the new
+                // mode's controller.
+                guard isCurrent(generation), isConnected,
+                      CarPlayVoiceMode.current(in: appState) == .classic else { return }
                 // A resume that failed or was refused leaves the microphone
                 // paused, and listening would run with it closed, so the car
-                // shows the error instead.
+                // shows the error instead. Otherwise the reopened listening
+                // window is shown again (the car may show an Error the
+                // controller never had), or a controller that did not reach
+                // listening starts a listening turn.
                 guard !controller.isMicrophonePaused else {
                     handleControllerState(.failed(""))
                     return
@@ -864,6 +869,12 @@ final class CarPlayVoiceCoordinator {
 
     /// End button. Converges on the authoritative Close teardown — no
     /// parallel CarPlay teardown exists.
+    /// The End button of one connection's template.
+    func endConversation(generation: UInt64) {
+        guard isCurrent(generation) else { return }
+        endConversation()
+    }
+
     func endConversation() {
         // A tap delivered across a disconnect never closes a conversation
         // the phone kept.

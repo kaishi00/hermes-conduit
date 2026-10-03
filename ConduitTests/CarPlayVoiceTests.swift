@@ -858,6 +858,47 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertFalse(harness.controller.isMicrophonePaused, "Listen reopens the microphone instead of a silent window")
     }
 
+    func testListenShowsErrorWhenThePausedMicrophoneCannotReopen() async {
+        let harness = makeHarness(continuousConversation: false)
+        harness.appState.activeSessionId = "existing-session"
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.establishVoice(generation: harness.coordinator.connectionGeneration)
+        await harness.coordinator.waitForPresentation()
+        harness.controller.pauseMicrophone()
+        harness.capture.resumeError = URLError(.unknown)
+
+        await harness.coordinator.performStartListeningTurn(generation: harness.coordinator.connectionGeneration)
+
+        XCTAssertTrue(harness.controller.isMicrophonePaused, "the microphone never reopened")
+        XCTAssertEqual(harness.activations.last, .error, "never Listening with a closed microphone")
+    }
+
+    func testAChatThatFailsToOpenShowsError() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        let row = CarPlayChatRow(sessionID: "missing", storedSessionID: nil, title: "Chat", detail: "")
+
+        // The harness has no client, so the open fails.
+        await harness.coordinator.performOpenChat(row, generation: harness.coordinator.connectionGeneration)
+
+        XCTAssertEqual(harness.activations.last, .error)
+    }
+
+    func testAnEndTapFromAnEarlierConnectionKeepsTheNewConversation() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        harness.coordinator.handleConnect(harness.spy)
+        let staleGeneration = harness.coordinator.connectionGeneration
+        harness.coordinator.handleDisconnect()
+        harness.coordinator.handleConnect(harness.spy)
+
+        harness.coordinator.endConversation(generation: staleGeneration)
+
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "a tap from the old template never ends the new connection's conversation")
+    }
+
     func testNewChatClosesTheCurrentConversationAndPreparesAFreshOne() async {
         let harness = makeHarness()
         harness.openVoice(session: "session-1")
