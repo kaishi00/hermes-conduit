@@ -3520,7 +3520,9 @@ final class AppState: ObservableObject {
         return LiveVoiceInstructionsPreviewContent(
             mode: mode,
             instructions: text,
-            openingTurn: isGPTLiveEnabled ? nil : style.openingPrompt
+            // GPT-Live: the host plugin opens with the same ask (an older
+            // plugin gets it as the first turn).
+            openingTurn: style.openingPrompt
         )
     }
 

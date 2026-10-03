@@ -97,6 +97,11 @@ struct LiveVoiceStyleSettingsSection: View {
                         // even if the section shows another one by then.
                         greetingSave?.cancel()
                         let pending = style
+                        // Already stored (a resync after a profile switch, or typed back).
+                        guard pending != model.style else {
+                            pendingSave = nil
+                            return
+                        }
                         let setStyle = model.setStyle
                         lastSaved = pending
                         pendingSave = { setStyle(pending) }
@@ -205,7 +210,13 @@ struct LiveVoiceInstructionsPreview: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if let opening = preview.openingTurn {
-                            Text("Sent as the call's first turn when it connects:")
+                            Group {
+                                if preview.mode == "GPT-Live" {
+                                    Text("Asked for when the call connects (an older notifier plugin sends it as the first turn):")
+                                } else {
+                                    Text("Sent as the call's first turn when it connects:")
+                                }
+                            }
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                             Text(verbatim: opening)
