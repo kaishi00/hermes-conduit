@@ -369,6 +369,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         try engine.start()
     }
 
+    /// Tap first, then the engine: each guards on its own state.
     private func teardownRendering() {
         engine.removeInputTap()
         engine.stop()

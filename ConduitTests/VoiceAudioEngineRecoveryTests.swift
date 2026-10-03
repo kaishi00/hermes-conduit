@@ -514,9 +514,11 @@ private final class FormatRejectingEngine: AVAudioEngine {
     }
 }
 
-/// Records every engine access that can reach the audio server: the I/O
+/// Counts the engine calls teardown could make to the audio server: the I/O
 /// nodes (and the main mixer, which pulls in the output node), prepare, and
-/// stop.
+/// stop. prepare and stop only count. The node getters must return a real
+/// node, so a node-read regression may abort the process rather than fail
+/// the assertion.
 private final class AudioEngineProbe: AVAudioEngine {
     private(set) var inputNodeReads = 0
     private(set) var outputNodeReads = 0
@@ -539,15 +541,9 @@ private final class AudioEngineProbe: AVAudioEngine {
         return super.mainMixerNode
     }
 
-    override func prepare() {
-        prepares += 1
-        super.prepare()
-    }
+    override func prepare() { prepares += 1 }
 
-    override func stop() {
-        stops += 1
-        super.stop()
-    }
+    override func stop() { stops += 1 }
 
     func assertUntouched(file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(inputNodeReads, 0, "the input node was built", file: file, line: line)
