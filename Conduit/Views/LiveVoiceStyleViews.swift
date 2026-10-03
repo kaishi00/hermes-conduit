@@ -129,8 +129,12 @@ struct LiveVoiceStyleSettingsSection: View {
             greets = newValue.greeting != nil
             // Changed elsewhere (another profile's settings): never while the
             // stored text is just this field's, cleaned.
-            if let stored = newValue.greeting, stored != LiveVoiceStyle.cleanedGreeting(greeting) {
-                greeting = stored
+            if let stored = newValue.greeting {
+                if stored != LiveVoiceStyle.cleanedGreeting(greeting) { greeting = stored }
+            } else {
+                // Off (or another profile without one): its text mustn't carry over.
+                greetingSave?.cancel()
+                greeting = ""
             }
             tone = newValue.tone?.rawValue ?? ""
             backchannels = newValue.backchannels
