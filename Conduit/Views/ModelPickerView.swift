@@ -132,7 +132,7 @@ struct ModelPickerView: View {
             presenting: pendingModelConfirmation
         ) { _ in
             Button("Switch") {
-                Task { await applyModel(confirmedModelSwitch: true) }
+                Task { @MainActor in await applyModel(confirmedModelSwitch: true) }
             }
             Button("Cancel", role: .cancel) {}
         } message: { message in
@@ -542,25 +542,6 @@ struct ModelPickerView: View {
         defer { isApplying = false }
 
         do {
-            // Apply YOLO first. setYoloMode persists the session override only
-            // after the gateway accepts it, so a failure must bail before any of
-            // the other settings are mutated — otherwise the sheet hangs open
-            // showing a partially-applied configuration with no rollback.
-            if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
-                // setYoloMode reports through the composer banner, hidden
-                // behind this sheet. Start clean so only this call's error
-                // is moved into the sheet, and leave none behind.
-                appState.errorMessage = nil
-                guard await appState.setYoloMode(yoloEnabled) else {
-                    applyError = appState.errorMessage
-                        ?? AppLocalization.string("Unable to change YOLO mode.")
-                    appState.errorMessage = nil
-                    return
-                }
-                // Applied: a confirmed retry of a guarded model switch must
-                // not send it again.
-                initialYoloEnabled = yoloEnabled
-            }
             // A confirmed retry always re-sends: the runtime may have moved
             // while the alert was up, and the confirmation must reach Hermes.
             if confirmedModelSwitch || modelPickerSelectionChanged(
@@ -600,6 +581,26 @@ struct ModelPickerView: View {
                 // Hermes may expand an alias; track what it resolved so a
                 // retry after a later failure does not switch again.
                 selectedModel = outcome.model
+            }
+            // YOLO goes after the model gate so a cancelled confirmation
+            // leaves nothing applied. setYoloMode persists the session
+            // override only after the gateway accepts it, and a failure stops
+            // before reasoning/fast; a retry re-sends neither the model nor
+            // an already-applied YOLO change.
+            if sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled) {
+                // setYoloMode reports through the composer banner, hidden
+                // behind this sheet. Move only this call's error into the
+                // sheet and give the banner back what it held before.
+                let priorError = appState.errorMessage
+                appState.errorMessage = nil
+                let applied = await appState.setYoloMode(yoloEnabled)
+                let yoloError = appState.errorMessage
+                appState.errorMessage = priorError
+                guard applied else {
+                    applyError = yoloError ?? AppLocalization.string("Unable to change YOLO mode.")
+                    return
+                }
+                initialYoloEnabled = yoloEnabled
             }
             try await client.setReasoning(sessionId, effort: reasoningEnabled ? reasoningEffort : "none")
             appState.runtime.reasoningEffort = reasoningEnabled ? reasoningEffort : ""
