@@ -251,6 +251,7 @@ final class GPTLiveConversationController: ObservableObject {
         retireSession()
         modelTurnActive = false
         // Unspoken job notices go back to the supervisor, not the bin.
+        // Typed exchanges (no job) are best effort: the chat still has them.
         bridge.returnUnsent(jobIDs: pendingContext.map(\.jobID))
         pendingContext = []
         bridge.connectionReplaced()
@@ -546,22 +547,22 @@ final class GPTLiveConversationController: ObservableObject {
         return true
     }
 
-    /// Sends at most one queued update, and only while idle.
+    /// Sends queued updates while idle: quiet context (typed exchanges)
+    /// starts no turn, so it doesn't stop the line; a spoken one ends it.
     func flushPendingContextIfIdle() {
-        guard !pendingContext.isEmpty, endRequestedAt == nil, isConversationIdle, let session else { return }
-        let item = pendingContext.removeFirst()
-        if session.appendContext(item.text, channel: item.channel, delegationID: nil) {
-            bridge.contextDelivered(jobID: item.jobID)
-            // Quiet context starts no turn: the rest can follow now.
-            guard item.channel == .speakable else {
-                flushPendingContextIfIdle()
+        while !pendingContext.isEmpty, endRequestedAt == nil, isConversationIdle, let session {
+            let item = pendingContext.removeFirst()
+            guard session.appendContext(item.text, channel: item.channel, delegationID: nil) else {
+                pendingContext.insert(item, at: 0)
                 return
             }
-            // The model speaks it next: wait for that turn before another.
-            modelTurnActive = true
-            lastModelOutputAt = now()
-        } else {
-            pendingContext.insert(item, at: 0)
+            bridge.contextDelivered(jobID: item.jobID)
+            guard item.channel == .commentary else {
+                // The model speaks it next: wait for that turn before another.
+                modelTurnActive = true
+                lastModelOutputAt = now()
+                return
+            }
         }
     }
 

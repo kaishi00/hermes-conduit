@@ -664,8 +664,15 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "an ended call drops what it never heard")
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Later.", reasoning: nil))
         XCTAssertTrue(supervisor.pendingChatContext.isEmpty)
-        supervisor.returnChatContext("late")
-        XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "nothing is handed back to a call that's gone")
+    }
+
+    func testAReplayedCompletionIsNotedOnce() {
+        let (supervisor, _) = makeThreadSupervisor()
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "m1", content: "Done.", reasoning: nil))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "m1", content: "Done.", reasoning: nil))
+        XCTAssertEqual(supervisor.pendingChatContext.count, 1)
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: "m2", content: "Done.", reasoning: nil))
+        XCTAssertEqual(supervisor.pendingChatContext.count, 2, "another turn with the same words still counts")
     }
 
     func testTypedContextKeepsTheNewestFewAndNeverPassesAVoiceRequestOffAsTyped() {

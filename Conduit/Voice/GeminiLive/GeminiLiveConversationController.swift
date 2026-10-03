@@ -378,7 +378,7 @@ final class GeminiLiveConversationController: ObservableObject {
         lateEndPhraseTask = nil
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
-        tools.returnUnsentContext(pendingContextNotes)
+        // Best effort, as on GPT-Live: the chat still has the exchange.
         pendingContextNotes = []
         withdrawnCallIDs = []
         // Nothing from a previous attempt may gate or attach to this one.
@@ -455,7 +455,7 @@ final class GeminiLiveConversationController: ObservableObject {
         // Unspoken job notices go back to the supervisor, not the bin.
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
-        tools.returnUnsentContext(pendingContextNotes)
+        // Best effort, as on GPT-Live: the chat still has the exchange.
         pendingContextNotes = []
         withdrawnCallIDs = []
         tools.connectionReplaced()
@@ -518,7 +518,7 @@ final class GeminiLiveConversationController: ObservableObject {
         stopInput()
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
-        tools.returnUnsentContext(pendingContextNotes)
+        // Best effort, as on GPT-Live: the chat still has the exchange.
         pendingContextNotes = []
         // Job outcomes stay pending for Hermes to report instead of being
         // spent on a conversation that is closing.
@@ -881,17 +881,15 @@ final class GeminiLiveConversationController: ObservableObject {
     }
 
     /// Typed exchanges go out together: none asks the model for a turn, so
-    /// the conversation stays idle. One that fails waits for the next try.
+    /// the conversation stays idle. One that fails waits, in order, for the
+    /// next try on this call; a call that ended drops it.
     private func sendPendingContextNotes(on session: GeminiLiveSessionControlling) {
         let notes = pendingContextNotes
         pendingContextNotes = []
         for note in notes {
             session.send(.contextNote(note), onSent: nil, onFailure: { [weak self, weak session] in
-                guard let self else { return }
-                guard self.isActive, self.endRequestedAt == nil, let session, self.session === session else {
-                    self.tools.returnUnsentContext([note])
-                    return
-                }
+                // Only this call's: a late failure from an earlier call is dropped.
+                guard let self, self.isActive, self.endRequestedAt == nil, let session, self.session === session else { return }
                 self.pendingContextNotes.append(note)
                 self.scheduleIdleFlush()
             })

@@ -43,7 +43,6 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func lastThreadReply() async -> String?
     /// Exchanges typed in the attached chat, for the call to keep quietly.
     func takePendingChatContext() -> String?
-    func returnChatContext(_ text: String)
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -412,11 +411,6 @@ final class GeminiLiveToolBridge {
 
     /// The conversation is closing with these text updates unsent: any job
     /// notice among them becomes pending again for Hermes to report.
-    /// Typed exchanges that never went out, back to the supervisor in order.
-    func returnUnsentContext(_ texts: [String]) {
-        for text in texts.reversed() { supervisor.returnChatContext(text) }
-    }
-
     func returnUnsent(_ texts: [String]) {
         for text in texts {
             guard let index = queuedNotices.firstIndex(where: { $0.text == text }) else { continue }

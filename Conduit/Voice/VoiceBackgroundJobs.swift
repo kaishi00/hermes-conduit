@@ -253,6 +253,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private(set) var pendingChatContext: [String] = []
     /// Older exchanges are dropped past this: the chat still has them.
     static let maximumPendingChatContext = 3
+    /// Turns already noted (message id, else the reply), so a replayed
+    /// completion isn't heard twice.
+    private var notedChatTurns: [String] = []
 
     @Published private(set) var jobs: [VoiceBackgroundJob] = []
 
@@ -480,6 +483,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func detachLiveThread() {
         liveThread = nil
         pendingChatContext.removeAll()
+        notedChatTurns.removeAll()
         // Every turn of the ending call, settled ones too: none is read back
         // or announced to a later call.
         for index in jobs.indices where jobs[index].isThreadTurn && !jobs[index].isDetachedThreadTurn {
@@ -806,6 +810,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         liveThread = nil
         threadTargets.removeAll()
         pendingChatContext.removeAll()
+        notedChatTurns.removeAll()
     }
 
     // MARK: Events
@@ -865,15 +870,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// user typed it (here or on another device). The call is told what was
     /// asked and answered, as context it can use, not something to say.
     private func noteUnownedChatTurn(_ event: StreamEvent, sessionID: String) {
-        guard case .messageComplete(_, _, let content, _) = event,
+        guard case .messageComplete(_, let messageID, let content, _) = event,
               let thread = liveThread, backend.threadOwnsSession(thread, sessionID) else { return }
-        let reply = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let reply = (content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !reply.isEmpty else { return }
         // A voice turn the liveness poll settled first: its late completion
         // already came back to the call as that turn's reply.
         guard !jobs.contains(where: { job in
             job.isThreadTurn && job.result?.trimmingCharacters(in: .whitespacesAndNewlines) == reply
         }) else { return }
+        let key = messageID.flatMap { $0.isEmpty ? nil : "id:" + $0 } ?? "text:" + reply
+        guard !notedChatTurns.contains(key) else { return }
+        notedChatTurns.append(key)
+        if notedChatTurns.count > 10 { notedChatTurns.removeFirst() }
         // A voice request's own text is never passed off as typed.
         let prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
             .flatMap { $0.isEmpty || $0.hasPrefix(Self.threadTurnText(for: "")) ? nil : $0 }
@@ -887,12 +896,6 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Removes and returns the oldest exchange waiting for the call.
     func takePendingChatContext() -> String? {
         pendingChatContext.isEmpty ? nil : pendingChatContext.removeFirst()
-    }
-
-    /// An exchange that couldn't be sent goes back to the front of the line.
-    func returnChatContext(_ text: String) {
-        guard liveThread != nil else { return }
-        pendingChatContext.insert(text, at: 0)
     }
 
     static let maximumTypedCharacters = 2_000
