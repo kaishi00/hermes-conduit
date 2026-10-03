@@ -335,7 +335,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         coordinator.release(lease)
     }
 
-    /// The notification handlers hop through `Task { @MainActor }`: session
+    /// The notification handlers (these selectors and the engine observer's
+    /// block) hop through `Task { @MainActor }`: session and engine
     /// notifications are not guaranteed to arrive on the main thread, and
     /// every reachable entry point below (stop, coordinator release, waiter
     /// resumption) is MainActor-isolated state.
@@ -361,12 +362,25 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// undrained and ownership claimed by audio that can never play. A
     /// conversation drain self-heals: the next PCM buffer reacquires
     /// ownership and restarts the engine on a fresh graph. Changes from
-    /// replaced engines are not this stream's. Internal for tests.
-    func engineConfigurationChanged(generation: UInt64) {
-        guard generation == engineGeneration,
-              lease != nil,
-              !engine.isRunning else { return }
+    /// replaced engines are not this stream's.
+    private func engineConfigurationChanged(generation: UInt64) {
+        guard Self.settlesOnConfigurationChange(
+            from: generation,
+            liveEngine: engineGeneration,
+            holdsLease: lease != nil,
+            engineRunning: engine.isRunning
+        ) else { return }
         stop()
+    }
+
+    /// Internal for tests: whether a configuration change ends the stream.
+    nonisolated static func settlesOnConfigurationChange(
+        from generation: UInt64,
+        liveEngine: UInt64,
+        holdsLease: Bool,
+        engineRunning: Bool
+    ) -> Bool {
+        generation == liveEngine && holdsLease && !engineRunning
     }
 
     /// Internal for tests: the drain-fence regression drives this directly.
