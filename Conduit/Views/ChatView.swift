@@ -693,7 +693,11 @@ struct MessageBubble: View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
         switch message.role {
         case .user:
-            UserBubble(message: message, gatewayResolver: gatewayResolver)
+            if message.isSteer {
+                SteerBubble(message: message)
+            } else {
+                UserBubble(message: message, gatewayResolver: gatewayResolver)
+            }
         case .assistant:
             AssistantBubble(
                 message: message,
@@ -756,6 +760,65 @@ struct UserBubble: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
+    }
+}
+
+/// A message steered into a running turn (issue #337). Right-aligned like
+/// the user's own bubble, but a lighter outlined surface with the steering
+/// glyph, so it reads as guidance delivered mid-turn rather than a new prompt.
+struct SteerBubble: View {
+    let message: ChatMessage
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatTextSize) private var chatTextSize
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 40)
+            VStack(alignment: .trailing, spacing: 4) {
+                SteerMessageContent(
+                    message: message,
+                    sizeCategory: sizeCategory,
+                    chatTextSize: chatTextSize
+                )
+                .equatable()
+
+                MessageTimestampLabel(timestamp: message.timestamp)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+}
+
+/// Settled steer-row content, behind the same Equatable gate as
+/// UserMessageContent so streaming publishes cannot re-evaluate it.
+struct SteerMessageContent: View, Equatable {
+    let message: ChatMessage
+    /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
+    let sizeCategory: ContentSizeCategory
+    /// Explicit chat text-size input — see UserMessageContent.
+    let chatTextSize: ChatTextSize
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: BusyInputMode.steer.symbol)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.conduitAura)
+                .accessibilityHidden(true)
+            MarkdownText(source: message.content)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 10)
+        .background(
+            Color.conduitAura.opacity(0.10),
+            in: RoundedRectangle(cornerRadius: 21, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 21, style: .continuous)
+                .strokeBorder(Color.conduitAura.opacity(0.32), lineWidth: 1)
+        }
+        .textSelection(.enabled)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(AppLocalization.string("Steered: \(message.content)"))
     }
 }
 
@@ -1074,7 +1137,7 @@ private struct UserDocumentAttachmentChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Label(attachment.name, systemImage: "doc")
+            Label(attachment.name, systemImage: AttachmentTypePolicy.symbolName(for: attachment))
                 .lineLimit(1)
             if loading {
                 ProgressView()

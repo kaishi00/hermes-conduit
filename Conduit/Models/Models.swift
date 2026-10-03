@@ -91,6 +91,7 @@ struct Attachment: Codable, Identifiable, Equatable {
 
     enum Kind: String, Codable {
         case image
+        case video
         case document
     }
 }
@@ -560,6 +561,15 @@ struct ChatMessage: Identifiable, Equatable {
         self.code = code
         self.displayKind = displayKind
     }
+
+    /// Hermes' `display_kind` for a mid-turn steer row, also used for the
+    /// local row Conduit shows the moment a steer is accepted (issue #337).
+    static let steerDisplayKind = "steer"
+
+    /// A user message delivered into a running turn with Steer.
+    var isSteer: Bool {
+        role == .user && displayKind == Self.steerDisplayKind
+    }
 }
 
 struct WorkspaceEntry: Identifiable, Equatable {
@@ -799,6 +809,16 @@ enum BusyInputMode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .steer: return AppLocalization.string("Steer")
         case .interrupt: return AppLocalization.string("Interrupt")
+        }
+    }
+
+    /// The composer button and settings glyph for this mode (issue #337).
+    /// Steer avoids the branching arrow, which reads as "fork"/"branch
+    /// session"; Interrupt avoids the U-turn arrow, which reads as "undo".
+    var symbol: String {
+        switch self {
+        case .steer: return "steeringwheel"
+        case .interrupt: return "hand.raised.fill"
         }
     }
 
