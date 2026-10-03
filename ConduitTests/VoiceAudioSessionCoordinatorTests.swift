@@ -416,6 +416,28 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(takenOver, 1, "a released owner is never called")
     }
 
+    func testWakeListeningYieldsBeforeAnotherOwnerAcquires() throws {
+        var wake: VoiceAudioLease? = try coordinator.acquire(.wakeListening)
+        var yields = 0
+        coordinator.onWakeListenerMustYield = { [unowned self] in
+            yields += 1
+            // The listener lets go inside the call, as AppState's does.
+            if let lease = wake { self.coordinator.release(lease) }
+            wake = nil
+        }
+
+        let dictation = try coordinator.acquire(.conversationCapture)
+        XCTAssertEqual(yields, 1, "the listener stops before the new owner's microphone starts (#333)")
+        XCTAssertEqual(coordinator.appliedPolicy, .conversation)
+        XCTAssertTrue(coordinator.hasCaptureOwner)
+
+        coordinator.release(dictation)
+        XCTAssertNil(coordinator.appliedPolicy)
+        _ = try coordinator.acquire(.wakeListening)
+        _ = try coordinator.acquire(.wakeListening)
+        XCTAssertEqual(yields, 1, "wake listening never yields to itself")
+    }
+
     func testOwnerChangesNotifyOnALaterTurn() async throws {
         var notifications = 0
         coordinator.onOwnersChanged = { notifications += 1 }

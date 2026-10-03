@@ -322,6 +322,52 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(final, "Draft Buy milk.")
     }
 
+    func testADictationKeepsWhatWasSaidBeforeAPause() {
+        // The recognizer closes the utterance at a pause and starts the next
+        // one from empty (#333).
+        var transcript = DictationTranscript()
+        transcript.receive("So I'm now", endsUtterance: false)
+        transcript.receive("So I'm now dictating something", endsUtterance: false)
+        transcript.receive("So I'm now dictating something.", endsUtterance: true)
+        transcript.receive("And", endsUtterance: false)
+        XCTAssertEqual(transcript.text, "So I'm now dictating something. And")
+        transcript.receive("And then I'm gonna continue", endsUtterance: false)
+        XCTAssertEqual(transcript.text, "So I'm now dictating something. And then I'm gonna continue")
+        transcript.receive("So I'm now dictating something. And then I'm gonna continue.", endsUtterance: false)
+        XCTAssertEqual(transcript.text, "So I'm now dictating something. And then I'm gonna continue.",
+                       "a final result holding the whole text replaces it rather than doubling it")
+
+        var repeated = DictationTranscript()
+        repeated.receive("I agree.", endsUtterance: true)
+        repeated.receive("I", endsUtterance: false)
+        repeated.receive("I think so too", endsUtterance: false)
+        XCTAssertEqual(repeated.text, "I agree. I think so too", "a new utterance may start with the same word")
+
+        // A restart the recognizer didn't mark is still caught when it drops
+        // most of the words and the first one.
+        var unmarked = DictationTranscript()
+        unmarked.receive("Buy milk and eggs today", endsUtterance: false)
+        unmarked.receive("Also", endsUtterance: false)
+        XCTAssertEqual(unmarked.text, "Buy milk and eggs today Also")
+    }
+
+    func testADictationRevisionReplacesTheWordsItRevises() {
+        var transcript = DictationTranscript()
+        transcript.receive("I scream", endsUtterance: false)
+        transcript.receive("Ice cream please", endsUtterance: false)
+        XCTAssertEqual(transcript.text, "Ice cream please", "a short revision is not a new utterance")
+
+        transcript.receive("Ice cream, please.", endsUtterance: true)
+        transcript.receive("Ice cream, please. Two scoops", endsUtterance: false)
+        XCTAssertEqual(transcript.text, "Ice cream, please. Two scoops",
+                       "a recognizer that keeps the whole text after a pause is not doubled")
+
+        var lastWord = DictationTranscript()
+        lastWord.receive("Meet me at the station", endsUtterance: false)
+        lastWord.receive("Meet me at the stadium", endsUtterance: false)
+        XCTAssertEqual(lastWord.text, "Meet me at the stadium")
+    }
+
     func testACallFromANewEmptyChatIsNotAttachedToIt() {
         XCTAssertFalse(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .idle),
                        "an empty chat has nothing to continue")

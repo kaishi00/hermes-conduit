@@ -80,6 +80,9 @@ extension AppState {
         VoiceAudioSessionCoordinator.shared.onOwnersChanged = { [weak self] in
             self?.scheduleWakeRefresh()
         }
+        VoiceAudioSessionCoordinator.shared.onWakeListenerMustYield = { [weak self] in
+            self?.yieldWakeListening()
+        }
         isWakeRouteCarPlay = WakeRoutePolicy.currentRouteIsCarPlay()
         wakeObservations = [
             objectWillChange.sink { [weak self] _ in self?.scheduleWakeRefresh() },
@@ -139,6 +142,13 @@ extension AppState {
         lastAppliedWakeSnapshot = nil
         // Re-read on the next foreground: CarPlay may connect meanwhile.
         isWakeRouteCarPlay = false
+    }
+
+    /// Another audio owner is taking the session now: stop listening before
+    /// its microphone starts. The refresh after it lets go arms wake again.
+    private func yieldWakeListening() {
+        wakeLifecycle.disarmImmediately()
+        lastAppliedWakeSnapshot = nil
     }
 
     private func handleWakeDetection(_ binding: WakePhraseBinding) {

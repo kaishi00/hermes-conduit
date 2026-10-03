@@ -35,6 +35,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
     /// bridge tells them apart from a deliberate replacement and from the
     /// echo of a user edit: they may not rewrite the editor.
     var programmaticRevision: UInt64 = 0
+    /// The replacement at `programmaticRevision` puts the cursor after the
+    /// text (dictation) instead of keeping its position (#333).
+    var programmaticCursorAtEnd = false
     /// Hardware-keyboard Return behavior. When true, a plain Return press
     /// submits through the composer action path; Shift-Return and every
     /// non-submittable state keep the default newline insertion.
@@ -305,10 +308,10 @@ struct ComposerPasteTextView: UIViewRepresentable {
             revision: UInt64,
             into textView: UITextView
         ) {
-            let clampedSelection = clampedSelectionRange(
-                textView.selectedRange,
-                maxLength: (text as NSString).length
-            )
+            let length = (text as NSString).length
+            let clampedSelection = parent.programmaticCursorAtEnd
+                ? NSRange(location: length, length: 0)
+                : clampedSelectionRange(textView.selectedRange, maxLength: length)
 
             TranscriptPerf.note(.composerProgrammaticTextAssignment)
             TranscriptPerf.lastComposerSelectionBeforeAssignment = textView.selectedRange.location
