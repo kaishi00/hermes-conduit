@@ -15,6 +15,7 @@ enum ConduitAppLink: Equatable {
     case session(id: String)
 
     static let scheme = "conduit"
+    private static let sessionRoot = URL(string: "conduit://session")!
 
     init?(url: URL) {
         guard url.scheme?.lowercased() == Self.scheme,
@@ -34,7 +35,7 @@ enum ConduitAppLink: Equatable {
             components.path = "/" + id
             // A session id is a plain token; a URL that can't be built is
             // a programming error, never user input.
-            return components.url ?? URL(string: "\(Self.scheme)://session")!
+            return components.url ?? Self.sessionRoot
         }
     }
 

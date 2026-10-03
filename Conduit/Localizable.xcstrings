@@ -2953,6 +2953,16 @@
         }
       }
     },
+    "That job's chat is no longer available." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该任务的对话已不存在。"
+          }
+        }
+      }
+    },
     "Open job" : {
       "localizations" : {
         "zh-Hans" : {

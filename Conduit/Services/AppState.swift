@@ -2206,7 +2206,7 @@ final class AppState: ObservableObject {
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
             if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }),
-               let targetProfile = job.profile {
+               let targetProfile = job.profile, targetProfile != self.activeProfile {
                 // A job on another profile is that profile's chat: badged
                 // there, and noted in the call. Voice tags live in the
                 // calling profile's history, so it carries none.
@@ -3889,7 +3889,12 @@ final class AppState: ObservableObject {
     func openAppLink(_ link: ConduitAppLink) {
         switch link {
         case .session(let id):
-            requestOpenSession(id)
+            // Some failed opens say nothing themselves; a deleted job
+            // shouldn't make the link look dead.
+            requestOpenSession(id) { [weak self] in
+                guard let self, self.errorMessage == nil else { return }
+                self.errorMessage = AppLocalization.string("That job's chat is no longer available.")
+            }
         }
     }
 
@@ -13599,14 +13604,18 @@ final class AppState: ObservableObject {
         await performSessionOpen(sessionId, reusing: nil)
     }
 
+    /// `onFailure` runs when the open failed (not when a newer navigation
+    /// superseded it).
     @discardableResult
-    func requestOpenSession(_ sessionId: String) -> Task<Bool, Never> {
+    func requestOpenSession(_ sessionId: String, onFailure: (@MainActor () -> Void)? = nil) -> Task<Bool, Never> {
         cancelExplicitSessionOpen()
         let requestID = UUID()
         explicitSessionOpenRequestID = requestID
         let task = Task { @MainActor [weak self] in
             guard let self else { return false }
-            let opened = await self.openSession(sessionId)
+            let outcome = await self.openSessionOutcome(sessionId)
+            if outcome == .failed, !Task.isCancelled { onFailure?() }
+            let opened = outcome == .opened
             guard self.explicitSessionOpenRequestID == requestID else { return opened }
             self.explicitSessionOpenRequestID = nil
             self.explicitSessionOpenTask = nil
