@@ -753,6 +753,22 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.controller.state, .listening)
     }
 
+    func testAnEndTapAfterADisconnectKeepsThePhoneConversation() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        harness.coordinator.handleConnect(harness.spy)
+        harness.coordinator.handleDisconnect()
+
+        harness.coordinator.endConversation()
+
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "a stale car tap never closes the phone's conversation")
+        XCTAssertEqual(harness.controller.state, .listening)
+    }
+
     func testCarPlayOnlyDisconnectWithPhoneInactiveSuspendsAndRecordsDescriptor() async {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in

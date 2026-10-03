@@ -13530,7 +13530,13 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func openSession(_ sessionId: String) async -> Bool {
-        await performSessionOpen(sessionId, reusing: nil) == .opened
+        await openSessionOutcome(sessionId) == .opened
+    }
+
+    /// `openSession` with its outcome, for a caller that must tell a
+    /// superseded open (navigation, never a failure) from a failed one.
+    func openSessionOutcome(_ sessionId: String) async -> SessionOpenOutcome {
+        await performSessionOpen(sessionId, reusing: nil)
     }
 
     @discardableResult
