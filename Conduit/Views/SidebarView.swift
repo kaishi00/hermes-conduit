@@ -303,7 +303,17 @@ struct SessionList: View {
             )
             List {
                 if showingProjects {
-                    projectContent
+                    // Pinned chats from every project stay one tap away
+                    // without leaving the folder view (#338).
+                    let pinned = projectsViewPinnedSessions
+                    if !pinned.isEmpty {
+                        Section("Pinned") {
+                            ForEach(pinned) { session in
+                                sessionRow(session)
+                            }
+                        }
+                    }
+                    projectContent(hasPinnedSessions: !pinned.isEmpty)
                 }
                 if layout.savedSection, let offline = appState.offlineChatPresentation {
                     // While the saved copy is up (#99), its saved session list
@@ -345,7 +355,7 @@ struct SessionList: View {
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: showingProjects ? AppLocalization.string("Search projects") : AppLocalization.string("Search sessions"))
+            .searchable(text: $searchText, prompt: showingProjects ? AppLocalization.string("Search projects and pinned chats") : AppLocalization.string("Search sessions"))
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
             .refreshable {
@@ -444,24 +454,45 @@ struct SessionList: View {
     private var displayedSessions: [SessionSummary] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return allSessions }
-        return allSessions.filter { session in
-            [session.title, session.model, session.id, appState.sessionCategory(for: session).label]
-                .contains { $0.localizedCaseInsensitiveContains(query) }
-        }
+        return allSessions.filter { sessionMatches($0, query: query) }
     }
 
+    private func sessionMatches(_ session: SessionSummary, query: String) -> Bool {
+        [session.title, session.model, session.id, appState.sessionCategory(for: session).label]
+            .contains { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    /// The Projects view hides the source filters, so its Pinned section
+    /// ignores them and lists pinned chats from every project.
+    private var projectsViewPinnedSessions: [SessionSummary] {
+        SidebarPinnedSessions.forProjectsView(
+            appState.activeProfileSessions,
+            query: searchText,
+            isPinned: appState.isSessionPinned,
+            matches: sessionMatches
+        )
+    }
+
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// A search that only matches pinned chats shows them without a "No
+    /// Matching Projects" state under them.
     @ViewBuilder
-    private var projectContent: some View {
+    private func projectContent(hasPinnedSessions: Bool) -> some View {
         if appState.projectsLoading && displayedProjects.isEmpty {
             ProgressView("Loading projects…")
                 .frame(maxWidth: .infinity, minHeight: 140)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
+        } else if displayedProjects.isEmpty && hasPinnedSessions && isSearching {
+            EmptyView()
         } else if displayedProjects.isEmpty {
             ContentUnavailableView(
-                searchText.isEmpty ? AppLocalization.string("No Projects") : AppLocalization.string("No Matching Projects"),
+                isSearching ? AppLocalization.string("No Matching Projects") : AppLocalization.string("No Projects"),
                 systemImage: "folder",
-                description: Text(searchText.isEmpty
+                description: Text(!isSearching
                     ? AppLocalization.string("Projects created in Hermes Desktop will appear here.")
                     : AppLocalization.string("Try a different search."))
             )
@@ -1541,6 +1572,23 @@ private struct CronJobDetailSheet: View {
             }
         }
         .task { await appState.loadCronRuns(for: job) }
+    }
+}
+
+/// The Projects view's Pinned section (#338): every non-archived pinned chat
+/// in the profile, whatever its project or source, narrowed by the search
+/// field like the project list below it.
+enum SidebarPinnedSessions {
+    static func forProjectsView(
+        _ sessions: [SessionSummary],
+        query: String,
+        isPinned: (SessionSummary) -> Bool,
+        matches: (SessionSummary, String) -> Bool
+    ) -> [SessionSummary] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return sessions.filter { session in
+            !session.isArchived && isPinned(session) && (query.isEmpty || matches(session, query))
+        }
     }
 }
 
