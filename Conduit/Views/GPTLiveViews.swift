@@ -173,116 +173,47 @@ struct GPTLiveVoiceSheet: View {
     let onRetry: () -> Void
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                VStack(spacing: 16) {
-                    statusHeader
-                    LiveVoiceQuickHint(jobs: jobs)
-                    transcriptList
-                    controls
-                }
-                .padding(16)
-            }
-            .navigationTitle("GPT-Live")
-            .navigationBarTitleDisplayMode(.inline)
-            // The status and new turns change without focus moving.
-            .onChange(of: controller.phase) { _, _ in
-                AccessibilityNotification.Announcement(statusText).post()
-            }
-            .onChange(of: controller.voiceNote) { _, note in
-                if let note { AccessibilityNotification.Announcement(note).post() }
-            }
-            // Each turn once, with its final text (not the first fragment).
-            .onChange(of: controller.finishedTurn) { _, turn in
-                guard let turn else { return }
-                AccessibilityNotification.Announcement(turn.speaker == .user
-                    ? AppLocalization.string("You: \(turn.text)")
-                    : AppLocalization.string("GPT-Live: \(turn.text)")).post()
-            }
-            .toolbar {
-                // Swiping down only minimises a running call: this is
-                // the hang-up.
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(role: .destructive, action: onClose) {
-                        Label("End", systemImage: "phone.down.fill")
-                            .labelStyle(.titleAndIcon)
-                    }
-                    .tint(.red)
-                }
-            }
+        LiveVoiceCallSheet(
+            title: "GPT-Live",
+            phase: Self.callPhase(controller.phase, microphoneMuted: controller.isMicrophoneMuted),
+            statusText: statusText,
+            note: controller.voiceNote,
+            transcript: controller.transcript,
+            assistantLabel: { AppLocalization.string("GPT-Live: \($0)") },
+            jobs: jobs,
+            isMicrophoneMuted: controller.isMicrophoneMuted,
+            canMute: controller.isActive && !controller.isEnding,
+            // GPT-Live cuts in on its own when you speak over it: no
+            // Interrupt button.
+            canInterrupt: false,
+            onToggleMute: { controller.setMicrophoneMuted(!controller.isMicrophoneMuted) },
+            onEnd: onClose,
+            onRetry: onRetry
+        )
+        // The status and new turns change without focus moving.
+        .onChange(of: controller.phase) { _, _ in
+            AccessibilityNotification.Announcement(statusText).post()
+        }
+        .onChange(of: controller.voiceNote) { _, note in
+            if let note { AccessibilityNotification.Announcement(note).post() }
+        }
+        // Each turn once, with its final text (not the first fragment).
+        .onChange(of: controller.finishedTurn) { _, turn in
+            guard let turn else { return }
+            AccessibilityNotification.Announcement(turn.speaker == .user
+                ? AppLocalization.string("You: \(turn.text)")
+                : AppLocalization.string("GPT-Live: \(turn.text)")).post()
         }
     }
 
-    private var statusHeader: some View {
-        VStack(spacing: 6) {
-            Image(systemName: statusSymbol)
-                .font(.system(size: 34, weight: .semibold))
-                .foregroundStyle(Color.conduitAccent)
-                .accessibilityHidden(true)
-            Text(statusText)
-                .font(.headline)
-                .multilineTextAlignment(.center)
-            if let note = controller.voiceNote {
-                Text(note)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var transcriptList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
-                ForEach(controller.transcript) { entry in
-                    Text(entry.text)
-                        .font(.body)
-                        .foregroundStyle(entry.speaker == .user ? Color.primary : Color.conduitAccent)
-                        .frame(maxWidth: .infinity, alignment: entry.speaker == .user ? .trailing : .leading)
-                        .accessibilityLabel(entry.speaker == .user
-                            ? AppLocalization.string("You: \(entry.text)")
-                            : AppLocalization.string("GPT-Live: \(entry.text)"))
-                }
-            }
-        }
-        .defaultScrollAnchor(.bottom)
-    }
-
-    @ViewBuilder
-    private var controls: some View {
-        if case .failed = controller.phase {
-            Button(action: onRetry) {
-                Label("Try again", systemImage: "arrow.clockwise")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-            }
-            .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent.opacity(0.14))
-        } else {
-            Button {
-                controller.setMicrophoneMuted(!controller.isMicrophoneMuted)
-            } label: {
-                Label(
-                    controller.isMicrophoneMuted ? AppLocalization.string("Unmute microphone") : AppLocalization.string("Mute microphone"),
-                    systemImage: controller.isMicrophoneMuted ? "mic.slash.fill" : "mic.fill"
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-            }
-            .disabled(!controller.isActive || controller.isEnding)
-            .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent.opacity(0.14))
-        }
-    }
-
-    private var statusSymbol: String {
-        switch controller.phase {
-        case .idle, .connecting: return "antenna.radiowaves.left.and.right"
-        case .listening: return controller.isMicrophoneMuted ? "mic.slash" : "waveform"
-        case .speaking: return "speaker.wave.3.fill"
-        case .ending: return "hand.wave.fill"
-        case .failed: return "exclamationmark.triangle.fill"
+    static func callPhase(_ phase: GPTLiveConversationController.Phase, microphoneMuted: Bool) -> LiveVoiceCallPhase {
+        switch phase {
+        case .idle: return .idle
+        case .connecting: return .connecting
+        case .listening: return microphoneMuted ? .muted : .listening
+        case .speaking: return .speaking
+        case .ending: return .ending
+        case .failed: return .failed
         }
     }
 

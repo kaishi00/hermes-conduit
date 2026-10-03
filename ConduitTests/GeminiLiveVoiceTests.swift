@@ -1649,6 +1649,25 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(closed.count, 1)
     }
 
+    func testGeminiLivePublishesEachLineOnceItFinishes() async {
+        let (controller, session, _, _, _) = makeGeminiController(endPhrases: [], clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+
+        session.onEvent?(.inputTranscription("What's the"))
+        session.onEvent?(.inputTranscription(" weather?"))
+        XCTAssertNil(controller.finishedTurn, "the user may still be talking")
+        session.onEvent?(.outputTranscription("Sunny"))
+        XCTAssertEqual(controller.finishedTurn?.speaker, .user, "the reply starting finishes the question")
+        XCTAssertEqual(controller.finishedTurn?.text, "What's the weather?")
+        session.onEvent?(.outputTranscription(" all day."))
+        XCTAssertEqual(controller.finishedTurn?.speaker, .user, "the reply is still streaming")
+        session.onEvent?(.turnComplete)
+        XCTAssertEqual(controller.finishedTurn?.speaker, .assistant, "the last reply of a call is read too")
+        XCTAssertEqual(controller.finishedTurn?.text, "Sunny all day.")
+        controller.stop()
+    }
+
     func testGeminiLiveGoodbyeTranscriptThatArrivesAfterTheReplyStillEnds() async {
         let (controller, session, input, output, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
         let closed = EndCounter()

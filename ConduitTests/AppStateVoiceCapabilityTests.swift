@@ -353,6 +353,36 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
                        "after a relaunch a spent hint stays hidden for every chat")
     }
 
+    func testTheLiveCallSheetShowsEachEnginesPhase() {
+        XCTAssertEqual(GeminiLiveVoiceSheet.callPhase(.idle, microphoneMuted: false), .idle)
+        XCTAssertEqual(GeminiLiveVoiceSheet.callPhase(.reconnecting, microphoneMuted: false), .connecting,
+                       "a reconnect looks like connecting")
+        XCTAssertEqual(GeminiLiveVoiceSheet.callPhase(.listening, microphoneMuted: true), .muted)
+        XCTAssertEqual(GeminiLiveVoiceSheet.callPhase(.speaking, microphoneMuted: true), .speaking,
+                       "the assistant still speaks with your mic muted")
+        XCTAssertEqual(GeminiLiveVoiceSheet.callPhase(.failed("x"), microphoneMuted: false), .failed)
+        XCTAssertEqual(GPTLiveVoiceSheet.callPhase(.connecting, microphoneMuted: false), .connecting)
+        XCTAssertEqual(GPTLiveVoiceSheet.callPhase(.listening, microphoneMuted: false), .listening)
+        XCTAssertEqual(GPTLiveVoiceSheet.callPhase(.ending, microphoneMuted: false), .ending)
+    }
+
+    func testTheLiveCallOrbOnlyMovesWhileTheCallIsLive() {
+        XCTAssertEqual(LiveVoiceOrb.motion(for: .muted).amplitude, 0)
+        XCTAssertEqual(LiveVoiceOrb.motion(for: .failed).amplitude, 0)
+        XCTAssertEqual(LiveVoiceOrb.motion(for: .idle).amplitude, 0)
+        XCTAssertGreaterThan(LiveVoiceOrb.motion(for: .speaking).speed, LiveVoiceOrb.motion(for: .listening).speed,
+                             "speaking pulses faster than listening")
+    }
+
+    func testTheLiveCallCaptionsAreTheLastTwoLines() {
+        XCTAssertTrue(LiveVoiceCallSheet.captionLines(from: []).isEmpty)
+        let lines = ["one", "two", "three"].enumerated().map {
+            VoiceConversationTranscriptEntry(speaker: $0.offset.isMultiple(of: 2) ? .user : .assistant, text: $0.element)
+        }
+        XCTAssertEqual(LiveVoiceCallSheet.captionLines(from: lines).map(\.text), ["two", "three"])
+        XCTAssertEqual(LiveVoiceCallSheet.captionLines(from: Array(lines.prefix(1))).map(\.text), ["one"])
+    }
+
     func testAShortPressOnTheMicOpensVoiceAndAHoldStopsDictating() {
         XCTAssertEqual(
             ComposerDictation.release(heldPastThreshold: false, isCapturing: false, canOpenVoice: true),

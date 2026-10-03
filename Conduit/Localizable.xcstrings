@@ -441,6 +441,36 @@
         }
       }
     },
+    "Minimise call" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最小化通话"
+          }
+        }
+      }
+    },
+    "Transcript" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字记录"
+          }
+        }
+      }
+    },
+    "What you and the assistant say will appear here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你和助手说的话会显示在这里。"
+          }
+        }
+      }
+    },
     "End call" : {
       "localizations" : {
         "zh-Hans" : {
