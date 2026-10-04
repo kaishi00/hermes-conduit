@@ -411,8 +411,9 @@ final class CarPlayVoiceCoordinator {
         // title's cause) wait for the next controls change: retrying here
         // would loop while installs keep failing.
         // The failure sound already played when the replacement began.
-        if let pending { forward(pending, playsEarcon: pending != soundedPendingState) }
+        let sounded = soundedPendingState
         soundedPendingState = nil
+        if let pending { forward(pending, playsEarcon: pending != sounded) }
     }
 
     /// The buttons' handlers, fenced to the connection whose template they
@@ -542,8 +543,11 @@ final class CarPlayVoiceCoordinator {
             // and freeze the surface on the template's default state.
             pendingPresentationState = target
             // The failure sound is not held back by the new template.
+            // A restore replaying an Error that already sounded stays quiet
+            // even when the Error's cause changed and starts another
+            // replacement.
             if let replacedFrom {
-                playEarcon(from: replacedFrom, to: target)
+                if playsEarcon { playEarcon(from: replacedFrom, to: target) }
                 soundedPendingState = target
             }
             return
