@@ -572,10 +572,12 @@ struct VoiceCallChatLink: Codable, Equatable {
             id: markerID,
             role: .system,
             content: resumed ? AppLocalization.string("Voice call resumed") : AppLocalization.string("Voice call"),
-            timestamp: ISO8601DateFormatter().string(from: startedAt),
+            timestamp: Self.timestampFormatter.string(from: startedAt),
             displayKind: Self.displayKind
         )
     }
+
+    private static let timestampFormatter = ISO8601DateFormatter()
 }
 
 /// The chat a recording call is attached to, until its row is saved.

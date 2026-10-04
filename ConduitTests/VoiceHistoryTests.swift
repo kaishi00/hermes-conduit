@@ -491,8 +491,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(first.owns(sessionID: "st-1"))
     }
 
-    func testVoiceCallLinksRoundTripAndStayBounded() {
-        let defaults = UserDefaults(suiteName: "voice-call-links-\(UUID().uuidString)")!
+    func testVoiceCallLinksRoundTripAndStayBounded() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "voice-call-links-\(UUID().uuidString)"))
         var links = VoiceCallChatLinks()
         for index in 0..<(VoiceCallChatLinks.maximumLinks + 5) {
             links.add(chatLink(call: "c\(index)", row: "row", chat: "rt", at: Date(timeIntervalSince1970: Double(index))))
@@ -517,7 +517,8 @@ extension HermesVoiceGatewayTimeoutTests {
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
         let script = ScriptedVoiceHistoryRequests()
         appState.voiceHistoryClient = VoiceHistoryClient(request: script.request)
-        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        // Recent: the outbox drops saves older than a week before retrying.
+        let start = Date().addingTimeInterval(-600)
         let attachment = VoiceCallAttachment(
             thread: VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build"),
             callID: "c1", startedAt: start, resumed: false, endedAt: start.addingTimeInterval(120)
