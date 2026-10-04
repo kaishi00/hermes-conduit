@@ -3214,12 +3214,12 @@ final class AppState: ObservableObject {
     private func chatOwnSessionIDs(for sessionId: String) -> Set<String> {
         // An opened saved chat resumes under a new runtime id the list may
         // not show yet; the resume (or the create) recorded its durable id.
-        let profile = botConversationProfile(for: sessionId) ?? activeProfile
-        let seeds = [
-            sessionId,
-            conversationIdentityIndex.durableID(forRuntime: sessionId, profile: profile),
-            voiceSessionAliases.storedID(forRuntime: sessionId)
-        ].compactMap { $0 }
+        // A Bot Chat's is under the bot's profile; the dashboard's is tried
+        // too, so an earlier mapping there still counts.
+        let durable = botConversationProfile(for: sessionId)
+            .flatMap { conversationIdentityIndex.durableID(forRuntime: sessionId, profile: $0) }
+            ?? conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+        let seeds = [sessionId, durable, voiceSessionAliases.storedID(forRuntime: sessionId)].compactMap { $0 }
         return Self.ownSessionIDs(for: seeds, in: sessions + cronSessions)
     }
 
@@ -4158,14 +4158,26 @@ final class AppState: ObservableObject {
     private func openLinkedBotChat(_ profile: String) {
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if Self.linkedBot(named: profile, in: self.botRoster) == nil {
+            // Offline, the roster can't say whether the bot is still there.
+            guard self.isConnected else {
+                self.errorMessage = AppLocalization.string("Connect to Hermes to chat with bots.")
+                return
+            }
+            var bot = Self.linkedBot(named: profile, in: self.botRoster)
+            if bot == nil {
                 let openBefore = self.activeSessionId
                 await self.refreshBotRoster()
                 // A chat opened meanwhile is the later choice; it stays.
                 guard self.activeSessionId == openBefore else { return }
+                bot = Self.linkedBot(named: profile, in: self.botRoster)
             }
-            guard let bot = Self.linkedBot(named: profile, in: self.botRoster) else {
-                self.errorMessage = AppLocalization.string("That chat is no longer available.")
+            guard let bot else {
+                // A roster that couldn't be read says nothing about the bot.
+                if case .failed(let message) = self.botModePhase {
+                    self.errorMessage = message
+                } else {
+                    self.errorMessage = AppLocalization.string("That chat is no longer available.")
+                }
                 return
             }
             _ = await self.openBotChat(for: bot)
@@ -4174,13 +4186,17 @@ final class AppState: ObservableObject {
 
     /// The roster's bot for a profile name a link carries: the exact
     /// spelling first, then one differing only in case (a scope an older
-    /// build stored may be case-folded).
+    /// build stored may be case-folded), then a name the bot had before a
+    /// rename. A live name always outranks another bot's old one.
     static func linkedBot(named profile: String, in roster: [BotProfile]) -> BotProfile? {
         let name = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         let names = roster.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
-        guard let index = names.firstIndex(of: name)
-            ?? names.firstIndex(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else { return nil }
-        return roster[index]
+        let index = names.firstIndex(of: name)
+            ?? names.firstIndex(where: { $0.caseInsensitiveCompare(name) == .orderedSame })
+            ?? roster.firstIndex(where: { bot in
+                bot.previousNames.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines) == name }
+            })
+        return index.map { roster[$0] }
     }
 
     /// Opens a session a saved call or chat card linked to. The link can
@@ -13950,6 +13966,11 @@ final class AppState: ObservableObject {
     /// pin WHICH scope a restored conversation would address.
     func botConversationProfileForTesting(_ sessionID: String) -> String? {
         botConversationProfile(for: sessionID)
+    }
+
+    /// The ids a chat's voice call cards and Resume Call match it by.
+    func chatOwnSessionIDsForTesting(_ sessionID: String) -> Set<String> {
+        chatOwnSessionIDs(for: sessionID)
     }
 
     /// The ownership verdict a cross-profile decision would reach for this
