@@ -75,7 +75,11 @@ final class MessageReadAloudController: ObservableObject {
         playbackTask?.cancel()
         pausedStopTask?.cancel()
         let end = endBackgroundActivity
-        Task { @MainActor in end?() }
+        let nowPlaying = nowPlaying
+        Task { @MainActor in
+            end?()
+            nowPlaying.end()
+        }
     }
 
     private static func beginApplicationBackgroundTask(

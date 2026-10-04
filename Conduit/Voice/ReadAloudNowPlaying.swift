@@ -33,6 +33,13 @@ protocol ReadAloudNowPlayingPresenting: AnyObject {
 final class SystemReadAloudNowPlaying: ReadAloudNowPlayingPresenting {
     private var targets: [(MPRemoteCommand, Any)] = []
 
+    deinit {
+        // The command center is a singleton that would keep the handlers.
+        for (command, target) in targets {
+            command.removeTarget(target)
+        }
+    }
+
     func begin(title: String, commands: ReadAloudRemoteCommands) {
         end()
         let center = MPRemoteCommandCenter.shared()

@@ -243,25 +243,25 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // could have played plus a grace period. Only a dead engine gets here.
         let generation = playbackGeneration
         let budget = scheduledSeconds + (encodedPlayer?.duration ?? 0) + drainWatchdogGrace
+        let budgetDuration = Duration.seconds(max(0, budget))
+        let startedAt = ContinuousClock.now
         let pausedAtStart = pausedDuration()
         let watchdog = Task { @MainActor [weak self] in
-            var pausedSoFar = pausedAtStart
-            var remaining = Duration.seconds(max(0, budget))
+            var wait = budgetDuration
             while true {
-                try? await Task.sleep(for: remaining)
+                try? await Task.sleep(for: wait)
                 guard !Task.isCancelled, let self,
                       self.playbackGeneration == generation,
                       !self.drainWaiters.isEmpty else { return }
-                // Time spent paused extends the budget; a pause still in
+                // Only unpaused time counts against the budget; a pause in
                 // progress is re-checked until it ends.
                 if self.isPaused {
-                    remaining = .seconds(1)
+                    wait = .seconds(1)
                     continue
                 }
-                let paused = self.pausedDuration()
-                guard paused > pausedSoFar else { break }
-                remaining = paused - pausedSoFar
-                pausedSoFar = paused
+                let played = (ContinuousClock.now - startedAt) - (self.pausedDuration() - pausedAtStart)
+                guard played < budgetDuration else { break }
+                wait = budgetDuration - played
             }
             self?.stop()
         }
