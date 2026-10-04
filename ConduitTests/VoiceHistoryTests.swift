@@ -504,3 +504,42 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(loaded, links)
     }
 }
+
+// MARK: - A call started from a chat, saved by the outbox
+
+extension HermesVoiceGatewayTimeoutTests {
+    func testCallSavedFromTheOutboxStillGetsItsChatMarker() async throws {
+        let suite = "VoiceOutboxChatLink.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("default", forKey: "conduit.activeProfile")
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
+        let script = ScriptedVoiceHistoryRequests()
+        appState.voiceHistoryClient = VoiceHistoryClient(request: script.request)
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        let attachment = VoiceCallAttachment(
+            thread: VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build"),
+            callID: "c1", startedAt: start, resumed: false, endedAt: start.addingTimeInterval(120)
+        )
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: appState.activeDashboardID?.uuidString ?? "-", profile: appState.activeProfile,
+            request: VoiceTranscriptSaveRequest(callID: "c1", engine: .gptLive, sessionID: nil, title: "Build call",
+                                                turns: [VoiceTranscriptTurn(index: 0, role: .user, text: "Hi", at: start)]),
+            queuedAt: start, chatAttachment: attachment
+        ))
+        outbox.store(in: defaults)
+        // The attachment survives the device store.
+        XCTAssertEqual(VoiceTranscriptOutbox.load(from: defaults).entries.first?.chatAttachment, attachment)
+
+        script.responses = [.success(["ok": true, "session_id": "row-1", "written": 1])]
+        await appState.saveQueuedVoiceCallsNow()
+
+        let link = try XCTUnwrap(appState.voiceCallLink(markerID: "voice-call-c1"))
+        XCTAssertEqual(link.callSessionID, "row-1")
+        XCTAssertEqual(link.chatStoredSessionID, "st-chat")
+        XCTAssertEqual(link.endedAt, start.addingTimeInterval(120), "the call's own end, not when the retry saved it")
+        XCTAssertEqual(VoiceCallChatLinks.load(from: defaults).latest(forCall: "row-1", profile: appState.activeProfile)?.thread.runtimeSessionID, "st-chat")
+    }
+}

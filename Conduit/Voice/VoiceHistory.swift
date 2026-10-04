@@ -358,6 +358,9 @@ struct VoiceTranscriptOutbox: Codable, Equatable {
         /// Background jobs the call started, tagged with its row once the
         /// save has one.
         var jobSessionIDs: [String]? = nil
+        /// The chat the call was attached to: its marker is added once a
+        /// retry saves the row.
+        var chatAttachment: VoiceCallAttachment? = nil
     }
 
     static let storageKey = "conduit.voiceTranscriptOutbox.v1"
@@ -576,11 +579,13 @@ struct VoiceCallChatLink: Codable, Equatable {
 }
 
 /// The chat a recording call is attached to, until its row is saved.
-struct VoiceCallAttachment: Equatable {
+struct VoiceCallAttachment: Equatable, Codable {
     var thread: VoiceThreadTarget
     var callID: String
     var startedAt: Date
     var resumed: Bool
+    /// Set when the call closes, so a slow save doesn't lengthen it.
+    var endedAt: Date? = nil
 }
 
 struct VoiceCallChatLinks: Codable, Equatable {
@@ -625,6 +630,10 @@ struct VoiceCallChatLinks: Codable, Equatable {
     }
 
     func store(in defaults: UserDefaults) {
-        if let data = try? JSONEncoder().encode(self) { defaults.set(data, forKey: Self.storageKey) }
+        if links.isEmpty {
+            defaults.removeObject(forKey: Self.storageKey)
+        } else if let data = try? JSONEncoder().encode(self) {
+            defaults.set(data, forKey: Self.storageKey)
+        }
     }
 }

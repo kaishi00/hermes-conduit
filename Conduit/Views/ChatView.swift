@@ -1597,12 +1597,17 @@ private struct VoiceCallMarkerCard: View {
     let link: VoiceCallChatLink
     let open: () -> Void
 
-    private var duration: String? {
+    private static let durationFormatter: DateComponentsFormatter = {
         let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = link.endedAt.timeIntervalSince(link.startedAt) >= 3_600 ? [.hour, .minute] : [.minute, .second]
+        formatter.allowedUnits = [.hour, .minute, .second]
         formatter.unitsStyle = .abbreviated
         formatter.maximumUnitCount = 2
-        return formatter.string(from: max(0, link.endedAt.timeIntervalSince(link.startedAt)))
+        return formatter
+    }()
+    private static let timestampFormatter = ISO8601DateFormatter()
+
+    private var duration: String? {
+        Self.durationFormatter.string(from: max(0, link.endedAt.timeIntervalSince(link.startedAt)))
     }
 
     var body: some View {
@@ -1623,7 +1628,7 @@ private struct VoiceCallMarkerCard: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
-                MessageTimestampLabel(timestamp: ISO8601DateFormatter().string(from: link.startedAt), tone: .supporting)
+                MessageTimestampLabel(timestamp: Self.timestampFormatter.string(from: link.startedAt), tone: .supporting)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)

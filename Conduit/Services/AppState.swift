@@ -3187,7 +3187,7 @@ final class AppState: ObservableObject {
             chatTitle: attachment.thread.title,
             profile: profile,
             startedAt: attachment.startedAt,
-            endedAt: Date(),
+            endedAt: attachment.endedAt ?? Date(),
             resumed: attachment.resumed
         )
         voiceCallChatLinks.add(link)
@@ -3782,7 +3782,7 @@ final class AppState: ObservableObject {
         voiceCallCheckpointedTurns = recorder.turns.count
         voiceCallCheckpointedAt = Date()
         guard let request = recorder.outboxRequest else { return }
-        queueVoiceTranscript(request, dashboard: activeDashboardID?.uuidString ?? "-", profile: recorder.profile, jobs: recorder.jobSessionIDs)
+        queueVoiceTranscript(request, dashboard: activeDashboardID?.uuidString ?? "-", profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: voiceCallAttachment)
         voiceTranscriptsSaving.insert(request.callID)
     }
 
@@ -3808,7 +3808,8 @@ final class AppState: ObservableObject {
         voiceCallCheckpointTask?.cancel()
         voiceCallCheckpointTask = nil
         liveVoiceResumeContext = nil
-        let attachment = voiceCallAttachment
+        var attachment = voiceCallAttachment
+        attachment?.endedAt = Date()
         voiceCallAttachment = nil
         guard let recorder = voiceCallRecorder else { return }
         captureVoiceCall()
@@ -3822,7 +3823,7 @@ final class AppState: ObservableObject {
         // being suspended or closed mid-save; the save then settles it.
         let queuedCallID = recorder.outboxRequest?.callID
         if let request = recorder.outboxRequest {
-            queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs)
+            queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             // The outbox leaves it alone while the save below is running.
             voiceTranscriptsSaving.insert(request.callID)
         }
@@ -3848,7 +3849,7 @@ final class AppState: ObservableObject {
             if recorder.isDisabled { self.voiceCallSaveBlockedKeys.insert(key) }
             if let requeued {
                 // A later retry creates the row and links the jobs then.
-                self.queueVoiceTranscript(requeued, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs)
+                self.queueVoiceTranscript(requeued, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             }
             if self.closingVoiceCallRecorder === recorder {
                 self.closingVoiceCallRecorder = nil
@@ -3931,12 +3932,12 @@ final class AppState: ObservableObject {
         await drainVoiceTranscriptOutbox(profile: profile, key: voiceHistoryKey(profile: profile))
     }
 
-    private func queueVoiceTranscript(_ request: VoiceTranscriptSaveRequest, dashboard: String, profile: String, jobs: [String] = []) {
+    private func queueVoiceTranscript(_ request: VoiceTranscriptSaveRequest, dashboard: String, profile: String, jobs: [String] = [], attachment: VoiceCallAttachment? = nil) {
         var request = request
         // A retry that creates the row can't wait on a title from Hermes.
         if request.sessionID == nil, request.title == nil { request.title = Self.fallbackVoiceCallTitle() }
         var outbox = VoiceTranscriptOutbox.load(from: defaults)
-        outbox.add(.init(dashboard: dashboard, profile: profile, request: request, queuedAt: Date(), jobSessionIDs: jobs.isEmpty ? nil : jobs))
+        outbox.add(.init(dashboard: dashboard, profile: profile, request: request, queuedAt: Date(), jobSessionIDs: jobs.isEmpty ? nil : jobs, chatAttachment: attachment))
         outbox.store(in: defaults)
         publishVoiceCallSaveStatus()
     }
@@ -3974,6 +3975,9 @@ final class AppState: ObservableObject {
                 if let jobs = entry.jobSessionIDs, !jobs.isEmpty {
                     tagVoiceSessions(jobs, kind: .job, parentID: result.sessionID, parentTitle: result.sessionID.flatMap { _ in request.title }, profile: profile)
                 }
+                if let sessionID = result.sessionID, let attachment = entry.chatAttachment {
+                    linkVoiceCall(attachment, callSessionID: sessionID, profile: profile)
+                }
             } catch VoiceHistoryError.rowUnavailable where request.sessionID != nil && (request.turns.first?.index ?? 0) > 0 {
                 // The row is gone with this call's earlier turns; the rest
                 // alone would pass for the whole call.
@@ -3986,7 +3990,7 @@ final class AppState: ObservableObject {
                 request.turns = request.turns.enumerated().map { offset, turn in
                     VoiceTranscriptTurn(index: offset, role: turn.role, text: turn.text, at: turn.at)
                 }
-                settled.append((entry, .init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt, jobSessionIDs: entry.jobSessionIDs)))
+                settled.append((entry, .init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt, jobSessionIDs: entry.jobSessionIDs, chatAttachment: entry.chatAttachment)))
             } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.unsupported {
                 // Kept, not dropped: the host may get the plugin (or a
                 // session store) before the outbox gives up on the call.
