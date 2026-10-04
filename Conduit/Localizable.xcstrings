@@ -20951,6 +20951,16 @@
           }
         }
       }
+    },
+    "Could not rename this conversation: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法重命名此对话：%@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
