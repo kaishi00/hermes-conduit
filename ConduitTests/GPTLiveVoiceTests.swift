@@ -1117,8 +1117,9 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(session.speakable.isEmpty, "Nothing is said while the user is speaking")
         XCTAssertEqual(controller.pendingContextCountForTesting, 1)
 
-        // The model answers the user; still its quiet period.
+        // The user's turn ends and the model answers; still its quiet period.
         current += GPTLiveConversationController.userQuietInterval + 0.5
+        session.onEvent?(.turnDone(role: "user", transcript: "so what I was saying"))
         session.onEvent?(.outputTranscript("Sure."))
         XCTAssertEqual(controller.phase, .speaking)
         session.onEvent?(.turnDone(role: "assistant", transcript: "Sure."))
@@ -1129,6 +1130,7 @@ extension VoiceConversationControllerTests {
         current += GPTLiveConversationController.modelQuietInterval + 0.5
         controller.flushPendingContextIfIdle()
         XCTAssertEqual(session.speakable.count, 1)
+        guard session.speakable.count == 1 else { return controller.stop() }
         XCTAssertNil(session.speakable[0].delegationID)
         XCTAssertTrue(session.speakable[0].text.contains("All green."))
         controller.stop()
