@@ -388,12 +388,37 @@ extension HermesVoiceGatewayTimeoutTests {
             )
         }
         var renamed = bot("nova")
-        renamed.previousNames = ["atlas-old"]
-        let roster = [bot("Fam"), bot("fam"), bot("atlas"), renamed]
+        renamed.previousNames = ["atlas-old", "atlas", "shared-old"]
+        var other = bot("vega")
+        other.previousNames = ["shared-old"]
+        let roster = [bot("Fam"), bot("fam"), bot("atlas"), renamed, other]
         XCTAssertEqual(AppState.linkedBot(named: "fam", in: roster)?.name, "fam")
-        XCTAssertEqual(AppState.linkedBot(named: "Atlas", in: roster)?.name, "atlas")
+        XCTAssertEqual(AppState.linkedBot(named: "Atlas", in: roster)?.name, "atlas", "a live name outranks another bot's old one")
         XCTAssertEqual(AppState.linkedBot(named: "atlas-old", in: roster)?.name, "nova", "a link made before a rename")
+        XCTAssertEqual(AppState.linkedBot(named: "Atlas-Old", in: roster)?.name, "nova")
+        XCTAssertNil(AppState.linkedBot(named: "shared-old", in: roster), "an old name two bots had opens neither")
         XCTAssertNil(AppState.linkedBot(named: "orion", in: roster))
+    }
+
+    @MainActor
+    func testABotLinkOnlySaysTheChatIsGoneWhenTheRosterWasRead() async throws {
+        XCTAssertEqual(AppState.missingLinkedBotMessage(for: .available), AppLocalization.string("That chat is no longer available."))
+        XCTAssertEqual(AppState.missingLinkedBotMessage(for: .failed(message: "Could not refresh bots.")), "Could not refresh bots.")
+        XCTAssertEqual(AppState.missingLinkedBotMessage(for: .gatewayUnsupported), AppLocalization.string("Update Hermes to use Bot Mode."))
+        XCTAssertEqual(AppState.missingLinkedBotMessage(for: .loading), AppLocalization.string("Could not load bots."))
+        XCTAssertEqual(AppState.missingLinkedBotMessage(for: .idle), AppLocalization.string("Could not load bots."))
+
+        // Offline, the link asks for a connection instead.
+        let suite = "VoiceBotLinkOffline.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        XCTAssertFalse(appState.isConnected)
+        appState.openAppLink(.bot(profile: "fam"))
+        for _ in 0..<100 where appState.errorMessage == nil {
+            await Task.yield()
+        }
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("Connect to Hermes to chat with bots."))
     }
 
     func testResumeTurnsDropJobLinks() {
@@ -625,6 +650,14 @@ extension HermesVoiceGatewayTimeoutTests {
         // Reopened later under another runtime, the index still names it.
         index.recordAuthoritative(runtimeID: "rt-new-2", durableID: "st-new", profile: "default", source: .resume)
         XCTAssertEqual(appState.chatOwnSessionIDsForTesting("rt-new-2"), ["rt-new-2", "st-new"])
+
+        // A Bot Chat reads its mapping under the bot's profile first, and
+        // falls back to one recorded under the dashboard's.
+        appState.noteBotChatSessionForTesting("rt-bot", profile: "fam")
+        index.recordAuthoritative(runtimeID: "rt-bot", durableID: "st-bot", profile: "default", source: .create)
+        XCTAssertEqual(appState.chatOwnSessionIDsForTesting("rt-bot"), ["rt-bot", "st-bot"])
+        index.recordAuthoritative(runtimeID: "rt-bot", durableID: "st-fam", profile: "fam", source: .resume)
+        XCTAssertEqual(appState.chatOwnSessionIDsForTesting("rt-bot"), ["rt-bot", "st-fam"])
     }
 
     func testACallCardKeepsItsBotChatsProfile() throws {
