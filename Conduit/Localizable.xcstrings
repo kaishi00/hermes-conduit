@@ -10650,16 +10650,6 @@
         }
       }
     },
-    "Hermes returned an unexpected Kanban response: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 返回了意外的看板响应：%@"
-          }
-        }
-      }
-    },
     "Hermes returned an unreadable Kanban response." : {
       "localizations" : {
         "zh-Hans" : {
@@ -21558,6 +21548,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的仪表板登录已刷新。请再试一次。"
+          }
+        }
+      }
+    },
+    "Turn on notifications on this device before creating a pairing code." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先在这台设备上开启通知，再创建配对码。"
+          }
+        }
+      }
+    },
+    "Hermes didn't send back what you said. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 没有返回你说的内容。请重试。"
+          }
+        }
+      }
+    },
+    "The dashboard didn't let Conduit start a session. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表板未允许 Conduit 启动会话。请重试。"
+          }
+        }
+      }
+    },
+    "A network problem stopped that. Check your connection and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络问题导致操作未完成。请检查网络连接后重试。"
           }
         }
       }

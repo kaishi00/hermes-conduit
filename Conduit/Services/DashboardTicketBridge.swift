@@ -266,16 +266,21 @@ enum DashboardTicketBridgeError: LocalizedError {
         }
     }
 
-    /// What a failed dashboard request means for the person using Conduit.
-    /// The server's own explanation is kept when it says something (a
-    /// FastAPI `detail` like "Session not found"); bare status phrases and
-    /// browser fetch errors become what happened and what to do.
+    /// The dashboard answered but handed back no session ticket.
+    static var noSessionTicketDetail: String {
+        AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
+    }
+
     /// Conduit's own 401 after it refreshed the sign-in for a request it
     /// won't replay: the fix is to try again, not to sign in.
     static var signInRefreshedDetail: String {
         AppLocalization.string("Your dashboard sign-in was refreshed. Try that again.")
     }
 
+    /// What a failed dashboard request means for the person using Conduit.
+    /// The server's own explanation is kept when it says something (a
+    /// FastAPI `detail` like "Session not found"); bare status phrases and
+    /// browser fetch errors become what happened and what to do.
     static func describe(status: Int, detail: String) -> String {
         let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         let isMeaningful = !trimmed.isEmpty
@@ -612,7 +617,7 @@ final class DashboardTicketBridge: NSObject {
                 try await waitUntilReady()
                 let response = try await requestJSON(path: "/api/auth/ws-ticket", method: "POST")
                 guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
-                    throw DashboardTicketBridgeError.requestFailed("Dashboard did not return a WebSocket ticket.")
+                    throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
                 }
                 return ticket
             } catch DashboardTicketBridgeError.signInRequired where attempt < 2 {
