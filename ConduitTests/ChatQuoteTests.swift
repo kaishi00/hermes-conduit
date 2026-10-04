@@ -85,6 +85,27 @@ extension ChatTextSelectionTests {
         XCTAssertEqual(reference.excerpt, "Earlier answer")
     }
 
+    func testRefusedQuotedReplyIsResentOnlyWhileItsChipIsAttached() {
+        // After a chat takeover the composer resends its draft only when it
+        // rebuilds the refused text, envelope included.
+        let reference = ComposerReplyReference(authorName: "Hermes", text: "Earlier answer")
+        let refused = ComposerReplyReference.outboundText("Thanks", hasAttachments: false, replyingTo: reference)
+        let takeover = ChatTakeoverState(
+            sessionID: "s1",
+            sessionIDs: ["s1"],
+            surface: "desktop",
+            refusedText: refused,
+            phase: .ready
+        )
+
+        XCTAssertTrue(takeover.isRefusedMessage(
+            ComposerReplyReference.outboundText("Thanks ", hasAttachments: false, replyingTo: reference)
+        ))
+        XCTAssertFalse(takeover.isRefusedMessage(
+            ComposerReplyReference.outboundText("Thanks", hasAttachments: false, replyingTo: nil)
+        ))
+    }
+
     // MARK: - Selection menu and pill
 
     @MainActor

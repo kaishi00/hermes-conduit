@@ -202,7 +202,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         pillBackdrop.layer.shadowOffset = CGSize(width: 0, height: 2)
 
         var pillConfiguration = UIButton.Configuration.plain()
-        pillConfiguration.title = NSLocalizedString("Copy", comment: "Copy the cross-block selection")
+        pillConfiguration.title = AppLocalization.string("Copy")
         pillConfiguration.image = UIImage(systemName: "doc.on.doc")
         pillConfiguration.imagePlacement = .leading
         pillConfiguration.imagePadding = 6
@@ -433,7 +433,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
             self?.copyFeedbackLabel?.isHidden = true
             if let pill = self?.copyPill {
                 var config = pill.configuration
-                config?.title = NSLocalizedString("Copy", comment: "Copy the cross-block selection")
+                config?.title = AppLocalization.string("Copy")
                 config?.image = UIImage(systemName: "doc.on.doc")
                 config?.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 16)
                 pill.configuration = config
