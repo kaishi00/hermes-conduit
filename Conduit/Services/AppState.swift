@@ -3195,7 +3195,18 @@ final class AppState: ObservableObject {
     /// alias (alternate ids, reconciliation, scroll identity) that another
     /// row could share.
     private func ownSessionIDs(for sessionId: String) -> Set<String> {
-        Self.ownSessionIDs(for: sessionId, in: sessions)
+        // An opened saved row resumes under a new runtime id the list may
+        // not show yet: its canonical id and its voice call tag still name
+        // the row (the same match Resume Call uses).
+        var ids = Self.ownSessionIDs(for: sessionId, in: sessions)
+        if let canonical = canonicalSessionID(for: sessionId) {
+            ids.formUnion(Self.ownSessionIDs(for: canonical, in: sessions))
+        }
+        if let call = voiceCallSessionID(for: sessionId) {
+            ids.insert(call)
+            ids.formUnion(Self.ownSessionIDs(for: call, in: sessions))
+        }
+        return ids
     }
 
     static func ownSessionIDs(for sessionId: String, in rows: [SessionSummary]) -> Set<String> {
@@ -4173,14 +4184,18 @@ final class AppState: ObservableObject {
 
     /// The open chat's id as a saved live call, when it is one.
     var activeVoiceCallSessionID: String? {
+        activeSessionId.flatMap(voiceCallSessionID(for:))
+    }
+
+    /// A chat's id as a saved live call, when it is one.
+    private func voiceCallSessionID(for sessionID: String) -> String? {
         // Opening a saved row resumes it under a new runtime id the catalog
-        // row may not list yet: match the open chat's own ids and its
-        // canonical id. Not the scroll identity's wider alias set, which
-        // can still carry the chat open before this one.
-        guard let activeSessionId else { return nil }
-        var ids = knownSessionIDs(for: activeSessionId)
-        ids.insert(activeSessionId)
-        if let canonical = canonicalSessionID(for: activeSessionId) { ids.insert(canonical) }
+        // row may not list yet: match the chat's own ids and its canonical
+        // id. Not the scroll identity's wider alias set, which can still
+        // carry the chat open before this one.
+        var ids = knownSessionIDs(for: sessionID)
+        ids.insert(sessionID)
+        if let canonical = canonicalSessionID(for: sessionID) { ids.insert(canonical) }
         for row in activeProfileSessions
         where !ids.isDisjoint(with: [row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds) {
             if let tagged = voiceSessionTag(for: row), tagged.tag.kind == .call { return tagged.id }
