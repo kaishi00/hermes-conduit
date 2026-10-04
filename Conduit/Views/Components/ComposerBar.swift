@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import UIKit
 import PhotosUI
 import UniformTypeIdentifiers
 
@@ -1248,18 +1249,23 @@ struct ComposerBar: View {
         // Quoting is composing: a pending automatic chat resume must not
         // switch away from the draft it just changed.
         appState.noteComposerUserEdit()
+        let announcement: String
         switch request.content {
         case .text(let quote):
             // A running dictation would rewrite the draft from where it began.
             if dictation.isDictating || dictation.isStarting { dictation.cancel() }
             replaceComposerText(ChatQuote.inserting(quote, into: text), cursorAtEnd: true)
             isShowingSlashSuggestions = false
+            announcement = AppLocalization.string("Quoted in your message")
         case .reply(let reference):
             withAnimation(reduceMotion ? nil : ConduitMotion.response) {
                 replyReference = reference
             }
+            announcement = AppLocalization.string("Replying to \(reference.authorName)")
         }
         Haptics.selection()
+        // Focus does not move the VoiceOver cursor, so say where it went.
+        UIAccessibility.post(notification: .announcement, argument: announcement)
         isFocused = true
     }
 
@@ -1280,6 +1286,7 @@ struct ComposerBar: View {
                     .lineLimit(1)
             }
             .accessibilityElement(children: .combine)
+            .accessibilityHint(AppLocalization.string("Sent with your next message"))
             Spacer(minLength: 0)
             Button {
                 Haptics.selection()
@@ -1290,7 +1297,7 @@ struct ComposerBar: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.body)
                     .foregroundStyle(.secondary)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -1298,8 +1305,6 @@ struct ComposerBar: View {
             .accessibilityIdentifier("composer.reply-reference.remove")
         }
         .padding(.leading, 12)
-        .padding(.trailing, 2)
-        .padding(.vertical, 2)
         .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }

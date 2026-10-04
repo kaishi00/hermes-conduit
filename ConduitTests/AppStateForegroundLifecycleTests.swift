@@ -3819,6 +3819,15 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertNotNil(expected)
         XCTAssertEqual(steeredTexts.last, expected)
         XCTAssertEqual(ReplyQuoteEnvelope.parse(expected ?? "")?.quote, "Earlier answer")
+
+        // A selection quoted as `>` lines is someone else's words too.
+        let selectionQuote = ChatQuote.inserting(
+            ChatQuote.blockquote("Ask @researcher for the numbers"),
+            into: ""
+        ) + "What did they mean?"
+        let submittedSelection = await harness.appState.submitComposer(text: selectionQuote)
+        XCTAssertTrue(submittedSelection)
+        XCTAssertEqual(steeredTexts.last, selectionQuote, "a bot named only in a quoted selection is not a mention")
     }
 
     /// A prompt outcome returned after the user switched sessions must not

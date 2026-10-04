@@ -5777,22 +5777,17 @@ final class AppState: ObservableObject {
     /// new turn, a busy steer, a redirect) so a mention typed while the bot
     /// is streaming is identified exactly like one sent at idle.
     private func mentionAnnotatedOutboundText(_ text: String) -> String {
-        // A quoted reply (#385) can name bots the user never meant to
-        // mention: only the user's own words below the quote are scanned.
-        if let reply = ReplyQuoteEnvelope.parse(text) {
-            guard !botRoster.isEmpty else { return text }
-            let mentions = BotMentions.resolve(
-                text: reply.message,
-                roster: botRoster,
-                activeProfileName: activeConversationProfileScope
-            )
-            return BotMentions.annotated(text: text, mentions: mentions)
-        }
-        return BotMentions.middlewareAnnotation(
-            text: text,
+        // Quoted lines (#385), from a selection or a whole reply, are someone
+        // else's words: a bot they name is not one the user meant to mention,
+        // so only the user's own lines are scanned. The whole text is sent.
+        let ownWords = ChatQuote.removingQuotedLines(from: text)
+        guard !botRoster.isEmpty, BotMentions.textMightContainMention(ownWords) else { return text }
+        let mentions = BotMentions.resolve(
+            text: ownWords,
             roster: botRoster,
             activeProfileName: activeConversationProfileScope
-        ) ?? text
+        )
+        return BotMentions.annotated(text: text, mentions: mentions)
     }
 
     /// What the composer's @ picker offers: the Bot Mode roster minus the
