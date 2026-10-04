@@ -127,7 +127,12 @@ final class GPTLiveAudioLink {
     /// pauses instead of ending (#376).
     func routeChanged(_ reason: AVAudioSession.RouteChangeReason?) {
         // Our own policy changes post category changes: never loop on them.
-        guard isRunning, !isInterrupted, reason != .categoryChange else { return }
+        guard isRunning, reason != .categoryChange else { return }
+        // Paused: a route change is another chance to get the audio back.
+        if isInterrupted {
+            resume()
+            return
+        }
         do {
             try audio.reassert()
         } catch {

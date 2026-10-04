@@ -373,13 +373,7 @@ final class GPTLiveConversationController: ObservableObject {
             if session?.briefingApplied != true {
                 session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
             }
-            // An older plugin keeps the model silent until the user speaks:
-            // ask for the greeting now instead.
-            if endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() {
-                // Not sent (the channel failed): the next ready tries again.
-                hasSentOpening = session?.greetingApplied == true
-                    || session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
-            }
+            sendOpeningIfNeeded()
             phase = endRequestedAt != nil ? .ending : audioPaused ? .paused : modelTurnActive ? .speaking : .listening
             if endRequestedAt == nil { deliverPendingJobUpdates() }
             scheduleIdleFlush()
@@ -420,9 +414,21 @@ final class GPTLiveConversationController: ObservableObject {
             break
         }
         if !paused, endRequestedAt == nil {
+            sendOpeningIfNeeded()
             deliverPendingJobUpdates()
             scheduleIdleFlush()
         }
+    }
+
+    /// An older plugin keeps the model silent until the user speaks: ask
+    /// for the greeting instead. Paused, a greeting nobody can hear waits
+    /// for the audio to return.
+    private func sendOpeningIfNeeded() {
+        guard endRequestedAt == nil, !audioPaused, !hasSentOpening, session?.isReady == true,
+              let opening = openingPrompt() else { return }
+        // Not sent (the channel failed): the next ready tries again.
+        hasSentOpening = session?.greetingApplied == true
+            || session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
     }
 
     private func finishEnd() {

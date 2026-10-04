@@ -517,7 +517,10 @@ final class GeminiLiveConversationController: ObservableObject {
             // it never fails the call while the other sound still plays.
             scheduleAudioResume(delays: Self.audioResumeDelays, audioReturned: false)
         } else if session?.isReady == true {
-            startInput()
+            // Muted through an alarm, the interruption never reached a
+            // running microphone: if the other sound still holds the audio,
+            // the call pauses instead of failing.
+            startInput(pausingOnFailure: true)
         }
     }
 
@@ -1111,7 +1114,7 @@ final class GeminiLiveConversationController: ObservableObject {
 
     /// False when the microphone couldn't start; the phase is then failed.
     @discardableResult
-    private func startInput() -> Bool {
+    private func startInput(pausingOnFailure: Bool = false) -> Bool {
         guard !inputRunning else { return true }
         // Ending: the microphone stays closed.
         guard endRequestedAt == nil else { return true }
@@ -1120,6 +1123,12 @@ final class GeminiLiveConversationController: ObservableObject {
             inputRunning = true
             return true
         } catch {
+            if pausingOnFailure {
+                geminiLiveLogger.notice("Live voice microphone couldn't start on unmute: \(String(describing: error), privacy: .public)")
+                pauseForAudioInterruption()
+                scheduleAudioResume(delays: Self.earlyResumeDelays, audioReturned: false)
+                return false
+            }
             phase = .failed(UserFacingError.message(for: error))
             retireSession()
             return false

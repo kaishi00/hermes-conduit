@@ -1573,6 +1573,27 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGeminiLiveUnmutingWhileAnAlarmHoldsTheAudioPausesInsteadOfFailing() async {
+        struct AlarmRinging: Error {}
+        let center = NotificationCenter()
+        let (controller, session, input, _, _) = makeGeminiController(notificationCenter: center, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        controller.setMicrophoneMuted(true)
+        // The alarm rings while muted, then the user unmutes.
+        input.startError = AlarmRinging()
+        controller.setMicrophoneMuted(false)
+        XCTAssertEqual(controller.phase, .paused)
+        XCTAssertTrue(controller.isActive)
+
+        input.startError = nil
+        center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        for _ in 0..<50 where controller.phase == .paused { await settle() }
+        XCTAssertEqual(controller.phase, .listening)
+        XCTAssertTrue(input.running)
+        controller.stop()
+    }
+
     func testGeminiLivePausedCallSurvivesAReconnectAndResumesWhenTheAppComesBack() async {
         struct CallInProgress: Error {}
         let center = NotificationCenter()
