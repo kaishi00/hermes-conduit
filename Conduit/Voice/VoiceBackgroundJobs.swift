@@ -158,6 +158,16 @@ struct VoiceJobCallAnchor: Equatable {
     var afterEntryID: UUID? = nil
 }
 
+/// Something a live voice model put on the call screen (its
+/// `show_on_screen` tool): a chart, a table, steps, images, as Markdown.
+struct VoiceScreenCard: Identifiable, Equatable {
+    let id: UUID
+    let title: String
+    let markdown: String
+    let callAnchor: VoiceJobCallAnchor
+    let shownAt: Date
+}
+
 /// What the voice conversation should do with a pending job update.
 enum VoiceBackgroundJobNotice: Equatable {
     /// Speak a fixed notice locally; no Hermes turn is involved.
@@ -288,9 +298,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The running live call's transcript, so a new job can be placed
     /// among its lines; nil while no live call runs.
     var liveCallTranscript: (@MainActor () -> [VoiceConversationTranscriptEntry]?)?
+    /// Whether the phone's call screen is up, so a screen card can be seen.
+    /// A call only CarPlay shows, a minimised one, or a backgrounded app
+    /// has nowhere to show it. Nil counts as up.
+    var liveCallScreenIsVisible: (@MainActor () -> Bool)?
     /// The running (or last) live call; jobs it starts carry it, so the
     /// call screen shows only its own jobs.
     @Published private(set) var liveCallID: UUID?
+    /// What live calls put on screen, newest last.
+    @Published private(set) var screenCards: [VoiceScreenCard] = []
+    /// Screen cards kept for the call.
+    static let maximumScreenCards = 20
+    static let maximumScreenCardCharacters = 20_000
 
     private let backend: VoiceBackgroundJobBackend
     private let pollInterval: Duration
@@ -317,12 +336,66 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A new live call begins: jobs started from now on are its own.
     func beginLiveCall() {
         liveCallID = UUID()
+        // Only the running call's cards are ever shown.
+        screenCards.removeAll()
     }
 
     /// The jobs and chat requests the live call `callID` started, in order.
     func callJobs(_ callID: UUID?) -> [VoiceBackgroundJob] {
         guard let callID else { return [] }
         return jobs.filter { $0.callAnchor?.callID == callID }
+    }
+
+    /// The cards the live call `callID` put on screen, in order.
+    func callScreenCards(_ callID: UUID?) -> [VoiceScreenCard] {
+        guard let callID else { return [] }
+        return screenCards.filter { $0.callAnchor.callID == callID }
+    }
+
+    /// Puts `markdown` on the running live call's screen. Nil when no live
+    /// call is running or there is nothing to show.
+    @discardableResult
+    func showOnScreen(title: String, markdown: String) -> VoiceScreenCard? {
+        let body = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty, liveCallScreenIsVisible?() ?? true, let anchor = currentCallAnchor else { return nil }
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let card = VoiceScreenCard(
+            id: UUID(),
+            title: String(trimmedTitle.prefix(Self.maximumTitleCharacters)),
+            markdown: Self.clippedScreenMarkdown(body),
+            callAnchor: anchor,
+            shownAt: Date()
+        )
+        screenCards.append(card)
+        if screenCards.count > Self.maximumScreenCards {
+            screenCards.removeFirst(screenCards.count - Self.maximumScreenCards)
+        }
+        return card
+    }
+
+    /// `markdown` within the card limit; a code fence the cut leaves open
+    /// is closed with a matching fence, so the rest doesn't render as code.
+    static func clippedScreenMarkdown(_ markdown: String) -> String {
+        guard markdown.count > maximumScreenCardCharacters else { return markdown }
+        // Room for a closing fence, so the card stays within the limit.
+        var lines = String(markdown.prefix(maximumScreenCardCharacters - 16)).components(separatedBy: "\n")
+        // A last line cut mid-way may be half a fence; drop it.
+        if lines.count > 1 { lines.removeLast() }
+        // Read fences as MarkdownText does: a line starting ``` or ~~~
+        // opens one, and the next line starting the same way closes it.
+        var openFence: String?
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let fence = openFence {
+                if trimmed.hasPrefix(fence) { openFence = nil }
+            } else if trimmed.hasPrefix("```") {
+                openFence = "```"
+            } else if trimmed.hasPrefix("~~~") {
+                openFence = "~~~"
+            }
+        }
+        let clipped = lines.joined(separator: "\n")
+        return openFence.map { clipped + "\n" + $0 } ?? clipped
     }
 
     private var currentCallAnchor: VoiceJobCallAnchor? {
@@ -856,6 +929,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         noticesInFlight.removeAll()
         liveThread = nil
         liveCallID = nil
+        screenCards.removeAll()
         threadTargets.removeAll()
         pendingChatContext.removeAll()
         notedChatTurns.removeAll()

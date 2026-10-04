@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "On screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在屏幕上"
+          }
+        }
+      }
+    },
+    "Shows it again" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次显示"
+          }
+        }
+      }
+    },
     "Asked for when the call connects (an older notifier plugin sends it as the first turn):" : {
       "localizations" : {
         "zh-Hans" : {

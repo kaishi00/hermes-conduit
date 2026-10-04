@@ -182,7 +182,7 @@ extension VoiceConversationControllerTests {
         var lines: [VoiceConversationTranscriptEntry]? = nil
         supervisor.liveCallTranscript = { lines }
 
-        // Outside a live call a job belongs to no call.
+        // Until the call has a transcript, a job belongs to no call.
         supervisor.beginLiveCall()
         _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
         XCTAssertNil(supervisor.jobs.first?.callAnchor)
@@ -217,6 +217,7 @@ extension VoiceConversationControllerTests {
             switch item {
             case .line(let entry): return entry.text
             case .job(let job): return job.title
+            case .screen(let card): return card.title
             }
         }
         XCTAssertEqual(labels, ["start", "line 0", "first", "second", "line 1", "line 2", "late"])
@@ -232,9 +233,68 @@ extension VoiceConversationControllerTests {
             switch item {
             case .line(let entry): return entry.text
             case .job(let job): return job.title
+            case .screen(let card): return card.title
             }
         }
         XCTAssertEqual(labels, ["line 0", "job", "line 1", "line 2"])
+    }
+
+    func testScreenCardsBelongToTheLiveCallAndSitWhereTheyWereShown() async {
+        let (supervisor, _) = makeSupervisor()
+        XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: "pie"), "No call, no screen")
+
+        var lines: [VoiceConversationTranscriptEntry] = []
+        supervisor.liveCallTranscript = { lines }
+        supervisor.beginLiveCall()
+        lines = (0..<2).map { VoiceConversationTranscriptEntry(speaker: .user, text: "line \($0)") }
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        let card = supervisor.showOnScreen(title: "  Chart ", markdown: String(repeating: "x", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters + 10))
+        XCTAssertEqual(card?.title, "Chart")
+        XCTAssertLessThanOrEqual(card?.markdown.count ?? .max, VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        XCTAssertEqual(card?.callAnchor.afterEntryID, lines.last?.id)
+        XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: " \n "), "Nothing to show")
+        let fenced = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
+            "```mermaid\n" + String(repeating: "y", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        )
+        XCTAssertTrue(fenced.hasSuffix("\n```"), "A fence the cut leaves open is closed")
+        let closed = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
+            "```md\ncode\n```\n" + String(repeating: "z\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        )
+        XCTAssertFalse(closed.hasSuffix("```"), "A closed fence gets no extra closer")
+        let tilde = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
+            "~~~\n" + String(repeating: "w\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        )
+        XCTAssertTrue(tilde.hasSuffix("\n~~~"), "Tilde fences are closed too")
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.clippedScreenMarkdown("short"), "short")
+
+        var screenIsVisible = false
+        supervisor.liveCallScreenIsVisible = { screenIsVisible }
+        XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: "pie"), "No call screen (CarPlay, minimised), nothing to show it on")
+        screenIsVisible = true
+
+        let call = supervisor.liveCallID
+        let labels = LiveVoiceCallTimeline<EmptyView>.items(
+            transcript: lines + [VoiceConversationTranscriptEntry(speaker: .assistant, text: "it's on your screen")],
+            jobs: supervisor.callJobs(call),
+            screens: supervisor.callScreenCards(call)
+        ).map { item -> String in
+            switch item {
+            case .line(let entry): return entry.text
+            case .job(let job): return job.title
+            case .screen(let card): return card.title
+            }
+        }
+        XCTAssertEqual(labels, ["line 0", "line 1", "check the router", "Chart", "it's on your screen"])
+
+        for index in 0...VoiceBackgroundJobSupervisor.maximumScreenCards {
+            supervisor.showOnScreen(title: "Card \(index)", markdown: "body")
+        }
+        XCTAssertEqual(supervisor.screenCards.count, VoiceBackgroundJobSupervisor.maximumScreenCards)
+        XCTAssertEqual(supervisor.screenCards.last?.title, "Card \(VoiceBackgroundJobSupervisor.maximumScreenCards)")
+        XCTAssertFalse(supervisor.screenCards.contains { $0.title == "Chart" }, "The oldest cards go first")
+
+        supervisor.beginLiveCall()
+        XCTAssertTrue(supervisor.callScreenCards(supervisor.liveCallID).isEmpty, "A later call shows only its own cards")
     }
 
     func testLeadingProfileNameRoutesTheJobToThatProfile() async {

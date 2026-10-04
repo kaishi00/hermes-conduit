@@ -2227,6 +2227,10 @@ final class AppState: ObservableObject {
             if self.isGrokLiveActive { return self.grokLiveController.transcript }
             return nil
         }
+        supervisor.liveCallScreenIsVisible = { [weak self] in
+            guard let self else { return false }
+            return self.isSceneActive && (self.showGeminiLiveSheet || self.showGrokLiveSheet)
+        }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
             if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }),
