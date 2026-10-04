@@ -731,8 +731,8 @@ final class VoiceConversationControllerTests: XCTestCase {
         let resumed = await controller.waitForState(.thinking)
         XCTAssertTrue(resumed)
 
-        // The steered reply finishes arriving but its last words are still
-        // playing (drain parked) when the steer's own turn starts.
+        // The steered reply finishes arriving and its drain is parked
+        // mid-settle (still speaking) when the steer's own turn starts.
         controller.receiveAssistantEvent(.delta(sessionID: "session", text: "First answer."))
         controller.receiveAssistantEvent(.completed(sessionID: "session", content: "First answer."))
         await gate.waitUntilEntered()
