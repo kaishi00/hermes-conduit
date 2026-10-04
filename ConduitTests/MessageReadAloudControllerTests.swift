@@ -682,6 +682,26 @@ final class MessageReadAloudControllerTests: XCTestCase {
         controller.stop()
     }
 
+    func testResumeAfterThePlaybackServiceStoppedSettlesTheReply() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.pauseAfterEmission = true
+        let nowPlaying = MockReadAloudNowPlaying()
+        let controller = makeController(playback: playback, gateway: gateway, nowPlaying: nowPlaying)
+
+        controller.toggle(messageID: "message-a", content: "Phone call")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        controller.pause()
+        // An interruption stopped the service while the reply was paused.
+        playback.simulateStreamRestartForTest()
+
+        XCTAssertFalse(controller.resume())
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(playback.resumeCount, 0)
+        XCTAssertEqual(nowPlaying.endCount, 1)
+        XCTAssertEqual(gateway.streams.last?.cancelCount, 1)
+    }
+
     func testNowPlayingTitleUsesTheFirstSpokenLineAndTruncates() {
         XCTAssertEqual(ReadAloudNowPlaying.title(for: "\n\n  Hello there  \nMore"), "Hello there")
         let long = String(repeating: "word ", count: 40)

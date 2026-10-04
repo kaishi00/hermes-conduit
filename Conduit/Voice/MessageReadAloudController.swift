@@ -191,6 +191,13 @@ final class MessageReadAloudController: ObservableObject {
     func resume() -> Bool {
         guard case .playing = state else { return false }
         guard isPaused else { return true }
+        // The service stopped underneath the pause (a phone call, a media
+        // services reset): there is nothing left to resume, so settle the
+        // reply instead of advertising playback that cannot sound.
+        guard playback.isPaused else {
+            stop()
+            return false
+        }
         playback.resume()
         isPaused = false
         pausedStopTask?.cancel()
