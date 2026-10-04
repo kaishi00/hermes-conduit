@@ -816,11 +816,12 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(session.speakable.contains { $0.delegationID == "del_1" && $0.text.contains("The build passed.") })
         XCTAssertFalse(session.speakable.contains { $0.text.contains("kept talking") }, "Nothing was said after asking")
 
-        // The request's own turn.done landing late isn't new words.
-        session.onEvent?(.turnDone(role: "user", transcript: "And check the tests."))
+        // The request's own late words and turn.done aren't new words.
+        session.onEvent?(.inputTranscript("And check the tests"))
         session.onEvent?(.delegation(id: "del_2", text: ""))
         await settle(40)
         current += 3
+        session.onEvent?(.inputTranscript(", please."))
         session.onEvent?(.turnDone(role: "user", transcript: "And check the tests, please."))
         session.onEvent?(.turnDone(role: "assistant", transcript: "Sure."))
         current += GPTLiveConversationController.userQuietInterval + 0.5
@@ -922,6 +923,30 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.turnDone(role: "assistant", transcript: "The server is all green."))
         XCTAssertEqual(controller.transcript.map(\.text), ["Check the server.", "On it.", "The server is all green."])
         XCTAssertTrue(controller.unsettledTranscriptEntryIDs.isEmpty)
+        XCTAssertEqual(controller.phase, .listening)
+        controller.stop()
+    }
+
+    func testGPTLiveResultEndingBeforeTheStuckTurnKeepsBothTurnsApart() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, _) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Check the server."))
+        session.onEvent?(.outputTranscript("On it."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        current += GPTLiveConversationController.modelTurnStaleInterval + 0.5
+        controller.flushPendingContextIfIdle()
+
+        // The result's turn ends first, then the stuck one's late end.
+        session.onEvent?(.outputTranscript("The server is all green."))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "The server is all green."))
+        XCTAssertEqual(controller.phase, .listening)
+        session.onEvent?(.turnDone(role: "assistant", transcript: "On it, checking now."))
+        XCTAssertEqual(controller.transcript.map(\.text), ["Check the server.", "On it, checking now.", "The server is all green."])
         controller.stop()
     }
 
@@ -943,6 +968,25 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(controller.isActive)
         XCTAssertEqual(controller.pendingContextCountForTesting, 0)
         XCTAssertNotNil(supervisor.takePendingNotice(), "An unsaid result is pending again when GPT-Live hangs up")
+    }
+
+    func testGPTLiveHeldDelegationResultGoesBackWhenTheCallFails() async {
+        let current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, _) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Check the server."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+        // Keeps the user mid-turn, so the result is still held when the call goes.
+        session.onEvent?(.inputTranscript("and while you're at it"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(controller.pendingContextCountForTesting, 1)
+
+        session.onStateChange?(.failed("The GPT-Live connection was lost."))
+        XCTAssertEqual(controller.pendingContextCountForTesting, 0)
+        XCTAssertNotNil(supervisor.takePendingNotice(), "An unsaid result is pending again when the call fails")
     }
 
     func testGPTLiveTypedChatTurnIsQuietCommentary() async {

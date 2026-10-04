@@ -95,9 +95,6 @@ final class GPTLiveConversationController: ObservableObject {
     /// An open user turn with no new words for this long no longer holds
     /// job updates back (its `turn.done` may never come).
     static let userTurnStaleInterval: TimeInterval = 6
-    /// User words this long after a delegation are a new thought, not the
-    /// tail of the request it carried.
-    static let requestTailInterval: TimeInterval = 1
     /// Leads a delegation's result when the user kept talking after asking
     /// for it (#379): what they said since comes first. Not UI copy.
     static let resultAfterUserNote = "[The user kept talking after asking for this, so this result waited until they finished. If anything they said since hasn't been answered or passed on to Hermes yet, deal with that first, briefly (delegate it if Hermes is needed). Then say that Hermes has come back on the earlier request and give what follows, as it asks.]\n\n"
@@ -163,10 +160,6 @@ final class GPTLiveConversationController: ObservableObject {
     private var session: GPTLiveSessionControlling?
     private var modelTurnActive = false
     private var lastUserSpeechAt: Date?
-    /// When the user's words last streamed in. Unlike `lastUserSpeechAt`,
-    /// a `turn.done` (which can land after a delegation its own turn
-    /// carried) doesn't move it.
-    private var lastUserWordsAt: Date?
     private var lastModelOutputAt: Date?
     private var lastModelTurnEndedAt: Date?
     /// Something to send only while nobody speaks.
@@ -181,9 +174,10 @@ final class GPTLiveConversationController: ObservableObject {
     /// Idle-only sends (job notices, delegation results, typed exchanges)
     /// waiting to go out.
     private var pendingContext: [PendingSend] = []
-    /// When each open delegation was made, so a result can tell whether
-    /// the user said more after asking for it.
-    private var delegationOpenedAt: [String: Date] = [:]
+    /// The user's transcript entries when each open delegation was made:
+    /// an entry not among them is something they said after asking. The
+    /// request's own late words land in its entries, not new ones.
+    private var delegationUserEntries: [String: Set<UUID>] = [:]
     private var idleFlushTask: Task<Void, Never>?
     /// Entries still taking streamed fragments. The other speaker starting
     /// closes one, as in Gemini Live.
@@ -195,8 +189,9 @@ final class GPTLiveConversationController: ObservableObject {
     private var userTurnEntries: [UUID] = []
     private var assistantTurnEntries: [UUID] = []
     /// A model turn whose `turn.done` hadn't come when a result was sent
-    /// past it (it went stale): its late `turn.done` folds these, so the
-    /// result's own words start, and stay, in entries of their own.
+    /// past it (it went stale): its late `turn.done`, if one comes, folds
+    /// these, so the result's own words start, and stay, in entries of
+    /// their own. Already streamed, so not waited on as unsettled.
     private var staleAssistantTurnEntries: [UUID] = []
     /// Transcript entries already handed to a delegation. A set, not a
     /// boundary entry: a finished turn can fold the boundary away.
@@ -253,7 +248,6 @@ final class GPTLiveConversationController: ObservableObject {
         returnPendingSends()
         modelTurnActive = false
         lastUserSpeechAt = nil
-        lastUserWordsAt = nil
         lastModelOutputAt = nil
         lastModelTurnEndedAt = nil
         delegatedEntries = []
@@ -348,6 +342,8 @@ final class GPTLiveConversationController: ObservableObject {
         endRequestedAt = now()
         phase = .ending
         session?.setMicrophoneEnabled(false)
+        idleFlushTask?.cancel()
+        idleFlushTask = nil
         returnPendingSends()
         // Job outcomes stay pending for Hermes to report instead of being
         // spent on a conversation that is closing.
@@ -444,7 +440,7 @@ final class GPTLiveConversationController: ObservableObject {
     private func returnPendingSends() {
         let unsent = pendingContext
         pendingContext = []
-        delegationOpenedAt = [:]
+        delegationUserEntries = [:]
         for item in unsent {
             if let delegationID = item.delegationID {
                 bridge.replyUndelivered(delegationID: delegationID)
@@ -457,7 +453,6 @@ final class GPTLiveConversationController: ObservableObject {
         switch event {
         case .inputTranscript(let text):
             lastUserSpeechAt = now()
-            lastUserWordsAt = lastUserSpeechAt
             appendTranscript(text, speaker: .user)
         case .outputTranscript(let text):
             modelTurnActive = true
@@ -476,7 +471,7 @@ final class GPTLiveConversationController: ObservableObject {
                     userFinished(finished)
                 }
             case "assistant":
-                if !staleAssistantTurnEntries.isEmpty {
+                if isStaleTurnDone(text) {
                     // The late end of a turn a result was sent past: it
                     // settles that turn's entries, not the result's.
                     if let finished = finishTurn(staleAssistantTurnEntries, speaker: .assistant, text: text) {
@@ -499,7 +494,9 @@ final class GPTLiveConversationController: ObservableObject {
                 break
             }
         case .delegation(let id, let text):
-            if delegationOpenedAt[id] == nil { delegationOpenedAt[id] = now() }
+            if delegationUserEntries[id] == nil {
+                delegationUserEntries[id] = Set(transcript.filter { $0.speaker == .user }.map(\.id))
+            }
             let request = delegationRequest(itemText: text)
             Task { [weak self] in
                 guard let self else { return }
@@ -647,7 +644,7 @@ final class GPTLiveConversationController: ObservableObject {
             }
             if let delegationID = item.delegationID {
                 bridge.replyDelivered(delegationID: delegationID)
-                delegationOpenedAt[delegationID] = nil
+                delegationUserEntries[delegationID] = nil
             } else {
                 bridge.contextDelivered(jobID: item.jobID)
             }
@@ -668,8 +665,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// Whether the user said more after the delegation was made (beyond
     /// the tail of the request itself).
     private func userSpokeAfterAsking(_ delegationID: String) -> Bool {
-        guard let openedAt = delegationOpenedAt[delegationID], let lastUserWordsAt else { return false }
-        return lastUserWordsAt.timeIntervalSince(openedAt) > Self.requestTailInterval
+        guard let known = delegationUserEntries[delegationID] else { return false }
+        return transcript.contains { $0.speaker == .user && !known.contains($0.id) }
     }
 
     private func scheduleIdleFlush() {
@@ -743,6 +740,20 @@ final class GPTLiveConversationController: ObservableObject {
         return final
     }
 
+    /// Whether an assistant `turn.done` ends the stale turn rather than the
+    /// live one: told apart by text, since either can end first.
+    private func isStaleTurnDone(_ text: String) -> Bool {
+        guard let first = staleAssistantTurnEntries.first,
+              let stale = transcript.first(where: { $0.id == first })?.text else { return false }
+        let key = { (value: String) in
+            String(value.lowercased().filter { $0.isLetter || $0.isNumber }.prefix(24))
+        }
+        let staleKey = key(stale)
+        let doneKey = key(text)
+        guard !staleKey.isEmpty, !doneKey.isEmpty else { return false }
+        return doneKey.hasPrefix(staleKey) || staleKey.hasPrefix(doneKey)
+    }
+
     private func closeOpenEntries() {
         openUserEntry = nil
         openAssistantEntry = nil
@@ -755,6 +766,6 @@ final class GPTLiveConversationController: ObservableObject {
     /// `turn.done` (which can rewrite them): a saved transcript waits for
     /// them to settle.
     var unsettledTranscriptEntryIDs: Set<UUID> {
-        Set([openUserEntry, openAssistantEntry].compactMap { $0 } + userTurnEntries + assistantTurnEntries + staleAssistantTurnEntries)
+        Set([openUserEntry, openAssistantEntry].compactMap { $0 } + userTurnEntries + assistantTurnEntries)
     }
 }
