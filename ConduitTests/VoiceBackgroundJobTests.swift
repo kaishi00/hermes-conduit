@@ -1066,6 +1066,9 @@ extension VoiceConversationControllerTests {
         fake.profileTargets = ["fam": .other("fam")]
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_4", name: "start_job", arguments: ["instructions": "check the build", "profile": "fam"]))
         XCTAssertEqual(fake.created, 3)
+        XCTAssertTrue(supervisor.jobs.contains { $0.title == "what's on my calendar" }, "the quick marker only routes")
+        XCTAssertTrue(supervisor.namesOtherProfile("for Fam, check the router"))
+        XCTAssertFalse(supervisor.namesOtherProfile("check the router"))
         XCTAssertEqual(fake.threadSubmissions.count, 1)
     }
 

@@ -40,6 +40,8 @@ protocol GeminiLiveJobSupervising: AnyObject {
     /// The chat the call is attached to, if any.
     var liveThread: VoiceThreadTarget? { get }
     func startThreadTurn(request: String) -> (jobID: UUID?, refusal: String?)
+    /// Whether `instructions` open with another profile ("for Fam, …").
+    func namesOtherProfile(_ instructions: String) -> Bool
     func lastThreadReply() async -> String?
     @discardableResult
     func showOnScreen(title: String, markdown: String) -> VoiceScreenCard?
@@ -285,13 +287,16 @@ final class GeminiLiveToolBridge {
             // model reaches for start_job out of habit; routing here keeps the
             // chat's work in the chat whichever tool it picks.
             let profile = call.arguments["profile"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if supervisor.liveThread != nil, profile.isEmpty, !VoiceThreadRouting.wantsBackgroundJob(instructions) {
+            if supervisor.liveThread != nil, profile.isEmpty,
+               !VoiceThreadRouting.wantsBackgroundJob(instructions), !supervisor.namesOtherProfile(instructions) {
                 return sendToThread(call, request: instructions)
             }
+            // "Quick:" only routed the request; it isn't part of the task.
+            let task = VoiceThreadRouting.removingQuickMarker(instructions)
             var createdJobID: UUID?
             // The call is registered the moment the job exists, so a
             // withdrawal arriving during Hermes' session setup is honored.
-            let reply = await supervisor.startJob(instructions: instructions, profile: call.arguments["profile"]) { [weak self] jobID in
+            let reply = await supervisor.startJob(instructions: task, profile: call.arguments["profile"]) { [weak self] jobID in
                 createdJobID = jobID
                 guard self?.isEnding == false else { return }
                 self?.openCalls[jobID] = call.id
