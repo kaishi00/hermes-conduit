@@ -327,6 +327,9 @@ final class GeminiLiveConversationController: ObservableObject {
         var jobID: UUID? { GeminiLiveConversationController.jobID(of: result) }
     }
     private var heldOutcomes: [HeldOutcome] = []
+    /// Bumped on every start, so work armed for one call never acts on
+    /// the next.
+    private var callEpoch = 0
     /// Typed exchanges in the attached chat (#363), sent while idle as
     /// context the model keeps without answering.
     private var pendingContextNotes: [String] = []
@@ -437,6 +440,7 @@ final class GeminiLiveConversationController: ObservableObject {
         pendingContextNotes = []
         withdrawnCallIDs = []
         // Nothing from a previous attempt may gate or attach to this one.
+        callEpoch &+= 1
         modelTurnActive = false
         suppressingModelTurn = false
         lastUserSpeechAt = nil
@@ -1053,9 +1057,20 @@ final class GeminiLiveConversationController: ObservableObject {
                 heldOutcomes.append(HeldOutcome(id: id, name: name, result: result, scheduling: scheduling, session: session, generation: session?.connectionGeneration))
             case .toolResponse(let id, let name, let result, let scheduling):
                 // The outcome is already marked delivered, so a send that
-                // fails keeps it as a text update for the next connection.
+                // fails keeps it for the next connection: a settled job's
+                // result stays claimed until the socket takes it and goes
+                // back as a tracked notice if it can't.
+                let jobID = scheduling == .silent ? nil : Self.jobID(of: result)
                 var onFailure: (@MainActor () -> Void)?
-                if scheduling != .silent, let text = Self.fallbackText(for: result, name: name), let sentOn = session {
+                if let jobID {
+                    onFailure = { [weak self, tools] in
+                        guard let self else {
+                            tools.returnNotice(jobID: jobID)
+                            return
+                        }
+                        self.reissueAsTextUpdates([jobID])
+                    }
+                } else if scheduling != .silent, let text = Self.fallbackText(for: result, name: name), let sentOn = session {
                     onFailure = { [weak self, weak sentOn] in
                         // Only for the conversation that sent it, not one
                         // started since.
@@ -1064,13 +1079,18 @@ final class GeminiLiveConversationController: ObservableObject {
                         self.scheduleIdleFlush()
                     }
                 }
-                tools.outcomeSent(jobID: Self.jobID(of: result))
+                var onSent: (@MainActor () -> Void)?
+                if let jobID {
+                    onSent = { [tools] in tools.outcomeSent(jobID: jobID) }
+                } else {
+                    tools.outcomeSent(jobID: Self.jobID(of: result))
+                }
                 session?.send(.toolResponse(
                     id: id,
                     name: name,
                     result: result,
                     scheduling: scheduling
-                ), onFailure: onFailure)
+                ), onSent: onSent, onFailure: onFailure)
             case .textWhenIdle(let text):
                 pendingTextTurns.append(text)
             case .contextWhenIdle(let text):
@@ -1167,6 +1187,7 @@ final class GeminiLiveConversationController: ObservableObject {
     private func ensureOutcomeSpoken(jobID: UUID?, since sentAt: Date) {
         let sentOn = session.map(ObjectIdentifier.init)
         let generation = session?.connectionGeneration
+        let epoch = callEpoch
         Task { [weak self, tools] in
             try? await Task.sleep(for: .seconds(Self.outcomeSpeechGrace))
             guard let self else {
@@ -1174,12 +1195,21 @@ final class GeminiLiveConversationController: ObservableObject {
                 tools.outcomeSent(jobID: jobID)
                 return
             }
-            guard self.isActive, self.endRequestedAt == nil,
-                  self.session.map(ObjectIdentifier.init) == sentOn,
-                  self.session?.connectionGeneration == generation else {
-                // The call (or its connection) ended with it sent: it
-                // counts as said, never re-reported into the next one.
+            guard self.isActive, self.endRequestedAt == nil, self.callEpoch == epoch else {
+                // The call ended with it sent: it counts as said, never
+                // re-reported into the next call.
                 self.tools.outcomeSent(jobID: jobID)
+                return
+            }
+            guard self.session.map(ObjectIdentifier.init) == sentOn,
+                  self.session?.connectionGeneration == generation else {
+                // Same call, new connection: said if the model spoke since,
+                // otherwise reported again there as a tracked update.
+                if let lastModelAudioAt = self.lastModelAudioAt, lastModelAudioAt >= sentAt {
+                    self.tools.outcomeSent(jobID: jobID)
+                } else {
+                    self.reissueAsTextUpdates([jobID])
+                }
                 return
             }
             self.respeakOutcomeIfSilent(jobID: jobID, since: sentAt)
