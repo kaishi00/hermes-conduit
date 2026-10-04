@@ -16,8 +16,8 @@ settings:
     ENABLE_BITCODE: NO
     DEVELOPMENT_TEAM: U2TH557QA8
     CODE_SIGN_STYLE: Manual
-    MARKETING_VERSION: "0.1.15"
-    CURRENT_PROJECT_VERSION: "162"
+    MARKETING_VERSION: "0.1.16"
+    CURRENT_PROJECT_VERSION: "176"
 packages:
   # GPT-Live voice runs over WebRTC; Apple ships no WebRTC stack. Prebuilt
   # Google WebRTC as a binary xcframework, pinned to an exact release.
