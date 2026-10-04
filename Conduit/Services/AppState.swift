@@ -22789,6 +22789,19 @@ final class AppState: ObservableObject {
         recoverTransportForCarPlayIfNeeded(immediately: true)
     }
 
+    /// CarPlay connected while no phone screen is in the foreground. When the
+    /// car launched Conduit there is no phone scene at all, so no scene-phase
+    /// event ever said the phone isn't on screen, and `isSceneActive` kept
+    /// its launch value: CarPlay never re-armed a connection that failed or
+    /// dropped, and kept trying to connect until the phone app was opened
+    /// (#378). The phone's own `.active` takes over again when it opens.
+    func handleCarPlayConnectedWithoutPhoneScreen() {
+        guard isSceneActive else { return }
+        isSceneActive = false
+        publishVoiceRuntimeGates()
+        recoverTransportForCarPlayIfNeeded(immediately: true)
+    }
+
     /// CarPlay can connect while the phone is locked with a transport that
     /// died during an earlier background suspension. No scene-phase event
     /// will re-establish it until the phone is unlocked, so the CarPlay

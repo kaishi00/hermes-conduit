@@ -32,6 +32,13 @@ final class CarPlayVoiceSceneDelegate: NSObject, CPTemplateApplicationSceneDeleg
         }
     }
 
+    /// The voice screen coming back on top ends browsing.
+    func templateDidAppear(_ aTemplate: CPTemplate, animated: Bool) {
+        MainActor.assumeIsolated {
+            CarPlayVoiceCoordinator.shared.handleTemplateDidAppear(aTemplate)
+        }
+    }
+
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
         didDisconnect interfaceController: CPInterfaceController
