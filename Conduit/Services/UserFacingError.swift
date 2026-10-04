@@ -28,7 +28,8 @@ enum UserFacingError {
             let failure = ConnectionFailureClassifier.classify(urlError)
             if failure != .unknown { return failure.userMessage }
             // Unmapped URL codes still get plain words, never NSURLErrorDomain
-            // text, and not the login screen's dashboard-specific copy.
+            // text. This fallback is context-neutral; mapped codes above keep
+            // ConnectionFailure's (dashboard-worded) copy.
             return AppLocalization.string("A network problem stopped that. Check your connection and try again.")
         }
         return error.localizedDescription

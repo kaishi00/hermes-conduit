@@ -266,10 +266,6 @@ enum DashboardTicketBridgeError: LocalizedError {
         }
     }
 
-    /// What a failed dashboard request means for the person using Conduit.
-    /// The server's own explanation is kept when it says something (a
-    /// FastAPI `detail` like "Session not found"); bare status phrases and
-    /// browser fetch errors become what happened and what to do.
     /// The dashboard answered but handed back no session ticket.
     static var noSessionTicketDetail: String {
         AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
@@ -281,6 +277,10 @@ enum DashboardTicketBridgeError: LocalizedError {
         AppLocalization.string("Your dashboard sign-in was refreshed. Try that again.")
     }
 
+    /// What a failed dashboard request means for the person using Conduit.
+    /// The server's own explanation is kept when it says something (a
+    /// FastAPI `detail` like "Session not found"); bare status phrases and
+    /// browser fetch errors become what happened and what to do.
     static func describe(status: Int, detail: String) -> String {
         let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         let isMeaningful = !trimmed.isEmpty
