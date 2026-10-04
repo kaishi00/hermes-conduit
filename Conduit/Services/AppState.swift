@@ -2240,9 +2240,10 @@ final class AppState: ObservableObject {
         supervisor.onJobStoredSessionLearned = { [weak self] runtimeID, storedID in
             guard let self else { return }
             self.learnVoiceSessionAlias(runtimeID: runtimeID, storedID: storedID)
-            // Filed under Voice Jobs by its durable id too.
-            if let tag = self.voiceSessionTagsByKey[self.voiceHistoryKey(profile: self.activeProfile)]?[runtimeID] {
-                self.voiceSessionTagsByKey[self.voiceHistoryKey(profile: self.activeProfile), default: [:]][storedID] = tag
+            // Filed under Voice Jobs by its durable id too, wherever the
+            // runtime was filed.
+            for (key, tags) in self.voiceSessionTagsByKey {
+                if let tag = tags[runtimeID] { self.voiceSessionTagsByKey[key]?[storedID] = tag }
             }
         }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
@@ -4123,6 +4124,8 @@ final class AppState: ObservableObject {
                 await self.loadSessions(forceRefresh: true)
                 target = Self.linkedSessionTarget(id, rows: self.sessions + self.cronSessions, aliases: self.voiceSessionAliases)
             }
+            // Only this open's own "not found" may be reworded.
+            self.reconciliationSessionWasNotFound = false
             self.requestOpenSession(target ?? id) { [weak self] in
                 // A failed resume says "session not found"; the link's own
                 // words say what's missing. Other refusals keep their text.
