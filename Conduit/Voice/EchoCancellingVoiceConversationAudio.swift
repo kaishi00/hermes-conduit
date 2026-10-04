@@ -415,7 +415,9 @@ final class VoiceConversationAudioSelector {
         var captureGeneration: UInt64 { selector.currentCapture.captureGeneration }
         var isHeldForPlayback: Bool { selector.currentCapture.isHeldForPlayback }
 
-        func requestPermission() async -> Bool { await selector.currentCapture.requestPermission() }
+        /// One app-wide microphone permission, whichever capture records:
+        /// always asked through the default capture.
+        func requestPermission() async -> Bool { await selector.standardCapture.requestPermission() }
         func startListening(includePreRoll: Bool) throws {
             try selector.start { try $0.startListening(includePreRoll: includePreRoll) }
         }
