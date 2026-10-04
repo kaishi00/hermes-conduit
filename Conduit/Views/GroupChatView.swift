@@ -319,6 +319,7 @@ struct GroupEventRow: View {
                 tint: .conduitAccent.opacity(0.14)
             ) {
                 mentionText
+                    .textSelection(.enabled)
             }
         } else if event.isMemberMessage {
             GroupChatBubble(
@@ -329,6 +330,7 @@ struct GroupEventRow: View {
                 copyText: event.messageText
             ) {
                 mentionText
+                    .textSelection(.enabled)
             }
         } else {
             GroupSystemEventCaption(event: event, members: members)
@@ -477,10 +479,9 @@ struct MentionSuggestionList: View {
     }
 }
 
-/// One chat bubble: speaker label + content, leading or trailing. Message
-/// text is selectable (long-press), like a single chat's transcript; a
-/// bubble given `copyText` also shows the one-tap Copy button that a
-/// single chat puts under each response.
+/// One chat bubble: speaker label + content, leading or trailing. A bubble
+/// given `copyText` also shows the one-tap Copy button that a single chat
+/// puts under each response; callers make message text selectable.
 struct GroupChatBubble<Content: View>: View {
     let alignment: HorizontalAlignment
     let speaker: String
@@ -505,7 +506,6 @@ struct GroupChatBubble<Content: View>: View {
                     }
                 }
                 content
-                    .textSelection(.enabled)
                 if let copyText, !copyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     GroupMessageCopyButton(text: copyText)
                 }
@@ -533,27 +533,30 @@ struct GroupChatBubble<Content: View>: View {
 private struct GroupMessageCopyButton: View {
     let text: String
     @State private var copied = false
+    @State private var resetTask: Task<Void, Never>?
 
     var body: some View {
         Button {
             UIPasteboard.general.string = text
             Haptics.light()
             copied = true
-            Task {
+            UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Response copied"))
+            resetTask?.cancel()
+            resetTask = Task {
                 try? await Task.sleep(for: .seconds(1.4))
                 guard !Task.isCancelled else { return }
                 copied = false
             }
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.caption.weight(.semibold))
-                .frame(width: 28, height: 28)
+                .font(.subheadline.weight(.semibold))
+                .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
-        .padding(.leading, -6)
-        .padding(.bottom, -4)
+        .padding(.leading, -9)
+        .padding(.vertical, -4)
         .accessibilityLabel(copied ? AppLocalization.string("Response copied") : AppLocalization.string("Copy response"))
     }
 }
@@ -901,6 +904,7 @@ struct DesktopGroupChatView: View {
             copyText: message.isMember ? message.text : nil
         ) {
             GroupMentionTextRenderer.render(message.text, members: mentionMembers)
+                .textSelection(.enabled)
             if message.truncated {
                 Text(AppLocalization.string("Shortened — the full message is in Hermes Desktop."))
                     .font(.caption2)
