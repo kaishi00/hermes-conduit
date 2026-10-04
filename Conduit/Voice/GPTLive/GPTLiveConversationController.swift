@@ -641,7 +641,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// Whether the user said more after the delegation was made (beyond
     /// the tail of the request itself).
     private func userSpokeAfterAsking(_ delegationID: String) -> Bool {
-        guard let known = delegationUserEntries[delegationID] else { return false }
+        // No words of the user's yet when it was made: no line to count from.
+        guard let known = delegationUserEntries[delegationID], !known.isEmpty else { return false }
         return transcript.contains { $0.speaker == .user && !known.contains($0.id) }
     }
 

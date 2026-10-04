@@ -550,6 +550,8 @@ final class GeminiLiveConversationController: ObservableObject {
         lateEndPhraseTask = nil
         phase = .ending
         stopInput()
+        idleFlushTask?.cancel()
+        idleFlushTask = nil
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
         returnHeldOutcomes()
@@ -779,7 +781,6 @@ final class GeminiLiveConversationController: ObservableObject {
                     // old one, so its answer goes out as a text update.
                     let replaced = self.session !== calledOn || self.session?.connectionGeneration != generation
                     self.dispatch(outgoing, unanswerable: replaced ? [call.id] : [], holdingOutcomes: true, answering: call.id)
-                    self.flushPendingTextIfIdle()
                     // A start_job its own call didn't answer is running
                     // (other jobs may settle in the same batch): make sure
                     // the user heard that it was taken.
