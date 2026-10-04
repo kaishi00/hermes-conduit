@@ -1127,7 +1127,8 @@ extension VoiceConversationControllerTests {
         controller.flushPendingContextIfIdle()
         XCTAssertTrue(session.speakable.isEmpty)
 
-        current += GPTLiveConversationController.modelQuietInterval + 0.5
+        // Both quiet periods over (the user's turn ended with the answer).
+        current += max(GPTLiveConversationController.userQuietInterval, GPTLiveConversationController.modelQuietInterval) + 0.5
         controller.flushPendingContextIfIdle()
         XCTAssertEqual(session.speakable.count, 1)
         guard session.speakable.count == 1 else { return controller.stop() }
