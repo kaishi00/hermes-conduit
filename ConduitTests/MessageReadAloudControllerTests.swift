@@ -11,14 +11,14 @@ final class MessageReadAloudControllerTests: XCTestCase {
     private func makeController(
         playback: MockReadAloudPlayback,
         gateway: MockReadAloudGateway,
-        nowPlaying: MockReadAloudNowPlaying = MockReadAloudNowPlaying(),
+        nowPlaying: MockReadAloudNowPlaying? = nil,
         reported: @escaping (String) -> Void = { _ in }
     ) -> MessageReadAloudController {
         MessageReadAloudController(
             playback: playback,
             gateway: gateway,
             beginBackgroundActivity: { _ in {} },
-            nowPlaying: nowPlaying,
+            nowPlaying: nowPlaying ?? MockReadAloudNowPlaying(),
             reportError: reported
         )
     }
