@@ -492,7 +492,9 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testVoiceCallLinksRoundTripAndStayBounded() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "voice-call-links-\(UUID().uuidString)"))
+        let suite = "voice-call-links-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         var links = VoiceCallChatLinks()
         for index in 0..<(VoiceCallChatLinks.maximumLinks + 5) {
             links.add(chatLink(call: "c\(index)", row: "row", chat: "rt", at: Date(timeIntervalSince1970: Double(index))))

@@ -717,7 +717,7 @@ struct MessageBubble: View {
         case .system:
             if message.displayKind == VoiceCallChatLink.displayKind, let link = appState.voiceCallLink(markerID: message.id) {
                 VoiceCallMarkerCard(link: link) {
-                    _ = appState.requestOpenSession(link.callSessionID)
+                    appState.openVoiceCallTranscript(link)
                 }
             } else if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
                 ReviewSummaryCard(activity: review, timestamp: message.timestamp)
@@ -1610,6 +1610,21 @@ private struct VoiceCallMarkerCard: View {
         Self.durationFormatter.string(from: max(0, link.endedAt.timeIntervalSince(link.startedAt)))
     }
 
+    private var title: String {
+        link.resumed ? AppLocalization.string("Voice call resumed") : AppLocalization.string("Voice call")
+    }
+
+    private var started: String? {
+        MessageTimestampFormatter.displayString(for: Self.timestampFormatter.string(from: link.startedAt))
+    }
+
+    /// Title, length and start time; "Open transcript" stays in the hint.
+    private var spokenLabel: String {
+        [title, duration, started.map { AppLocalization.string("Started \($0)") }]
+            .compactMap { $0 }
+            .joined(separator: ", ")
+    }
+
     var body: some View {
         Button(action: open) {
             HStack(alignment: .center, spacing: 10) {
@@ -1634,12 +1649,11 @@ private struct VoiceCallMarkerCard: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
-                if let started = MessageTimestampFormatter.displayString(for: Self.timestampFormatter.string(from: link.startedAt)) {
+                if let started {
                     Text(started)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(Color.conduitAccent.opacity(0.78))
                         .monospacedDigit()
-                        .accessibilityLabel(AppLocalization.string("Started \(started)"))
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
@@ -1656,7 +1670,9 @@ private struct VoiceCallMarkerCard: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.conduitAccent.opacity(0.16), lineWidth: 1)
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(spokenLabel))
+        .accessibilityAddTraits(.isButton)
         .accessibilityHint(Text("Opens the call's transcript"))
     }
 }

@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "That call's transcript is no longer available." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该通话的记录已不可用。"
+          }
+        }
+      }
+    },
     "Started %@" : {
       "localizations" : {
         "zh-Hans" : {

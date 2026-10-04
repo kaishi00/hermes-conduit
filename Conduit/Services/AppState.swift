@@ -3994,6 +3994,8 @@ final class AppState: ObservableObject {
                 request.turns = request.turns.enumerated().map { offset, turn in
                     VoiceTranscriptTurn(index: offset, role: turn.role, text: turn.text, at: turn.at)
                 }
+                // The chat attachment keeps the original call id on purpose:
+                // it names the chat's marker, which stays one per call.
                 settled.append((entry, .init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt, jobSessionIDs: entry.jobSessionIDs, chatAttachment: entry.chatAttachment)))
             } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.unsupported {
                 // Kept, not dropped: the host may get the plugin (or a
@@ -4040,6 +4042,15 @@ final class AppState: ObservableObject {
                 guard let self, self.errorMessage == nil else { return }
                 self.errorMessage = AppLocalization.string("That job's chat is no longer available.")
             }
+        }
+    }
+
+    /// Opens the saved transcript behind a chat's voice call card. The row
+    /// can be gone (deleted on the host), so a dead tap says so.
+    func openVoiceCallTranscript(_ link: VoiceCallChatLink) {
+        requestOpenSession(link.callSessionID) { [weak self] in
+            guard let self, self.errorMessage == nil else { return }
+            self.errorMessage = AppLocalization.string("That call's transcript is no longer available.")
         }
     }
 
