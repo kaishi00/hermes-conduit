@@ -82,6 +82,9 @@ final class VoiceConversationController: ObservableObject {
     /// still adopted.
     var promotedSteerReplyWindow: TimeInterval = 30
     private var steerSentThisTurn = false
+    /// A late steer's follow-up reply that started while the steered reply
+    /// was still playing, held until that speech settles.
+    private var heldPromotedSteerEvents: [VoiceAssistantEvent] = []
     /// Installed by AppState: the authoritative Voice Close teardown
     /// (persist mute → `endVoiceSession` → sheet dismissal). A spoken End
     /// Conversation phrase converges on it instead of a second teardown;
@@ -779,7 +782,7 @@ final class VoiceConversationController: ObservableObject {
                 .failed(let id, _), .interrupted(let id):
             sessionID = id
         }
-        adoptPromotedSteerReplyIfNeeded(event, sessionID: sessionID)
+        if routePromotedSteerReply(event, sessionID: sessionID) { return }
         guard isVoiceSessionActive,
               isAwaitingVoiceAssistant,
               expectedAssistantSessionIDs.contains(sessionID) else { return }
@@ -1332,31 +1335,63 @@ final class VoiceConversationController: ObservableObject {
         isSteeringTurn = false
         steerSentThisTurn = false
         promotedSteerReplyDeadline = nil
+        heldPromotedSteerEvents = []
     }
 
     /// A steer that reached Hermes after its last tool call runs as its
-    /// own turn once the steered reply finished. While the conversation is
-    /// listening and the user hasn't started speaking, that reply's start
-    /// is adopted so it is spoken like the reply it answers.
-    private func adoptPromotedSteerReplyIfNeeded(_ event: VoiceAssistantEvent, sessionID: String) {
-        guard case .started = event,
-              let deadline = promotedSteerReplyDeadline else { return }
+    /// own turn once the steered reply finished. That reply is adopted so
+    /// it is spoken like the reply it answers: at once while the
+    /// conversation listens and the user hasn't started speaking, or, when
+    /// it starts while the steered reply is still playing, held until that
+    /// speech settles and the conversation listens again. Returns true when
+    /// the event was held.
+    private func routePromotedSteerReply(_ event: VoiceAssistantEvent, sessionID: String) -> Bool {
+        guard let deadline = promotedSteerReplyDeadline,
+              isVoiceSessionActive,
+              !isAwaitingVoiceAssistant,
+              expectedAssistantSessionIDs.contains(sessionID) else { return false }
+        if !heldPromotedSteerEvents.isEmpty {
+            heldPromotedSteerEvents.append(event)
+            return true
+        }
+        guard case .started = event else { return false }
         guard Date() <= deadline else {
+            promotedSteerReplyDeadline = nil
+            return false
+        }
+        if state == .listening, !isMicrophonePaused, lastSpeechAt == nil, utteranceTask == nil {
+            promotedSteerReplyDeadline = nil
+            isAwaitingVoiceAssistant = true
+            awaitedAssistantResponseStarted = false
+            state = .thinking
+            beginBargeInMonitoring()
+            return false
+        }
+        if state == .speaking || state == .muted {
+            // The steered reply is still playing: hold the follow-up until
+            // its speech settles (`replayHeldPromotedSteerReply`).
+            heldPromotedSteerEvents.append(event)
+            return true
+        }
+        // The user has moved on (speaking, or a new turn): not ours.
+        promotedSteerReplyDeadline = nil
+        return false
+    }
+
+    /// Called once the steered reply's speech settled and the conversation
+    /// listens again: the held follow-up reply is adopted and played.
+    private func replayHeldPromotedSteerReply() {
+        guard !heldPromotedSteerEvents.isEmpty else { return }
+        let events = heldPromotedSteerEvents
+        heldPromotedSteerEvents = []
+        guard state == .listening else {
             promotedSteerReplyDeadline = nil
             return
         }
-        guard isVoiceSessionActive,
-              !isAwaitingVoiceAssistant,
-              expectedAssistantSessionIDs.contains(sessionID),
-              state == .listening,
-              !isMicrophonePaused,
-              lastSpeechAt == nil,
-              utteranceTask == nil else { return }
+        // The hold outlived the window on purpose: it started inside it.
+        promotedSteerReplyDeadline = .distantFuture
+        events.forEach(receiveAssistantEvent)
         promotedSteerReplyDeadline = nil
-        isAwaitingVoiceAssistant = true
-        awaitedAssistantResponseStarted = false
-        state = .thinking
-        beginBargeInMonitoring()
     }
 
     private func scheduleBargeIn() {
@@ -1379,6 +1414,9 @@ final class VoiceConversationController: ObservableObject {
         guard !isPlaybackCaptureSuspended else { return }
         guard isTalkOverAvailable else { return }
         lastBargeInState = state
+        // Talking over the steered reply moves on from its follow-up too.
+        heldPromotedSteerEvents = []
+        promotedSteerReplyDeadline = nil
         // A reply that already arrived in full has no Hermes turn left to
         // cancel: talking over it only stops the speech.
         let turnStillRunning = isAwaitingVoiceAssistant
@@ -1681,7 +1719,16 @@ final class VoiceConversationController: ObservableObject {
                 cachedRoutePolicy = nil
                 isPlaybackCaptureSuspended = false
                 await startListening()
+                guard isSpeechDrainCurrent(operation: operation, revision: revision),
+                      !heldPromotedSteerEvents.isEmpty else { return }
+                // After this drain's bookkeeping settles, so the follow-up
+                // reply can start a drain of its own.
+                Task { @MainActor [weak self] in self?.replayHeldPromotedSteerReply() }
             } else {
+                // Continuous conversation off: the follow-up reply isn't
+                // spoken (it still shows in chat).
+                heldPromotedSteerEvents = []
+                promotedSteerReplyDeadline = nil
                 settleOpenSessionAfterAssistantTurn()
             }
         }

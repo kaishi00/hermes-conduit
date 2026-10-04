@@ -707,6 +707,51 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(submitted.texts, ["Question"])
     }
 
+    func testReplyToALateSteerThatStartsDuringPlaybackWaitsAndIsSpoken() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let playback = MockPlayback()
+        let gate = InterruptParkingGate()
+        playback.drainGate = gate
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: true),
+            playback: playback,
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { await submitted.submit($0) },
+            interrupt: { true },
+            steer: { await steers.submit($0) ? .steered : .failed }
+        )
+        await driveToThinking(controller, submitted: submitted)
+        gateway.transcript = "Also check the logs"
+        await speakSteer(controller)
+        await steers.waitUntilSubmitted(1)
+        let resumed = await controller.waitForState(.thinking)
+        XCTAssertTrue(resumed)
+
+        // The steered reply finishes arriving but its last words are still
+        // playing (drain parked) when the steer's own turn starts.
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "First answer."))
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "First answer."))
+        await gate.waitUntilEntered()
+        XCTAssertEqual(controller.state, .speaking)
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Logs are clean."))
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Logs are clean."))
+        XCTAssertEqual(gateway.openCount, 1, "the follow-up waits for the steered reply to finish")
+
+        gate.release()
+        let deadline = Date().addingTimeInterval(5)
+        while gateway.openCount < 2, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(gateway.openCount, 2, "the steer's reply is spoken after the steered one")
+        XCTAssertEqual(submitted.texts, ["Question"])
+    }
+
     func testTalkingOverACompletedReplyStopsSpeechWithoutCancellingAnything() async {
         let capture = MockCapture(permissionGranted: true)
         let interrupts = AwaitableCounter()
