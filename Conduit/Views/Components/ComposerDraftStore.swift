@@ -3,11 +3,13 @@ import Foundation
 struct ComposerDraft: Equatable {
     var text: String
     var attachments: [Attachment]
+    /// A whole reply attached with its Quote button (#385).
+    var replyReference: ComposerReplyReference? = nil
 
     static let empty = ComposerDraft(text: "", attachments: [])
 
     var isEmpty: Bool {
-        text.isEmpty && attachments.isEmpty
+        text.isEmpty && attachments.isEmpty && replyReference == nil
     }
 }
 

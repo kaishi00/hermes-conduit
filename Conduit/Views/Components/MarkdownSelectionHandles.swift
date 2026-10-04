@@ -2,7 +2,8 @@ import SwiftUI
 import UIKit
 
 /// Cross-block selection chrome: draggable endpoint handles and a copy pill
-/// positioned at the true selection endpoints anywhere in the message. The
+/// (with Quote beside Copy inside a chat, #385) positioned at the true
+/// selection endpoints anywhere in the message. The
 /// system's native handles cannot leave the text view that owns them, so a
 /// cross-segment selection takes over with coordinator-owned handles once
 /// the gesture ends. Within-block selections never show this chrome and keep
@@ -13,11 +14,13 @@ struct MarkdownSelectionHandleOverlay: UIViewRepresentable {
     func makeUIView(context: Context) -> MarkdownSelectionHandleContainerView {
         let view = MarkdownSelectionHandleContainerView(frame: .zero)
         view.coordinator = coordinator
+        view.quoteAction = context.environment.chatQuoteAction
         return view
     }
 
     func updateUIView(_ uiView: MarkdownSelectionHandleContainerView, context: Context) {
         uiView.coordinator = coordinator
+        uiView.quoteAction = context.environment.chatQuoteAction
         uiView.setNeedsLayout()
     }
 
@@ -38,9 +41,16 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         }
     }
 
+    /// Inside a chat, the pill also offers Quote, which puts the selection
+    /// in the composer (#385).
+    var quoteAction: ChatQuoteAction? {
+        didSet { setNeedsLayout() }
+    }
+
     private(set) var anchorHandle: MarkdownSelectionHandleView?
     private(set) var focusHandle: MarkdownSelectionHandleView?
     private(set) var copyPill: UIButton?
+    private(set) var quotePill: UIButton?
     private(set) var copyPillBackdrop: UIVisualEffectView?
     private(set) var copyFeedbackLabel: UILabel?
 
@@ -65,6 +75,9 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     }
 
     private var copyFeedbackResetWorkItem: DispatchWorkItem?
+    /// Copy's width while it shows the checkmark, so the Quote beside it
+    /// does not slide under the "Copied" label.
+    private var copyPillWidthDuringFeedback: CGFloat?
     private var repositioningDisplayLink: CADisplayLink?
     private var lastAnchorCaret: CGRect?
     private var lastFocusCaret: CGRect?
@@ -82,6 +95,8 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         else {
             subviews.forEach { $0.isHidden = true }
             stopRepositioningDisplayLink()
+            // The next selection sizes Copy afresh.
+            copyPillWidthDuringFeedback = nil
             return
         }
 
@@ -97,7 +112,10 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
 
         anchorHandle?.isHidden = false
         focusHandle?.isHidden = false
+        // Quote shows inside a chat while the composer takes input.
+        let quote = quoteAction?.isAvailable == true ? quotePill : nil
         copyPill?.isHidden = false
+        quotePill?.isHidden = quote == nil
         copyPillBackdrop?.isHidden = false
         startRepositioningDisplayLink()
 
@@ -105,8 +123,14 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         positionHandle(focusHandle, atCaret: focusCaret)
 
         if let pill = copyPill {
-            let fitted = pill.intrinsicContentSize
-            let pillSize = CGSize(width: fitted.width, height: max(32, fitted.height))
+            let copyFitted = pill.intrinsicContentSize
+            let copyWidth = copyPillWidthDuringFeedback ?? copyFitted.width
+            // Quote sits right of Copy on the same backdrop.
+            let quoteFitted = quote?.intrinsicContentSize ?? .zero
+            let pillSize = CGSize(
+                width: copyWidth + quoteFitted.width,
+                height: max(32, copyFitted.height, quoteFitted.height)
+            )
             // Anchor to the focus end — the endpoint the finger last touched
             // — so the pill is always near the user's hand. For selections
             // taller than the screen this keeps it in view instead of pinned
@@ -115,8 +139,9 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
             let focusLocal = convert(focusCaret, from: window)
             let pillX = min(max(8, focusLocal.midX - pillSize.width / 2), max(8, bounds.width - pillSize.width - 8))
             let pillY = min(max(4, focusLocal.minY - pillSize.height - 10), max(4, bounds.height - pillSize.height - 4))
-            pill.frame = CGRect(origin: CGPoint(x: pillX, y: pillY), size: pillSize)
-            copyPillBackdrop?.frame = pill.frame
+            pill.frame = CGRect(x: pillX, y: pillY, width: copyWidth, height: pillSize.height)
+            quote?.frame = CGRect(x: pill.frame.maxX, y: pillY, width: quoteFitted.width, height: pillSize.height)
+            copyPillBackdrop?.frame = CGRect(origin: CGPoint(x: pillX, y: pillY), size: pillSize)
             if let feedback = copyFeedbackLabel {
                 feedback.sizeToFit()
                 feedback.frame = CGRect(
@@ -177,7 +202,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         pillBackdrop.layer.shadowOffset = CGSize(width: 0, height: 2)
 
         var pillConfiguration = UIButton.Configuration.plain()
-        pillConfiguration.title = NSLocalizedString("Copy", comment: "Copy the cross-block selection")
+        pillConfiguration.title = AppLocalization.string("Copy")
         pillConfiguration.image = UIImage(systemName: "doc.on.doc")
         pillConfiguration.imagePlacement = .leading
         pillConfiguration.imagePadding = 6
@@ -190,13 +215,24 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
             self?.copyActiveSelection()
         }, for: .touchUpInside)
 
+        var quoteConfiguration = pillConfiguration
+        quoteConfiguration.title = AppLocalization.string("Quote")
+        quoteConfiguration.image = UIImage(systemName: "text.quote")
+        quoteConfiguration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 16)
+
+        let quote = UIButton(configuration: quoteConfiguration)
+        quote.accessibilityIdentifier = "selection.quotePill"
+        quote.addAction(UIAction { [weak self] _ in
+            self?.quoteActiveSelection()
+        }, for: .touchUpInside)
+
         let feedback = UILabel()
         feedback.text = AppLocalization.string("Copied")
         feedback.textColor = .label
         feedback.font = .systemFont(ofSize: 12, weight: .semibold)
         feedback.isHidden = true
 
-        [anchor, focus, pillBackdrop, pill, feedback].forEach {
+        [anchor, focus, pillBackdrop, pill, quote, feedback].forEach {
             $0.isHidden = true
             $0.translatesAutoresizingMaskIntoConstraints = true
             addSubview($0)
@@ -208,6 +244,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         anchorHandle = anchor
         focusHandle = focus
         copyPill = pill
+        quotePill = quote
         copyPillBackdrop = pillBackdrop
         copyFeedbackLabel = feedback
     }
@@ -347,6 +384,22 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         setNeedsLayout()
     }
 
+    /// Puts the whole cross-block selection in the composer as a quote and
+    /// clears it, which hides this chrome.
+    func quoteActiveSelection() {
+        guard
+            let coordinator,
+            let quoteAction,
+            quoteAction.isAvailable,
+            coordinator.hasActiveSelection
+        else { return }
+        let selected = coordinator.copiedAttributedTextForActiveSelection().string
+        guard selected.contains(where: { !$0.isWhitespace }) else { return }
+        coordinator.clearSelection()
+        setNeedsLayout()
+        quoteAction(selected)
+    }
+
     private func copyActiveSelection() {
         guard
             let coordinator,
@@ -362,6 +415,9 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
 
         copyFeedbackResetWorkItem?.cancel()
 
+        if let width = copyPill?.frame.width, width > 0, copyPillWidthDuringFeedback == nil {
+            copyPillWidthDuringFeedback = width
+        }
         copyFeedbackLabel?.isHidden = false
         if let pill = copyPill {
             var feedbackConfiguration = pill.configuration
@@ -372,10 +428,12 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         }
 
         let reset = DispatchWorkItem { [weak self] in
+            self?.copyPillWidthDuringFeedback = nil
+            self?.setNeedsLayout()
             self?.copyFeedbackLabel?.isHidden = true
             if let pill = self?.copyPill {
                 var config = pill.configuration
-                config?.title = NSLocalizedString("Copy", comment: "Copy the cross-block selection")
+                config?.title = AppLocalization.string("Copy")
                 config?.image = UIImage(systemName: "doc.on.doc")
                 config?.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 16)
                 pill.configuration = config

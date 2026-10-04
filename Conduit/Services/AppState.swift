@@ -1271,6 +1271,9 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
+    /// A quote waiting for the composer (#385). ComposerBar, which owns the
+    /// draft, applies it and then consumes it.
+    @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
 
     // MARK: - Capabilities
 
@@ -5427,6 +5430,41 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Quoting into the composer (#385)
+
+    /// The transcript offers Quote only while the composer takes input: not
+    /// in the read-only saved copy, nor while the chat is reconnecting.
+    func canQuoteIntoComposer() -> Bool {
+        composerIsEnabled
+    }
+
+    /// Selected transcript text goes into the draft as a `>` quote.
+    func quoteIntoComposer(_ selectedText: String) {
+        guard canQuoteIntoComposer() else { return }
+        let quote = ChatQuote.blockquote(selectedText)
+        guard !quote.isEmpty else { return }
+        composerQuoteRequest = ComposerQuoteRequest(content: .text(quote))
+    }
+
+    /// A reply's Quote button: the whole reply rides along with the next
+    /// message, shown in the composer as a removable "Replying to…" chip.
+    func replyInComposer(to message: ChatMessage) {
+        guard canQuoteIntoComposer() else { return }
+        guard message.content.contains(where: { !$0.isWhitespace }) else { return }
+        let reference = ComposerReplyReference(
+            authorName: profileDisplayName(activeProfile),
+            text: message.content
+        )
+        composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
+    }
+
+    /// The composer took the quote: drop it, so the quoted text is not kept
+    /// around after it has landed.
+    func consumeComposerQuoteRequest(_ id: UUID) {
+        guard composerQuoteRequest?.id == id else { return }
+        composerQuoteRequest = nil
+    }
+
     /// A genuine composer edit is explicit ownership of the visible
     /// conversation, exactly like sending, navigating, or scrolling: any
     /// automatic-return work still in flight (a foreground health check that
@@ -5739,7 +5777,18 @@ final class AppState: ObservableObject {
     /// new turn, a busy steer, a redirect) so a mention typed while the bot
     /// is streaming is identified exactly like one sent at idle.
     private func mentionAnnotatedOutboundText(_ text: String) -> String {
-        BotMentions.middlewareAnnotation(
+        // A quoted reply (#385) can name bots the user never meant to
+        // mention: only the user's own words below the quote are scanned.
+        if let reply = ReplyQuoteEnvelope.parse(text) {
+            guard !botRoster.isEmpty else { return text }
+            let mentions = BotMentions.resolve(
+                text: reply.message,
+                roster: botRoster,
+                activeProfileName: activeConversationProfileScope
+            )
+            return BotMentions.annotated(text: text, mentions: mentions)
+        }
+        return BotMentions.middlewareAnnotation(
             text: text,
             roster: botRoster,
             activeProfileName: activeConversationProfileScope

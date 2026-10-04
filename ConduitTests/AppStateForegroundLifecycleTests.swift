@@ -3750,6 +3750,77 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(steeredTexts, [expected ?? ""])
     }
 
+    /// A quoted reply (#385) that names a bot is not a mention: only the
+    /// user's own words below the quote are scanned, and a mention there
+    /// annotates the whole sent text.
+    func testQuotedReplyBotNamesAreNotTakenAsMentions() async {
+        let sessionA = session("stored-a")
+        let researcher = BotProfile(
+            name: "researcher",
+            botTitle: nil,
+            displayName: "",
+            profileDescription: "",
+            model: nil,
+            provider: nil,
+            hasAvatar: false,
+            isPinned: false,
+            isHiddenByMeta: false,
+            appearanceColor: nil,
+            canonicalSession: nil,
+            lastActive: nil,
+            lastPreview: nil
+        )
+        var steeredTexts: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in .accepted },
+                probeActiveSessions: { _ in
+                    [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                },
+                steer: { _, _, text in steeredTexts.append(text) },
+                botRoster: { _ in
+                    BotRosterSnapshot(bots: [researcher], supportsBotProtocol: true)
+                }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.isConnected = true
+        await harness.appState.refreshBotRoster()
+        harness.appState.isConnected = false
+        XCTAssertEqual(harness.appState.botRoster.map(\.name), ["researcher"])
+
+        harness.appState.sessions = [sessionA]
+        harness.appState.activeSessionId = sessionA.id
+        harness.appState.handleScenePhase(.background)
+
+        let quotedOnly = ReplyQuoteEnvelope.outboundText(
+            quoting: "Ask @researcher for the numbers",
+            message: "Sounds good"
+        )
+        let submittedQuote = await harness.appState.submitComposer(text: quotedOnly)
+        XCTAssertTrue(submittedQuote)
+        XCTAssertEqual(steeredTexts, [quotedOnly], "a bot named only in the quote is not a mention")
+
+        let mentioned = ReplyQuoteEnvelope.outboundText(
+            quoting: "Earlier answer",
+            message: "@researcher check this"
+        )
+        let submittedMention = await harness.appState.submitComposer(text: mentioned)
+        XCTAssertTrue(submittedMention)
+        let expected = BotMentions.middlewareAnnotation(
+            text: mentioned,
+            roster: [researcher],
+            activeProfileName: "default"
+        )
+        XCTAssertNotNil(expected)
+        XCTAssertEqual(steeredTexts.last, expected)
+        XCTAssertEqual(ReplyQuoteEnvelope.parse(expected ?? "")?.quote, "Earlier answer")
+    }
+
     /// A prompt outcome returned after the user switched sessions must not
     /// adopt running state or clear staleness for the new session.
     func testPromptOutcomeHandoffDoesNotMutateNewSessionState() async {
