@@ -1212,16 +1212,16 @@ final class GeminiLiveConversationController: ObservableObject {
 
     var pendingTextTurnCountForTesting: Int { pendingTextTurns.count }
 
-    /// A job outcome or lookup answer that can no longer go back on its
-    /// call, as a text turn. Nil for answers only meaningful to the call
-    /// (list_jobs, cancel_job, errors).
     /// The settled background job a tool result reports, if any (not a
     /// start_job's own "started" answer).
-    static func jobID(of result: [String: String]) -> UUID? {
+    nonisolated static func jobID(of result: [String: String]) -> UUID? {
         guard result["status"] != "started" else { return nil }
         return result["job_id"].flatMap(UUID.init(uuidString:))
     }
 
+    /// A job outcome or lookup answer that can no longer go back on its
+    /// call, as a text turn. Nil for answers only meaningful to the call
+    /// (list_jobs, cancel_job, errors).
     static func fallbackText(for result: [String: String], name: String? = nil) -> String? {
         if name == GeminiLiveToolBridge.Tool.webSearch.rawValue || name == GeminiLiveToolBridge.Tool.recallMemory.rawValue {
             return lookupFallbackText(for: result)
