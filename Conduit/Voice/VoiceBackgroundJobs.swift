@@ -298,6 +298,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Called when the call sends a request to its attached chat, so the
     /// saved call can link to where the work happened.
     var onThreadTurnStarted: (@MainActor (_ job: VoiceBackgroundJob, _ thread: VoiceThreadTarget) -> Void)?
+    /// Called when a job's stored session id turns up after its start (the
+    /// gateway named only its runtime then), so links to the runtime can
+    /// still open the job once that runtime ends.
+    var onJobStoredSessionLearned: (@MainActor (_ runtimeID: String, _ storedID: String) -> Void)?
     /// The running live call's transcript, so a new job can be placed
     /// among its lines; nil while no live call runs.
     var liveCallTranscript: (@MainActor () -> [VoiceConversationTranscriptEntry]?)?
@@ -1217,12 +1221,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         var changed = false
         var settledThreadTurns: [UUID] = []
+        var learned: [(String, String)] = []
+        defer { for (runtimeID, storedID) in learned { onJobStoredSessionLearned?(runtimeID, storedID) } }
         for index in jobs.indices where jobs[index].status == .running || jobs[index].status == .needsInput {
             let job = jobs[index]
             // A job that went active while the reads awaited is judged next time.
             guard let rows = rowsByProfile[job.profile] else { continue }
             let row = rows.first { job.owns(sessionID: $0.runtimeSessionId) || job.owns(sessionID: $0.storedSessionId) }
             if let row {
+                if (job.storedSessionID ?? "").isEmpty, !row.storedSessionId.isEmpty,
+                   let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty, row.storedSessionId != runtimeID {
+                    jobs[index].storedSessionID = row.storedSessionId
+                    learned.append((runtimeID, row.storedSessionId))
+                }
                 jobs[index].consecutiveMissedPolls = 0
                 jobs[index].listedByLivenessPoll = true
                 // A listed, idle runtime is positive evidence the turn ended.

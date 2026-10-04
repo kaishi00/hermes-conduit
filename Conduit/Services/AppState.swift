@@ -2237,8 +2237,17 @@ final class AppState: ObservableObject {
             recorder.note(Self.voiceThreadTurnNote(job, thread: thread))
             self.checkpointVoiceCall(recorder)
         }
+        supervisor.onJobStoredSessionLearned = { [weak self] runtimeID, storedID in
+            guard let self else { return }
+            self.learnVoiceSessionAlias(runtimeID: runtimeID, storedID: storedID)
+            // Filed under Voice Jobs by its durable id too.
+            if let tag = self.voiceSessionTagsByKey[self.voiceHistoryKey(profile: self.activeProfile)]?[runtimeID] {
+                self.voiceSessionTagsByKey[self.voiceHistoryKey(profile: self.activeProfile), default: [:]][storedID] = tag
+            }
+        }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
+            if sessionIDs.count == 2 { self.learnVoiceSessionAlias(runtimeID: sessionIDs[0], storedID: sessionIDs[1]) }
             if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }),
                let targetProfile = job.profile, targetProfile != self.activeProfile {
                 // A job on another profile is that profile's chat: badged
@@ -3206,11 +3215,16 @@ final class AppState: ObservableObject {
     /// A call attached to a chat was saved: the chat gets its marker, at
     /// once when it's on screen.
     private func linkVoiceCall(_ attachment: VoiceCallAttachment, callSessionID: String, profile: String) {
+        // A chat new at the call's start may only have its stored id now.
+        let runtimeID = attachment.thread.runtimeSessionID
+        let storedID = attachment.thread.storedSessionID.flatMap { $0.isEmpty ? nil : $0 }
+            ?? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId
+        learnVoiceSessionAlias(runtimeID: runtimeID, storedID: storedID)
         let link = VoiceCallChatLink(
             callID: attachment.callID,
             callSessionID: callSessionID,
-            chatRuntimeSessionID: attachment.thread.runtimeSessionID,
-            chatStoredSessionID: attachment.thread.storedSessionID,
+            chatRuntimeSessionID: runtimeID,
+            chatStoredSessionID: storedID,
             chatTitle: attachment.thread.title,
             profile: profile,
             startedAt: attachment.startedAt,
@@ -3463,6 +3477,13 @@ final class AppState: ObservableObject {
     /// The chat the recorded call is attached to, linked to its row once saved.
     private var voiceCallAttachment: VoiceCallAttachment?
     private lazy var voiceCallChatLinks = VoiceCallChatLinks.load(from: defaults)
+    private lazy var voiceSessionAliases = VoiceSessionAliases.load(from: defaults)
+
+    /// Remembers the stored id behind a runtime id a saved call may link to.
+    private func learnVoiceSessionAlias(runtimeID: String, storedID: String?) {
+        guard let storedID, voiceSessionAliases.learn(runtimeID: runtimeID, storedID: storedID) else { return }
+        voiceSessionAliases.store(in: defaults)
+    }
     private var voiceCallCheckpointTask: Task<Void, Never>?
     private var voiceCallTranscriptSubscription: AnyCancellable?
     static let voiceCallCheckpointInterval: Duration = .seconds(15)
@@ -4074,12 +4095,43 @@ final class AppState: ObservableObject {
         case .session(let id):
             // Some failed opens say nothing themselves; a deleted job
             // shouldn't make the link look dead.
-            requestOpenSession(id) { [weak self] in
-                guard let self, self.errorMessage == nil else { return }
-                // Job links and chat-turn links share this route.
-                self.errorMessage = AppLocalization.string("That chat is no longer available.")
+            // Job links and chat-turn links share this route.
+            openLinkedSession(id, unavailable: AppLocalization.string("That chat is no longer available."))
+        }
+    }
+
+    /// Opens a session a saved call or chat card linked to. The link can
+    /// name a runtime that has since ended (written before Hermes named
+    /// the stored session), so it is resolved to the session's current row
+    /// first, refreshing the list once when nothing here knows it.
+    private func openLinkedSession(_ id: String, unavailable: String) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var target = Self.linkedSessionTarget(id, rows: self.sessions + self.cronSessions, aliases: self.voiceSessionAliases)
+            if target == nil {
+                await self.loadSessions(forceRefresh: true)
+                target = Self.linkedSessionTarget(id, rows: self.sessions + self.cronSessions, aliases: self.voiceSessionAliases)
+            }
+            self.requestOpenSession(target ?? id) { [weak self] in
+                // A failed resume says "session not found"; the link's own
+                // words say what's missing. Other refusals keep their text.
+                guard let self, self.errorMessage == nil || self.reconciliationSessionWasNotFound else { return }
+                self.errorMessage = unavailable
             }
         }
+    }
+
+    /// The row a linked id opens as: the row that carries it (or the stored
+    /// id learned for it) as any of its ids, else the learned stored id.
+    /// Nil when nothing knows the id.
+    static func linkedSessionTarget(_ id: String, rows: [SessionSummary], aliases: VoiceSessionAliases) -> String? {
+        let stored = aliases.storedID(forRuntime: id)
+        for candidate in [stored, id].compactMap({ $0 }) {
+            if let row = rows.first(where: { $0.storedSessionId == candidate }) ?? rows.first(where: { $0.id == candidate || $0.alternateIds.contains(candidate) }) {
+                return row.id
+            }
+        }
+        return stored
     }
 
     /// Opens the saved transcript behind a chat's voice call card. Looked up
@@ -4088,10 +4140,7 @@ final class AppState: ObservableObject {
     /// so a dead tap says so.
     func openVoiceCallTranscript(markerID: String) {
         guard let link = voiceCallLink(markerID: markerID) else { return }
-        requestOpenSession(link.callSessionID) { [weak self] in
-            guard let self, self.errorMessage == nil else { return }
-            self.errorMessage = AppLocalization.string("That call's transcript is no longer available.")
-        }
+        openLinkedSession(link.callSessionID, unavailable: AppLocalization.string("That call's transcript is no longer available."))
     }
 
     /// Opens the chat a call was started from, from the card in the call's
@@ -4101,10 +4150,7 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string("That chat is no longer available.")
             return
         }
-        requestOpenSession(chatID) { [weak self] in
-            guard let self, self.errorMessage == nil else { return }
-            self.errorMessage = AppLocalization.string("That chat is no longer available.")
-        }
+        openLinkedSession(chatID, unavailable: AppLocalization.string("That chat is no longer available."))
     }
 
     /// A short title from the call's opening, like a chat's; the time-stamped

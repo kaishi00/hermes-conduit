@@ -2331,6 +2331,25 @@ private struct SafeMarkupWebView: UIViewRepresentable {
     }
 }
 
+/// Fixes slips models commonly make in Mermaid they write, where the intent
+/// is plain. An xychart axis range is `0 --> 20`; "0 to 20" is the usual
+/// slip and fails the whole chart.
+enum MermaidSourceRepair {
+    static func repaired(_ source: String) -> String {
+        let lines = source.components(separatedBy: "\n")
+        guard lines.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })?
+            .trimmingCharacters(in: .whitespaces).hasPrefix("xychart") == true else { return source }
+        return lines.map { line in
+            guard line.range(of: #"^\s*[xy]-axis\b"#, options: .regularExpression) != nil else { return line }
+            return line.replacingOccurrences(
+                of: #"(-?\d+(?:\.\d+)?)\s+(?:to|-|–|—|->|\.\.)\s+(-?\d+(?:\.\d+)?)\s*$"#,
+                with: "$1 --> $2",
+                options: .regularExpression
+            )
+        }.joined(separator: "\n")
+    }
+}
+
 private enum MermaidHTML {
     static func render(source: String, light: Bool) -> String {
         let palette = MarkupPalette(light: light)
@@ -2339,7 +2358,7 @@ private enum MermaidHTML {
         <style>html,body{margin:0;padding:0;background:\(palette.background);color:\(palette.foreground)}#diagram{padding:16px;box-sizing:border-box}svg{display:block;max-width:100%;height:auto;margin:auto}.error{font:14px -apple-system,sans-serif;color:#d14b4b;white-space:pre-wrap}</style>
         </head><body><div id="diagram">Rendering diagram…</div>
         <script src="https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js"></script>
-        <script>(async function(){try{mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'base',themeVariables:{background:'\(palette.background)',primaryColor:'\(palette.primary)',primaryTextColor:'\(palette.foreground)',primaryBorderColor:'\(palette.border)',lineColor:'\(palette.muted)',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif'}});const result=await mermaid.render('conduit-diagram',\(MarkupHTML.jsonString(source)));document.getElementById('diagram').innerHTML=result.svg;}catch(error){document.getElementById('diagram').innerHTML='<div class="error">'+String(error&&error.message?error.message:error)+'</div>';}})();</script></body></html>
+        <script>(async function(){try{mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'base',themeVariables:{background:'\(palette.background)',primaryColor:'\(palette.primary)',primaryTextColor:'\(palette.foreground)',primaryBorderColor:'\(palette.border)',lineColor:'\(palette.muted)',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif'}});const result=await mermaid.render('conduit-diagram',\(MarkupHTML.jsonString(MermaidSourceRepair.repaired(source))));document.getElementById('diagram').innerHTML=result.svg;}catch(error){document.getElementById('diagram').innerHTML='<div class="error">'+String(error&&error.message?error.message:error)+'</div>';}})();</script></body></html>
         """
     }
 }

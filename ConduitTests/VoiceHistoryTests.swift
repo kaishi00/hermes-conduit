@@ -636,3 +636,45 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(VoiceCallChatLinks.load(from: defaults).latest(forCall: "row-1", profile: appState.activeProfile)?.thread.runtimeSessionID, "st-chat")
     }
 }
+
+extension HermesVoiceGatewayTimeoutTests {
+    private func linkRow(_ id: String, stored: String? = nil, alternates: [String] = []) -> SessionSummary {
+        SessionSummary(
+            id: id, storedSessionId: stored, alternateIds: alternates, title: id, model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false, isArchived: false,
+            lineageRootId: nil
+        )
+    }
+
+    func testALinkToAnEndedRuntimeOpensTheStoredSessionLearnedForIt() {
+        var aliases = VoiceSessionAliases()
+        XCTAssertTrue(aliases.learn(runtimeID: "rt-job", storedID: "st-job"))
+        XCTAssertFalse(aliases.learn(runtimeID: "rt-job", storedID: "st-job"), "already known")
+        XCTAssertFalse(aliases.learn(runtimeID: "same", storedID: "same"))
+
+        // The runtime is gone from the list; the job's row is listed by its stored id.
+        XCTAssertEqual(AppState.linkedSessionTarget("rt-job", rows: [linkRow("st-job")], aliases: aliases), "st-job")
+        // The row is listed under a new runtime that carries the stored id.
+        XCTAssertEqual(AppState.linkedSessionTarget("rt-job", rows: [linkRow("rt-new", stored: "st-job")], aliases: aliases), "rt-new")
+        // Not listed at all: still the stored id, never the dead runtime.
+        XCTAssertEqual(AppState.linkedSessionTarget("rt-job", rows: [], aliases: aliases), "st-job")
+        // A stored id in the link opens its row.
+        XCTAssertEqual(AppState.linkedSessionTarget("st-job", rows: [linkRow("rt-new", stored: "st-job")], aliases: VoiceSessionAliases()), "rt-new")
+        XCTAssertNil(AppState.linkedSessionTarget("rt-unknown", rows: [linkRow("st-job")], aliases: aliases))
+    }
+
+    func testSessionAliasesPersistAndStayBounded() {
+        let suite = "VoiceSessionAliases-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var aliases = VoiceSessionAliases()
+        for index in 0...(VoiceSessionAliases.maximumAliases) {
+            aliases.learn(runtimeID: "rt-\(index)", storedID: "st-\(index)")
+        }
+        aliases.store(in: defaults)
+        let loaded = VoiceSessionAliases.load(from: defaults)
+        XCTAssertEqual(loaded.pairs.count, VoiceSessionAliases.maximumAliases)
+        XCTAssertNil(loaded.storedID(forRuntime: "rt-0"))
+        XCTAssertEqual(loaded.storedID(forRuntime: "rt-\(VoiceSessionAliases.maximumAliases)"), "st-\(VoiceSessionAliases.maximumAliases)")
+    }
+}

@@ -684,3 +684,49 @@ struct VoiceCallChatLinks: Codable, Equatable {
         }
     }
 }
+
+/// The durable id behind a runtime id a saved call linked to. A voice job
+/// or a new chat can be linked before Hermes names its stored session; once
+/// its runtime ends, that runtime id opens nothing ("session not found").
+/// Learned while the runtime is still listed, kept on this device.
+struct VoiceSessionAliases: Codable, Equatable {
+    static let storageKey = "conduit.voiceSessionAliases.v1"
+    static let maximumAliases = 300
+
+    /// Runtime id → stored id, oldest first.
+    private(set) var pairs: [Pair] = []
+
+    struct Pair: Codable, Equatable {
+        let runtimeID: String
+        let storedID: String
+    }
+
+    /// Records a pair; false when it was already known.
+    @discardableResult
+    mutating func learn(runtimeID: String, storedID: String) -> Bool {
+        guard !runtimeID.isEmpty, !storedID.isEmpty, runtimeID != storedID else { return false }
+        if pairs.last(where: { $0.runtimeID == runtimeID })?.storedID == storedID { return false }
+        pairs.removeAll { $0.runtimeID == runtimeID }
+        pairs.append(Pair(runtimeID: runtimeID, storedID: storedID))
+        if pairs.count > Self.maximumAliases { pairs.removeFirst(pairs.count - Self.maximumAliases) }
+        return true
+    }
+
+    func storedID(forRuntime runtimeID: String) -> String? {
+        pairs.last { $0.runtimeID == runtimeID }?.storedID
+    }
+
+    static func load(from defaults: UserDefaults) -> VoiceSessionAliases {
+        guard let data = defaults.data(forKey: storageKey),
+              let aliases = try? JSONDecoder().decode(VoiceSessionAliases.self, from: data) else { return VoiceSessionAliases() }
+        return aliases
+    }
+
+    func store(in defaults: UserDefaults) {
+        if pairs.isEmpty {
+            defaults.removeObject(forKey: Self.storageKey)
+        } else if let data = try? JSONEncoder().encode(self) {
+            defaults.set(data, forKey: Self.storageKey)
+        }
+    }
+}
