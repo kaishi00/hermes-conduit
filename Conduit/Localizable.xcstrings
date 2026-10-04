@@ -21581,6 +21581,16 @@
           }
         }
       }
+    },
+    "A network problem stopped that. Check your connection and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络问题导致操作未完成。请检查网络连接后重试。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

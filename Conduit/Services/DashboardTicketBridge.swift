@@ -270,6 +270,11 @@ enum DashboardTicketBridgeError: LocalizedError {
     /// The server's own explanation is kept when it says something (a
     /// FastAPI `detail` like "Session not found"); bare status phrases and
     /// browser fetch errors become what happened and what to do.
+    /// The dashboard answered but handed back no session ticket.
+    static var noSessionTicketDetail: String {
+        AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
+    }
+
     /// Conduit's own 401 after it refreshed the sign-in for a request it
     /// won't replay: the fix is to try again, not to sign in.
     static var signInRefreshedDetail: String {
@@ -612,7 +617,7 @@ final class DashboardTicketBridge: NSObject {
                 try await waitUntilReady()
                 let response = try await requestJSON(path: "/api/auth/ws-ticket", method: "POST")
                 guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
-                    throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The dashboard didn't let Conduit start a session. Try again."))
+                    throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
                 }
                 return ticket
             } catch DashboardTicketBridgeError.signInRequired where attempt < 2 {

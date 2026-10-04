@@ -274,7 +274,7 @@ final class NativeOAuthAPIClient {
             accessToken: accessToken
         )
         guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The dashboard didn't let Conduit start a session. Try again."))
+            throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
         }
         return ticket
     }
@@ -418,7 +418,7 @@ final class NativeOAuthSession {
     func mintTicket() async throws -> String {
         let response = try await requestJSON(path: "/api/auth/ws-ticket", method: "POST")
         guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The dashboard didn't let Conduit start a session. Try again."))
+            throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
         }
         return ticket
     }

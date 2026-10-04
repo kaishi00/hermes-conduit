@@ -32,7 +32,7 @@ extension ConnectionFailureTests {
         )
         XCTAssertEqual(
             UserFacingError.message(for: URLError(.cannotLoadFromNetwork)),
-            ConnectionFailure.unknown.userMessage
+            "A network problem stopped that. Check your connection and try again."
         )
     }
 
