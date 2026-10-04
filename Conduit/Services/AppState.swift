@@ -2231,6 +2231,11 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             return self.isSceneActive && (self.showGeminiLiveSheet || self.showGrokLiveSheet)
         }
+        supervisor.onThreadTurnStarted = { [weak self] job, thread in
+            guard let self, let recorder = self.voiceCallRecorder else { return }
+            self.captureVoiceCall()
+            recorder.note(Self.voiceThreadTurnNote(job, thread: thread))
+        }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
             if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }),
@@ -4032,6 +4037,14 @@ final class AppState: ObservableObject {
         return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open job"))
     }
 
+    /// The line a saved call gets where it sent work to its chat: the
+    /// request and a link that opens the chat, where Hermes' reply is.
+    static func voiceThreadTurnNote(_ job: VoiceBackgroundJob, thread: VoiceThreadTarget) -> String {
+        let line = AppLocalization.string("Sent to the chat: \(job.title).")
+        guard let id = [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return line }
+        return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open chat"))
+    }
+
     /// Opens a link Conduit wrote into a chat (a voice call's job link).
     func openAppLink(_ link: ConduitAppLink) {
         switch link {
@@ -4054,6 +4067,16 @@ final class AppState: ObservableObject {
         requestOpenSession(link.callSessionID) { [weak self] in
             guard let self, self.errorMessage == nil else { return }
             self.errorMessage = AppLocalization.string("That call's transcript is no longer available.")
+        }
+    }
+
+    /// Opens the chat a call was started from, from the card in the call's
+    /// own transcript.
+    func openVoiceCallChat(markerID: String) {
+        guard let link = voiceCallLink(markerID: markerID) else { return }
+        requestOpenSession(link.chatSessionID) { [weak self] in
+            guard let self, self.errorMessage == nil else { return }
+            self.errorMessage = AppLocalization.string("That chat is no longer available.")
         }
     }
 

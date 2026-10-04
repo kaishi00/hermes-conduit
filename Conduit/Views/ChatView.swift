@@ -716,8 +716,12 @@ struct MessageBubble: View {
             InputPromptCard(message: message)
         case .system:
             if message.displayKind == VoiceCallChatLink.displayKind, let link = appState.voiceCallLink(markerID: message.id) {
-                VoiceCallMarkerCard(link: link) {
+                VoiceCallMarkerCard(link: link, origin: false) {
                     appState.openVoiceCallTranscript(markerID: link.markerID)
+                }
+            } else if message.displayKind == VoiceCallChatLink.originDisplayKind, let link = appState.voiceCallLink(markerID: message.id) {
+                VoiceCallMarkerCard(link: link, origin: true) {
+                    appState.openVoiceCallChat(markerID: link.originMarkerID)
                 }
             } else if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
                 ReviewSummaryCard(activity: review, timestamp: message.timestamp)
@@ -1592,9 +1596,11 @@ private struct ModelChangeSummaryCard: View {
 }
 
 /// A voice call started from this chat: its spoken turns are saved as
-/// their own session, which the marker opens.
+/// their own session, which the marker opens. In that session (`origin`),
+/// the same card leads back to the chat.
 private struct VoiceCallMarkerCard: View {
     let link: VoiceCallChatLink
+    let origin: Bool
     let open: () -> Void
 
     private static let durationFormatter: DateComponentsFormatter = {
@@ -1611,7 +1617,13 @@ private struct VoiceCallMarkerCard: View {
     }
 
     private var title: String {
-        link.resumed ? AppLocalization.string("Voice call resumed") : AppLocalization.string("Voice call")
+        if origin { return AppLocalization.string("Started from \(link.chatTitle)") }
+        return link.resumed ? AppLocalization.string("Voice call resumed") : AppLocalization.string("Voice call")
+    }
+
+    private var detail: String {
+        if origin { return AppLocalization.string("Open chat") }
+        return duration.map { AppLocalization.string("\($0) · Open transcript") } ?? AppLocalization.string("Open transcript")
     }
 
     private var started: String? {
@@ -1620,7 +1632,7 @@ private struct VoiceCallMarkerCard: View {
 
     /// Title, length and start time; "Open transcript" stays in the hint.
     private var spokenLabel: String {
-        [title, duration, started.map { AppLocalization.string("Started \($0)") }]
+        [title, origin ? nil : duration, started.map { AppLocalization.string("Started \($0)") }]
             .compactMap { $0 }
             .joined(separator: ", ")
     }
@@ -1628,23 +1640,18 @@ private struct VoiceCallMarkerCard: View {
     var body: some View {
         Button(action: open) {
             HStack(alignment: .center, spacing: 10) {
-                Image(systemName: "phone.fill")
+                Image(systemName: origin ? "bubble.left.and.bubble.right.fill" : "phone.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.conduitAccent)
                     .frame(width: 28, height: 28)
                     .background(Color.conduitAccent.opacity(0.14), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Group {
-                        if link.resumed {
-                            Text("Voice call resumed")
-                        } else {
-                            Text("Voice call")
-                        }
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    Text(duration.map { AppLocalization.string("\($0) · Open transcript") } ?? AppLocalization.string("Open transcript"))
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                    Text(detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1673,7 +1680,7 @@ private struct VoiceCallMarkerCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(spokenLabel))
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint(Text("Opens the call's transcript"))
+        .accessibilityHint(origin ? Text("Opens the chat this call was started from") : Text("Opens the call's transcript"))
     }
 }
 
