@@ -441,11 +441,11 @@ final class VoiceConversationControllerTests: XCTestCase {
         submitted: SubmitSpy,
         steers: SubmitSpy,
         interrupts: AwaitableCounter,
-        capture: MockCapture = MockCapture(permissionGranted: true)
+        capture: MockCapture? = nil
     ) -> VoiceConversationController {
         let policy = RoutePolicyBox(.fullDuplex)
         return VoiceConversationController(
-            capture: capture,
+            capture: capture ?? MockCapture(permissionGranted: true),
             playback: MockPlayback(),
             gateway: gateway,
             routePolicyProvider: { policy.policy },
