@@ -815,6 +815,21 @@ extension VoiceConversationControllerTests {
         controller.flushPendingContextIfIdle()
         XCTAssertTrue(session.speakable.contains { $0.delegationID == "del_1" && $0.text.contains("The build passed.") })
         XCTAssertFalse(session.speakable.contains { $0.text.contains("kept talking") }, "Nothing was said after asking")
+
+        // The request's own turn.done landing late isn't new words.
+        session.onEvent?(.turnDone(role: "user", transcript: "And check the tests."))
+        session.onEvent?(.delegation(id: "del_2", text: ""))
+        await settle(40)
+        current += 3
+        session.onEvent?(.turnDone(role: "user", transcript: "And check the tests, please."))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Sure."))
+        current += GPTLiveConversationController.userQuietInterval + 0.5
+        supervisor.observe(.messageComplete(sessionId: "rt-2", messageId: nil, content: "Tests pass.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        controller.flushPendingContextIfIdle()
+        let tests = session.speakable.first { $0.delegationID == "del_2" }
+        XCTAssertNotNil(tests)
+        XCTAssertFalse(tests?.text.contains("kept talking") == true, "A late turn.done is the request, not more words")
         controller.stop()
     }
 

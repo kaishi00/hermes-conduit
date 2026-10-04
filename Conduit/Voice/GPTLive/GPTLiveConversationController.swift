@@ -92,6 +92,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// updates back (its `turn.done` may never come while a delegation is
     /// open).
     static let modelTurnStaleInterval: TimeInterval = 6
+    /// An open user turn with no new words for this long no longer holds
+    /// job updates back (its `turn.done` may never come).
+    static let userTurnStaleInterval: TimeInterval = 6
     /// User words this long after a delegation are a new thought, not the
     /// tail of the request it carried.
     static let requestTailInterval: TimeInterval = 1
@@ -160,6 +163,10 @@ final class GPTLiveConversationController: ObservableObject {
     private var session: GPTLiveSessionControlling?
     private var modelTurnActive = false
     private var lastUserSpeechAt: Date?
+    /// When the user's words last streamed in. Unlike `lastUserSpeechAt`,
+    /// a `turn.done` (which can land after a delegation its own turn
+    /// carried) doesn't move it.
+    private var lastUserWordsAt: Date?
     private var lastModelOutputAt: Date?
     private var lastModelTurnEndedAt: Date?
     /// Something to send only while nobody speaks.
@@ -242,6 +249,7 @@ final class GPTLiveConversationController: ObservableObject {
         returnPendingSends()
         modelTurnActive = false
         lastUserSpeechAt = nil
+        lastUserWordsAt = nil
         lastModelOutputAt = nil
         lastModelTurnEndedAt = nil
         delegatedEntries = []
@@ -438,6 +446,7 @@ final class GPTLiveConversationController: ObservableObject {
         switch event {
         case .inputTranscript(let text):
             lastUserSpeechAt = now()
+            lastUserWordsAt = lastUserSpeechAt
             appendTranscript(text, speaker: .user)
         case .outputTranscript(let text):
             modelTurnActive = true
@@ -574,7 +583,9 @@ final class GPTLiveConversationController: ObservableObject {
                     pendingContext.append(PendingSend(text: text, channel: channel, jobID: nil, delegationID: id))
                     continue
                 }
-                session?.appendContext(text, channel: channel, delegationID: id)
+                if session?.appendContext(text, channel: channel, delegationID: id) == true {
+                    bridge.replyDelivered(delegationID: id)
+                }
             case .sessionContext(let text, let channel, let whenIdle, let jobID):
                 if whenIdle {
                     pendingContext.append(PendingSend(text: text, channel: channel, jobID: jobID, delegationID: nil))
@@ -595,7 +606,7 @@ final class GPTLiveConversationController: ObservableObject {
         if let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userQuietInterval { return false }
         // Mid-sentence: the user's words are still coming in (a pause, an
         // "um"), so their turn isn't over yet.
-        if openUserEntry != nil, let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.modelTurnStaleInterval { return false }
+        if openUserEntry != nil, let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userTurnStaleInterval { return false }
         if let lastModelTurnEndedAt, current.timeIntervalSince(lastModelTurnEndedAt) < Self.modelQuietInterval { return false }
         return true
     }
@@ -631,8 +642,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// Whether the user said more after the delegation was made (beyond
     /// the tail of the request itself).
     private func userSpokeAfterAsking(_ delegationID: String) -> Bool {
-        guard let openedAt = delegationOpenedAt[delegationID], let lastUserSpeechAt else { return false }
-        return lastUserSpeechAt.timeIntervalSince(openedAt) > Self.requestTailInterval
+        guard let openedAt = delegationOpenedAt[delegationID], let lastUserWordsAt else { return false }
+        return lastUserWordsAt.timeIntervalSince(openedAt) > Self.requestTailInterval
     }
 
     private func scheduleIdleFlush() {
