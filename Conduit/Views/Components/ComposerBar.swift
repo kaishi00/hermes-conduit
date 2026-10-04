@@ -1264,9 +1264,16 @@ struct ComposerBar: View {
             announcement = AppLocalization.string("Replying to \(reference.authorName)")
         }
         Haptics.selection()
-        // Focus does not move the VoiceOver cursor, so say where it went.
-        UIAccessibility.post(notification: .announcement, argument: announcement)
         isFocused = true
+        // VoiceOver hears where the quote went, queued behind what it says
+        // about the newly focused composer rather than cut off by it.
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: NSAttributedString(
+                string: announcement,
+                attributes: [.accessibilitySpeechQueueAnnouncement: true]
+            )
+        )
     }
 
     private func replyReferenceChip(_ reference: ComposerReplyReference) -> some View {

@@ -7872,16 +7872,6 @@
         }
       }
     },
-    "Remove quoted reply" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除引用的回复"
-          }
-        }
-      }
-    },
     "Quoted in your message" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7892,12 +7882,12 @@
         }
       }
     },
-    "Sent with your next message" : {
+    "Remove quoted reply" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将随你的下一条消息发送"
+            "value" : "移除引用的回复"
           }
         }
       }
@@ -15818,6 +15808,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已发送 %@"
+          }
+        }
+      }
+    },
+    "Sent with your next message" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将随你的下一条消息发送"
           }
         }
       }

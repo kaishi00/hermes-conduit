@@ -33,7 +33,9 @@ enum ChatQuote {
     }
 
     /// `text` without its Markdown quote lines: what the sender wrote
-    /// themselves, as opposed to what they quoted.
+    /// themselves, as opposed to what they quoted. Any `>` line counts, a
+    /// hand-typed quote as much as one from Quote, so a bot named only in a
+    /// quote is never taken as mentioned.
     static func removingQuotedLines(from text: String) -> String {
         text.components(separatedBy: .newlines)
             .filter { !$0.drop(while: { $0 == " " || $0 == "\t" }).hasPrefix(">") }
@@ -215,7 +217,7 @@ extension EnvironmentValues {
 /// The compact "Replying to" card at the top of a sent message that quoted
 /// a whole reply.
 struct ReplyReferenceQuoteCard: View {
-    /// Worked out once per card rather than on every render.
+    /// Worked out when the card is made, not on every `body` call.
     private let excerpt: String
     /// On the accent-colored user bubble the card uses white text.
     private let onAccentSurface: Bool
