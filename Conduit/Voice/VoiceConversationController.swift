@@ -995,6 +995,19 @@ final class VoiceConversationController: ObservableObject {
             conversationTranscript.append(
                 VoiceConversationTranscriptEntry(speaker: .user, text: transcript)
             )
+            if steering, !isWholeUtteranceStopCommand(transcript),
+               let backgroundJobs, let command = VoiceBackgroundJobCommands.parse(transcript) {
+                // A background-job command is handled locally, never steered
+                // to Hermes. Its confirmation is shown, not spoken: the
+                // running turn's reply is what plays next.
+                let reply = await backgroundJobs.performVoiceCommand(command)
+                guard isCurrent(generation) else { return }
+                conversationTranscript.append(
+                    VoiceConversationTranscriptEntry(speaker: .assistant, text: reply)
+                )
+                resumeTurnAfterSteer()
+                return
+            }
             if steering {
                 // Steered into the running turn: Hermes keeps working with
                 // the user's words added, and its reply is still this

@@ -577,6 +577,37 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(interrupts.value, 0)
     }
 
+    func testBackgroundJobCommandDuringASteerRunsLocally() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let jobs = FakeVoiceBackgroundJobs()
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: true),
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { await submitted.submit($0) },
+            interrupt: { true },
+            steer: { await steers.submit($0) ? .steered : .failed },
+            backgroundJobs: jobs
+        )
+        await driveToThinking(controller, submitted: submitted)
+        gateway.transcript = "Background job, check the server."
+        await speakSteer(controller)
+        let deadline = Date().addingTimeInterval(5)
+        while jobs.commands.isEmpty || controller.isSteeringTurn, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(jobs.commands.count, 1, "the job command runs locally")
+        XCTAssertEqual(steers.texts, [], "a local command is never steered to Hermes")
+        XCTAssertEqual(submitted.texts, ["Question"])
+        XCTAssertEqual(controller.state, .thinking, "the running turn carries on")
+        XCTAssertEqual(controller.conversationTranscript.last?.text, jobs.reply)
+    }
+
     func testFailedSteerIsDroppedAndTheTurnCarriesOn() async {
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
         let submitted = SubmitSpy()
