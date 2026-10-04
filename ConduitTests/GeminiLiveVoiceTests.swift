@@ -1594,6 +1594,28 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGeminiLiveAlarmRingingWhileConnectingPausesTheNewCall() async {
+        struct AlarmRinging: Error {}
+        let center = NotificationCenter()
+        let (controller, session, input, _, _) = makeGeminiController(notificationCenter: center, clock: Date.init)
+        await controller.start()
+        input.startError = AlarmRinging()
+        session.becomeReady()
+        XCTAssertEqual(controller.phase, .paused, "A microphone held by an alarm pauses the call, it doesn't fail it")
+        XCTAssertEqual(session.stopped, 0)
+
+        input.startError = nil
+        center.post(
+            name: AVAudioSession.interruptionNotification,
+            object: nil,
+            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue]
+        )
+        for _ in 0..<50 where controller.phase == .paused { await settle() }
+        XCTAssertEqual(controller.phase, .listening)
+        XCTAssertTrue(input.running)
+        controller.stop()
+    }
+
     func testGeminiLivePausedCallSurvivesAReconnectAndResumesWhenTheAppComesBack() async {
         struct CallInProgress: Error {}
         let center = NotificationCenter()

@@ -301,6 +301,9 @@ final class GeminiLiveConversationController: ObservableObject {
     /// system to give the audio back instead of failing (#376).
     private var audioPaused = false
     private var audioResumeTask: Task<Void, Never>?
+    /// The system said the other sound let go during this pause. Sticky,
+    /// so a later nudge (an unmute) can't replace that proof.
+    private var audioReturnSeen = false
     private var audioPauseObservers: [NSObjectProtocol] = []
     private let notificationCenter: NotificationCenter
     /// Tries to restart the microphone after the system says the other
@@ -671,8 +674,10 @@ final class GeminiLiveConversationController: ObservableObject {
     static let earlyResumeDelays: [Duration] = [.milliseconds(500), .seconds(1), .seconds(2)]
 
     private func pauseForAudioInterruption() {
+        let wasPaused = audioPaused
         if !audioPaused {
             audioPaused = true
+            audioReturnSeen = false
             geminiLiveLogger.notice("Live voice paused by an audio interruption")
             observeAudioReturn()
         }
@@ -686,8 +691,9 @@ final class GeminiLiveConversationController: ObservableObject {
             lastPlaybackAt = nil
             openAssistantEntry = nil
         }
-        // End the user's turn instead of leaving it open on the server.
-        if session?.isReady == true { session?.send(.audioStreamEnd) }
+        // End the user's turn instead of leaving it open on the server
+        // (once: a pause already ended it).
+        if !wasPaused, session?.isReady == true { session?.send(.audioStreamEnd) }
         switch phase {
         case .listening, .speaking: phase = .paused
         default: break
@@ -716,6 +722,8 @@ final class GeminiLiveConversationController: ObservableObject {
     /// or the app becoming active), which is all a muted call can go on.
     private func scheduleAudioResume(delays: [Duration], audioReturned: Bool) {
         guard audioPaused else { return }
+        if audioReturned { audioReturnSeen = true }
+        let audioReturned = audioReturnSeen
         audioResumeTask?.cancel()
         audioResumeTask = Task { [weak self] in
             for delay in delays {
@@ -807,8 +815,9 @@ final class GeminiLiveConversationController: ObservableObject {
                 if endRequestedAt == nil { phase = .paused }
                 return
             }
-            // A microphone that fails to start leaves the phase failed.
-            if !isMicrophoneMuted, !startInput() { return }
+            // An alarm that rang while connecting holds the audio: the call
+            // pauses instead of failing (#376).
+            if !isMicrophoneMuted, !startInput(pausingOnFailure: true) { return }
             // Ending: the microphone is closed, so it isn't listening.
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
             sendOpeningIfNeeded()
@@ -1127,8 +1136,9 @@ final class GeminiLiveConversationController: ObservableObject {
             return true
         } catch {
             if pausingOnFailure {
-                geminiLiveLogger.notice("Live voice microphone couldn't start on unmute: \(String(describing: error), privacy: .public)")
+                geminiLiveLogger.notice("Live voice microphone couldn't start; pausing: \(String(describing: error), privacy: .public)")
                 pauseForAudioInterruption()
+                if endRequestedAt == nil { phase = .paused }
                 scheduleAudioResume(delays: Self.earlyResumeDelays, audioReturned: false)
                 return false
             }
