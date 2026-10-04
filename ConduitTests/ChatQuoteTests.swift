@@ -34,6 +34,7 @@ extension ChatTextSelectionTests {
             "\nWhat did they mean?"
         )
         XCTAssertEqual(ChatQuote.removingQuotedLines(from: "No quote here"), "No quote here")
+        XCTAssertEqual(ChatQuote.removingQuotedLines(from: "> quoted\r\nmine\r\nalso mine"), "mine\nalso mine")
     }
 
     func testExcerptReadsLikePlainText() {

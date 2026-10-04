@@ -35,9 +35,10 @@ enum ChatQuote {
     /// `text` without its Markdown quote lines: what the sender wrote
     /// themselves, as opposed to what they quoted. Any `>` line counts, a
     /// hand-typed quote as much as one from Quote, so a bot named only in a
-    /// quote is never taken as mentioned.
+    /// quote is never taken as mentioned. Line breaks come back as `\n`.
     static func removingQuotedLines(from text: String) -> String {
-        text.components(separatedBy: .newlines)
+        text.replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: .newlines)
             .filter { !$0.drop(while: { $0 == " " || $0 == "\t" }).hasPrefix(">") }
             .joined(separator: "\n")
     }
