@@ -755,7 +755,7 @@ private struct SettingsHome: View {
             ScrollView {
                 VStack(spacing: 14) {
                     if appState.notifierPlugin.needsUpdate {
-                        NotifierPluginUpdateNotice(status: appState.notifierPlugin)
+                        NotifierPluginUpdateNotice(status: appState.notifierPlugin, dashboardLabel: notifierDashboardLabel)
                     }
                     homeSection("Profile", tint: .conduitAccent) {
                         settingsLink(.profile, icon: "person.crop.circle", title: profileDisplayName, detail: AppLocalization.string("Profile-specific preferences"))
@@ -838,6 +838,21 @@ private struct SettingsHome: View {
         } message: {
             Text("Saved for your next reconnect. Your current session stays connected.")
         }
+        // The connect-time check can miss (the dashboard was still
+        // loading); without an answer the update notice never shows.
+        .task(id: appState.activeDashboardID) {
+            if appState.notifierPlugin.state == .unknown {
+                await appState.refreshNotifierPluginStatus()
+            }
+        }
+    }
+
+    /// The active dashboard's name when several are saved, so the update
+    /// notice says which host to update.
+    private var notifierDashboardLabel: String? {
+        let registry = appState.savedDashboardRegistry
+        guard registry.dashboards.count > 1 else { return nil }
+        return registry.activeDashboardID.flatMap { registry.dashboard(with: $0)?.label }
     }
 
     /// The active connection's address — the live connection when one exists,
@@ -1164,6 +1179,8 @@ private struct ChatTakeoverSettings: View {
 private struct NotifierPluginUpdateNotice: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let status: NotifierPluginStatus
+    /// Names the dashboard when several are saved: each has its own host.
+    var dashboardLabel: String?
 
     var body: some View {
         ConduitSettingsSection(
@@ -1181,10 +1198,16 @@ private struct NotifierPluginUpdateNotice: View {
     }
 
     private var detail: String {
-        if let version = status.version {
+        switch (dashboardLabel, status.version) {
+        case (let label?, let version?):
+            return AppLocalization.string("The notifier plugin on \(label) (version \(version)) is missing features Conduit uses, such as taking chats over from Hermes Desktop. Run these on that dashboard's host.")
+        case (let label?, .none):
+            return AppLocalization.string("The notifier plugin on \(label) is missing or out of date, so features like taking chats over from Hermes Desktop won't work. Run these on that dashboard's host.")
+        case (.none, let version?):
             return AppLocalization.string("The notifier plugin on your Hermes host (version \(version)) is missing features Conduit uses, such as taking chats over from Hermes Desktop. Run these on the host.")
+        case (.none, .none):
+            return AppLocalization.string("The notifier plugin on your Hermes host is missing or out of date, so features like taking chats over from Hermes Desktop won't work. Run these on the host.")
         }
-        return AppLocalization.string("The notifier plugin on your Hermes host is missing or out of date, so features like taking chats over from Hermes Desktop won't work. Run these on the host.")
     }
 }
 
@@ -1908,6 +1931,11 @@ private struct NotificationsSettingsDetail: View {
     // unsaved edit (and flash Save or the re-pair warning).
     @State private var relayDraft = UserDefaults.standard.string(forKey: PushNotificationService.relayURLDefaultsKey) ?? ""
     @State private var relayDraftInvalid = false
+    @State private var checkingNotifierPlugin = false
+
+    private var activeDashboardLabel: String? {
+        appState.activeDashboardID.flatMap { appState.savedDashboardRegistry.dashboard(with: $0)?.label }
+    }
 
     private func trimmed(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1985,6 +2013,12 @@ private struct NotificationsSettingsDetail: View {
 
             if notifications.isEnabled {
                 ConduitSettingsSection(title: AppLocalization.string("Notify me when"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                    // The relay keeps one set of preferences per iPhone.
+                    if appState.savedDashboardRegistry.dashboards.count > 1 {
+                        Text("These apply to every dashboard paired with this iPhone.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     notificationToggle(AppLocalization.string("Approval needed"), detail: AppLocalization.string("A tool is waiting for approval"), keyPath: \.approvalNeeded)
                     notificationToggle(AppLocalization.string("Input needed"), detail: AppLocalization.string("Hermes needs your answer"), keyPath: \.inputNeeded)
                     notificationToggle(AppLocalization.string("Response ready"), detail: AppLocalization.string("An active turn finishes"), keyPath: \.responseReady)
@@ -1996,7 +2030,20 @@ private struct NotificationsSettingsDetail: View {
                     notificationToggle(AppLocalization.string("Approval cards in pushes"), detail: AppLocalization.string("Include approval details so cards work from notifications. Disable for maximum privacy."), keyPath: \.decisionCards)
                 }
 
+                // Everything here is the ACTIVE dashboard's: its host's
+                // notifier and its pairings. Other dashboards' pairings
+                // share this iPhone's relay list but never stand in for it.
                 ConduitSettingsSection(title: AppLocalization.string("Compatibility"), symbol: "checkmark.seal", tint: .conduitAura) {
+                    if appState.savedDashboardRegistry.dashboards.count > 1, let label = activeDashboardLabel {
+                        Text("Showing \(label). Switch dashboards to check another one.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    notifierPluginRow
+                    if appState.notifierPlugin.needsUpdate {
+                        NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
+                        NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
+                    }
                     if notifications.isFetchingMeta {
                         Text("Checking compatibility…")
                             .font(.footnote)
@@ -2005,32 +2052,39 @@ private struct NotificationsSettingsDetail: View {
                         compatibilityRow(
                             title: AppLocalization.string("Push relay"),
                             version: meta.version,
-                            isSupported: meta.supportsDecisionCards,
-                            supportedDetail: AppLocalization.string("Supports decision cards"),
-                            outdatedDetail: AppLocalization.string("Decision cards need a relay update")
+                            mark: meta.supportsDecisionCards ? .supported : .updateNeeded,
+                            detail: meta.supportsDecisionCards
+                                ? AppLocalization.string("Supports decision cards")
+                                : AppLocalization.string("Decision cards need a relay update")
                         )
-                        ForEach(meta.gateways) { gateway in
+                        let pairings = NotificationDashboardPairings(
+                            gateways: meta.gateways,
+                            activeDashboardID: appState.activeDashboardID,
+                            savedDashboardIDs: appState.savedDashboardRegistry.dashboards.map(\.id)
+                        )
+                        if pairings.thisDashboard.isEmpty {
+                            compatibilityRow(
+                                title: AppLocalization.string("Not paired"),
+                                version: nil,
+                                mark: .actionNeeded,
+                                detail: AppLocalization.string("Notifications from this dashboard don't reach this iPhone yet. Create a pairing code below.")
+                            )
+                        }
+                        ForEach(pairings.thisDashboard) { gateway in
+                            gatewayRow(gateway)
+                        }
+                        ForEach(pairings.unscoped) { gateway in
                             compatibilityRow(
                                 title: gateway.name,
                                 version: gateway.pluginVersion,
-                                isSupported: gateway.supportsApprovalCards && gateway.supportsClarifyCards,
-                                supportedDetail: AppLocalization.string("Notifier supports approval and clarify cards"),
-                                outdatedDetail: gateway.hasSentEventsButNeverReported
-                                    ? AppLocalization.string("This profile's notifier predates decision cards — update it to receive them")
-                                    : gateway.pluginVersion == nil
-                                        ? "Waiting for the first notification from this profile"
-                                        : AppLocalization.string("Notifier update available — approval and clarify cards need a newer plugin")
+                                mark: .actionNeeded,
+                                detail: AppLocalization.string("Paired before Conduit supported several dashboards, so its notifications can't be opened. Pair it again from the dashboard it belongs to.")
                             )
-                            // The update prompt requires evidence of oldness:
-                            // either a reported-but-old version, or events that
-                            // never carried one (pre-0.2). A gateway that has
-                            // sent nothing keeps only the "waiting" copy.
-                            if gateway.hasSentEventsButNeverReported
-                                || (gateway.pluginVersion != nil
-                                    && (!gateway.supportsApprovalCards || !gateway.supportsClarifyCards)) {
-                                NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
-                                NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
-                            }
+                        }
+                        if pairings.otherDashboardsCount > 0 {
+                            Text("\(pairings.otherDashboardsCount) more pairings belong to your other dashboards.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
                     } else {
                         Text("Compatibility unknown. Your relay predates version reporting; decision cards may not be available until it updates.")
@@ -2039,6 +2093,16 @@ private struct NotificationsSettingsDetail: View {
                     }
                 }
                 .task { await notifications.refreshMeta() }
+                // Asked again on every visit and dashboard switch: the
+                // connect-time check can miss (bridge still loading), and
+                // the plugin may have been updated since.
+                .task(id: appState.activeDashboardID) {
+                    checkingNotifierPlugin = true
+                    await appState.refreshNotifierPluginStatus()
+                    // A switch mid-check cancels this one; the new check
+                    // owns the flag.
+                    if !Task.isCancelled { checkingNotifierPlugin = false }
+                }
 
                 ConduitSettingsSection(title: AppLocalization.string("Connect a Hermes profile"), symbol: "link.badge.plus", tint: .conduitAura) {
                     Text("Install the notifier once on each gateway, then create a short-lived pairing code here for each Hermes dashboard you want to reach.")
@@ -2168,18 +2232,109 @@ private struct NotificationsSettingsDetail: View {
         }
     }
 
+    /// The active dashboard's own notifier, asked through its host's
+    /// capabilities route. Unlike the relay's gateway rows (the version the
+    /// last push carried), this covers every feature Conduit uses.
+    @ViewBuilder
+    private var notifierPluginRow: some View {
+        let status = appState.notifierPlugin
+        let title = AppLocalization.string("Notifier plugin")
+        switch status.state {
+        case .unknown:
+            compatibilityRow(
+                title: title,
+                version: nil,
+                mark: .unknown,
+                detail: checkingNotifierPlugin
+                    ? AppLocalization.string("Checking this dashboard's notifier…")
+                    : appState.isConnected
+                        ? AppLocalization.string("Couldn't reach this dashboard's notifier. Open this page again to retry.")
+                        : AppLocalization.string("Connect to this dashboard to check its notifier.")
+            )
+        case .predatesCapabilities:
+            compatibilityRow(
+                title: title,
+                version: nil,
+                mark: .updateNeeded,
+                detail: AppLocalization.string("Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work.")
+            )
+        case .reported:
+            compatibilityRow(
+                title: title,
+                version: status.version,
+                mark: status.needsUpdate ? .updateNeeded : .supported,
+                detail: status.needsUpdate
+                    ? AppLocalization.string("Update available. This dashboard's notifier is missing features Conduit uses.")
+                    : AppLocalization.string("Up to date on this dashboard's host")
+            )
+        }
+    }
+
+    /// One relay pairing of the active dashboard: whether its notifier
+    /// sends decision cards, from the plugin version its last push carried.
+    @ViewBuilder
+    private func gatewayRow(_ gateway: RelayMetaInfo.Gateway) -> some View {
+        let isSupported = gateway.supportsApprovalCards && gateway.supportsClarifyCards
+        // The update prompt requires evidence of oldness: either a
+        // reported-but-old version, or events that never carried one
+        // (pre-0.2). A gateway that has sent nothing is only "waiting".
+        let isOutdated = gateway.hasSentEventsButNeverReported
+            || (gateway.pluginVersion != nil && !isSupported)
+        compatibilityRow(
+            title: gateway.name,
+            version: gateway.pluginVersion,
+            mark: isSupported ? .supported : (isOutdated ? .updateNeeded : .unknown),
+            detail: isSupported
+                ? AppLocalization.string("Notifier supports approval and clarify cards")
+                : gateway.hasSentEventsButNeverReported
+                    ? AppLocalization.string("This profile's notifier predates decision cards — update it to receive them")
+                    : gateway.pluginVersion == nil
+                        ? AppLocalization.string("Waiting for the first notification from this profile")
+                        : AppLocalization.string("Notifier update available — approval and clarify cards need a newer plugin")
+        )
+        // The host row above already offers the commands when the plugin
+        // itself reports it is behind.
+        if isOutdated && !appState.notifierPlugin.needsUpdate {
+            NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
+            NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
+        }
+    }
+
+    private enum CompatibilityMark {
+        case supported
+        case updateNeeded
+        case actionNeeded
+        case unknown
+    }
+
     @ViewBuilder
     private func compatibilityRow(
         title: String,
         version: String?,
-        isSupported: Bool,
-        supportedDetail: String,
-        outdatedDetail: String
+        mark: CompatibilityMark,
+        detail: String
     ) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: isSupported ? "checkmark.circle.fill" : "exclamationmark.circle")
-                .foregroundStyle(isSupported ? .green : .orange)
-                .accessibilityLabel(isSupported ? AppLocalization.string("Supported") : AppLocalization.string("Update needed"))
+            Group {
+                switch mark {
+                case .supported:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .accessibilityLabel(AppLocalization.string("Supported"))
+                case .updateNeeded:
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel(AppLocalization.string("Update needed"))
+                case .actionNeeded:
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel(AppLocalization.string("Action needed"))
+                case .unknown:
+                    Image(systemName: "questionmark.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(AppLocalization.string("Unknown"))
+                }
+            }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(title).font(.subheadline.weight(.medium))
@@ -2189,7 +2344,7 @@ private struct NotificationsSettingsDetail: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Text(isSupported ? supportedDetail : outdatedDetail)
+                Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

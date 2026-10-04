@@ -1,6 +1,190 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Action needed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要处理"
+          }
+        }
+      }
+    },
+    "Checking this dashboard's notifier…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在检查此仪表板的通知插件…"
+          }
+        }
+      }
+    },
+    "Connect to this dashboard to check its notifier." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接此仪表板后即可检查其通知插件。"
+          }
+        }
+      }
+    },
+    "Couldn't reach this dashboard's notifier. Open this page again to retry." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接此仪表板的通知插件。重新打开此页面即可重试。"
+          }
+        }
+      }
+    },
+    "Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表板的主机上缺少通知插件或版本过旧，因此从 Hermes Desktop 接管对话等功能将无法使用。"
+          }
+        }
+      }
+    },
+    "Not paired" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配对"
+          }
+        }
+      }
+    },
+    "Notifications from this dashboard don't reach this iPhone yet. Create a pairing code below." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表板的通知尚未发送到这台 iPhone。请在下方创建配对码。"
+          }
+        }
+      }
+    },
+    "Notifier plugin" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知插件"
+          }
+        }
+      }
+    },
+    "Paired before Conduit supported several dashboards, so its notifications can't be opened. Pair it again from the dashboard it belongs to." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此配对早于 Conduit 支持多个仪表板，因此无法打开它的通知。请从它所属的仪表板重新配对。"
+          }
+        }
+      }
+    },
+    "Showing %@. Switch dashboards to check another one." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前显示「%@」。切换仪表板即可检查其他仪表板。"
+          }
+        }
+      }
+    },
+    "The notifier plugin on %@ (version %@) is missing features Conduit uses, such as taking chats over from Hermes Desktop. Run these on that dashboard's host." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%1$@」上的通知插件（版本 %2$@）缺少 Conduit 使用的功能，例如从 Hermes Desktop 接管对话。请在该仪表板的主机上运行以下命令。"
+          }
+        }
+      }
+    },
+    "The notifier plugin on %@ is missing or out of date, so features like taking chats over from Hermes Desktop won't work. Run these on that dashboard's host." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」上的通知插件缺失或版本过旧，因此从 Hermes Desktop 接管对话等功能将无法使用。请在该仪表板的主机上运行以下命令。"
+          }
+        }
+      }
+    },
+    "These apply to every dashboard paired with this iPhone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些设置适用于与这台 iPhone 配对的所有仪表板。"
+          }
+        }
+      }
+    },
+    "Up to date on this dashboard's host" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表板的主机上已是最新版本"
+          }
+        }
+      }
+    },
+    "Update available. This dashboard's notifier is missing features Conduit uses." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有可用更新。此仪表板的通知插件缺少 Conduit 使用的功能。"
+          }
+        }
+      }
+    },
+    "%lld more pairings belong to your other dashboards." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld more pairing belongs to your other dashboards."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld more pairings belong to your other dashboards."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "另有 %lld 个配对属于你的其他仪表板。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Started from %@" : {
       "localizations" : {
         "zh-Hans" : {
