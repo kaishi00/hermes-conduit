@@ -897,6 +897,25 @@ extension VoiceConversationControllerTests {
         XCTAssertNotNil(supervisor.takePendingNotice(), "An unsaid result is pending again, not lost")
     }
 
+    func testGPTLiveHeldDelegationResultGoesBackWhenGPTLiveEndsTheCall() async {
+        let current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, _) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Check the server."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+        session.onEvent?(.inputTranscript("and while you're at it"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(controller.pendingContextCountForTesting, 1)
+
+        session.onStateChange?(.stopped)
+        XCTAssertFalse(controller.isActive)
+        XCTAssertEqual(controller.pendingContextCountForTesting, 0)
+        XCTAssertNotNil(supervisor.takePendingNotice(), "An unsaid result is pending again when GPT-Live hangs up")
+    }
+
     func testGPTLiveTypedChatTurnIsQuietCommentary() async {
         let (controller, session, supervisor, _) = makeGPTController(clock: { Date(timeIntervalSince1970: 1_000) })
         supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build")

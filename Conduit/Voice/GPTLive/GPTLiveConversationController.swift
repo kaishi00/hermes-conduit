@@ -100,7 +100,7 @@ final class GPTLiveConversationController: ObservableObject {
     static let requestTailInterval: TimeInterval = 1
     /// Leads a delegation's result when the user kept talking after asking
     /// for it (#379): what they said since comes first. Not UI copy.
-    static let resultAfterUserNote = "[The user kept talking after asking for this, so this result waited until they finished. If anything they said since hasn't been answered or passed on to Hermes yet, deal with that first, briefly (delegate it if Hermes is needed). Then say that Hermes has come back on the earlier request and give the result below.]\n\n"
+    static let resultAfterUserNote = "[The user kept talking after asking for this, so this result waited until they finished. If anything they said since hasn't been answered or passed on to Hermes yet, deal with that first, briefly (delegate it if Hermes is needed). Then say that Hermes has come back on the earlier request and give what follows, as it asks.]\n\n"
     /// An end closes the call once the model has been quiet this long.
     static let endGrace: TimeInterval = 1.5
     /// An end closes the call after this long even if the model still talks.
@@ -399,6 +399,8 @@ final class GPTLiveConversationController: ObservableObject {
         case .failed(let message):
             retireSession()
             if endRequestedAt == nil {
+                // Nothing queued can go out on a failed call.
+                returnPendingSends()
                 bridge.connectionReplaced()
                 phase = .failed(message)
             } else {
@@ -411,6 +413,7 @@ final class GPTLiveConversationController: ObservableObject {
                 finishEnd()
             } else {
                 retireSession()
+                returnPendingSends()
                 bridge.connectionReplaced()
                 phase = .failed(AppLocalization.string("GPT-Live ended the conversation."))
             }
@@ -577,15 +580,16 @@ final class GPTLiveConversationController: ObservableObject {
         for item in outgoing {
             switch item {
             case .delegationReply(let id, let text, let channel):
-                guard channel == .commentary else {
-                    // Said aloud: waits until nobody speaks, so a result
-                    // never cuts into the user's sentence (#379).
-                    pendingContext.append(PendingSend(text: text, channel: channel, jobID: nil, delegationID: id))
+                guard channel == .speakable else {
+                    // Quiet progress goes out at once.
+                    if session?.appendContext(text, channel: channel, delegationID: id) == true {
+                        bridge.replyDelivered(delegationID: id)
+                    }
                     continue
                 }
-                if session?.appendContext(text, channel: channel, delegationID: id) == true {
-                    bridge.replyDelivered(delegationID: id)
-                }
+                // Said aloud: waits until nobody speaks, so a result never
+                // cuts into the user's sentence (#379).
+                pendingContext.append(PendingSend(text: text, channel: channel, jobID: nil, delegationID: id))
             case .sessionContext(let text, let channel, let whenIdle, let jobID):
                 if whenIdle {
                     pendingContext.append(PendingSend(text: text, channel: channel, jobID: jobID, delegationID: nil))
@@ -602,7 +606,7 @@ final class GPTLiveConversationController: ObservableObject {
     var isConversationIdle: Bool {
         guard session?.isReady == true else { return false }
         let current = now()
-        if modelTurnActive, current.timeIntervalSince(lastModelOutputAt ?? .distantPast) < Self.modelTurnStaleInterval { return false }
+        if modelTurnActive, lastModelOutputAt.map({ current.timeIntervalSince($0) < Self.modelTurnStaleInterval }) ?? true { return false }
         if let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userQuietInterval { return false }
         // Mid-sentence: the user's words are still coming in (a pause, an
         // "um"), so their turn isn't over yet.
