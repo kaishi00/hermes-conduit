@@ -41,10 +41,12 @@ final class MessageReadAloudController: ObservableObject {
     private var playbackTask: Task<Void, Never>?
     private var operationGeneration: UInt64 = 0
     private var isForegroundActive = true
-    /// Keeps the app running while an operation has no audio sounding yet
-    /// (the stream is still opening when the phone is locked). Once audio
-    /// plays, the `audio` background mode keeps the app alive on its own.
-    private let beginBackgroundActivity: @MainActor () -> @MainActor () -> Void
+    /// Held for the whole operation, from the tap until it settles. What it
+    /// buys is the gap before the first audio (the stream is still opening
+    /// when the phone is locked); once audio plays, the `audio` background
+    /// mode keeps the app alive on its own. The argument runs if the system
+    /// reclaims the time first; the returned closure ends the activity.
+    private let beginBackgroundActivity: @MainActor (@escaping @MainActor () -> Void) -> @MainActor () -> Void
     private var endBackgroundActivity: (@MainActor () -> Void)?
     private let nowPlaying: ReadAloudNowPlayingPresenting
     private var nowPlayingTitle = ""
@@ -57,7 +59,7 @@ final class MessageReadAloudController: ObservableObject {
         playback: SpeechPlaybackService? = nil,
         gateway: VoiceGatewayService? = nil,
         playbackRate: @escaping @MainActor () -> Float = { ReadAloudSpeed.current().rate },
-        beginBackgroundActivity: (@MainActor () -> @MainActor () -> Void)? = nil,
+        beginBackgroundActivity: (@MainActor (@escaping @MainActor () -> Void) -> @MainActor () -> Void)? = nil,
         nowPlaying: ReadAloudNowPlayingPresenting? = nil,
         reportError: @escaping @MainActor (String) -> Void = { _ in }
     ) {
@@ -72,18 +74,34 @@ final class MessageReadAloudController: ObservableObject {
     deinit {
         playbackTask?.cancel()
         pausedStopTask?.cancel()
+        let end = endBackgroundActivity
+        Task { @MainActor in end?() }
     }
 
-    private static func beginApplicationBackgroundTask() -> @MainActor () -> Void {
+    private static func beginApplicationBackgroundTask(
+        onExpiration: @escaping @MainActor () -> Void
+    ) -> @MainActor () -> Void {
         var taskID = UIBackgroundTaskIdentifier.invalid
         let end: @MainActor () -> Void = {
             guard taskID != .invalid else { return }
             UIApplication.shared.endBackgroundTask(taskID)
             taskID = .invalid
         }
+        let expire: @MainActor () -> Void = {
+            onExpiration()
+            end()
+        }
         taskID = UIApplication.shared.beginBackgroundTask(
             withName: "conduit.readAloud",
-            expirationHandler: { MainActor.assumeIsolated { end() } }
+            expirationHandler: {
+                // UIKit delivers this on the main thread in practice, but it
+                // is not documented: hop rather than trap if it ever isn't.
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated { expire() }
+                } else {
+                    DispatchQueue.main.async { expire() }
+                }
+            }
         )
         return end
     }
@@ -202,7 +220,14 @@ final class MessageReadAloudController: ObservableObject {
         let generation = operationGeneration
         state = .preparing(messageID: messageID)
         nowPlayingTitle = ReadAloudNowPlaying.title(for: content)
-        endBackgroundActivity = beginBackgroundActivity()
+        endBackgroundActivity = beginBackgroundActivity { [weak self] in
+            // Time ran out before any audio: the app is about to suspend
+            // with the stream still opening. Fail closed rather than leave
+            // the reply spinning when the app comes back.
+            guard let self, self.isCurrent(generation),
+                  case .preparing = self.state else { return }
+            self.stop()
+        }
         playbackTask = Task { [weak self] in
             await self?.runPlayback(generation: generation, messageID: messageID, content: content)
         }

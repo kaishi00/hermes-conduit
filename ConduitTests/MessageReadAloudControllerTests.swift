@@ -17,6 +17,7 @@ final class MessageReadAloudControllerTests: XCTestCase {
         MessageReadAloudController(
             playback: playback,
             gateway: gateway,
+            beginBackgroundActivity: { _ in {} },
             nowPlaying: nowPlaying,
             reportError: reported
         )
@@ -462,7 +463,6 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(gateway.streams.last?.appended, ["Locked phone"])
         XCTAssertEqual(gateway.streams.last?.finishCount, 1)
         XCTAssertEqual(gateway.streams.last?.cancelCount, 0)
-        controller.setForegroundActive(true)
     }
 
     func testBackgroundActivityIsHeldForEachOperationAndReleasedOnSettle() async {
@@ -473,10 +473,11 @@ final class MessageReadAloudControllerTests: XCTestCase {
         let controller = MessageReadAloudController(
             playback: playback,
             gateway: gateway,
-            beginBackgroundActivity: {
+            beginBackgroundActivity: { _ in
                 began += 1
                 return { ended += 1 }
-            }
+            },
+            nowPlaying: MockReadAloudNowPlaying()
         )
 
         controller.toggle(messageID: "message-a", content: "Natural finish")
@@ -497,6 +498,54 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(ended, 3)
         controller.stop()
         XCTAssertEqual(ended, 3, "Repeated stops never end an activity twice")
+    }
+
+    func testBackgroundTimeRunningOutBeforeAudioStopsThePreparingReply() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        gateway.blocksOpen = true
+        var expire: (@MainActor () -> Void)?
+        let controller = MessageReadAloudController(
+            playback: playback,
+            gateway: gateway,
+            beginBackgroundActivity: { onExpiration in
+                expire = onExpiration
+                return {}
+            },
+            nowPlaying: MockReadAloudNowPlaying()
+        )
+
+        controller.toggle(messageID: "message-a", content: "Slow open")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.state, .preparing(messageID: "message-a"))
+
+        expire?()
+        XCTAssertEqual(controller.state, .idle, "An expired activity fails closed instead of spinning forever")
+        gateway.resumeOpenForTest()
+    }
+
+    func testBackgroundTimeRunningOutWhilePlayingKeepsTheReply() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.pauseAfterEmission = true
+        var expire: (@MainActor () -> Void)?
+        let controller = MessageReadAloudController(
+            playback: playback,
+            gateway: gateway,
+            beginBackgroundActivity: { onExpiration in
+                expire = onExpiration
+                return {}
+            },
+            nowPlaying: MockReadAloudNowPlaying()
+        )
+
+        controller.toggle(messageID: "message-a", content: "Sounding")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(controller.state, .playing(messageID: "message-a"))
+
+        expire?()
+        XCTAssertEqual(controller.state, .playing(messageID: "message-a"), "Sounding audio keeps the app alive on its own")
+        controller.stop()
     }
 
     func testNowPlayingPauseHoldsTheReplyAndResumeContinuesIt() async {
