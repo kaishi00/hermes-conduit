@@ -10,15 +10,17 @@
 import XCTest
 @testable import Conduit
 
-final class UserFacingErrorTests: XCTestCase {
-    private struct Sample: Decodable { let value: Int }
+// An extension of an existing suite rather than a new class: the hosted
+// CI plan caps the classes each unit lane runs.
+extension ConnectionFailureTests {
+    private struct DecodingSample: Decodable { let value: Int }
 
     func testSystemErrorsBecomePlainLanguage() throws {
         XCTAssertEqual(
             UserFacingError.message(for: CancellationError()),
             "That was interrupted before it finished. Try again."
         )
-        let decoding = try XCTUnwrap(Result { try JSONDecoder().decode(Sample.self, from: Data("{}".utf8)) }.failureValue)
+        let decoding = try XCTUnwrap(Result { try JSONDecoder().decode(DecodingSample.self, from: Data("{}".utf8)) }.failureValue)
         XCTAssertEqual(UserFacingError.message(for: decoding), HermesError.invalidResponse.localizedDescription)
         XCTAssertEqual(
             UserFacingError.message(for: URLError(.notConnectedToInternet)),

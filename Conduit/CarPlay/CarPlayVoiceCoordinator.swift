@@ -548,7 +548,9 @@ final class CarPlayVoiceCoordinator {
     private func noteErrorIssue() {
         let appState = lastBoundAppState ?? appStateProvider()
         var updated = controls
-        updated.errorIssue = setupIssueProvider(appState, CarPlayVoiceMode.current(in: appState))
+        // The mode whose controller reported the failure, even if the
+        // setting changed a moment ago.
+        updated.errorIssue = setupIssueProvider(appState, observedVoiceMode ?? CarPlayVoiceMode.current(in: appState))
         updateControls(updated)
     }
 
@@ -565,9 +567,17 @@ final class CarPlayVoiceCoordinator {
         if isMicrophoneDenied { return .microphoneDenied }
         switch mode {
         case .classic: return appState.voiceSetupIssue
-        case .geminiLive: return liveIssue(appState.geminiLiveController.hostIssue, .geminiLive)
-        case .gptLive: return liveIssue(appState.gptLiveController.hostIssue, .gptLive)
-        case .grokLive: return liveIssue(appState.grokLiveController.hostIssue, .grokLive)
+        // A host issue only explains the failure the call is showing; one
+        // left from an earlier start never labels another failure.
+        case .geminiLive:
+            let gemini = appState.geminiLiveController
+            return liveIssue(gemini.phase.isFailed ? gemini.hostIssue : nil, .geminiLive)
+        case .gptLive:
+            let gpt = appState.gptLiveController
+            return liveIssue(gpt.phase.isFailed ? gpt.hostIssue : nil, .gptLive)
+        case .grokLive:
+            let grok = appState.grokLiveController
+            return liveIssue(grok.phase.isFailed ? grok.hostIssue : nil, .grokLive)
         }
     }
 
@@ -1360,4 +1370,18 @@ final class CarPlayVoiceCoordinator {
 @MainActor
 private final class CreatedJobBox {
     var id: UUID?
+}
+
+private extension GeminiLiveConversationController.Phase {
+    var isFailed: Bool {
+        if case .failed = self { return true }
+        return false
+    }
+}
+
+private extension GPTLiveConversationController.Phase {
+    var isFailed: Bool {
+        if case .failed = self { return true }
+        return false
+    }
 }

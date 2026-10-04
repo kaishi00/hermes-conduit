@@ -12,9 +12,10 @@ import CarPlay
 import XCTest
 @testable import Conduit
 
-@MainActor
-final class VoiceSetupIssueTests: XCTestCase {
-    private static let allIssues: [VoiceSetupIssue] = [
+// An extension of an existing suite rather than a new class: the hosted
+// CI plan caps the classes each unit lane runs.
+extension CarPlayVoiceCoordinatorTests {
+    private static let setupIssueCases: [VoiceSetupIssue] = [
         .notConnected,
         .voiceOff,
         .microphoneDenied,
@@ -31,7 +32,7 @@ final class VoiceSetupIssueTests: XCTestCase {
     // MARK: - Titles and messages
 
     func testCarPlayTitlesAreShortAndLongestFirst() {
-        for issue in Self.allIssues {
+        for issue in Self.setupIssueCases {
             let titles = issue.carPlayTitleVariants
             XCTAssertFalse(titles.isEmpty, "\(issue)")
             for title in titles {
@@ -87,7 +88,7 @@ final class VoiceSetupIssueTests: XCTestCase {
     // MARK: - Causes
 
     func testCausesInPriorityOrder() {
-        let harness = makeHarness()
+        let harness = makeSetupIssueHarness()
         let appState = harness.appState
         XCTAssertNil(CarPlayVoiceCoordinator.setupIssue(in: appState, mode: .classic, isMicrophoneDenied: false))
         XCTAssertEqual(
@@ -137,7 +138,7 @@ final class VoiceSetupIssueTests: XCTestCase {
     /// The App Store review: CarPlay opened with Voice never turned on and
     /// said only "Voice unavailable". It now names the setting.
     func testListenWithVoiceOffShowsWhereToTurnItOn() async throws {
-        let harness = makeHarness()
+        let harness = makeSetupIssueHarness()
         // The capability refresh reads the saved switch, so turn it off there.
         harness.defaults.set(false, forKey: "conduit.voice.enabled.v1.https://example.com.default")
         let suite = "VoiceSetupIssueSounds.\(UUID().uuidString)"
@@ -171,7 +172,7 @@ final class VoiceSetupIssueTests: XCTestCase {
     }
 
     func testReplacedTemplateStillPlaysTheFailureSound() async throws {
-        let harness = makeHarness()
+        let harness = makeSetupIssueHarness()
         let suite = "VoiceSetupIssueSounds.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
@@ -193,7 +194,7 @@ final class VoiceSetupIssueTests: XCTestCase {
     }
 
     func testUnknownFailureKeepsTheGenericTitle() async {
-        let harness = makeHarness()
+        let harness = makeSetupIssueHarness()
         harness.coordinator.handleConnect(harness.spy)
         await harness.coordinator.waitForPresentation()
         let installsBefore = harness.spy.setRootTemplateCount
@@ -205,7 +206,7 @@ final class VoiceSetupIssueTests: XCTestCase {
         XCTAssertEqual(harness.activations.last, .error)
     }
 
-    private func makeHarness() -> CarPlayVoiceCoordinatorTests.Harness {
+    private func makeSetupIssueHarness() -> CarPlayVoiceCoordinatorTests.Harness {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
             defaults.removePersistentDomain(forName: suite)

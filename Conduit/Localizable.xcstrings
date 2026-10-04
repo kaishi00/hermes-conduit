@@ -9954,16 +9954,6 @@
         }
       }
     },
-    "Hermes created a conversation without a session ID." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 创建的对话没有会话 ID。"
-          }
-        }
-      }
-    },
     "Hermes created this branch in %@, not %@. It was not opened." : {
       "localizations" : {
         "zh-Hans" : {
@@ -11606,16 +11596,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "麦克风输入"
-          }
-        }
-      }
-    },
-    "Microphone access is required for voice conversations." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "语音对话需要麦克风访问权限。"
           }
         }
       }
@@ -13910,16 +13890,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通过 Tailscale 访问 Hermes"
-          }
-        }
-      }
-    },
-    "Read aloud needs a connected Hermes gateway." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "朗读需要已连接的 Hermes 网关。"
           }
         }
       }
@@ -17264,36 +17234,6 @@
         }
       }
     },
-    "This Hermes gateway does not expose voice endpoints." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此 Hermes 网关未提供语音端点。"
-          }
-        }
-      }
-    },
-    "This Hermes gateway is too old to report voice readiness." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此 Hermes 网关版本过旧，无法报告语音就绪状态。"
-          }
-        }
-      }
-    },
-    "This Hermes gateway must support session turn state. Update Hermes to enable message, stop, and steer controls." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此 Hermes 网关必须支持会话回合状态。请更新 Hermes 以启用消息、停止和转向控件。"
-          }
-        }
-      }
-    },
     "This Hermes profile has no ready speech-to-text provider." : {
       "localizations" : {
         "zh-Hans" : {
@@ -18372,16 +18312,6 @@
         }
       }
     },
-    "Voice is unavailable for this gateway." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此网关的语音功能不可用。"
-          }
-        }
-      }
-    },
     "Voice is unavailable." : {
       "localizations" : {
         "zh-Hans" : {
@@ -18464,16 +18394,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "语音测试仅在 Conduit 处于前台时运行。"
-          }
-        }
-      }
-    },
-    "Voice unavailable" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "语音不可用"
           }
         }
       }
@@ -19378,16 +19298,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载机器人…"
-          }
-        }
-      }
-    },
-    "Bot Mode requires a newer Hermes gateway." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bot Mode 需要更新版本的 Hermes 网关。"
           }
         }
       }

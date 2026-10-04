@@ -117,6 +117,7 @@ enum VoiceSetupIssue: Equatable {
 
     /// Short titles for the CarPlay screen, longest first; CarPlay shows the
     /// longest one that fits. Each names the fix, never failure internals.
+    /// Translations keep the same order: longest first.
     var carPlayTitleVariants: [String] {
         switch self {
         case .notConnected:
