@@ -208,9 +208,12 @@ struct NotificationDashboardPairings: Equatable {
     /// Pairings from before dashboard scoping while several dashboards are
     /// saved: their pushes fail closed until they are paired again.
     private(set) var unscoped: [RelayMetaInfo.Gateway] = []
-    /// Pairings that belong to another saved dashboard, or to one that is
-    /// no longer saved.
+    /// Pairings that belong to another saved dashboard.
     private(set) var otherDashboardsCount = 0
+    /// Pairings bound to a dashboard no longer saved on this iPhone (or a
+    /// malformed binding): routing fails them closed, and there is nothing
+    /// to switch to.
+    private(set) var unrecognizedCount = 0
 
     @MainActor
     init(gateways: [RelayMetaInfo.Gateway], activeDashboardID: UUID?, savedDashboardIDs: [UUID]) {
@@ -230,8 +233,10 @@ struct NotificationDashboardPairings: Equatable {
                 thisDashboard.append(gateway)
             case .failClosed(.unscopedPush):
                 unscoped.append(gateway)
-            case .switchFirst, .failClosed(.unrecognizedDashboard):
+            case .switchFirst:
                 otherDashboardsCount += 1
+            case .failClosed(.unrecognizedDashboard):
+                unrecognizedCount += 1
             }
         }
     }

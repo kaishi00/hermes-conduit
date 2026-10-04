@@ -851,8 +851,7 @@ private struct SettingsHome: View {
     /// notice says which host to update.
     private var notifierDashboardLabel: String? {
         let registry = appState.savedDashboardRegistry
-        guard registry.dashboards.count > 1 else { return nil }
-        return registry.activeDashboardID.flatMap { registry.dashboard(with: $0)?.label }
+        return registry.dashboards.count > 1 ? registry.activeDashboardLabel : nil
     }
 
     /// The active connection's address — the live connection when one exists,
@@ -869,8 +868,7 @@ private struct SettingsHome: View {
         guard !registry.dashboards.isEmpty else {
             return AppLocalization.string("Add your first Hermes dashboard")
         }
-        let activeLabel = registry.activeDashboardID
-            .flatMap { registry.dashboard(with: $0)?.label }
+        let activeLabel = registry.activeDashboardLabel
         let count = AppLocalization.string("\(registry.dashboards.count) dashboards")
         return activeLabel.map { "\($0) · \(count)" } ?? count
     }
@@ -1180,7 +1178,7 @@ private struct NotifierPluginUpdateNotice: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let status: NotifierPluginStatus
     /// Names the dashboard when several are saved: each has its own host.
-    var dashboardLabel: String?
+    let dashboardLabel: String?
 
     var body: some View {
         ConduitSettingsSection(
@@ -1931,11 +1929,9 @@ private struct NotificationsSettingsDetail: View {
     // unsaved edit (and flash Save or the re-pair warning).
     @State private var relayDraft = UserDefaults.standard.string(forKey: PushNotificationService.relayURLDefaultsKey) ?? ""
     @State private var relayDraftInvalid = false
-    @State private var checkingNotifierPlugin = false
-
-    private var activeDashboardLabel: String? {
-        appState.activeDashboardID.flatMap { appState.savedDashboardRegistry.dashboard(with: $0)?.label }
-    }
+    /// Starts true so the first render, before the check's task runs,
+    /// reads as checking rather than as a failure.
+    @State private var checkingNotifierPlugin = true
 
     private func trimmed(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2034,7 +2030,7 @@ private struct NotificationsSettingsDetail: View {
                 // notifier and its pairings. Other dashboards' pairings
                 // share this iPhone's relay list but never stand in for it.
                 ConduitSettingsSection(title: AppLocalization.string("Compatibility"), symbol: "checkmark.seal", tint: .conduitAura) {
-                    if appState.savedDashboardRegistry.dashboards.count > 1, let label = activeDashboardLabel {
+                    if appState.savedDashboardRegistry.dashboards.count > 1, let label = appState.savedDashboardRegistry.activeDashboardLabel {
                         Text("Showing \(label). Switch dashboards to check another one.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -2062,7 +2058,9 @@ private struct NotificationsSettingsDetail: View {
                             activeDashboardID: appState.activeDashboardID,
                             savedDashboardIDs: appState.savedDashboardRegistry.dashboards.map(\.id)
                         )
-                        if pairings.thisDashboard.isEmpty {
+                        // Without a selected dashboard there is nothing to
+                        // pair yet; the pairing section says to connect.
+                        if pairings.thisDashboard.isEmpty, appState.activeDashboardID != nil {
                             compatibilityRow(
                                 title: AppLocalization.string("Not paired"),
                                 version: nil,
@@ -2083,6 +2081,11 @@ private struct NotificationsSettingsDetail: View {
                         }
                         if pairings.otherDashboardsCount > 0 {
                             Text("\(pairings.otherDashboardsCount) more pairings belong to your other dashboards.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        if pairings.unrecognizedCount > 0 {
+                            Text("\(pairings.unrecognizedCount) more pairings don't match any dashboard saved on this iPhone.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -2326,7 +2329,7 @@ private struct NotificationsSettingsDetail: View {
                         .foregroundStyle(.orange)
                         .accessibilityLabel(AppLocalization.string("Update needed"))
                 case .actionNeeded:
-                    Image(systemName: "exclamationmark.circle")
+                    Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
                         .accessibilityLabel(AppLocalization.string("Action needed"))
                 case .unknown:

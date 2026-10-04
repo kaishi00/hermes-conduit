@@ -464,7 +464,10 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(onReview.thisDashboard.first?.pluginVersion, "0.3.0")
         // A pre-dashboard pairing can't be attributed while two are saved.
         XCTAssertEqual(onReview.unscoped.map(\.id), ["gw-legacy"])
-        XCTAssertEqual(onReview.otherDashboardsCount, 3)
+        XCTAssertEqual(onReview.otherDashboardsCount, 1)
+        // A removed dashboard's pairing, or a malformed binding, is not
+        // "another dashboard": there is nothing to switch to.
+        XCTAssertEqual(onReview.unrecognizedCount, 2)
 
         let onMain = NotificationDashboardPairings(
             gateways: meta.gateways, activeDashboardID: main, savedDashboardIDs: [main, review]
@@ -495,6 +498,13 @@ final class MessageNormalizerTests: XCTestCase {
         )
         XCTAssertTrue(noneActive.thisDashboard.isEmpty)
         XCTAssertEqual(noneActive.otherDashboardsCount, 1)
+
+        // With every dashboard removed, leftover pairings match nothing.
+        let noneSaved = NotificationDashboardPairings(
+            gateways: [gateway("scoped", only.uuidString)], activeDashboardID: nil, savedDashboardIDs: []
+        )
+        XCTAssertEqual(noneSaved.otherDashboardsCount, 0)
+        XCTAssertEqual(noneSaved.unrecognizedCount, 1)
     }
 
     func testExpiredPromptErrorClassification() {

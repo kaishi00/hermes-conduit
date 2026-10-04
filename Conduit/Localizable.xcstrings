@@ -1,6 +1,40 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%lld more pairings don't match any dashboard saved on this iPhone." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld more pairing doesn't match any dashboard saved on this iPhone."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld more pairings don't match any dashboard saved on this iPhone."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "另有 %lld 个配对与这台 iPhone 上保存的任何仪表板都不匹配。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Action needed" : {
       "localizations" : {
         "zh-Hans" : {
