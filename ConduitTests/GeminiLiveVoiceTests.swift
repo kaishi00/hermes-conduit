@@ -962,8 +962,7 @@ extension VoiceConversationControllerTests {
         // The model let it pass without a word: it is said again as a text turn.
         let sentAt = current
         current += GeminiLiveConversationController.outcomeSpeechGrace
-        let fallback = try? XCTUnwrap(GeminiLiveConversationController.fallbackText(for: ["title": "check the server", "status": "finished", "result": "All green."]))
-        controller.respeakOutcomeIfSilent(fallback ?? "", since: sentAt)
+        controller.respeakOutcomeIfSilent(jobID: supervisor.jobs.first?.id, since: sentAt)
         XCTAssertTrue(session.textTurns.contains { $0.contains("All green.") })
 
         // One the model did speak is not repeated.
@@ -971,7 +970,7 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.turnComplete)
         current += 5
         session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
-        controller.respeakOutcomeIfSilent("[again]", since: current - 1)
+        controller.respeakOutcomeIfSilent(jobID: supervisor.jobs.first?.id, since: current - 1)
         XCTAssertEqual(session.textTurns.count, turns)
         controller.stop()
     }

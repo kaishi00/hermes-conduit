@@ -304,6 +304,7 @@ final class GeminiLiveConversationController: ObservableObject {
         /// The connection its call is open on.
         weak var session: GeminiLiveSessionControlling?
         let generation: Int?
+        var jobID: UUID? { result["job_id"].flatMap(UUID.init(uuidString:)) }
     }
     private var heldOutcomes: [HeldOutcome] = []
     /// Typed exchanges in the attached chat (#363), sent while idle as
@@ -770,7 +771,8 @@ final class GeminiLiveConversationController: ObservableObject {
                     // handoff during a lookup): the call is gone with the
                     // old one, so its answer goes out as a text update.
                     let replaced = self.session !== calledOn || self.session?.connectionGeneration != generation
-                    self.dispatch(outgoing, unanswerable: replaced ? [call.id] : [])
+                    self.dispatch(outgoing, unanswerable: replaced ? [call.id] : [], holdingOutcomes: true, answering: call.id)
+                    self.flushPendingTextIfIdle()
                     // A start_job its own call didn't answer is running
                     // (other jobs may settle in the same batch): make sure
                     // the user heard that it was taken.
@@ -837,7 +839,9 @@ final class GeminiLiveConversationController: ObservableObject {
 
     // MARK: Outgoing
 
-    private func dispatch(_ outgoing: [GeminiLiveToolBridge.Outgoing], unanswerable: Set<String> = [], holdingOutcomes: Bool = false) {
+    /// `holdingOutcomes`: settled job results wait for quiet, except the
+    /// answer to `answering`, the call the model is waiting on now.
+    private func dispatch(_ outgoing: [GeminiLiveToolBridge.Outgoing], unanswerable: Set<String> = [], holdingOutcomes: Bool = false, answering: String? = nil) {
         for item in outgoing {
             switch item {
             case .toolResponse(let id, let name, let result, let scheduling) where session?.isReady != true || unanswerable.contains(id):
@@ -846,7 +850,7 @@ final class GeminiLiveConversationController: ObservableObject {
                 // outcome is kept as a text update rather than lost. A silent
                 // one stays silent.
                 if scheduling != .silent, let text = Self.fallbackText(for: result, name: name) { pendingTextTurns.append(text) }
-            case .toolResponse(let id, let name, let result, let scheduling) where holdingOutcomes && scheduling == .whenIdle:
+            case .toolResponse(let id, let name, let result, let scheduling) where holdingOutcomes && scheduling == .whenIdle && id != answering && result["job_id"] != nil:
                 // A job that finished while someone speaks waits for quiet,
                 // so its result is said rather than lost in another answer.
                 heldOutcomes.append(HeldOutcome(id: id, name: name, result: result, scheduling: scheduling, session: session, generation: session?.connectionGeneration))
@@ -940,42 +944,40 @@ final class GeminiLiveConversationController: ObservableObject {
     private func sendHeldOutcome(on session: GeminiLiveSessionControlling) -> Bool {
         guard !heldOutcomes.isEmpty else { return false }
         let held = heldOutcomes.removeFirst()
-        let fallback = held.scheduling == .silent ? nil : Self.fallbackText(for: held.result, name: held.name)
         guard held.session === session, held.generation == session.connectionGeneration else {
             // The call went with its connection: said as a text update.
-            reissueAsTextUpdates([held])
+            reissueAsTextUpdates([held.jobID])
             return false
         }
         let sentAt = now()
         modelTurnActive = true
         session.send(.toolResponse(id: held.id, name: held.name, result: held.result, scheduling: held.scheduling), onSent: { [weak self] in
-            if let fallback { self?.ensureOutcomeSpoken(fallback, since: sentAt) }
+            self?.ensureOutcomeSpoken(jobID: held.jobID, since: sentAt)
         }, onFailure: { [weak self, weak session] in
-            guard let self, self.isActive, let session, self.session === session else { return }
-            self.modelTurnActive = false
-            if let fallback { self.pendingTextTurns.append(fallback) }
-            self.scheduleIdleFlush()
+            guard let self else { return }
+            if let session, self.session === session { self.modelTurnActive = false }
+            // Never reached the model: the job reports it again, here as a
+            // tracked text update or later if this call is gone.
+            self.reissueAsTextUpdates([held.jobID])
         })
         return true
     }
 
     /// A result the model took without a word (it can let one pass) is
-    /// sent again as a text turn.
-    private func ensureOutcomeSpoken(_ text: String, since sentAt: Date) {
+    /// reported again as a text update.
+    private func ensureOutcomeSpoken(jobID: UUID?, since sentAt: Date) {
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.outcomeSpeechGrace))
             guard let self, self.isActive, self.endRequestedAt == nil else { return }
-            self.respeakOutcomeIfSilent(text, since: sentAt)
+            self.respeakOutcomeIfSilent(jobID: jobID, since: sentAt)
         }
     }
 
-    func respeakOutcomeIfSilent(_ text: String, since sentAt: Date) {
+    func respeakOutcomeIfSilent(jobID: UUID?, since sentAt: Date) {
         if let lastModelAudioAt, lastModelAudioAt >= sentAt { return }
         // No answer came, so no turn is running for it.
         modelTurnActive = false
-        pendingTextTurns.append(text)
-        scheduleIdleFlush()
-        flushPendingTextIfIdle()
+        reissueAsTextUpdates([jobID])
     }
 
     /// The call these results were held for was withdrawn: said as text
@@ -985,25 +987,22 @@ final class GeminiLiveConversationController: ObservableObject {
         let released = heldOutcomes.filter { withdrawn.contains($0.id) }
         guard !released.isEmpty else { return }
         heldOutcomes.removeAll { withdrawn.contains($0.id) }
-        reissueAsTextUpdates(released)
+        reissueAsTextUpdates(released.map(\.jobID))
     }
 
     /// Held results whose call is gone: their jobs are reported again as
     /// tracked text updates, so a call that ends first hands them back.
-    private func reissueAsTextUpdates(_ released: [HeldOutcome]) {
-        for held in released {
-            tools.returnNotice(jobID: held.result["job_id"].flatMap(UUID.init(uuidString:)))
-        }
+    private func reissueAsTextUpdates(_ jobIDs: [UUID?]) {
+        for jobID in jobIDs { tools.returnNotice(jobID: jobID) }
         guard isActive, endRequestedAt == nil, session?.isReady == true else { return }
         dispatch(tools.pendingUpdates(), holdingOutcomes: true)
+        flushPendingTextIfIdle()
     }
 
     /// The conversation is closing with results unsaid: their jobs report
     /// again later.
     private func returnHeldOutcomes() {
-        for held in heldOutcomes {
-            tools.returnNotice(jobID: held.result["job_id"].flatMap(UUID.init(uuidString:)))
-        }
+        for held in heldOutcomes { tools.returnNotice(jobID: held.jobID) }
         heldOutcomes = []
     }
 
