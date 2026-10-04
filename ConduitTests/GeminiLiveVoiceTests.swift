@@ -1545,6 +1545,34 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGeminiLiveMutedPausedCallWaitsForTheSystemBeforeListeningAgain() async {
+        struct AlarmRinging: Error {}
+        let center = NotificationCenter()
+        let (controller, session, input, _, _) = makeGeminiController(notificationCenter: center, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        input.startError = AlarmRinging()
+        input.stop()
+        input.onInterrupted?()
+        controller.setMicrophoneMuted(true)
+        let ends = session.sent.filter { ($0["realtimeInput"] as? [String: Any])?["audioStreamEnd"] != nil }.count
+        XCTAssertEqual(ends, 1, "The pause already ended the user's turn")
+
+        // A muted call has no microphone to prove the audio is back.
+        session.becomeReady()
+        XCTAssertEqual(controller.phase, .paused)
+
+        center.post(
+            name: AVAudioSession.interruptionNotification,
+            object: nil,
+            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue]
+        )
+        for _ in 0..<50 where controller.phase == .paused { await settle() }
+        XCTAssertEqual(controller.phase, .listening)
+        XCTAssertTrue(controller.isMicrophoneMuted)
+        controller.stop()
+    }
+
     func testGeminiLivePausedCallSurvivesAReconnectAndResumesWhenTheAppComesBack() async {
         struct CallInProgress: Error {}
         let center = NotificationCenter()

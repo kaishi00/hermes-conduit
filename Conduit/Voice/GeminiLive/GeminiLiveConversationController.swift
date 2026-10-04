@@ -509,12 +509,13 @@ final class GeminiLiveConversationController: ObservableObject {
         guard endRequestedAt == nil else { return }
         if muted {
             stopInput()
-            // End the user's turn now instead of waiting for more audio.
-            if session?.isReady == true { session?.send(.audioStreamEnd) }
+            // End the user's turn now instead of waiting for more audio
+            // (a pause already ended it).
+            if !audioPaused, session?.isReady == true { session?.send(.audioStreamEnd) }
         } else if audioPaused {
             // Unmuting while paused is a nudge to try the microphone again;
             // it never fails the call while the other sound still plays.
-            scheduleAudioResume(delays: Self.audioResumeDelays)
+            scheduleAudioResume(delays: Self.audioResumeDelays, audioReturned: false)
         } else if session?.isReady == true {
             startInput()
         }
@@ -538,7 +539,8 @@ final class GeminiLiveConversationController: ObservableObject {
         // Only on a live connection: settling an open call marks the job
         // announced, so it must never happen while nothing can be sent. The
         // updates stay pending and go out when the session is ready again.
-        guard isActive, endRequestedAt == nil, session?.isReady == true else { return }
+        // Paused: updates wait for the audio (the resume sends them).
+        guard isActive, endRequestedAt == nil, !audioPaused, session?.isReady == true else { return }
         dispatch(tools.pendingUpdates())
     }
 
@@ -653,15 +655,17 @@ final class GeminiLiveConversationController: ObservableObject {
     /// The call pauses instead of failing (#376): the connection stays up,
     /// the model's speech stops, and the microphone comes back when the
     /// system says the other sound ended or the app becomes active again.
-    /// One early try covers interruptions no end ever follows (a media
+    /// A few early tries cover interruptions no end ever follows (a media
     /// services reset); a try that fails just keeps the call paused.
     private func captureInterrupted() {
         guard inputRunning else { return }
         inputRunning = false
         guard endRequestedAt == nil, isActive else { return }
         pauseForAudioInterruption()
-        scheduleAudioResume(delays: [.milliseconds(500)])
+        scheduleAudioResume(delays: Self.earlyResumeDelays, audioReturned: false)
     }
+
+    static let earlyResumeDelays: [Duration] = [.milliseconds(500), .seconds(1), .seconds(2)]
 
     private func pauseForAudioInterruption() {
         if !audioPaused {
@@ -695,32 +699,48 @@ final class GeminiLiveConversationController: ObservableObject {
             notificationCenter.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { [weak self] note in
                 let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:))
                 guard type == .ended else { return }
-                Task { @MainActor [weak self] in self?.scheduleAudioResume(delays: Self.audioResumeDelays) }
+                Task { @MainActor [weak self] in self?.scheduleAudioResume(delays: Self.audioResumeDelays, audioReturned: true) }
             },
             notificationCenter.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.scheduleAudioResume(delays: Self.audioResumeDelays) }
+                Task { @MainActor [weak self] in self?.scheduleAudioResume(delays: Self.audioResumeDelays, audioReturned: true) }
             },
         ]
     }
 
     /// Tries to bring the microphone back after each delay in turn,
     /// stopping at the first success. Replaces any tries already queued.
-    private func scheduleAudioResume(delays: [Duration]) {
+    /// `audioReturned`: the system said the other sound let go (its end,
+    /// or the app becoming active), which is all a muted call can go on.
+    private func scheduleAudioResume(delays: [Duration], audioReturned: Bool) {
         guard audioPaused else { return }
         audioResumeTask?.cancel()
         audioResumeTask = Task { [weak self] in
             for delay in delays {
                 if delay > .zero { try? await Task.sleep(for: delay) }
                 guard let self, !Task.isCancelled, self.audioPaused else { return }
-                if self.resumeAfterAudioInterruption() { return }
+                if self.resumeAfterAudioInterruption(audioReturned: audioReturned) { return }
             }
         }
     }
 
+    /// The pause is over: the call listens again and sends what waited.
+    private func resumeAfterAudioInterruption(audioReturned: Bool) -> Bool {
+        guard restartAudioAfterPause(audioReturned: audioReturned) else { return false }
+        guard isActive, endRequestedAt == nil else { return true }
+        if phase == .paused { phase = .listening }
+        sendOpeningIfNeeded()
+        // Job outcomes that settled during the pause go out now.
+        dispatch(tools.pendingUpdates())
+        scheduleIdleFlush()
+        return true
+    }
+
     /// True when the call is no longer paused. A microphone that still
-    /// can't start leaves it paused, never failed.
-    @discardableResult
-    func resumeAfterAudioInterruption() -> Bool {
+    /// can't start leaves it paused, never failed. A muted call has no
+    /// microphone to prove the audio is back, so it stays paused until the
+    /// system says so: unmuting while the other sound still plays must not
+    /// fail the call.
+    private func restartAudioAfterPause(audioReturned: Bool) -> Bool {
         guard audioPaused else { return true }
         guard isActive, endRequestedAt == nil else {
             clearAudioPause()
@@ -728,7 +748,9 @@ final class GeminiLiveConversationController: ObservableObject {
         }
         // A reconnect in progress restarts the microphone once it's ready.
         guard session?.isReady == true else { return false }
-        if !isMicrophoneMuted, !inputRunning {
+        if isMicrophoneMuted {
+            guard audioReturned else { return false }
+        } else if !inputRunning {
             do {
                 try input.start()
                 inputRunning = true
@@ -739,11 +761,6 @@ final class GeminiLiveConversationController: ObservableObject {
         }
         clearAudioPause()
         geminiLiveLogger.notice("Live voice resumed after an audio interruption")
-        if phase == .paused { phase = .listening }
-        sendOpeningIfNeeded()
-        // Job outcomes that settled during the pause go out now.
-        dispatch(tools.pendingUpdates())
-        scheduleIdleFlush()
         return true
     }
 
@@ -781,7 +798,7 @@ final class GeminiLiveConversationController: ObservableObject {
     private func sessionStateChanged(_ state: GeminiLiveSession.State) {
         switch state {
         case .ready:
-            if audioPaused, !resumeAfterAudioInterruption() {
+            if audioPaused, !restartAudioAfterPause(audioReturned: false) {
                 // Still paused: the microphone stays off until the other
                 // sound ends, and nothing is sent the user can't hear.
                 if endRequestedAt == nil { phase = .paused }
@@ -801,6 +818,7 @@ final class GeminiLiveConversationController: ObservableObject {
             output.interrupt()
             modelTurnActive = false
         case .failed(let message):
+            clearAudioPause()
             stopInput()
             output.stop()
             // Close the socket too, so nothing from it reaches a failed
@@ -903,7 +921,7 @@ final class GeminiLiveConversationController: ObservableObject {
     }
 
     private func microphoneChunk(_ chunk: Data) {
-        guard !isMicrophoneMuted, let session, session.isReady else { return }
+        guard !isMicrophoneMuted, !audioPaused, let session, session.isReady else { return }
         guard !isMicrophoneGatedForSpeaker else { return }
         session.send(.audio(chunk))
     }
