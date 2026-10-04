@@ -70,10 +70,10 @@ final class VoiceConversationController: ObservableObject {
     /// discard the result; the suspended-orphan path acts on it.
     private let interrupt: @MainActor () async -> Bool
     /// Adds the user's words to the running Hermes turn without stopping
-    /// it (Hermes' steer). Returns false when there was no running turn to
-    /// steer, and the words become a new turn instead. Nil turns speech
-    /// while Hermes thinks off: it is then ignored.
-    private let steerTurn: (@MainActor (String) async -> Bool)?
+    /// it (Hermes' steer). With no running turn the words become a new
+    /// turn instead; a failed steer is dropped and the turn carries on.
+    /// Nil turns speech while Hermes thinks off: it is then ignored.
+    private let steerTurn: (@MainActor (String) async -> VoiceSteerOutcome)?
     /// A steer that reaches Hermes after its last tool call runs as its own
     /// turn once the reply finishes. Set when the steered turn completes,
     /// so the conversation adopts that follow-up reply while it listens.
@@ -167,7 +167,7 @@ final class VoiceConversationController: ObservableObject {
         routePolicyProvider: (@MainActor () -> VoiceBargeInRoutePolicy)? = nil,
         submit: @escaping @MainActor (String) async -> Bool,
         interrupt: @escaping @MainActor () async -> Bool,
-        steer: (@MainActor (String) async -> Bool)? = nil,
+        steer: (@MainActor (String) async -> VoiceSteerOutcome)? = nil,
         onEndConversation: (@MainActor () -> Void)? = nil,
         backgroundJobs: VoiceBackgroundJobHandling? = nil
     ) {
@@ -1000,12 +1000,25 @@ final class VoiceConversationController: ObservableObject {
                 // the user's words added, and its reply is still this
                 // conversation's. A spoken Stop cancels the turn instead.
                 if !isWholeUtteranceStopCommand(transcript), isAwaitingVoiceAssistant, let steerTurn {
-                    let steered = await steerTurn(transcript)
+                    let outcome = await steerTurn(transcript)
                     guard isCurrent(generation) else { return }
-                    if steered {
-                        steerSentThisTurn = true
+                    switch outcome {
+                    case .steered:
+                        if isAwaitingVoiceAssistant {
+                            steerSentThisTurn = true
+                        } else {
+                            // The reply finished while the steer was in
+                            // flight: arm the follow-up adoption the
+                            // completion would have.
+                            promotedSteerReplyDeadline = Date().addingTimeInterval(promotedSteerReplyWindow)
+                        }
                         resumeTurnAfterSteer()
                         return
+                    case .failed:
+                        resumeTurnAfterSteer()
+                        return
+                    case .noRunningTurn:
+                        break
                     }
                 }
                 // Stop, or the turn finished while the user spoke (the

@@ -2130,7 +2130,7 @@ final class AppState: ObservableObject {
             return await self.interruptForVoice()
         },
         steer: { [weak self] text in
-            guard let self else { return false }
+            guard let self else { return .failed }
             return await self.steerForVoice(text)
         },
         onEndConversation: { [weak self] in
@@ -22468,11 +22468,11 @@ final class AppState: ObservableObject {
 
     /// Speech while Hermes thinks: the words steer the running turn, as
     /// the composer's Steer does, whatever the composer's busy mode is.
-    /// Returns false when no turn is running, so the controller sends the
-    /// words as a new turn instead.
-    func steerForVoice(_ text: String) async -> Bool {
-        guard turnState.isRunning else { return false }
-        return await steer(text)
+    /// With no running turn the controller sends them as a new turn; a
+    /// failed steer is never resubmitted, so it can't duplicate the words.
+    func steerForVoice(_ text: String) async -> VoiceSteerOutcome {
+        guard turnState.isRunning else { return .noRunningTurn }
+        return await steer(text) ? .steered : .failed
     }
 
     /// Stops the authoritative Hermes turn when a spoken stop command,

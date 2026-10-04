@@ -431,6 +431,11 @@ final class VoiceConversationControllerTests: XCTestCase {
 
     // MARK: Steering a running turn by voice
 
+    @MainActor
+    private final class ControllerBox {
+        weak var controller: VoiceConversationController?
+    }
+
     private func makeSteerController(
         gateway: MockGateway,
         submitted: SubmitSpy,
@@ -446,7 +451,7 @@ final class VoiceConversationControllerTests: XCTestCase {
             routePolicyProvider: { policy.policy },
             submit: { await submitted.submit($0) },
             interrupt: { interrupts.increment(); return true },
-            steer: { await steers.submit($0) }
+            steer: { await steers.submit($0) ? .steered : .failed }
         )
     }
 
@@ -570,6 +575,74 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertTrue(speaking, "the turn's reply plays as usual")
         XCTAssertEqual(steers.texts, [])
         XCTAssertEqual(interrupts.value, 0)
+    }
+
+    func testFailedSteerIsDroppedAndTheTurnCarriesOn() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steerAttempts = AwaitableCounter()
+        let interrupts = AwaitableCounter()
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: true),
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { await submitted.submit($0) },
+            interrupt: { interrupts.increment(); return true },
+            steer: { _ in steerAttempts.increment(); return .failed }
+        )
+        await driveToThinking(controller, submitted: submitted)
+        gateway.transcript = "Try again"
+        await speakSteer(controller)
+        await steerAttempts.waitUntil(1)
+        let resumed = await controller.waitForState(.thinking)
+
+        XCTAssertTrue(resumed, "the turn carries on")
+        XCTAssertEqual(submitted.texts, ["Question"], "a failed steer is never resubmitted as a new turn")
+        XCTAssertEqual(interrupts.value, 0)
+        XCTAssertFalse(controller.isSteeringTurn)
+    }
+
+    func testSteerLandingAfterTheReplyFinishedStillAdoptsItsFollowUp() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let policy = RoutePolicyBox(.fullDuplex)
+        let box = ControllerBox()
+        let controller = VoiceConversationController(
+            capture: MockCapture(permissionGranted: true),
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { await submitted.submit($0) },
+            interrupt: { interrupts.increment(); return true },
+            steer: { _ in
+                // The reply finishes while the steer is in flight.
+                box.controller?.receiveAssistantEvent(.completed(sessionID: "session", content: ""))
+                return .steered
+            }
+        )
+        box.controller = controller
+        await driveToThinking(controller, submitted: submitted)
+        gateway.transcript = "Also check the logs"
+        await speakSteer(controller)
+        // Steer window → transcribing → the steer lands on a finished
+        // turn → the conversation listens again.
+        let deadline = Date().addingTimeInterval(5)
+        while controller.isSteeringTurn || controller.state != .listening, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(controller.isSteeringTurn)
+        XCTAssertEqual(controller.state, .listening, "the finished turn hands back to listening")
+        await drainPendingMainActorWork()
+
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        XCTAssertEqual(controller.state, .thinking, "the steer's own reply is adopted")
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Logs are clean."))
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking)
+        XCTAssertEqual(submitted.texts, ["Question"])
     }
 
     func testReplyToALateSteerIsSpokenAfterTheSteeredReply() async {
