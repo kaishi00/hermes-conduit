@@ -1681,7 +1681,7 @@ private struct VoiceCallMarkerCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(spokenLabel))
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint(origin ? Text("Opens the chat this call was started from") : Text("Opens the call's transcript"))
+        .accessibilityHint(Text(origin ? AppLocalization.string("Opens the chat this call was started from") : AppLocalization.string("Opens the call's transcript")))
     }
 }
 

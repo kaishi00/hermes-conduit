@@ -3182,13 +3182,18 @@ final class AppState: ObservableObject {
         )
     }
 
-    /// The open session's own ids: its row's, without the aliases borrowed
-    /// from reconciliation or the scroll identity.
+    /// The open session's own ids: its row's id and stored id, never an
+    /// alias (alternate ids, reconciliation, scroll identity) that another
+    /// row could share.
     private func ownSessionIDs(for sessionId: String) -> Set<String> {
+        Self.ownSessionIDs(for: sessionId, in: sessions)
+    }
+
+    static func ownSessionIDs(for sessionId: String, in rows: [SessionSummary]) -> Set<String> {
         var ids: Set<String> = [sessionId]
-        for row in sessions {
-            let rowIDs = Set([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
-            if rowIDs.contains(sessionId) { ids.formUnion(rowIDs) }
+        if let row = rows.first(where: { $0.id == sessionId || $0.storedSessionId == sessionId }) {
+            ids.insert(row.id)
+            if let stored = row.storedSessionId { ids.insert(stored) }
         }
         return Set(ids.compactMap { ChatScrollIdentityNormalization.sessionID($0) })
     }

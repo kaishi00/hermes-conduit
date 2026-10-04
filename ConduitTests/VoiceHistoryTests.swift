@@ -512,6 +512,24 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(links.merge(into: [], chatIDs: ["st-1", "row-a"], openIDs: ["st-1"], profile: "default").map(\.id), ["voice-call-c1", "voice-call-c2"])
     }
 
+    @MainActor
+    func testTheOpenSessionsOwnIDsNeverPullInARowSharingAnAlias() {
+        func row(_ id: String, stored: String? = nil, alternates: [String] = []) -> SessionSummary {
+            SessionSummary(
+                id: id, storedSessionId: stored, alternateIds: alternates, title: id, model: "Hermes",
+                updatedLabel: "now", profile: "default", source: .chat, isActive: false, isArchived: false,
+                lineageRootId: nil
+            )
+        }
+        let rows = [row("rt-1", stored: "st-1"), row("call-row", alternates: ["rt-1"])]
+        let chatOwn = AppState.ownSessionIDs(for: "rt-1", in: rows)
+        XCTAssertEqual(chatOwn, ["rt-1", "st-1"])
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: Date(timeIntervalSince1970: 1_000)))
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["rt-1", "st-1", "call-row"], openIDs: chatOwn, profile: "default").map(\.id), ["voice-call-c1"])
+        XCTAssertEqual(AppState.ownSessionIDs(for: "call-row", in: rows), ["call-row"])
+    }
+
     func testAResumedCallShowsOneStartedFromCardPerChat() {
         let start = Date(timeIntervalSince1970: 1_000)
         var links = VoiceCallChatLinks()
