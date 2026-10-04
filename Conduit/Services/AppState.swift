@@ -3211,8 +3211,8 @@ final class AppState: ObservableObject {
     private func chatOwnSessionIDs(for sessionId: String) -> Set<String> {
         // An opened saved chat resumes under a new runtime id the list may
         // not show yet; the resume (or the create) recorded its durable id.
-        // A Bot Chat's is under the bot's profile; the dashboard's is tried
-        // too, so an earlier mapping there still counts.
+        // A Bot Chat's mapping is under the bot's profile; the dashboard's
+        // is tried too, so an earlier mapping there still counts.
         let durable = botConversationProfile(for: sessionId)
             .flatMap { conversationIdentityIndex.durableID(forRuntime: sessionId, profile: $0) }
             ?? conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
@@ -4169,31 +4169,47 @@ final class AppState: ObservableObject {
                 bot = Self.linkedBot(named: profile, in: self.botRoster)
             }
             guard let bot else {
-                // A roster that couldn't be read says nothing about the bot.
-                if case .failed(let message) = self.botModePhase {
-                    self.errorMessage = message
-                } else {
-                    self.errorMessage = AppLocalization.string("That chat is no longer available.")
-                }
+                self.errorMessage = Self.missingLinkedBotMessage(for: self.botModePhase)
                 return
             }
             _ = await self.openBotChat(for: bot)
         }
     }
 
+    /// What a bot link says when the roster doesn't list its bot. Only a
+    /// roster that was read says the bot is gone; one that couldn't be
+    /// read, or isn't read yet, says nothing about it.
+    static func missingLinkedBotMessage(for phase: BotModePhase) -> String {
+        switch phase {
+        case .available:
+            return AppLocalization.string("That chat is no longer available.")
+        case .failed(let message):
+            return message
+        case .gatewayUnsupported:
+            return AppLocalization.string("Update Hermes to use Bot Mode.")
+        case .idle, .loading:
+            return AppLocalization.string("Could not load bots.")
+        }
+    }
+
     /// The roster's bot for a profile name a link carries: the exact
     /// spelling first, then one differing only in case (a scope an older
     /// build stored may be case-folded), then a name the bot had before a
-    /// rename. A live name always outranks another bot's old one.
+    /// rename. A live name always outranks another bot's old one, and an
+    /// old name two bots once had opens neither, as in `BotMentions`.
     static func linkedBot(named profile: String, in roster: [BotProfile]) -> BotProfile? {
         let name = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         let names = roster.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
-        let index = names.firstIndex(of: name)
-            ?? names.firstIndex(where: { $0.caseInsensitiveCompare(name) == .orderedSame })
-            ?? roster.firstIndex(where: { bot in
-                bot.previousNames.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines) == name }
-            })
-        return index.map { roster[$0] }
+        if let index = names.firstIndex(of: name)
+            ?? names.firstIndex(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+            return roster[index]
+        }
+        let renamed = roster.filter { bot in
+            bot.previousNames.contains {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame
+            }
+        }
+        return renamed.count == 1 ? renamed[0] : nil
     }
 
     /// Opens a session a saved call or chat card linked to. The link can
