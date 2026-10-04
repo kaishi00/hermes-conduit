@@ -650,6 +650,10 @@ struct SettingsView: View {
                         enabled: appState.keepVoiceListeningWhenLocked,
                         setEnabled: { appState.setKeepVoiceListeningWhenLocked($0) }
                     ),
+                    speakerTalkOver: VoiceSpeakerTalkOverSettingsModel(
+                        enabled: appState.liveVoiceSpeakerBargeInEnabled,
+                        setEnabled: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
+                    ),
                     callSaves: VoiceCallSaveStatusModel(
                         pendingCount: appState.pendingVoiceCallSaves,
                         blocked: appState.voiceCallSavesBlocked,

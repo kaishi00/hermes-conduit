@@ -160,7 +160,7 @@ struct GeminiLiveSettingsSection: View {
                         model.setSpeakerBargeIn(requested)
                     }
                 ))
-                Text("Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Gemini Live and Grok Live. Applies to the next conversation.")
+                Text("Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Gemini Live, Grok Live and Classic voice. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Save calls to Sessions", isOn: Binding(

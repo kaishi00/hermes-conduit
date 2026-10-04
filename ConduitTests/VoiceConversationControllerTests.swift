@@ -731,8 +731,8 @@ final class VoiceConversationControllerTests: XCTestCase {
         let resumed = await controller.waitForState(.thinking)
         XCTAssertTrue(resumed)
 
-        // The steered reply finishes arriving but its last words are still
-        // playing (drain parked) when the steer's own turn starts.
+        // The steered reply finishes arriving and its drain is parked
+        // mid-settle (still speaking) when the steer's own turn starts.
         controller.receiveAssistantEvent(.delta(sessionID: "session", text: "First answer."))
         controller.receiveAssistantEvent(.completed(sessionID: "session", content: "First answer."))
         await gate.waitUntilEntered()
@@ -792,6 +792,48 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(submitted.texts, ["Question"])
     }
 
+    func testSpeechInASilentGapOfARunningReplyDoesNotInterruptTheTurn() async {
+        let capture = MockCapture(permissionGranted: true)
+        let interrupts = AwaitableCounter()
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let playback = MockPlayback()
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: playback,
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { interrupts.increment(); return true }
+        )
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        let start = Date()
+        controller.ingestAudioLevel(0.1, at: start)
+        controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
+        await gateway.waitUntilTranscriptionStarted()
+        let thinking = await controller.waitForState(.thinking)
+        XCTAssertTrue(thinking, "the utterance pipeline submitted the turn")
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "First sentence."))
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the assistant reply is audible")
+        // The first sentence has played out and Hermes is still working on
+        // the turn (no completion yet): nothing is audible to talk over.
+        playback.isPlaying = false
+
+        let speech = Date()
+        controller.ingestAudioLevel(0.5, at: speech)
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.31))
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.62))
+        await drainPendingMainActorWork()
+
+        XCTAssertEqual(interrupts.value, 0, "a silent gap mid-reply must not cancel the turn")
+        XCTAssertNil(controller.lastBargeInState)
+        XCTAssertEqual(controller.state, .speaking)
+        XCTAssertEqual(capture.startCount, 1)
+    }
+
     func testTalkingOverACompletedReplyStopsSpeechWithoutCancellingAnything() async {
         let capture = MockCapture(permissionGranted: true)
         let interrupts = AwaitableCounter()
@@ -820,8 +862,8 @@ final class VoiceConversationControllerTests: XCTestCase {
         controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Answer."))
         let speaking = await controller.waitForState(.speaking)
         XCTAssertTrue(speaking, "the assistant reply is audible")
-        // The whole reply has arrived; playback finished rendering but the
-        // drain is parked mid-settle, so the Hermes turn is already over.
+        // The whole reply has arrived, so the Hermes turn is already over;
+        // playback has rendered but the drain is parked mid-settle.
         controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Answer."))
         await gate.waitUntilEntered()
         XCTAssertEqual(controller.state, .speaking)

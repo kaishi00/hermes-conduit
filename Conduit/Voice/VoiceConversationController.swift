@@ -369,6 +369,10 @@ final class VoiceConversationController: ObservableObject {
         guard isCurrent(generation) else { return }
         do {
             try capture.startListening(includePreRoll: includePreRoll)
+            // Starting may choose this conversation's audio (echo-cancelling
+            // or not), which decides the route policy: classify it afresh
+            // rather than trust a value cached while idle.
+            cachedRoutePolicy = nil
             // Defense in depth: capture must never end up live over audible
             // playback, whichever flag paused it.
             if isMicrophonePaused || isPlaybackCaptureSuspended { capture.pause() }
@@ -425,6 +429,9 @@ final class VoiceConversationController: ObservableObject {
         do {
             try capture.resume()
             isMicrophonePaused = false
+            // Resuming may choose this conversation's audio too (after a
+            // lifecycle suspension released it): classify the route afresh.
+            cachedRoutePolicy = nil
             // Un-pausing after a lifecycle suspension is a genuine
             // recapture: the runtime gate must end here exactly as it does
             // in startListening(), or a restored previously-paused session
@@ -1271,10 +1278,11 @@ final class VoiceConversationController: ObservableObject {
     }
 
     /// Whether speech may talk over Hermes right now: only while its reply
-    /// is audibly playing, or after the reply arrived in full, until its
-    /// speech settles. While Hermes is thinking, working between
-    /// spoken sentences, or answering with output muted, the user's speech
-    /// would only cut the turn short, so it is ignored.
+    /// is audibly playing, or once the reply has fully arrived (no Hermes
+    /// turn is left to cancel) until the speech settles. While Hermes is
+    /// thinking, working between spoken sentences, or answering with
+    /// output muted, the user's speech would only cut the turn short, so
+    /// it is ignored.
     private var isTalkOverAvailable: Bool {
         guard state == .speaking else { return false }
         return playback.isPlaying || !isAwaitingVoiceAssistant
