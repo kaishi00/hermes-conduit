@@ -760,7 +760,8 @@ final class GeminiLiveConversationController: ObservableObject {
         // A reconnect in progress restarts the microphone once it's ready.
         guard session?.isReady == true else { return false }
         if isMicrophoneMuted {
-            guard audioReturned else { return false }
+            // Any cue seen during this pause counts, whoever asks.
+            guard audioReturned || audioReturnSeen else { return false }
         } else if !inputRunning {
             do {
                 try input.start()
