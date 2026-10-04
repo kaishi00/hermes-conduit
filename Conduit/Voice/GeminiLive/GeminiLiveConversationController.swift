@@ -278,6 +278,9 @@ final class GeminiLiveConversationController: ObservableObject {
     /// How long the model has to acknowledge a start_job out loud before
     /// Conduit prompts it to.
     static let acknowledgementGrace: TimeInterval = 1.5
+    /// How long a job's result may go unspoken after it was sent before
+    /// it is sent again as a text turn.
+    static let outcomeSpeechGrace: TimeInterval = 6
 
     private var session: GeminiLiveSessionControlling?
     /// Set by the Interrupt button: the rest of the current model turn is
@@ -290,6 +293,19 @@ final class GeminiLiveConversationController: ObservableObject {
     private var lastUserSpeechAt: Date?
     private var lastModelTurnEndedAt: Date?
     private var pendingTextTurns: [String] = []
+    /// A finished job's answer on its open call, held until the
+    /// conversation is quiet: sent while the model answered something
+    /// else, Gemini could take it without ever saying it.
+    private struct HeldOutcome {
+        let id: String
+        let name: String
+        let result: [String: String]
+        let scheduling: GeminiLiveProtocol.Scheduling?
+        /// The connection its call is open on.
+        weak var session: GeminiLiveSessionControlling?
+        let generation: Int?
+    }
+    private var heldOutcomes: [HeldOutcome] = []
     /// Typed exchanges in the attached chat (#363), sent while idle as
     /// context the model keeps without answering.
     private var pendingContextNotes: [String] = []
@@ -389,6 +405,7 @@ final class GeminiLiveConversationController: ObservableObject {
         lateEndPhraseTask = nil
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
+        returnHeldOutcomes()
         // Best effort, as on GPT-Live: the chat still has the exchange.
         pendingContextNotes = []
         withdrawnCallIDs = []
@@ -469,6 +486,7 @@ final class GeminiLiveConversationController: ObservableObject {
         // Unspoken job notices go back to the supervisor, not the bin.
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
+        returnHeldOutcomes()
         // Best effort, as on GPT-Live: the chat still has the exchange.
         pendingContextNotes = []
         withdrawnCallIDs = []
@@ -511,7 +529,8 @@ final class GeminiLiveConversationController: ObservableObject {
         // announced, so it must never happen while nothing can be sent. The
         // updates stay pending and go out when the session is ready again.
         guard isActive, endRequestedAt == nil, session?.isReady == true else { return }
-        dispatch(tools.pendingUpdates())
+        dispatch(tools.pendingUpdates(), holdingOutcomes: true)
+        flushPendingTextIfIdle()
     }
 
     // MARK: Hands-free end
@@ -532,6 +551,7 @@ final class GeminiLiveConversationController: ObservableObject {
         stopInput()
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
+        returnHeldOutcomes()
         // Best effort, as on GPT-Live: the chat still has the exchange.
         pendingContextNotes = []
         // Job outcomes stay pending for Hermes to report instead of being
@@ -761,6 +781,7 @@ final class GeminiLiveConversationController: ObservableObject {
             }
         case .toolCallCancellation(let ids):
             tools.cancelCalls(ids)
+            releaseHeldOutcomes(withdrawn: ids)
             // Only calls still being handled: their task clears the mark.
             withdrawnCallIDs.formUnion(inFlightCallIDs.intersection(ids))
         case .setupComplete, .goAway, .resumptionUpdate:
@@ -816,7 +837,7 @@ final class GeminiLiveConversationController: ObservableObject {
 
     // MARK: Outgoing
 
-    private func dispatch(_ outgoing: [GeminiLiveToolBridge.Outgoing], unanswerable: Set<String> = []) {
+    private func dispatch(_ outgoing: [GeminiLiveToolBridge.Outgoing], unanswerable: Set<String> = [], holdingOutcomes: Bool = false) {
         for item in outgoing {
             switch item {
             case .toolResponse(let id, let name, let result, let scheduling) where session?.isReady != true || unanswerable.contains(id):
@@ -825,6 +846,10 @@ final class GeminiLiveConversationController: ObservableObject {
                 // outcome is kept as a text update rather than lost. A silent
                 // one stays silent.
                 if scheduling != .silent, let text = Self.fallbackText(for: result, name: name) { pendingTextTurns.append(text) }
+            case .toolResponse(let id, let name, let result, let scheduling) where holdingOutcomes && scheduling == .whenIdle:
+                // A job that finished while someone speaks waits for quiet,
+                // so its result is said rather than lost in another answer.
+                heldOutcomes.append(HeldOutcome(id: id, name: name, result: result, scheduling: scheduling, session: session, generation: session?.connectionGeneration))
             case .toolResponse(let id, let name, let result, let scheduling):
                 // The outcome is already marked delivered, so a send that
                 // fails keeps it as a text update for the next connection.
@@ -855,7 +880,7 @@ final class GeminiLiveConversationController: ObservableObject {
         if hasPendingIdleSends { scheduleIdleFlush() }
     }
 
-    private var hasPendingIdleSends: Bool { !pendingTextTurns.isEmpty || !pendingContextNotes.isEmpty }
+    private var hasPendingIdleSends: Bool { !pendingTextTurns.isEmpty || !pendingContextNotes.isEmpty || !heldOutcomes.isEmpty }
 
     /// Whether Conduit may start a turn of its own right now: connected,
     /// the model silent (and done playing), and the user quiet.
@@ -872,6 +897,7 @@ final class GeminiLiveConversationController: ObservableObject {
     func flushPendingTextIfIdle() {
         guard hasPendingIdleSends, endRequestedAt == nil, isConversationIdle, let session else { return }
         sendPendingContextNotes(on: session)
+        if sendHeldOutcome(on: session) { return }
         guard !pendingTextTurns.isEmpty else { return }
         let text = pendingTextTurns.removeFirst()
         let noticeJobID = tools.textUpdateSending(text)
@@ -908,6 +934,71 @@ final class GeminiLiveConversationController: ObservableObject {
             self.scheduleIdleFlush()
         })
     }
+
+    /// Sends the oldest held job result on its call, or as a text turn when
+    /// its call is gone. True when the model was asked to speak.
+    private func sendHeldOutcome(on session: GeminiLiveSessionControlling) -> Bool {
+        guard !heldOutcomes.isEmpty else { return false }
+        let held = heldOutcomes.removeFirst()
+        let fallback = held.scheduling == .silent ? nil : Self.fallbackText(for: held.result, name: held.name)
+        guard held.session === session, held.generation == session.connectionGeneration else {
+            // The call went with its connection: said as a text update.
+            if let fallback { pendingTextTurns.insert(fallback, at: 0) }
+            return false
+        }
+        let sentAt = now()
+        modelTurnActive = true
+        session.send(.toolResponse(id: held.id, name: held.name, result: held.result, scheduling: held.scheduling), onSent: { [weak self] in
+            if let fallback { self?.ensureOutcomeSpoken(fallback, since: sentAt) }
+        }, onFailure: { [weak self, weak session] in
+            guard let self, self.isActive, let session, self.session === session else { return }
+            self.modelTurnActive = false
+            if let fallback { self.pendingTextTurns.append(fallback) }
+            self.scheduleIdleFlush()
+        })
+        return true
+    }
+
+    /// A result the model took without a word (it can let one pass) is
+    /// sent again as a text turn.
+    private func ensureOutcomeSpoken(_ text: String, since sentAt: Date) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.outcomeSpeechGrace))
+            guard let self, self.isActive, self.endRequestedAt == nil else { return }
+            self.respeakOutcomeIfSilent(text, since: sentAt)
+        }
+    }
+
+    func respeakOutcomeIfSilent(_ text: String, since sentAt: Date) {
+        if let lastModelAudioAt, lastModelAudioAt >= sentAt { return }
+        // No answer came, so no turn is running for it.
+        modelTurnActive = false
+        pendingTextTurns.append(text)
+        scheduleIdleFlush()
+        flushPendingTextIfIdle()
+    }
+
+    /// The call these results were held for was withdrawn: said as text
+    /// updates instead.
+    private func releaseHeldOutcomes(withdrawn ids: [String]) {
+        let withdrawn = Set(ids)
+        for held in heldOutcomes where withdrawn.contains(held.id) && held.scheduling != .silent {
+            if let text = Self.fallbackText(for: held.result, name: held.name) { pendingTextTurns.append(text) }
+        }
+        heldOutcomes.removeAll { withdrawn.contains($0.id) }
+        if hasPendingIdleSends { scheduleIdleFlush() }
+    }
+
+    /// The conversation is closing with results unsaid: their jobs report
+    /// again later.
+    private func returnHeldOutcomes() {
+        for held in heldOutcomes {
+            tools.returnNotice(jobID: held.result["job_id"].flatMap(UUID.init(uuidString:)))
+        }
+        heldOutcomes = []
+    }
+
+    var heldOutcomeCountForTesting: Int { heldOutcomes.count }
 
     private func scheduleIdleFlush() {
         guard idleFlushTask == nil, hasPendingIdleSends else { return }
