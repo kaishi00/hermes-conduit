@@ -9,6 +9,8 @@
 //  classes.
 //
 
+import AVFAudio
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -784,6 +786,7 @@ extension VoiceConversationControllerTests {
         webSearch: GeminiLiveWebSearching? = nil,
         openingPrompt: String? = nil,
         headsetMute: HeadsetMicrophoneMute? = nil,
+        notificationCenter: NotificationCenter = NotificationCenter(),
         clock: @escaping () -> Date
     ) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl, FakeGeminiLiveInput, FakeGeminiLiveOutput, VoiceBackgroundJobSupervisor) {
         let tokens = providedTokens ?? FakeGeminiLiveTokens()
@@ -801,7 +804,8 @@ extension VoiceConversationControllerTests {
             routePolicy: { route },
             endConversationPhrases: { endPhrases },
             openingPrompt: { openingPrompt },
-            headsetMute: headsetMute ?? HeadsetMicrophoneMute(system: FakeSystemInputMute())
+            headsetMute: headsetMute ?? HeadsetMicrophoneMute(system: FakeSystemInputMute()),
+            notificationCenter: notificationCenter
         )
         return (controller, session, input, output, supervisor)
     }
@@ -1496,6 +1500,73 @@ extension VoiceConversationControllerTests {
         try? await Task.sleep(for: .milliseconds(700))
         XCTAssertTrue(input.running, "Capture comes back after the interruption")
         XCTAssertEqual(input.starts, 2)
+        XCTAssertEqual(controller.phase, .listening)
+        controller.stop()
+    }
+
+    /// #376: an alarm (or a phone call) holds the audio for longer than
+    /// the early retry. The call pauses and carries on when it ends,
+    /// instead of failing the moment the microphone can't come back.
+    func testGeminiLiveAlarmPausesTheCallAndResumesWhenItEnds() async {
+        struct AlarmRinging: Error {}
+        let center = NotificationCenter()
+        let (controller, session, input, output, _) = makeGeminiController(notificationCenter: center, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        XCTAssertEqual(controller.phase, .speaking)
+
+        input.startError = AlarmRinging()
+        input.stop()
+        input.onInterrupted?()
+        XCTAssertEqual(controller.phase, .paused)
+        XCTAssertGreaterThan(output.interrupts, 0, "Speech nobody can hear stops")
+        XCTAssertEqual((session.sent.last?["realtimeInput"] as? [String: Any])?["audioStreamEnd"] as? Bool, true)
+        try? await Task.sleep(for: .milliseconds(700))
+        XCTAssertEqual(controller.phase, .paused, "A microphone that can't start yet keeps the call paused, not failed")
+        XCTAssertTrue(controller.isActive)
+        XCTAssertEqual(session.stopped, 0, "The connection stays up")
+
+        let played = output.played
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        XCTAssertEqual(output.played, played, "Nothing plays while paused")
+        XCTAssertEqual(controller.phase, .paused)
+
+        input.startError = nil
+        center.post(
+            name: AVAudioSession.interruptionNotification,
+            object: nil,
+            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue]
+        )
+        for _ in 0..<50 where controller.phase == .paused { await settle() }
+        XCTAssertEqual(controller.phase, .listening, "The call carries on once the alarm stops")
+        XCTAssertTrue(input.running)
+        XCTAssertFalse(controller.isAudioPausedForTesting)
+        controller.stop()
+    }
+
+    func testGeminiLivePausedCallSurvivesAReconnectAndResumesWhenTheAppComesBack() async {
+        struct CallInProgress: Error {}
+        let center = NotificationCenter()
+        let (controller, session, input, _, _) = makeGeminiController(notificationCenter: center, clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        input.startError = CallInProgress()
+        input.stop()
+        input.onInterrupted?()
+        XCTAssertEqual(controller.phase, .paused)
+
+        // The connection drops and comes back while the phone call goes on.
+        session.onStateChange?(.reconnecting)
+        session.becomeReady()
+        XCTAssertEqual(controller.phase, .paused, "A reconnect during the pause doesn't fail the call")
+
+        // No interruption end arrives; the user comes back to the app.
+        input.startError = nil
+        center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        for _ in 0..<50 where controller.phase == .paused { await settle() }
+        XCTAssertEqual(controller.phase, .listening)
+        XCTAssertTrue(input.running)
         controller.stop()
     }
 }

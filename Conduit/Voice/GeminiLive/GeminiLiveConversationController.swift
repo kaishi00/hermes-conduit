@@ -13,7 +13,12 @@
 //  and Conduit's own job updates are only sent while nobody is speaking.
 //
 
+import AVFAudio
 import Foundation
+import OSLog
+import UIKit
+
+private let geminiLiveLogger = Logger(subsystem: "com.milim.relay", category: "GeminiLive")
 
 // MARK: - Seams
 
@@ -143,6 +148,9 @@ final class GeminiLiveConversationController: ObservableObject {
         case connecting
         case listening
         case speaking
+        /// Another sound took the audio (an alarm, a phone call, Siri):
+        /// the call stays connected and picks up again once it ends.
+        case paused
         case reconnecting
         /// Saying goodbye: the microphone is closed and the conversation
         /// closes once Gemini goes quiet.
@@ -254,7 +262,7 @@ final class GeminiLiveConversationController: ObservableObject {
     var isActive: Bool {
         switch phase {
         case .idle, .failed: return false
-        case .connecting, .listening, .speaking, .reconnecting, .ending: return true
+        case .connecting, .listening, .speaking, .paused, .reconnecting, .ending: return true
         }
     }
 
@@ -289,6 +297,15 @@ final class GeminiLiveConversationController: ObservableObject {
     private var modelTurnActive = false
     private var lastUserSpeechAt: Date?
     private var lastModelTurnEndedAt: Date?
+    /// An audio interruption took the microphone; the call waits for the
+    /// system to give the audio back instead of failing (#376).
+    private var audioPaused = false
+    private var audioResumeTask: Task<Void, Never>?
+    private var audioPauseObservers: [NSObjectProtocol] = []
+    private let notificationCenter: NotificationCenter
+    /// Tries to restart the microphone after the system says the other
+    /// sound ended: the session can still be settling right after it.
+    static let audioResumeDelays: [Duration] = [.zero, .milliseconds(500), .seconds(1), .seconds(2)]
     private var pendingTextTurns: [String] = []
     /// Typed exchanges in the attached chat (#363), sent while idle as
     /// context the model keeps without answering.
@@ -333,8 +350,10 @@ final class GeminiLiveConversationController: ObservableObject {
         routePolicy: @escaping @MainActor () -> VoiceBargeInRoutePolicy = { VoiceBargeInRoutePolicy.current() },
         endConversationPhrases: @escaping @MainActor () -> [String] = { [] },
         openingPrompt: @escaping @MainActor () -> String? = { nil },
-        headsetMute: HeadsetMicrophoneMute? = nil
+        headsetMute: HeadsetMicrophoneMute? = nil,
+        notificationCenter: NotificationCenter = .default
     ) {
+        self.notificationCenter = notificationCenter
         self.makeSession = makeSession
         self.availability = availability
         self.openingPrompt = openingPrompt
@@ -359,9 +378,12 @@ final class GeminiLiveConversationController: ObservableObject {
         lastModelTurnEndedAt = now()
         lastPlaybackAt = nil
         openAssistantEntry = nil
-        if endRequestedAt == nil { phase = .listening }
+        if endRequestedAt == nil { phase = restingPhase }
         scheduleLateEndPhraseCheck()
     }
+
+    /// Where the call settles when nobody is speaking.
+    private var restingPhase: Phase { audioPaused ? .paused : .listening }
 
     // MARK: Lifecycle
 
@@ -387,6 +409,7 @@ final class GeminiLiveConversationController: ObservableObject {
         endAwaitsReply = false
         lateEndPhraseTask?.cancel()
         lateEndPhraseTask = nil
+        clearAudioPause()
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
         // Best effort, as on GPT-Live: the chat still has the exchange.
@@ -457,6 +480,7 @@ final class GeminiLiveConversationController: ObservableObject {
         endAwaitsReply = false
         lateEndPhraseTask?.cancel()
         lateEndPhraseTask = nil
+        clearAudioPause()
         session?.stop()
         session = nil
         stopInput()
@@ -487,6 +511,10 @@ final class GeminiLiveConversationController: ObservableObject {
             stopInput()
             // End the user's turn now instead of waiting for more audio.
             if session?.isReady == true { session?.send(.audioStreamEnd) }
+        } else if audioPaused {
+            // Unmuting while paused is a nudge to try the microphone again;
+            // it never fails the call while the other sound still plays.
+            scheduleAudioResume(delays: Self.audioResumeDelays)
         } else if session?.isReady == true {
             startInput()
         }
@@ -528,6 +556,8 @@ final class GeminiLiveConversationController: ObservableObject {
         endAwaitsReply = awaitingReply
         lateEndPhraseTask?.cancel()
         lateEndPhraseTask = nil
+        // The microphone closes for good: nothing is left to resume.
+        clearAudioPause()
         phase = .ending
         stopInput()
         tools.returnUnsent(pendingTextTurns)
@@ -618,25 +648,122 @@ final class GeminiLiveConversationController: ObservableObject {
         return ".!?。！？".contains(last)
     }
 
-    /// An audio interruption stopped the microphone. Restart it once the
-    /// system lets go; if it can't, say so instead of showing "Listening".
+    /// An audio interruption stopped the microphone: an alarm, a phone
+    /// call, Siri, or the audio failing to come back after a route change.
+    /// The call pauses instead of failing (#376): the connection stays up,
+    /// the model's speech stops, and the microphone comes back when the
+    /// system says the other sound ended or the app becomes active again.
+    /// One early try covers interruptions no end ever follows (a media
+    /// services reset); a try that fails just keeps the call paused.
     private func captureInterrupted() {
         guard inputRunning else { return }
         inputRunning = false
-        guard !isMicrophoneMuted else { return }
-        Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard let self, self.isActive, !self.isMicrophoneMuted, self.session?.isReady == true else { return }
-            self.startInput()
+        guard endRequestedAt == nil, isActive else { return }
+        pauseForAudioInterruption()
+        scheduleAudioResume(delays: [.milliseconds(500)])
+    }
+
+    private func pauseForAudioInterruption() {
+        if !audioPaused {
+            audioPaused = true
+            geminiLiveLogger.notice("Live voice paused by an audio interruption")
+            observeAudioReturn()
+        }
+        // Whatever the model was saying can't be heard: drop the rest of
+        // its turn, as the Interrupt button does.
+        if modelTurnActive || output.isPlaying {
+            output.interrupt()
+            suppressingModelTurn = modelTurnActive
+            modelTurnActive = false
+            lastModelTurnEndedAt = now()
+            lastPlaybackAt = nil
+            openAssistantEntry = nil
+        }
+        // End the user's turn instead of leaving it open on the server.
+        if session?.isReady == true { session?.send(.audioStreamEnd) }
+        switch phase {
+        case .listening, .speaking: phase = .paused
+        default: break
         }
     }
+
+    /// The system's interruption end and the app coming back to the
+    /// foreground are the cues that the other sound let go.
+    private func observeAudioReturn() {
+        guard audioPauseObservers.isEmpty else { return }
+        audioPauseObservers = [
+            notificationCenter.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { [weak self] note in
+                let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+                guard type == .ended else { return }
+                Task { @MainActor [weak self] in self?.scheduleAudioResume(delays: Self.audioResumeDelays) }
+            },
+            notificationCenter.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.scheduleAudioResume(delays: Self.audioResumeDelays) }
+            },
+        ]
+    }
+
+    /// Tries to bring the microphone back after each delay in turn,
+    /// stopping at the first success. Replaces any tries already queued.
+    private func scheduleAudioResume(delays: [Duration]) {
+        guard audioPaused else { return }
+        audioResumeTask?.cancel()
+        audioResumeTask = Task { [weak self] in
+            for delay in delays {
+                if delay > .zero { try? await Task.sleep(for: delay) }
+                guard let self, !Task.isCancelled, self.audioPaused else { return }
+                if self.resumeAfterAudioInterruption() { return }
+            }
+        }
+    }
+
+    /// True when the call is no longer paused. A microphone that still
+    /// can't start leaves it paused, never failed.
+    @discardableResult
+    func resumeAfterAudioInterruption() -> Bool {
+        guard audioPaused else { return true }
+        guard isActive, endRequestedAt == nil else {
+            clearAudioPause()
+            return true
+        }
+        // A reconnect in progress restarts the microphone once it's ready.
+        guard session?.isReady == true else { return false }
+        if !isMicrophoneMuted, !inputRunning {
+            do {
+                try input.start()
+                inputRunning = true
+            } catch {
+                geminiLiveLogger.notice("Live voice microphone not back yet: \(String(describing: error), privacy: .public)")
+                return false
+            }
+        }
+        clearAudioPause()
+        geminiLiveLogger.notice("Live voice resumed after an audio interruption")
+        if phase == .paused { phase = .listening }
+        sendOpeningIfNeeded()
+        // Job outcomes that settled during the pause go out now.
+        dispatch(tools.pendingUpdates())
+        scheduleIdleFlush()
+        return true
+    }
+
+    private func clearAudioPause() {
+        audioPaused = false
+        audioResumeTask?.cancel()
+        audioResumeTask = nil
+        audioPauseObservers.forEach(notificationCenter.removeObserver)
+        audioPauseObservers = []
+    }
+
+    var isAudioPausedForTesting: Bool { audioPaused }
 
     // MARK: Session
 
     /// The greeting, once per call. Marked sent before it goes out, so a
     /// reconnect never greets twice; a send that fails re-arms it.
     private func sendOpeningIfNeeded() {
-        guard endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() else { return }
+        // Paused: a greeting nobody can hear waits for the audio to return.
+        guard endRequestedAt == nil, !audioPaused, !hasSentOpening, let opening = openingPrompt() else { return }
         hasSentOpening = true
         let sentOn = session.map(ObjectIdentifier.init)
         let connection = session?.connectionGeneration
@@ -654,6 +781,12 @@ final class GeminiLiveConversationController: ObservableObject {
     private func sessionStateChanged(_ state: GeminiLiveSession.State) {
         switch state {
         case .ready:
+            if audioPaused, !resumeAfterAudioInterruption() {
+                // Still paused: the microphone stays off until the other
+                // sound ends, and nothing is sent the user can't hear.
+                if endRequestedAt == nil { phase = .paused }
+                return
+            }
             // A microphone that fails to start leaves the phase failed.
             if !isMicrophoneMuted, !startInput() { return }
             // Ending: the microphone is closed, so it isn't listening.
@@ -686,7 +819,8 @@ final class GeminiLiveConversationController: ObservableObject {
     private func handle(_ event: GeminiLiveProtocol.ServerEvent) {
         switch event {
         case .audio(let pcm, let sampleRate):
-            guard !suppressingModelTurn else { return }
+            // Paused: nobody can hear it.
+            guard !suppressingModelTurn, !audioPaused else { return }
             modelTurnActive = true
             lastModelAudioAt = now()
             if endRequestedAt == nil { phase = .speaking }
@@ -696,7 +830,7 @@ final class GeminiLiveConversationController: ObservableObject {
                 output.interrupt()
             }
         case .outputTranscription(let text):
-            guard !suppressingModelTurn else { return }
+            guard !suppressingModelTurn, !audioPaused else { return }
             modelTurnActive = true
             appendTranscript(text, speaker: .assistant)
         case .inputTranscription(let text):
@@ -711,7 +845,7 @@ final class GeminiLiveConversationController: ObservableObject {
             lastModelTurnEndedAt = now()
             openAssistantEntry = nil
             // Ending: the microphone is closed, so it isn't listening.
-            if endRequestedAt == nil { phase = .listening }
+            if endRequestedAt == nil { phase = restingPhase }
             // No turnComplete checks the utterance this turn answered.
             scheduleLateEndPhraseCheck()
         case .turnComplete:
@@ -724,7 +858,7 @@ final class GeminiLiveConversationController: ObservableObject {
             publishFinished(openAssistantEntry)
             closeOpenEntries()
             // Ending: the microphone is closed, so it isn't listening.
-            if endRequestedAt == nil { phase = .listening }
+            if endRequestedAt == nil { phase = restingPhase }
             scheduleIdleFlush()
         case .toolCall(let calls):
             // Which connection the calls arrived on, read now: a handoff
@@ -860,7 +994,8 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Whether Conduit may start a turn of its own right now: connected,
     /// the model silent (and done playing), and the user quiet.
     var isConversationIdle: Bool {
-        guard session?.isReady == true, !modelTurnActive, !output.isPlaying else { return false }
+        // Paused: an update the user can't hear waits for the audio.
+        guard session?.isReady == true, !audioPaused, !modelTurnActive, !output.isPlaying else { return false }
         let current = now()
         if let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userQuietInterval { return false }
         if let lastModelTurnEndedAt, current.timeIntervalSince(lastModelTurnEndedAt) < Self.modelQuietInterval { return false }

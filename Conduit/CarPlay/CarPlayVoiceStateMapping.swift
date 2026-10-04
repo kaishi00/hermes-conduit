@@ -64,7 +64,7 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
     static func map(geminiLive phase: GeminiLiveConversationController.Phase) -> CarPlayVoiceState {
         switch phase {
         case .idle: return .ready
-        case .connecting, .reconnecting, .ending: return .processing
+        case .connecting, .reconnecting, .paused, .ending: return .processing
         case .listening: return .listening
         case .speaking: return .responding
         case .failed: return .error
@@ -120,7 +120,7 @@ enum CarPlayGeminiLiveListenAction: Equatable {
         switch phase {
         case .idle, .failed: return .start
         case .speaking: return .interrupt
-        case .connecting, .reconnecting, .listening, .ending: return .nothing
+        case .connecting, .reconnecting, .listening, .paused, .ending: return .nothing
         }
     }
 }

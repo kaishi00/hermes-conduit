@@ -1108,7 +1108,7 @@ final class CarPlayVoiceCoordinator {
     /// A call that is ending never speaks a notice, so it is not open.
     private static func canTakeNotice(_ phase: GeminiLiveConversationController.Phase) -> Bool {
         switch phase {
-        case .connecting, .reconnecting, .listening, .speaking: return true
+        case .connecting, .reconnecting, .listening, .speaking, .paused: return true
         case .idle, .failed, .ending: return false
         }
     }
