@@ -369,6 +369,10 @@ final class VoiceConversationController: ObservableObject {
         guard isCurrent(generation) else { return }
         do {
             try capture.startListening(includePreRoll: includePreRoll)
+            // Starting may choose this conversation's audio (echo-cancelling
+            // or not), which decides the route policy: classify it afresh
+            // rather than trust a value cached while idle.
+            cachedRoutePolicy = nil
             // Defense in depth: capture must never end up live over audible
             // playback, whichever flag paused it.
             if isMicrophonePaused || isPlaybackCaptureSuspended { capture.pause() }

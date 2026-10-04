@@ -219,7 +219,8 @@ extension VoiceConversationControllerTests {
     func testControllerKeepsTheMicrophoneOpenOnTheSpeakerWhenEchoIsCancelled() async {
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
         let interrupts = AwaitableCounter()
-        let (selector, engine) = makeSelector(wantsEcho: true)
+        let standardCapture = MockCapture(permissionGranted: true)
+        let (selector, engine) = makeSelector(wantsEcho: true, capture: standardCapture)
         let controller = VoiceConversationController(
             capture: selector.capture,
             playback: selector.playback,
@@ -228,6 +229,10 @@ extension VoiceConversationControllerTests {
             submit: { _ in true },
             interrupt: { interrupts.increment(); return true }
         )
+        // A route change while idle classifies the open speaker before any
+        // echo choice exists; the conversation must not inherit it.
+        standardCapture.emit(.routeChanged)
+        await drainPendingMainActorWork()
         controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
         XCTAssertTrue(selector.cancelsEcho)
