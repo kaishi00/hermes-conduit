@@ -492,6 +492,9 @@ enum VoiceConfigurationParser {
             return .init(id: id, displayName: "xAI", kind: kind, supportsStreaming: true)
         case ("gemini", .tts):
             return .init(id: id, displayName: "Gemini", kind: kind, supportsStreaming: true)
+        case ("edge", .tts):
+            // Hermes' default voice: free, no key, nothing to install.
+            return .init(id: id, displayName: "Edge TTS", kind: kind, supportsStreaming: false)
         case ("stepfun", .stt):
             return .init(id: id, displayName: "StepFun", kind: kind, models: ["stepaudio-2.5-asr", "step-asr"], supportsStreaming: false)
         case ("stepfun", .tts):
