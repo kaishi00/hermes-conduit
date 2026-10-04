@@ -1214,7 +1214,8 @@ final class CarPlayVoiceCoordinator {
     /// waiting for Hermes or for its chat to open: before, a live call
     /// waiting to connect could not be ended from the car (#378). With
     /// "Choose a chat first" on, the chat list comes back so the driver can
-    /// go on in another chat.
+    /// go on in another chat. The picked chat is kept on purpose: Listen
+    /// after End continues in it, as the driver picked it.
     func endTapped() {
         guard isConnected else { return }
         voiceStartRequest &+= 1
@@ -1360,6 +1361,12 @@ final class CarPlayVoiceCoordinator {
             if !isCurrent(generation) || !isConnected {
                 appState.releaseCarPlayGrokLive()
             }
+        }
+        // End tapped while the call was starting: the call it closed may
+        // not have been running yet, so close whatever started after it.
+        if isCurrent(generation), isConnected, voiceStartRequest != startRequest {
+            endConversation()
+            forward(.ready)
         }
     }
 

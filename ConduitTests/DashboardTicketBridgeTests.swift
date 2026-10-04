@@ -315,7 +315,25 @@ extension DashboardTicketBridgeTests {
         let chosen = DashboardTicketBridge.freshestCookies([resignedIn, stalePage])
         XCTAssertEqual(chosen.map(\.value), ["new"], "a copy that expires sooner never replaces a fresher sign-in")
 
-        let rotated = try cookie("rotated", expires: nil)
-        XCTAssertEqual(DashboardTicketBridge.freshestCookies([stalePage, rotated]).map(\.value), ["rotated"])
+        let live = try cookie("live", expires: nil)
+        XCTAssertEqual(DashboardTicketBridge.freshestCookies([stalePage, live]).map(\.value), ["live"])
+        XCTAssertEqual(
+            DashboardTicketBridge.freshestCookies([live, resignedIn]).map(\.value), ["live"],
+            "a live session cookie is never displaced by a dated copy from a later store"
+        )
+    }
+
+    func testBackgroundRequestsFollowOnlySameOriginRedirectsWithTheirHeaders() throws {
+        var original = URLRequest(url: try XCTUnwrap(URL(string: "https://example.com/api/sessions")))
+        original.setValue("session=abc", forHTTPHeaderField: "Cookie")
+        func proposed(_ url: String) throws -> URLRequest { URLRequest(url: try XCTUnwrap(URL(string: url))) }
+
+        let followed = DashboardBackgroundSession.redirect(from: original, to: try proposed("https://example.com/api/sessions/"))
+        XCTAssertEqual(followed?.value(forHTTPHeaderField: "Cookie"), "session=abc", "a trailing-slash redirect keeps the cookies")
+        XCTAssertNil(DashboardBackgroundSession.redirect(from: original, to: try proposed("https://example.com/login?next=/api")))
+        XCTAssertNil(
+            DashboardBackgroundSession.redirect(from: original, to: try proposed("https://elsewhere.example/api/sessions")),
+            "cookies never follow a redirect to another origin"
+        )
     }
 }

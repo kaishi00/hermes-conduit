@@ -57,14 +57,15 @@ extension DashboardTicketBridge {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
 
-        let result: (URLSession.AsyncBytes, URLResponse)
+        let result: (Data, URLResponse)
         do {
-            result = try await DashboardBackgroundSession.shared.bytes(for: request)
+            result = try await Self.load(request, deadline: .milliseconds(max(1_000, timeoutMilliseconds)))
         } catch let error as URLError {
-            // What the page's fetch reports for a network failure: status 0.
+            // What the page's fetch reports for a network failure or its
+            // abort: status 0.
             throw DashboardTicketBridgeError.http(status: 0, detail: error.localizedDescription)
         }
-        let (bytes, response) = result
+        let (data, response) = result
         guard let http = response as? HTTPURLResponse else {
             throw DashboardTicketBridgeError.http(status: 0, detail: "No response from the dashboard.")
         }
@@ -78,8 +79,10 @@ extension DashboardTicketBridge {
             }
         }
         if (300...399).contains(http.statusCode) {
-            // Redirects are not followed: a sign-in redirect means the
-            // session is gone, as the page landing on /login does.
+            // Same-origin redirects are followed, as the page's fetch does.
+            // One that comes back is to sign-in or another origin: a
+            // sign-in redirect means the session is gone, as the page
+            // landing on /login does.
             let location = http.value(forHTTPHeaderField: "Location") ?? ""
             if location.contains("/login") { throw DashboardTicketBridgeError.signInRequired }
             throw DashboardTicketBridgeError.http(
@@ -90,19 +93,8 @@ extension DashboardTicketBridge {
         if http.statusCode == 401 || http.statusCode == 403 {
             throw DashboardTicketBridgeError.signInRequired
         }
-        if let length = http.value(forHTTPHeaderField: "Content-Length").flatMap(Int.init), length > maxResponseBytes {
+        guard data.count <= maxResponseBytes else {
             throw DashboardTicketBridgeError.oversizedResponse(limit: maxResponseBytes)
-        }
-        var data = Data()
-        do {
-            for try await byte in bytes {
-                guard data.count < maxResponseBytes else {
-                    throw DashboardTicketBridgeError.oversizedResponse(limit: maxResponseBytes)
-                }
-                data.append(byte)
-            }
-        } catch let error as URLError {
-            throw DashboardTicketBridgeError.http(status: 0, detail: error.localizedDescription)
         }
         let value = data.isEmpty ? nil : try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
         guard (200...299).contains(http.statusCode) else {
@@ -119,6 +111,22 @@ extension DashboardTicketBridge {
         if let array = value as? [Any] { return ["_array": array] }
         if data.isEmpty { return [:] }
         return ["value": value ?? String(decoding: data, as: UTF8.self)]
+    }
+
+    /// The response, or `URLError(.timedOut)` once `deadline` passes in
+    /// total, as the page's AbortController does. A request's own timeout
+    /// only limits the wait between bytes.
+    private static func load(_ request: URLRequest, deadline: Duration) async throws -> (Data, URLResponse) {
+        try await withThrowingTaskGroup(of: (Data, URLResponse).self) { group in
+            group.addTask { try await DashboardBackgroundSession.shared.data(for: request) }
+            group.addTask {
+                try await Task.sleep(for: deadline)
+                throw URLError(.timedOut)
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else { throw URLError(.unknown) }
+            return first
+        }
     }
 
     /// Where the page's `fetch(path)` goes: `path` resolved against the
@@ -146,8 +154,10 @@ extension DashboardTicketBridge {
     }
 
     /// One copy of each cookie (name, domain, path): the one that expires
-    /// last, since a newer sign-in or a renewed session runs longer.
-    /// Otherwise the later source wins.
+    /// last, since a newer sign-in or a renewed session runs longer. A
+    /// session cookie (no expiry, the usual live dashboard session) counts
+    /// as never expiring, so a dated copy never displaces it. Ties go to
+    /// the later source.
     nonisolated static func freshestCookies(_ cookies: [HTTPCookie]) -> [HTTPCookie] {
         var order: [String] = []
         var chosen: [String: HTTPCookie] = [:]
@@ -162,9 +172,9 @@ extension DashboardTicketBridge {
                 chosen[key] = cookie
                 continue
             }
-            if let held = current.expiresDate, let offered = cookie.expiresDate, offered < held {
-                continue
-            }
+            let held = current.expiresDate ?? .distantFuture
+            let offered = cookie.expiresDate ?? .distantFuture
+            if offered < held { continue }
             chosen[key] = cookie
         }
         return order.compactMap { chosen[$0] }
@@ -178,9 +188,11 @@ extension DashboardTicketBridge {
         return await withCheckedContinuation { continuation in
             once.continuation = continuation
             store.getAllCookies { cookies in
-                MainActor.assumeIsolated { once.resume(cookies) }
+                // A hop rather than assuming the main queue: a wrong-queue
+                // callback must not trap in a car.
+                Task { @MainActor in once.resume(cookies) }
             }
-            Task { @MainActor in
+            once.timeout = Task { @MainActor in
                 try? await Task.sleep(for: timeout)
                 once.resume(nil)
             }
@@ -192,26 +204,31 @@ extension DashboardTicketBridge {
 @MainActor
 private final class DashboardCookieAnswer {
     var continuation: CheckedContinuation<[HTTPCookie]?, Never>?
+    var timeout: Task<Void, Never>?
 
     func resume(_ cookies: [HTTPCookie]?) {
         continuation?.resume(returning: cookies)
         continuation = nil
+        timeout?.cancel()
+        timeout = nil
     }
 }
 
 /// The URLSession for requests sent without the page. Cookies are set by
-/// hand from the dashboard's own stores, so the session keeps none, and
-/// redirects come back as responses rather than being followed.
+/// hand from the dashboard's own stores, so the session keeps none.
+/// Same-origin redirects are followed with the same headers, as the page's
+/// fetch follows them; a redirect to sign-in or another origin comes back
+/// as the response.
 enum DashboardBackgroundSession {
     static let shared: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpShouldSetCookies = false
         configuration.httpCookieAcceptPolicy = .never
         configuration.httpCookieStorage = nil
-        return URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
+        return URLSession(configuration: configuration, delegate: SameOriginRedirects(), delegateQueue: nil)
     }()
 
-    private final class NoRedirects: NSObject, URLSessionTaskDelegate {
+    private final class SameOriginRedirects: NSObject, URLSessionTaskDelegate {
         func urlSession(
             _ session: URLSession,
             task: URLSessionTask,
@@ -219,7 +236,26 @@ enum DashboardBackgroundSession {
             newRequest request: URLRequest,
             completionHandler: @escaping (URLRequest?) -> Void
         ) {
-            completionHandler(nil)
+            completionHandler(DashboardBackgroundSession.redirect(
+                from: task.originalRequest,
+                to: request
+            ))
         }
+    }
+
+    /// The redirect to follow, carrying the original request's headers
+    /// (its cookies and proxy headers), or nil to return the redirect as
+    /// the response: one to sign-in or to another origin.
+    static func redirect(from original: URLRequest?, to proposed: URLRequest) -> URLRequest? {
+        guard let original, let source = original.url, let destination = proposed.url,
+              ConnectionURLPolicy.isAllowedTransport(destination),
+              ConnectionURLPolicy.originMatches(destination, expected: source),
+              !destination.path.contains("/login") else { return nil }
+        var followed = proposed
+        for (name, value) in original.allHTTPHeaderFields ?? [:]
+            where followed.value(forHTTPHeaderField: name) == nil {
+            followed.setValue(value, forHTTPHeaderField: name)
+        }
+        return followed
     }
 }

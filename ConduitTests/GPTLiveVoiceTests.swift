@@ -1572,6 +1572,41 @@ extension AppStateVoiceCapabilityTests {
         coordinator.handleDisconnect()
     }
 
+    func testCarPlayEndWhileTheCallIsStartingLeavesNoCall() async throws {
+        let (appState, coordinator, _, spy) = try await makeCarPlayGPTLive()
+        // A host that takes a while to say GPT-Live is available.
+        final class Gate { var isOpen = false }
+        let gate = Gate()
+        let session = FakeGPTLiveSessionControl()
+        let controller = GPTLiveConversationController(
+            makeSession: { session },
+            availability: {
+                while !gate.isOpen { await Task.yield() }
+                return .available(model: "gpt-live-1-codex", voice: "cove")
+            },
+            briefing: { "[rules]" },
+            supervisor: appState.voiceBackgroundJobSupervisor,
+            requestPermission: { true }
+        )
+        appState.gptLiveController = controller
+        coordinator.voiceModeChanged(in: appState)
+        let generation = coordinator.connectionGeneration
+        let listen = Task { await coordinator.performStartListeningTurn(generation: generation) }
+        for _ in 0..<200 where controller.phase != .connecting { await Task.yield() }
+        XCTAssertEqual(controller.phase, .connecting)
+
+        coordinator.endTapped()
+        gate.isOpen = true
+        await listen.value
+        for _ in 0..<50 { await Task.yield() }
+
+        XCTAssertEqual(session.started, 0, "no call goes live after End")
+        XCTAssertFalse(controller.isActive)
+        XCTAssertEqual(coordinator.lastActivatedState, .ready)
+        coordinator.handleDisconnect()
+        withExtendedLifetime(spy) {}
+    }
+
     func testCarPlayEndWhileTheCallWaitsForHermesStartsNoCall() async throws {
         let (appState, coordinator, session, spy) = try await makeCarPlayGPTLive()
         appState.isConnected = false
