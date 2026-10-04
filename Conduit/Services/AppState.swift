@@ -2129,6 +2129,10 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             return await self.interruptForVoice()
         },
+        steer: { [weak self] text in
+            guard let self else { return .failed }
+            return await self.steerForVoice(text)
+        },
         onEndConversation: { [weak self] in
             self?.closeVoiceConversation()
         },
@@ -17682,7 +17686,8 @@ final class AppState: ObservableObject {
 
     private func steer(
         _ text: String,
-        context: ComposerSubmissionContext? = nil
+        context: ComposerSubmissionContext? = nil,
+        surfacesFailure: Bool = true
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
@@ -17727,7 +17732,10 @@ final class AppState: ObservableObject {
             // mutation, so preserve success for draft handling.
             return true
         } catch {
-            guard isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }
+            // A spoken steer that fails is dropped by Voice; there is no
+            // composer draft to recover or banner to show.
+            guard surfacesFailure,
+                  isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }
             errorMessage = UserFacingError.message(for: error)
             await recoverComposerSubmission(using: submissionContext)
             return false
@@ -22451,6 +22459,23 @@ final class AppState: ObservableObject {
         spokenSubmissionText = transcript
         defer { spokenSubmissionText = nil }
         return await submitComposer(text: transcript, attachments: [])
+    }
+
+    /// Speech while Hermes thinks: the words steer the running turn, as
+    /// the composer's Steer does, whatever the composer's busy mode is.
+    /// With no running turn the controller sends them as a new turn; a
+    /// failed steer is never resubmitted, so it can't duplicate the words.
+    func steerForVoice(_ text: String) async -> VoiceSteerOutcome {
+        switch turnState {
+        case .running:
+            return await steer(text, surfacesFailure: false) ? .steered : .failed
+        case .idle, .unsupportedGateway:
+            return .noRunningTurn
+        case .synchronizing, .reconnecting:
+            // The turn may still be running server-side: don't start a
+            // second one with the user's words.
+            return .failed
+        }
     }
 
     /// Stops the authoritative Hermes turn when a spoken stop command,

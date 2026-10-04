@@ -528,6 +528,17 @@ struct PendingVoiceIntent: Equatable {
     enum Source: String, Equatable { case composer, wakePhrase, siri, newCall }
 }
 
+/// What became of words spoken to steer a running Hermes turn.
+enum VoiceSteerOutcome: Equatable {
+    /// Hermes took them into the running turn.
+    case steered
+    /// No turn was running: the words should go out as a new turn.
+    case noRunningTurn
+    /// The steer was refused or failed; the running turn carries on
+    /// without it.
+    case failed
+}
+
 /// AppState emits these from its authoritative Hermes socket event path. Voice
 /// consumers never need to scrape visible message rows or streaming text.
 enum VoiceAssistantEvent: Equatable {

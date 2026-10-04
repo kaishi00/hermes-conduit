@@ -23,6 +23,9 @@ final class VoiceConversationController: ObservableObject {
     @Published private(set) var state: VoiceConversationState = .idle
     @Published private(set) var latestTranscript = ""
     @Published private(set) var lastBargeInState: VoiceConversationState?
+    /// The current listening window steers the running Hermes turn instead
+    /// of starting a new one: the user spoke while Hermes was thinking.
+    @Published private(set) var isSteeringTurn = false
     @Published private(set) var isOutputMuted = false
     @Published private(set) var isMicrophonePaused = false
     /// Latest raw microphone input peak from the capture service. This is
@@ -66,6 +69,22 @@ final class VoiceConversationController: ObservableObject {
     /// *attempted* (barge-in, manual Interrupt, spoken End Conversation)
     /// discard the result; the suspended-orphan path acts on it.
     private let interrupt: @MainActor () async -> Bool
+    /// Adds the user's words to the running Hermes turn without stopping
+    /// it (Hermes' steer). With no running turn the words become a new
+    /// turn instead; a failed steer is dropped and the turn carries on.
+    /// Nil turns speech while Hermes thinks off: it is then ignored.
+    private let steerTurn: (@MainActor (String) async -> VoiceSteerOutcome)?
+    /// A steer that reaches Hermes after its last tool call runs as its own
+    /// turn once the reply finishes. Set when the steered turn completes,
+    /// so the conversation adopts that follow-up reply while it listens.
+    private var promotedSteerReplyDeadline: Date?
+    /// How long after a steered turn completes its follow-up reply is
+    /// still adopted.
+    var promotedSteerReplyWindow: TimeInterval = 30
+    private var steerSentThisTurn = false
+    /// A late steer's follow-up reply that started while the steered reply
+    /// was still playing, held until that speech settles.
+    private var heldPromotedSteerEvents: [VoiceAssistantEvent] = []
     /// Installed by AppState: the authoritative Voice Close teardown
     /// (persist mute → `endVoiceSession` → sheet dismissal). A spoken End
     /// Conversation phrase converges on it instead of a second teardown;
@@ -151,6 +170,7 @@ final class VoiceConversationController: ObservableObject {
         routePolicyProvider: (@MainActor () -> VoiceBargeInRoutePolicy)? = nil,
         submit: @escaping @MainActor (String) async -> Bool,
         interrupt: @escaping @MainActor () async -> Bool,
+        steer: (@MainActor (String) async -> VoiceSteerOutcome)? = nil,
         onEndConversation: (@MainActor () -> Void)? = nil,
         backgroundJobs: VoiceBackgroundJobHandling? = nil
     ) {
@@ -170,6 +190,7 @@ final class VoiceConversationController: ObservableObject {
         }
         self.submit = submit
         self.interrupt = interrupt
+        self.steerTurn = steer
         self.endConversationRequest = onEndConversation
         self.backgroundJobs = backgroundJobs
         captureEventsTask = Task { [weak self, capture] in
@@ -438,6 +459,7 @@ final class VoiceConversationController: ObservableObject {
         // acoustic barge-in provenance, and this path always lands in
         // .listening.
         let generation = operationGeneration
+        dropPromotedSteerReply()
         playback.stop()
         cancelSpeechDrainAndStream()
         clearSpeechQueue()
@@ -529,6 +551,7 @@ final class VoiceConversationController: ObservableObject {
         clearSpeechQueue()
         assistantFinished = false
         isPlaybackCaptureSuspended = false
+        endSteerBookkeeping()
         speechDetector.reset()
         resetMicrophoneMeter()
     }
@@ -536,6 +559,7 @@ final class VoiceConversationController: ObservableObject {
     func setOutputMuted(_ muted: Bool) {
         isOutputMuted = muted
         if muted {
+            dropPromotedSteerReply()
             playback.stop()
             cancelSpeechDrainAndStream()
             clearSpeechQueue()
@@ -715,7 +739,10 @@ final class VoiceConversationController: ObservableObject {
                 scheduleFinishUtterance()
             } else if lastSpeechAt == nil, let started = utteranceStartedAt,
                       date.timeIntervalSince(started) >= configuration.idleSilence {
-                if isBackgroundListening {
+                if isSteeringTurn {
+                    // Nothing came of it: Hermes' turn carries on as is.
+                    resumeTurnAfterSteer()
+                } else if isBackgroundListening {
                     restartSilentListeningWindow(at: date)
                 } else {
                     pauseMicrophone()
@@ -727,11 +754,20 @@ final class VoiceConversationController: ObservableObject {
             // even from a stale level event that slipped past the paused
             // tap.
             guard !isPlaybackCaptureSuspended else { break }
+            // Speech over an audible reply talks over it (a new turn).
+            // Speech while Hermes thinks steers the running turn. Anything
+            // else (silent gaps mid-reply, muted output) is ignored, so it
+            // can't cut the turn short.
+            let talkOver = isTalkOverAvailable
+            guard talkOver || isSteerAvailable else {
+                bargeInStartedAt = nil
+                break
+            }
             if level >= configuration.bargeInActivityThreshold {
                 if bargeInStartedAt == nil { bargeInStartedAt = date }
                 if let started = bargeInStartedAt,
                    date.timeIntervalSince(started) >= configuration.bargeInDuration {
-                    scheduleBargeIn()
+                    if talkOver { scheduleBargeIn() } else { scheduleSteer() }
                 }
             } else {
                 bargeInStartedAt = nil
@@ -748,6 +784,7 @@ final class VoiceConversationController: ObservableObject {
                 .failed(let id, _), .interrupted(let id):
             sessionID = id
         }
+        if routePromotedSteerReply(event, sessionID: sessionID) { return }
         guard isVoiceSessionActive,
               isAwaitingVoiceAssistant,
               expectedAssistantSessionIDs.contains(sessionID) else { return }
@@ -789,6 +826,10 @@ final class VoiceConversationController: ObservableObject {
             assistantFinished = true
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
+            if steerSentThisTurn {
+                promotedSteerReplyDeadline = Date().addingTimeInterval(promotedSteerReplyWindow)
+            }
+            steerSentThisTurn = false
             startSpeechDrainIfNeeded()
         case .failed(_, let message):
             // A barge-in can produce a terminal cancellation from the prior
@@ -798,6 +839,7 @@ final class VoiceConversationController: ObservableObject {
             guard awaitedAssistantResponseStarted || !isCancellationMessage(message) else { return }
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
+            endSteerBookkeeping()
             state = .failed(message)
             playback.stop()
             cancelSpeechDrainAndStream()
@@ -806,6 +848,7 @@ final class VoiceConversationController: ObservableObject {
             guard awaitedAssistantResponseStarted else { return }
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
+            endSteerBookkeeping()
             playback.stop()
             cancelSpeechDrainAndStream()
             endPlaybackCaptureSuspensionWithoutRelistening()
@@ -937,8 +980,13 @@ final class VoiceConversationController: ObservableObject {
             let transcript = try await transcribe(audio, gateway: gateway)
             guard isCurrent(generation) else { return }
             latestTranscript = transcript
+            let steering = isSteeringTurn
             if transcript.isEmpty {
-                await startListening()
+                if steering {
+                    resumeTurnAfterSteer()
+                } else {
+                    await startListening()
+                }
                 return
             }
             // Command boundary: spoken commands are recognized only on the
@@ -952,6 +1000,54 @@ final class VoiceConversationController: ObservableObject {
             conversationTranscript.append(
                 VoiceConversationTranscriptEntry(speaker: .user, text: transcript)
             )
+            if steering, !isWholeUtteranceStopCommand(transcript),
+               let backgroundJobs, let command = VoiceBackgroundJobCommands.parse(transcript) {
+                // A background-job command is handled locally, never steered
+                // to Hermes. Its confirmation is shown, not spoken: the
+                // running turn's reply is what plays next.
+                let reply = await backgroundJobs.performVoiceCommand(command)
+                guard isCurrent(generation) else { return }
+                conversationTranscript.append(
+                    VoiceConversationTranscriptEntry(speaker: .assistant, text: reply)
+                )
+                resumeTurnAfterSteer()
+                return
+            }
+            if steering {
+                // Steered into the running turn: Hermes keeps working with
+                // the user's words added, and its reply is still this
+                // conversation's. A spoken Stop cancels the turn instead.
+                if !isWholeUtteranceStopCommand(transcript), isAwaitingVoiceAssistant, let steerTurn {
+                    let outcome = await steerTurn(transcript)
+                    guard isCurrent(generation) else { return }
+                    switch outcome {
+                    case .steered:
+                        if isAwaitingVoiceAssistant {
+                            steerSentThisTurn = true
+                        } else {
+                            // The reply finished while the steer was in
+                            // flight: arm the follow-up adoption the
+                            // completion would have.
+                            promotedSteerReplyDeadline = Date().addingTimeInterval(promotedSteerReplyWindow)
+                        }
+                        resumeTurnAfterSteer()
+                        return
+                    case .failed:
+                        resumeTurnAfterSteer()
+                        return
+                    case .noRunningTurn:
+                        break
+                    }
+                }
+                // Stop, or the turn finished while the user spoke (the
+                // words are then a new turn): the reply's held speech is
+                // dropped, as talking over it would. It stays in the
+                // transcript.
+                isSteeringTurn = false
+                cancelSpeechDrainAndStream()
+                clearSpeechQueue()
+                assistantFinished = false
+            }
             if isWholeUtteranceStopCommand(transcript) {
                 // Spoken Stop proceeds on the attempt: its local semantics
                 // (cancel, stop playback, relisten) do not depend on the
@@ -1008,6 +1104,8 @@ final class VoiceConversationController: ObservableObject {
             cancelBackgroundHandBackWatchdog()
             isAwaitingVoiceAssistant = true
             awaitedAssistantResponseStarted = false
+            steerSentThisTurn = false
+            dropPromotedSteerReply()
             guard await submit(transcript) else {
                 guard isCurrent(generation) else { return }
                 isAwaitingVoiceAssistant = false
@@ -1016,9 +1114,17 @@ final class VoiceConversationController: ObservableObject {
             }
             guard isCurrent(generation) else { return }
         } catch is CancellationError {
+            isSteeringTurn = false
             if isCurrent(generation) { state = .idle }
         } catch {
-            if isCurrent(generation) { state = .failed(UserFacingError.message(for: error)) }
+            guard isCurrent(generation) else { return }
+            // A steer that couldn't be heard is dropped; the turn it was
+            // meant for carries on.
+            if isSteeringTurn {
+                resumeTurnAfterSteer()
+                return
+            }
+            state = .failed(UserFacingError.message(for: error))
         }
     }
 
@@ -1142,6 +1248,7 @@ final class VoiceConversationController: ObservableObject {
         assistantFinished = false
         isMicrophonePaused = false
         isPlaybackCaptureSuspended = false
+        endSteerBookkeeping()
         speechDetector.reset()
         resetMicrophoneMeter()
         isVoiceSessionActive = false
@@ -1163,6 +1270,146 @@ final class VoiceConversationController: ObservableObject {
         isRuntimeSuspended = false
     }
 
+    /// Whether speech may talk over Hermes right now: only while its reply
+    /// is audibly playing, or after the reply arrived in full, until its
+    /// speech settles. While Hermes is thinking, working between
+    /// spoken sentences, or answering with output muted, the user's speech
+    /// would only cut the turn short, so it is ignored.
+    private var isTalkOverAvailable: Bool {
+        guard state == .speaking else { return false }
+        return playback.isPlaying || !isAwaitingVoiceAssistant
+    }
+
+    /// Whether speech may steer the running Hermes turn right now: Hermes
+    /// is thinking (no reply speech in the pipeline yet), the turn has
+    /// been submitted, and a steer seam is installed.
+    private var isSteerAvailable: Bool {
+        guard steerTurn != nil,
+              state == .thinking,
+              isAwaitingVoiceAssistant,
+              !isOutputMuted,
+              utteranceTask == nil,
+              backgroundNoticeTask == nil,
+              !suspendedInFlightTurnOrphaned,
+              speechDeltas.isEmpty,
+              !isDrainingSpeech,
+              speechStream == nil else { return false }
+        return true
+    }
+
+    private func scheduleSteer() {
+        guard bargeInTask == nil else { return }
+        let generation = operationGeneration
+        bargeInTask = Task { [weak self] in
+            await self?.beginSteer(generation: generation)
+        }
+    }
+
+    /// Opens a listening window whose utterance steers the running turn.
+    /// The turn keeps its ownership throughout; its reply speech is held
+    /// until the steer lands. Pre-roll keeps the words that triggered it.
+    private func beginSteer(generation: UInt64) async {
+        defer {
+            if operationGeneration == generation, !Task.isCancelled { bargeInTask = nil }
+        }
+        guard !Task.isCancelled, !isPlaybackCaptureSuspended, isSteerAvailable else { return }
+        isSteeringTurn = true
+        await startListening(includePreRoll: true)
+        guard isCurrent(generation) else {
+            // Superseded (backgrounded, torn down): never leave reply
+            // speech held for a window that isn't open.
+            isSteeringTurn = false
+            return
+        }
+        guard isSteeringTurn else { return }
+        // The window never opened (backgrounded, permission): carry on.
+        if state != .listening { resumeTurnAfterSteer() }
+    }
+
+    /// Ends a steer window: back to waiting on the same turn, and its held
+    /// reply speech (or the end of a reply that finished meanwhile) plays.
+    private func resumeTurnAfterSteer() {
+        isSteeringTurn = false
+        switch state {
+        case .idle, .failed: return
+        default: break
+        }
+        state = .thinking
+        beginBargeInMonitoring()
+        if !speechDeltas.isEmpty || assistantFinished { startSpeechDrainIfNeeded() }
+    }
+
+    private func endSteerBookkeeping() {
+        isSteeringTurn = false
+        steerSentThisTurn = false
+        promotedSteerReplyDeadline = nil
+        heldPromotedSteerEvents = []
+    }
+
+    /// A steer that reached Hermes after its last tool call runs as its
+    /// own turn once the steered reply finished. That reply is adopted so
+    /// it is spoken like the reply it answers: at once while the
+    /// conversation listens and the user hasn't started speaking, or, when
+    /// it starts while the steered reply is still playing, held until that
+    /// speech settles and the conversation listens again. Returns true when
+    /// the event was held.
+    private func routePromotedSteerReply(_ event: VoiceAssistantEvent, sessionID: String) -> Bool {
+        guard let deadline = promotedSteerReplyDeadline,
+              isVoiceSessionActive,
+              !isAwaitingVoiceAssistant,
+              expectedAssistantSessionIDs.contains(sessionID) else { return false }
+        if !heldPromotedSteerEvents.isEmpty {
+            heldPromotedSteerEvents.append(event)
+            return true
+        }
+        guard case .started = event else { return false }
+        guard Date() <= deadline else {
+            promotedSteerReplyDeadline = nil
+            return false
+        }
+        if state == .listening, !isMicrophonePaused, lastSpeechAt == nil, utteranceTask == nil {
+            promotedSteerReplyDeadline = nil
+            isAwaitingVoiceAssistant = true
+            awaitedAssistantResponseStarted = false
+            state = .thinking
+            beginBargeInMonitoring()
+            return false
+        }
+        if state == .speaking || state == .muted || (state == .thinking && isDrainingSpeech) {
+            // The steered reply is still playing (or its speech is about to
+            // start): hold the follow-up until that speech settles
+            // (`replayHeldPromotedSteerReply`).
+            heldPromotedSteerEvents.append(event)
+            return true
+        }
+        // The user has moved on (speaking, or a new turn): not ours.
+        promotedSteerReplyDeadline = nil
+        return false
+    }
+
+    /// Called once the steered reply's speech settled and the conversation
+    /// listens again: the held follow-up reply is adopted and played.
+    private func replayHeldPromotedSteerReply() {
+        guard !heldPromotedSteerEvents.isEmpty else { return }
+        let events = heldPromotedSteerEvents
+        heldPromotedSteerEvents = []
+        guard state == .listening else {
+            promotedSteerReplyDeadline = nil
+            return
+        }
+        // The hold outlived the window on purpose: it started inside it.
+        promotedSteerReplyDeadline = .distantFuture
+        events.forEach(receiveAssistantEvent)
+        promotedSteerReplyDeadline = nil
+    }
+
+    /// The user moved past the steered reply (talked over it, interrupted,
+    /// muted, or it failed): its late follow-up isn't adopted or replayed.
+    private func dropPromotedSteerReply() {
+        heldPromotedSteerEvents = []
+        promotedSteerReplyDeadline = nil
+    }
+
     private func scheduleBargeIn() {
         guard bargeInTask == nil else { return }
         let generation = operationGeneration
@@ -1181,8 +1428,13 @@ final class VoiceConversationController: ObservableObject {
         // playback or retire the turn it is supposed to protect.
         guard !Task.isCancelled else { return }
         guard !isPlaybackCaptureSuspended else { return }
-        guard state == .thinking || state == .speaking || state == .muted else { return }
+        guard isTalkOverAvailable else { return }
         lastBargeInState = state
+        // Talking over the steered reply moves on from its follow-up too.
+        dropPromotedSteerReply()
+        // A reply that already arrived in full has no Hermes turn left to
+        // cancel: talking over it only stops the speech.
+        let turnStillRunning = isAwaitingVoiceAssistant
         playback.stop()
         cancelSpeechDrainAndStream()
         clearSpeechQueue()
@@ -1194,7 +1446,7 @@ final class VoiceConversationController: ObservableObject {
         // The barge-in proceeds on the attempt: its local recovery (stop
         // playback, retire the turn, relisten) does not depend on the
         // server-side cancellation result.
-        _ = await interrupt()
+        if turnStillRunning { _ = await interrupt() }
         // Cancellation is re-checked after the await: the suspension may have
         // engaged while the interruption was in flight, and reopening capture
         // now would hear the assistant's own speaker output.
@@ -1379,6 +1631,9 @@ final class VoiceConversationController: ObservableObject {
 
     private func startSpeechDrainIfNeeded() {
         guard !isDrainingSpeech else { return }
+        // A steer's listening window holds the reply's speech until the
+        // user's words reach Hermes; `resumeTurnAfterSteer` starts it.
+        guard !isSteeringTurn else { return }
         isDrainingSpeech = true
         let operation = operationGeneration
         let revision = speechDrainRevision
@@ -1448,6 +1703,8 @@ final class VoiceConversationController: ObservableObject {
             guard isSpeechDrainCurrent(operation: operation, revision: revision) else { return }
             if isSpeechCancellation(error) {
                 speechStream = nil
+                // A cancelled drain never reaches the replay below.
+                dropPromotedSteerReply()
                 if assistantFinished {
                     assistantFinished = false
                     // Speaker-safe: a suspended capture must not resume
@@ -1463,6 +1720,7 @@ final class VoiceConversationController: ObservableObject {
             // terminal path so the lease and engine do not outlive the turn.
             // (The cancellation branch above intentionally keeps ownership —
             // an interrupted stream's already-scheduled audio renders out.)
+            dropPromotedSteerReply()
             playback.stop()
             endPlaybackCaptureSuspensionWithoutRelistening()
             if state == .speaking || state == .thinking { state = .failed(UserFacingError.message(for: error)) }
@@ -1479,7 +1737,15 @@ final class VoiceConversationController: ObservableObject {
                 cachedRoutePolicy = nil
                 isPlaybackCaptureSuspended = false
                 await startListening()
+                guard isSpeechDrainCurrent(operation: operation, revision: revision),
+                      !heldPromotedSteerEvents.isEmpty else { return }
+                // After this drain's bookkeeping settles, so the follow-up
+                // reply can start a drain of its own.
+                Task { @MainActor [weak self] in self?.replayHeldPromotedSteerReply() }
             } else {
+                // Continuous conversation off: the follow-up reply isn't
+                // spoken (it still shows in chat).
+                dropPromotedSteerReply()
                 settleOpenSessionAfterAssistantTurn()
             }
         }

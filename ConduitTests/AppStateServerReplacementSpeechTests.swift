@@ -101,8 +101,10 @@ final class AppStateServerReplacementSpeechTests: XCTestCase {
 
     func testServerReplacementMakesParkedBargeInContinuationInert() async {
         let harness = makeHarness()
-        _ = await harness.startVoiceWithAssistantResponseStarted()
-        XCTAssertEqual(harness.voiceController.state, .thinking)
+        // Talk-over needs an audible reply: speech while Hermes only
+        // thinks never reaches the interrupt seam.
+        _ = await harness.startVoiceWithAssistantDeltaParkedInDrain()
+        XCTAssertEqual(harness.voiceController.state, .speaking)
 
         // Acoustic barge-in begins and parks inside the injected interrupt
         // seam (the stand-in for Hermes cancellation/recovery work).
@@ -533,14 +535,6 @@ final class AppStateServerReplacementSpeechTests: XCTestCase {
                 self.voiceGateway.streams.first?.parkedAppend == true
             }
             return voiceGateway.streams[0]
-        }
-
-        /// Drives a turn to `.thinking` with the assistant response started,
-        /// so barge-in monitoring is armed and playback-suspension is not.
-        func startVoiceWithAssistantResponseStarted() async {
-            _ = await startVoiceListening()
-            await finishUtteranceToThinking()
-            voiceController.receiveAssistantEvent(.started(sessionID: "a-session"))
         }
 
         /// Utterance finish is date-driven: one speech sample followed by a
