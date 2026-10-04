@@ -2237,8 +2237,26 @@ final class AppState: ObservableObject {
             recorder.note(Self.voiceThreadTurnNote(job, thread: thread))
             self.checkpointVoiceCall(recorder)
         }
+        supervisor.onJobStoredSessionLearned = { [weak self] runtimeID, storedID in
+            guard let self else { return }
+            self.learnVoiceSessionAlias(runtimeID: runtimeID, storedID: storedID)
+            // Filed under Voice Jobs by its durable id too, wherever the
+            // runtime was filed.
+            for (key, tags) in self.voiceSessionTagsByKey {
+                if let tag = tags[runtimeID] { self.voiceSessionTagsByKey[key]?[storedID] = tag }
+            }
+            // And kept that way: the badge list and the call's tag write at
+            // its end carry the durable id as well.
+            let job = self.voiceBackgroundJobSupervisor.jobs.first { $0.runtimeSessionID == runtimeID }
+            guard job?.isThreadTurn != true else { return }
+            self.rememberVoiceJobSessions([storedID], profile: job?.profile)
+            if let recorder = self.voiceCallRecorder, recorder.jobSessionIDs.contains(runtimeID) {
+                recorder.jobSessionIDs.append(storedID)
+            }
+        }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
+            if sessionIDs.count == 2 { self.learnVoiceSessionAlias(runtimeID: sessionIDs[0], storedID: sessionIDs[1]) }
             if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }),
                let targetProfile = job.profile, targetProfile != self.activeProfile {
                 // A job on another profile is that profile's chat: badged
@@ -3186,7 +3204,18 @@ final class AppState: ObservableObject {
     /// alias (alternate ids, reconciliation, scroll identity) that another
     /// row could share.
     private func ownSessionIDs(for sessionId: String) -> Set<String> {
-        Self.ownSessionIDs(for: sessionId, in: sessions)
+        // An opened saved row resumes under a new runtime id the list may
+        // not show yet: its canonical id and its voice call tag still name
+        // the row (the same match Resume Call uses).
+        var ids = Self.ownSessionIDs(for: sessionId, in: sessions)
+        if let canonical = canonicalSessionID(for: sessionId) {
+            ids.formUnion(Self.ownSessionIDs(for: canonical, in: sessions))
+        }
+        if let call = voiceCallSessionID(for: sessionId) {
+            ids.insert(call)
+            ids.formUnion(Self.ownSessionIDs(for: call, in: sessions))
+        }
+        return ids
     }
 
     static func ownSessionIDs(for sessionId: String, in rows: [SessionSummary]) -> Set<String> {
@@ -3206,11 +3235,16 @@ final class AppState: ObservableObject {
     /// A call attached to a chat was saved: the chat gets its marker, at
     /// once when it's on screen.
     private func linkVoiceCall(_ attachment: VoiceCallAttachment, callSessionID: String, profile: String) {
+        // A chat new at the call's start may only have its stored id now.
+        let runtimeID = attachment.thread.runtimeSessionID
+        let storedID = attachment.thread.storedSessionID.flatMap { $0.isEmpty ? nil : $0 }
+            ?? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId.flatMap { $0.isEmpty ? nil : $0 }
+        learnVoiceSessionAlias(runtimeID: runtimeID, storedID: storedID)
         let link = VoiceCallChatLink(
             callID: attachment.callID,
             callSessionID: callSessionID,
-            chatRuntimeSessionID: attachment.thread.runtimeSessionID,
-            chatStoredSessionID: attachment.thread.storedSessionID,
+            chatRuntimeSessionID: runtimeID,
+            chatStoredSessionID: storedID,
             chatTitle: attachment.thread.title,
             profile: profile,
             startedAt: attachment.startedAt,
@@ -3463,6 +3497,13 @@ final class AppState: ObservableObject {
     /// The chat the recorded call is attached to, linked to its row once saved.
     private var voiceCallAttachment: VoiceCallAttachment?
     private lazy var voiceCallChatLinks = VoiceCallChatLinks.load(from: defaults)
+    private lazy var voiceSessionAliases = VoiceSessionAliases.load(from: defaults)
+
+    /// Remembers the stored id behind a runtime id a saved call may link to.
+    private func learnVoiceSessionAlias(runtimeID: String, storedID: String?) {
+        guard let storedID, voiceSessionAliases.learn(runtimeID: runtimeID, storedID: storedID) else { return }
+        voiceSessionAliases.store(in: defaults)
+    }
     private var voiceCallCheckpointTask: Task<Void, Never>?
     private var voiceCallTranscriptSubscription: AnyCancellable?
     static let voiceCallCheckpointInterval: Duration = .seconds(15)
@@ -4074,12 +4115,48 @@ final class AppState: ObservableObject {
         case .session(let id):
             // Some failed opens say nothing themselves; a deleted job
             // shouldn't make the link look dead.
-            requestOpenSession(id) { [weak self] in
-                guard let self, self.errorMessage == nil else { return }
-                // Job links and chat-turn links share this route.
-                self.errorMessage = AppLocalization.string("That chat is no longer available.")
+            // Job links and chat-turn links share this route.
+            openLinkedSession(id, unavailable: AppLocalization.string("That chat is no longer available."))
+        }
+    }
+
+    /// Opens a session a saved call or chat card linked to. The link can
+    /// name a runtime that has since ended (written before Hermes named
+    /// the stored session), so it is resolved to the session's current row
+    /// first, refreshing the list once when nothing here knows it.
+    private func openLinkedSession(_ id: String, unavailable: String) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var target = Self.linkedSessionTarget(id, rows: self.sessions + self.cronSessions, aliases: self.voiceSessionAliases)
+            if target == nil {
+                let openBefore = self.activeSessionId
+                await self.loadSessions(forceRefresh: true)
+                // A chat opened meanwhile is the later choice; it stays.
+                guard self.activeSessionId == openBefore else { return }
+                target = Self.linkedSessionTarget(id, rows: self.sessions + self.cronSessions, aliases: self.voiceSessionAliases)
+            }
+            // Only this open's own "not found" may be reworded.
+            self.reconciliationSessionWasNotFound = false
+            self.requestOpenSession(target ?? id) { [weak self] in
+                // A failed resume says "session not found"; the link's own
+                // words say what's missing. Other refusals keep their text.
+                guard let self, self.errorMessage == nil || self.reconciliationSessionWasNotFound else { return }
+                self.errorMessage = unavailable
             }
         }
+    }
+
+    /// The row a linked id opens as: the row that carries it (or the stored
+    /// id learned for it) as any of its ids, else the learned stored id.
+    /// Nil when nothing knows the id.
+    static func linkedSessionTarget(_ id: String, rows: [SessionSummary], aliases: VoiceSessionAliases) -> String? {
+        let stored = aliases.storedID(forRuntime: id)
+        for candidate in [stored, id].compactMap({ $0 }) {
+            if let row = rows.first(where: { $0.storedSessionId == candidate }) ?? rows.first(where: { $0.id == candidate || $0.alternateIds.contains(candidate) }) {
+                return row.id
+            }
+        }
+        return stored
     }
 
     /// Opens the saved transcript behind a chat's voice call card. Looked up
@@ -4088,10 +4165,7 @@ final class AppState: ObservableObject {
     /// so a dead tap says so.
     func openVoiceCallTranscript(markerID: String) {
         guard let link = voiceCallLink(markerID: markerID) else { return }
-        requestOpenSession(link.callSessionID) { [weak self] in
-            guard let self, self.errorMessage == nil else { return }
-            self.errorMessage = AppLocalization.string("That call's transcript is no longer available.")
-        }
+        openLinkedSession(link.callSessionID, unavailable: AppLocalization.string("That call's transcript is no longer available."))
     }
 
     /// Opens the chat a call was started from, from the card in the call's
@@ -4101,10 +4175,7 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string("That chat is no longer available.")
             return
         }
-        requestOpenSession(chatID) { [weak self] in
-            guard let self, self.errorMessage == nil else { return }
-            self.errorMessage = AppLocalization.string("That chat is no longer available.")
-        }
+        openLinkedSession(chatID, unavailable: AppLocalization.string("That chat is no longer available."))
     }
 
     /// A short title from the call's opening, like a chat's; the time-stamped
@@ -4127,14 +4198,18 @@ final class AppState: ObservableObject {
 
     /// The open chat's id as a saved live call, when it is one.
     var activeVoiceCallSessionID: String? {
+        activeSessionId.flatMap(voiceCallSessionID(for:))
+    }
+
+    /// A chat's id as a saved live call, when it is one.
+    private func voiceCallSessionID(for sessionID: String) -> String? {
         // Opening a saved row resumes it under a new runtime id the catalog
-        // row may not list yet: match the open chat's own ids and its
-        // canonical id. Not the scroll identity's wider alias set, which
-        // can still carry the chat open before this one.
-        guard let activeSessionId else { return nil }
-        var ids = knownSessionIDs(for: activeSessionId)
-        ids.insert(activeSessionId)
-        if let canonical = canonicalSessionID(for: activeSessionId) { ids.insert(canonical) }
+        // row may not list yet: match the chat's own ids and its canonical
+        // id. Not the scroll identity's wider alias set, which can still
+        // carry the chat open before this one.
+        var ids = knownSessionIDs(for: sessionID)
+        ids.insert(sessionID)
+        if let canonical = canonicalSessionID(for: sessionID) { ids.insert(canonical) }
         for row in activeProfileSessions
         where !ids.isDisjoint(with: [row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds) {
             if let tagged = voiceSessionTag(for: row), tagged.tag.kind == .call { return tagged.id }

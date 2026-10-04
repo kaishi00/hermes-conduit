@@ -84,3 +84,21 @@ final class MarkdownFallbackTests: XCTestCase {
         )
     }
 }
+
+extension MarkdownFallbackTests {
+    func testMermaidXYChartAxisRangeWrittenWithToIsRepaired() {
+        let source = """
+        xychart-beta
+            title "Running Containers by Node"
+            x-axis ["pve", "seele"]
+            y-axis "Count" 0 to 20
+            bar [16, 7]
+        """
+        let repaired = MermaidSourceRepair.repaired(source)
+        XCTAssertTrue(repaired.contains("y-axis \"Count\" 0 --> 20"))
+        XCTAssertTrue(repaired.contains("bar [16, 7]"))
+        XCTAssertEqual(MermaidSourceRepair.repaired(repaired), repaired, "a correct range is left alone")
+        let pie = "pie\n    \"a\" : 1 to 2"
+        XCTAssertEqual(MermaidSourceRepair.repaired(pie), pie, "only xychart axes are touched")
+    }
+}
