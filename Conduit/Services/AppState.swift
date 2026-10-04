@@ -11212,6 +11212,8 @@ final class AppState: ObservableObject {
                 locallyOwnedInFlightTurn = nil
             }
             foregroundFreshnessCheckArmed = true
+            // A reply already reading aloud keeps playing in the background
+            // (#373); this only refuses new taps until the app is back.
             messageReadAloudController.setForegroundActive(false)
             // The app-foreground fact changed here regardless of which branch
             // below runs: the phone scene is gone, so only CarPlay or a
@@ -11228,8 +11230,7 @@ final class AppState: ObservableObject {
             // boundary — Voice must stay live for the driver — so the
             // suspension (and its restoration descriptor) is skipped
             // entirely. "Keep listening when locked" makes an open, running
-            // conversation such a surface too. Read-aloud remains phone-bound
-            // and deactivates above.
+            // conversation such a surface too.
             if hasActiveVoiceSurface {
                 voiceConversationController.setForegroundActive(true)
             } else {

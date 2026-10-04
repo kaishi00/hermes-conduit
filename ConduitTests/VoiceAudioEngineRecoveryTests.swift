@@ -483,6 +483,7 @@ extension VoiceAudioSessionCoordinatorTests {
 
 @MainActor
 private final class InertVoiceAudioSession: VoiceAudioSessionControlling {
+    var isOtherAudioPlaying = true
     func setCategory(
         _ category: AVAudioSession.Category,
         mode: AVAudioSession.Mode,

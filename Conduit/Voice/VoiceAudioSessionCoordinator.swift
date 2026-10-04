@@ -40,6 +40,8 @@ protocol VoiceAudioSessionControlling: AnyObject {
         options: AVAudioSession.CategoryOptions
     ) throws
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws
+    /// Whether another app is playing audio right now (music, a podcast).
+    var isOtherAudioPlaying: Bool { get }
 }
 
 @MainActor
@@ -54,6 +56,10 @@ final class SystemVoiceAudioSession: VoiceAudioSessionControlling {
 
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {
         try AVAudioSession.sharedInstance().setActive(active, options: options)
+    }
+
+    var isOtherAudioPlaying: Bool {
+        AVAudioSession.sharedInstance().isOtherAudioPlaying
     }
 }
 
@@ -271,7 +277,14 @@ final class VoiceAudioSessionCoordinator {
                 try session.setActive(true, options: [])
                 appliedPolicy = .conversation
             case .standalonePlayback:
-                let configuration = VoiceAudioSessionConfiguration.standalonePlayback
+                // Chosen when standalone speech takes the session: alongside
+                // other media it mixes and ducks as before; with nothing else
+                // playing it owns the session, which is what makes Read Aloud
+                // the Now Playing app (lock screen, Control Center, AirPods
+                // play/pause, #373).
+                let configuration = session.isOtherAudioPlaying
+                    ? VoiceAudioSessionConfiguration.standalonePlayback
+                    : VoiceAudioSessionConfiguration.standaloneNowPlaying
                 try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
                 try session.setActive(true, options: [])
                 appliedPolicy = .standalonePlayback

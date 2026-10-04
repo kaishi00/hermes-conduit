@@ -233,6 +233,7 @@ final class HapticsVoiceIsolationTests: XCTestCase {
 
 @MainActor
 private final class RecordingVoiceAudioSession: VoiceAudioSessionControlling {
+    var isOtherAudioPlaying = true
     struct CategoryCall: Equatable {
         let category: AVAudioSession.Category
         let mode: AVAudioSession.Mode

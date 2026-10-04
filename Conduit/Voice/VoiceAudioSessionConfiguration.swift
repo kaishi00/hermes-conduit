@@ -33,6 +33,19 @@ struct VoiceAudioSessionConfiguration: Equatable {
         outputChannelCount: 1
     )
 
+    /// Standalone speech with no other media playing (#373): the same
+    /// output-only `.playback`, but not mixable, so iOS makes Conduit the
+    /// Now Playing app and routes lock-screen, Control Center, and headphone
+    /// play/pause to Read Aloud. `.spokenAudio` lets navigation prompts pause
+    /// the reply rather than talk over it, like a podcast.
+    static let standaloneNowPlaying = Self(
+        category: .playback,
+        mode: .spokenAudio,
+        options: [],
+        outputSampleRate: 24_000,
+        outputChannelCount: 1
+    )
+
     /// Foreground wake phrase listening (#174): records from the microphone
     /// while letting other apps' audio keep playing at full volume. `.default`
     /// rather than `.voiceChat` so no voice processing ducks other media, and

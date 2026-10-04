@@ -1341,12 +1341,22 @@ struct ReadAloudButton: View {
         controller.isActiveMessage(message.id)
     }
 
+    /// Paused from the lock screen or headphones (#373): the button resumes.
+    private var isPaused: Bool {
+        isActive && controller.isPaused
+    }
+
     private var unavailable: Bool {
         appState.readAloudUnavailableReason != nil || appState.offlineChatPresentation != nil
     }
 
     var body: some View {
         Button {
+            if isPaused {
+                Haptics.light()
+                controller.resume()
+                return
+            }
             if isActive {
                 Haptics.medium()
             } else {
@@ -1359,7 +1369,7 @@ struct ReadAloudButton: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Image(systemName: isActive ? "stop.fill" : "speaker.wave.2")
+                    Image(systemName: isPaused ? "play.fill" : isActive ? "stop.fill" : "speaker.wave.2")
                 }
             }
             .font(.subheadline.weight(.semibold))
@@ -1369,7 +1379,11 @@ struct ReadAloudButton: View {
         .foregroundStyle(isActive ? Color.conduitAccent : Color.secondary)
         .disabled(unavailable && !isActive)
         .opacity(unavailable && !isActive ? 0.45 : 1)
-        .accessibilityLabel(isActive ? AppLocalization.string("Stop reading response") : AppLocalization.string("Read response aloud"))
+        .accessibilityLabel(
+            isPaused ? AppLocalization.string("Resume reading response")
+                : isActive ? AppLocalization.string("Stop reading response")
+                : AppLocalization.string("Read response aloud")
+        )
     }
 }
 

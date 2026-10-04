@@ -16644,6 +16644,16 @@
         }
       }
     },
+    "Resume reading response" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续朗读回复"
+          }
+        }
+      }
+    },
     "Stop reading response" : {
       "localizations" : {
         "zh-Hans" : {
