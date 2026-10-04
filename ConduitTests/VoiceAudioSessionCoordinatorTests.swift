@@ -90,6 +90,19 @@ final class VoiceAudioSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.activationCount, 1)
     }
 
+    func testStandalonePlaybackWithNothingElsePlayingOwnsTheSession() throws {
+        // #373: with no other media to duck, Read Aloud takes a non-mixable
+        // session so iOS routes Now Playing controls to it.
+        session.isOtherAudioPlaying = false
+        _ = try coordinator.acquire(.standalonePlayback)
+
+        XCTAssertEqual(session.categoryCalls.last?.category, .playback)
+        XCTAssertEqual(session.categoryCalls.last?.options, [])
+        XCTAssertEqual(session.categoryCalls.last?.mode, .spokenAudio)
+        XCTAssertEqual(coordinator.appliedPolicy, .standalonePlayback)
+        XCTAssertEqual(session.activationCount, 1)
+    }
+
     func testStandalonePlaybackCannotDowngradeActiveConversation() throws {
         _ = try coordinator.acquire(.conversationCapture)
         session.resetRecordings()
@@ -456,6 +469,9 @@ extension VoiceAudioSessionCoordinatorTests {
 }
 
 private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
+    /// Other media playing keeps standalone speech mixing and ducking
+    /// (the pre-#373 policy) unless a test opts out.
+    var isOtherAudioPlaying = true
     struct CategoryCall: Equatable {
         let category: AVAudioSession.Category
         let mode: AVAudioSession.Mode

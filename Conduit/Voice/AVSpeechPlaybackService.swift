@@ -51,6 +51,11 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// must be released. Mid-stream buffer gaps keep ownership so the session
     /// does not flap while the gateway prepares the next chunk.
     private var isFinishing = false
+    /// Pause bookkeeping (#373). Time spent paused does not count against
+    /// the drain watchdog, whose budget is the audio left to render.
+    private(set) var isPaused = false
+    private var pausedAt: ContinuousClock.Instant?
+    private var totalPausedDuration: Duration = .zero
     private let coordinator: VoiceAudioSessionCoordinator
     private var lease: VoiceAudioLease?
     /// Which audio-session ownership this service claims while playing.
@@ -238,12 +243,27 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // could have played plus a grace period. Only a dead engine gets here.
         let generation = playbackGeneration
         let budget = scheduledSeconds + (encodedPlayer?.duration ?? 0) + drainWatchdogGrace
+        let pausedAtStart = pausedDuration()
         let watchdog = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(max(0, budget) * 1_000_000_000))
-            guard !Task.isCancelled, let self,
-                  self.playbackGeneration == generation,
-                  !self.drainWaiters.isEmpty else { return }
-            self.stop()
+            var pausedSoFar = pausedAtStart
+            var remaining = Duration.seconds(max(0, budget))
+            while true {
+                try? await Task.sleep(for: remaining)
+                guard !Task.isCancelled, let self,
+                      self.playbackGeneration == generation,
+                      !self.drainWaiters.isEmpty else { return }
+                // Time spent paused extends the budget; a pause still in
+                // progress is re-checked until it ends.
+                if self.isPaused {
+                    remaining = .seconds(1)
+                    continue
+                }
+                let paused = self.pausedDuration()
+                guard paused > pausedSoFar else { break }
+                remaining = paused - pausedSoFar
+                pausedSoFar = paused
+            }
+            self?.stop()
         }
         await withCheckedContinuation { continuation in
             drainWaiters.append(continuation)
@@ -251,9 +271,46 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         watchdog.cancel()
     }
 
+    func pause() -> Bool {
+        guard !isPaused else { return true }
+        if let encodedPlayer, encodedPlayer.isPlaying {
+            encodedPlayer.pause()
+        } else if format != nil, engineHasGraph, engine.isRunning {
+            // The engine keeps running; only the player holds its place, so
+            // buffers still arriving from the stream queue up behind it.
+            player.pause()
+        } else {
+            return false
+        }
+        isPaused = true
+        pausedAt = .now
+        return true
+    }
+
+    func resume() {
+        guard isPaused else { return }
+        if let encodedPlayer {
+            encodedPlayer.play()
+        } else {
+            player.play()
+        }
+        endPause()
+    }
+
+    private func endPause() {
+        if let pausedAt { totalPausedDuration += ContinuousClock.now - pausedAt }
+        pausedAt = nil
+        isPaused = false
+    }
+
+    private func pausedDuration() -> Duration {
+        totalPausedDuration + (pausedAt.map { ContinuousClock.now - $0 } ?? .zero)
+    }
+
     func stop() {
         playbackGeneration &+= 1
         isFinishing = false
+        if isPaused { endPause() }
         teardownGraph()
         encodedPlayer?.stop()
         encodedPlayer = nil

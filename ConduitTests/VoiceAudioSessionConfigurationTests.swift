@@ -28,4 +28,14 @@ final class VoiceAudioSessionConfigurationTests: XCTestCase {
         XCTAssertTrue(configuration.options.contains(.mixWithOthers))
         XCTAssertTrue(configuration.options.contains(.duckOthers))
     }
+
+    func testStandaloneNowPlayingIsOutputOnlyAndNotMixable() {
+        let configuration = VoiceAudioSessionConfiguration.standaloneNowPlaying
+
+        XCTAssertEqual(configuration.category.rawValue, AVAudioSession.Category.playback.rawValue)
+        XCTAssertEqual(configuration.mode.rawValue, AVAudioSession.Mode.spokenAudio.rawValue)
+        XCTAssertFalse(configuration.options.contains(.mixWithOthers))
+        XCTAssertFalse(configuration.options.contains(.duckOthers))
+        XCTAssertFalse(configuration.options.contains(.allowBluetoothHFP))
+    }
 }

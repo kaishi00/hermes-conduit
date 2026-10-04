@@ -27,6 +27,9 @@ final class MessageReadAloudController: ObservableObject {
     }
 
     @Published private(set) var state: State = .idle
+    /// True while the playing reply is held by a Now Playing pause (lock
+    /// screen, Control Center, AirPods). The chat button still reads Stop.
+    @Published private(set) var isPaused = false
 
     private let playback: SpeechPlaybackService
     private let reportError: @MainActor (String) -> Void
@@ -43,22 +46,33 @@ final class MessageReadAloudController: ObservableObject {
     /// plays, the `audio` background mode keeps the app alive on its own.
     private let beginBackgroundActivity: @MainActor () -> @MainActor () -> Void
     private var endBackgroundActivity: (@MainActor () -> Void)?
+    private let nowPlaying: ReadAloudNowPlayingPresenting
+    private var nowPlayingTitle = ""
+    /// A reply left paused this long is stopped, so a forgotten pause does
+    /// not keep the app running in the background. Internal for tests.
+    var pausedStopDelay: Duration = .seconds(10 * 60)
+    private var pausedStopTask: Task<Void, Never>?
 
     init(
         playback: SpeechPlaybackService? = nil,
         gateway: VoiceGatewayService? = nil,
         playbackRate: @escaping @MainActor () -> Float = { ReadAloudSpeed.current().rate },
         beginBackgroundActivity: (@MainActor () -> @MainActor () -> Void)? = nil,
+        nowPlaying: ReadAloudNowPlayingPresenting? = nil,
         reportError: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         self.playback = playback ?? AVSpeechPlaybackService()
+        self.nowPlaying = nowPlaying ?? SystemReadAloudNowPlaying()
         self.activeGateway = gateway
         self.playbackRate = playbackRate
         self.beginBackgroundActivity = beginBackgroundActivity ?? Self.beginApplicationBackgroundTask
         self.reportError = reportError
     }
 
-    deinit { playbackTask?.cancel() }
+    deinit {
+        playbackTask?.cancel()
+        pausedStopTask?.cancel()
+    }
 
     private static func beginApplicationBackgroundTask() -> @MainActor () -> Void {
         var taskID = UIBackgroundTaskIdentifier.invalid
@@ -130,6 +144,35 @@ final class MessageReadAloudController: ObservableObject {
         settle(.idle)
     }
 
+    /// Now Playing pause: holds the playing reply in place. Only a reply
+    /// that is already sounding can pause.
+    func pause() {
+        guard case .playing = state, !isPaused, playback.pause() else { return }
+        isPaused = true
+        nowPlaying.setPaused(true)
+        let delay = pausedStopDelay
+        let generation = operationGeneration
+        pausedStopTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self,
+                  self.isCurrent(generation), self.isPaused else { return }
+            self.stop()
+        }
+    }
+
+    func resume() {
+        guard isPaused, case .playing = state else { return }
+        playback.resume()
+        isPaused = false
+        pausedStopTask?.cancel()
+        pausedStopTask = nil
+        nowPlaying.setPaused(false)
+    }
+
+    func togglePause() {
+        isPaused ? resume() : pause()
+    }
+
     /// The active stream belongs to the gateway that opened it. A replaced or
     /// cleared gateway (disconnect, profile change) invalidates the in-flight
     /// operation, so any replacement stops it.
@@ -158,6 +201,7 @@ final class MessageReadAloudController: ObservableObject {
         operationGeneration &+= 1
         let generation = operationGeneration
         state = .preparing(messageID: messageID)
+        nowPlayingTitle = ReadAloudNowPlaying.title(for: content)
         endBackgroundActivity = beginBackgroundActivity()
         playbackTask = Task { [weak self] in
             await self?.runPlayback(generation: generation, messageID: messageID, content: content)
@@ -238,6 +282,12 @@ final class MessageReadAloudController: ObservableObject {
         guard isCurrent(generation) else { return }
         if case .preparing(let id) = state, id == messageID {
             state = .playing(messageID: messageID)
+            nowPlaying.begin(title: nowPlayingTitle, commands: ReadAloudRemoteCommands(
+                pause: { [weak self] in self?.pause() },
+                resume: { [weak self] in self?.resume() },
+                togglePause: { [weak self] in self?.togglePause() },
+                stop: { [weak self] in self?.stop() }
+            ))
         }
     }
 
@@ -251,6 +301,10 @@ final class MessageReadAloudController: ObservableObject {
     /// the state change, on every terminal path.
     private func settle(_ terminal: State) {
         state = terminal
+        isPaused = false
+        pausedStopTask?.cancel()
+        pausedStopTask = nil
+        nowPlaying.end()
         let end = endBackgroundActivity
         endBackgroundActivity = nil
         end?()
