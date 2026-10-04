@@ -3166,6 +3166,39 @@ final class AppState: ObservableObject {
             .map(\.message)
     }
 
+    /// The chat's "Voice call" markers for calls started from it.
+    private func mergeVoiceCallMarkers(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
+        voiceCallChatLinks.merge(into: history, chatIDs: reviewCacheSessionIDs(for: sessionId), profile: activeProfile)
+    }
+
+    /// The call a chat's "Voice call" marker opens.
+    func voiceCallLink(markerID: String) -> VoiceCallChatLink? {
+        voiceCallChatLinks.link(markerID: markerID)
+    }
+
+    /// A call attached to a chat was saved: the chat gets its marker, at
+    /// once when it's on screen.
+    private func linkVoiceCall(_ attachment: VoiceCallAttachment, callSessionID: String, profile: String) {
+        let link = VoiceCallChatLink(
+            callID: attachment.callID,
+            callSessionID: callSessionID,
+            chatRuntimeSessionID: attachment.thread.runtimeSessionID,
+            chatStoredSessionID: attachment.thread.storedSessionID,
+            chatTitle: attachment.thread.title,
+            profile: profile,
+            startedAt: attachment.startedAt,
+            endedAt: attachment.endedAt ?? Date(),
+            resumed: attachment.resumed
+        )
+        voiceCallChatLinks.add(link)
+        voiceCallChatLinks.store(in: defaults)
+        guard profile == activeProfile, let sessionID = activeSessionId else { return }
+        let merged = mergeVoiceCallMarkers(into: messages, sessionId: sessionID)
+        guard merged.count != messages.count else { return }
+        messages = merged
+        cacheMessagePresentation()
+    }
+
     private func persistReview(_ record: ReviewSummaryRecord) {
         // Append-only by design: every review is its own row (the default
         // mode repeats "Memory updated"), and the merge dedupes by record id.
@@ -3400,6 +3433,9 @@ final class AppState: ObservableObject {
     /// the call runs stalled it, so the call is only checkpointed on the
     /// device meanwhile.
     private var voiceCallRecorder: VoiceTranscriptRecorder?
+    /// The chat the recorded call is attached to, linked to its row once saved.
+    private var voiceCallAttachment: VoiceCallAttachment?
+    private lazy var voiceCallChatLinks = VoiceCallChatLinks.load(from: defaults)
     private var voiceCallCheckpointTask: Task<Void, Never>?
     private var voiceCallTranscriptSubscription: AnyCancellable?
     static let voiceCallCheckpointInterval: Duration = .seconds(15)
@@ -3707,6 +3743,9 @@ final class AppState: ObservableObject {
         )
         if resume != nil { recorder.note(AppLocalization.string("Voice call resumed")) }
         voiceCallRecorder = recorder
+        voiceCallAttachment = voiceBackgroundJobSupervisor.liveThread.map {
+            VoiceCallAttachment(thread: $0, callID: recorder.callID, startedAt: Date(), resumed: resume != nil)
+        }
         let transcript: AnyPublisher<Void, Never>
         switch engine {
         case .geminiLive: transcript = geminiLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
@@ -3743,7 +3782,11 @@ final class AppState: ObservableObject {
         voiceCallCheckpointedTurns = recorder.turns.count
         voiceCallCheckpointedAt = Date()
         guard let request = recorder.outboxRequest else { return }
-        queueVoiceTranscript(request, dashboard: activeDashboardID?.uuidString ?? "-", profile: recorder.profile, jobs: recorder.jobSessionIDs)
+        // If the app dies before the call closes, its chat marker measures
+        // the call to this checkpoint rather than to the later retry.
+        var attachment = voiceCallAttachment
+        attachment?.endedAt = voiceCallCheckpointedAt
+        queueVoiceTranscript(request, dashboard: activeDashboardID?.uuidString ?? "-", profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
         voiceTranscriptsSaving.insert(request.callID)
     }
 
@@ -3769,6 +3812,9 @@ final class AppState: ObservableObject {
         voiceCallCheckpointTask?.cancel()
         voiceCallCheckpointTask = nil
         liveVoiceResumeContext = nil
+        var attachment = voiceCallAttachment
+        attachment?.endedAt = Date()
+        voiceCallAttachment = nil
         guard let recorder = voiceCallRecorder else { return }
         captureVoiceCall()
         voiceCallTranscriptSubscription = nil
@@ -3781,7 +3827,7 @@ final class AppState: ObservableObject {
         // being suspended or closed mid-save; the save then settles it.
         let queuedCallID = recorder.outboxRequest?.callID
         if let request = recorder.outboxRequest {
-            queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs)
+            queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             // The outbox leaves it alone while the save below is running.
             voiceTranscriptsSaving.insert(request.callID)
         }
@@ -3807,7 +3853,7 @@ final class AppState: ObservableObject {
             if recorder.isDisabled { self.voiceCallSaveBlockedKeys.insert(key) }
             if let requeued {
                 // A later retry creates the row and links the jobs then.
-                self.queueVoiceTranscript(requeued, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs)
+                self.queueVoiceTranscript(requeued, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             }
             if self.closingVoiceCallRecorder === recorder {
                 self.closingVoiceCallRecorder = nil
@@ -3823,6 +3869,7 @@ final class AppState: ObservableObject {
                 )
             }
             guard let sessionID = callRow else { return }
+            if let attachment { self.linkVoiceCall(attachment, callSessionID: sessionID, profile: recorder.profile) }
             if self.voiceSessionTagsByKey[key]?[sessionID] == nil {
                 self.voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: recorder.engine.rawValue)
             }
@@ -3889,12 +3936,12 @@ final class AppState: ObservableObject {
         await drainVoiceTranscriptOutbox(profile: profile, key: voiceHistoryKey(profile: profile))
     }
 
-    private func queueVoiceTranscript(_ request: VoiceTranscriptSaveRequest, dashboard: String, profile: String, jobs: [String] = []) {
+    private func queueVoiceTranscript(_ request: VoiceTranscriptSaveRequest, dashboard: String, profile: String, jobs: [String] = [], attachment: VoiceCallAttachment? = nil) {
         var request = request
         // A retry that creates the row can't wait on a title from Hermes.
         if request.sessionID == nil, request.title == nil { request.title = Self.fallbackVoiceCallTitle() }
         var outbox = VoiceTranscriptOutbox.load(from: defaults)
-        outbox.add(.init(dashboard: dashboard, profile: profile, request: request, queuedAt: Date(), jobSessionIDs: jobs.isEmpty ? nil : jobs))
+        outbox.add(.init(dashboard: dashboard, profile: profile, request: request, queuedAt: Date(), jobSessionIDs: jobs.isEmpty ? nil : jobs, chatAttachment: attachment))
         outbox.store(in: defaults)
         publishVoiceCallSaveStatus()
     }
@@ -3932,6 +3979,9 @@ final class AppState: ObservableObject {
                 if let jobs = entry.jobSessionIDs, !jobs.isEmpty {
                     tagVoiceSessions(jobs, kind: .job, parentID: result.sessionID, parentTitle: result.sessionID.flatMap { _ in request.title }, profile: profile)
                 }
+                if let sessionID = result.sessionID, let attachment = entry.chatAttachment {
+                    linkVoiceCall(attachment, callSessionID: sessionID, profile: profile)
+                }
             } catch VoiceHistoryError.rowUnavailable where request.sessionID != nil && (request.turns.first?.index ?? 0) > 0 {
                 // The row is gone with this call's earlier turns; the rest
                 // alone would pass for the whole call.
@@ -3944,7 +3994,9 @@ final class AppState: ObservableObject {
                 request.turns = request.turns.enumerated().map { offset, turn in
                     VoiceTranscriptTurn(index: offset, role: turn.role, text: turn.text, at: turn.at)
                 }
-                settled.append((entry, .init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt, jobSessionIDs: entry.jobSessionIDs)))
+                // The chat attachment keeps the original call id on purpose:
+                // it names the chat's marker, which stays one per call.
+                settled.append((entry, .init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt, jobSessionIDs: entry.jobSessionIDs, chatAttachment: entry.chatAttachment)))
             } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.unsupported {
                 // Kept, not dropped: the host may get the plugin (or a
                 // session store) before the outbox gives up on the call.
@@ -3990,6 +4042,18 @@ final class AppState: ObservableObject {
                 guard let self, self.errorMessage == nil else { return }
                 self.errorMessage = AppLocalization.string("That job's chat is no longer available.")
             }
+        }
+    }
+
+    /// Opens the saved transcript behind a chat's voice call card. Looked up
+    /// at tap time: an outbox retry can move the call to a new row after
+    /// the card is drawn. The row can also be gone (deleted on the host),
+    /// so a dead tap says so.
+    func openVoiceCallTranscript(markerID: String) {
+        guard let link = voiceCallLink(markerID: markerID) else { return }
+        requestOpenSession(link.callSessionID) { [weak self] in
+            guard let self, self.errorMessage == nil else { return }
+            self.errorMessage = AppLocalization.string("That call's transcript is no longer available.")
         }
     }
 
@@ -4337,12 +4401,14 @@ final class AppState: ObservableObject {
         guard profile == activeProfile, canResumeVoiceCall else { return }
         // Without the saved turns the call still continues the row.
         pendingVoiceResume = (sessionID, context ?? VoiceResumeContext(summary: nil, recent: []))
+        // A call started from a chat goes back to that chat.
+        let thread = voiceCallChatLinks.latest(forCall: sessionID, profile: profile)?.thread
         if isGeminiLiveEnabled {
-            openGeminiLiveConversation()
+            openGeminiLiveConversation(attachingTo: thread)
         } else if isGrokLiveEnabled {
-            openGrokLiveConversation()
+            openGrokLiveConversation(attachingTo: thread)
         } else {
-            openGPTLiveConversation()
+            openGPTLiveConversation(attachingTo: thread)
         }
         // Starting the call took it; a call already running didn't, and a
         // later unrelated call must not.
@@ -9710,7 +9776,7 @@ final class AppState: ObservableObject {
             includePendingApprovals: restorePendingDecisionCards,
             includePendingTools: result.snapshot.running != false
         )
-        messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: restored, sessionId: result.sessionId), sessionId: result.sessionId)
         if result.snapshot.running == false {
             sessionPresentationCache.removePendingTools(
                 profile: presentationProfile(for: result.sessionId),
@@ -17256,7 +17322,7 @@ final class AppState: ObservableObject {
             includePendingClarifications: false,
             includePendingApprovals: false
         )
-        messages = mergeCachedReviews(into: merged, sessionId: sessionID)
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: merged, sessionId: sessionID), sessionId: sessionID)
         // The gateway's authoritative response just replaced the transcript:
         // no local turn/ordering debt can outlive it (applyChatResume's rule).
         transcriptFreshnessIsStale = false

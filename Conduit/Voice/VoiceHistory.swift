@@ -358,6 +358,9 @@ struct VoiceTranscriptOutbox: Codable, Equatable {
         /// Background jobs the call started, tagged with its row once the
         /// save has one.
         var jobSessionIDs: [String]? = nil
+        /// The chat the call was attached to: its marker is added once a
+        /// retry saves the row.
+        var chatAttachment: VoiceCallAttachment? = nil
     }
 
     static let storageKey = "conduit.voiceTranscriptOutbox.v1"
@@ -529,5 +532,110 @@ struct VoiceResumeContext: Equatable {
     /// GPT-Live's seeded history (the Codex frameless `initial_items`).
     var gptLiveHistory: [[String: Any]] {
         recent.map { GPTLiveProtocol.historyItem(role: $0.speaker == .user ? "user" : "assistant", text: $0.text) }
+    }
+}
+
+// MARK: - Calls started from a chat
+
+/// A saved call started from (or resumed into) a chat: the chat shows a
+/// "Voice call" marker that opens the call's transcript, and Resume Call
+/// attaches the new call to the same chat. Kept on the device: the host's
+/// call tag doesn't name a chat.
+struct VoiceCallChatLink: Codable, Equatable {
+    /// The live call this marker is for (one per call or resume).
+    var callID: String
+    /// The saved call's row.
+    var callSessionID: String
+    var chatRuntimeSessionID: String
+    var chatStoredSessionID: String?
+    var chatTitle: String
+    var profile: String
+    var startedAt: Date
+    var endedAt: Date
+    var resumed: Bool
+
+    static let displayKind = "conduit_voice_call"
+    var markerID: String { "voice-call-\(callID)" }
+
+    func belongs(toChat ids: Set<String>) -> Bool {
+        [chatRuntimeSessionID, chatStoredSessionID].compactMap { $0 }.contains { !$0.isEmpty && ids.contains($0) }
+    }
+
+    /// The chat as a live call's target, for Resume Call.
+    var thread: VoiceThreadTarget {
+        let id = chatStoredSessionID ?? chatRuntimeSessionID
+        return VoiceThreadTarget(runtimeSessionID: id, storedSessionID: chatStoredSessionID, title: chatTitle)
+    }
+
+    var marker: ChatMessage {
+        ChatMessage(
+            id: markerID,
+            role: .system,
+            content: resumed ? AppLocalization.string("Voice call resumed") : AppLocalization.string("Voice call"),
+            timestamp: Self.timestampFormatter.string(from: startedAt),
+            displayKind: Self.displayKind
+        )
+    }
+
+    private static let timestampFormatter = ISO8601DateFormatter()
+}
+
+/// The chat a recording call is attached to, until its row is saved.
+struct VoiceCallAttachment: Equatable, Codable {
+    var thread: VoiceThreadTarget
+    var callID: String
+    var startedAt: Date
+    var resumed: Bool
+    /// Set when the call closes, so a slow save doesn't lengthen it.
+    var endedAt: Date? = nil
+}
+
+struct VoiceCallChatLinks: Codable, Equatable {
+    static let storageKey = "conduit.voiceCallChatLinks.v1"
+    static let maximumLinks = 300
+
+    var links: [VoiceCallChatLink] = []
+
+    mutating func add(_ link: VoiceCallChatLink) {
+        links.removeAll { $0.callID == link.callID }
+        links.append(link)
+        if links.count > Self.maximumLinks { links.removeFirst(links.count - Self.maximumLinks) }
+    }
+
+    /// The chat a saved call was last attached to, for Resume Call.
+    func latest(forCall callSessionID: String, profile: String) -> VoiceCallChatLink? {
+        links.last { $0.callSessionID == callSessionID && $0.profile == profile }
+    }
+
+    func link(markerID: String) -> VoiceCallChatLink? {
+        links.first { $0.markerID == markerID }
+    }
+
+    /// The chat's history with its call markers, each placed where its call
+    /// started. The history's own order is kept.
+    func merge(into history: [ChatMessage], chatIDs: Set<String>, profile: String) -> [ChatMessage] {
+        var merged = history
+        for link in links where link.profile == profile && link.belongs(toChat: chatIDs) {
+            guard !merged.contains(where: { $0.id == link.markerID }) else { continue }
+            let index = merged.firstIndex {
+                MessageTimestampFormatter.date(from: $0.timestamp).map { $0 > link.startedAt } ?? false
+            } ?? merged.endIndex
+            merged.insert(link.marker, at: index)
+        }
+        return merged
+    }
+
+    static func load(from defaults: UserDefaults) -> VoiceCallChatLinks {
+        guard let data = defaults.data(forKey: storageKey),
+              let links = try? JSONDecoder().decode(VoiceCallChatLinks.self, from: data) else { return VoiceCallChatLinks() }
+        return links
+    }
+
+    func store(in defaults: UserDefaults) {
+        if links.isEmpty {
+            defaults.removeObject(forKey: Self.storageKey)
+        } else if let data = try? JSONEncoder().encode(self) {
+            defaults.set(data, forKey: Self.storageKey)
+        }
     }
 }

@@ -228,7 +228,7 @@ struct VoiceThreadNotStartedError: Error {
 
 /// The Hermes chat a live call is attached to: requests go there as its
 /// next turn instead of starting a background job.
-struct VoiceThreadTarget: Equatable {
+struct VoiceThreadTarget: Equatable, Codable {
     var runtimeSessionID: String
     var storedSessionID: String?
     var title: String
