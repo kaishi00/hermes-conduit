@@ -543,6 +543,7 @@ struct SettingsView: View {
                     ),
                     voiceEnabled: appState.isVoiceEnabled,
                     transcriptionMode: appState.voiceTranscriptionMode,
+                    transcriptionModeChosen: voicePreferences.transcriptionMode != nil,
                     appleSpeechAvailability: appState.appleSpeechAvailability,
                     continuousConversation: appState.continuousConversationEnabled,
                     spokenStopPhrases: voicePreferences.spokenStopPhrases,
