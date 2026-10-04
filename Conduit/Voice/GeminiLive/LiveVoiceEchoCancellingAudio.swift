@@ -160,7 +160,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
             throw error
         }
         guard let engine, let player else { return }
-        if playerFormat.map({ abs($0.sampleRate - sampleRate) >= 1 }) ?? true {
+        if playerFormat.map({ abs($0.sampleRate - sampleRate) >= 1 || $0.channelCount != 1 }) ?? true {
             // The model changed rates: reconnect the player at the new one.
             guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
                 outputWanted = false
@@ -182,8 +182,34 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
             AVSpeechPlaybackService.convertPCM16(raw, into: channel, frames: Int(frames))
         }
         remainder.removeFirst(alignedBytes)
+        schedule(buffer, on: player)
+    }
+
+    /// Plays decoded audio (a whole speech clip in the file's own format,
+    /// mono or stereo) through the same echo-cancelled output as `play`.
+    /// The player reconnects when the clip's format differs from the
+    /// stream's, which drops anything still queued in the old format.
+    func play(_ buffer: AVAudioPCMBuffer) throws {
+        outputWanted = true
+        do {
+            try ensureRunning()
+        } catch {
+            outputWanted = false
+            teardownIfUnused()
+            throw error
+        }
+        guard let engine, let player, buffer.frameLength > 0 else { return }
+        if playerFormat != buffer.format {
+            interrupt()
+            engine.connect(player, to: engine.mainMixerNode, format: buffer.format)
+            playerFormat = buffer.format
+        }
+        schedule(buffer, on: player)
+    }
+
+    private func schedule(_ buffer: AVAudioPCMBuffer, on player: AVAudioPlayerNode) {
         pendingBuffers += 1
-        extendDrainDeadline(by: Double(frames) / format.sampleRate)
+        extendDrainDeadline(by: Double(buffer.frameLength) / buffer.format.sampleRate)
         let generation = playbackGeneration
         player.scheduleBuffer(buffer, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor [weak self] in

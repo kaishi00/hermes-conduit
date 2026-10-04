@@ -2121,6 +2121,13 @@ final class AppState: ObservableObject {
     }
 
     lazy var voiceConversationController = VoiceConversationController(
+        capture: self.voiceConversationAudio.capture,
+        playback: self.voiceConversationAudio.playback,
+        // With echo cancelled, Hermes' own voice can't reach the
+        // microphone on any route: the speaker behaves like a headset.
+        routePolicyProvider: { [audio = self.voiceConversationAudio] in
+            audio.cancelsEcho ? .fullDuplex : VoiceBargeInRoutePolicy.current()
+        },
         submit: { [weak self] transcript in
             guard let self else { return false }
             return await self.submitVoiceTranscript(transcript)
@@ -2137,6 +2144,15 @@ final class AppState: ObservableObject {
             self?.closeVoiceConversation()
         },
         backgroundJobs: self.voiceBackgroundJobSupervisor
+    )
+    /// Classic voice audio: the default capture and playback, or one
+    /// echo-cancelling engine when speaker talk-over is on, chosen for each
+    /// conversation.
+    lazy var voiceConversationAudio = VoiceConversationAudioSelector(
+        wantsEchoCancellation: { [weak self] in self?.liveVoiceSpeakerBargeInEnabled ?? false },
+        standardCapture: AVAudioCaptureService(),
+        standardPlayback: AVSpeechPlaybackService(),
+        makeEchoCancelling: { EchoCancellingLiveVoiceAudio(outputSampleRate: 24_000) }
     )
     /// Background jobs started from Voice (issue #163): each job is an
     /// ordinary Hermes session created on the current client, and its

@@ -33,6 +33,7 @@ struct VoiceSettingsRoute: View {
     let voiceJobs: VoiceJobModelSettingsModel?
     let wake: WakePhraseSettingsModel?
     let lockedListening: VoiceLockedListeningSettingsModel?
+    let speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     let callSaves: VoiceCallSaveStatusModel?
 
     init(
@@ -59,6 +60,7 @@ struct VoiceSettingsRoute: View {
         voiceJobs: VoiceJobModelSettingsModel? = nil,
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
+        speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
         callSaves: VoiceCallSaveStatusModel? = nil
     ) {
         self.geminiLive = geminiLive
@@ -68,6 +70,7 @@ struct VoiceSettingsRoute: View {
         self.voiceJobs = voiceJobs
         self.wake = wake
         self.lockedListening = lockedListening
+        self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
         _conversationController = ObservedObject(wrappedValue: conversationController)
@@ -110,6 +113,7 @@ struct VoiceSettingsRoute: View {
             voiceJobs: voiceJobs,
             wake: wake,
             lockedListening: lockedListening,
+            speakerTalkOver: speakerTalkOver,
             callSaves: callSaves
         )
     }
@@ -176,8 +180,10 @@ struct VoiceSettingsView: View {
     var voiceJobs: VoiceJobModelSettingsModel?
     var wake: WakePhraseSettingsModel?
     var lockedListening: VoiceLockedListeningSettingsModel?
+    var speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     var callSaves: VoiceCallSaveStatusModel?
     @State private var keepListeningWhenLocked: Bool
+    @State private var speakerTalkOverEnabled: Bool
 
     init(
         service: HermesVoiceConfigurationService,
@@ -202,6 +208,7 @@ struct VoiceSettingsView: View {
         voiceJobs: VoiceJobModelSettingsModel? = nil,
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
+        speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
         callSaves: VoiceCallSaveStatusModel? = nil
     ) {
         self.geminiLive = geminiLive
@@ -211,8 +218,10 @@ struct VoiceSettingsView: View {
         self.voiceJobs = voiceJobs
         self.wake = wake
         self.lockedListening = lockedListening
+        self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
         _keepListeningWhenLocked = State(initialValue: lockedListening?.enabled ?? false)
+        _speakerTalkOverEnabled = State(initialValue: speakerTalkOver?.enabled ?? false)
         self.service = service
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
@@ -743,6 +752,19 @@ struct VoiceSettingsView: View {
                 ))
                 .onChange(of: lockedListening.enabled) { _, newValue in keepListeningWhenLocked = newValue }
                 Text("A voice conversation that is already listening keeps going when you lock the phone or switch apps, so you can talk hands-free. While locked, Conduit always listens again after each response and keeps listening through silence. End it by saying a goodbye phrase or from the app. Uses more battery.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let speakerTalkOver {
+                Toggle("Talk over Hermes on the speaker", isOn: Binding(
+                    get: { speakerTalkOverEnabled },
+                    set: { requested in
+                        speakerTalkOverEnabled = requested
+                        speakerTalkOver.setEnabled(requested)
+                    }
+                ))
+                .onChange(of: speakerTalkOver.enabled) { _, newValue in speakerTalkOverEnabled = newValue }
+                Text("Experimental. Keeps the microphone open while Hermes reads its reply on the phone's speaker or in the car, with iOS echo cancellation, so you can speak over it to start a new turn. Headphones and AirPods always allow this. Turn it off if Hermes keeps cutting itself off. Shared with Gemini Live and Grok Live. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1427,6 +1449,13 @@ struct VoiceLockedListeningSettingsModel {
     var enabled: Bool
     /// Returns false when the change couldn't be saved (disconnected).
     var setEnabled: (Bool) -> Bool
+}
+
+/// Talking over Classic voice replies on the loudspeaker (echo-cancelling
+/// audio). The same per-profile setting as the live modes' speaker barge-in.
+struct VoiceSpeakerTalkOverSettingsModel {
+    var enabled: Bool
+    var setEnabled: (Bool) -> Void
 }
 
 /// Live calls that ended but haven't reached the Hermes host yet.

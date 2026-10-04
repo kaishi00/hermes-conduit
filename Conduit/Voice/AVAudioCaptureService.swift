@@ -533,7 +533,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             && input.isInterleaved == format.isInterleaved
     }
 
-    private static func wavWrapping(pcm16: Data, sampleRate: Int) -> Data {
+    static func wavWrapping(pcm16: Data, sampleRate: Int) -> Data {
         let byteRate = sampleRate * outputBytesPerFrame
         let fileSize = 36 + pcm16.count
         var header = Data()
