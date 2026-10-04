@@ -316,7 +316,8 @@ struct VoiceSettingsView: View {
             }
             if voiceEnabled {
                 setupChecklist
-                // The tests run classic Voice's speech route.
+                // The tests run classic Voice's speech route; testButtons
+                // assumes Classic.
                 if voiceMode == .classic { testButtons }
             }
             if let error = service.errorMessage {
@@ -457,12 +458,15 @@ struct VoiceSettingsView: View {
                 fix: (label: AppLocalization.string("Use Edge TTS"), action: { selectProvider(VoiceSetupDefaults.edgeTTSProviderID, kind: .tts) })
             )
         }
+        if service.isLoading || !service.snapshot.capability.isGatewayConnected {
+            return setupStep(title, detail: AppLocalization.string("Not checked yet"), state: .pending)
+        }
         return setupStep(
             title,
             detail: service.snapshot.selectedTTSProvider.isEmpty
                 ? AppLocalization.string("No assistant voice is set up yet. Choose one under Assistant speech below.")
                 : AppLocalization.string("\(name) isn't ready on Hermes. Choose another under Assistant speech below."),
-            state: service.isLoading || !service.snapshot.capability.isGatewayConnected ? .pending : .attention
+            state: .attention
         )
     }
 
