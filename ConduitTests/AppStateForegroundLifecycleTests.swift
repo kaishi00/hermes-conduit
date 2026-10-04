@@ -3811,14 +3811,21 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         )
         let submittedMention = await harness.appState.submitComposer(text: mentioned)
         XCTAssertTrue(submittedMention)
-        let expected = BotMentions.middlewareAnnotation(
-            text: mentioned,
-            roster: [researcher],
-            activeProfileName: "default"
-        )
-        XCTAssertNotNil(expected)
+        // The bot named in the user's own words is annotated onto the whole
+        // text, quote included.
+        let expected = BotMentions.annotated(text: mentioned, mentions: [researcher])
+        XCTAssertNotEqual(expected, mentioned)
         XCTAssertEqual(steeredTexts.last, expected)
-        XCTAssertEqual(ReplyQuoteEnvelope.parse(expected ?? "")?.quote, "Earlier answer")
+        XCTAssertEqual(ReplyQuoteEnvelope.parse(expected)?.quote, "Earlier answer")
+
+        // A selection quoted as `>` lines is someone else's words too.
+        let selectionQuote = ChatQuote.inserting(
+            ChatQuote.blockquote("Ask @researcher for the numbers"),
+            into: ""
+        ) + "What did they mean?"
+        let submittedSelection = await harness.appState.submitComposer(text: selectionQuote)
+        XCTAssertTrue(submittedSelection)
+        XCTAssertEqual(steeredTexts.last, selectionQuote, "a bot named only in a quoted selection is not a mention")
     }
 
     /// A prompt outcome returned after the user switched sessions must not

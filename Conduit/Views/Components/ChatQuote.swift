@@ -32,6 +32,17 @@ enum ChatQuote {
         return kept.isEmpty ? "\(quote)\n\n" : "\(kept)\n\n\(quote)\n\n"
     }
 
+    /// `text` without its Markdown quote lines: what the sender wrote
+    /// themselves, as opposed to what they quoted. Any `>` line counts, a
+    /// hand-typed quote as much as one from Quote, so a bot named only in a
+    /// quote is never taken as mentioned. Line breaks come back as `\n`.
+    static func removingQuotedLines(from text: String) -> String {
+        text.replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: .newlines)
+            .filter { !$0.drop(while: { $0 == " " || $0 == "\t" }).hasPrefix(">") }
+            .joined(separator: "\n")
+    }
+
     /// A one-line plain-text preview of a Markdown reply for the chips:
     /// code fences, heading and list markers and emphasis are dropped, so
     /// "## Plan" previews as "Plan".
@@ -207,9 +218,15 @@ extension EnvironmentValues {
 /// The compact "Replying to" card at the top of a sent message that quoted
 /// a whole reply.
 struct ReplyReferenceQuoteCard: View {
-    let quote: String
+    /// Worked out when the card is made, not on every `body` call.
+    private let excerpt: String
     /// On the accent-colored user bubble the card uses white text.
-    var onAccentSurface = true
+    private let onAccentSurface: Bool
+
+    init(quote: String, onAccentSurface: Bool = true) {
+        self.excerpt = ChatQuote.excerpt(of: quote)
+        self.onAccentSurface = onAccentSurface
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -220,7 +237,7 @@ struct ReplyReferenceQuoteCard: View {
                 Label(AppLocalization.string("Replying to"), systemImage: "quote.bubble")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(primaryColor)
-                Text(ChatQuote.excerpt(of: quote))
+                Text(excerpt)
                     .font(.footnote)
                     .foregroundStyle(primaryColor.opacity(0.82))
                     .lineLimit(2)
