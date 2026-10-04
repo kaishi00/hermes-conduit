@@ -3782,7 +3782,11 @@ final class AppState: ObservableObject {
         voiceCallCheckpointedTurns = recorder.turns.count
         voiceCallCheckpointedAt = Date()
         guard let request = recorder.outboxRequest else { return }
-        queueVoiceTranscript(request, dashboard: activeDashboardID?.uuidString ?? "-", profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: voiceCallAttachment)
+        // If the app dies before the call closes, its chat marker measures
+        // the call to this checkpoint rather than to the later retry.
+        var attachment = voiceCallAttachment
+        attachment?.endedAt = voiceCallCheckpointedAt
+        queueVoiceTranscript(request, dashboard: activeDashboardID?.uuidString ?? "-", profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
         voiceTranscriptsSaving.insert(request.callID)
     }
 
