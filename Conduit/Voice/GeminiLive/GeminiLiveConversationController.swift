@@ -937,6 +937,7 @@ final class GeminiLiveConversationController: ObservableObject {
             // can complete before the tasks below first run.
             let calledOn = session
             let generation = calledOn?.connectionGeneration
+            let epoch = callEpoch
             for call in calls {
                 inFlightCallIDs.insert(call.id)
                 Task { [weak self] in
@@ -964,7 +965,7 @@ final class GeminiLiveConversationController: ObservableObject {
                     // (other jobs may settle in the same batch): make sure
                     // the user heard that it was taken.
                     if call.name == GeminiLiveToolBridge.Tool.startJob.rawValue, !outgoing.contains(where: { $0.answers(call.id) }) {
-                        self.ensureAcknowledgement(since: requestedAt)
+                        self.ensureAcknowledgement(since: requestedAt, epoch: epoch)
                     }
                 }
             }
@@ -1004,8 +1005,7 @@ final class GeminiLiveConversationController: ObservableObject {
     /// The model is told to acknowledge every start_job out loud. If it
     /// stayed silent (it sometimes does while a NON_BLOCKING call runs),
     /// prompt a one-line acknowledgement once the conversation is quiet.
-    private func ensureAcknowledgement(since calledAt: Date) {
-        let epoch = callEpoch
+    private func ensureAcknowledgement(since calledAt: Date, epoch: Int) {
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.acknowledgementGrace))
             // A later call started nothing: never prompt it.
