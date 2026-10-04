@@ -4155,14 +4155,29 @@ final class AppState: ObservableObject {
     private func openLinkedBotChat(_ profile: String) {
         Task { @MainActor [weak self] in
             guard let self else { return }
-            func rosterBot() -> BotProfile? { self.botRoster.first { $0.name == profile } }
-            if rosterBot() == nil { await self.refreshBotRoster() }
-            guard let bot = rosterBot() else {
+            if Self.linkedBot(named: profile, in: self.botRoster) == nil {
+                let openBefore = self.activeSessionId
+                await self.refreshBotRoster()
+                // A chat opened meanwhile is the later choice; it stays.
+                guard self.activeSessionId == openBefore else { return }
+            }
+            guard let bot = Self.linkedBot(named: profile, in: self.botRoster) else {
                 self.errorMessage = AppLocalization.string("That chat is no longer available.")
                 return
             }
             _ = await self.openBotChat(for: bot)
         }
+    }
+
+    /// The roster's bot for a profile name a link carries: the exact
+    /// spelling first, then one differing only in case (a scope an older
+    /// build stored may be case-folded).
+    static func linkedBot(named profile: String, in roster: [BotProfile]) -> BotProfile? {
+        let name = profile.trimmingCharacters(in: .whitespacesAndNewlines)
+        let names = roster.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard let index = names.firstIndex(of: name)
+            ?? names.firstIndex(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else { return nil }
+        return roster[index]
     }
 
     /// Opens a session a saved call or chat card linked to. The link can

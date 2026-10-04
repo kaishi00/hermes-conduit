@@ -378,6 +378,21 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(AppState.voiceThreadTurnNote(job, thread: bot), "Asked the chat: Check the build. [Open chat](conduit://bot/fam)")
     }
 
+    @MainActor
+    func testABotLinkFindsItsBotExactlyFirstThenIgnoringCase() {
+        func bot(_ name: String) -> BotProfile {
+            BotProfile(
+                name: name, botTitle: nil, displayName: "", profileDescription: "", model: nil, provider: nil,
+                hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                canonicalSession: nil, lastActive: nil, lastPreview: nil
+            )
+        }
+        let roster = [bot("Fam"), bot("fam"), bot("atlas")]
+        XCTAssertEqual(AppState.linkedBot(named: "fam", in: roster)?.name, "fam")
+        XCTAssertEqual(AppState.linkedBot(named: "Atlas", in: roster)?.name, "atlas")
+        XCTAssertNil(AppState.linkedBot(named: "nova", in: roster))
+    }
+
     func testResumeTurnsDropJobLinks() {
         let rows: [Any] = [
             ["id": 1, "role": "user", "content": "Find me a dinner recipe"],
