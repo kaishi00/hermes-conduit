@@ -887,6 +887,7 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.turnDone(role: "user", transcript: "Check the server."))
         session.onEvent?(.delegation(id: "del_1", text: ""))
         await settle(40)
+        // Keeps the user mid-turn, so the result is still held when the call goes.
         session.onEvent?(.inputTranscript("and while you're at it"))
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
         controller.deliverPendingJobUpdates()
@@ -897,6 +898,33 @@ extension VoiceConversationControllerTests {
         XCTAssertNotNil(supervisor.takePendingNotice(), "An unsaid result is pending again, not lost")
     }
 
+    func testGPTLiveResultSentPastAStuckModelTurnKeepsItsOwnTranscript() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, _) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Check the server."))
+        session.onEvent?(.outputTranscript("On it."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+
+        // The model's turn never ends; the result goes out once it's stale.
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        current += GPTLiveConversationController.modelTurnStaleInterval + 0.5
+        controller.flushPendingContextIfIdle()
+        XCTAssertEqual(session.speakable.count, 1)
+
+        session.onEvent?(.outputTranscript("The server is all green."))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "On it."))
+        XCTAssertEqual(controller.transcript.map(\.text), ["Check the server.", "On it.", "The server is all green."],
+                       "The stuck turn's late end doesn't fold the result away")
+        session.onEvent?(.turnDone(role: "assistant", transcript: "The server is all green."))
+        XCTAssertEqual(controller.transcript.map(\.text), ["Check the server.", "On it.", "The server is all green."])
+        XCTAssertTrue(controller.unsettledTranscriptEntryIDs.isEmpty)
+        controller.stop()
+    }
+
     func testGPTLiveHeldDelegationResultGoesBackWhenGPTLiveEndsTheCall() async {
         let current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, supervisor, _) = makeGPTController(clock: { current })
@@ -905,6 +933,7 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.turnDone(role: "user", transcript: "Check the server."))
         session.onEvent?(.delegation(id: "del_1", text: ""))
         await settle(40)
+        // Keeps the user mid-turn, so the result is still held when the call goes.
         session.onEvent?(.inputTranscript("and while you're at it"))
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
         controller.deliverPendingJobUpdates()

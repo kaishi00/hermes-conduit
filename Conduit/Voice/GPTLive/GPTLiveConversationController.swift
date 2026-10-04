@@ -194,6 +194,10 @@ final class GPTLiveConversationController: ObservableObject {
     /// back into one.
     private var userTurnEntries: [UUID] = []
     private var assistantTurnEntries: [UUID] = []
+    /// A model turn whose `turn.done` hadn't come when a result was sent
+    /// past it (it went stale): its late `turn.done` folds these, so the
+    /// result's own words start, and stay, in entries of their own.
+    private var staleAssistantTurnEntries: [UUID] = []
     /// Transcript entries already handed to a delegation. A set, not a
     /// boundary entry: a finished turn can fold the boundary away.
     private var delegatedEntries: Set<UUID> = []
@@ -400,6 +404,8 @@ final class GPTLiveConversationController: ObservableObject {
             retireSession()
             if endRequestedAt == nil {
                 // Nothing queued can go out on a failed call.
+                idleFlushTask?.cancel()
+                idleFlushTask = nil
                 returnPendingSends()
                 bridge.connectionReplaced()
                 phase = .failed(message)
@@ -413,6 +419,8 @@ final class GPTLiveConversationController: ObservableObject {
                 finishEnd()
             } else {
                 retireSession()
+                idleFlushTask?.cancel()
+                idleFlushTask = nil
                 returnPendingSends()
                 bridge.connectionReplaced()
                 phase = .failed(AppLocalization.string("GPT-Live ended the conversation."))
@@ -468,6 +476,15 @@ final class GPTLiveConversationController: ObservableObject {
                     userFinished(finished)
                 }
             case "assistant":
+                if !staleAssistantTurnEntries.isEmpty {
+                    // The late end of a turn a result was sent past: it
+                    // settles that turn's entries, not the result's.
+                    if let finished = finishTurn(staleAssistantTurnEntries, speaker: .assistant, text: text) {
+                        finishedTurn = FinishedTurn(speaker: .assistant, text: finished)
+                    }
+                    staleAssistantTurnEntries = []
+                    return
+                }
                 modelTurnActive = false
                 lastModelTurnEndedAt = now()
                 if let finished = finishTurn(assistantTurnEntries, speaker: .assistant, text: text) {
@@ -635,6 +652,11 @@ final class GPTLiveConversationController: ObservableObject {
                 bridge.contextDelivered(jobID: item.jobID)
             }
             guard item.channel == .commentary else {
+                if modelTurnActive, !assistantTurnEntries.isEmpty {
+                    staleAssistantTurnEntries += assistantTurnEntries
+                    assistantTurnEntries = []
+                    openAssistantEntry = nil
+                }
                 // The model speaks it next: wait for that turn before another.
                 modelTurnActive = true
                 lastModelOutputAt = now()
@@ -726,12 +748,13 @@ final class GPTLiveConversationController: ObservableObject {
         openAssistantEntry = nil
         userTurnEntries = []
         assistantTurnEntries = []
+        staleAssistantTurnEntries = []
     }
 
     /// Entries still taking fragments or waiting for their turn's
     /// `turn.done` (which can rewrite them): a saved transcript waits for
     /// them to settle.
     var unsettledTranscriptEntryIDs: Set<UUID> {
-        Set([openUserEntry, openAssistantEntry].compactMap { $0 } + userTurnEntries + assistantTurnEntries)
+        Set([openUserEntry, openAssistantEntry].compactMap { $0 } + userTurnEntries + assistantTurnEntries + staleAssistantTurnEntries)
     }
 }
