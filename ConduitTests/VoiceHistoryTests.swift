@@ -471,15 +471,15 @@ extension HermesVoiceGatewayTimeoutTests {
         links.add(chatLink(call: "c2", row: "other-row", chat: "rt-2", at: start))
         links.add(chatLink(call: "c3", row: "call-row", chat: "rt-1", stored: "st-1", at: start, profile: "work"))
 
-        let merged = links.merge(into: history, chatIDs: ["st-1"], profile: "default")
+        let merged = links.merge(into: history, chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default")
         XCTAssertEqual(merged.map(\.id), ["a", "voice-call-c1", "b"])
         XCTAssertEqual(merged[1].role, .system)
         XCTAssertEqual(merged[1].displayKind, VoiceCallChatLink.displayKind)
         XCTAssertEqual(links.link(markerID: "voice-call-c1")?.callSessionID, "call-row")
         // Merging again (a refresh) doesn't add a second marker.
-        XCTAssertEqual(links.merge(into: merged, chatIDs: ["st-1"], profile: "default").count, 3)
+        XCTAssertEqual(links.merge(into: merged, chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default").count, 3)
         // A call later than every message goes last.
-        XCTAssertEqual(links.merge(into: Array(history.prefix(1)), chatIDs: ["st-1"], profile: "default").last?.id, "voice-call-c1")
+        XCTAssertEqual(links.merge(into: Array(history.prefix(1)), chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default").last?.id, "voice-call-c1")
     }
 
     func testCallTranscriptLeadsBackToItsChatAndNeverShowsTheChatsCard() {
@@ -493,7 +493,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
         // Opened, the call's row may carry the chat's ids too (a stale
         // runtime or reconciliation alias): it still gets the way back.
-        let merged = links.merge(into: transcript, chatIDs: ["call-row", "rt-1", "st-1"], profile: "default")
+        let merged = links.merge(into: transcript, chatIDs: ["call-row", "rt-1", "st-1"], openIDs: ["call-row"], profile: "default")
         XCTAssertEqual(merged.map(\.id), ["voice-call-from-c1", "t1"])
         XCTAssertEqual(merged.first?.displayKind, VoiceCallChatLink.originDisplayKind)
         XCTAssertEqual(links.link(markerID: "voice-call-from-c1")?.chatSessionID, "st-1")
@@ -504,8 +504,12 @@ extension HermesVoiceGatewayTimeoutTests {
         var links = VoiceCallChatLinks()
         links.add(chatLink(call: "c1", row: "row-a", chat: "rt-1", stored: "st-1", at: start))
         links.add(chatLink(call: "c2", row: "row-b", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(60)))
-        XCTAssertEqual(links.merge(into: [], chatIDs: ["row-a", "st-1"], profile: "default").map(\.id), ["voice-call-from-c1"])
-        XCTAssertEqual(links.merge(into: [], chatIDs: ["st-1"], profile: "default").map(\.id), ["voice-call-c1", "voice-call-c2"])
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["row-a", "st-1"], openIDs: ["row-a"], profile: "default").map(\.id), ["voice-call-from-c1"])
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default").map(\.id), ["voice-call-c1", "voice-call-c2"])
+
+        // Viewing the chat while its id set borrowed a call row's alias: the
+        // chat keeps its cards.
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["st-1", "row-a"], openIDs: ["st-1"], profile: "default").map(\.id), ["voice-call-c1", "voice-call-c2"])
     }
 
     func testAResumedCallShowsOneStartedFromCardPerChat() {
@@ -514,7 +518,7 @@ extension HermesVoiceGatewayTimeoutTests {
         links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: start))
         links.add(chatLink(call: "c2", row: "call-row", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(600), resumed: true))
         links.add(chatLink(call: "c3", row: "call-row", chat: "rt-9", at: start.addingTimeInterval(1_200), resumed: true))
-        XCTAssertEqual(links.merge(into: [], chatIDs: ["call-row"], profile: "default").map(\.id), ["voice-call-from-c1", "voice-call-from-c3"])
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["call-row"], openIDs: ["call-row"], profile: "default").map(\.id), ["voice-call-from-c1", "voice-call-from-c3"])
     }
 
     func testAChatIsMatchedOnItsStoredIDNotAReusedRuntime() {
@@ -522,8 +526,8 @@ extension HermesVoiceGatewayTimeoutTests {
         var links = VoiceCallChatLinks()
         links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: start))
         links.add(chatLink(call: "c2", row: "row-2", chat: "rt-2", at: start))
-        XCTAssertTrue(links.merge(into: [], chatIDs: ["rt-1", "st-other"], profile: "default").isEmpty, "a later session under the chat's old runtime")
-        XCTAssertEqual(links.merge(into: [], chatIDs: ["rt-2"], profile: "default").map(\.id), ["voice-call-c2"], "no stored id: the runtime names it")
+        XCTAssertTrue(links.merge(into: [], chatIDs: ["rt-1", "st-other"], openIDs: ["rt-1", "st-other"], profile: "default").isEmpty, "a later session under the chat's old runtime")
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["rt-2"], openIDs: ["rt-2"], profile: "default").map(\.id), ["voice-call-c2"], "no stored id: the runtime names it")
     }
 
     func testResumeCallGoesBackToTheChatTheCallWasLastAttachedTo() {

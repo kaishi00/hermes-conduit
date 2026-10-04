@@ -3174,7 +3174,23 @@ final class AppState: ObservableObject {
 
     /// The chat's "Voice call" markers for calls started from it.
     private func mergeVoiceCallMarkers(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
-        voiceCallChatLinks.merge(into: history, chatIDs: reviewCacheSessionIDs(for: sessionId), profile: activeProfile)
+        voiceCallChatLinks.merge(
+            into: history,
+            chatIDs: reviewCacheSessionIDs(for: sessionId),
+            openIDs: ownSessionIDs(for: sessionId),
+            profile: activeProfile
+        )
+    }
+
+    /// The open session's own ids: its row's, without the aliases borrowed
+    /// from reconciliation or the scroll identity.
+    private func ownSessionIDs(for sessionId: String) -> Set<String> {
+        var ids: Set<String> = [sessionId]
+        for row in sessions {
+            let rowIDs = Set([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
+            if rowIDs.contains(sessionId) { ids.formUnion(rowIDs) }
+        }
+        return Set(ids.compactMap { ChatScrollIdentityNormalization.sessionID($0) })
     }
 
     /// The call a chat's "Voice call" marker opens.

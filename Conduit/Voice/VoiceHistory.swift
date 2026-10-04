@@ -634,8 +634,10 @@ struct VoiceCallChatLinks: Codable, Equatable {
     }
 
     /// The chat's history with its call markers, each placed where its call
-    /// started. The history's own order is kept.
-    func merge(into history: [ChatMessage], chatIDs: Set<String>, profile: String) -> [ChatMessage] {
+    /// started. The history's own order is kept. `openIDs` are the open
+    /// session's own ids (its row's, not the aliases `chatIDs` borrows), so
+    /// only a call's own row counts as its transcript.
+    func merge(into history: [ChatMessage], chatIDs: Set<String>, openIDs: Set<String>, profile: String) -> [ChatMessage] {
         var merged = history
         let profileLinks = links.filter { $0.profile == profile }
         // The open session is a call's own transcript (a resumed call has a
@@ -645,7 +647,7 @@ struct VoiceCallChatLinks: Codable, Equatable {
         // second card.
         var ownedChats = Set<String>()
         let owned = profileLinks
-            .filter { chatIDs.contains($0.callSessionID) }
+            .filter { openIDs.contains($0.callSessionID) }
             .sorted { $0.startedAt < $1.startedAt }
             .filter { ownedChats.insert($0.chatSessionID ?? $0.callID).inserted }
         let markers = owned.isEmpty
