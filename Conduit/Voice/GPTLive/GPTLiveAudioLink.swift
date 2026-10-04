@@ -130,7 +130,7 @@ final class GPTLiveAudioLink {
         guard isRunning, reason != .categoryChange else { return }
         // Paused: a route change is another chance to get the audio back.
         if isInterrupted {
-            resume()
+            if !resume() { scheduleResume(after: Self.resumeRetryDelays) }
             return
         }
         do {

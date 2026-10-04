@@ -443,6 +443,8 @@ final class GPTLiveConversationController: ObservableObject {
             lastUserSpeechAt = now()
             appendTranscript(text, speaker: .user)
         case .outputTranscript(let text):
+            // Kept while paused: GPT-Live can't be told to hold its turn, so
+            // what it said into the pause stays readable.
             modelTurnActive = true
             lastModelOutputAt = now()
             if endRequestedAt == nil, !audioPaused { phase = .speaking }
@@ -477,6 +479,8 @@ final class GPTLiveConversationController: ObservableObject {
             Task { [weak self] in
                 guard let self else { return }
                 let outgoing = await self.bridge.handleDelegation(id: id, request: request)
+                // Answered even while paused: the model asked and is
+                // waiting, and the reply stays readable in the transcript.
                 self.dispatch(outgoing)
                 if !outgoing.isEmpty { self.sendJobStatus() }
             }

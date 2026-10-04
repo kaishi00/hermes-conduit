@@ -904,6 +904,9 @@ final class GeminiLiveConversationController: ObservableObject {
                     // A new connection took over while this ran (a GoAway
                     // handoff during a lookup): the call is gone with the
                     // old one, so its answer goes out as a text update.
+                    // Answered even while paused: the model asked and is
+                    // waiting on this connection. A spoken answer that lands
+                    // in the pause is lost, but the model keeps the result.
                     let replaced = self.session !== calledOn || self.session?.connectionGeneration != generation
                     self.dispatch(outgoing, unanswerable: replaced ? [call.id] : [])
                     // A start_job its own call didn't answer is running
