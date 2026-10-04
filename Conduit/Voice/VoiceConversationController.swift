@@ -335,7 +335,7 @@ final class VoiceConversationController: ObservableObject {
         rearmRuntimeAfterCaptureRestart()
         guard let gateway else {
             releaseHeldCapture()
-            state = .failed(AppLocalization.string("Voice is unavailable for this gateway."))
+            state = .failed(AppLocalization.string("Voice isn't set up yet. Check Settings > Voice."))
             return
         }
         _ = gateway // keeps the availability check explicit at the state edge.
@@ -366,7 +366,7 @@ final class VoiceConversationController: ObservableObject {
             // error means nothing on the lock screen or after unlocking.
             state = .failed(isBackgroundListeningRequested
                 ? AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue.")
-                : error.localizedDescription)
+                : UserFacingError.message(for: error))
         }
     }
 
@@ -421,7 +421,7 @@ final class VoiceConversationController: ObservableObject {
             // again, so the state must not remain .idle.
             if state == .idle { state = .listening }
         } catch {
-            state = .failed(error.localizedDescription)
+            state = .failed(UserFacingError.message(for: error))
         }
     }
 
@@ -557,7 +557,7 @@ final class VoiceConversationController: ObservableObject {
             try capture.resume()
             beginBargeInMonitoring()
         } catch {
-            state = .failed(error.localizedDescription)
+            state = .failed(UserFacingError.message(for: error))
         }
     }
 
@@ -612,8 +612,8 @@ final class VoiceConversationController: ObservableObject {
             latestTranscript = transcript
             return .success(AppLocalization.string("Transcribed: \(transcript)"))
         } catch {
-            if isCurrent(generation) { state = .failed(error.localizedDescription) }
-            return .failure(error.localizedDescription)
+            if isCurrent(generation) { state = .failed(UserFacingError.message(for: error)) }
+            return .failure(UserFacingError.message(for: error))
         }
     }
 
@@ -694,8 +694,8 @@ final class VoiceConversationController: ObservableObject {
             }
             return .success(AppLocalization.string("Speech playback completed."))
         } catch {
-            if isCurrent(generation) { state = .failed(error.localizedDescription) }
-            return .failure(error.localizedDescription)
+            if isCurrent(generation) { state = .failed(UserFacingError.message(for: error)) }
+            return .failure(UserFacingError.message(for: error))
         }
     }
 
@@ -1018,7 +1018,7 @@ final class VoiceConversationController: ObservableObject {
         } catch is CancellationError {
             if isCurrent(generation) { state = .idle }
         } catch {
-            if isCurrent(generation) { state = .failed(error.localizedDescription) }
+            if isCurrent(generation) { state = .failed(UserFacingError.message(for: error)) }
         }
     }
 
@@ -1040,7 +1040,7 @@ final class VoiceConversationController: ObservableObject {
             try capture.beginBargeInMonitoring()
             if isMicrophonePaused { capture.pause() }
         }
-        catch { state = .failed(error.localizedDescription) }
+        catch { state = .failed(UserFacingError.message(for: error)) }
     }
 
     /// Hermes begins audible playback. On routes where the output can feed
@@ -1465,7 +1465,7 @@ final class VoiceConversationController: ObservableObject {
             // an interrupted stream's already-scheduled audio renders out.)
             playback.stop()
             endPlaybackCaptureSuspensionWithoutRelistening()
-            if state == .speaking || state == .thinking { state = .failed(error.localizedDescription) }
+            if state == .speaking || state == .thinking { state = .failed(UserFacingError.message(for: error)) }
             return
         }
         if assistantFinished && speechDeltas.isEmpty && speechStream == nil {

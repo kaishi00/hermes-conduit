@@ -257,7 +257,7 @@ final class NativeOAuthAPIClient {
             }
             throw DashboardTicketBridgeError.http(
                 status: http.statusCode,
-                detail: Self.errorDetail(data) ?? "Dashboard request failed (\(http.statusCode))."
+                detail: Self.errorDetail(data) ?? AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).")
             )
         }
         guard !data.isEmpty else { return [:] }
@@ -388,7 +388,7 @@ final class NativeOAuthSession {
             guard replayIsSafe else {
                 throw DashboardTicketBridgeError.http(
                     status: 401,
-                    detail: "Authentication was refreshed; retry this action."
+                    detail: DashboardTicketBridgeError.signInRefreshedDetail
                 )
             }
             do {

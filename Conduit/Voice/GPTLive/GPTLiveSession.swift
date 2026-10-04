@@ -168,7 +168,7 @@ final class GPTLiveSession {
             guard isCurrent(peer) else { return }
         } catch {
             guard isCurrent(peer) else { return }
-            fail(error.localizedDescription)
+            fail(UserFacingError.message(for: error))
             return
         }
         let timeout = startTimeout

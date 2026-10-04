@@ -610,11 +610,14 @@ final class PushNotificationService: ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .unregistered: return "This device is not paired with a push relay."
-            case .transport(let message): return "Could not reach the push relay: \(message)"
-            case .server(let status): return "The push relay rejected the answer (HTTP \(status))."
+            case .unregistered:
+                return AppLocalization.string("This iPhone isn't set up to answer from notifications. Set it up again in Settings > Notifications.")
+            case .transport(let message):
+                return AppLocalization.string("Couldn't send your answer: \(message)")
+            case .server:
+                return AppLocalization.string("Your answer wasn't accepted. Open the chat in Conduit and answer there.")
             case .insecureTransport:
-                return "The relay URL must use HTTPS (plain HTTP is only allowed for a localhost relay)."
+                return AppLocalization.string("The notification relay address must start with https://. Fix it in Settings > Notifications.")
             }
         }
     }
@@ -728,7 +731,7 @@ final class PushNotificationService: ObservableObject {
         } catch let error as RelayDecisionError {
             throw error
         } catch {
-            throw RelayDecisionError.transport(error.localizedDescription)
+            throw RelayDecisionError.transport(UserFacingError.message(for: error))
         }
     }
 
@@ -750,7 +753,7 @@ final class PushNotificationService: ObservableObject {
             let token = try await requestDeviceToken()
             try await register(deviceToken: token)
         } catch {
-            lastError = error.localizedDescription
+            lastError = UserFacingError.message(for: error)
         }
     }
 
@@ -809,7 +812,7 @@ final class PushNotificationService: ObservableObject {
             // Still registered with the old relay, which keeps working;
             // Settings offers the move again.
             registration = previous
-            lastError = error.localizedDescription
+            lastError = UserFacingError.message(for: error)
             return
         }
         await revokeInstallation(previous)
@@ -852,7 +855,7 @@ final class PushNotificationService: ObservableObject {
         do {
             try await updateRegistration()
         } catch {
-            lastError = error.localizedDescription
+            lastError = UserFacingError.message(for: error)
         }
     }
 
@@ -892,7 +895,7 @@ final class PushNotificationService: ObservableObject {
             pairingCode = pairing.pairingCode
             pairingExpiry = pairing.expiresAt
         } catch {
-            lastError = error.localizedDescription
+            lastError = UserFacingError.message(for: error)
         }
     }
 

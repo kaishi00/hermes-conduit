@@ -164,6 +164,9 @@ final class CarPlayVoiceCoordinator {
     /// The voice screen's last install failed, so nothing will be pushed
     /// over it.
     private(set) var didTemplateInstallFail = false
+    /// A pending state whose sound already played as its replacement
+    /// template began, so a failed replacement doesn't play it twice.
+    private var soundedPendingState: CarPlayVoiceState?
     /// Whether the top bar's browse buttons are showing. They show only at
     /// Ready and Error: Apple requires the voice screen while Voice runs.
     private(set) var showsBrowseButtons = false
@@ -175,6 +178,10 @@ final class CarPlayVoiceCoordinator {
     /// The profiles the open Voice list offered, in row order.
     private var listedAgentProfiles: [String] = []
 
+    /// Test seam over what the Error state names as the thing to fix.
+    var setupIssueProvider: @MainActor (AppState, CarPlayVoiceMode) -> VoiceSetupIssue? = {
+        CarPlayVoiceCoordinator.setupIssue(in: $0, mode: $1)
+    }
     /// Test seam; production reads the device's CarPlay settings.
     var preferencesProvider: @MainActor () -> CarPlayPreferences = { CarPlayPreferences.shared }
     /// Test seam over the status sounds.
@@ -214,6 +221,7 @@ final class CarPlayVoiceCoordinator {
         lastActivatedState = nil
         isTemplatePresented = false
         pendingPresentationState = nil
+        soundedPendingState = nil
 
         // The template install satisfies the scene time budget first; it
         // needs no AppState. Registry resolution (which may construct the
@@ -263,6 +271,7 @@ final class CarPlayVoiceCoordinator {
         lastActivatedState = nil
         isTemplatePresented = false
         pendingPresentationState = nil
+        soundedPendingState = nil
 
         let appState = lastBoundAppState ?? appStateProvider()
         appState.setCarPlayVoiceSurfaceActive(false)
@@ -337,6 +346,7 @@ final class CarPlayVoiceCoordinator {
                 // it differs, then resume normal dedupe against it.
                 let pending = self.pendingPresentationState ?? initialState
                 self.pendingPresentationState = nil
+                self.soundedPendingState = nil
                 self.lastActivatedState = pending
                 // Re-assert the top bar for the presented state, so it never
                 // rests on buttons set before the template was on screen.
@@ -397,7 +407,13 @@ final class CarPlayVoiceCoordinator {
         let pending = pendingPresentationState
         pendingPresentationState = nil
         updateBrowseButtons(for: previous.shownState, force: true)
-        if let pending { forward(pending) }
+        // New controls this replacement carried (buttons, or the Error
+        // title's cause) wait for the next controls change: retrying here
+        // would loop while installs keep failing.
+        // The failure sound already played when the replacement began.
+        let sounded = soundedPendingState
+        soundedPendingState = nil
+        if let pending { forward(pending, playsEarcon: pending != sounded) }
     }
 
     /// The buttons' handlers, fenced to the connection whose template they
@@ -459,7 +475,11 @@ final class CarPlayVoiceCoordinator {
         controlsObservation = muted
             .removeDuplicates()
             .sink { [weak self] isMuted in
-                self?.updateControls(CarPlayVoiceControls(isClassic: mode == .classic, isMicrophoneMuted: isMuted))
+                guard let self else { return }
+                var updated = self.controls
+                updated.isClassic = mode == .classic
+                updated.isMicrophoneMuted = isMuted
+                self.updateControls(updated)
             }
     }
 
@@ -502,8 +522,18 @@ final class CarPlayVoiceCoordinator {
         forward(CarPlayVoiceState.map(state))
     }
 
-    private func forward(_ target: CarPlayVoiceState) {
-        guard isConnected else { return }
+    private func forward(_ target: CarPlayVoiceState, playsEarcon: Bool = true) {
+        guard isConnected, template != nil else { return }
+        var replacedFrom: CarPlayVoiceState?
+        if target == .error {
+            // The Error title names what to fix. A different one than the
+            // car's template was built with means a new template, opening
+            // on the state the car shows; Error then follows it.
+            let shownBefore = shownState
+            let wasPresented = isTemplatePresented
+            noteErrorIssue()
+            if wasPresented, !isTemplatePresented { replacedFrom = shownBefore }
+        }
         guard let template else { return }
         updateBrowseButtons(for: target)
         guard isTemplatePresented else {
@@ -512,6 +542,14 @@ final class CarPlayVoiceCoordinator {
             // activated would suppress the real post-presentation activation
             // and freeze the surface on the template's default state.
             pendingPresentationState = target
+            // The failure sound is not held back by the new template.
+            // A restore replaying an Error that already sounded stays quiet
+            // even when the Error's cause changed and starts another
+            // replacement.
+            if let replacedFrom {
+                if playsEarcon { playEarcon(from: replacedFrom, to: target) }
+                soundedPendingState = target
+            }
             return
         }
         guard let activated = CarPlayVoiceStateActivation.activationTarget(
@@ -521,7 +559,60 @@ final class CarPlayVoiceCoordinator {
         let previous = lastActivatedState
         lastActivatedState = activated
         stateActivator(template, activated)
-        playEarcon(from: previous, to: activated)
+        if playsEarcon { playEarcon(from: previous, to: activated) }
+    }
+
+    /// Records what the Error state should name as the thing to fix.
+    private func noteErrorIssue() {
+        let appState = lastBoundAppState ?? appStateProvider()
+        var updated = controls
+        // The mode whose controller reported the failure, even if the
+        // setting changed a moment ago.
+        updated.errorIssue = setupIssueProvider(appState, observedVoiceMode ?? CarPlayVoiceMode.current(in: appState))
+        updateControls(updated)
+    }
+
+    /// What stops Voice in `mode`, as far as the app can tell: no Hermes
+    /// connection, then for classic Voice its switch, a denied microphone
+    /// and its speech providers; for a live mode its host, then a denied
+    /// microphone. nil
+    /// when nothing in the setup explains the failure.
+    static func setupIssue(
+        in appState: AppState,
+        mode: CarPlayVoiceMode,
+        isMicrophoneDenied: Bool = VoiceSetupIssue.isMicrophoneDenied
+    ) -> VoiceSetupIssue? {
+        if !appState.isConnected { return .notConnected }
+        // Voice never turned on is the first thing to fix: until it is,
+        // iOS never asked for the microphone.
+        if mode == .classic, !appState.isVoiceEnabled { return .voiceOff }
+        switch mode {
+        case .classic:
+            if isMicrophoneDenied { return .microphoneDenied }
+            return appState.voiceSetupIssue
+        // The controllers keep a host issue only while the call is failed
+        // on it. Not gated on `phase` here: this runs inside the `$phase`
+        // sink, where the property still reads the phase being replaced.
+        // The host is checked before the microphone is asked for, so a
+        // host issue is what stopped this call even with the mic denied.
+        case .geminiLive:
+            return liveIssue(appState.geminiLiveController.hostIssue, .geminiLive)
+                ?? (isMicrophoneDenied ? .microphoneDenied : nil)
+        case .gptLive:
+            return liveIssue(appState.gptLiveController.hostIssue, .gptLive)
+                ?? (isMicrophoneDenied ? .microphoneDenied : nil)
+        case .grokLive:
+            return liveIssue(appState.grokLiveController.hostIssue, .grokLive)
+                ?? (isMicrophoneDenied ? .microphoneDenied : nil)
+        }
+    }
+
+    private static func liveIssue(_ hostIssue: LiveVoiceHostIssue?, _ mode: LiveVoiceModeName) -> VoiceSetupIssue? {
+        switch hostIssue {
+        case .pluginMissing: return .notifierPluginMissing
+        case .notSetUp: return .liveModeNotSetUp(mode)
+        case nil: return nil
+        }
     }
 
     /// Status sounds, classic mode only (see `CarPlayEarcon`).
@@ -1306,3 +1397,4 @@ final class CarPlayVoiceCoordinator {
 private final class CreatedJobBox {
     var id: UUID?
 }
+

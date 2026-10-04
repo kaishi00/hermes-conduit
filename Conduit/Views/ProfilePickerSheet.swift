@@ -203,7 +203,7 @@ private struct ProfilePickerRow: View {
                 do {
                     try appState.saveProfileAvatar(data, for: profile)
                     saveError = nil
-                } catch { saveError = error.localizedDescription }
+                } catch { saveError = UserFacingError.message(for: error) }
             }
             pickedImage = nil
         }

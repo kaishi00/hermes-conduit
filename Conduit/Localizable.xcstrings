@@ -10414,16 +10414,6 @@
         }
       }
     },
-    "Hermes created a conversation without a session ID." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 创建的对话没有会话 ID。"
-          }
-        }
-      }
-    },
     "Hermes created this branch in %@, not %@. It was not opened." : {
       "localizations" : {
         "zh-Hans" : {
@@ -12066,16 +12056,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "麦克风输入"
-          }
-        }
-      }
-    },
-    "Microphone access is required for voice conversations." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "语音对话需要麦克风访问权限。"
           }
         }
       }
@@ -14370,16 +14350,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通过 Tailscale 访问 Hermes"
-          }
-        }
-      }
-    },
-    "Read aloud needs a connected Hermes gateway." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "朗读需要已连接的 Hermes 网关。"
           }
         }
       }
@@ -17724,36 +17694,6 @@
         }
       }
     },
-    "This Hermes gateway does not expose voice endpoints." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此 Hermes 网关未提供语音端点。"
-          }
-        }
-      }
-    },
-    "This Hermes gateway is too old to report voice readiness." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此 Hermes 网关版本过旧，无法报告语音就绪状态。"
-          }
-        }
-      }
-    },
-    "This Hermes gateway must support session turn state. Update Hermes to enable message, stop, and steer controls." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此 Hermes 网关必须支持会话回合状态。请更新 Hermes 以启用消息、停止和转向控件。"
-          }
-        }
-      }
-    },
     "This Hermes profile has no ready speech-to-text provider." : {
       "localizations" : {
         "zh-Hans" : {
@@ -18832,16 +18772,6 @@
         }
       }
     },
-    "Voice is unavailable for this gateway." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此网关的语音功能不可用。"
-          }
-        }
-      }
-    },
     "Voice is unavailable." : {
       "localizations" : {
         "zh-Hans" : {
@@ -18924,16 +18854,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "语音测试仅在 Conduit 处于前台时运行。"
-          }
-        }
-      }
-    },
-    "Voice unavailable" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "语音不可用"
           }
         }
       }
@@ -19838,16 +19758,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载机器人…"
-          }
-        }
-      }
-    },
-    "Bot Mode requires a newer Hermes gateway." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bot Mode 需要更新版本的 Hermes 网关。"
           }
         }
       }
@@ -20938,6 +20848,716 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 通知插件返回了意外的响应。请在 Hermes 主机上更新它后重试。"
+          }
+        }
+      }
+    },
+    "%@ isn't set up on Hermes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 上未设置 %@"
+          }
+        }
+      }
+    },
+    "%@ isn't set up on your Hermes server. Settings > Voice shows what it needs." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 服务器上未设置 %@。请在「设置」>「语音」中查看所需配置。"
+          }
+        }
+      }
+    },
+    "%@ not set up" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 未设置"
+          }
+        }
+      }
+    },
+    "Can't reach Hermes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接 Hermes"
+          }
+        }
+      }
+    },
+    "Can't reach Hermes. Check your iPhone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接 Hermes，请查看 iPhone。"
+          }
+        }
+      }
+    },
+    "Allow Speech Recognition for Conduit in iPhone Settings > Conduit, or choose another speech-to-text option in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 iPhone「设置」>「Conduit」中允许语音识别，或在「设置」>「语音」中选择其他语音转文字方式。"
+          }
+        }
+      }
+    },
+    "Allow Speech Recognition for Conduit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请为 Conduit 允许语音识别"
+          }
+        }
+      }
+    },
+    "Allow the mic in iPhone Settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 iPhone 设置中允许麦克风"
+          }
+        }
+      }
+    },
+    "Change speech to text in Conduit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Conduit 中更换语音转文字"
+          }
+        }
+      }
+    },
+    "Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音需要麦克风权限。请在 iPhone「设置」>「Conduit」中允许。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes before starting voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先连接 Hermes 再开始语音。"
+          }
+        }
+      }
+    },
+    "Microphone not allowed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允许使用麦克风"
+          }
+        }
+      }
+    },
+    "No assistant voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有助手语音"
+          }
+        }
+      }
+    },
+    "No speech to text" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有语音转文字"
+          }
+        }
+      }
+    },
+    "Plugin update needed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要更新插件"
+          }
+        }
+      }
+    },
+    "Set up assistant voice in Conduit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Conduit 中设置助手语音"
+          }
+        }
+      }
+    },
+    "Set up speech to text in Conduit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Conduit 中设置语音转文字"
+          }
+        }
+      }
+    },
+    "Something went wrong" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "出了点问题"
+          }
+        }
+      }
+    },
+    "Something went wrong. See your iPhone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "出了点问题，请查看 iPhone。"
+          }
+        }
+      }
+    },
+    "Speech Recognition is off" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音识别已关闭"
+          }
+        }
+      }
+    },
+    "Speech to text unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音转文字不可用"
+          }
+        }
+      }
+    },
+    "This Hermes profile has no ready speech-to-text provider. Set one up in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 配置没有可用的语音转文字服务。请在「设置」>「语音」中设置。"
+          }
+        }
+      }
+    },
+    "This Hermes profile has no ready text-to-speech provider. Set one up in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 配置没有可用的文字转语音服务。请在「设置」>「语音」中设置。"
+          }
+        }
+      }
+    },
+    "Turn on Voice in Conduit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Conduit 中开启语音"
+          }
+        }
+      }
+    },
+    "Update the Hermes notifier plugin" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 通知插件"
+          }
+        }
+      }
+    },
+    "Voice is off for this profile. Turn on \"Enable voice on this device\" in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此配置的语音已关闭。请在「设置」>「语音」中开启「在此设备上启用语音」。"
+          }
+        }
+      }
+    },
+    "Voice is off" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音已关闭"
+          }
+        }
+      }
+    },
+    "Voice is off: Conduit Settings > Voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音已关闭：Conduit 设置 > 语音"
+          }
+        }
+      }
+    },
+    "Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法连接到你的 Hermes 控制台。请检查此设备的网络连接，并确认控制台正在运行。"
+          }
+        }
+      }
+    },
+    "Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 当前未连接到 Hermes。它会自动重新连接，请稍后再试。"
+          }
+        }
+      }
+    },
+    "Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未接受此请求。更新 Hermes 和 Conduit 通常可以解决。"
+          }
+        }
+      }
+    },
+    "Hermes didn't answer in time. Check that your Hermes server is running, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未及时响应。请确认 Hermes 服务器正在运行，然后重试。"
+          }
+        }
+      }
+    },
+    "Hermes didn't finish creating the conversation. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未能完成创建对话。请重试。"
+          }
+        }
+      }
+    },
+    "Hermes sent a reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 返回了 Conduit 无法识别的回复。更新 Hermes 和 Conduit 通常可以解决。"
+          }
+        }
+      }
+    },
+    "Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 拒绝了此操作，因为控制台登录已过期或无此权限。请重新登录后再试。"
+          }
+        }
+      }
+    },
+    "The dashboard address isn't valid. Check it in Settings > Connection." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控制台地址无效。请在「设置」>「连接」中检查。"
+          }
+        }
+      }
+    },
+    "Update Hermes to send, stop, and steer messages from Conduit. This version can't report whether a reply is still running." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 才能在 Conduit 中发送、停止和引导消息。此版本无法报告回复是否仍在进行。"
+          }
+        }
+      }
+    },
+    "Update Hermes to use Voice. This version can't tell Conduit whether voice is ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 以使用语音。此版本无法告诉 Conduit 语音是否就绪。"
+          }
+        }
+      }
+    },
+    "Voice isn't set up yet. Check Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音尚未设置。请检查「设置」>「语音」。"
+          }
+        }
+      }
+    },
+    "Your Hermes server doesn't offer voice. Update Hermes to use Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 服务器不提供语音。请更新 Hermes 以使用语音。"
+          }
+        }
+      }
+    },
+    "Your Hermes server doesn't support this yet. Update Hermes, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 服务器尚不支持此功能。请更新 Hermes 后重试。"
+          }
+        }
+      }
+    },
+    "Your dashboard couldn't reach Hermes. Hermes may be restarting, so try again in a moment." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控制台无法连接到 Hermes。Hermes 可能正在重启，请稍后再试。"
+          }
+        }
+      }
+    },
+    "Conduit is still connecting to your dashboard. Try again in a moment." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 仍在连接你的控制台。请稍后再试。"
+          }
+        }
+      }
+    },
+    "Dashboard sign-in has expired. Sign in again to continue." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控制台登录已过期。请重新登录以继续。"
+          }
+        }
+      }
+    },
+    "Hermes could not steer the active response." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法引导当前回复。"
+          }
+        }
+      }
+    },
+    "Hermes is busy right now. Wait a moment, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 当前繁忙。请稍等后重试。"
+          }
+        }
+      }
+    },
+    "Hermes ran into a problem on the server. Check the Hermes logs, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 服务器出现问题。请查看 Hermes 日志后重试。"
+          }
+        }
+      }
+    },
+    "Hermes ran into a problem: %@. Check the Hermes logs, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 出现问题：%@。请查看 Hermes 日志后重试。"
+          }
+        }
+      }
+    },
+    "Read aloud needs a connection to Hermes. Wait for Conduit to reconnect, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗读需要连接到 Hermes。请等待 Conduit 重新连接后重试。"
+          }
+        }
+      }
+    },
+    "That was interrupted before it finished. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作在完成前被中断。请重试。"
+          }
+        }
+      }
+    },
+    "The connection to Hermes dropped. Conduit reconnects on its own, so try again in a moment." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 Hermes 的连接已断开。Conduit 会自动重新连接，请稍后再试。"
+          }
+        }
+      }
+    },
+    "Update Hermes to use Bot Mode." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 以使用机器人模式。"
+          }
+        }
+      }
+    },
+    "This response is too large to load safely." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此响应过大，无法安全加载。"
+          }
+        }
+      }
+    },
+    "Conduit couldn't read that image. Try copying it again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法读取该图片。请重新复制后再试。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes before reading responses aloud." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先连接 Hermes 再朗读回复。"
+          }
+        }
+      }
+    },
+    "Hermes sent a Kanban reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 返回了 Conduit 无法识别的看板回复。更新 Hermes 和 Conduit 通常可以解决。"
+          }
+        }
+      }
+    },
+    "Could not rename this conversation: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法重命名此对话：%@"
+          }
+        }
+      }
+    },
+    "This Hermes server doesn't offer voice settings. Update Hermes to use Voice. Text chat still works." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器不提供语音设置。请更新 Hermes 以使用语音。文字聊天仍可正常使用。"
+          }
+        }
+      }
+    },
+    "Conduit couldn't read audio from this microphone. Try again, or switch to another microphone or headset." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法读取此麦克风的音频。请重试，或换用其他麦克风或耳机。"
+          }
+        }
+      }
+    },
+    "Wake listening couldn't use the microphone. Close other apps using it, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "唤醒监听无法使用麦克风。请关闭正在使用麦克风的其他应用，然后重试。"
+          }
+        }
+      }
+    },
+    "Choose at least one valid wake phrase before listening." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始监听前，请至少选择一个有效的唤醒短语。"
+          }
+        }
+      }
+    },
+    "This iPhone isn't set up to answer from notifications. Set it up again in Settings > Notifications." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 尚未设置为从通知中回复。请在“设置 > 通知”中重新设置。"
+          }
+        }
+      }
+    },
+    "Couldn't send your answer: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法发送你的回答：%@"
+          }
+        }
+      }
+    },
+    "Your answer wasn't accepted. Open the chat in Conduit and answer there." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的回答未被接受。请在 Conduit 中打开该对话并在那里回答。"
+          }
+        }
+      }
+    },
+    "The notification relay address must start with https://. Fix it in Settings > Notifications." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知中继地址必须以 https:// 开头。请在“设置 > 通知”中修正。"
+          }
+        }
+      }
+    },
+    "Apple speech recognition stopped. Try again, or choose another speech-to-text option in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 语音识别已停止。请重试，或在“设置 > 语音”中选择其他语音转文字选项。"
+          }
+        }
+      }
+    },
+    "On-device Apple speech recognition doesn't support %@. Choose another speech-to-text option in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备端 Apple 语音识别不支持 %@。请在“设置 > 语音”中选择其他语音转文字选项。"
+          }
+        }
+      }
+    },
+    "⚠️ Command failed: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ 命令失败：%@"
+          }
+        }
+      }
+    },
+    "⚠️ Alias target failed: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ 别名目标失败：%@"
+          }
+        }
+      }
+    },
+    "Hermes did not accept that decision." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未接受该决定。"
+          }
+        }
+      }
+    },
+    "Your dashboard sign-in was refreshed. Try that again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的仪表板登录已刷新。请再试一次。"
           }
         }
       }

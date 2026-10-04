@@ -100,7 +100,10 @@ final class CarPlayVoiceStateMappingTests: XCTestCase {
         XCTAssertEqual(CarPlayVoiceState.listening.titleVariants, ["Listening…"])
         XCTAssertEqual(CarPlayVoiceState.processing.titleVariants, ["Thinking…"])
         XCTAssertEqual(CarPlayVoiceState.responding.titleVariants, ["Responding…"])
-        XCTAssertEqual(CarPlayVoiceState.error.titleVariants, ["Voice unavailable"])
+        XCTAssertEqual(
+            CarPlayVoiceState.error.titleVariants,
+            ["Something went wrong. See your iPhone.", "Something went wrong"]
+        )
     }
 
     func testFailureMessageIsDroppedByTheMapping() {
@@ -602,6 +605,10 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         // No real connection wait by default: a disconnected harness settles
         // immediately. Tests covering the wait install their own waiter.
         coordinator.connectionWaiter = { $0.isConnected }
+        // The simulator's own microphone permission never decides a test.
+        coordinator.setupIssueProvider = {
+            CarPlayVoiceCoordinator.setupIssue(in: $0, mode: $1, isMicrophoneDenied: false)
+        }
 
         return Harness(
             appState: appState,

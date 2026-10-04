@@ -241,7 +241,7 @@ struct KanbanOrchestrationSettingsSheet: View {
             guard store.isCurrentConfiguration(generation) else { return }
             // The store owns the current-generation error presentation too;
             // the inline copy keeps the sheet self-contained.
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 }

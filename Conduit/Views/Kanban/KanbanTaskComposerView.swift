@@ -411,9 +411,9 @@ struct KanbanTaskComposerView: View {
             _ = try await store.createTask(request, initialStatus: initialStatus)
             dismiss()
         } catch let error as KanbanDraftValidationError {
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
             if let kanbanError = error as? KanbanServiceError,
                case .taskCreatedButMoveFailed = kanbanError {
                 // Partial success: the task EXISTS but could not be moved into

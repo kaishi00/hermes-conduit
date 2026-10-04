@@ -702,7 +702,8 @@ final class ImagePasteTextView: UITextView {
         editorIdentity pasteEditorIdentity: UUID? = nil
     ) {
         let pasteEditorIdentity = pasteEditorIdentity ?? editorIdentity
-        let message = error?.localizedDescription ?? "The image provider returned no data."
+        let message = error.map { UserFacingError.message(for: $0) }
+            ?? AppLocalization.string("Conduit couldn't read that image. Try copying it again.")
         DispatchQueue.main.async { [weak self] in
             guard let self, self.editorIdentity == pasteEditorIdentity else { return }
             self.onPastedImageError?(message)

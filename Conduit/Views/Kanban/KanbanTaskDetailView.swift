@@ -1066,9 +1066,9 @@ struct KanbanTaskDetailView: View {
         } catch {
             guard displayedTaskID == expectedID else { return }
             if detail == nil {
-                errorMessage = error.localizedDescription
+                errorMessage = UserFacingError.message(for: error)
             } else {
-                refreshErrorMessage = error.localizedDescription
+                refreshErrorMessage = UserFacingError.message(for: error)
             }
         }
     }
@@ -1121,7 +1121,7 @@ struct KanbanTaskDetailView: View {
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 
@@ -1148,7 +1148,7 @@ struct KanbanTaskDetailView: View {
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 
@@ -1161,7 +1161,7 @@ struct KanbanTaskDetailView: View {
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 
@@ -1183,7 +1183,7 @@ struct KanbanTaskDetailView: View {
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 
@@ -1232,7 +1232,7 @@ struct KanbanTaskDetailView: View {
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 
@@ -1266,7 +1266,7 @@ struct KanbanTaskDetailView: View {
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 
@@ -1305,7 +1305,7 @@ struct KanbanTaskDetailView: View {
             await loadDetail(force: true)
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 
@@ -1320,7 +1320,7 @@ struct KanbanTaskDetailView: View {
             dismiss()
         } catch {
             guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 
@@ -1558,7 +1558,7 @@ enum KanbanNoteAndRequeueFlow {
         do {
             try await postComment(text)
         } catch {
-            return Outcome(commentPosted: false, requeued: false, failureDetail: error.localizedDescription)
+            return Outcome(commentPosted: false, requeued: false, failureDetail: UserFacingError.message(for: error))
         }
         // The note now exists on the server: consume the draft BEFORE the
         // reclaim attempt so a reclaim failure can never double-post it.
@@ -1566,7 +1566,7 @@ enum KanbanNoteAndRequeueFlow {
         do {
             try await reclaim()
         } catch {
-            return Outcome(commentPosted: true, requeued: false, failureDetail: error.localizedDescription)
+            return Outcome(commentPosted: true, requeued: false, failureDetail: UserFacingError.message(for: error))
         }
         return Outcome(commentPosted: true, requeued: true, failureDetail: nil)
     }
@@ -1661,7 +1661,7 @@ struct KanbanReassignSheet: View {
             try await store.reassignTask(taskID: taskID, profile: profile, reclaimFirst: true)
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 }

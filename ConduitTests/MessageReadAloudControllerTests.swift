@@ -405,7 +405,7 @@ final class MessageReadAloudControllerTests: XCTestCase {
         )
         XCTAssertEqual(
             MessageReadAloudController.unavailableReason(isConnected: true, isVoiceEnabled: true, snapshot: noSpeech),
-            "This Hermes profile has no ready text-to-speech provider."
+            "This Hermes profile has no ready text-to-speech provider. Set one up in Settings > Voice."
         )
         XCTAssertNotNil(MessageReadAloudController.unavailableReason(isConnected: false, isVoiceEnabled: true, snapshot: ttsOnly))
         XCTAssertNotNil(MessageReadAloudController.unavailableReason(isConnected: true, isVoiceEnabled: false, snapshot: ttsOnly))

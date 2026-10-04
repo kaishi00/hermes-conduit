@@ -245,7 +245,7 @@ final class KanbanStore: ObservableObject {
         } catch {
             guard generation == loadGeneration else { return }
             // Keep the last successful board visible during refresh failures.
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 
@@ -340,7 +340,7 @@ final class KanbanStore: ObservableObject {
                     throw KanbanServiceError.taskCreatedButMoveFailed(
                         taskID: taskID,
                         targetStatus: targetStatus,
-                        reason: error.localizedDescription
+                        reason: UserFacingError.message(for: error)
                     )
                 }
             }
@@ -772,7 +772,7 @@ final class KanbanStore: ObservableObject {
             let stillOwnsUI = configurationGeneration == generation && activeMutationGeneration == generation
             if stillOwnsUI {
                 await reload(includeArchived: includeArchived, superseding: true)
-                mutationErrorMessage = error.localizedDescription
+                mutationErrorMessage = UserFacingError.message(for: error)
             }
             endMutationOwnership(generation: generation)
             throw error
@@ -810,7 +810,7 @@ final class KanbanStore: ObservableObject {
             return nil
         } catch {
             if configurationGeneration == generation {
-                return error.localizedDescription
+                return UserFacingError.message(for: error)
             }
             return nil
         }
@@ -959,7 +959,7 @@ final class KanbanStore: ObservableObject {
     }
 
     func showMutationError(_ error: Error) {
-        mutationErrorMessage = error.localizedDescription
+        mutationErrorMessage = UserFacingError.message(for: error)
     }
 
     // MARK: - Mutation state
@@ -1050,7 +1050,7 @@ final class KanbanStore: ObservableObject {
         // instantly when the data source changes mid-flight.
         guard activeMutationGeneration == nil else {
             let error = KanbanServiceError.mutationInProgress
-            mutationErrorMessage = error.localizedDescription
+            mutationErrorMessage = UserFacingError.message(for: error)
             throw error
         }
         // Navigation invariant (board-scoped mutations only): while the
@@ -1063,7 +1063,7 @@ final class KanbanStore: ObservableObject {
         // board can never be restored by the reconciliation.
         guard scope == .server || isSelectedSnapshotLoaded else {
             let error = KanbanServiceError.boardNavigationInProgress
-            mutationErrorMessage = error.localizedDescription
+            mutationErrorMessage = UserFacingError.message(for: error)
             throw error
         }
         activeMutationGeneration = generation
@@ -1088,7 +1088,7 @@ final class KanbanStore: ObservableObject {
                 // task whose follow-up move failed - becomes visible even when
                 // a passive poll is already in flight.
                 await reload(includeArchived: includeArchived, superseding: true)
-                mutationErrorMessage = error.localizedDescription
+                mutationErrorMessage = UserFacingError.message(for: error)
             }
             endMutationOwnership(generation: generation)
             throw error
@@ -1111,7 +1111,7 @@ final class KanbanStore: ObservableObject {
     }
 
     private func recordMutationError(_ error: KanbanServiceError) -> KanbanServiceError {
-        mutationErrorMessage = error.localizedDescription
+        mutationErrorMessage = UserFacingError.message(for: error)
         return error
     }
 

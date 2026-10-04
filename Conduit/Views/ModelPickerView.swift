@@ -121,7 +121,7 @@ func runModelPickerApply(
         progress.fastApplied = true
         return .completed(progress)
     } catch {
-        return .failed(error.localizedDescription, progress)
+        return .failed(UserFacingError.message(for: error), progress)
     }
 }
 

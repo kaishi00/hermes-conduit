@@ -68,7 +68,7 @@ final class WakeLifecycleCoordinator {
             lastFailureReason = nil
         } catch {
             service.disarm()
-            lastFailureReason = error.localizedDescription
+            lastFailureReason = UserFacingError.message(for: error)
         }
     }
 

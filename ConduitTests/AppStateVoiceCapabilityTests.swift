@@ -79,8 +79,9 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
 
         XCTAssertEqual(
             appState.voiceUnavailableReason,
-            "Allow Speech Recognition in iOS Settings to use on-device transcription."
+            "Allow Speech Recognition for Conduit in iPhone Settings > Conduit, or choose another speech-to-text option in Settings > Voice."
         )
+        XCTAssertEqual(appState.voiceSetupIssue, .speechRecognitionDenied)
     }
 
     /// Uncertainty on the Apple route (permission not yet granted) does not

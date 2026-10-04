@@ -318,7 +318,7 @@ struct BotRosterView: View {
         case .gatewayUnsupported:
             ContentUnavailableView {
                 Label(
-                    AppLocalization.string("Bot Mode requires a newer Hermes gateway."),
+                    AppLocalization.string("Update Hermes to use Bot Mode."),
                     systemImage: "arrow.triangle.2.circlepath.trianglebadge.exclamationmark"
                 )
             } description: {

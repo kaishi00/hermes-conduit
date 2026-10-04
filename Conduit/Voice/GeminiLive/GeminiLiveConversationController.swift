@@ -228,7 +228,17 @@ final class GeminiLiveConversationController: ObservableObject {
     /// gives the model this long to start its own goodbye before closing.
     static let endReplyGrace: TimeInterval = 2.5
 
-    @Published private(set) var phase: Phase = .idle { didSet { syncHeadsetMute() } }
+    @Published private(set) var phase: Phase = .idle {
+        didSet {
+            syncHeadsetMute()
+            // A host issue labels only the failure it caused.
+            if case .failed = phase {} else { hostIssue = nil }
+        }
+    }
+    /// What the host's check found wrong on the last start, set before
+    /// the phase fails with the host's reason; nil once a start gets past
+    /// the check, or when the failure was something else.
+    private(set) var hostIssue: LiveVoiceHostIssue?
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
 
@@ -391,16 +401,19 @@ final class GeminiLiveConversationController: ObservableObject {
         lastModelAudioAt = nil
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
+        hostIssue = nil
         do {
             let status = try await availability()
             guard phase == .connecting else { return }
             guard status.isAvailable else {
+                hostIssue = LiveVoiceHostIssue(status)
                 phase = .failed(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
                 return
             }
         } catch {
             guard phase == .connecting else { return }
-            phase = .failed(error.localizedDescription)
+            hostIssue = LiveVoiceHostIssue(error: error)
+            phase = .failed(UserFacingError.message(for: error))
             return
         }
         guard await input.requestPermission() else {
@@ -954,7 +967,7 @@ final class GeminiLiveConversationController: ObservableObject {
             inputRunning = true
             return true
         } catch {
-            phase = .failed(error.localizedDescription)
+            phase = .failed(UserFacingError.message(for: error))
             retireSession()
             return false
         }

@@ -30,7 +30,7 @@ struct VoiceCapabilitySnapshot: Equatable {
             isGatewayConnected: false,
             supportsTranscription: false,
             supportsSpeech: false,
-            unavailableReason: AppLocalization.string("This Hermes gateway does not expose voice endpoints.")
+            unavailableReason: AppLocalization.string("Your Hermes server doesn't offer voice. Update Hermes to use Voice.")
         )
     }
 }
@@ -587,7 +587,7 @@ enum VoiceAudioError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .microphonePermissionDenied: return AppLocalization.string("Microphone access is required for voice conversations.")
+        case .microphonePermissionDenied: return AppLocalization.string("Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit.")
         case .noAudioCaptured: return AppLocalization.string("No speech was captured.")
         case .unavailable(let detail): return detail
         }

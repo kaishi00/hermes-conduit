@@ -1403,7 +1403,7 @@ private struct ProjectFolderPickerSheet: View {
             entries = try await appState.workspaceDirectoryEntries(at: path)
         } catch {
             entries = []
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
         isLoading = false
     }
