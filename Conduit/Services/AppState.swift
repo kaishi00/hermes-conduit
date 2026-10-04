@@ -3192,35 +3192,43 @@ final class AppState: ObservableObject {
 
     /// The chat's "Voice call" markers for calls started from it.
     private func mergeVoiceCallMarkers(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
-        voiceCallChatLinks.merge(
+        let ownIDs = chatOwnSessionIDs(for: sessionId)
+        var openIDs = ownIDs
+        if let call = voiceCallSessionID(ownIDs: ownIDs) { openIDs.insert(call) }
+        return voiceCallChatLinks.merge(
             into: history,
-            chatIDs: reviewCacheSessionIDs(for: sessionId),
-            openIDs: ownSessionIDs(for: sessionId),
+            chatIDs: ownIDs,
+            openIDs: openIDs,
             profile: activeProfile
         )
     }
 
-    /// The open session's own ids: its row's id and stored id, never an
-    /// alias (alternate ids, reconciliation, scroll identity) that another
-    /// row could share.
-    private func ownSessionIDs(for sessionId: String) -> Set<String> {
-        // An opened saved row resumes under a new runtime id the list may
-        // not show yet: its canonical id and its voice call tag still name
-        // the row (the same match Resume Call uses).
-        var ids = Self.ownSessionIDs(for: sessionId, in: sessions)
-        if let canonical = canonicalSessionID(for: sessionId) {
-            ids.formUnion(Self.ownSessionIDs(for: canonical, in: sessions))
-        }
-        if let call = voiceCallSessionID(for: sessionId) {
-            ids.insert(call)
-            ids.formUnion(Self.ownSessionIDs(for: call, in: sessions))
-        }
-        return ids
+    /// The open chat's own ids, for its call cards and Resume Call: the id,
+    /// the durable id Hermes confirmed for it, and its row's id and stored
+    /// id. Never the scroll identity's aliases or a reconciliation's ids:
+    /// a new chat, or one opened from another, keeps the previous chat's
+    /// ids there, and that chat's calls would show in this one.
+    private func chatOwnSessionIDs(for sessionId: String) -> Set<String> {
+        // An opened saved chat resumes under a new runtime id the list may
+        // not show yet; the resume (or the create) recorded its durable id.
+        let profile = botConversationProfile(for: sessionId) ?? activeProfile
+        let seeds = [
+            sessionId,
+            conversationIdentityIndex.durableID(forRuntime: sessionId, profile: profile),
+            voiceSessionAliases.storedID(forRuntime: sessionId)
+        ].compactMap { $0 }
+        return Self.ownSessionIDs(for: seeds, in: sessions + cronSessions)
     }
 
     static func ownSessionIDs(for sessionId: String, in rows: [SessionSummary]) -> Set<String> {
-        var ids: Set<String> = [sessionId]
-        if let row = rows.first(where: { $0.id == sessionId || $0.storedSessionId == sessionId }) {
+        ownSessionIDs(for: [sessionId], in: rows)
+    }
+
+    /// The ids plus the id and stored id of each row they name, never a
+    /// row's alternate ids, which another row can share.
+    static func ownSessionIDs(for seeds: [String], in rows: [SessionSummary]) -> Set<String> {
+        var ids = Set(seeds)
+        for row in rows where seeds.contains(row.id) || row.storedSessionId.map(seeds.contains) == true {
             ids.insert(row.id)
             if let stored = row.storedSessionId { ids.insert(stored) }
         }
@@ -3239,6 +3247,7 @@ final class AppState: ObservableObject {
         let runtimeID = attachment.thread.runtimeSessionID
         let storedID = attachment.thread.storedSessionID.flatMap { $0.isEmpty ? nil : $0 }
             ?? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId.flatMap { $0.isEmpty ? nil : $0 }
+            ?? conversationIdentityIndex.durableID(forRuntime: runtimeID, profile: attachment.thread.profile ?? profile)
         learnVoiceSessionAlias(runtimeID: runtimeID, storedID: storedID)
         let link = VoiceCallChatLink(
             callID: attachment.callID,
@@ -3249,7 +3258,8 @@ final class AppState: ObservableObject {
             profile: profile,
             startedAt: attachment.startedAt,
             endedAt: attachment.endedAt ?? Date(),
-            resumed: attachment.resumed
+            resumed: attachment.resumed,
+            chatProfile: attachment.thread.profile
         )
         voiceCallChatLinks.add(link)
         voiceCallChatLinks.store(in: defaults)
@@ -3809,6 +3819,10 @@ final class AppState: ObservableObject {
                 return await self.voiceCallTitle(turns: turns, profile: profile)
             }
         )
+        // The engine still shows its last call's lines until this call
+        // starts, which can be after the first capture below: they aren't
+        // this call's.
+        recorder.ignore(liveVoiceTranscript(engine))
         if resume != nil { recorder.note(AppLocalization.string("Voice call resumed")) }
         voiceCallRecorder = recorder
         voiceCallAttachment = voiceBackgroundJobSupervisor.liveThread.map {
@@ -3856,6 +3870,16 @@ final class AppState: ObservableObject {
         attachment?.endedAt = voiceCallCheckpointedAt
         queueVoiceTranscript(request, dashboard: activeDashboardID?.uuidString ?? "-", profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
         voiceTranscriptsSaving.insert(request.callID)
+    }
+
+    /// The engine's transcript as it stands; empty before its controller
+    /// exists.
+    private func liveVoiceTranscript(_ engine: VoiceCallEngine) -> [VoiceConversationTranscriptEntry] {
+        switch engine {
+        case .geminiLive: return geminiLiveControllerCreated ? geminiLiveController.transcript : []
+        case .gptLive: return gptLiveControllerCreated ? gptLiveController.transcript : []
+        case .grokLive: return grokLiveControllerCreated ? grokLiveController.transcript : []
+        }
     }
 
     private func captureVoiceCall() {
@@ -4105,6 +4129,10 @@ final class AppState: ObservableObject {
     static func voiceThreadTurnNote(_ job: VoiceBackgroundJob, thread: VoiceThreadTarget) -> String {
         // Queued, not necessarily delivered: a hang-up drops unsent requests.
         let line = AppLocalization.string("Asked the chat: \(job.title).")
+        // A Bot Chat opens through its bot, never by its id on this profile.
+        if let bot = thread.profile, !bot.isEmpty {
+            return line + " " + ConduitAppLink.bot(profile: bot).markdown(label: AppLocalization.string("Open chat"))
+        }
         guard let id = [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return line }
         return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open chat"))
     }
@@ -4117,6 +4145,23 @@ final class AppState: ObservableObject {
             // shouldn't make the link look dead.
             // Job links and chat-turn links share this route.
             openLinkedSession(id, unavailable: AppLocalization.string("That chat is no longer available."))
+        case .bot(let profile):
+            openLinkedBotChat(profile)
+        }
+    }
+
+    /// Opens a bot's chat from a link or card Conduit wrote. The roster is
+    /// read once when it doesn't list the bot yet (just after launch).
+    private func openLinkedBotChat(_ profile: String) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            func rosterBot() -> BotProfile? { self.botRoster.first { $0.name == profile } }
+            if rosterBot() == nil { await self.refreshBotRoster() }
+            guard let bot = rosterBot() else {
+                self.errorMessage = AppLocalization.string("That chat is no longer available.")
+                return
+            }
+            _ = await self.openBotChat(for: bot)
         }
     }
 
@@ -4171,7 +4216,12 @@ final class AppState: ObservableObject {
     /// Opens the chat a call was started from, from the card in the call's
     /// own transcript.
     func openVoiceCallChat(markerID: String) {
-        guard let chatID = voiceCallLink(markerID: markerID)?.chatSessionID else {
+        let link = voiceCallLink(markerID: markerID)
+        if let bot = link?.chatProfile, !bot.isEmpty {
+            openLinkedBotChat(bot)
+            return
+        }
+        guard let chatID = link?.chatSessionID else {
             errorMessage = AppLocalization.string("That chat is no longer available.")
             return
         }
@@ -4203,15 +4253,16 @@ final class AppState: ObservableObject {
 
     /// A chat's id as a saved live call, when it is one.
     private func voiceCallSessionID(for sessionID: String) -> String? {
-        // Opening a saved row resumes it under a new runtime id the catalog
-        // row may not list yet: match the chat's own ids and its canonical
-        // id. Not the scroll identity's wider alias set, which can still
-        // carry the chat open before this one.
-        var ids = knownSessionIDs(for: sessionID)
-        ids.insert(sessionID)
-        if let canonical = canonicalSessionID(for: sessionID) { ids.insert(canonical) }
+        voiceCallSessionID(ownIDs: chatOwnSessionIDs(for: sessionID))
+    }
+
+    /// Opening a saved row resumes it under a new runtime id the catalog
+    /// row may not list yet: the chat's own ids still name the row. Not its
+    /// canonical id or the scroll identity's aliases, which can still be
+    /// the chat open before this one (Resume Call then continued that call).
+    private func voiceCallSessionID(ownIDs ids: Set<String>) -> String? {
         for row in activeProfileSessions
-        where !ids.isDisjoint(with: [row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds) {
+        where ids.contains(row.id) || row.storedSessionId.map(ids.contains) == true {
             if let tagged = voiceSessionTag(for: row), tagged.tag.kind == .call { return tagged.id }
         }
         return nil
@@ -4286,16 +4337,18 @@ final class AppState: ObservableObject {
     /// The open chat as a target for a live call started from it. A saved
     /// call's row or a group room isn't a chat to work in.
     func liveVoiceThreadForOpenChat() -> VoiceThreadTarget? {
-        // Not a Bot Chat: its runtime, history and live rows live in the bot's
-        // own profile, which the off-screen paths here don't address.
         guard let sessionID = activeSessionId, !sessionID.isEmpty,
               activeRoomSurface == nil, activeVoiceCallSessionID == nil,
-              botConversationProfile(for: sessionID) == nil,
               Self.attachesLiveVoiceCall(chatHasMessages: !messages.isEmpty, turnState: turnState) else { return nil }
-        // The catalog row's stored id is the chat's durable identity.
-        let row = sessions.first { $0.id == sessionID || $0.alternateIds.contains(sessionID) }
+        // A Bot Chat's runtime, history and live rows are in the bot's own
+        // profile: the call reads and resumes it there.
+        let bot = botConversationProfile(for: sessionID)
+        // The catalog row's stored id is the chat's durable identity; a Bot
+        // Chat has no row here, but its resume recorded one.
+        let row = bot == nil ? sessions.first(where: { $0.id == sessionID || $0.alternateIds.contains(sessionID) }) : nil
         let stored = row.map { $0.storedSessionId ?? $0.id }
-        return VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: stored, title: activeSessionTitle)
+            ?? conversationIdentityIndex.durableID(forRuntime: sessionID, profile: bot ?? activeProfile)
+        return VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: stored, title: activeSessionTitle, profile: bot)
     }
 
     /// A new, empty chat has nothing to continue: a call started from it
@@ -4309,14 +4362,15 @@ final class AppState: ObservableObject {
     /// Whether `thread` is the chat on screen now.
     private func isOpenChat(_ thread: VoiceThreadTarget) -> Bool {
         guard let sessionID = activeSessionId else { return false }
-        var ids = knownSessionIDs(for: sessionID)
-        ids.insert(sessionID)
+        // Reopened, the chat runs under a new runtime id; its durable id
+        // still names it.
+        let ids = knownSessionIDs(for: sessionID).union(chatOwnSessionIDs(for: sessionID))
         return ids.contains { thread.owns(sessionID: $0) }
     }
 
     private func liveVoiceThreadIsBusy(_ thread: VoiceThreadTarget) async -> Bool {
         if isOpenChat(thread) { return isBusy }
-        guard let client, let rows = try? await client.activeSessions() else { return false }
+        guard let client, let rows = try? await client.activeSessions(inProfile: thread.profile) else { return false }
         return rows.contains { row in
             (thread.owns(sessionID: row.runtimeSessionId) || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
         }
@@ -4327,11 +4381,11 @@ final class AppState: ObservableObject {
     private func liveVoiceThreadRuntime(_ thread: VoiceThreadTarget) async throws -> String {
         guard let client else { throw HermesError.notConnected }
         if isOpenChat(thread), let sessionID = activeSessionId { return sessionID }
-        let rows = (try? await client.activeSessions()) ?? []
+        let rows = (try? await client.activeSessions(inProfile: thread.profile)) ?? []
         if let live = rows.first(where: { thread.owns(sessionID: $0.runtimeSessionId) || thread.owns(sessionID: $0.storedSessionId) }) {
             return live.runtimeSessionId
         }
-        return try await client.openSession(thread.storedSessionID ?? thread.runtimeSessionID).sessionId
+        return try await client.openSession(thread.storedSessionID ?? thread.runtimeSessionID, profile: thread.profile).sessionId
     }
 
     /// Sends a live call's request as the chat's next turn. On screen it
@@ -4357,7 +4411,7 @@ final class AppState: ObservableObject {
         // Re-read right before the send: a turn running there (typed on
         // another device) is waited for. A failed read fails the send rather
         // than risk steering it.
-        let rows = try await client.activeSessions()
+        let rows = try await client.activeSessions(inProfile: thread.profile)
         if rows.contains(where: { row in
             (row.runtimeSessionId == target || thread.owns(sessionID: row.runtimeSessionId)
                 || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
@@ -4384,10 +4438,10 @@ final class AppState: ObservableObject {
         if isOpenChat(thread) { return latestReplyInOpenChat(thread) }
         guard let bridge = dashboardTicketBridge else { return nil }
         // One profile for every read: a reply from another profile's history
-        // is never read out.
-        let profile = activeProfile
-        guard let reply = await latestSavedThreadReply(thread, bridge: bridge, profile: profile),
-              profile == activeProfile else { return nil }
+        // is never read out. A Bot Chat's history is in the bot's profile.
+        let workspace = activeProfile
+        guard let reply = await latestSavedThreadReply(thread, bridge: bridge, profile: thread.profile ?? workspace),
+              workspace == activeProfile else { return nil }
         return reply
     }
 
