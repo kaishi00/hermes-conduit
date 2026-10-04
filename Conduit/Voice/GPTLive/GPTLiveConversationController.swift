@@ -22,6 +22,8 @@ import Foundation
 protocol GPTLiveSessionControlling: AnyObject {
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)? { get set }
     var onStateChange: (@MainActor (GPTLiveSession.State) -> Void)? { get set }
+    /// The call's audio paused for another sound (`true`) or came back.
+    var onAudioPaused: (@MainActor (Bool) -> Void)? { get set }
     var isReady: Bool { get }
     /// Set when the host didn't use the voice the user chose.
     var voiceNote: String? { get }
@@ -53,6 +55,9 @@ final class GPTLiveConversationController: ObservableObject {
         case connecting
         case listening
         case speaking
+        /// Another sound took the audio (an alarm, a phone call, Siri):
+        /// the call stays connected and picks up again once it ends.
+        case paused
         /// Saying goodbye: the microphone is closed and the call ends once
         /// GPT-Live goes quiet.
         case ending
@@ -122,11 +127,16 @@ final class GPTLiveConversationController: ObservableObject {
     var isActive: Bool {
         switch phase {
         case .idle, .failed: return false
-        case .connecting, .listening, .speaking, .ending: return true
+        case .connecting, .listening, .speaking, .paused, .ending: return true
         }
     }
 
     var isEnding: Bool { endRequestedAt != nil }
+
+    /// The call's audio is paused for another sound (#376).
+    private var audioPaused = false
+    /// Where the call settles when nobody is speaking.
+    private var restingPhase: Phase { audioPaused ? .paused : .listening }
 
     private let makeSession: @MainActor () -> GPTLiveSessionControlling
     private let availability: @MainActor () async throws -> GPTLiveAvailability
@@ -251,6 +261,8 @@ final class GPTLiveConversationController: ObservableObject {
         let session = makeSession()
         session.onEvent = { [weak self] in self?.handle($0) }
         session.onStateChange = { [weak self] in self?.sessionStateChanged($0) }
+        session.onAudioPaused = { [weak self] in self?.audioPauseChanged($0) }
+        audioPaused = false
         self.session = session
         session.start()
     }
@@ -263,6 +275,7 @@ final class GPTLiveConversationController: ObservableObject {
         endRequestedAt = nil
         retireSession()
         modelTurnActive = false
+        audioPaused = false
         // Unspoken job notices go back to the supervisor, not the bin.
         // Typed exchanges (no job) are best effort: the chat still has them.
         bridge.returnUnsent(jobIDs: pendingContext.map(\.jobID))
@@ -294,7 +307,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// Background-job updates became pending (the supervisor's
     /// onNoticePending, routed here while this mode is active).
     func deliverPendingJobUpdates() {
-        guard isActive, endRequestedAt == nil, session?.isReady == true else { return }
+        // Paused: updates wait for the audio (the resume sends them).
+        guard isActive, endRequestedAt == nil, !audioPaused, session?.isReady == true else { return }
         let outgoing = bridge.pendingUpdates()
         dispatch(outgoing)
         // Job news refreshes the model's job list; a typed exchange alone
@@ -359,14 +373,8 @@ final class GPTLiveConversationController: ObservableObject {
             if session?.briefingApplied != true {
                 session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
             }
-            // An older plugin keeps the model silent until the user speaks:
-            // ask for the greeting now instead.
-            if endRequestedAt == nil, !hasSentOpening, let opening = openingPrompt() {
-                // Not sent (the channel failed): the next ready tries again.
-                hasSentOpening = session?.greetingApplied == true
-                    || session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
-            }
-            phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
+            sendOpeningIfNeeded()
+            phase = endRequestedAt != nil ? .ending : audioPaused ? .paused : modelTurnActive ? .speaking : .listening
             if endRequestedAt == nil { deliverPendingJobUpdates() }
             scheduleIdleFlush()
         case .failed(let message):
@@ -394,6 +402,35 @@ final class GPTLiveConversationController: ObservableObject {
         }
     }
 
+    /// The connection stays up while another sound holds the audio; the
+    /// call shows it is paused instead of listening to nothing.
+    private func audioPauseChanged(_ paused: Bool) {
+        guard audioPaused != paused else { return }
+        audioPaused = paused
+        switch phase {
+        case .listening, .speaking, .paused:
+            phase = paused ? .paused : modelTurnActive ? .speaking : .listening
+        default:
+            break
+        }
+        if !paused, endRequestedAt == nil {
+            sendOpeningIfNeeded()
+            deliverPendingJobUpdates()
+            scheduleIdleFlush()
+        }
+    }
+
+    /// An older plugin keeps the model silent until the user speaks: ask
+    /// for the greeting instead. Paused, a greeting nobody can hear waits
+    /// for the audio to return.
+    private func sendOpeningIfNeeded() {
+        guard endRequestedAt == nil, !audioPaused, !hasSentOpening, session?.isReady == true,
+              let opening = openingPrompt() else { return }
+        // Not sent (the channel failed): the next ready tries again.
+        hasSentOpening = session?.greetingApplied == true
+            || session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
+    }
+
     private func finishEnd() {
         let close = onEndConversation
         stop()
@@ -406,9 +443,11 @@ final class GPTLiveConversationController: ObservableObject {
             lastUserSpeechAt = now()
             appendTranscript(text, speaker: .user)
         case .outputTranscript(let text):
+            // Kept while paused: GPT-Live can't be told to hold its turn, so
+            // what it said into the pause stays readable.
             modelTurnActive = true
             lastModelOutputAt = now()
-            if endRequestedAt == nil { phase = .speaking }
+            if endRequestedAt == nil, !audioPaused { phase = .speaking }
             appendTranscript(text, speaker: .assistant)
         case .turnDone(let role, let text):
             switch role {
@@ -429,7 +468,7 @@ final class GPTLiveConversationController: ObservableObject {
                 }
                 openAssistantEntry = nil
                 assistantTurnEntries = []
-                if endRequestedAt == nil { phase = .listening }
+                if endRequestedAt == nil { phase = restingPhase }
                 scheduleIdleFlush()
             default:
                 // A role Conduit doesn't know is neither the user nor the model.
@@ -440,6 +479,8 @@ final class GPTLiveConversationController: ObservableObject {
             Task { [weak self] in
                 guard let self else { return }
                 let outgoing = await self.bridge.handleDelegation(id: id, request: request)
+                // Answered even while paused: the model asked and is
+                // waiting, and the reply stays readable in the transcript.
                 self.dispatch(outgoing)
                 if !outgoing.isEmpty { self.sendJobStatus() }
             }
@@ -553,7 +594,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// Whether Conduit may add a turn of its own now: connected, the model
     /// silent, and the user quiet.
     var isConversationIdle: Bool {
-        guard session?.isReady == true, !modelTurnActive else { return false }
+        // Paused: an update the user can't hear waits for the audio.
+        guard session?.isReady == true, !audioPaused, !modelTurnActive else { return false }
         let current = now()
         if let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userQuietInterval { return false }
         if let lastModelTurnEndedAt, current.timeIntervalSince(lastModelTurnEndedAt) < Self.modelQuietInterval { return false }
@@ -604,6 +646,8 @@ final class GPTLiveConversationController: ObservableObject {
         voiceNote = nil
         old.onEvent = nil
         old.onStateChange = nil
+        old.onAudioPaused = nil
+        audioPaused = false
         old.stop()
     }
 
