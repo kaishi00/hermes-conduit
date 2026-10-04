@@ -34,6 +34,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func cancelAll() async -> String
     func cancel(jobID: UUID) async -> String?
     func markOutcomeDelivered(jobID: UUID)
+    func holdOutcome(jobID: UUID)
     func takePendingNoticeForJob() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)?
     func returnUndeliveredNotice(jobID: UUID)
     func noticeSent(jobID: UUID)
@@ -466,6 +467,13 @@ final class GeminiLiveToolBridge {
         supervisor.noticeSent(jobID: jobID)
     }
 
+    /// A settled job's result went out on its call (or as an untracked
+    /// fallback): its job no longer needs keeping.
+    func outcomeSent(jobID: UUID?) {
+        guard let jobID else { return }
+        supervisor.noticeSent(jobID: jobID)
+    }
+
     /// A send that failed: the text waits again for the next connection.
     func textUpdateRequeued(_ text: String, jobID: UUID?) {
         guard let jobID else { return }
@@ -498,6 +506,10 @@ final class GeminiLiveToolBridge {
             guard !job.status.isActive else { continue }
             openCalls[jobID] = nil
             let alreadyAnnounced = job.outcomeDelivered
+            // Kept (never pruned) until the controller says the result went
+            // out (`outcomeSent`) or hands it back (`returnNotice`): it may
+            // wait for quiet first.
+            supervisor.holdOutcome(jobID: jobID)
             supervisor.markOutcomeDelivered(jobID: jobID)
             var result: [String: String] = ["job_id": jobID.uuidString, "title": job.title, "status": Self.statusName(job.status)]
             switch job.status {

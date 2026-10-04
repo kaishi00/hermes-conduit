@@ -67,6 +67,21 @@ reply pending or playing):
   its chat.
 - Failures, cancellations from elsewhere, and "waiting for input" are spoken
   as short local notices without a Hermes turn.
+- GPT-Live (#379): a delegation's result (a job's or the chat's reply) waits
+  for the same quiet window instead of going out the moment it arrives. A
+  pause mid-sentence doesn't count while the user's words are still coming
+  in, and the model answers what the user just said first. When the user kept
+  talking after asking, the result tells the model to deal with anything they
+  said since (passing it on to Hermes if needed) and then say that Hermes has
+  come back on the earlier request. Hanging up returns an unsaid result to
+  the job, as for other notices.
+- Gemini Live: a job that finishes while the model is answering something
+  else no longer has its result sent on its call straight away (Gemini could
+  take it without saying it). The answer waits for the same quiet window; if
+  the model still says nothing within 6 seconds, the result is sent again as
+  a text turn. A result whose call is withdrawn goes out as a text update,
+  and hanging up returns an unsaid one to the job. Grok Live already reported
+  results as text turns sent only while quiet.
 
 ## Limits of this phase
 

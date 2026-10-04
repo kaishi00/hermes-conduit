@@ -10,7 +10,8 @@
 //
 //  Not talking over the user: GPT-Live's own turn detection handles
 //  barge-in, WebRTC cancels the speaker's echo, and Conduit's own job
-//  updates are only sent while nobody is speaking.
+//  updates (a delegation's result included, #379) are only sent while
+//  nobody is speaking.
 //
 
 import AVFAudio
@@ -92,6 +93,12 @@ final class GPTLiveConversationController: ObservableObject {
     static let userQuietInterval: TimeInterval = 2
     /// Quiet time after the model's last turn before a job update.
     static let modelQuietInterval: TimeInterval = 1
+    /// An open user turn with no new words for this long no longer holds
+    /// job updates back (its `turn.done` may never come).
+    static let userTurnStaleInterval: TimeInterval = 6
+    /// Leads a delegation's result when the user kept talking after asking
+    /// for it (#379): what they said since comes first. Not UI copy.
+    static let resultAfterUserNote = "[The user kept talking after asking for this, so this result waited until they finished. If anything they said since hasn't been answered or passed on to Hermes yet, deal with that first, briefly (delegate it if Hermes is needed). Then say that Hermes has come back on the earlier request and give what follows, as it asks.]\n\n"
     /// An end closes the call once the model has been quiet this long.
     static let endGrace: TimeInterval = 1.5
     /// An end closes the call after this long even if the model still talks.
@@ -161,9 +168,22 @@ final class GPTLiveConversationController: ObservableObject {
     private var lastUserSpeechAt: Date?
     private var lastModelOutputAt: Date?
     private var lastModelTurnEndedAt: Date?
-    /// Idle-only session context (job notices, typed exchanges) waiting to
-    /// be sent.
-    private var pendingContext: [(text: String, channel: GPTLiveProtocol.Channel, jobID: UUID?)] = []
+    /// Something to send only while nobody speaks.
+    private struct PendingSend {
+        let text: String
+        let channel: GPTLiveProtocol.Channel
+        /// The job whose notice it carries, if any.
+        let jobID: UUID?
+        /// The delegation it answers (a job's result), if any.
+        let delegationID: String?
+    }
+    /// Idle-only sends (job notices, delegation results, typed exchanges)
+    /// waiting to go out.
+    private var pendingContext: [PendingSend] = []
+    /// The user's transcript entries when each open delegation was made:
+    /// an entry not among them is something they said after asking. The
+    /// request's own late words land in its entries, not new ones.
+    private var delegationUserEntries: [String: Set<UUID>] = [:]
     private var idleFlushTask: Task<Void, Never>?
     /// Entries still taking streamed fragments. The other speaker starting
     /// closes one, as in Gemini Live.
@@ -226,8 +246,7 @@ final class GPTLiveConversationController: ObservableObject {
         endTask?.cancel()
         endTask = nil
         endRequestedAt = nil
-        bridge.returnUnsent(jobIDs: pendingContext.map(\.jobID))
-        pendingContext = []
+        returnPendingSends()
         modelTurnActive = false
         lastUserSpeechAt = nil
         lastModelOutputAt = nil
@@ -276,10 +295,8 @@ final class GPTLiveConversationController: ObservableObject {
         retireSession()
         modelTurnActive = false
         audioPaused = false
-        // Unspoken job notices go back to the supervisor, not the bin.
-        // Typed exchanges (no job) are best effort: the chat still has them.
-        bridge.returnUnsent(jobIDs: pendingContext.map(\.jobID))
-        pendingContext = []
+        // Unspoken job notices and results go back to the supervisor.
+        returnPendingSends()
         bridge.connectionReplaced()
         closeOpenEntries()
         phase = .idle
@@ -330,8 +347,9 @@ final class GPTLiveConversationController: ObservableObject {
         endRequestedAt = now()
         phase = .ending
         session?.setMicrophoneEnabled(false)
-        bridge.returnUnsent(jobIDs: pendingContext.map(\.jobID))
-        pendingContext = []
+        idleFlushTask?.cancel()
+        idleFlushTask = nil
+        returnPendingSends()
         // Job outcomes stay pending for Hermes to report instead of being
         // spent on a conversation that is closing.
         bridge.beginEnding()
@@ -380,6 +398,10 @@ final class GPTLiveConversationController: ObservableObject {
         case .failed(let message):
             retireSession()
             if endRequestedAt == nil {
+                // Nothing queued can go out on a failed call.
+                idleFlushTask?.cancel()
+                idleFlushTask = nil
+                returnPendingSends()
                 bridge.connectionReplaced()
                 phase = .failed(message)
             } else {
@@ -392,6 +414,9 @@ final class GPTLiveConversationController: ObservableObject {
                 finishEnd()
             } else {
                 retireSession()
+                idleFlushTask?.cancel()
+                idleFlushTask = nil
+                returnPendingSends()
                 bridge.connectionReplaced()
                 phase = .failed(AppLocalization.string("GPT-Live ended the conversation."))
             }
@@ -437,6 +462,21 @@ final class GPTLiveConversationController: ObservableObject {
         close?()
     }
 
+    /// Queued sends that will never go out: job notices and delegation
+    /// results go back to the supervisor; typed exchanges (no job) are best
+    /// effort, since the chat still has them.
+    private func returnPendingSends() {
+        let unsent = pendingContext
+        pendingContext = []
+        delegationUserEntries = [:]
+        for item in unsent {
+            if let delegationID = item.delegationID {
+                bridge.replyUndelivered(delegationID: delegationID)
+            }
+        }
+        bridge.returnUnsent(jobIDs: unsent.filter { $0.delegationID == nil }.map(\.jobID))
+    }
+
     private func handle(_ event: GPTLiveProtocol.ServerEvent) {
         switch event {
         case .inputTranscript(let text):
@@ -475,6 +515,9 @@ final class GPTLiveConversationController: ObservableObject {
                 break
             }
         case .delegation(let id, let text):
+            if delegationUserEntries[id] == nil {
+                delegationUserEntries[id] = Set(transcript.filter { $0.speaker == .user }.map(\.id))
+            }
             let request = delegationRequest(itemText: text)
             Task { [weak self] in
                 guard let self else { return }
@@ -574,15 +617,19 @@ final class GPTLiveConversationController: ObservableObject {
         for item in outgoing {
             switch item {
             case .delegationReply(let id, let text, let channel):
-                if session?.appendContext(text, channel: channel, delegationID: id) == true {
-                    bridge.replyDelivered(delegationID: id)
-                } else if channel == .speakable {
-                    // The call dropped: the outcome goes back to the supervisor.
-                    bridge.replyUndelivered(delegationID: id)
+                guard channel == .speakable else {
+                    // Quiet progress goes out at once.
+                    if session?.appendContext(text, channel: channel, delegationID: id) == true {
+                        bridge.replyDelivered(delegationID: id)
+                    }
+                    continue
                 }
+                // Said aloud: waits until nobody speaks, so a result never
+                // cuts into the user's sentence (#379).
+                pendingContext.append(PendingSend(text: text, channel: channel, jobID: nil, delegationID: id))
             case .sessionContext(let text, let channel, let whenIdle, let jobID):
                 if whenIdle {
-                    pendingContext.append((text, channel, jobID))
+                    pendingContext.append(PendingSend(text: text, channel: channel, jobID: jobID, delegationID: nil))
                 } else {
                     session?.appendContext(text, channel: channel, delegationID: nil)
                 }
@@ -592,12 +639,15 @@ final class GPTLiveConversationController: ObservableObject {
     }
 
     /// Whether Conduit may add a turn of its own now: connected, the model
-    /// silent, and the user quiet.
+    /// silent, and the user quiet (their turn finished, not just paused).
     var isConversationIdle: Bool {
         // Paused: an update the user can't hear waits for the audio.
         guard session?.isReady == true, !audioPaused, !modelTurnActive else { return false }
         let current = now()
         if let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userQuietInterval { return false }
+        // Mid-sentence: the user's words are still coming in (a pause, an
+        // "um"), so their turn isn't over yet.
+        if !userTurnEntries.isEmpty, let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userTurnStaleInterval { return false }
         if let lastModelTurnEndedAt, current.timeIntervalSince(lastModelTurnEndedAt) < Self.modelQuietInterval { return false }
         return true
     }
@@ -607,11 +657,20 @@ final class GPTLiveConversationController: ObservableObject {
     func flushPendingContextIfIdle() {
         while !pendingContext.isEmpty, endRequestedAt == nil, isConversationIdle, let session {
             let item = pendingContext.removeFirst()
-            guard session.appendContext(item.text, channel: item.channel, delegationID: nil) else {
+            var text = item.text
+            if let delegationID = item.delegationID, userSpokeAfterAsking(delegationID) {
+                text = Self.resultAfterUserNote + text
+            }
+            guard session.appendContext(text, channel: item.channel, delegationID: item.delegationID) else {
                 pendingContext.insert(item, at: 0)
                 return
             }
-            bridge.contextDelivered(jobID: item.jobID)
+            if let delegationID = item.delegationID {
+                bridge.replyDelivered(delegationID: delegationID)
+                delegationUserEntries[delegationID] = nil
+            } else {
+                bridge.contextDelivered(jobID: item.jobID)
+            }
             guard item.channel == .commentary else {
                 // The model speaks it next: wait for that turn before another.
                 modelTurnActive = true
@@ -619,6 +678,14 @@ final class GPTLiveConversationController: ObservableObject {
                 return
             }
         }
+    }
+
+    /// Whether the user said more after the delegation was made (beyond
+    /// the tail of the request itself).
+    private func userSpokeAfterAsking(_ delegationID: String) -> Bool {
+        // No words of the user's yet when it was made: no line to count from.
+        guard let known = delegationUserEntries[delegationID], !known.isEmpty else { return false }
+        return transcript.contains { $0.speaker == .user && !known.contains($0.id) }
     }
 
     private func scheduleIdleFlush() {

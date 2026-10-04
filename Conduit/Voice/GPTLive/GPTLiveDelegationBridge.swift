@@ -235,7 +235,9 @@ final class GPTLiveDelegationBridge {
 
     /// A delegation answer reached GPT-Live.
     func replyDelivered(delegationID: String) {
-        deliveredReplies[delegationID] = nil
+        if let jobID = deliveredReplies.removeValue(forKey: delegationID) {
+            supervisor.noticeSent(jobID: jobID)
+        }
         if delegationID == readBackDelegationID { readBackDelegationID = nil }
     }
 
@@ -252,6 +254,9 @@ final class GPTLiveDelegationBridge {
             }
             guard !job.status.isActive else { continue }
             openDelegations[jobID] = nil
+            // Kept (never pruned) while the answer waits for quiet, until
+            // `replyDelivered` or `replyUndelivered`.
+            supervisor.holdOutcome(jobID: jobID)
             supervisor.markOutcomeDelivered(jobID: jobID)
             deliveredReplies[delegationID] = jobID
             outgoing.append(.delegationReply(delegationID: delegationID, text: Self.outcome(of: job), channel: .speakable))

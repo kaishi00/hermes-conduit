@@ -928,6 +928,116 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.stopped, 1)
     }
 
+    func testGeminiLiveJobResultWaitsWhileTheModelAnswersSomethingElseAndIsResentIfUnsaid() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, output, supervisor) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        session.onEvent?(.turnComplete)
+        output.isPlaying = false
+        func answeredC1() -> Bool {
+            session.sent.contains { message in
+                ((message["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]])?
+                    .contains { $0["id"] as? String == "c1" } == true
+            }
+        }
+
+        // The user asks something else; the job finishes while the model answers it.
+        current += 5
+        session.onEvent?(.inputTranscription("what's the weather"))
+        current += GeminiLiveConversationController.userQuietInterval + 0.5
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertFalse(answeredC1(), "Not sent into another answer")
+        XCTAssertEqual(controller.heldOutcomeCountForTesting, 1)
+
+        // The answer ends and the conversation goes quiet: the result goes out on its call.
+        session.onEvent?(.turnComplete)
+        output.isPlaying = false
+        current += GeminiLiveConversationController.modelQuietInterval + 0.5
+        controller.flushPendingTextIfIdle()
+        XCTAssertTrue(answeredC1())
+        XCTAssertEqual(controller.heldOutcomeCountForTesting, 0)
+
+        // The model let it pass without a word: it is said again as a text turn.
+        let sentAt = current
+        current += GeminiLiveConversationController.outcomeSpeechGrace
+        controller.respeakOutcomeIfSilent(jobID: supervisor.jobs.first?.id, since: sentAt)
+        XCTAssertTrue(session.textTurns.contains { $0.contains("All green.") })
+
+        // One the model did speak is not repeated.
+        let turns = session.textTurns.count
+        session.onEvent?(.turnComplete)
+        current += 5
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        controller.respeakOutcomeIfSilent(jobID: supervisor.jobs.first?.id, since: current - 1)
+        XCTAssertEqual(session.textTurns.count, turns)
+        controller.stop()
+    }
+
+    func testGeminiLiveHeldJobResultGoesBackWhenTheCallEnds() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, supervisor) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        current += 5
+        session.onEvent?(.inputTranscription("and another thing"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(controller.heldOutcomeCountForTesting, 1)
+        XCTAssertTrue(supervisor.jobs[0].outcomeDelivered)
+
+        controller.stop()
+        XCTAssertEqual(controller.heldOutcomeCountForTesting, 0)
+        XCTAssertFalse(supervisor.jobs[0].outcomeDelivered, "An unsaid result is reported again later")
+    }
+
+    func testGeminiLiveHeldJobResultGoesBackWhenTheConversationFails() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, supervisor) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        current += 5
+        session.onEvent?(.inputTranscription("and another thing"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(controller.heldOutcomeCountForTesting, 1)
+
+        session.onStateChange?(.failed("Connection lost"))
+        XCTAssertFalse(controller.isActive)
+        XCTAssertEqual(controller.heldOutcomeCountForTesting, 0)
+        XCTAssertFalse(supervisor.jobs[0].outcomeDelivered, "An unsaid result is reported again later")
+    }
+
+    func testGeminiLiveHeldJobResultWhoseCallIsWithdrawnIsSaidAsText() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, supervisor) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        current += 5
+        session.onEvent?(.inputTranscription("and another thing"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        session.onEvent?(.toolCallCancellation(["c1"]))
+        XCTAssertEqual(controller.heldOutcomeCountForTesting, 0)
+        XCTAssertEqual(controller.pendingTextTurnCountForTesting, 1)
+        XCTAssertTrue(supervisor.jobs[0].outcomeDelivered, "Spoken for while it waits")
+
+        // The call ends before it is said: the job reports it again later.
+        controller.stop()
+        XCTAssertFalse(supervisor.jobs[0].outcomeDelivered)
+    }
+
     func testGeminiLiveTypedChatTurnGoesOutAsContextWithoutStartingATurn() async {
         let (controller, session, _, _, supervisor) = makeGeminiController(clock: { Date(timeIntervalSince1970: 1_000) })
         supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build")
@@ -1404,8 +1514,10 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(session.sent.isEmpty, "Nothing can go out while reconnecting")
         XCTAssertFalse(supervisor.jobs[0].outcomeDelivered, "The outcome must not be marked delivered unsent")
 
-        // Back on a (same-connection) ready session: answered on the call.
+        // Back on a (same-connection) ready session: answered on the call,
+        // once the conversation is quiet.
         session.becomeReady()
+        controller.flushPendingTextIfIdle()
         let response = session.sent.compactMap { ($0["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]] }.first?.first
         XCTAssertEqual(response?["id"] as? String, "c1")
         XCTAssertEqual((response?["response"] as? [String: Any])?["result"] as? String, "All green.")
