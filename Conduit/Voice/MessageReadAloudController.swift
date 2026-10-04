@@ -173,7 +173,8 @@ final class MessageReadAloudController: ObservableObject {
         pausedStopTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled, let self,
-                  self.isCurrent(generation), self.isPaused else { return }
+                  self.isCurrent(generation), self.isPaused,
+                  self.playback.isPaused else { return }
             self.stop()
         }
     }
@@ -305,6 +306,14 @@ final class MessageReadAloudController: ObservableObject {
 
     private func transitionToPlaying(messageID: String, generation: UInt64) {
         guard isCurrent(generation) else { return }
+        // A route change while paused restarts the stream, and the restart
+        // plays: the reply is sounding again, so stop reporting it paused.
+        if isPaused, !playback.isPaused {
+            isPaused = false
+            pausedStopTask?.cancel()
+            pausedStopTask = nil
+            nowPlaying.setPaused(false)
+        }
         if case .preparing(let id) = state, id == messageID {
             state = .playing(messageID: messageID)
             nowPlaying.begin(title: nowPlayingTitle, commands: ReadAloudRemoteCommands(

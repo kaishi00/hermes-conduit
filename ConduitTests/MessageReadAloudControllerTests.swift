@@ -657,6 +657,31 @@ final class MessageReadAloudControllerTests: XCTestCase {
         controller.stop()
     }
 
+    func testStreamRestartWhilePausedReportsTheReplyPlayingAgain() async throws {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.pauseAfterEmission = true
+        let nowPlaying = MockReadAloudNowPlaying()
+        let controller = makeController(playback: playback, gateway: gateway, nowPlaying: nowPlaying)
+        controller.pausedStopDelay = .milliseconds(50)
+
+        controller.toggle(messageID: "message-a", content: "Route change")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        controller.pause()
+        XCTAssertTrue(controller.isPaused)
+
+        // AirPods back in the case: the service restarts the stream and the
+        // next chunk plays.
+        playback.simulateStreamRestartForTest()
+        try XCTUnwrap(gateway.streams.last).emitPCMForTest()
+
+        XCTAssertFalse(controller.isPaused)
+        XCTAssertEqual(nowPlaying.pausedUpdates, [true, false])
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(controller.state, .playing(messageID: "message-a"), "The paused-stop timer must not end a sounding reply")
+        controller.stop()
+    }
+
     func testNowPlayingTitleUsesTheFirstSpokenLineAndTruncates() {
         XCTAssertEqual(ReadAloudNowPlaying.title(for: "\n\n  Hello there  \nMore"), "Hello there")
         let long = String(repeating: "word ", count: 40)
@@ -767,17 +792,26 @@ private final class MockReadAloudPlayback: SpeechPlaybackService {
 
     private(set) var pauseCount = 0
     private(set) var resumeCount = 0
+    private(set) var isPaused = false
 
     func pause() -> Bool {
         guard isPlaying else { return false }
         pauseCount += 1
+        isPaused = true
         return true
     }
 
-    func resume() { resumeCount += 1 }
+    func resume() {
+        resumeCount += 1
+        isPaused = false
+    }
+
+    /// Models a route change restarting the stream mid-pause.
+    func simulateStreamRestartForTest() { isPaused = false }
 
     func stop() {
         stopCount += 1
+        isPaused = false
         isPlaying = false
         let waiter = drainWaiter
         drainWaiter = nil
@@ -824,6 +858,10 @@ private final class MockReadAloudStream: VoiceSpeechStream {
         self.onStart = onStart
         self.onPCM16 = onPCM16
         self.onEncodedAudio = onEncodedAudio
+    }
+
+    func emitPCMForTest() throws {
+        try onPCM16(Data(repeating: 1, count: 8), sampleRate)
     }
 
     func append(_ text: String) async throws {

@@ -656,6 +656,9 @@ protocol SpeechPlaybackService: AnyObject {
     /// newly enqueued audio waits until `resume()`.
     func pause() -> Bool
     func resume()
+    /// Whether audio is currently held by `pause()`. A stream restart (route
+    /// change) clears it even though nobody resumed.
+    var isPaused: Bool { get }
 }
 
 extension SpeechPlaybackService {
@@ -668,6 +671,7 @@ extension SpeechPlaybackService {
     /// Services without pause support refuse it; the caller keeps playing.
     func pause() -> Bool { false }
     func resume() {}
+    var isPaused: Bool { false }
 }
 
 @MainActor

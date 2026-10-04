@@ -42,6 +42,11 @@ final class SystemReadAloudNowPlaying: ReadAloudNowPlayingPresenting {
         register(center.playCommand) { commands.resume() }
         register(center.togglePlayPauseCommand) { commands.togglePause() }
         register(center.stopCommand) { commands.stop() }
+        // A spoken reply has no tracks, seeking, or speed control here:
+        // hide the lock-screen buttons that would do nothing.
+        for command in Self.unsupportedCommands(center) {
+            command.isEnabled = false
+        }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = [
             MPMediaItemPropertyTitle: title,
             MPMediaItemPropertyArtist: AppLocalization.string("Read Aloud"),
@@ -64,6 +69,19 @@ final class SystemReadAloudNowPlaying: ReadAloudNowPlayingPresenting {
         }
         targets.removeAll()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
+
+    private static func unsupportedCommands(_ center: MPRemoteCommandCenter) -> [MPRemoteCommand] {
+        [
+            center.nextTrackCommand,
+            center.previousTrackCommand,
+            center.skipForwardCommand,
+            center.skipBackwardCommand,
+            center.seekForwardCommand,
+            center.seekBackwardCommand,
+            center.changePlaybackPositionCommand,
+            center.changePlaybackRateCommand,
+        ]
     }
 
     private func register(_ command: MPRemoteCommand, _ action: @escaping @MainActor () -> Void) {
