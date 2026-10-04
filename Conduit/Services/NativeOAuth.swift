@@ -388,7 +388,7 @@ final class NativeOAuthSession {
             guard replayIsSafe else {
                 throw DashboardTicketBridgeError.http(
                     status: 401,
-                    detail: "Authentication was refreshed; retry this action."
+                    detail: DashboardTicketBridgeError.signInRefreshedDetail
                 )
             }
             do {

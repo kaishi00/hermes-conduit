@@ -270,6 +270,12 @@ enum DashboardTicketBridgeError: LocalizedError {
     /// The server's own explanation is kept when it says something (a
     /// FastAPI `detail` like "Session not found"); bare status phrases and
     /// browser fetch errors become what happened and what to do.
+    /// Conduit's own 401 after it refreshed the sign-in for a request it
+    /// won't replay: the fix is to try again, not to sign in.
+    static var signInRefreshedDetail: String {
+        AppLocalization.string("Your dashboard sign-in was refreshed. Try that again.")
+    }
+
     static func describe(status: Int, detail: String) -> String {
         let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         let isMeaningful = !trimmed.isEmpty
@@ -283,6 +289,7 @@ enum DashboardTicketBridgeError: LocalizedError {
             }
             return AppLocalization.string("Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running.")
         case 401, 403:
+            if trimmed == signInRefreshedDetail { return trimmed }
             return AppLocalization.string("Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more.")
         case 404, 405, 501:
             if isMeaningful, status == 404 { return trimmed }

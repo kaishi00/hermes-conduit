@@ -94,7 +94,13 @@ final class GPTLiveConversationController: ObservableObject {
     /// Transcript text a delegation hands Hermes as context.
     static let delegationContextCharacters = 4_000
 
-    @Published private(set) var phase: Phase = .idle { didSet { syncHeadsetMute() } }
+    @Published private(set) var phase: Phase = .idle {
+        didSet {
+            syncHeadsetMute()
+            // A host issue labels only the failure it caused.
+            if case .failed = phase {} else { hostIssue = nil }
+        }
+    }
     /// What the host's check found wrong on the last start, set before
     /// the phase fails with the host's reason; nil once a start gets past
     /// the check, or when the failure was something else.

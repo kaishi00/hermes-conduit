@@ -21491,6 +21491,16 @@
           }
         }
       }
+    },
+    "Your dashboard sign-in was refreshed. Try that again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的仪表板登录已刷新。请再试一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

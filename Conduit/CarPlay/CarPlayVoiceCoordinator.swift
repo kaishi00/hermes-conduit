@@ -588,17 +588,12 @@ final class CarPlayVoiceCoordinator {
         if isMicrophoneDenied { return .microphoneDenied }
         switch mode {
         case .classic: return appState.voiceSetupIssue
-        // A host issue only explains the failure the call is showing; one
-        // left from an earlier start never labels another failure.
-        case .geminiLive:
-            let gemini = appState.geminiLiveController
-            return liveIssue(gemini.phase.isFailed ? gemini.hostIssue : nil, .geminiLive)
-        case .gptLive:
-            let gpt = appState.gptLiveController
-            return liveIssue(gpt.phase.isFailed ? gpt.hostIssue : nil, .gptLive)
-        case .grokLive:
-            let grok = appState.grokLiveController
-            return liveIssue(grok.phase.isFailed ? grok.hostIssue : nil, .grokLive)
+        // The controllers keep a host issue only while the call is failed
+        // on it. Not gated on `phase` here: this runs inside the `$phase`
+        // sink, where the property still reads the phase being replaced.
+        case .geminiLive: return liveIssue(appState.geminiLiveController.hostIssue, .geminiLive)
+        case .gptLive: return liveIssue(appState.gptLiveController.hostIssue, .gptLive)
+        case .grokLive: return liveIssue(appState.grokLiveController.hostIssue, .grokLive)
         }
     }
 
@@ -1393,16 +1388,3 @@ private final class CreatedJobBox {
     var id: UUID?
 }
 
-private extension GeminiLiveConversationController.Phase {
-    var isFailed: Bool {
-        if case .failed = self { return true }
-        return false
-    }
-}
-
-private extension GPTLiveConversationController.Phase {
-    var isFailed: Bool {
-        if case .failed = self { return true }
-        return false
-    }
-}

@@ -58,6 +58,11 @@ extension ConnectionFailureTests {
         XCTAssertEqual(text(429, "Too Many Requests"), "Hermes is busy right now. Wait a moment, then try again.")
         XCTAssertEqual(text(503, "Service Unavailable"), "Your dashboard couldn't reach Hermes. Hermes may be restarting, so try again in a moment.")
         XCTAssertTrue(text(401, "Unauthorized").contains("Sign in again"))
+        XCTAssertEqual(
+            text(401, DashboardTicketBridgeError.signInRefreshedDetail),
+            DashboardTicketBridgeError.signInRefreshedDetail,
+            "Conduit's own refresh says to try again, not to sign in"
+        )
         XCTAssertEqual(text(400, "Dashboard request failed (400)."), "Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this.")
     }
 }

@@ -228,7 +228,13 @@ final class GeminiLiveConversationController: ObservableObject {
     /// gives the model this long to start its own goodbye before closing.
     static let endReplyGrace: TimeInterval = 2.5
 
-    @Published private(set) var phase: Phase = .idle { didSet { syncHeadsetMute() } }
+    @Published private(set) var phase: Phase = .idle {
+        didSet {
+            syncHeadsetMute()
+            // A host issue labels only the failure it caused.
+            if case .failed = phase {} else { hostIssue = nil }
+        }
+    }
     /// What the host's check found wrong on the last start, set before
     /// the phase fails with the host's reason; nil once a start gets past
     /// the check, or when the failure was something else.
