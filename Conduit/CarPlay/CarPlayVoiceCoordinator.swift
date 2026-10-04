@@ -573,8 +573,9 @@ final class CarPlayVoiceCoordinator {
     }
 
     /// What stops Voice in `mode`, as far as the app can tell: no Hermes
-    /// connection, a denied microphone, then the mode's own setup (classic
-    /// Voice's switch and speech providers, or a live mode's host). nil
+    /// connection, then for classic Voice its switch, a denied microphone
+    /// and its speech providers; for a live mode its host, then a denied
+    /// microphone. nil
     /// when nothing in the setup explains the failure.
     static func setupIssue(
         in appState: AppState,
@@ -585,15 +586,24 @@ final class CarPlayVoiceCoordinator {
         // Voice never turned on is the first thing to fix: until it is,
         // iOS never asked for the microphone.
         if mode == .classic, !appState.isVoiceEnabled { return .voiceOff }
-        if isMicrophoneDenied { return .microphoneDenied }
         switch mode {
-        case .classic: return appState.voiceSetupIssue
+        case .classic:
+            if isMicrophoneDenied { return .microphoneDenied }
+            return appState.voiceSetupIssue
         // The controllers keep a host issue only while the call is failed
         // on it. Not gated on `phase` here: this runs inside the `$phase`
         // sink, where the property still reads the phase being replaced.
-        case .geminiLive: return liveIssue(appState.geminiLiveController.hostIssue, .geminiLive)
-        case .gptLive: return liveIssue(appState.gptLiveController.hostIssue, .gptLive)
-        case .grokLive: return liveIssue(appState.grokLiveController.hostIssue, .grokLive)
+        // The host is checked before the microphone is asked for, so a
+        // host issue is what stopped this call even with the mic denied.
+        case .geminiLive:
+            return liveIssue(appState.geminiLiveController.hostIssue, .geminiLive)
+                ?? (isMicrophoneDenied ? .microphoneDenied : nil)
+        case .gptLive:
+            return liveIssue(appState.gptLiveController.hostIssue, .gptLive)
+                ?? (isMicrophoneDenied ? .microphoneDenied : nil)
+        case .grokLive:
+            return liveIssue(appState.grokLiveController.hostIssue, .grokLive)
+                ?? (isMicrophoneDenied ? .microphoneDenied : nil)
         }
     }
 

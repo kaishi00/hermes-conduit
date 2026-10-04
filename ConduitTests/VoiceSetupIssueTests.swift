@@ -129,6 +129,11 @@ extension CarPlayVoiceCoordinatorTests {
             CarPlayVoiceCoordinator.setupIssue(in: appState, mode: .geminiLive, isMicrophoneDenied: false),
             "a live mode doesn't need classic Voice turned on"
         )
+        XCTAssertEqual(
+            CarPlayVoiceCoordinator.setupIssue(in: appState, mode: .geminiLive, isMicrophoneDenied: true),
+            .microphoneDenied,
+            "with no host issue, a live call names the denied microphone"
+        )
 
         appState.isConnected = false
         XCTAssertEqual(
