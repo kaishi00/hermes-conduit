@@ -337,6 +337,14 @@ final class ChatScrollHostedTests: XCTestCase {
 
         mounted.engine.olderPageBackfillRequested(sessionKey: mounted.engine.renderedSessionKey)
         mounted.appState.messages = Self.transcript(0..<120)
+        // A loaded runner can defer the hosting update past a fixed settle,
+        // leaving the row unmeasured; wait for it, then let the hold finish.
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually(pumpingLayoutOf: mounted.host.view, cap: 10) {
+                screenY(of: topRow, in: mounted) != nil
+            },
+            "the row being read is measured again after the prepend"
+        )
         settle(mounted.host.view)
 
         let after = try XCTUnwrap(screenY(of: topRow, in: mounted))
