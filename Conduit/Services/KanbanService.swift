@@ -404,7 +404,7 @@ final class KanbanService {
                             )
                             return KanbanBulkTaskResult(id: id, ok: true)
                         } catch {
-                            return KanbanBulkTaskResult(id: id, ok: false, error: error.localizedDescription)
+                            return KanbanBulkTaskResult(id: id, ok: false, error: UserFacingError.message(for: error))
                         }
                     }
                 }

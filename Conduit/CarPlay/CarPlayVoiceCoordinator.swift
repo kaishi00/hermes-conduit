@@ -407,6 +407,9 @@ final class CarPlayVoiceCoordinator {
         let pending = pendingPresentationState
         pendingPresentationState = nil
         updateBrowseButtons(for: previous.shownState, force: true)
+        // New controls this replacement carried (buttons, or the Error
+        // title's cause) wait for the next controls change: retrying here
+        // would loop while installs keep failing.
         // The failure sound already played when the replacement began.
         if let pending { forward(pending, playsEarcon: pending != soundedPendingState) }
         soundedPendingState = nil
@@ -575,6 +578,9 @@ final class CarPlayVoiceCoordinator {
         isMicrophoneDenied: Bool = VoiceSetupIssue.isMicrophoneDenied
     ) -> VoiceSetupIssue? {
         if !appState.isConnected { return .notConnected }
+        // Voice never turned on is the first thing to fix: until it is,
+        // iOS never asked for the microphone.
+        if mode == .classic, !appState.isVoiceEnabled { return .voiceOff }
         if isMicrophoneDenied { return .microphoneDenied }
         switch mode {
         case .classic: return appState.voiceSetupIssue

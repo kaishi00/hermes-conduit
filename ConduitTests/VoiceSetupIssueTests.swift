@@ -120,6 +120,11 @@ extension CarPlayVoiceCoordinatorTests {
         )
         XCTAssertEqual(appState.voiceSetupIssue, .voiceOff)
         XCTAssertEqual(appState.voiceUnavailableReason, VoiceSetupIssue.voiceOff.message)
+        XCTAssertEqual(
+            CarPlayVoiceCoordinator.setupIssue(in: appState, mode: .classic, isMicrophoneDenied: true),
+            .voiceOff,
+            "Voice off comes first: iOS never asked for the microphone"
+        )
         XCTAssertNil(
             CarPlayVoiceCoordinator.setupIssue(in: appState, mode: .geminiLive, isMicrophoneDenied: false),
             "a live mode doesn't need classic Voice turned on"
