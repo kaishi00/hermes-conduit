@@ -124,8 +124,9 @@ final class EchoCancellingVoiceCapture: AudioCaptureService {
         isHeldForPlayback = true
     }
 
-    /// Stops sending microphone audio. The engine keeps running while
-    /// Hermes still speaks through it.
+    /// Stops sending microphone audio. The engine keeps running only while
+    /// Hermes still has speech queued through it; otherwise it (and its
+    /// audio session lease) stops until the microphone or speech resumes.
     func pause() {
         guard !paused else { return }
         resetInput()
@@ -378,10 +379,10 @@ final class VoiceConversationAudioSelector {
 
     /// A capture start that failed before anything was chosen leaves no
     /// choice behind.
-    fileprivate func start(choosing: Bool, _ body: (AudioCaptureService) throws -> Void) throws {
+    fileprivate func start(_ body: (AudioCaptureService) throws -> Void) throws {
         let wasUnchosen = usesEchoCancellation == nil
         do {
-            try body(choosing ? chosenCapture() : currentCapture)
+            try body(chosenCapture())
         } catch {
             if wasUnchosen { release() }
             throw error
@@ -395,6 +396,16 @@ final class VoiceConversationAudioSelector {
         usesEchoCancellation = nil
     }
 
+    /// Stops the playback in use. Echo audio still queued is stopped too
+    /// even once the choice was released, so the controller's teardown
+    /// doesn't depend on which side it stops first.
+    fileprivate func stopPlayback() {
+        currentPlayback.stop()
+        if usesEchoCancellation != true, let echo, echo.audio.isPlaying {
+            echo.playback.stop()
+        }
+    }
+
     @MainActor
     private final class Capture: AudioCaptureService {
         let selector: VoiceConversationAudioSelector
@@ -406,13 +417,13 @@ final class VoiceConversationAudioSelector {
 
         func requestPermission() async -> Bool { await selector.currentCapture.requestPermission() }
         func startListening(includePreRoll: Bool) throws {
-            try selector.start(choosing: true) { try $0.startListening(includePreRoll: includePreRoll) }
+            try selector.start { try $0.startListening(includePreRoll: includePreRoll) }
         }
         func beginBargeInMonitoring() throws {
-            try selector.start(choosing: true) { try $0.beginBargeInMonitoring() }
+            try selector.start { try $0.beginBargeInMonitoring() }
         }
         func resume() throws {
-            try selector.start(choosing: true) { try $0.resume() }
+            try selector.start { try $0.resume() }
         }
         func pause() { selector.currentCapture.pause() }
         func holdForPlayback() { selector.currentCapture.holdForPlayback() }
@@ -446,7 +457,7 @@ final class VoiceConversationAudioSelector {
         func playEncodedAudioData(_ data: Data) throws { try selector.currentPlayback.playEncodedAudioData(data) }
         func finish() throws { try selector.currentPlayback.finish() }
         func drain() async { await selector.currentPlayback.drain() }
-        func stop() { selector.currentPlayback.stop() }
+        func stop() { selector.stopPlayback() }
         func pause() -> Bool { selector.currentPlayback.pause() }
         func resume() { selector.currentPlayback.resume() }
     }

@@ -134,6 +134,22 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(engine.stopOutputCount, 1, "the conversation's speaker side stops with it")
     }
 
+    func testPlaybackStopReachesEchoAudioAfterTheChoiceIsReleased() throws {
+        let standardPlayback = MockPlayback()
+        let (selector, engine) = makeSelector(wantsEcho: true, playback: standardPlayback)
+        try selector.capture.beginBargeInMonitoring()
+        _ = try selector.playback.enqueuePCM16(Data(repeating: 1, count: 8), sampleRate: 24_000)
+        selector.capture.stop()
+        let stopsAfterCaptureStop = engine.stopOutputCount
+        // Echo audio is (still) queued while the choice is already released.
+        engine.isPlaying = true
+
+        selector.playback.stop()
+
+        XCTAssertEqual(engine.stopOutputCount, stopsAfterCaptureStop + 1, "queued echo audio is stopped, not left to the default playback")
+        XCTAssertFalse(engine.isPlaying)
+    }
+
     func testEchoCancellingCaptureReportsInterruptionAgainstItsCurrentGeneration() async throws {
         let (selector, engine) = makeSelector(wantsEcho: true)
         let capture = selector.capture
