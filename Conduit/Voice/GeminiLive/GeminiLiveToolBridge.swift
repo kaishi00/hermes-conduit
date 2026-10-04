@@ -173,7 +173,7 @@ final class GeminiLiveToolBridge {
     static let functionDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         .init(
             name: Tool.startJob.rawValue,
-            description: "Start a background job on the user's Hermes agent for work that takes more than a moment (research, coding, checking systems, anything needing Hermes' tools). Only call this when the user asks for such work; in a call attached to a chat, also for quick work the user starts with \"quick\" that needs Hermes' tools. The job runs in its own Hermes chat; its result arrives later on this call. Do not describe job progress unless asked.",
+            description: "Start a background job on the user's Hermes agent for work that takes more than a moment (research, coding, checking systems, anything needing Hermes' tools). Only call this when the user asks for such work; in a call attached to a chat, also for quick work the user starts with \"quick\" that needs Hermes' tools. The job runs in its own Hermes chat; its result arrives later on this call. In a call attached to a chat, work goes to that chat unless the instructions start with \"Quick:\" or say \"in the background\": add those words only when the user asked for quick or background work. Do not describe job progress unless asked.",
             parameters: [
                 "type": "OBJECT",
                 "properties": [
@@ -247,6 +247,25 @@ final class GeminiLiveToolBridge {
 
     // MARK: Calls
 
+    /// Sends `request` to the attached chat as its next turn; Hermes' reply
+    /// answers `call` (ask_thread, or a start_job routed to the chat).
+    private func sendToThread(_ call: GeminiLiveProtocol.FunctionCall, request: String) -> [Outgoing] {
+        guard !isEnding else { return [] }
+        let sent = supervisor.startThreadTurn(request: request)
+        guard let jobID = sent.jobID else {
+            return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? ""], scheduling: .whenIdle)]
+        }
+        openCalls[jobID] = call.id
+        // Without held calls it's answered now and the reply follows as
+        // a text update, like start_job's outcome.
+        guard !holdsJobCalls else { return settleOpenCalls() }
+        openCalls[jobID] = nil
+        return [.toolResponse(id: call.id, name: call.name, result: [
+            "status": "sent",
+            "message": "Sent to the chat. Hermes' reply will arrive later as a message; don't guess it.",
+        ], scheduling: nil)]
+    }
+
     func handle(_ call: GeminiLiveProtocol.FunctionCall) async -> [Outgoing] {
         switch Tool(rawValue: call.name) {
         case .startJob:
@@ -254,6 +273,14 @@ final class GeminiLiveToolBridge {
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !instructions.isEmpty else {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "instructions is required"], scheduling: .whenIdle)]
+            }
+            // Attached to a chat, work goes to that chat unless the user asked
+            // for a background job (or "quick" work) or another profile. The
+            // model reaches for start_job out of habit; routing here keeps the
+            // chat's work in the chat whichever tool it picks.
+            let profile = call.arguments["profile"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if supervisor.liveThread != nil, profile.isEmpty, !VoiceThreadRouting.wantsBackgroundJob(instructions) {
+                return sendToThread(call, request: instructions)
             }
             var createdJobID: UUID?
             // The call is registered the moment the job exists, so a
@@ -298,20 +325,7 @@ final class GeminiLiveToolBridge {
             guard !request.isEmpty else {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "request is required"], scheduling: .whenIdle)]
             }
-            guard !isEnding else { return [] }
-            let sent = supervisor.startThreadTurn(request: request)
-            guard let jobID = sent.jobID else {
-                return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? ""], scheduling: .whenIdle)]
-            }
-            openCalls[jobID] = call.id
-            // Without held calls it's answered now and the reply follows as
-            // a text update, like start_job's outcome.
-            guard !holdsJobCalls else { return settleOpenCalls() }
-            openCalls[jobID] = nil
-            return [.toolResponse(id: call.id, name: call.name, result: [
-                "status": "sent",
-                "message": "Sent to the chat. Hermes' reply will arrive later as a message; don't guess it.",
-            ], scheduling: nil)]
+            return sendToThread(call, request: request)
         case .readLastReply:
             guard !isEnding else { return [] }
             let reply = await supervisor.lastThreadReply()

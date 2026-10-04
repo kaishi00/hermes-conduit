@@ -1042,6 +1042,31 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(result["result"], "Summary.")
     }
 
+    func testGeminiStartJobInAnAttachedCallGoesToTheChatUnlessItAsksForBackgroundWork() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+
+        // The model picks start_job for ordinary work: it still lands in the chat.
+        let immediate = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "check the build"]))
+        XCTAssertEqual(immediate, [], "the call stays open while Hermes works in the chat")
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
+        XCTAssertEqual(fake.threadSubmissions.first?.0, "rt-chat")
+        XCTAssertEqual(fake.created, 0)
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Build is green.", reasoning: nil))
+        guard case .toolResponse(let id, let name, let result, _)? = bridge.pendingUpdates().first else {
+            return XCTFail("the chat's reply answers the start_job call")
+        }
+        XCTAssertEqual(id, "call_1")
+        XCTAssertEqual(name, "start_job")
+        XCTAssertEqual(result["result"], "Build is green.")
+
+        // Asked-for background, quick work, or another profile is still a job.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "start_job", arguments: ["instructions": "research flights in the background"]))
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "Quick: what's on my calendar"]))
+        XCTAssertEqual(fake.created, 2)
+        XCTAssertEqual(fake.threadSubmissions.count, 1)
+    }
+
     func testThreadToolsAreOfferedOnlyWhenAttached() {
         let plain = GeminiLiveToolBridge.declarations(webSearch: false).map(\.name)
         let attached = GeminiLiveToolBridge.declarations(webSearch: false, thread: true).map(\.name)
