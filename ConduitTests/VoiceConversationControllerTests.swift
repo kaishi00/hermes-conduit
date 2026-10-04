@@ -429,6 +429,180 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(capture.startCount, 1, "no new listening window opens over a running turn")
     }
 
+    // MARK: Steering a running turn by voice
+
+    private func makeSteerController(
+        gateway: MockGateway,
+        submitted: SubmitSpy,
+        steers: SubmitSpy,
+        interrupts: AwaitableCounter,
+        capture: MockCapture = MockCapture(permissionGranted: true)
+    ) -> VoiceConversationController {
+        let policy = RoutePolicyBox(.fullDuplex)
+        return VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { await submitted.submit($0) },
+            interrupt: { interrupts.increment(); return true },
+            steer: { await steers.submit($0) }
+        )
+    }
+
+    /// First turn submitted and Hermes working on it (`.started`, nothing
+    /// to say yet).
+    private func driveToThinking(_ controller: VoiceConversationController, submitted: SubmitSpy) async {
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        let start = Date()
+        controller.ingestAudioLevel(0.1, at: start)
+        controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
+        await submitted.waitUntilSubmitted(1)
+        // Let the utterance task settle after its submission returns.
+        await drainPendingMainActorWork()
+        let thinking = await controller.waitForState(.thinking)
+        XCTAssertTrue(thinking, "the first turn is running")
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+    }
+
+    /// Sustained speech while Hermes thinks opens the steer window; then
+    /// one utterance is spoken into it and finished by trailing silence.
+    private func speakSteer(_ controller: VoiceConversationController) async {
+        let speech = Date()
+        controller.ingestAudioLevel(0.5, at: speech)
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.31))
+        let opened = await controller.waitForState(.listening)
+        XCTAssertTrue(opened, "speech while Hermes thinks opens a steer window")
+        XCTAssertTrue(controller.isSteeringTurn)
+        let words = Date()
+        controller.ingestAudioLevel(0.1, at: words)
+        controller.ingestAudioLevel(0, at: words.addingTimeInterval(1.3))
+    }
+
+    func testSpeechWhileHermesThinksSteersTheRunningTurn() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let capture = MockCapture(permissionGranted: true)
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts, capture: capture
+        )
+        await driveToThinking(controller, submitted: submitted)
+
+        gateway.transcript = "Use the staging server instead"
+        await speakSteer(controller)
+        XCTAssertEqual(capture.lastStartIncludePreRoll, true, "the words that opened the window are kept")
+        // The reply starts while the user is still steering: its speech
+        // waits for the steer to land.
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Working on it."))
+        await steers.waitUntilSubmitted(1)
+        let speaking = await controller.waitForState(.speaking)
+
+        XCTAssertEqual(steers.texts, ["Use the staging server instead"])
+        XCTAssertEqual(submitted.texts, ["Question"], "a steer is not a new turn")
+        XCTAssertEqual(interrupts.value, 0, "steering never cancels the turn")
+        XCTAssertTrue(speaking, "the held reply plays once the steer lands")
+        XCTAssertFalse(controller.isSteeringTurn)
+        XCTAssertEqual(gateway.openCount, 1)
+        XCTAssertEqual(
+            controller.conversationTranscript.map(\.text).filter { $0 == "Use the staging server instead" }.count, 1,
+            "the steer shows in the conversation transcript"
+        )
+    }
+
+    func testSteerSpokenAfterTheTurnFinishedBecomesANewTurn() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts
+        )
+        await driveToThinking(controller, submitted: submitted)
+
+        gateway.transcript = "And the other one?"
+        let speech = Date()
+        controller.ingestAudioLevel(0.5, at: speech)
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.31))
+        let opened = await controller.waitForState(.listening)
+        XCTAssertTrue(opened)
+        // Hermes finishes while the user is mid-sentence.
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Done."))
+        let words = Date()
+        controller.ingestAudioLevel(0.1, at: words)
+        controller.ingestAudioLevel(0, at: words.addingTimeInterval(1.3))
+        await submitted.waitUntilSubmitted(2)
+
+        XCTAssertEqual(steers.texts, [], "there was no running turn left to steer")
+        XCTAssertEqual(submitted.texts, ["Question", "And the other one?"])
+        XCTAssertEqual(gateway.openCount, 0, "the finished reply's held speech is dropped")
+        XCTAssertEqual(controller.state, .thinking)
+        XCTAssertFalse(controller.isSteeringTurn)
+    }
+
+    func testSilenceAfterOpeningASteerWindowResumesTheTurn() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts
+        )
+        await driveToThinking(controller, submitted: submitted)
+
+        let speech = Date()
+        controller.ingestAudioLevel(0.5, at: speech)
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.31))
+        let opened = await controller.waitForState(.listening)
+        XCTAssertTrue(opened)
+        // Nothing more is said: the idle-silence limit (12 s, under the
+        // 60 s utterance cap) closes the window.
+        let quiet = Date().addingTimeInterval(20)
+        controller.ingestAudioLevel(0, at: quiet)
+
+        XCTAssertEqual(controller.state, .thinking)
+        XCTAssertFalse(controller.isSteeringTurn)
+        XCTAssertFalse(controller.isMicrophonePaused, "a steer window's silence never pauses the microphone")
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Answer."))
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the turn's reply plays as usual")
+        XCTAssertEqual(steers.texts, [])
+        XCTAssertEqual(interrupts.value, 0)
+    }
+
+    func testReplyToALateSteerIsSpokenAfterTheSteeredReply() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts
+        )
+        await driveToThinking(controller, submitted: submitted)
+        gateway.transcript = "Also check the logs"
+        await speakSteer(controller)
+        await steers.waitUntilSubmitted(1)
+        let resumed = await controller.waitForState(.thinking)
+        XCTAssertTrue(resumed)
+
+        // The steered reply finishes; Hermes then runs the steer that came
+        // after its last tool call as its own turn on the same session.
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "First answer."))
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "First answer."))
+        let relistened = await controller.waitForState(.listening)
+        XCTAssertTrue(relistened, "the steered reply played and the conversation listens again")
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        XCTAssertEqual(controller.state, .thinking, "the steer's own reply is adopted")
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Logs are clean."))
+        let speaking = await controller.waitForState(.speaking)
+
+        XCTAssertTrue(speaking, "the steer's reply is spoken too")
+        XCTAssertEqual(gateway.openCount, 2)
+        XCTAssertEqual(submitted.texts, ["Question"])
+    }
+
     func testTalkingOverACompletedReplyStopsSpeechWithoutCancellingAnything() async {
         let capture = MockCapture(permissionGranted: true)
         let interrupts = AwaitableCounter()

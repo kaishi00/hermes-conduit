@@ -257,6 +257,9 @@ struct VoiceConversationSheet: View {
     private var statusTitle: String {
         if isInterruptAvailable { return AppLocalization.string("Hermes is speaking") }
         if controller.isMicrophonePaused { return AppLocalization.string("Microphone paused") }
+        if controller.isSteeringTurn, controller.state == .listening || controller.state == .transcribing {
+            return AppLocalization.string("Steering Hermes")
+        }
         switch controller.state {
         case .idle: return AppLocalization.string("Ready to listen")
         case .listening: return AppLocalization.string("Listening")
@@ -271,11 +274,14 @@ struct VoiceConversationSheet: View {
     private var statusDetail: String {
         if isInterruptAvailable { return AppLocalization.string("Tap Interrupt to speak.") }
         if controller.isMicrophonePaused { return AppLocalization.string("Tap Listen when you are ready to resume.") }
+        if controller.isSteeringTurn, controller.state == .listening || controller.state == .transcribing {
+            return AppLocalization.string("Hermes keeps working with your words added.")
+        }
         switch controller.state {
         case .idle: return AppLocalization.string("Tap Listen when you are ready.")
         case .listening: return AppLocalization.string("Pause the microphone whenever you need a break.")
         case .transcribing: return AppLocalization.string("Sending your speech to Hermes.")
-        case .thinking: return AppLocalization.string("You can talk over Hermes once it starts answering.")
+        case .thinking: return AppLocalization.string("Speak to steer Hermes while it works.")
         case .speaking: return AppLocalization.string("Speak over Hermes to start a new turn.")
         case .muted: return AppLocalization.string("Assistant text is still continuing in chat.")
         case .failed(let detail): return detail

@@ -16408,6 +16408,26 @@
         }
       }
     },
+    "Steering Hermes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在引导 Hermes"
+          }
+        }
+      }
+    },
+    "Hermes keeps working with your words added." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 会继续处理，并加入你说的话。"
+          }
+        }
+      }
+    },
     "Speak over Hermes to start a new turn." : {
       "localizations" : {
         "zh-Hans" : {
@@ -16418,12 +16438,12 @@
         }
       }
     },
-    "You can talk over Hermes once it starts answering." : {
+    "Speak to steer Hermes while it works." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes 开始回答后，你就可以直接插话。"
+            "value" : "Hermes 处理时，直接说话即可引导它。"
           }
         }
       }
