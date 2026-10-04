@@ -136,7 +136,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
         let environment = await environmentResult
 
         guard case .success(let configObject) = config else {
-            let reason = "This gateway does not expose Hermes voice configuration. Text chat is unchanged."
+            let reason = AppLocalization.string("This Hermes server doesn't offer voice settings. Update Hermes to use Voice. Text chat still works.")
             snapshot = .unavailable(profile: profile, reason: reason)
             errorMessage = Self.message(from: config)
             return

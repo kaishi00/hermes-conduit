@@ -20961,6 +20961,16 @@
           }
         }
       }
+    },
+    "This Hermes server doesn't offer voice settings. Update Hermes to use Voice. Text chat still works." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器不提供语音设置。请更新 Hermes 以使用语音。文字聊天仍可正常使用。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
