@@ -275,8 +275,8 @@ struct VoiceConversationSheet: View {
         case .idle: return AppLocalization.string("Tap Listen when you are ready.")
         case .listening: return AppLocalization.string("Pause the microphone whenever you need a break.")
         case .transcribing: return AppLocalization.string("Sending your speech to Hermes.")
-        case .thinking: return AppLocalization.string("Speak to interrupt and start a new turn.")
-        case .speaking: return AppLocalization.string("Speak over Hermes to interrupt it.")
+        case .thinking: return AppLocalization.string("You can talk over Hermes once it starts answering.")
+        case .speaking: return AppLocalization.string("Speak over Hermes to start a new turn.")
         case .muted: return AppLocalization.string("Assistant text is still continuing in chat.")
         case .failed(let detail): return detail
         }

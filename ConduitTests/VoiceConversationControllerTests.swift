@@ -393,7 +393,7 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(gateway.transcriptionCount, 0)
     }
 
-    func testBargeInRequiresSustainedSpeech() async {
+    func testSpeechWhileHermesThinksDoesNotInterruptTheTurn() async {
         let capture = MockCapture(permissionGranted: true)
         let interrupts = AwaitableCounter()
         let gateway = MockGateway(transcript: "Question")
@@ -404,22 +404,77 @@ final class VoiceConversationControllerTests: XCTestCase {
             submit: { _ in true },
             interrupt: { interrupts.increment(); return true }
         )
+        controller.beginVoiceTurn(sessionID: "session")
         await controller.startListening()
         let start = Date()
         controller.ingestAudioLevel(0.1, at: start)
         controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
         await gateway.waitUntilTranscriptionStarted()
-        XCTAssertEqual(controller.state, .thinking)
-        let bargeInStart = Date()
-        controller.ingestAudioLevel(0.1, at: bargeInStart)
-        controller.ingestAudioLevel(0.1, at: bargeInStart.addingTimeInterval(0.31))
-        await interrupts.waitUntil(1)
-        let relistened = await controller.waitForState(.listening)
+        let submitted = await controller.waitForState(.thinking)
+        XCTAssertTrue(submitted, "the utterance pipeline submitted the turn")
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
 
-        XCTAssertEqual(interrupts.value, 1)
-        XCTAssertEqual(controller.lastBargeInState, .thinking)
-        XCTAssertTrue(relistened, "barge-in reopens listening")
+        // Sustained speech while Hermes works on the turn: talking over is
+        // only for a reply that is audibly playing, so the turn carries on.
+        // Classification is synchronous in ingestAudioLevel.
+        let speech = Date()
+        controller.ingestAudioLevel(0.5, at: speech)
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.31))
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.62))
+        await drainPendingMainActorWork()
+
+        XCTAssertEqual(interrupts.value, 0, "speech while Hermes thinks must not cancel the turn")
+        XCTAssertNil(controller.lastBargeInState)
+        XCTAssertEqual(controller.state, .thinking)
+        XCTAssertEqual(capture.startCount, 1, "no new listening window opens over a running turn")
+    }
+
+    func testTalkingOverACompletedReplyStopsSpeechWithoutCancellingAnything() async {
+        let capture = MockCapture(permissionGranted: true)
+        let interrupts = AwaitableCounter()
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let playback = MockPlayback()
+        let gate = InterruptParkingGate()
+        playback.drainGate = gate
+        let policy = RoutePolicyBox(.fullDuplex)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: playback,
+            gateway: gateway,
+            routePolicyProvider: { policy.policy },
+            submit: { _ in true },
+            interrupt: { interrupts.increment(); return true }
+        )
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        let start = Date()
+        controller.ingestAudioLevel(0.1, at: start)
+        controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
+        await gateway.waitUntilTranscriptionStarted()
+        let submitted = await controller.waitForState(.thinking)
+        XCTAssertTrue(submitted, "the utterance pipeline submitted the turn")
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Answer."))
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the assistant reply is audible")
+        // The whole reply has arrived; its last words are still playing
+        // (drain parked), so the Hermes turn is already over.
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Answer."))
+        await gate.waitUntilEntered()
+        XCTAssertEqual(controller.state, .speaking)
+
+        let talkOver = Date()
+        controller.ingestAudioLevel(0.5, at: talkOver)
+        controller.ingestAudioLevel(0.5, at: talkOver.addingTimeInterval(0.31))
+        let relistened = await controller.waitForState(.listening)
+        gate.release()
+        await drainPendingMainActorWork()
+
+        XCTAssertTrue(relistened, "talking over the reply opens the next turn")
+        XCTAssertEqual(controller.lastBargeInState, .speaking)
+        XCTAssertEqual(interrupts.value, 0, "a finished turn has nothing to cancel")
         XCTAssertEqual(controller.state, .listening)
+        XCTAssertEqual(capture.lastStartIncludePreRoll, true)
     }
 
     func testVoiceDefaultsMirrorHermesDesktopVAD() {
@@ -874,11 +929,13 @@ final class VoiceConversationControllerTests: XCTestCase {
     func testStaleCancelledAssistantFailureAfterBargeInCannotFailNextVoiceTurn() async {
         let capture = MockCapture(permissionGranted: true)
         let interrupts = AwaitableCounter()
-        let gateway = MockGateway(transcript: "Next turn")
+        let gateway = MockGateway(transcript: "Next turn", startsPlaybackOnOpen: true)
+        let policy = RoutePolicyBox(.fullDuplex)
         let controller = VoiceConversationController(
             capture: capture,
             playback: MockPlayback(),
             gateway: gateway,
+            routePolicyProvider: { policy.policy },
             submit: { _ in true },
             interrupt: { interrupts.increment(); return true }
         )
@@ -889,7 +946,12 @@ final class VoiceConversationControllerTests: XCTestCase {
         controller.ingestAudioLevel(0.1, at: first)
         controller.ingestAudioLevel(0, at: first.addingTimeInterval(1.3))
         await gateway.waitUntilTranscriptionStarted()
+        let submitted = await controller.waitForState(.thinking)
+        XCTAssertTrue(submitted, "the utterance pipeline submitted the turn")
         controller.receiveAssistantEvent(.started(sessionID: "session"))
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Answer."))
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "talk-over needs an audible reply")
 
         let bargeIn = Date()
         controller.ingestAudioLevel(0.1, at: bargeIn)
@@ -1712,7 +1774,7 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
         XCTAssertEqual(interrupts.value, 0)
     }
 
-    func testMutedOutputNeverSuspendsCaptureAndKeepsBargeIn() async {
+    func testMutedOutputNeverSuspendsCaptureOrInterruptsTheTurn() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
         let interrupts = AwaitableCounter()
@@ -1748,12 +1810,14 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
         XCTAssertEqual(capture.pauseCount, 0)
         XCTAssertEqual(gateway.openCount, 0, "muted output never opens a speech stream")
 
-        // With nothing audible playing, the user can still barge in.
-        let bargeInStart = Date()
-        controller.ingestAudioLevel(0.5, at: bargeInStart)
-        controller.ingestAudioLevel(0.5, at: bargeInStart.addingTimeInterval(0.31))
-        await interrupts.waitUntil(1)
-        XCTAssertEqual(interrupts.value, 1)
+        // With nothing audible playing there is no reply to talk over:
+        // speech would only cut the running turn short, so it is ignored.
+        let speech = Date()
+        controller.ingestAudioLevel(0.5, at: speech)
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.31))
+        await drainPendingMainActorWork()
+        XCTAssertEqual(interrupts.value, 0)
+        XCTAssertEqual(controller.state, .thinking)
     }
 
     func testMutingDuringPlaybackEndsSuspensionAndRestoresMonitoring() async {
@@ -1779,11 +1843,14 @@ final class VoiceSpeakerSafeBargeInTests: XCTestCase {
         XCTAssertFalse(controller.isPlaybackCaptureSuspended, "muting stops the audible playback that justified suspension")
         XCTAssertEqual(capture.resumeCount, 1, "capture becomes live again for monitoring")
 
-        let bargeInStart = Date()
-        controller.ingestAudioLevel(0.5, at: bargeInStart)
-        controller.ingestAudioLevel(0.5, at: bargeInStart.addingTimeInterval(0.31))
-        await interrupts.waitUntil(1)
-        XCTAssertEqual(interrupts.value, 1, "with output muted nothing audible plays, so barge-in stays live")
+        // Muted, the reply no longer plays: speech can't talk over it and
+        // must not cancel the turn that is still running.
+        let speech = Date()
+        controller.ingestAudioLevel(0.5, at: speech)
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.31))
+        await drainPendingMainActorWork()
+        XCTAssertEqual(interrupts.value, 0, "with output muted there is no reply to talk over")
+        XCTAssertEqual(controller.state, .muted)
     }
 
     func testRouteChangeOntoSpeakerDuringPlaybackSuspendsCaptureImmediately() async {

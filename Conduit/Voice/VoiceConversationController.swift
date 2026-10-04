@@ -727,6 +727,12 @@ final class VoiceConversationController: ObservableObject {
             // even from a stale level event that slipped past the paused
             // tap.
             guard !isPlaybackCaptureSuspended else { break }
+            // Talk-over only: speech while Hermes is still working on the
+            // turn is ignored, so it can't cut the turn short.
+            guard isTalkOverAvailable else {
+                bargeInStartedAt = nil
+                break
+            }
             if level >= configuration.bargeInActivityThreshold {
                 if bargeInStartedAt == nil { bargeInStartedAt = date }
                 if let started = bargeInStartedAt,
@@ -1163,6 +1169,16 @@ final class VoiceConversationController: ObservableObject {
         isRuntimeSuspended = false
     }
 
+    /// Whether speech may talk over Hermes right now: only while its reply
+    /// is audibly playing, or after the reply arrived in full while the
+    /// last of it still plays. While Hermes is thinking, working between
+    /// spoken sentences, or answering with output muted, the user's speech
+    /// would only cut the turn short, so it is ignored.
+    private var isTalkOverAvailable: Bool {
+        guard state == .speaking else { return false }
+        return playback.isPlaying || !isAwaitingVoiceAssistant
+    }
+
     private func scheduleBargeIn() {
         guard bargeInTask == nil else { return }
         let generation = operationGeneration
@@ -1181,8 +1197,11 @@ final class VoiceConversationController: ObservableObject {
         // playback or retire the turn it is supposed to protect.
         guard !Task.isCancelled else { return }
         guard !isPlaybackCaptureSuspended else { return }
-        guard state == .thinking || state == .speaking || state == .muted else { return }
+        guard isTalkOverAvailable else { return }
         lastBargeInState = state
+        // A reply that already arrived in full has no Hermes turn left to
+        // cancel: talking over it only stops the speech.
+        let turnStillRunning = isAwaitingVoiceAssistant
         playback.stop()
         cancelSpeechDrainAndStream()
         clearSpeechQueue()
@@ -1194,7 +1213,7 @@ final class VoiceConversationController: ObservableObject {
         // The barge-in proceeds on the attempt: its local recovery (stop
         // playback, retire the turn, relisten) does not depend on the
         // server-side cancellation result.
-        _ = await interrupt()
+        if turnStillRunning { _ = await interrupt() }
         // Cancellation is re-checked after the await: the suspension may have
         // engaged while the interruption was in flight, and reopening capture
         // now would hear the assistant's own speaker output.

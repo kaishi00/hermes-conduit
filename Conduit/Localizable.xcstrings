@@ -16408,22 +16408,22 @@
         }
       }
     },
-    "Speak over Hermes to interrupt it." : {
+    "Speak over Hermes to start a new turn." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "直接说话即可打断 Hermes。"
+            "value" : "直接说话即可打断 Hermes 并开始新一轮对话。"
           }
         }
       }
     },
-    "Speak to interrupt and start a new turn." : {
+    "You can talk over Hermes once it starts answering." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "开口说话即可打断并开始新一轮对话。"
+            "value" : "Hermes 开始回答后，你就可以直接插话。"
           }
         }
       }
