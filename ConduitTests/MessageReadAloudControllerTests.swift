@@ -411,7 +411,7 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertNotNil(MessageReadAloudController.unavailableReason(isConnected: true, isVoiceEnabled: false, snapshot: ttsOnly))
     }
 
-    func testSceneBackgroundCancelsActivePlayback() async {
+    func testSceneBackgroundKeepsActivePlaybackButRefusesNewTaps() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway(emitsPCM: true)
         gateway.pauseAfterEmission = true
@@ -421,16 +421,76 @@ final class MessageReadAloudControllerTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(controller.state, .playing(messageID: "message-a"))
 
+        // Home, lock, or Control Center: the reply keeps reading (#373).
         controller.setForegroundActive(false)
-        XCTAssertEqual(controller.state, .idle)
-        XCTAssertEqual(gateway.streams.last?.cancelCount, 1)
-        XCTAssertFalse(playback.isPlaying)
+        XCTAssertEqual(controller.state, .playing(messageID: "message-a"))
+        XCTAssertEqual(gateway.streams.last?.cancelCount, 0)
+        XCTAssertTrue(playback.isPlaying)
 
         controller.toggle(messageID: "message-b", content: "Refused")
-        XCTAssertEqual(gateway.openCount, 1, "Read aloud must not start while backgrounded")
+        XCTAssertEqual(gateway.openCount, 1, "A new read aloud must not start while backgrounded")
+        XCTAssertEqual(controller.state, .playing(messageID: "message-a"))
+
+        // The playing reply can still be stopped from the background (its
+        // own toggle), and foreground return admits new taps again.
+        controller.toggle(messageID: "message-a", content: "Background")
         XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(gateway.streams.last?.cancelCount, 1)
 
         controller.setForegroundActive(true)
+        controller.toggle(messageID: "message-b", content: "Admitted")
+        XCTAssertEqual(controller.state, .preparing(messageID: "message-b"))
+        controller.stop()
+    }
+
+    func testBackgroundedPlaybackFinishesNaturally() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.toggle(messageID: "message-a", content: "Locked phone")
+        controller.setForegroundActive(false)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(gateway.streams.last?.appended, ["Locked phone"])
+        XCTAssertEqual(gateway.streams.last?.finishCount, 1)
+        XCTAssertEqual(gateway.streams.last?.cancelCount, 0)
+        controller.setForegroundActive(true)
+    }
+
+    func testBackgroundActivityIsHeldForEachOperationAndReleasedOnSettle() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        var began = 0
+        var ended = 0
+        let controller = MessageReadAloudController(
+            playback: playback,
+            gateway: gateway,
+            beginBackgroundActivity: {
+                began += 1
+                return { ended += 1 }
+            }
+        )
+
+        controller.toggle(messageID: "message-a", content: "Natural finish")
+        XCTAssertEqual(began, 1)
+        XCTAssertEqual(ended, 0)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(ended, 1, "A finished reply releases its background activity")
+
+        let blocking = MockReadAloudGateway(emitsPCM: true)
+        blocking.pauseAfterEmission = true
+        controller.setGateway(blocking)
+        controller.toggle(messageID: "message-b", content: "Stopped")
+        controller.toggle(messageID: "message-c", content: "Takes over")
+        XCTAssertEqual(began, 3)
+        XCTAssertEqual(ended, 2, "A superseded operation releases its activity before the next one begins")
+        controller.stop()
+        XCTAssertEqual(ended, 3)
+        controller.stop()
+        XCTAssertEqual(ended, 3, "Repeated stops never end an activity twice")
     }
 
     func testGatewayReplacementCancelsActivePlayback() async {

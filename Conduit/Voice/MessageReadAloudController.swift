@@ -8,9 +8,14 @@
 //  touches microphone, STT, or voice-conversation state, so it stays usable
 //  on profiles that configure TTS without transcription.
 //
+//  Playback outlives the app's foreground (#373): a reply that started on
+//  screen keeps playing with the app in the background or the phone locked,
+//  like a podcast. Only starting a new reply needs the app on screen.
+//
 
 import Combine
 import Foundation
+import UIKit
 
 @MainActor
 final class MessageReadAloudController: ObservableObject {
@@ -33,20 +38,41 @@ final class MessageReadAloudController: ObservableObject {
     private var playbackTask: Task<Void, Never>?
     private var operationGeneration: UInt64 = 0
     private var isForegroundActive = true
+    /// Keeps the app running while an operation has no audio sounding yet
+    /// (the stream is still opening when the phone is locked). Once audio
+    /// plays, the `audio` background mode keeps the app alive on its own.
+    private let beginBackgroundActivity: @MainActor () -> @MainActor () -> Void
+    private var endBackgroundActivity: (@MainActor () -> Void)?
 
     init(
         playback: SpeechPlaybackService? = nil,
         gateway: VoiceGatewayService? = nil,
         playbackRate: @escaping @MainActor () -> Float = { ReadAloudSpeed.current().rate },
+        beginBackgroundActivity: (@MainActor () -> @MainActor () -> Void)? = nil,
         reportError: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         self.playback = playback ?? AVSpeechPlaybackService()
         self.activeGateway = gateway
         self.playbackRate = playbackRate
+        self.beginBackgroundActivity = beginBackgroundActivity ?? Self.beginApplicationBackgroundTask
         self.reportError = reportError
     }
 
     deinit { playbackTask?.cancel() }
+
+    private static func beginApplicationBackgroundTask() -> @MainActor () -> Void {
+        var taskID = UIBackgroundTaskIdentifier.invalid
+        let end: @MainActor () -> Void = {
+            guard taskID != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+        taskID = UIApplication.shared.beginBackgroundTask(
+            withName: "conduit.readAloud",
+            expirationHandler: { MainActor.assumeIsolated { end() } }
+        )
+        return end
+    }
 
     var gateway: VoiceGatewayService? { activeGateway }
 
@@ -82,6 +108,8 @@ final class MessageReadAloudController: ObservableObject {
             return
         }
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        // Starting is an on-screen action; a reply already playing is not
+        // tied to the foreground and keeps going in the background.
         guard isForegroundActive else { return }
         stop()
         startPlayback(messageID: messageID, content: content)
@@ -99,7 +127,7 @@ final class MessageReadAloudController: ObservableObject {
         task?.cancel()
         stream?.cancel()
         playback.stop()
-        state = .idle
+        settle(.idle)
     }
 
     /// The active stream belongs to the gateway that opened it. A replaced or
@@ -119,16 +147,18 @@ final class MessageReadAloudController: ObservableObject {
         stop()
     }
 
+    /// Records whether the app is on screen. Leaving the foreground (Home,
+    /// lock, Control Center) never stops a reply that is already playing
+    /// (#373); it only refuses new taps until the app is back.
     func setForegroundActive(_ active: Bool) {
         isForegroundActive = active
-        guard !active else { return }
-        stop()
     }
 
     private func startPlayback(messageID: String, content: String) {
         operationGeneration &+= 1
         let generation = operationGeneration
         state = .preparing(messageID: messageID)
+        endBackgroundActivity = beginBackgroundActivity()
         playbackTask = Task { [weak self] in
             await self?.runPlayback(generation: generation, messageID: messageID, content: content)
         }
@@ -181,7 +211,7 @@ final class MessageReadAloudController: ObservableObject {
             try playback.finish()
             await playback.drain()
             guard isCurrent(generation) else { return }
-            state = .idle
+            settle(.idle)
         } catch {
             // A superseded operation must not touch shared state: the stream
             // reference may now belong to a newer operation, and only that
@@ -194,7 +224,7 @@ final class MessageReadAloudController: ObservableObject {
                 // The stream died on its own (or was stopped); settle back to
                 // idle so the message is tappable again.
                 playback.stop()
-                state = .idle
+                settle(.idle)
                 return
             }
             // The stream can die after audio is already sounding; settle the
@@ -213,8 +243,17 @@ final class MessageReadAloudController: ObservableObject {
 
     private func fail(messageID: String, message: String, generation: UInt64) {
         guard isCurrent(generation) else { return }
-        state = .failed(messageID: messageID, message: message)
+        settle(.failed(messageID: messageID, message: message))
         reportError(message)
+    }
+
+    /// Ends the operation: the background activity it held is released with
+    /// the state change, on every terminal path.
+    private func settle(_ terminal: State) {
+        state = terminal
+        let end = endBackgroundActivity
+        endBackgroundActivity = nil
+        end?()
     }
 
     private func isCancellation(_ error: Error) -> Bool {
@@ -225,6 +264,6 @@ final class MessageReadAloudController: ObservableObject {
     }
 
     private func isCurrent(_ generation: UInt64) -> Bool {
-        generation == operationGeneration && isForegroundActive
+        generation == operationGeneration
     }
 }
