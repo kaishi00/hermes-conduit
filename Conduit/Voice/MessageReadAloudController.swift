@@ -168,8 +168,11 @@ final class MessageReadAloudController: ObservableObject {
 
     /// Now Playing pause: holds the playing reply in place. Only a reply
     /// that is already sounding can pause.
-    func pause() {
-        guard case .playing = state, !isPaused, playback.pause() else { return }
+    @discardableResult
+    func pause() -> Bool {
+        guard case .playing = state else { return false }
+        guard !isPaused else { return true }
+        guard playback.pause() else { return false }
         isPaused = true
         nowPlaying.setPaused(true)
         let delay = pausedStopDelay
@@ -181,18 +184,23 @@ final class MessageReadAloudController: ObservableObject {
                   self.playback.isPaused else { return }
             self.stop()
         }
+        return true
     }
 
-    func resume() {
-        guard isPaused, case .playing = state else { return }
+    @discardableResult
+    func resume() -> Bool {
+        guard case .playing = state else { return false }
+        guard isPaused else { return true }
         playback.resume()
         isPaused = false
         pausedStopTask?.cancel()
         pausedStopTask = nil
         nowPlaying.setPaused(false)
+        return true
     }
 
-    func togglePause() {
+    @discardableResult
+    func togglePause() -> Bool {
         isPaused ? resume() : pause()
     }
 
@@ -321,10 +329,14 @@ final class MessageReadAloudController: ObservableObject {
         if case .preparing(let id) = state, id == messageID {
             state = .playing(messageID: messageID)
             nowPlaying.begin(title: nowPlayingTitle, commands: ReadAloudRemoteCommands(
-                pause: { [weak self] in self?.pause() },
-                resume: { [weak self] in self?.resume() },
-                togglePause: { [weak self] in self?.togglePause() },
-                stop: { [weak self] in self?.stop() }
+                pause: { [weak self] in self?.pause() ?? false },
+                resume: { [weak self] in self?.resume() ?? false },
+                togglePause: { [weak self] in self?.togglePause() ?? false },
+                stop: { [weak self] in
+                    guard let self, self.state != .idle else { return false }
+                    self.stop()
+                    return true
+                }
             ))
         }
     }

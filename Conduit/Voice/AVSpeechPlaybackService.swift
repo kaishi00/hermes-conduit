@@ -311,6 +311,9 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         playbackGeneration &+= 1
         isFinishing = false
         if isPaused { endPause() }
+        // Pause time only matters to this stream's drain watchdog, which
+        // the generation bump above already retired.
+        totalPausedDuration = .zero
         teardownGraph()
         encodedPlayer?.stop()
         encodedPlayer = nil

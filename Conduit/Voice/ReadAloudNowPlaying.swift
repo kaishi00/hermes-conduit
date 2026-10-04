@@ -11,12 +11,13 @@
 import Foundation
 import MediaPlayer
 
-/// The remote actions Read Aloud answers.
+/// The remote actions Read Aloud answers. Each returns false when it was
+/// refused (nothing playing to pause, a reply that already settled).
 struct ReadAloudRemoteCommands {
-    var pause: @MainActor () -> Void
-    var resume: @MainActor () -> Void
-    var togglePause: @MainActor () -> Void
-    var stop: @MainActor () -> Void
+    var pause: @MainActor () -> Bool
+    var resume: @MainActor () -> Bool
+    var togglePause: @MainActor () -> Bool
+    var stop: @MainActor () -> Bool
 }
 
 @MainActor
@@ -34,17 +35,20 @@ final class SystemReadAloudNowPlaying: ReadAloudNowPlayingPresenting {
     private var targets: [(MPRemoteCommand, Any)] = []
 
     deinit {
-        // The command center is a singleton that would keep the handlers.
+        // The command center is a singleton that would keep the handlers;
+        // the owner's deinit normally runs end() first.
         for (command, target) in targets {
             command.removeTarget(target)
+            command.isEnabled = false
+        }
+        if !targets.isEmpty {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         }
     }
 
     func begin(title: String, commands: ReadAloudRemoteCommands) {
         end()
         let center = MPRemoteCommandCenter.shared()
-        // Handlers hop to the main actor rather than assuming it: the
-        // framework does not document which queue delivers them.
         register(center.pauseCommand) { commands.pause() }
         register(center.playCommand) { commands.resume() }
         register(center.togglePlayPauseCommand) { commands.togglePause() }
@@ -91,11 +95,17 @@ final class SystemReadAloudNowPlaying: ReadAloudNowPlayingPresenting {
         ]
     }
 
-    private func register(_ command: MPRemoteCommand, _ action: @escaping @MainActor () -> Void) {
+    private func register(_ command: MPRemoteCommand, _ action: @escaping @MainActor () -> Bool) {
         command.isEnabled = true
         let target = command.addTarget { _ in
-            Task { @MainActor in action() }
-            return .success
+            // Delivered on the main thread in practice, which lets a refused
+            // action report failure; the queue is not documented, so hop
+            // rather than trap if it ever isn't.
+            guard Thread.isMainThread else {
+                Task { @MainActor in _ = action() }
+                return .success
+            }
+            return MainActor.assumeIsolated { action() } ? .success : .commandFailed
         }
         targets.append((command, target))
     }
