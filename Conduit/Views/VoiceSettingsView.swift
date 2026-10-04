@@ -316,7 +316,8 @@ struct VoiceSettingsView: View {
             }
             if voiceEnabled {
                 setupChecklist
-                testButtons
+                // The tests run classic Voice's speech route.
+                if voiceMode == .classic { testButtons }
             }
             if let error = service.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -458,7 +459,9 @@ struct VoiceSettingsView: View {
         }
         return setupStep(
             title,
-            detail: AppLocalization.string("\(name) isn't ready on Hermes. Choose another under Assistant speech below."),
+            detail: service.snapshot.selectedTTSProvider.isEmpty
+                ? AppLocalization.string("No assistant voice is set up yet. Choose one under Assistant speech below.")
+                : AppLocalization.string("\(name) isn't ready on Hermes. Choose another under Assistant speech below."),
             state: service.isLoading || !service.snapshot.capability.isGatewayConnected ? .pending : .attention
         )
     }
@@ -521,7 +524,7 @@ struct VoiceSettingsView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 46)
                 }
-                .disabled(actions.runASRTest == nil || isRunningTest || !supportsSelectedTranscription || voiceMode != .classic)
+                .disabled(actions.runASRTest == nil || isRunningTest || !supportsSelectedTranscription)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.14))
                 .accessibilityHint(AppLocalization.string("Records a short sample and shows what speech to text heard"))
 
@@ -530,7 +533,7 @@ struct VoiceSettingsView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 46)
                 }
-                .disabled(actions.runTTSTest == nil || isRunningTest || !service.snapshot.capability.supportsSpeech || voiceMode != .classic)
+                .disabled(actions.runTTSTest == nil || isRunningTest || !service.snapshot.capability.supportsSpeech)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
                 .accessibilityHint(AppLocalization.string("Plays a short sample in the assistant's voice"))
             }
@@ -607,9 +610,9 @@ struct VoiceSettingsView: View {
         var title: String {
             switch self {
             case .classic: return AppLocalization.string("Classic")
-            case .gemini: return "Gemini Live"
-            case .gpt: return "GPT-Live"
-            case .grok: return "Grok Live"
+            case .gemini: return AppLocalization.string("Gemini Live")
+            case .gpt: return AppLocalization.string("GPT-Live")
+            case .grok: return AppLocalization.string("Grok Live")
             }
         }
 
