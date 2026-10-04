@@ -95,6 +95,8 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         else {
             subviews.forEach { $0.isHidden = true }
             stopRepositioningDisplayLink()
+            // The next selection sizes Copy afresh.
+            copyPillWidthDuringFeedback = nil
             return
         }
 
@@ -110,8 +112,10 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
 
         anchorHandle?.isHidden = false
         focusHandle?.isHidden = false
+        // Quote shows inside a chat while the composer takes input.
+        let quote = quoteAction?.isAvailable == true ? quotePill : nil
         copyPill?.isHidden = false
-        quotePill?.isHidden = quoteAction == nil
+        quotePill?.isHidden = quote == nil
         copyPillBackdrop?.isHidden = false
         startRepositioningDisplayLink()
 
@@ -122,7 +126,6 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
             let copyFitted = pill.intrinsicContentSize
             let copyWidth = copyPillWidthDuringFeedback ?? copyFitted.width
             // Quote sits right of Copy on the same backdrop.
-            let quote = quoteAction == nil ? nil : quotePill
             let quoteFitted = quote?.intrinsicContentSize ?? .zero
             let pillSize = CGSize(
                 width: copyWidth + quoteFitted.width,
@@ -387,10 +390,11 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         guard
             let coordinator,
             let quoteAction,
+            quoteAction.isAvailable,
             coordinator.hasActiveSelection
         else { return }
         let selected = coordinator.copiedAttributedTextForActiveSelection().string
-        guard !selected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard selected.contains(where: { !$0.isWhitespace }) else { return }
         coordinator.clearSelection()
         setNeedsLayout()
         quoteAction(selected)

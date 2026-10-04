@@ -1271,9 +1271,9 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
-    /// A quote waiting for the composer (issue #385); see
-    /// AppState+ComposerQuote.swift.
-    @Published var composerQuoteRequest: ComposerQuoteRequest?
+    /// A quote waiting for the composer (#385). ComposerBar, which owns the
+    /// draft, applies it and then consumes it.
+    @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
 
     // MARK: - Capabilities
 
@@ -5343,6 +5343,41 @@ final class AppState: ObservableObject {
         if chatResumeRestorationRequest != nil {
             chatResumeRestorationRequest = nil
         }
+    }
+
+    // MARK: - Quoting into the composer (#385)
+
+    /// The transcript offers Quote only while the composer takes input: not
+    /// in the read-only saved copy, nor while the chat is reconnecting.
+    func canQuoteIntoComposer() -> Bool {
+        composerIsEnabled
+    }
+
+    /// Selected transcript text goes into the draft as a `>` quote.
+    func quoteIntoComposer(_ selectedText: String) {
+        guard canQuoteIntoComposer() else { return }
+        let quote = ChatQuote.blockquote(selectedText)
+        guard !quote.isEmpty else { return }
+        composerQuoteRequest = ComposerQuoteRequest(content: .text(quote))
+    }
+
+    /// A reply's Quote button: the whole reply rides along with the next
+    /// message, shown in the composer as a removable "Replying to…" chip.
+    func replyInComposer(to message: ChatMessage) {
+        guard canQuoteIntoComposer() else { return }
+        guard message.content.contains(where: { !$0.isWhitespace }) else { return }
+        let reference = ComposerReplyReference(
+            authorName: profileDisplayName(activeProfile),
+            text: message.content
+        )
+        composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
+    }
+
+    /// The composer took the quote: drop it, so the quoted text is not kept
+    /// around after it has landed.
+    func consumeComposerQuoteRequest(_ id: UUID) {
+        guard composerQuoteRequest?.id == id else { return }
+        composerQuoteRequest = nil
     }
 
     /// A genuine composer edit is explicit ownership of the visible

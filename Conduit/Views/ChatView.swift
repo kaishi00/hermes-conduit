@@ -238,10 +238,15 @@ struct ChatView: View {
             MarkdownSelectionChromeRoot()
         }
         // Selected transcript text can be quoted into the composer (#385),
-        // from the native selection menu and the cross-block pill alike.
+        // from the native selection menu and the cross-block pill alike,
+        // while the composer takes input.
         .environment(
             \.chatQuoteAction,
-            ChatQuoteAction(owner: appState, handler: appState.quoteIntoComposer)
+            ChatQuoteAction(
+                owner: appState,
+                isAvailable: appState.canQuoteIntoComposer,
+                handler: appState.quoteIntoComposer
+            )
         )
     }
 
@@ -1333,8 +1338,8 @@ struct AssistantMessageActions: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .disabled(message.content.isEmpty || appState.offlineChatPresentation != nil)
-        .opacity(appState.offlineChatPresentation != nil ? 0.45 : 1)
+        .disabled(!appState.canQuoteIntoComposer() || !message.content.contains(where: { !$0.isWhitespace }))
+        .opacity(appState.canQuoteIntoComposer() ? 1 : 0.45)
         .accessibilityLabel(AppLocalization.string("Quote this response"))
 
         Button {

@@ -1255,8 +1255,9 @@ struct ComposerBar: View {
                 replyReference = reference
             }
         }
+        appState.consumeComposerQuoteRequest(request.id)
         Haptics.selection()
-        if appState.composerIsEnabled { isFocused = true }
+        isFocused = true
     }
 
     private func replyReferenceChip(_ reference: ComposerReplyReference) -> some View {

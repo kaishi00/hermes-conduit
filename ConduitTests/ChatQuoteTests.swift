@@ -8,8 +8,8 @@ private final class QuoteRecorder {
     var quotes: [String] = []
 
     @MainActor
-    func action() -> ChatQuoteAction {
-        ChatQuoteAction(owner: self) { [weak self] text in self?.quotes.append(text) }
+    func action(available: Bool = true) -> ChatQuoteAction {
+        ChatQuoteAction(owner: self, isAvailable: { available }) { [weak self] text in self?.quotes.append(text) }
     }
 }
 
@@ -62,7 +62,7 @@ extension ChatTextSelectionTests {
     }
 
     func testReplyReferenceRidesWithMessagesButNotSlashCommands() {
-        let reference = ComposerReplyReference(messageID: "m1", authorName: "Hermes", text: "Earlier answer")
+        let reference = ComposerReplyReference(authorName: "Hermes", text: "Earlier answer")
         let envelope = "[Replying to your earlier message]\n> Earlier answer\n\n"
         XCTAssertEqual(
             ComposerReplyReference.outboundText("Thanks", hasAttachments: false, replyingTo: reference),
@@ -104,7 +104,11 @@ extension ChatTextSelectionTests {
         // Outside a chat the delegate defers to the system menu.
         XCTAssertNil(delegate.textView?(textView, editMenuForTextIn: range, suggestedActions: suggested) ?? nil)
 
+        // So it does while the composer is locked (saved copy, reconnecting).
         let recorder = QuoteRecorder()
+        bridge.quoteAction = recorder.action(available: false)
+        XCTAssertNil(delegate.textView?(textView, editMenuForTextIn: range, suggestedActions: suggested) ?? nil)
+
         bridge.quoteAction = recorder.action()
         let menu = try XCTUnwrap(delegate.textView?(textView, editMenuForTextIn: range, suggestedActions: suggested) ?? nil)
         XCTAssertEqual(menu.children.count, 3)
@@ -132,6 +136,23 @@ extension ChatTextSelectionTests {
 
         XCTAssertEqual(recorder.quotes, ["quoted"])
         XCTAssertEqual(textView.selectedRange.length, 0)
+    }
+
+    @MainActor
+    func testQuotingOnlyWhitespaceKeepsTheSelection() {
+        let textView = SelectableTextView.makeTextView()
+        textView.attributedText = NSAttributedString(string: "Hello   world")
+        textView.selectedRange = NSRange(location: 5, length: 3)
+        let recorder = QuoteRecorder()
+
+        SelectableTextView.Coordinator.quoteSelection(
+            in: textView,
+            range: NSRange(location: 5, length: 3),
+            with: recorder.action()
+        )
+
+        XCTAssertEqual(recorder.quotes, [])
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 5, length: 3))
     }
 
     @MainActor
@@ -191,7 +212,13 @@ extension ChatTextSelectionTests {
         container.quoteActiveSelection()
         XCTAssertTrue(coordinator.hasActiveSelection)
 
+        // Nor does a chat whose composer is locked.
         let recorder = QuoteRecorder()
+        container.quoteAction = recorder.action(available: false)
+        container.quoteActiveSelection()
+        XCTAssertTrue(coordinator.hasActiveSelection)
+        XCTAssertEqual(recorder.quotes, [])
+
         container.quoteAction = recorder.action()
         container.quoteActiveSelection()
 
@@ -204,7 +231,7 @@ extension ComposerDraftStoreTests {
     func testDraftHoldingOnlyAQuotedReplyIsKept() {
         let store = ComposerDraftStore(capacity: 12)
         let key = ComposerDraftKey(profile: "default", sessionID: "session-a")
-        let reference = ComposerReplyReference(messageID: "m1", authorName: "Hermes", text: "Earlier answer")
+        let reference = ComposerReplyReference(authorName: "Hermes", text: "Earlier answer")
         let draft = ComposerDraft(text: "", attachments: [], replyReference: reference)
 
         XCTAssertFalse(draft.isEmpty)

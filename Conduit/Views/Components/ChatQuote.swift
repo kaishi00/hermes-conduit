@@ -109,14 +109,12 @@ enum ReplyQuoteEnvelope {
 /// A whole earlier reply attached to the next message (the composer's
 /// "Replying to…" chip).
 struct ComposerReplyReference: Equatable {
-    let messageID: String
     let authorName: String
     let text: String
     /// Worked out once: the chip re-renders with every composer update.
     let excerpt: String
 
-    init(messageID: String, authorName: String, text: String) {
-        self.messageID = messageID
+    init(authorName: String, text: String) {
         self.authorName = authorName
         self.text = text
         self.excerpt = ChatQuote.excerpt(of: text)
@@ -144,18 +142,45 @@ struct ComposerReplyReference: Equatable {
     }
 }
 
+/// One quote on its way from the transcript to the composer. Each request
+/// has its own id, so quoting the same text twice still lands twice.
+struct ComposerQuoteRequest: Equatable {
+    enum Content: Equatable {
+        /// Selected text, already a Markdown blockquote, added to the draft.
+        case text(String)
+        /// A whole reply, attached to the next message as a chip.
+        case reply(ComposerReplyReference)
+    }
+
+    let id = UUID()
+    let content: Content
+}
+
 /// Puts selected chat text into the composer as a quote. Only the chat
 /// screen provides one, so text outside a chat (Kanban logs, voice sheets,
 /// the selection fixture) shows no Quote action. Equal by owner, so a
 /// re-created value does not count as an environment change and re-run
-/// every transcript text view's update.
+/// every transcript text view's update. Whether Quote is on right now (the
+/// composer can be locked) is asked when the menu or pill appears, for the
+/// same reason.
 struct ChatQuoteAction: Equatable {
     private let owner: ObjectIdentifier
+    private let availability: @MainActor () -> Bool
     private let handler: @MainActor (String) -> Void
 
-    init(owner: AnyObject, handler: @escaping @MainActor (String) -> Void) {
+    init(
+        owner: AnyObject,
+        isAvailable: @escaping @MainActor () -> Bool = { true },
+        handler: @escaping @MainActor (String) -> Void
+    ) {
         self.owner = ObjectIdentifier(owner)
+        self.availability = isAvailable
         self.handler = handler
+    }
+
+    @MainActor
+    var isAvailable: Bool {
+        availability()
     }
 
     @MainActor

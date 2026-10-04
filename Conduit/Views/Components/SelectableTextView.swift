@@ -624,13 +624,16 @@ struct SelectableTextView: UIViewRepresentable {
             editMenuForTextIn range: NSRange,
             suggestedActions: [UIMenuElement]
         ) -> UIMenu? {
-            guard let quoteAction, range.length > 0 else { return nil }
+            guard let quoteAction, quoteAction.isAvailable, range.length > 0 else { return nil }
             let quote = UIAction(
                 title: AppLocalization.string("Quote"),
                 image: UIImage(systemName: "text.quote")
             ) { [weak textView] _ in
                 guard let textView else { return }
-                Self.quoteSelection(in: textView, range: range, with: quoteAction)
+                // The selection as it is now, should the text have changed
+                // under the open menu.
+                let current = textView.selectedRange
+                Self.quoteSelection(in: textView, range: current.length > 0 ? current : range, with: quoteAction)
             }
             return UIMenu(children: Self.editMenuElements(suggestedActions, adding: quote))
         }
@@ -644,13 +647,15 @@ struct SelectableTextView: UIViewRepresentable {
 
         /// Hands the selected text to the composer and clears the selection,
         /// which dismisses the menu. A selection spanning blocks quotes all
-        /// of it, matching what Copy would take.
+        /// of it, matching what Copy would take. Whitespace alone has nothing
+        /// to quote, so the selection then stays as it was, as on the pill.
         @MainActor
         static func quoteSelection(in textView: UITextView, range: NSRange, with quoteAction: ChatQuoteAction) {
-            let fullText = textView.attributedText.string as NSString
+            let fullText = (textView.attributedText?.string ?? "") as NSString
             let clamped = NSIntersectionRange(range, NSRange(location: 0, length: fullText.length))
             let selected = (textView as? MarkdownSelectionTextView)?.coordinatedCopiedAttributedText()?.string
                 ?? fullText.substring(with: clamped)
+            guard selected.contains(where: { !$0.isWhitespace }) else { return }
             (textView as? MarkdownSelectionTextView)?.selectionCoordinator?.clearSelection()
             textView.selectedRange = NSRange(location: clamped.location, length: 0)
             textView.resignFirstResponder()
