@@ -1118,6 +1118,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// sent or handed back.
     private var noticesInFlight: Set<UUID> = []
 
+    /// A settled job's outcome that a voice call holds until the
+    /// conversation is quiet: like a taken notice, the job is kept until
+    /// `noticeSent(jobID:)` or `returnUndeliveredNotice(jobID:)`.
+    func holdOutcome(jobID: UUID) {
+        guard job(jobID) != nil else { return }
+        noticesInFlight.insert(jobID)
+    }
+
     /// A notice taken with `takePendingNoticeForJob` went out.
     func noticeSent(jobID: UUID) {
         guard noticesInFlight.remove(jobID) != nil else { return }

@@ -691,6 +691,30 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumSettledJobs)
     }
 
+    /// #379: a live call can hold a settled result until the conversation
+    /// is quiet; a backlog of newer jobs must not prune it meanwhile.
+    func testHeldOutcomeKeepsItsJobUntilSentOrHandedBack() async {
+        let (supervisor, _) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "held job")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "ok", reasoning: nil))
+        let held = supervisor.jobs[0].id
+        supervisor.holdOutcome(jobID: held)
+        supervisor.markOutcomeDelivered(jobID: held)
+
+        let total = VoiceBackgroundJobSupervisor.maximumSettledJobs + 2
+        for index in 2...total {
+            _ = await supervisor.startJob(instructions: "job \(index)")
+            supervisor.observe(.messageComplete(sessionId: "rt-\(index)", messageId: nil, content: "ok", reasoning: nil))
+            XCTAssertNotNil(supervisor.takePendingNotice())
+        }
+        XCTAssertEqual(supervisor.jobs.first?.id, held, "a held result keeps its job")
+
+        // Handed back unsaid: the outcome is pending again.
+        supervisor.returnUndeliveredNotice(jobID: held)
+        XCTAssertNotNil(supervisor.takePendingNotice())
+        XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumSettledJobs)
+    }
+
     func testResetForgetsJobsAndIgnoresTheirLateEvents() async {
         let (supervisor, _) = makeSupervisor()
         _ = await supervisor.startJob(instructions: "old server work")
