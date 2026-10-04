@@ -36,6 +36,7 @@ protocol EchoCancellingVoiceEngine: AnyObject {
     func stopInput()
     func play(_ pcm: Data, sampleRate: Double) throws
     func play(_ buffer: AVAudioPCMBuffer) throws
+    func discardRemainder()
     func interrupt()
     func stopOutput()
 }
@@ -211,12 +212,19 @@ final class EchoCancellingVoicePlayback: SpeechPlaybackService {
         return data.count - (data.count % 2)
     }
 
+    /// The gateway sends a fallback clip only for a reply that streamed no
+    /// PCM, and the clip is the whole reply: like the default playback, it
+    /// replaces anything still queued.
     func playEncodedAudioData(_ data: Data) throws {
         audio.interrupt()
         try audio.play(try Self.decode(data))
     }
 
-    func finish() throws {}
+    func finish() throws {
+        // An odd tail is invalid PCM16 and is dropped rather than shifted
+        // into the next reply, as the default playback does.
+        audio.discardRemainder()
+    }
 
     func drain() async {
         let generation = stopGeneration
@@ -240,7 +248,9 @@ final class EchoCancellingVoicePlayback: SpeechPlaybackService {
     func resume() {}
 
     /// AVAudioFile reads from a file only, and the file's extension is its
-    /// format hint.
+    /// format hint. Decoding runs on the main actor: it is the fallback-only
+    /// path (one clip for a reply whose speech didn't stream), and the
+    /// playback seam is synchronous.
     private static func decode(_ data: Data) throws -> AVAudioPCMBuffer {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("conduit-speech-\(UUID().uuidString)")

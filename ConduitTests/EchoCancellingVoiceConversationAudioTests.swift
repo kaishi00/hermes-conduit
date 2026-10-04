@@ -33,6 +33,8 @@ private final class FakeEchoEngine: EchoCancellingVoiceEngine {
         isPlaying = true
     }
     func play(_ buffer: AVAudioPCMBuffer) throws { isPlaying = true }
+    private(set) var discardRemainderCount = 0
+    func discardRemainder() { discardRemainderCount += 1 }
     func interrupt() { isPlaying = false }
     func stopOutput() {
         stopOutputCount += 1
@@ -190,6 +192,8 @@ extension VoiceConversationControllerTests {
         _ = try playback.enqueuePCM16(Data(repeating: 1, count: 8), sampleRate: 24_000)
         XCTAssertEqual(engine.playedPCM.count, 1)
         XCTAssertTrue(playback.isPlaying)
+        try playback.finish()
+        XCTAssertEqual(engine.discardRemainderCount, 1, "an odd PCM16 tail isn't carried into the next reply")
 
         engine.isPlaying = false
         await playback.drain()

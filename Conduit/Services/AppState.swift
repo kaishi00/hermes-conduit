@@ -2152,7 +2152,7 @@ final class AppState: ObservableObject {
         wantsEchoCancellation: { [weak self] in self?.liveVoiceSpeakerBargeInEnabled ?? false },
         standardCapture: AVAudioCaptureService(),
         standardPlayback: AVSpeechPlaybackService(),
-        makeEchoCancelling: { EchoCancellingLiveVoiceAudio(outputSampleRate: 24_000) }
+        makeEchoCancelling: { EchoCancellingLiveVoiceAudio(outputSampleRate: GeminiLiveProtocol.outputSampleRate) }
     )
     /// Background jobs started from Voice (issue #163): each job is an
     /// ordinary Hermes session created on the current client, and its
