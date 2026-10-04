@@ -22462,8 +22462,16 @@ final class AppState: ObservableObject {
     /// With no running turn the controller sends them as a new turn; a
     /// failed steer is never resubmitted, so it can't duplicate the words.
     func steerForVoice(_ text: String) async -> VoiceSteerOutcome {
-        guard turnState.isRunning else { return .noRunningTurn }
-        return await steer(text) ? .steered : .failed
+        switch turnState {
+        case .running:
+            return await steer(text) ? .steered : .failed
+        case .idle, .unsupportedGateway:
+            return .noRunningTurn
+        case .synchronizing, .reconnecting:
+            // The turn may still be running server-side: don't start a
+            // second one with the user's words.
+            return .failed
+        }
     }
 
     /// Stops the authoritative Hermes turn when a spoken stop command,
