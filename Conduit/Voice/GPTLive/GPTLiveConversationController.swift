@@ -88,10 +88,6 @@ final class GPTLiveConversationController: ObservableObject {
     static let userQuietInterval: TimeInterval = 2
     /// Quiet time after the model's last turn before a job update.
     static let modelQuietInterval: TimeInterval = 1
-    /// A model turn with no new words for this long no longer holds job
-    /// updates back (its `turn.done` may never come while a delegation is
-    /// open).
-    static let modelTurnStaleInterval: TimeInterval = 6
     /// An open user turn with no new words for this long no longer holds
     /// job updates back (its `turn.done` may never come).
     static let userTurnStaleInterval: TimeInterval = 6
@@ -188,11 +184,6 @@ final class GPTLiveConversationController: ObservableObject {
     /// back into one.
     private var userTurnEntries: [UUID] = []
     private var assistantTurnEntries: [UUID] = []
-    /// A model turn whose `turn.done` hadn't come when a result was sent
-    /// past it (it went stale): its late `turn.done`, if one comes, folds
-    /// these, so the result's own words start, and stay, in entries of
-    /// their own. Already streamed, so not waited on as unsettled.
-    private var staleAssistantTurnEntries: [UUID] = []
     /// Transcript entries already handed to a delegation. A set, not a
     /// boundary entry: a finished turn can fold the boundary away.
     private var delegatedEntries: Set<UUID> = []
@@ -471,15 +462,6 @@ final class GPTLiveConversationController: ObservableObject {
                     userFinished(finished)
                 }
             case "assistant":
-                if isStaleTurnDone(text) {
-                    // The late end of a turn a result was sent past: it
-                    // settles that turn's entries, not the result's.
-                    if let finished = finishTurn(staleAssistantTurnEntries, speaker: .assistant, text: text) {
-                        finishedTurn = FinishedTurn(speaker: .assistant, text: finished)
-                    }
-                    staleAssistantTurnEntries = []
-                    return
-                }
                 modelTurnActive = false
                 lastModelTurnEndedAt = now()
                 if let finished = finishTurn(assistantTurnEntries, speaker: .assistant, text: text) {
@@ -618,9 +600,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// Whether Conduit may add a turn of its own now: connected, the model
     /// silent, and the user quiet (their turn finished, not just paused).
     var isConversationIdle: Bool {
-        guard session?.isReady == true else { return false }
+        guard session?.isReady == true, !modelTurnActive else { return false }
         let current = now()
-        if modelTurnActive, lastModelOutputAt.map({ current.timeIntervalSince($0) < Self.modelTurnStaleInterval }) ?? true { return false }
         if let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userQuietInterval { return false }
         // Mid-sentence: the user's words are still coming in (a pause, an
         // "um"), so their turn isn't over yet.
@@ -649,11 +630,6 @@ final class GPTLiveConversationController: ObservableObject {
                 bridge.contextDelivered(jobID: item.jobID)
             }
             guard item.channel == .commentary else {
-                if modelTurnActive, !assistantTurnEntries.isEmpty {
-                    staleAssistantTurnEntries += assistantTurnEntries
-                    assistantTurnEntries = []
-                    openAssistantEntry = nil
-                }
                 // The model speaks it next: wait for that turn before another.
                 modelTurnActive = true
                 lastModelOutputAt = now()
@@ -740,26 +716,11 @@ final class GPTLiveConversationController: ObservableObject {
         return final
     }
 
-    /// Whether an assistant `turn.done` ends the stale turn rather than the
-    /// live one: told apart by text, since either can end first.
-    private func isStaleTurnDone(_ text: String) -> Bool {
-        guard let first = staleAssistantTurnEntries.first,
-              let stale = transcript.first(where: { $0.id == first })?.text else { return false }
-        let key = { (value: String) in
-            String(value.lowercased().filter { $0.isLetter || $0.isNumber }.prefix(24))
-        }
-        let staleKey = key(stale)
-        let doneKey = key(text)
-        guard !staleKey.isEmpty, !doneKey.isEmpty else { return false }
-        return doneKey.hasPrefix(staleKey) || staleKey.hasPrefix(doneKey)
-    }
-
     private func closeOpenEntries() {
         openUserEntry = nil
         openAssistantEntry = nil
         userTurnEntries = []
         assistantTurnEntries = []
-        staleAssistantTurnEntries = []
     }
 
     /// Entries still taking fragments or waiting for their turn's

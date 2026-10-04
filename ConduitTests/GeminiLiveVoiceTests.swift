@@ -1009,7 +1009,11 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.toolCallCancellation(["c1"]))
         XCTAssertEqual(controller.heldOutcomeCountForTesting, 0)
         XCTAssertEqual(controller.pendingTextTurnCountForTesting, 1)
+        XCTAssertTrue(supervisor.jobs[0].outcomeDelivered, "Spoken for while it waits")
+
+        // The call ends before it is said: the job reports it again later.
         controller.stop()
+        XCTAssertFalse(supervisor.jobs[0].outcomeDelivered)
     }
 
     func testGeminiLiveTypedChatTurnGoesOutAsContextWithoutStartingATurn() async {
