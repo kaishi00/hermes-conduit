@@ -335,7 +335,7 @@ struct VoiceSettingsView: View {
                 speechToTextStep
                 assistantVoiceStep
             } else {
-                Text("\(voiceMode.title) brings its own listening and speaking, so the speech-to-text and assistant voice steps don't apply. Pick Classic under Voice mode to use them.")
+                Text(verbatim: AppLocalization.string("\(voiceMode.title) brings its own listening and speaking, so the speech-to-text and assistant voice steps don't apply. Pick Classic under Voice mode to use them."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -346,7 +346,7 @@ struct VoiceSettingsView: View {
                     .font(.footnote.weight(.semibold))
             }
             .buttonStyle(.borderless)
-            .disabled(service.isLoading)
+            .disabled(service.isLoading || isApplyingDefaults)
         }
     }
 
@@ -517,22 +517,22 @@ struct VoiceSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Button { runTest(kind: .stt) } label: {
-                    Label("Test listening", systemImage: "mic")
+                    Label(AppLocalization.string("Test listening"), systemImage: "mic")
                         .frame(maxWidth: .infinity)
                         .frame(height: 46)
                 }
                 .disabled(actions.runASRTest == nil || isRunningTest || !supportsSelectedTranscription || voiceMode != .classic)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.14))
-                .accessibilityHint("Records a short sample and shows what speech to text heard")
+                .accessibilityHint(AppLocalization.string("Records a short sample and shows what speech to text heard"))
 
                 Button { runTest(kind: .tts) } label: {
-                    Label("Test speaking", systemImage: "speaker.wave.2")
+                    Label(AppLocalization.string("Test speaking"), systemImage: "speaker.wave.2")
                         .frame(maxWidth: .infinity)
                         .frame(height: 46)
                 }
                 .disabled(actions.runTTSTest == nil || isRunningTest || !service.snapshot.capability.supportsSpeech || voiceMode != .classic)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
-                .accessibilityHint("Plays a short sample in the assistant's voice")
+                .accessibilityHint(AppLocalization.string("Plays a short sample in the assistant's voice"))
             }
             if let testStatus {
                 Text(testStatus).font(.footnote).foregroundStyle(.secondary)
@@ -578,9 +578,12 @@ struct VoiceSettingsView: View {
 
     /// The one-switch happy path: fills in a speech-to-text choice and an
     /// assistant voice that work without anything installed on Hermes.
+    /// A live mode brings its own speech, so the profile's Hermes speech
+    /// config is left alone then; picking Classic shows the fixes instead.
     private func applySetupDefaults() async {
         isApplyingDefaults = true
         defer { isApplyingDefaults = false }
+        guard voiceMode == .classic else { return }
         if !service.snapshot.capability.isGatewayConnected { await load() }
         let plan = VoiceSetupDefaults.plan(
             transcriptionModeChosen: transcriptionModeChosen,
