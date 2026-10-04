@@ -2231,6 +2231,12 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             return self.isSceneActive && (self.showGeminiLiveSheet || self.showGrokLiveSheet)
         }
+        supervisor.onThreadTurnStarted = { [weak self] job, thread in
+            guard let self, let recorder = self.voiceCallRecorder else { return }
+            self.captureVoiceCall()
+            recorder.note(Self.voiceThreadTurnNote(job, thread: thread))
+            self.checkpointVoiceCall(recorder)
+        }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
             if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }),
@@ -3168,7 +3174,28 @@ final class AppState: ObservableObject {
 
     /// The chat's "Voice call" markers for calls started from it.
     private func mergeVoiceCallMarkers(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
-        voiceCallChatLinks.merge(into: history, chatIDs: reviewCacheSessionIDs(for: sessionId), profile: activeProfile)
+        voiceCallChatLinks.merge(
+            into: history,
+            chatIDs: reviewCacheSessionIDs(for: sessionId),
+            openIDs: ownSessionIDs(for: sessionId),
+            profile: activeProfile
+        )
+    }
+
+    /// The open session's own ids: its row's id and stored id, never an
+    /// alias (alternate ids, reconciliation, scroll identity) that another
+    /// row could share.
+    private func ownSessionIDs(for sessionId: String) -> Set<String> {
+        Self.ownSessionIDs(for: sessionId, in: sessions)
+    }
+
+    static func ownSessionIDs(for sessionId: String, in rows: [SessionSummary]) -> Set<String> {
+        var ids: Set<String> = [sessionId]
+        if let row = rows.first(where: { $0.id == sessionId || $0.storedSessionId == sessionId }) {
+            ids.insert(row.id)
+            if let stored = row.storedSessionId { ids.insert(stored) }
+        }
+        return Set(ids.compactMap { ChatScrollIdentityNormalization.sessionID($0) })
     }
 
     /// The call a chat's "Voice call" marker opens.
@@ -4032,6 +4059,15 @@ final class AppState: ObservableObject {
         return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open job"))
     }
 
+    /// The line a saved call gets where it sent work to its chat: the
+    /// request and a link that opens the chat, where Hermes' reply is.
+    static func voiceThreadTurnNote(_ job: VoiceBackgroundJob, thread: VoiceThreadTarget) -> String {
+        // Queued, not necessarily delivered: a hang-up drops unsent requests.
+        let line = AppLocalization.string("Asked the chat: \(job.title).")
+        guard let id = [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return line }
+        return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open chat"))
+    }
+
     /// Opens a link Conduit wrote into a chat (a voice call's job link).
     func openAppLink(_ link: ConduitAppLink) {
         switch link {
@@ -4040,7 +4076,8 @@ final class AppState: ObservableObject {
             // shouldn't make the link look dead.
             requestOpenSession(id) { [weak self] in
                 guard let self, self.errorMessage == nil else { return }
-                self.errorMessage = AppLocalization.string("That job's chat is no longer available.")
+                // Job links and chat-turn links share this route.
+                self.errorMessage = AppLocalization.string("That chat is no longer available.")
             }
         }
     }
@@ -4054,6 +4091,19 @@ final class AppState: ObservableObject {
         requestOpenSession(link.callSessionID) { [weak self] in
             guard let self, self.errorMessage == nil else { return }
             self.errorMessage = AppLocalization.string("That call's transcript is no longer available.")
+        }
+    }
+
+    /// Opens the chat a call was started from, from the card in the call's
+    /// own transcript.
+    func openVoiceCallChat(markerID: String) {
+        guard let chatID = voiceCallLink(markerID: markerID)?.chatSessionID else {
+            errorMessage = AppLocalization.string("That chat is no longer available.")
+            return
+        }
+        requestOpenSession(chatID) { [weak self] in
+            guard let self, self.errorMessage == nil else { return }
+            self.errorMessage = AppLocalization.string("That chat is no longer available.")
         }
     }
 

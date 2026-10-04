@@ -295,6 +295,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Called with every id of a newly created job session so the host can
     /// badge it in the session list.
     var onJobSessionCreated: (@MainActor (_ sessionIDs: [String]) -> Void)?
+    /// Called when the call sends a request to its attached chat, so the
+    /// saved call can link to where the work happened.
+    var onThreadTurnStarted: (@MainActor (_ job: VoiceBackgroundJob, _ thread: VoiceThreadTarget) -> Void)?
     /// The running live call's transcript, so a new job can be placed
     /// among its lines; nil while no live call runs.
     var liveCallTranscript: (@MainActor () -> [VoiceConversationTranscriptEntry]?)?
@@ -582,6 +585,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         )
         jobs.append(job)
         threadTargets[job.id] = thread
+        onThreadTurnStarted?(job, thread)
         pumpThreadTurns()
         return (job.id, nil)
     }

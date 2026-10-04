@@ -1,6 +1,46 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Started from %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从「%@」发起"
+          }
+        }
+      }
+    },
+    "That chat is no longer available." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该对话已不可用。"
+          }
+        }
+      }
+    },
+    "Opens the chat this call was started from" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开发起此通话的对话"
+          }
+        }
+      }
+    },
+    "Asked the chat: %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已向对话提问：%@。"
+          }
+        }
+      }
+    },
     "That call's transcript is no longer available." : {
       "localizations" : {
         "zh-Hans" : {

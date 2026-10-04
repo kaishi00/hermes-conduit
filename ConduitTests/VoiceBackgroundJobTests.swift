@@ -1042,6 +1042,16 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(result["result"], "Summary.")
     }
 
+    func testAChatTurnIsReportedSoTheSavedCallCanLinkIt() {
+        let (supervisor, _) = makeThreadSupervisor()
+        var reported: [(String, String?)] = []
+        supervisor.onThreadTurnStarted = { job, thread in reported.append((job.title, thread.storedSessionID)) }
+        _ = supervisor.startThreadTurn(request: "check the build")
+        XCTAssertEqual(reported.map { $0.0 }, ["check the build"])
+        XCTAssertEqual(reported.first?.1, "st-chat")
+        supervisor.detachLiveThread()
+    }
+
     func testGeminiStartJobInAnAttachedCallGoesToTheChatUnlessItAsksForBackgroundWork() async {
         let (supervisor, fake) = makeThreadSupervisor()
         let bridge = GeminiLiveToolBridge(supervisor: supervisor)

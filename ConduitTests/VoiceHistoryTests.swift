@@ -346,6 +346,14 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(AppState.voiceJobStartedNote(job), "Started a background job: Find a dinner recipe. [Open job](conduit://session/stored-1)")
     }
 
+    func testChatTurnNoteLinksTheChatTheCallIsAttachedTo() {
+        let job = VoiceBackgroundJob(id: UUID(), title: "Check the build", instructions: "x", status: .starting, startedAt: Date())
+        let stored = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        XCTAssertEqual(AppState.voiceThreadTurnNote(job, thread: stored), "Asked the chat: Check the build. [Open chat](conduit://session/st-chat)")
+        let runtimeOnly = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build")
+        XCTAssertEqual(AppState.voiceThreadTurnNote(job, thread: runtimeOnly), "Asked the chat: Check the build. [Open chat](conduit://session/rt-chat)")
+    }
+
     func testResumeTurnsDropJobLinks() {
         let rows: [Any] = [
             ["id": 1, "role": "user", "content": "Find me a dinner recipe"],
@@ -463,15 +471,88 @@ extension HermesVoiceGatewayTimeoutTests {
         links.add(chatLink(call: "c2", row: "other-row", chat: "rt-2", at: start))
         links.add(chatLink(call: "c3", row: "call-row", chat: "rt-1", stored: "st-1", at: start, profile: "work"))
 
-        let merged = links.merge(into: history, chatIDs: ["st-1"], profile: "default")
+        let merged = links.merge(into: history, chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default")
         XCTAssertEqual(merged.map(\.id), ["a", "voice-call-c1", "b"])
         XCTAssertEqual(merged[1].role, .system)
         XCTAssertEqual(merged[1].displayKind, VoiceCallChatLink.displayKind)
         XCTAssertEqual(links.link(markerID: "voice-call-c1")?.callSessionID, "call-row")
         // Merging again (a refresh) doesn't add a second marker.
-        XCTAssertEqual(links.merge(into: merged, chatIDs: ["st-1"], profile: "default").count, 3)
+        XCTAssertEqual(links.merge(into: merged, chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default").count, 3)
         // A call later than every message goes last.
-        XCTAssertEqual(links.merge(into: Array(history.prefix(1)), chatIDs: ["rt-1"], profile: "default").last?.id, "voice-call-c1")
+        XCTAssertEqual(links.merge(into: Array(history.prefix(1)), chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default").last?.id, "voice-call-c1")
+    }
+
+    func testCallTranscriptLeadsBackToItsChatAndNeverShowsTheChatsCard() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let iso = ISO8601DateFormatter()
+        let transcript = [
+            ChatMessage(id: "t1", role: .user, content: "hello", timestamp: iso.string(from: start.addingTimeInterval(5))),
+        ]
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: start))
+
+        // Opened, the call's row may carry the chat's ids too (a stale
+        // runtime or reconciliation alias): it still gets the way back.
+        let merged = links.merge(into: transcript, chatIDs: ["call-row", "rt-1", "st-1"], openIDs: ["call-row"], profile: "default")
+        XCTAssertEqual(merged.map(\.id), ["voice-call-from-c1", "t1"])
+        XCTAssertEqual(merged.first?.displayKind, VoiceCallChatLink.originDisplayKind)
+        XCTAssertEqual(links.link(markerID: "voice-call-from-c1")?.chatSessionID, "st-1")
+    }
+
+    func testATranscriptNeverShowsAnotherCallFromTheSameChat() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "row-a", chat: "rt-1", stored: "st-1", at: start))
+        links.add(chatLink(call: "c2", row: "row-b", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(60)))
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["row-a", "st-1"], openIDs: ["row-a"], profile: "default").map(\.id), ["voice-call-from-c1"])
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default").map(\.id), ["voice-call-c1", "voice-call-c2"])
+
+        // Viewing the chat while its id set borrowed a call row's alias: the
+        // chat keeps its cards.
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["st-1", "row-a"], openIDs: ["st-1"], profile: "default").map(\.id), ["voice-call-c1", "voice-call-c2"])
+    }
+
+    @MainActor
+    func testTheOpenSessionsOwnIDsNeverPullInARowSharingAnAlias() {
+        func row(_ id: String, stored: String? = nil, alternates: [String] = []) -> SessionSummary {
+            SessionSummary(
+                id: id, storedSessionId: stored, alternateIds: alternates, title: id, model: "Hermes",
+                updatedLabel: "now", profile: "default", source: .chat, isActive: false, isArchived: false,
+                lineageRootId: nil
+            )
+        }
+        let rows = [row("rt-1", stored: "st-1"), row("call-row", alternates: ["rt-1"])]
+        let chatOwn = AppState.ownSessionIDs(for: "rt-1", in: rows)
+        XCTAssertEqual(chatOwn, ["rt-1", "st-1"])
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: Date(timeIntervalSince1970: 1_000)))
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["rt-1", "st-1", "call-row"], openIDs: chatOwn, profile: "default").map(\.id), ["voice-call-c1"])
+        XCTAssertEqual(AppState.ownSessionIDs(for: "call-row", in: rows), ["call-row"])
+    }
+
+    func testAResumedCallShowsOneStartedFromCardPerChat() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: start))
+        links.add(chatLink(call: "c2", row: "call-row", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(600), resumed: true))
+        links.add(chatLink(call: "c3", row: "call-row", chat: "rt-9", at: start.addingTimeInterval(1_200), resumed: true))
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["call-row"], openIDs: ["call-row"], profile: "default").map(\.id), ["voice-call-from-c1", "voice-call-from-c3"])
+
+
+        // The chat had no stored id yet at the first start.
+        var early = VoiceCallChatLinks()
+        early.add(chatLink(call: "e1", row: "row-e", chat: "rt-1", at: start))
+        early.add(chatLink(call: "e2", row: "row-e", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(600), resumed: true))
+        XCTAssertEqual(early.merge(into: [], chatIDs: ["row-e"], openIDs: ["row-e"], profile: "default").map(\.id), ["voice-call-from-e1"])
+    }
+
+    func testAChatIsMatchedOnItsStoredIDNotAReusedRuntime() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: start))
+        links.add(chatLink(call: "c2", row: "row-2", chat: "rt-2", at: start))
+        XCTAssertTrue(links.merge(into: [], chatIDs: ["rt-1", "st-other"], openIDs: ["rt-1", "st-other"], profile: "default").isEmpty, "a later session under the chat's old runtime")
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["rt-2"], openIDs: ["rt-2"], profile: "default").map(\.id), ["voice-call-c2"], "no stored id: the runtime names it")
     }
 
     func testResumeCallGoesBackToTheChatTheCallWasLastAttachedTo() {

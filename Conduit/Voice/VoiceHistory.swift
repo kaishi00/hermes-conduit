@@ -555,10 +555,22 @@ struct VoiceCallChatLink: Codable, Equatable {
     var resumed: Bool
 
     static let displayKind = "conduit_voice_call"
+    /// The card in the call's own transcript that leads back to the chat.
+    static let originDisplayKind = "conduit_voice_call_origin"
     var markerID: String { "voice-call-\(callID)" }
+    var originMarkerID: String { "voice-call-from-\(callID)" }
 
+    /// The chat is matched on its stored id when it has one: a runtime id
+    /// only names the chat while it is open, and a later session can run
+    /// under it.
     func belongs(toChat ids: Set<String>) -> Bool {
-        [chatRuntimeSessionID, chatStoredSessionID].compactMap { $0 }.contains { !$0.isEmpty && ids.contains($0) }
+        if let stored = chatStoredSessionID, !stored.isEmpty { return ids.contains(stored) }
+        return !chatRuntimeSessionID.isEmpty && ids.contains(chatRuntimeSessionID)
+    }
+
+    /// The chat's id to open it by; nil when the link names none.
+    var chatSessionID: String? {
+        [chatStoredSessionID, chatRuntimeSessionID].compactMap { $0 }.first { !$0.isEmpty }
     }
 
     /// The chat as a live call's target, for Resume Call.
@@ -574,6 +586,16 @@ struct VoiceCallChatLink: Codable, Equatable {
             content: resumed ? AppLocalization.string("Voice call resumed") : AppLocalization.string("Voice call"),
             timestamp: Self.timestampFormatter.string(from: startedAt),
             displayKind: Self.displayKind
+        )
+    }
+
+    var originMarker: ChatMessage {
+        ChatMessage(
+            id: originMarkerID,
+            role: .system,
+            content: AppLocalization.string("Started from \(chatTitle)"),
+            timestamp: Self.timestampFormatter.string(from: startedAt),
+            displayKind: Self.originDisplayKind
         )
     }
 
@@ -608,19 +630,42 @@ struct VoiceCallChatLinks: Codable, Equatable {
     }
 
     func link(markerID: String) -> VoiceCallChatLink? {
-        links.first { $0.markerID == markerID }
+        links.first { $0.markerID == markerID || $0.originMarkerID == markerID }
     }
 
     /// The chat's history with its call markers, each placed where its call
-    /// started. The history's own order is kept.
-    func merge(into history: [ChatMessage], chatIDs: Set<String>, profile: String) -> [ChatMessage] {
+    /// started. The history's own order is kept. `openIDs` are the open
+    /// session's own ids (its row's, not the aliases `chatIDs` borrows), so
+    /// only a call's own row counts as its transcript.
+    func merge(into history: [ChatMessage], chatIDs: Set<String>, openIDs: Set<String>, profile: String) -> [ChatMessage] {
         var merged = history
-        for link in links where link.profile == profile && link.belongs(toChat: chatIDs) {
-            guard !merged.contains(where: { $0.id == link.markerID }) else { continue }
+        let profileLinks = links.filter { $0.profile == profile }
+        // The open session is a call's own transcript (a resumed call has a
+        // link per resume): it only leads back to its chat. Its ids can
+        // carry the chat's, so no chat card is placed in it, this call's or
+        // another's. A resume that stayed with the same chat adds no
+        // second card.
+        var ownedChats = Set<String>()
+        let owned = profileLinks
+            .filter { openIDs.contains($0.callSessionID) }
+            .sorted { $0.startedAt < $1.startedAt }
+            .filter { link in
+                // A chat seen first by its runtime and later by its stored
+                // id is still one chat.
+                let ids = Set([link.chatStoredSessionID, link.chatRuntimeSessionID].compactMap { $0 }.filter { !$0.isEmpty })
+                guard ownedChats.isDisjoint(with: ids) else { ownedChats.formUnion(ids); return false }
+                ownedChats.formUnion(ids.isEmpty ? [link.callID] : ids)
+                return true
+            }
+        let markers = owned.isEmpty
+            ? profileLinks.filter { $0.belongs(toChat: chatIDs) }.map { ($0, $0.marker) }
+            : owned.map { ($0, $0.originMarker) }
+        for (link, marker) in markers {
+            guard !merged.contains(where: { $0.id == marker.id }) else { continue }
             let index = merged.firstIndex {
                 MessageTimestampFormatter.date(from: $0.timestamp).map { $0 > link.startedAt } ?? false
             } ?? merged.endIndex
-            merged.insert(link.marker, at: index)
+            merged.insert(marker, at: index)
         }
         return merged
     }
