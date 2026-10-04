@@ -3230,7 +3230,7 @@ final class AppState: ObservableObject {
         // A chat new at the call's start may only have its stored id now.
         let runtimeID = attachment.thread.runtimeSessionID
         let storedID = attachment.thread.storedSessionID.flatMap { $0.isEmpty ? nil : $0 }
-            ?? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId
+            ?? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId.flatMap { $0.isEmpty ? nil : $0 }
         learnVoiceSessionAlias(runtimeID: runtimeID, storedID: storedID)
         let link = VoiceCallChatLink(
             callID: attachment.callID,
@@ -4121,7 +4121,10 @@ final class AppState: ObservableObject {
             guard let self else { return }
             var target = Self.linkedSessionTarget(id, rows: self.sessions + self.cronSessions, aliases: self.voiceSessionAliases)
             if target == nil {
+                let openBefore = self.activeSessionId
                 await self.loadSessions(forceRefresh: true)
+                // A chat opened meanwhile is the later choice; it stays.
+                guard self.activeSessionId == openBefore, !Task.isCancelled else { return }
                 target = Self.linkedSessionTarget(id, rows: self.sessions + self.cronSessions, aliases: self.voiceSessionAliases)
             }
             // Only this open's own "not found" may be reworded.
