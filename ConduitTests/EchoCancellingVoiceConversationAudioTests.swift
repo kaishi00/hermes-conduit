@@ -57,14 +57,14 @@ private final class CaptureEventLog {
 extension VoiceConversationControllerTests {
     private func makeSelector(
         wantsEcho: Bool,
-        capture: MockCapture = MockCapture(permissionGranted: true),
-        playback: MockPlayback = MockPlayback()
+        capture: MockCapture? = nil,
+        playback: MockPlayback? = nil
     ) -> (VoiceConversationAudioSelector, FakeEchoEngine) {
         let engine = FakeEchoEngine()
         let selector = VoiceConversationAudioSelector(
             wantsEchoCancellation: { wantsEcho },
-            standardCapture: capture,
-            standardPlayback: playback,
+            standardCapture: capture ?? MockCapture(permissionGranted: true),
+            standardPlayback: playback ?? MockPlayback(),
             makeEchoCancelling: { engine }
         )
         return (selector, engine)
