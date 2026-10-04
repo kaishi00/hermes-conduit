@@ -872,7 +872,7 @@ final class PushNotificationService: ObservableObject {
         pairingExpiry = nil
         lastError = nil
         guard let registration else {
-            lastError = "Enable notifications on this phone before creating a pairing code."
+            lastError = AppLocalization.string("Turn on notifications on this iPhone before creating a pairing code.")
             return
         }
         isWorking = true

@@ -25,8 +25,8 @@ enum UserFacingError {
             if urlError.code == .cancelled {
                 return AppLocalization.string("That was interrupted before it finished. Try again.")
             }
-            let failure = ConnectionFailureClassifier.classify(urlError)
-            if failure != .unknown { return failure.userMessage }
+            // Unmapped URL codes still get plain words, never NSURLErrorDomain text.
+            return ConnectionFailureClassifier.classify(urlError).userMessage
         }
         return error.localizedDescription
     }

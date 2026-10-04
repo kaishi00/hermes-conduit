@@ -30,6 +30,10 @@ extension ConnectionFailureTests {
             UserFacingError.message(for: NSError(domain: NSURLErrorDomain, code: URLError.timedOut.rawValue)),
             ConnectionFailure.timedOut.userMessage
         )
+        XCTAssertEqual(
+            UserFacingError.message(for: URLError(.cannotLoadFromNetwork)),
+            ConnectionFailure.unknown.userMessage
+        )
     }
 
     func testConduitsOwnErrorsKeepTheirText() {

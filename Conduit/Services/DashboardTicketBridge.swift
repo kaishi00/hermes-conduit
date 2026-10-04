@@ -612,7 +612,7 @@ final class DashboardTicketBridge: NSObject {
                 try await waitUntilReady()
                 let response = try await requestJSON(path: "/api/auth/ws-ticket", method: "POST")
                 guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
-                    throw DashboardTicketBridgeError.requestFailed("Dashboard did not return a WebSocket ticket.")
+                    throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The dashboard didn't let Conduit start a session. Try again."))
                 }
                 return ticket
             } catch DashboardTicketBridgeError.signInRequired where attempt < 2 {

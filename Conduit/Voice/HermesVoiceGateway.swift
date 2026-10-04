@@ -52,7 +52,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
         )
         if let error = response["error"] as? String, !error.isEmpty { throw DashboardTicketBridgeError.requestFailed(error) }
         guard let rawTranscript = response["transcript"] as? String ?? response["text"] as? String else {
-            throw DashboardTicketBridgeError.requestFailed("Hermes did not return a transcription.")
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Hermes didn't send back what you said. Try again."))
         }
         // Hermes deliberately returns an empty transcript for quiet audio or
         // filtered hallucinations. The controller treats that as re-listen,
