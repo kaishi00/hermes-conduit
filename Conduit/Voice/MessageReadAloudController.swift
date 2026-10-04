@@ -318,8 +318,9 @@ final class MessageReadAloudController: ObservableObject {
 
     private func transitionToPlaying(messageID: String, generation: UInt64) {
         guard isCurrent(generation) else { return }
-        // A route change while paused restarts the stream, and the restart
-        // plays: the reply is sounding again, so stop reporting it paused.
+        // Safety net: the playback service holds a pause across a stream
+        // restart, but if anything ever leaves the reply sounding, stop
+        // reporting it paused so the paused-stop timer cannot end it.
         if isPaused, !playback.isPaused {
             isPaused = false
             pausedStopTask?.cancel()

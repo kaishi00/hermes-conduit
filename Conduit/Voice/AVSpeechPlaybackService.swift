@@ -153,8 +153,14 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // A configuration change stops the engine before its deferred
         // settle runs; buffers scheduled onto a stopped player never
         // complete. Treat that as a stream boundary and restart now.
+        // A paused stream stays paused across that restart (AirPods back in
+        // the case): the fresh player holds its place until resume().
+        let holdPause = isPaused
         if format != nil, !engine.isRunning { stop() }
-        if format == nil { try start(sampleRate: sampleRate) }
+        if format == nil {
+            try start(sampleRate: sampleRate)
+            if holdPause { _ = pause() }
+        }
         guard let format, abs(format.sampleRate - sampleRate) < 1 else {
             // A stream that changes sample rates can never render; settle
             // immediately so the lease does not wait on the caller's error
