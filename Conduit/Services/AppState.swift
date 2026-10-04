@@ -4045,9 +4045,12 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Opens the saved transcript behind a chat's voice call card. The row
-    /// can be gone (deleted on the host), so a dead tap says so.
-    func openVoiceCallTranscript(_ link: VoiceCallChatLink) {
+    /// Opens the saved transcript behind a chat's voice call card. Looked up
+    /// at tap time: an outbox retry can move the call to a new row after
+    /// the card is drawn. The row can also be gone (deleted on the host),
+    /// so a dead tap says so.
+    func openVoiceCallTranscript(markerID: String) {
+        guard let link = voiceCallLink(markerID: markerID) else { return }
         requestOpenSession(link.callSessionID) { [weak self] in
             guard let self, self.errorMessage == nil else { return }
             self.errorMessage = AppLocalization.string("That call's transcript is no longer available.")

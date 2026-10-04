@@ -717,7 +717,7 @@ struct MessageBubble: View {
         case .system:
             if message.displayKind == VoiceCallChatLink.displayKind, let link = appState.voiceCallLink(markerID: message.id) {
                 VoiceCallMarkerCard(link: link) {
-                    appState.openVoiceCallTranscript(link)
+                    appState.openVoiceCallTranscript(markerID: link.markerID)
                 }
             } else if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
                 ReviewSummaryCard(activity: review, timestamp: message.timestamp)

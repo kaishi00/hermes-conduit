@@ -491,6 +491,15 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(first.owns(sessionID: "st-1"))
     }
 
+    func testCallMovedToANewRowKeepsOneMarkerThatOpensTheNewRow() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "old-row", chat: "rt-1", at: start))
+        links.add(chatLink(call: "c1", row: "new-row", chat: "rt-1", at: start))
+        XCTAssertEqual(links.links.count, 1)
+        XCTAssertEqual(links.link(markerID: "voice-call-c1")?.callSessionID, "new-row")
+    }
+
     func testVoiceCallLinksRoundTripAndStayBounded() throws {
         let suite = "voice-call-links-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
