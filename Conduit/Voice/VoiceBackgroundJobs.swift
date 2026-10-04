@@ -1110,25 +1110,39 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func takePendingNoticeForJob() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
         defer { pruneSettledJobs() }
         guard let item = takeNotice() else { return nil }
-        noticesInFlight.insert(item.jobID)
+        claimInFlight(item.jobID)
         return item
     }
 
-    /// Job notices handed out by `takePendingNoticeForJob` and not yet
-    /// sent or handed back.
-    private var noticesInFlight: Set<UUID> = []
+    /// Job notices handed out by `takePendingNoticeForJob` (and held
+    /// outcomes) not yet sent or handed back, counted per job: a queued
+    /// approval request and a held result can wait at once, and settling
+    /// one must not unprotect the other.
+    private var noticesInFlight: [UUID: Int] = [:]
+
+    private func claimInFlight(_ jobID: UUID) {
+        noticesInFlight[jobID, default: 0] += 1
+    }
+
+    /// Drops one claim on the job; false when it had none.
+    @discardableResult
+    private func releaseInFlight(_ jobID: UUID) -> Bool {
+        guard let count = noticesInFlight[jobID] else { return false }
+        noticesInFlight[jobID] = count > 1 ? count - 1 : nil
+        return true
+    }
 
     /// A settled job's outcome that a voice call holds until the
     /// conversation is quiet: like a taken notice, the job is kept until
     /// `noticeSent(jobID:)` or `returnUndeliveredNotice(jobID:)`.
     func holdOutcome(jobID: UUID) {
         guard job(jobID) != nil else { return }
-        noticesInFlight.insert(jobID)
+        claimInFlight(jobID)
     }
 
     /// A notice taken with `takePendingNoticeForJob` went out.
     func noticeSent(jobID: UUID) {
-        guard noticesInFlight.remove(jobID) != nil else { return }
+        guard releaseInFlight(jobID) else { return }
         pruneSettledJobs()
     }
 
@@ -1167,7 +1181,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A notice taken with `takePendingNoticeForJob` never reached the user:
     /// make it pending again.
     func returnUndeliveredNotice(jobID: UUID) {
-        noticesInFlight.remove(jobID)
+        releaseInFlight(jobID)
         update(jobID) { job in
             if job.status == .needsInput {
                 job.inputRequestDelivered = false
@@ -1300,7 +1314,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private func pruneSettledJobs() {
         // A notice still waiting to be spoken may be handed back, so its
         // job must still be here.
-        let settled = jobs.filter { !$0.status.isActive && $0.outcomeDelivered && !noticesInFlight.contains($0.id) }
+        let settled = jobs.filter { !$0.status.isActive && $0.outcomeDelivered && noticesInFlight[$0.id] == nil }
         let excess = settled.count - Self.maximumSettledJobs
         guard excess > 0 else { return }
         let dropped = Set(settled.prefix(excess).map(\.id))

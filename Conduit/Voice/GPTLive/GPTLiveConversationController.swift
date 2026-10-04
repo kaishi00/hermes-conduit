@@ -647,7 +647,7 @@ final class GPTLiveConversationController: ObservableObject {
         if let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userQuietInterval { return false }
         // Mid-sentence: the user's words are still coming in (a pause, an
         // "um"), so their turn isn't over yet.
-        if openUserEntry != nil, let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userTurnStaleInterval { return false }
+        if !userTurnEntries.isEmpty, let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userTurnStaleInterval { return false }
         if let lastModelTurnEndedAt, current.timeIntervalSince(lastModelTurnEndedAt) < Self.modelQuietInterval { return false }
         return true
     }

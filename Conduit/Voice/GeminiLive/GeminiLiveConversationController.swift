@@ -846,8 +846,10 @@ final class GeminiLiveConversationController: ObservableObject {
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
             sendOpeningIfNeeded()
             // Anything that settled while (re)connecting goes out now,
-            // unless the conversation is ending: then it stays pending.
-            if endRequestedAt == nil { dispatch(tools.pendingUpdates()) }
+            // unless the conversation is ending: then it stays pending. A
+            // job result still waits for quiet: the model may pick its
+            // answer back up.
+            if endRequestedAt == nil { dispatch(tools.pendingUpdates(), holdingOutcomes: true) }
             scheduleIdleFlush()
         case .reconnecting:
             if endRequestedAt == nil { phase = .reconnecting }
@@ -1145,11 +1147,16 @@ final class GeminiLiveConversationController: ObservableObject {
     /// A result the model took without a word (it can let one pass) is
     /// reported again as a text update.
     private func ensureOutcomeSpoken(jobID: UUID?, since sentAt: Date) {
+        let sentOn = session.map(ObjectIdentifier.init)
+        let generation = session?.connectionGeneration
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.outcomeSpeechGrace))
             guard let self else { return }
-            guard self.isActive, self.endRequestedAt == nil else {
-                // The call ended with it sent: it counts as said.
+            guard self.isActive, self.endRequestedAt == nil,
+                  self.session.map(ObjectIdentifier.init) == sentOn,
+                  self.session?.connectionGeneration == generation else {
+                // The call (or its connection) ended with it sent: it
+                // counts as said, never re-reported into the next one.
                 self.tools.outcomeSent(jobID: jobID)
                 return
             }

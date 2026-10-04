@@ -1514,8 +1514,10 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(session.sent.isEmpty, "Nothing can go out while reconnecting")
         XCTAssertFalse(supervisor.jobs[0].outcomeDelivered, "The outcome must not be marked delivered unsent")
 
-        // Back on a (same-connection) ready session: answered on the call.
+        // Back on a (same-connection) ready session: answered on the call,
+        // once the conversation is quiet.
         session.becomeReady()
+        controller.flushPendingTextIfIdle()
         let response = session.sent.compactMap { ($0["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]] }.first?.first
         XCTAssertEqual(response?["id"] as? String, "c1")
         XCTAssertEqual((response?["response"] as? [String: Any])?["result"] as? String, "All green.")
