@@ -6,7 +6,8 @@
 //  the link to a background job a voice call started. They are handled by
 //  the root view's `openURL` action, so no URL scheme is registered and
 //  another app can't open them. A model's reply could write one too; a tap
-//  on it only opens a chat on the profile in use, as the sidebar would.
+//  on it only opens a chat on the profile in use or a bot's chat, as the
+//  sidebar would.
 //
 
 import Foundation
@@ -14,30 +15,39 @@ import Foundation
 enum ConduitAppLink: Equatable {
     /// A chat (Hermes session) on the profile the link was read in.
     case session(id: String)
+    /// A bot's Bot Chat, by the bot's profile name: a bot has one chat, and
+    /// it opens through the bot's profile.
+    case bot(profile: String)
 
     static let scheme = "conduit"
     private static let sessionRoot = URL(string: "conduit://session")!
 
     init?(url: URL) {
         guard url.scheme?.lowercased() == Self.scheme,
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              components.host?.lowercased() == "session" else { return nil }
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
         let id = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !id.isEmpty, !id.contains("/") else { return nil }
-        self = .session(id: id)
+        switch components.host?.lowercased() {
+        case "session": self = .session(id: id)
+        case "bot": self = .bot(profile: id)
+        default: return nil
+        }
     }
 
     var url: URL {
+        var components = URLComponents()
+        components.scheme = Self.scheme
         switch self {
         case .session(let id):
-            var components = URLComponents()
-            components.scheme = Self.scheme
             components.host = "session"
             components.path = "/" + id
-            // A session id is a plain token; a URL that can't be built is
-            // a programming error, never user input.
-            return components.url ?? Self.sessionRoot
+        case .bot(let profile):
+            components.host = "bot"
+            components.path = "/" + profile
         }
+        // A session id or profile name is a plain token; a URL that can't
+        // be built is a programming error, never user input.
+        return components.url ?? Self.sessionRoot
     }
 
     /// A Markdown link to this target. Brackets in the label are escaped
