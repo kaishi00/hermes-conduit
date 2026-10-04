@@ -111,7 +111,8 @@ final class AppleSpeechWakeWordService: WakeWordService {
             try startAudio()
         } catch {
             stopEverything()
-            throw WakeWordServiceError.unavailable(error.localizedDescription)
+            wakeLogger.error("wake audio start failed: \(error.localizedDescription, privacy: .public)")
+            throw WakeWordServiceError.unavailable(AppLocalization.string("Wake listening couldn't use the microphone. Close other apps using it, then try again."))
         }
         observeAudioDisruptions()
         startRecognitionCycle()

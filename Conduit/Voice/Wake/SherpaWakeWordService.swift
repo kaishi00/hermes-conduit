@@ -15,7 +15,7 @@ enum WakeWordServiceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unavailable(let reason): return reason
-        case .notPrepared: return "Choose at least one valid wake phrase before listening."
+        case .notPrepared: return AppLocalization.string("Choose at least one valid wake phrase before listening.")
         }
     }
 }

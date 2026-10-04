@@ -231,7 +231,11 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         let pcm = capturedPCM
         capturedPCM.removeAll(keepingCapacity: true)
         guard !pcm.isEmpty else {
-            if let lastCaptureFailure { throw VoiceAudioError.unavailable(lastCaptureFailure) }
+            if let lastCaptureFailure {
+                // The conversion detail is for the log; the person gets what to try.
+                voiceAudioLogger.error("capture conversion failed: \(lastCaptureFailure, privacy: .public)")
+                throw VoiceAudioError.unavailable(AppLocalization.string("Conduit couldn't read audio from this microphone. Try again, or switch to another microphone or headset."))
+            }
             throw VoiceAudioError.noAudioCaptured
         }
         let duration = Double(pcm.count) / (Self.outputSampleRate * Double(Self.outputBytesPerFrame))

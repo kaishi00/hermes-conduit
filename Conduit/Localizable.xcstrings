@@ -20971,6 +20971,36 @@
           }
         }
       }
+    },
+    "Conduit couldn't read audio from this microphone. Try again, or switch to another microphone or headset." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法读取此麦克风的音频。请重试，或换用其他麦克风或耳机。"
+          }
+        }
+      }
+    },
+    "Wake listening couldn't use the microphone. Close other apps using it, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "唤醒监听无法使用麦克风。请关闭正在使用麦克风的其他应用，然后重试。"
+          }
+        }
+      }
+    },
+    "Choose at least one valid wake phrase before listening." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始监听前，请至少选择一个有效的唤醒短语。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
