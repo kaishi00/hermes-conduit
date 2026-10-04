@@ -20172,26 +20172,6 @@
         }
       }
     },
-    "GPT-Live's audio couldn't resume after the audio route changed." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "音频路由改变后 GPT-Live 的音频无法恢复。"
-          }
-        }
-      }
-    },
-    "GPT-Live's audio couldn't resume after the interruption." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "中断后 GPT-Live 的音频无法恢复。"
-          }
-        }
-      }
-    },
     "Use GPT-Live for voice" : {
       "localizations" : {
         "zh-Hans" : {

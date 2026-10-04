@@ -30,8 +30,9 @@ protocol GPTLivePeer: AnyObject {
     /// `true` when it drops, `false` once it is connected again. It often
     /// recovers on its own; the session decides how long to wait.
     var onConnectionInterrupted: (@MainActor (Bool) -> Void)? { get set }
-    /// The call's audio couldn't be brought back (after an interruption).
-    var onAudioLost: (@MainActor (String) -> Void)? { get set }
+    /// The call's audio paused for another sound (an alarm, a phone call)
+    /// (`true`) or came back (`false`). The connection stays up meanwhile.
+    var onAudioPaused: (@MainActor (Bool) -> Void)? { get set }
     /// Opens the microphone and the data channel and returns the local SDP
     /// offer, with its ICE candidates gathered.
     func makeOffer() async throws -> String
@@ -62,7 +63,7 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
     var onMessage: (@MainActor (String) -> Void)?
     var onDisconnected: (@MainActor () -> Void)?
     var onConnectionInterrupted: (@MainActor (Bool) -> Void)?
-    var onAudioLost: (@MainActor (String) -> Void)?
+    var onAudioPaused: (@MainActor (Bool) -> Void)?
     private var isInterrupted = false
 
     /// How long ICE gathering may take before the offer goes out with the
@@ -85,9 +86,9 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
     init(audio: GPTLiveAudioLink? = nil) {
         self.audio = audio ?? GPTLiveAudioLink(audio: SystemGPTLiveAudioSession())
         super.init()
-        self.audio.onAudioLost = { [weak self] message in
+        self.audio.onPausedChanged = { [weak self] paused in
             guard let self, !self.isClosed else { return }
-            self.onAudioLost?(message)
+            self.onAudioPaused?(paused)
         }
     }
 

@@ -1097,7 +1097,7 @@ final class CarPlayVoiceCoordinator {
             return Self.canTakeNotice(appState.geminiLiveController.phase)
         case .gptLive:
             switch appState.gptLiveController.phase {
-            case .connecting, .listening, .speaking: return true
+            case .connecting, .listening, .speaking, .paused: return true
             case .idle, .failed, .ending: return false
             }
         case .grokLive:

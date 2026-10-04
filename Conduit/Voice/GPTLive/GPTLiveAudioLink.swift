@@ -7,14 +7,16 @@
 //  and tells WebRTC when it may use it. That makes Conduit responsible for
 //  what the system does to the session mid-call: an interruption (a phone
 //  call, Siri, an alarm) deactivates it under WebRTC, and a route change
-//  can reset it. The link forwards both, the way the classic capture
-//  service recovers: stop on interruption, reassert the lease and resume
-//  when it ends, reassert after a route change that lost the policy.
+//  can reset it. The link pauses the call's audio on an interruption, or
+//  on a route change whose policy can't be reapplied (another sound holds
+//  the session), and resumes it when the interruption ends or the app
+//  becomes active again. A pause never ends the call (#376).
 //
 
 import AVFAudio
 import Foundation
 import OSLog
+import UIKit
 import WebRTC
 
 private let gptLiveAudioLogger = Logger(subsystem: "com.milim.relay", category: "GPTLive")
@@ -36,14 +38,18 @@ protocol GPTLiveAudioSessionControlling: AnyObject {
 
 @MainActor
 final class GPTLiveAudioLink {
-    /// The audio couldn't be brought back after an interruption.
-    var onAudioLost: (@MainActor (String) -> Void)?
+    /// The call's audio paused (`true`) or came back (`false`).
+    var onPausedChanged: (@MainActor (Bool) -> Void)?
+    /// Tries to resume after a failed one: the session can still be
+    /// settling right after the other sound let go.
+    static let resumeRetryDelays: [Duration] = [.milliseconds(500), .seconds(1), .seconds(2)]
 
     private let audio: GPTLiveAudioSessionControlling
     private let center: NotificationCenter
     private var observers: [NSObjectProtocol] = []
     private(set) var isRunning = false
     private(set) var isInterrupted = false
+    private var resumeTask: Task<Void, Never>?
 
     init(audio: GPTLiveAudioSessionControlling, center: NotificationCenter = .default) {
         self.audio = audio
@@ -72,12 +78,19 @@ final class GPTLiveAudioLink {
                 let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
                 Task { @MainActor [weak self] in self?.routeChanged(reason) }
             },
+            // Not every interruption gets an end (Apple doesn't promise
+            // one): coming back to the app is another chance to resume.
+            center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.appBecameActive() }
+            },
         ]
     }
 
     func stop() {
         observers.forEach(center.removeObserver)
         observers = []
+        resumeTask?.cancel()
+        resumeTask = nil
         guard isRunning else { return }
         isRunning = false
         isInterrupted = false
@@ -88,30 +101,30 @@ final class GPTLiveAudioLink {
     func interruptionBegan() {
         guard isRunning, !isInterrupted else { return }
         gptLiveAudioLogger.notice("GPT-Live audio interrupted")
-        isInterrupted = true
-        audio.disableWebRTCAudio()
+        pause()
     }
 
     /// Resumes whether or not the system says it should: the call is still
     /// live, and a conversation that silently stays mute is worse than one
-    /// that tries.
+    /// that tries. A resume that fails is tried again shortly, and the call
+    /// stays paused (never lost) until one works.
     func interruptionEnded() {
         guard isRunning, isInterrupted else { return }
-        do {
-            try audio.reassert()
-        } catch {
-            gptLiveAudioLogger.error("GPT-Live audio couldn't resume: \(String(describing: error), privacy: .public)")
-            onAudioLost?(AppLocalization.string("GPT-Live's audio couldn't resume after the interruption."))
-            return
-        }
-        isInterrupted = false
-        audio.enableWebRTCAudio()
+        if !resume() { scheduleResume(after: Self.resumeRetryDelays) }
+    }
+
+    func appBecameActive() {
+        guard isRunning, isInterrupted else { return }
+        if !resume() { scheduleResume(after: Self.resumeRetryDelays) }
     }
 
     /// The system may have torn the session down with the old route (a
     /// Bluetooth headset dropping) even when its category looks unchanged,
     /// so every route change reasserts the lease, as the classic capture
-    /// service does; the coordinator makes a redundant one cheap.
+    /// service does; the coordinator makes a redundant one cheap. A policy
+    /// that can't be reapplied means another sound holds the session (an
+    /// alarm's route change can arrive before its interruption): the call
+    /// pauses instead of ending (#376).
     func routeChanged(_ reason: AVAudioSession.RouteChangeReason?) {
         // Our own policy changes post category changes: never loop on them.
         guard isRunning, !isInterrupted, reason != .categoryChange else { return }
@@ -119,8 +132,43 @@ final class GPTLiveAudioLink {
             try audio.reassert()
         } catch {
             gptLiveAudioLogger.error("GPT-Live audio couldn't reapply after a route change: \(String(describing: error), privacy: .public)")
-            audio.disableWebRTCAudio()
-            onAudioLost?(AppLocalization.string("GPT-Live's audio couldn't resume after the audio route changed."))
+            pause()
+            scheduleResume(after: Self.resumeRetryDelays)
+        }
+    }
+
+    private func pause() {
+        isInterrupted = true
+        audio.disableWebRTCAudio()
+        onPausedChanged?(true)
+    }
+
+    /// True once the audio is back (or there is nothing to resume).
+    @discardableResult
+    private func resume() -> Bool {
+        guard isRunning, isInterrupted else { return true }
+        do {
+            try audio.reassert()
+        } catch {
+            gptLiveAudioLogger.notice("GPT-Live audio not back yet: \(String(describing: error), privacy: .public)")
+            return false
+        }
+        resumeTask?.cancel()
+        resumeTask = nil
+        isInterrupted = false
+        audio.enableWebRTCAudio()
+        onPausedChanged?(false)
+        return true
+    }
+
+    private func scheduleResume(after delays: [Duration]) {
+        resumeTask?.cancel()
+        resumeTask = Task { [weak self] in
+            for delay in delays {
+                try? await Task.sleep(for: delay)
+                guard let self, !Task.isCancelled, self.isRunning, self.isInterrupted else { return }
+                if self.resume() { return }
+            }
         }
     }
 }

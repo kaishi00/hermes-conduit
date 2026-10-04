@@ -108,6 +108,7 @@ private struct GPTLiveBarContent: View {
         case .connecting: return AppLocalization.string("Connecting…")
         case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
         case .speaking: return AppLocalization.string("Speaking")
+        case .paused: return AppLocalization.string("Paused")
         case .ending: return AppLocalization.string("Ending conversation…")
         case .failed: return AppLocalization.string("Call stopped. Tap to see why.")
         }
@@ -118,6 +119,7 @@ private struct GPTLiveBarContent: View {
         case .idle, .connecting: return "antenna.radiowaves.left.and.right"
         case .listening: return controller.isMicrophoneMuted ? "mic.slash" : "waveform"
         case .speaking: return "speaker.wave.3.fill"
+        case .paused: return "pause.circle"
         case .ending: return "hand.wave.fill"
         case .failed: return "exclamationmark.triangle.fill"
         }
