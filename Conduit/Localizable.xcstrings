@@ -21552,12 +21552,12 @@
         }
       }
     },
-    "Turn on notifications on this iPhone before creating a pairing code." : {
+    "Turn on notifications on this device before creating a pairing code." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请先在这台 iPhone 上开启通知，再创建配对码。"
+            "value" : "请先在这台设备上开启通知，再创建配对码。"
           }
         }
       }
