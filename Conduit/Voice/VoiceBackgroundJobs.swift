@@ -768,6 +768,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return AppLocalization.string("Started a background job: \(job.title).")
     }
 
+    /// Whether a job for `instructions` would run on another profile
+    /// ("for Fam, …"), which an attached call's start_job keeps as a job.
+    func namesOtherProfile(_ instructions: String) -> Bool {
+        guard let target = Self.leadingTarget(in: instructions, resolve: backend.resolveProfile) else { return false }
+        if case .other = target.target { return true }
+        return false
+    }
+
     /// "for Fam, check the router" → (Fam, "check the router").
     /// Only a leading "for/on/with <name>" whose name (up to three words)
     /// is a known profile (this one included) counts; anything else stays
