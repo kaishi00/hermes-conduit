@@ -506,7 +506,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(link.isInterrupted, "Observers are gone after stop")
     }
 
-    func testGPTLiveAudioPauseKeepsTheSessionAndReachesTheController() async {
+    func testGPTLiveAudioPauseKeepsTheSession() async {
         let (session, peer) = makeGPTSession(client: FakeGPTLiveClient())
         var paused: [Bool] = []
         session.onAudioPaused = { paused.append($0) }
@@ -519,20 +519,6 @@ extension HermesVoiceGatewayTimeoutTests {
         peer.onAudioPaused?(false)
         XCTAssertEqual(paused, [true, false])
         session.stop()
-
-        let (controller, controlled, _, _) = makeGPTController(clock: Date.init)
-        await controller.start()
-        controlled.becomeReady()
-        XCTAssertEqual(controller.phase, .listening)
-        controlled.onAudioPaused?(true)
-        XCTAssertEqual(controller.phase, .paused)
-        XCTAssertTrue(controller.isActive)
-        XCTAssertFalse(controller.isConversationIdle, "Nothing is sent the user can't hear")
-        controlled.onEvent?(.outputTranscript("still talking"))
-        XCTAssertEqual(controller.phase, .paused)
-        controlled.onAudioPaused?(false)
-        XCTAssertEqual(controller.phase, .speaking)
-        controller.stop()
     }
 
     func testGPTLiveSessionFailsWithTheHostsReasonAndClosesThePeer() async {
@@ -689,6 +675,22 @@ extension VoiceConversationControllerTests {
             headsetMute: headsetMute ?? HeadsetMicrophoneMute(system: FakeSystemInputMute())
         )
         return (controller, session, supervisor, fake)
+    }
+
+    func testGPTLiveCallShowsPausedWhileAnotherSoundHoldsTheAudio() async {
+        let (controller, controlled, _, _) = makeGPTController(clock: Date.init)
+        await controller.start()
+        controlled.becomeReady()
+        XCTAssertEqual(controller.phase, .listening)
+        controlled.onAudioPaused?(true)
+        XCTAssertEqual(controller.phase, .paused)
+        XCTAssertTrue(controller.isActive)
+        XCTAssertFalse(controller.isConversationIdle, "Nothing is sent the user can't hear")
+        controlled.onEvent?(.outputTranscript("still talking"))
+        XCTAssertEqual(controller.phase, .paused)
+        controlled.onAudioPaused?(false)
+        XCTAssertEqual(controller.phase, .speaking)
+        controller.stop()
     }
 
     func testGPTLiveUnavailableHostFailsWithTheReasonAndNeverCalls() async {
