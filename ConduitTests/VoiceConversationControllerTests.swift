@@ -820,8 +820,8 @@ final class VoiceConversationControllerTests: XCTestCase {
         controller.receiveAssistantEvent(.delta(sessionID: "session", text: "Answer."))
         let speaking = await controller.waitForState(.speaking)
         XCTAssertTrue(speaking, "the assistant reply is audible")
-        // The whole reply has arrived; its last words are still playing
-        // (drain parked), so the Hermes turn is already over.
+        // The whole reply has arrived; playback finished rendering but the
+        // drain is parked mid-settle, so the Hermes turn is already over.
         controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Answer."))
         await gate.waitUntilEntered()
         XCTAssertEqual(controller.state, .speaking)
