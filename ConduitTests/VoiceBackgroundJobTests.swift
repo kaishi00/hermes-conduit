@@ -1063,7 +1063,9 @@ extension VoiceConversationControllerTests {
         // Asked-for background, quick work, or another profile is still a job.
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "start_job", arguments: ["instructions": "research flights in the background"]))
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "Quick: what's on my calendar"]))
-        XCTAssertEqual(fake.created, 2)
+        fake.profileTargets = ["fam": .other("fam")]
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_4", name: "start_job", arguments: ["instructions": "check the build", "profile": "fam"]))
+        XCTAssertEqual(fake.created, 3)
         XCTAssertEqual(fake.threadSubmissions.count, 1)
     }
 

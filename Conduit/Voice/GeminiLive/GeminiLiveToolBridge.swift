@@ -173,7 +173,7 @@ final class GeminiLiveToolBridge {
     static let functionDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         .init(
             name: Tool.startJob.rawValue,
-            description: "Start a background job on the user's Hermes agent for work that takes more than a moment (research, coding, checking systems, anything needing Hermes' tools). Only call this when the user asks for such work; in a call attached to a chat, also for quick work the user starts with \"quick\" that needs Hermes' tools. The job runs in its own Hermes chat; its result arrives later on this call. In a call attached to a chat, work goes to that chat unless the instructions start with \"Quick:\" or say \"in the background\": add those words only when the user asked for quick or background work. Do not describe job progress unless asked.",
+            description: "Start a background job on the user's Hermes agent for work that takes more than a moment (research, coding, checking systems, anything needing Hermes' tools). Only call this when the user asks for such work; in a call attached to a chat, also for quick work the user starts with \"quick\" that needs Hermes' tools. The job runs in its own Hermes chat; its result arrives later on this call. In a call attached to a chat, work goes to that chat unless the instructions start with \"Quick:\", say \"in the background\" or \"in a separate chat\", or profile is set: add those words only when the user asked for quick, background or separate-chat work. Do not describe job progress unless asked.",
             parameters: [
                 "type": "OBJECT",
                 "properties": [
@@ -228,6 +228,10 @@ final class GeminiLiveToolBridge {
     private let holdsJobCalls: Bool
     /// Open start_job calls, keyed by the job they started.
     private var openCalls: [UUID: String] = [:]
+    /// Open start_job calls that were sent to the attached chat: their
+    /// thread turn answers them under start_job, the name they were made
+    /// under, not ask_thread.
+    private var routedStartJobCallIDs: Set<String> = []
     /// Calls the model withdrew before their start_job finished starting.
     private var withdrawnCallIDs: Set<String> = []
 
@@ -253,13 +257,15 @@ final class GeminiLiveToolBridge {
         guard !isEnding else { return [] }
         let sent = supervisor.startThreadTurn(request: request)
         guard let jobID = sent.jobID else {
-            return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? ""], scheduling: .whenIdle)]
+            return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? "Hermes couldn't take the request."], scheduling: .whenIdle)]
         }
         openCalls[jobID] = call.id
+        if call.name == Tool.startJob.rawValue { routedStartJobCallIDs.insert(call.id) }
         // Without held calls it's answered now and the reply follows as
         // a text update, like start_job's outcome.
         guard !holdsJobCalls else { return settleOpenCalls() }
         openCalls[jobID] = nil
+        routedStartJobCallIDs.remove(call.id)
         return [.toolResponse(id: call.id, name: call.name, result: [
             "status": "sent",
             "message": "Sent to the chat. Hermes' reply will arrive later as a message; don't guess it.",
@@ -387,6 +393,7 @@ final class GeminiLiveToolBridge {
         let withdrawn = Set(ids)
         let known = Set(openCalls.values)
         openCalls = openCalls.filter { !withdrawn.contains($0.value) }
+        routedStartJobCallIDs.subtract(withdrawn)
         // A withdrawal can overtake a start_job still waiting on Hermes.
         withdrawnCallIDs.formUnion(withdrawn.subtracting(known))
     }
@@ -395,6 +402,7 @@ final class GeminiLiveToolBridge {
     /// can no longer be answered, so results go out as text updates.
     func connectionReplaced() {
         openCalls.removeAll()
+        routedStartJobCallIDs.removeAll()
         withdrawnCallIDs.removeAll()
         isEnding = false
     }
@@ -404,6 +412,7 @@ final class GeminiLiveToolBridge {
     /// Hermes to report. Cleared by the next connection.
     func beginEnding() {
         openCalls.removeAll()
+        routedStartJobCallIDs.removeAll()
         withdrawnCallIDs.removeAll()
         isEnding = true
     }
@@ -502,7 +511,8 @@ final class GeminiLiveToolBridge {
             // second report; everything else — including a start that failed
             // — is told once the conversation is quiet.
             let scheduling: GeminiLiveProtocol.Scheduling = job.status == .cancelled && alreadyAnnounced ? .silent : .whenIdle
-            let name = job.isThreadTurn ? Tool.askThread.rawValue : Tool.startJob.rawValue
+            let routed = routedStartJobCallIDs.remove(callID) != nil
+            let name = job.isThreadTurn && !routed ? Tool.askThread.rawValue : Tool.startJob.rawValue
             outgoing.append(.toolResponse(id: callID, name: name, result: result, scheduling: scheduling))
         }
         return outgoing
