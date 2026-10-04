@@ -21051,6 +21051,46 @@
           }
         }
       }
+    },
+    "On-device Apple speech recognition doesn't support %@. Choose another speech-to-text option in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备端 Apple 语音识别不支持 %@。请在“设置 > 语音”中选择其他语音转文字选项。"
+          }
+        }
+      }
+    },
+    "⚠️ Command failed: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ 命令失败：%@"
+          }
+        }
+      }
+    },
+    "⚠️ Alias target failed: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ 别名目标失败：%@"
+          }
+        }
+      }
+    },
+    "Hermes did not accept that decision." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未接受该决定。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

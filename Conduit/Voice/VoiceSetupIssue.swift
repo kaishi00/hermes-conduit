@@ -102,7 +102,7 @@ enum VoiceSetupIssue: Equatable {
         case .speechRecognitionDenied:
             return AppLocalization.string("Allow Speech Recognition for Conduit in iPhone Settings > Conduit, or choose another speech-to-text option in Settings > Voice.")
         case .speechRecognitionUnsupported(let locale):
-            return AppLocalization.string("On-device Apple speech recognition is unavailable for \(locale).")
+            return AppLocalization.string("On-device Apple speech recognition doesn't support \(locale). Choose another speech-to-text option in Settings > Voice.")
         case .noSpeechToText(let detail):
             if let detail, !detail.isEmpty { return detail }
             return AppLocalization.string("This Hermes profile has no ready speech-to-text provider. Set one up in Settings > Voice.")

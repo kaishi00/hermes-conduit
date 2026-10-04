@@ -16590,7 +16590,7 @@ final class AppState: ObservableObject {
         } catch {
             guard isCurrentComposerSubmission(submissionContext) else { return }
             appendSlashOutput(
-                "⚠️ Command failed: \(UserFacingError.message(for: error))",
+                AppLocalization.string("⚠️ Command failed: \(UserFacingError.message(for: error))"),
                 context: submissionContext
             )
         }
@@ -16708,7 +16708,7 @@ final class AppState: ObservableObject {
                 } catch {
                     guard isCurrentComposerSubmission(context) else { return }
                     appendSlashOutput(
-                        "⚠️ Alias target failed: \(UserFacingError.message(for: error))",
+                        AppLocalization.string("⚠️ Alias target failed: \(UserFacingError.message(for: error))"),
                         context: context
                     )
                 }
@@ -19224,7 +19224,7 @@ final class AppState: ObservableObject {
                 messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
             } else {
-                messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
+                messages[updatedIndex].approval?.error = AppLocalization.string("Hermes did not accept that decision.")
                 errorMessage = UserFacingError.message(for: error)
             }
             cacheMessagePresentation()
