@@ -443,7 +443,7 @@ final class KanbanService {
         do {
             return try decoder.decode(type, from: data)
         } catch {
-            throw KanbanServiceError.invalidResponse(AppLocalization.string("Hermes returned an unexpected Kanban response: \(error.localizedDescription)"))
+            throw KanbanServiceError.invalidResponse(AppLocalization.string("Hermes sent a Kanban reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this."))
         }
     }
 

@@ -57,7 +57,7 @@ final class MessageReadAloudController: ObservableObject {
         isVoiceEnabled: Bool,
         snapshot: VoiceCapabilitySnapshot
     ) -> String? {
-        if !isConnected { return "Connect to Hermes before reading responses aloud." }
+        if !isConnected { return AppLocalization.string("Connect to Hermes before reading responses aloud.") }
         if !isVoiceEnabled { return VoiceSetupIssue.voiceOff.message }
         if !snapshot.supportsSpeech {
             return VoiceSetupIssue.noTextToSpeech.message

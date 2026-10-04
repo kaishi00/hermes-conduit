@@ -191,7 +191,7 @@ struct GeminiLiveSettingsSection: View {
             }
         case .failure(let error):
             isAvailable = false
-            status = error.localizedDescription
+            status = UserFacingError.message(for: error)
         }
     }
 }

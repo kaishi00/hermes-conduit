@@ -20921,6 +20921,36 @@
           }
         }
       }
+    },
+    "Conduit couldn't read that image. Try copying it again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法读取该图片。请重新复制后再试。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes before reading responses aloud." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先连接 Hermes 再朗读回复。"
+          }
+        }
+      }
+    },
+    "Hermes sent a Kanban reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 返回了 Conduit 无法识别的看板回复。更新 Hermes 和 Conduit 通常可以解决。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
