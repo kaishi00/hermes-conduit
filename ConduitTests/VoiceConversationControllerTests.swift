@@ -806,8 +806,18 @@ final class VoiceConversationControllerTests: XCTestCase {
             submit: { _ in true },
             interrupt: { interrupts.increment(); return true }
         )
-        await Self.driveToSpeaking(controller, gateway: gateway)
-        XCTAssertEqual(controller.state, .speaking)
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        let start = Date()
+        controller.ingestAudioLevel(0.1, at: start)
+        controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
+        await gateway.waitUntilTranscriptionStarted()
+        let thinking = await controller.waitForState(.thinking)
+        XCTAssertTrue(thinking, "the utterance pipeline submitted the turn")
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+        controller.receiveAssistantEvent(.delta(sessionID: "session", text: "First sentence."))
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the assistant reply is audible")
         // The first sentence has played out and Hermes is still working on
         // the turn (no completion yet): nothing is audible to talk over.
         playback.isPlaying = false
