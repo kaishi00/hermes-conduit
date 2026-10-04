@@ -61,6 +61,8 @@ extension DashboardTicketBridge {
         do {
             result = try await Self.load(request, deadline: .milliseconds(max(1_000, timeoutMilliseconds)))
         } catch let error as URLError {
+            // A cancelled caller hears cancellation, as from the page path.
+            if error.code == .cancelled || Task.isCancelled { throw CancellationError() }
             // What the page's fetch reports for a network failure or its
             // abort: status 0.
             throw DashboardTicketBridgeError.http(status: 0, detail: error.localizedDescription)

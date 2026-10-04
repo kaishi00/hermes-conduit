@@ -1068,8 +1068,8 @@ final class CarPlayVoiceCoordinator {
             if controller.isMicrophonePaused {
                 await controller.resumeMicrophone()
                 // A mode switch during the resume leaves the car to the new
-                // mode's controller.
-                guard isCurrent(generation), isConnected,
+                // mode's controller; End tapped meanwhile already closed it.
+                guard isCurrent(generation), isConnected, voiceStartRequest == startRequest,
                       CarPlayVoiceMode.current(in: appState) == .classic else { return }
                 // A resume that failed or was refused leaves the microphone
                 // paused, and listening would run with it closed, so the car
