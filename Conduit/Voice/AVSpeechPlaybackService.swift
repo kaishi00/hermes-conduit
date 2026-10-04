@@ -54,6 +54,12 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// Pause bookkeeping (#373). Time spent paused does not count against
     /// the drain watchdog, whose budget is the audio left to render.
     private(set) var isPaused = false
+    /// Set when an interruption (a phone call) ended standalone speech. The
+    /// stream that was playing must not restart itself under the call: its
+    /// next chunk is refused as a cancellation, so Read Aloud settles quietly.
+    /// A new stream (`start` / an encoded clip) clears it. Conversation
+    /// playback keeps its self-healing restart.
+    private var interruptedStandaloneStream = false
     private var pausedAt: ContinuousClock.Instant?
     private var totalPausedDuration: Duration = .zero
     private let coordinator: VoiceAudioSessionCoordinator
@@ -106,6 +112,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
 
     func start(sampleRate: Double) throws {
         stop()
+        interruptedStandaloneStream = false
         let rate = Self.clampedRate(playbackRate)
         // Effect units render Float32 only, so a stretched stream schedules
         // float buffers (converted in enqueuePCM16) instead of the Int16 ones
@@ -156,6 +163,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // A paused stream stays paused across that restart (AirPods back in
         // the case): the fresh player holds its place until resume().
         let holdPause = isPaused
+        if interruptedStandaloneStream { throw CancellationError() }
         if format != nil, !engine.isRunning { stop() }
         if format == nil {
             try start(sampleRate: sampleRate)
@@ -208,6 +216,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
 
     func playEncodedAudioData(_ data: Data) throws {
         stop()
+        interruptedStandaloneStream = false
         lease = try coordinator.acquire(ownershipIntent)
         do {
             let player = try AVAudioPlayer(data: data)
@@ -421,12 +430,16 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue), type == .began else { return }
         Task { @MainActor [weak self] in
+            guard let self else { return }
+            if self.ownershipIntent == .standalonePlayback, self.lease != nil {
+                self.interruptedStandaloneStream = true
+            }
             // Playback can no longer continue: settle buffers and drain
             // waiters so awaiting controllers never hang, and release session
             // ownership so other media recovers. Resuming after the
             // interruption ends is deliberate follow-up work, not silent
             // breakage.
-            self?.stop()
+            self.stop()
         }
     }
 
