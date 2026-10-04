@@ -1620,15 +1620,27 @@ private struct VoiceCallMarkerCard: View {
                     .background(Color.conduitAccent.opacity(0.14), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(link.resumed ? "Voice call resumed" : "Voice call")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+                    Group {
+                        if link.resumed {
+                            Text("Voice call resumed")
+                        } else {
+                            Text("Voice call")
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
                     Text(duration.map { AppLocalization.string("\($0) · Open transcript") } ?? AppLocalization.string("Open transcript"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
-                MessageTimestampLabel(timestamp: Self.timestampFormatter.string(from: link.startedAt), tone: .supporting)
+                if let started = MessageTimestampFormatter.displayString(for: Self.timestampFormatter.string(from: link.startedAt)) {
+                    Text(started)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Color.conduitAccent.opacity(0.78))
+                        .monospacedDigit()
+                        .accessibilityLabel(AppLocalization.string("Started \(started)"))
+                }
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)

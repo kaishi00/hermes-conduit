@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Started %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始于 %@"
+          }
+        }
+      }
+    },
     "%@ · Open transcript" : {
       "localizations" : {
         "zh-Hans" : {
