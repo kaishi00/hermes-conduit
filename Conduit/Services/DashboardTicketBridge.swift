@@ -248,13 +248,13 @@ enum DashboardTicketBridgeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notReady:
-            return "The dashboard session is still loading."
+            return AppLocalization.string("Conduit is still connecting to your dashboard. Try again in a moment.")
         case .signInRequired:
-            return "Dashboard sign-in has expired."
+            return AppLocalization.string("Dashboard sign-in has expired. Sign in again to continue.")
         case .requestFailed(let message):
             return message
-        case .http(_, let detail):
-            return detail
+        case .http(let status, let detail):
+            return Self.describe(status: status, detail: detail)
         case .oversizedResponse:
             // Generic bridge-level copy: this error is raised for ANY
             // dashboard response that exceeds the safe bound (workspace-file
@@ -265,6 +265,54 @@ enum DashboardTicketBridgeError: LocalizedError {
             return "This response is too large to load safely."
         }
     }
+
+    /// What a failed dashboard request means for the person using Conduit.
+    /// The server's own explanation is kept when it says something (a
+    /// FastAPI `detail` like "Session not found"); bare status phrases and
+    /// browser fetch errors become what happened and what to do.
+    static func describe(status: Int, detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isMeaningful = !trimmed.isEmpty
+            && !genericDetails.contains(trimmed.lowercased())
+            && trimmed != AppLocalization.string("Dashboard request failed (\(String(status))).")
+        switch status {
+        case 0:
+            let lowered = trimmed.lowercased()
+            if lowered.contains("abort") || lowered.contains("timeout") || lowered.contains("timed out") {
+                return HermesError.timeout("").localizedDescription
+            }
+            return AppLocalization.string("Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running.")
+        case 401, 403:
+            return AppLocalization.string("Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more.")
+        case 404, 405, 501:
+            if isMeaningful, status == 404 { return trimmed }
+            return AppLocalization.string("Your Hermes server doesn't support this yet. Update Hermes, then try again.")
+        case 408, 504, 524:
+            return HermesError.timeout("").localizedDescription
+        case 429:
+            return AppLocalization.string("Hermes is busy right now. Wait a moment, then try again.")
+        case 502, 503, 520...523:
+            return AppLocalization.string("Your dashboard couldn't reach Hermes. Hermes may be restarting, so try again in a moment.")
+        case 500...599:
+            if isMeaningful {
+                return AppLocalization.string("Hermes ran into a problem: \(trimmed). Check the Hermes logs, then try again.")
+            }
+            return AppLocalization.string("Hermes ran into a problem on the server. Check the Hermes logs, then try again.")
+        default:
+            if isMeaningful { return trimmed }
+            return AppLocalization.string("Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this.")
+        }
+    }
+
+    /// Default HTTP reason phrases and browser fetch errors, which say
+    /// nothing a person can act on.
+    private static let genericDetails: Set<String> = [
+        "not found", "method not allowed", "bad request", "internal server error",
+        "internal error", "service unavailable", "bad gateway", "gateway timeout",
+        "request timeout", "too many requests", "forbidden", "unauthorized",
+        "failed to fetch", "load failed", "typeerror: load failed",
+        "typeerror: failed to fetch", "networkerror when attempting to fetch resource.",
+    ]
 }
 
 /// WKUserContentController retains its script message handlers strongly, so

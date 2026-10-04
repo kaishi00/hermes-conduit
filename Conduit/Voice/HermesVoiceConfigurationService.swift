@@ -158,7 +158,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
         // Toolset config was added after some public gateways. Its absence is
         // a capability limitation, not a failed text-chat connection.
         if (try? stt.get()) == nil && (try? tts.get()) == nil {
-            errorMessage = AppLocalization.string("This Hermes gateway is too old to report voice readiness.")
+            errorMessage = AppLocalization.string("Update Hermes to use Voice. This version can't tell Conduit whether voice is ready.")
         }
     }
 
@@ -221,7 +221,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
             await reload()
             return true
         } catch {
-            errorMessage = AppLocalization.string("Could not save \(sectionKey).provider: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not save \(sectionKey).provider: \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -246,7 +246,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
             }
             return true
         } catch {
-            errorMessage = AppLocalization.string("Could not select \(rowName): \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not select \(rowName): \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -289,7 +289,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
             if key == "tts.provider" { snapshot.selectedTTSProvider = value }
             return true
         } catch {
-            errorMessage = AppLocalization.string("Could not save \(key): \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not save \(key): \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -307,7 +307,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
             await reload()
             return true
         } catch {
-            errorMessage = AppLocalization.string("Could not save credential: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not save credential: \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -342,7 +342,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
     }
 
     private static func message(from result: Result<[String: Any], Error>) -> String? {
-        if case .failure(let error) = result { return error.localizedDescription }
+        if case .failure(let error) = result { return UserFacingError.message(for: error) }
         return nil
     }
 

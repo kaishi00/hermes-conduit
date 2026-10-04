@@ -1140,7 +1140,7 @@ struct ComposerBar: View {
             do {
                 try await dictation.start(token: token)
             } catch {
-                composerErrorMessage = error.localizedDescription
+                composerErrorMessage = UserFacingError.message(for: error)
             }
         }
     }
@@ -1504,7 +1504,7 @@ struct ComposerBar: View {
         case .success(let picked):
             urls = picked
         case .failure(let error):
-            composerErrorMessage = AppLocalization.string("Could not open the file: \(error.localizedDescription)")
+            composerErrorMessage = AppLocalization.string("Could not open the file: \(UserFacingError.message(for: error))")
             Haptics.error()
             return
         }

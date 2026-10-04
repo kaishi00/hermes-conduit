@@ -2596,12 +2596,19 @@ enum HermesError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidUrl: return "Invalid gateway URL."
-        case .invalidResponse: return "Hermes returned an incomplete response."
-        case .notConnected: return "Hermes is not connected."
-        case .connectionClosed: return "Hermes connection closed."
-        case .timeout(let method): return "Request timed out: \(method)"
-        case .steerRejected: return "Hermes could not steer the active response."
+        // Read by people who may not run servers: say what happened and
+        // what to do, never an RPC method name.
+        case .invalidUrl:
+            return AppLocalization.string("The dashboard address isn't valid. Check it in Settings > Connection.")
+        case .invalidResponse:
+            return AppLocalization.string("Hermes sent a reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this.")
+        case .notConnected:
+            return AppLocalization.string("Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment.")
+        case .connectionClosed:
+            return AppLocalization.string("The connection to Hermes dropped. Conduit reconnects on its own, so try again in a moment.")
+        case .timeout:
+            return AppLocalization.string("Hermes didn't answer in time. Check that your Hermes server is running, then try again.")
+        case .steerRejected: return AppLocalization.string("Hermes could not steer the active response.")
         }
     }
 }

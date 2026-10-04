@@ -163,11 +163,11 @@ struct KanbanWorkerLogScreen: View {
             if log == nil {
                 // Initial load failure: nothing is cached, so the full
                 // "unavailable" state applies.
-                errorMessage = error.localizedDescription
+                errorMessage = UserFacingError.message(for: error)
             } else {
                 // Refresh failure with cached content: keep the log visible
                 // and surface a small non-destructive banner instead.
-                refreshErrorMessage = error.localizedDescription
+                refreshErrorMessage = UserFacingError.message(for: error)
             }
         }
     }

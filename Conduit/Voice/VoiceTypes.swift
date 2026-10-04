@@ -30,7 +30,7 @@ struct VoiceCapabilitySnapshot: Equatable {
             isGatewayConnected: false,
             supportsTranscription: false,
             supportsSpeech: false,
-            unavailableReason: AppLocalization.string("This Hermes gateway does not expose voice endpoints.")
+            unavailableReason: AppLocalization.string("Your Hermes server doesn't offer voice. Update Hermes to use Voice.")
         )
     }
 }

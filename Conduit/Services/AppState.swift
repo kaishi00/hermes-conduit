@@ -5761,7 +5761,7 @@ final class AppState: ObservableObject {
                 groupChatPhase = .gatewayUnsupported
                 groupRooms = []
             } else if groupChatPhase != .available {
-                groupChatPhase = .failed(message: error.localizedDescription)
+                groupChatPhase = .failed(message: UserFacingError.message(for: error))
             }
             // A transient failure while already .available keeps the last
             // known rooms and phase — same contract as the roster notice.
@@ -5868,7 +5868,7 @@ final class AppState: ObservableObject {
             // Leave the room open with whatever loaded (possibly nothing) and
             // surface the failure; the poller starts anyway so a transient
             // blip self-heals on the next tick.
-            errorMessage = AppLocalization.string("Could not load this group chat: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not load this group chat: \(UserFacingError.message(for: error))")
             startRoomPolling()
         }
     }
@@ -6079,7 +6079,7 @@ final class AppState: ObservableObject {
             guard groupRoomOutbox.pending?.eventID == logical.eventID else { return true }
             // Ambiguous outcome: KEEP pendingRoomMessage (same event id) so
             // the user's retry deduplicates server-side.
-            showRoomSendError(AppLocalization.string("Could not send to this group chat: \(error.localizedDescription)"))
+            showRoomSendError(AppLocalization.string("Could not send to this group chat: \(UserFacingError.message(for: error))"))
             return true
         }
     }
@@ -6127,7 +6127,7 @@ final class AppState: ObservableObject {
         } catch {
             guard groupRoomEpoch == epoch else { return }
             // Surface without closing: stop is advisory to the driver.
-            errorMessage = AppLocalization.string("Could not stop this group chat's work: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not stop this group chat's work: \(UserFacingError.message(for: error))")
         }
     }
 
@@ -6141,7 +6141,7 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
         } catch {
             guard groupRoomEpoch == epoch else { return }
-            errorMessage = AppLocalization.string("Could not disband this group chat: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not disband this group chat: \(UserFacingError.message(for: error))")
             return
         }
         closeGoneRoomSurface()
@@ -6212,7 +6212,7 @@ final class AppState: ObservableObject {
             await openGroupRoom(room)
             return true
         } catch {
-            errorMessage = AppLocalization.string("Could not create the group chat: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not create the group chat: \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -6476,7 +6476,7 @@ final class AppState: ObservableObject {
             UIApplication.shared.setAlternateIconName(choice.alternateIconName) { [weak self] error in
                 Task { @MainActor in
                     if let error {
-                        self?.errorMessage = AppLocalization.string("Could not change the app icon: \(error.localizedDescription)")
+                        self?.errorMessage = AppLocalization.string("Could not change the app icon: \(UserFacingError.message(for: error))")
                         continuation.resume(returning: false)
                     } else {
                         self?.appIconChoice = choice
@@ -6985,7 +6985,7 @@ final class AppState: ObservableObject {
             isConnecting = false
             isConnected = false
             turnState = .reconnecting
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
             // The typed classification is retained for Repair Connection's
             // seeding and routing; the raw error never reaches the UI.
             lastConnectionFailure = ConnectionFailureClassifier.classify(error)
@@ -8498,7 +8498,7 @@ final class AppState: ObservableObject {
                 return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
             }
             turnState = .reconnecting
-            errorMessage = AppLocalization.string("Failed to load gateway sessions: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
             settleReconciliation(
                 token,
                 automaticSyncOperationID: automaticOperationID
@@ -9303,9 +9303,9 @@ final class AppState: ObservableObject {
                 // attempting the whole transcript, neutral copy for a
                 // bounded current-Hermes page with one enormous row (which
                 // must not claim the backend lacks pagination).
-                errorMessage = error.localizedDescription
+                errorMessage = UserFacingError.message(for: error)
             default:
-                errorMessage = AppLocalization.string("Failed to restore this conversation: \(error.localizedDescription)")
+                errorMessage = AppLocalization.string("Failed to restore this conversation: \(UserFacingError.message(for: error))")
             }
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
             chatResumeCoordinator.abandonPendingAutomaticSync()
@@ -9520,7 +9520,7 @@ final class AppState: ObservableObject {
             let runtimeSessionID = created.sessionId.isEmpty ? (created.storedSessionId ?? "") : created.sessionId
             guard !runtimeSessionID.isEmpty else {
                 turnState = .idle
-                errorMessage = AppLocalization.string("Hermes created a conversation without a session ID.")
+                errorMessage = AppLocalization.string("Hermes didn't finish creating the conversation. Try again.")
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 chatResumeCoordinator.abandonPendingAutomaticSync()
                 return
@@ -9634,7 +9634,7 @@ final class AppState: ObservableObject {
                 return
             }
             turnState = .idle
-            errorMessage = AppLocalization.string("Failed to create session: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Failed to create session: \(UserFacingError.message(for: error))")
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
             chatResumeCoordinator.abandonPendingAutomaticSync()
             if resumePurpose == .automaticReturn {
@@ -9867,7 +9867,7 @@ final class AppState: ObservableObject {
             turnState = .running
         } else if TurnState.fromGatewayRunning(result.snapshot.running) == .unsupportedGateway {
             turnState = .unsupportedGateway
-            errorMessage = AppLocalization.string("This Hermes gateway must support session turn state. Update Hermes to enable message, stop, and steer controls.")
+            errorMessage = AppLocalization.string("Update Hermes to send, stop, and steer messages from Conduit. This version can't report whether a reply is still running.")
             return true
         } else {
             turnState = TurnState.fromGatewayRunning(result.snapshot.running)
@@ -10744,7 +10744,7 @@ final class AppState: ObservableObject {
                 isConnecting = false
                 turnState = .reconnecting
                 lastConnectionFailure = ConnectionFailureClassifier.classify(error)
-                errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(error.localizedDescription)")
+                errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(UserFacingError.message(for: error))")
                 scheduleReconnectAfterFailedSync()
             }
             return
@@ -11681,7 +11681,7 @@ final class AppState: ObservableObject {
             }
             return .absent
         } catch {
-            return .unavailable(error.localizedDescription)
+            return .unavailable(UserFacingError.message(for: error))
         }
     }
 
@@ -12500,7 +12500,7 @@ final class AppState: ObservableObject {
                 guard let activeClient, self.client === activeClient else { return false }
             }
             guard requiredViewportTransitionGeneration.map({ chatViewportTransitionIsCurrent(generation: $0) }) ?? true else { return false }
-            errorMessage = AppLocalization.string("Failed to load sessions: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Failed to load sessions: \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -12531,7 +12531,7 @@ final class AppState: ObservableObject {
             archivedSessions = uniqueSessions(loaded.filter { sessionBelongsToProfile($0, profile: profile) })
         } catch {
             guard profile == activeProfile else { return }
-            errorMessage = AppLocalization.string("Could not load archived conversations: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not load archived conversations: \(UserFacingError.message(for: error))")
         }
     }
 
@@ -12582,7 +12582,7 @@ final class AppState: ObservableObject {
         } catch {
             guard profile == activeProfile else { return false }
             let archivedAction = AppLocalization.string(archived ? "archive" : "restore")
-            errorMessage = AppLocalization.string("Could not \(archivedAction) this conversation: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not \(archivedAction) this conversation: \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -12703,7 +12703,7 @@ final class AppState: ObservableObject {
             return true
         } catch {
             guard profile == activeProfile else { return false }
-            errorMessage = AppLocalization.string("Could not delete this conversation: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not delete this conversation: \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -13074,7 +13074,7 @@ final class AppState: ObservableObject {
         do {
             try await client.createBotProfile(name: slug, description: description, soul: soul)
         } catch {
-            return .failed(AppLocalization.string("Could not create the bot: \(error.localizedDescription)"))
+            return .failed(AppLocalization.string("Could not create the bot: \(UserFacingError.message(for: error))"))
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
             // The server changed mid-save: the bot exists, its look and
@@ -13214,7 +13214,7 @@ final class AppState: ObservableObject {
                 }
             } catch {
                 guard uploaded else {
-                    return .failed(AppLocalization.string("Could not save the bot: \(error.localizedDescription)"))
+                    return .failed(AppLocalization.string("Could not save the bot: \(UserFacingError.message(for: error))"))
                 }
                 // The picture already landed; only the other fields failed.
                 problems += metaNotSaved()
@@ -13294,7 +13294,7 @@ final class AppState: ObservableObject {
                 timeoutMilliseconds: 30_000
             )
         } catch {
-            return AppLocalization.string("Could not delete \(bot.displayLabel): \(error.localizedDescription)")
+            return AppLocalization.string("Could not delete \(bot.displayLabel): \(UserFacingError.message(for: error))")
         }
         guard dashboardTicketBridge === bridge else { return nil }
         if let sessionId = activeSessionId,
@@ -13583,7 +13583,7 @@ final class AppState: ObservableObject {
     ) -> Bool {
         if HermesClient.isMissingRPCMethod(error) {
             botModePhase = .gatewayUnsupported
-            errorMessage = AppLocalization.string("Bot Mode requires a newer Hermes gateway.")
+            errorMessage = AppLocalization.string("Update Hermes to use Bot Mode.")
         } else if !Task.isCancelled {
             switch stage {
             case .lookup:
@@ -14482,7 +14482,7 @@ final class AppState: ObservableObject {
                   profile == activeProfile,
                   self.client === client else { return }
             turnState = previousTurnState
-            errorMessage = AppLocalization.string("Could not branch conversation: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not branch conversation: \(UserFacingError.message(for: error))")
         }
     }
 
@@ -15406,7 +15406,7 @@ final class AppState: ObservableObject {
         case ChatTakeoverError.malformed:
             return AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
         default:
-            let detail = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            let detail = UserFacingError.message(for: error).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !detail.isEmpty, !(error is DashboardTicketBridgeError) else {
                 return AppLocalization.string("Couldn't take this chat over. Check the connection to your Hermes host and try again.")
             }
@@ -15491,7 +15491,7 @@ final class AppState: ObservableObject {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
             } catch {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
-                errorMessage = AppLocalization.string("Attachment failed: \(error.localizedDescription)")
+                errorMessage = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
                 await recoverComposerSubmission(using: submissionContext)
                 return false
             }
@@ -15761,7 +15761,7 @@ final class AppState: ObservableObject {
                 // failed send must not paint an error onto the session the
                 // user switched to while recovery was suspended.
                 if isCurrentComposerSubmission(submissionContext) {
-                    errorMessage = AppLocalization.string("Failed to send: \(error.localizedDescription)")
+                    errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
                 }
                 if !reconnected, isCurrentComposerSubmission(submissionContext) {
                     await recoverComposerSubmission(using: submissionContext)
@@ -15778,7 +15778,7 @@ final class AppState: ObservableObject {
                         refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs, refusedText: text
                     )
                 } else {
-                    errorMessage = AppLocalization.string("Failed to send: \(error.localizedDescription)")
+                    errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
                 }
             }
             await recoverComposerSubmission(using: submissionContext)
@@ -16203,7 +16203,7 @@ final class AppState: ObservableObject {
         } catch {
             guard isCurrentComposerSubmission(submissionContext) else { return YoloWriteFailure(message: nil) }
             return YoloWriteFailure(
-                message: AppLocalization.string("Unable to change YOLO mode: \(error.localizedDescription)")
+                message: AppLocalization.string("Unable to change YOLO mode: \(UserFacingError.message(for: error))")
             )
         }
     }
@@ -16590,7 +16590,7 @@ final class AppState: ObservableObject {
         } catch {
             guard isCurrentComposerSubmission(submissionContext) else { return }
             appendSlashOutput(
-                "⚠️ Command failed: \(error.localizedDescription)",
+                "⚠️ Command failed: \(UserFacingError.message(for: error))",
                 context: submissionContext
             )
         }
@@ -16708,7 +16708,7 @@ final class AppState: ObservableObject {
                 } catch {
                     guard isCurrentComposerSubmission(context) else { return }
                     appendSlashOutput(
-                        "⚠️ Alias target failed: \(error.localizedDescription)",
+                        "⚠️ Alias target failed: \(UserFacingError.message(for: error))",
                         context: context
                     )
                 }
@@ -16839,7 +16839,7 @@ final class AppState: ObservableObject {
             } else {
                 appendSlashOutput(
                     AppLocalization.string(
-                        "⚠️ Compression failed: \(errorForReporting.localizedDescription)"
+                        "⚠️ Compression failed: \(UserFacingError.message(for: errorForReporting))"
                     ),
                     context: reportingContext
                 )
@@ -17085,7 +17085,7 @@ final class AppState: ObservableObject {
             guard isCurrentComposerSubmission(context) else { return }
             appendSlashOutput(
                 AppLocalization.string(
-                    "⚠️ Compression failed: \(error.localizedDescription)"
+                    "⚠️ Compression failed: \(UserFacingError.message(for: error))"
                 ),
                 context: context
             )
@@ -17386,7 +17386,7 @@ final class AppState: ObservableObject {
             return true
         } catch {
             guard isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
             await recoverComposerSubmission(using: submissionContext)
             return false
         }
@@ -17474,12 +17474,12 @@ final class AppState: ObservableObject {
                 return false
             }
 
-            errorMessage = AppLocalization.string("Could not redirect the active response: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not redirect the active response: \(UserFacingError.message(for: error))")
             await recoverComposerSubmission(using: submissionContext)
             return false
         } catch {
             guard isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }
-            errorMessage = AppLocalization.string("Could not redirect the active response: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not redirect the active response: \(UserFacingError.message(for: error))")
             await recoverComposerSubmission(using: submissionContext)
             return false
         }
@@ -17615,7 +17615,7 @@ final class AppState: ObservableObject {
             return true
         } catch {
             guard isCurrentOrAliasedComposerSubmission(currentContext) else { return false }
-            errorMessage = AppLocalization.string("Could not interrupt the active response: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not interrupt the active response: \(UserFacingError.message(for: error))")
             await recoverComposerSubmission(using: currentContext)
             return false
         }
@@ -17737,7 +17737,7 @@ final class AppState: ObservableObject {
                     requestId: requestId,
                     questionId: question.id,
                     message: AppLocalization.string("Hermes did not accept that answer."),
-                    globalMessage: error.localizedDescription
+                    globalMessage: UserFacingError.message(for: error)
                 )
             }
         }
@@ -17829,7 +17829,7 @@ final class AppState: ObservableObject {
             }
             activity.questions[questionIndex].status = .error
             activity.questions[questionIndex].answer = nil
-            activity.questions[questionIndex].error = error.localizedDescription
+            activity.questions[questionIndex].error = UserFacingError.message(for: error)
             messages[index].clarify = activity
             cacheMessagePresentation()
         }
@@ -17869,7 +17869,7 @@ final class AppState: ObservableObject {
                   !activity.questions.isEmpty else { return }
             activity.questions[0].status = .error
             activity.questions[0].answer = nil
-            activity.questions[0].error = error.localizedDescription
+            activity.questions[0].error = UserFacingError.message(for: error)
             messages[updatedIndex].clarify = activity
             cacheMessagePresentation()
         }
@@ -18927,7 +18927,7 @@ final class AppState: ObservableObject {
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
             }
-            errorMessage = AppLocalization.string("Could not switch workspace: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: error))")
             clearPendingDecisionRestorationGuard()
             // The pre-switch reset neutralized the approval state; restore it
             // with the rest of the previous profile or a failed switch loses
@@ -19225,7 +19225,7 @@ final class AppState: ObservableObject {
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
             } else {
                 messages[updatedIndex].approval?.error = "Hermes did not accept that decision."
-                errorMessage = error.localizedDescription
+                errorMessage = UserFacingError.message(for: error)
             }
             cacheMessagePresentation()
             if current.requestId == nil {
@@ -19320,7 +19320,7 @@ final class AppState: ObservableObject {
                 projects = []
                 supportsProjects = false
             } else {
-                errorMessage = AppLocalization.string("Could not load \(project.title): \(error.localizedDescription)")
+                errorMessage = AppLocalization.string("Could not load \(project.title): \(UserFacingError.message(for: error))")
             }
             return nil
         }
@@ -19357,7 +19357,7 @@ final class AppState: ObservableObject {
                 projects = []
                 supportsProjects = false
             } else {
-                errorMessage = AppLocalization.string("Could not create the project: \(error.localizedDescription)")
+                errorMessage = AppLocalization.string("Could not create the project: \(UserFacingError.message(for: error))")
             }
             return false
         }
@@ -19403,7 +19403,7 @@ final class AppState: ObservableObject {
                 projectEditingUnsupportedClient = client
                 errorMessage = AppLocalization.string("This Hermes version can't rename or delete projects.")
             } else {
-                errorMessage = AppLocalization.string("Could not rename \(project.title): \(error.localizedDescription)")
+                errorMessage = AppLocalization.string("Could not rename \(project.title): \(UserFacingError.message(for: error))")
             }
             return false
         }
@@ -19432,7 +19432,7 @@ final class AppState: ObservableObject {
                 projectEditingUnsupportedClient = client
                 errorMessage = AppLocalization.string("This Hermes version can't rename or delete projects.")
             } else {
-                errorMessage = AppLocalization.string("Could not delete \(project.title): \(error.localizedDescription)")
+                errorMessage = AppLocalization.string("Could not delete \(project.title): \(UserFacingError.message(for: error))")
             }
             return false
         }
@@ -19506,7 +19506,7 @@ final class AppState: ObservableObject {
                 workspaceMoveUnsupportedClient = client
                 errorMessage = AppLocalization.string("Update Hermes to move conversations between projects.")
             } else {
-                errorMessage = AppLocalization.string("Could not move this conversation to \(project.title): \(error.localizedDescription)")
+                errorMessage = AppLocalization.string("Could not move this conversation to \(project.title): \(UserFacingError.message(for: error))")
             }
             return false
         }
@@ -19645,8 +19645,8 @@ final class AppState: ObservableObject {
             return .success(profile: profile)
         } catch {
             guard ownsRequest() else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
-            errorMessage = AppLocalization.string("Could not load capabilities: \(error.localizedDescription)")
-            return .failed(profile: profile, message: AppLocalization.string("Could not load capabilities: \(error.localizedDescription)"))
+            errorMessage = AppLocalization.string("Could not load capabilities: \(UserFacingError.message(for: error))")
+            return .failed(profile: profile, message: AppLocalization.string("Could not load capabilities: \(UserFacingError.message(for: error))"))
         }
     }
 
@@ -19669,7 +19669,7 @@ final class AppState: ObservableObject {
             if let index = skills.firstIndex(where: { $0.name == name }) {
                 skills[index].enabled = !enabled
             }
-            errorMessage = AppLocalization.string("Could not update skill: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not update skill: \(UserFacingError.message(for: error))")
         }
     }
 
@@ -19693,7 +19693,7 @@ final class AppState: ObservableObject {
             if let index = toolsets.firstIndex(where: { $0.name == name }) {
                 toolsets[index].enabled = !enabled
             }
-            errorMessage = AppLocalization.string("Could not update toolset: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not update toolset: \(UserFacingError.message(for: error))")
         }
     }
 
@@ -19744,7 +19744,7 @@ final class AppState: ObservableObject {
             }
         } catch {
             guard profile == activeProfile else { return }
-            errorMessage = AppLocalization.string("Could not load scheduled jobs: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not load scheduled jobs: \(UserFacingError.message(for: error))")
         }
     }
 
@@ -19780,7 +19780,7 @@ final class AppState: ObservableObject {
             }
         } catch {
             guard profile == activeProfile else { return }
-            errorMessage = AppLocalization.string("Could not load scheduled-job runs: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not load scheduled-job runs: \(UserFacingError.message(for: error))")
         }
     }
 
@@ -19809,7 +19809,7 @@ final class AppState: ObservableObject {
             // The wire token stays raw for the URL path; the sentence shows
             // the localized verb.
             let actionVerb = AppLocalization.string(String.LocalizationValue(action))
-            errorMessage = AppLocalization.string("Could not \(actionVerb) scheduled job: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not \(actionVerb) scheduled job: \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -19904,7 +19904,7 @@ final class AppState: ObservableObject {
                 profileSettingValue(in: config, key: key).map { (key, $0) }
             })
         } catch {
-            errorMessage = AppLocalization.string("Could not load profile settings: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
             return [:]
         }
     }
@@ -19959,7 +19959,7 @@ final class AppState: ObservableObject {
             let reasoning = config["reasoning"] as? String ?? config["reasoning_effort"] as? String ?? "medium"
             return ProfileModelDefaults(providers: providers, model: model, provider: provider, reasoning: reasoning)
         } catch {
-            errorMessage = AppLocalization.string("Could not load model defaults: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not load model defaults: \(UserFacingError.message(for: error))")
             return nil
         }
     }
@@ -19990,7 +19990,7 @@ final class AppState: ObservableObject {
             )
             return true
         } catch {
-            errorMessage = AppLocalization.string("Could not save model defaults: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not save model defaults: \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -20032,7 +20032,7 @@ final class AppState: ObservableObject {
             }
             return true
         } catch {
-            errorMessage = AppLocalization.string("Could not save \(key): \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not save \(key): \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -20098,7 +20098,7 @@ final class AppState: ObservableObject {
             return true
         } catch {
             if activeProfile == profile { displayPreferences = previous }
-            errorMessage = AppLocalization.string("Could not save display preference: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not save display preference: \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -20138,7 +20138,7 @@ final class AppState: ObservableObject {
             return true
         } catch {
             busyInputMode = previous
-            errorMessage = AppLocalization.string("Could not save message behavior: \(error.localizedDescription)")
+            errorMessage = AppLocalization.string("Could not save message behavior: \(UserFacingError.message(for: error))")
             return false
         }
     }
@@ -21431,7 +21431,7 @@ final class AppState: ObservableObject {
             if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
             messages[updated].inputPrompt?.status = .error
             messages[updated].inputPrompt?.error = AppLocalization.string("Hermes did not receive that answer.")
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingError.message(for: error)
         }
     }
 
@@ -21803,7 +21803,7 @@ final class AppState: ObservableObject {
                 truncated: result["truncated"] as? Bool ?? false
             )
         } catch {
-            workspaceFileError = error.localizedDescription
+            workspaceFileError = UserFacingError.message(for: error)
         }
     }
 
@@ -21829,7 +21829,7 @@ final class AppState: ObservableObject {
             try data.write(to: url, options: .atomic)
             return url
         } catch {
-            workspaceFileError = error.localizedDescription
+            workspaceFileError = UserFacingError.message(for: error)
             return nil
         }
     }
@@ -21906,7 +21906,7 @@ final class AppState: ObservableObject {
             workspaceEntries[path] = try await workspaceDirectoryEntries(at: path)
             return true
         } catch {
-            workspaceError = error.localizedDescription
+            workspaceError = UserFacingError.message(for: error)
             return false
         }
     }
@@ -22196,7 +22196,7 @@ final class AppState: ObservableObject {
         // (mid sign-out, before the connection lands) disable the button
         // instead of failing at tap time. Mirrors makeVoiceGateway().
         guard dashboardTicketBridge != nil, connection != nil else {
-            return AppLocalization.string("Read aloud needs a connected Hermes gateway.")
+            return AppLocalization.string("Read aloud needs a connection to Hermes. Wait for Conduit to reconnect, then try again.")
         }
         return MessageReadAloudController.unavailableReason(
             isConnected: isConnected,

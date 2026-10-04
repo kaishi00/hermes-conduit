@@ -44,7 +44,7 @@ final class AppStateServerReplacementSpeechTests: XCTestCase {
         await harness.voiceController.startListening()
         XCTAssertEqual(
             harness.voiceController.state,
-            .failed("Voice is unavailable for this gateway.")
+            .failed("Voice isn't set up yet. Check Settings > Voice.")
         )
         harness.voiceController.stop()
     }

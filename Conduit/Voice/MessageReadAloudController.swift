@@ -137,7 +137,7 @@ final class MessageReadAloudController: ObservableObject {
     private func runPlayback(generation: UInt64, messageID: String, content: String) async {
         defer { if operationGeneration == generation { playbackTask = nil } }
         guard let gateway = activeGateway else {
-            fail(messageID: messageID, message: AppLocalization.string("Read aloud needs a connected Hermes gateway."), generation: generation)
+            fail(messageID: messageID, message: AppLocalization.string("Read aloud needs a connection to Hermes. Wait for Conduit to reconnect, then try again."), generation: generation)
             return
         }
         do {
@@ -200,7 +200,7 @@ final class MessageReadAloudController: ObservableObject {
             // The stream can die after audio is already sounding; settle the
             // engine so no unattributed audio keeps playing under .failed.
             playback.stop()
-            fail(messageID: messageID, message: error.localizedDescription, generation: generation)
+            fail(messageID: messageID, message: UserFacingError.message(for: error), generation: generation)
         }
     }
 

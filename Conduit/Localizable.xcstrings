@@ -20761,6 +20761,246 @@
           }
         }
       }
+    },
+    "Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法连接到你的 Hermes 控制台。请检查此设备的网络连接，并确认控制台正在运行。"
+          }
+        }
+      }
+    },
+    "Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 当前未连接到 Hermes。它会自动重新连接，请稍后再试。"
+          }
+        }
+      }
+    },
+    "Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未接受此请求。更新 Hermes 和 Conduit 通常可以解决。"
+          }
+        }
+      }
+    },
+    "Hermes didn't answer in time. Check that your Hermes server is running, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未及时响应。请确认 Hermes 服务器正在运行，然后重试。"
+          }
+        }
+      }
+    },
+    "Hermes didn't finish creating the conversation. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未能完成创建对话。请重试。"
+          }
+        }
+      }
+    },
+    "Hermes sent a reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 返回了 Conduit 无法识别的回复。更新 Hermes 和 Conduit 通常可以解决。"
+          }
+        }
+      }
+    },
+    "Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 拒绝了此操作，因为控制台登录已过期或无此权限。请重新登录后再试。"
+          }
+        }
+      }
+    },
+    "The dashboard address isn't valid. Check it in Settings > Connection." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控制台地址无效。请在「设置」>「连接」中检查。"
+          }
+        }
+      }
+    },
+    "Update Hermes to send, stop, and steer messages from Conduit. This version can't report whether a reply is still running." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 才能在 Conduit 中发送、停止和引导消息。此版本无法报告回复是否仍在进行。"
+          }
+        }
+      }
+    },
+    "Update Hermes to use Voice. This version can't tell Conduit whether voice is ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 以使用语音。此版本无法告诉 Conduit 语音是否就绪。"
+          }
+        }
+      }
+    },
+    "Voice isn't set up yet. Check Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音尚未设置。请检查「设置」>「语音」。"
+          }
+        }
+      }
+    },
+    "Your Hermes server doesn't offer voice. Update Hermes to use Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 服务器不提供语音。请更新 Hermes 以使用语音。"
+          }
+        }
+      }
+    },
+    "Your Hermes server doesn't support this yet. Update Hermes, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 服务器尚不支持此功能。请更新 Hermes 后重试。"
+          }
+        }
+      }
+    },
+    "Your dashboard couldn't reach Hermes. Hermes may be restarting, so try again in a moment." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控制台无法连接到 Hermes。Hermes 可能正在重启，请稍后再试。"
+          }
+        }
+      }
+    },
+    "Conduit is still connecting to your dashboard. Try again in a moment." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 仍在连接你的控制台。请稍后再试。"
+          }
+        }
+      }
+    },
+    "Dashboard sign-in has expired. Sign in again to continue." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控制台登录已过期。请重新登录以继续。"
+          }
+        }
+      }
+    },
+    "Hermes could not steer the active response." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法引导当前回复。"
+          }
+        }
+      }
+    },
+    "Hermes is busy right now. Wait a moment, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 当前繁忙。请稍等后重试。"
+          }
+        }
+      }
+    },
+    "Hermes ran into a problem on the server. Check the Hermes logs, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 服务器出现问题。请查看 Hermes 日志后重试。"
+          }
+        }
+      }
+    },
+    "Hermes ran into a problem: %@. Check the Hermes logs, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 出现问题：%@。请查看 Hermes 日志后重试。"
+          }
+        }
+      }
+    },
+    "Read aloud needs a connection to Hermes. Wait for Conduit to reconnect, then try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗读需要连接到 Hermes。请等待 Conduit 重新连接后重试。"
+          }
+        }
+      }
+    },
+    "That was interrupted before it finished. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作在完成前被中断。请重试。"
+          }
+        }
+      }
+    },
+    "The connection to Hermes dropped. Conduit reconnects on its own, so try again in a moment." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 Hermes 的连接已断开。Conduit 会自动重新连接，请稍后再试。"
+          }
+        }
+      }
+    },
+    "Update Hermes to use Bot Mode." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 以使用机器人模式。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

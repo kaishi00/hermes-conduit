@@ -783,7 +783,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         // signal, and never retried.
         XCTAssertTrue(recorder.resumeCalls.isEmpty)
         XCTAssertEqual(recorder.compressCalls.count, 1)
-        XCTAssertTrue(harness.appState.messages.last?.content.contains("Request timed out") == true)
+        XCTAssertTrue(harness.appState.messages.last?.content.contains("Hermes didn't answer in time") == true)
     }
 
     // MARK: - Compaction lifecycle (`status.update`)
@@ -1131,7 +1131,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, "runtime-new", "The rebind survives a failed retry")
         let lastRow = try XCTUnwrap(harness.appState.messages.last)
         XCTAssertTrue(
-            lastRow.content.contains("Request timed out"),
+            lastRow.content.contains("Hermes didn't answer in time"),
             "The retry's own failure is the meaningful one to surface, got: \(lastRow.content)"
         )
     }
@@ -1536,7 +1536,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         // it through command.dispatch could run the command twice.
         XCTAssertEqual(recorder.slashExecCount, 1)
         XCTAssertEqual(recorder.dispatchCount, 0)
-        XCTAssertEqual(harness.appState.messages.last?.content, "⚠️ Command failed: Request timed out: slash.exec")
+        XCTAssertEqual(harness.appState.messages.last?.content, "⚠️ Command failed: Hermes didn't answer in time. Check that your Hermes server is running, then try again.")
     }
 
     private func makeHarness(

@@ -456,7 +456,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             case .failed?:
                 break
             default:
-                update(job.id) { $0.status = .failed(error.localizedDescription) }
+                update(job.id) { $0.status = .failed(UserFacingError.message(for: error)) }
                 // A submit can fail after Hermes accepted the turn (a lost
                 // acknowledgement). The user is told the start failed, so
                 // interrupt whatever may be running rather than leave it
@@ -658,7 +658,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // Events that already moved it on mean Hermes took the turn
                 // (a lost acknowledgement), so only a turn still starting failed.
                 if job(next.id)?.status == .starting {
-                    update(next.id) { $0.status = .failed(error.localizedDescription) }
+                    update(next.id) { $0.status = .failed(UserFacingError.message(for: error)) }
                     noticeMayBePending()
                 }
             }
