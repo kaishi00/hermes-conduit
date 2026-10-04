@@ -132,6 +132,19 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(recorder.turns.count, 3)
     }
 
+    func testRecorderLeavesOutTheLinesTheEngineKeptFromItsLastCall() {
+        let recorder = RecorderHarness().makeRecorder()
+        // The engine clears its transcript when the call starts, which can be
+        // after the recording's first capture.
+        let stale = [entry(.user, "Plan the trip"), entry(.assistant, "Lisbon in May.")]
+        recorder.ignore(stale)
+        recorder.capture(stale, unsettled: [])
+        XCTAssertTrue(recorder.turns.isEmpty)
+        recorder.capture([entry(.user, "Add milk")], unsettled: [])
+        XCTAssertEqual(recorder.turns.map(\.text), ["Add milk"])
+        XCTAssertEqual(recorder.turns.map(\.index), [0])
+    }
+
     func testRecorderSavesNothingUntilTheUserSpeaks() async {
         let harness = RecorderHarness()
         let recorder = harness.makeRecorder()
@@ -354,6 +367,32 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(AppState.voiceThreadTurnNote(job, thread: runtimeOnly), "Asked the chat: Check the build. [Open chat](conduit://session/rt-chat)")
     }
 
+    func testABotChatIsLinkedThroughItsBot() throws {
+        let link = ConduitAppLink.bot(profile: "fam")
+        XCTAssertEqual(link.url.absoluteString, "conduit://bot/fam")
+        XCTAssertEqual(ConduitAppLink(url: link.url), link)
+        XCTAssertNil(ConduitAppLink(url: try XCTUnwrap(URL(string: "conduit://bot/"))))
+        // Its id only opens on the bot's profile, so the note names the bot.
+        let job = VoiceBackgroundJob(id: UUID(), title: "Check the build", instructions: "x", status: .starting, startedAt: Date())
+        let bot = VoiceThreadTarget(runtimeSessionID: "rt-bot", storedSessionID: "st-bot", title: "Fam", profile: "fam")
+        XCTAssertEqual(AppState.voiceThreadTurnNote(job, thread: bot), "Asked the chat: Check the build. [Open chat](conduit://bot/fam)")
+    }
+
+    @MainActor
+    func testABotLinkFindsItsBotExactlyFirstThenIgnoringCase() {
+        func bot(_ name: String) -> BotProfile {
+            BotProfile(
+                name: name, botTitle: nil, displayName: "", profileDescription: "", model: nil, provider: nil,
+                hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                canonicalSession: nil, lastActive: nil, lastPreview: nil
+            )
+        }
+        let roster = [bot("Fam"), bot("fam"), bot("atlas")]
+        XCTAssertEqual(AppState.linkedBot(named: "fam", in: roster)?.name, "fam")
+        XCTAssertEqual(AppState.linkedBot(named: "Atlas", in: roster)?.name, "atlas")
+        XCTAssertNil(AppState.linkedBot(named: "nova", in: roster))
+    }
+
     func testResumeTurnsDropJobLinks() {
         let rows: [Any] = [
             ["id": 1, "role": "user", "content": "Find me a dinner recipe"],
@@ -528,6 +567,41 @@ extension HermesVoiceGatewayTimeoutTests {
         links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: Date(timeIntervalSince1970: 1_000)))
         XCTAssertEqual(links.merge(into: [], chatIDs: ["rt-1", "st-1", "call-row"], openIDs: chatOwn, profile: "default").map(\.id), ["voice-call-c1"])
         XCTAssertEqual(AppState.ownSessionIDs(for: "call-row", in: rows), ["call-row"])
+    }
+
+    @MainActor
+    func testANewChatShowsNoCardsFromTheChatOpenBeforeIt() {
+        func row(_ id: String, stored: String? = nil, alternates: [String] = []) -> SessionSummary {
+            SessionSummary(
+                id: id, storedSessionId: stored, alternateIds: alternates, title: id, model: "Hermes",
+                updatedLabel: "now", profile: "default", source: .chat, isActive: false, isArchived: false,
+                lineageRootId: nil
+            )
+        }
+        // A new chat's row is keyed by its stored id; its create recorded
+        // the runtime's durable id.
+        let rows = [row("st-new", alternates: ["rt-new"]), row("rt-old", stored: "st-old")]
+        let own = AppState.ownSessionIDs(for: ["rt-new", "st-new"], in: rows)
+        XCTAssertEqual(own, ["rt-new", "st-new"])
+        var links = VoiceCallChatLinks()
+        let start = Date(timeIntervalSince1970: 1_000)
+        links.add(chatLink(call: "c1", row: "call-1", chat: "rt-old", stored: "st-old", at: start))
+        links.add(chatLink(call: "c2", row: "call-2", chat: "rt-old", stored: "st-old", at: start.addingTimeInterval(60), resumed: true))
+        links.add(chatLink(call: "c3", row: "call-3", chat: "rt-new", stored: "st-new", at: start.addingTimeInterval(120)))
+        XCTAssertEqual(links.merge(into: [], chatIDs: own, openIDs: own, profile: "default").map(\.id), ["voice-call-c3"])
+        // A row is never found through its alternate ids.
+        XCTAssertEqual(AppState.ownSessionIDs(for: ["rt-new"], in: rows), ["rt-new"])
+    }
+
+    func testACallCardKeepsItsBotChatsProfile() throws {
+        var link = chatLink(call: "c1", row: "call-row", chat: "rt-bot", stored: "st-bot", at: Date(timeIntervalSince1970: 1_000))
+        XCTAssertNil(link.thread.profile)
+        // Cards saved before Bot Chats could take a call still decode.
+        XCTAssertEqual(try JSONDecoder().decode(VoiceCallChatLink.self, from: JSONEncoder().encode(link)), link)
+        link.chatProfile = "fam"
+        XCTAssertEqual(link.thread.profile, "fam")
+        XCTAssertEqual(link.thread.storedSessionID, "st-bot")
+        XCTAssertEqual(try JSONDecoder().decode(VoiceCallChatLink.self, from: JSONEncoder().encode(link)), link)
     }
 
     func testAResumedCallShowsOneStartedFromCardPerChat() {

@@ -255,6 +255,13 @@ final class VoiceTranscriptRecorder {
     var hasUserSpeech: Bool { turns.contains { $0.role == .user } }
     var unsavedTurns: [VoiceTranscriptTurn] { turns.filter { $0.index >= written } }
 
+    /// Lines the engine still shows from its last call: the engine clears
+    /// them when this call starts, which can be after the first capture.
+    /// They are never this call's.
+    func ignore(_ entries: [VoiceConversationTranscriptEntry]) {
+        recordedEntries.formUnion(entries.map(\.id))
+    }
+
     /// Takes the settled prefix of the engine's transcript: every entry up
     /// to the first one still streaming.
     func capture(_ entries: [VoiceConversationTranscriptEntry], unsettled: Set<UUID>) {
@@ -553,6 +560,8 @@ struct VoiceCallChatLink: Codable, Equatable {
     var startedAt: Date
     var endedAt: Date
     var resumed: Bool
+    /// The bot whose Bot Chat this is; nil for a chat on the call's profile.
+    var chatProfile: String? = nil
 
     static let displayKind = "conduit_voice_call"
     /// The card in the call's own transcript that leads back to the chat.
@@ -576,7 +585,7 @@ struct VoiceCallChatLink: Codable, Equatable {
     /// The chat as a live call's target, for Resume Call.
     var thread: VoiceThreadTarget {
         let id = chatStoredSessionID ?? chatRuntimeSessionID
-        return VoiceThreadTarget(runtimeSessionID: id, storedSessionID: chatStoredSessionID, title: chatTitle)
+        return VoiceThreadTarget(runtimeSessionID: id, storedSessionID: chatStoredSessionID, title: chatTitle, profile: chatProfile)
     }
 
     var marker: ChatMessage {

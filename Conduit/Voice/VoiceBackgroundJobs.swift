@@ -232,6 +232,9 @@ struct VoiceThreadTarget: Equatable, Codable {
     var runtimeSessionID: String
     var storedSessionID: String?
     var title: String
+    /// The bot profile a Bot Chat lives in; nil for a chat on the profile
+    /// in use. Its runtime, history and live rows are read there.
+    var profile: String? = nil
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
@@ -580,6 +583,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             id: UUID(),
             title: Self.title(for: request),
             instructions: request,
+            // A Bot Chat's turn is listed in the bot's registry.
+            profile: thread.profile,
             runtimeSessionID: thread.runtimeSessionID,
             storedSessionID: thread.storedSessionID,
             status: .starting,

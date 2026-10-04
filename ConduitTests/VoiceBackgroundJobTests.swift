@@ -1356,6 +1356,21 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.pendingChatContext.count, 1)
     }
 
+    func testABotChatsTurnIsWatchedInTheBotsProfile() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-bot", storedSessionID: "st-bot", title: "Fam", profile: "fam")
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        XCTAssertEqual(supervisor.jobs.first?.profile, "fam")
+
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-bot", storedSessionId: "st-bot", status: "working")]
+        await supervisor.pollOnce()
+        XCTAssertFalse(fake.polledProfiles.isEmpty)
+        XCTAssertTrue(fake.polledProfiles.allSatisfy { $0 == "fam" }, "the bot's registry lists its chat")
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        supervisor.detachLiveThread()
+    }
+
     func testTurnsLeftRunningInAnotherChatDontCountAgainstANewCall() async {
         let (supervisor, fake) = makeThreadSupervisor()
         supervisor.detachLiveThread()
