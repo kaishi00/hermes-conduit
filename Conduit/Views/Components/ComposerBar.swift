@@ -1241,6 +1241,10 @@ struct ComposerBar: View {
     /// takes focus for the reply.
     private func applyQuoteRequest(_ request: ComposerQuoteRequest?) {
         guard let request else { return }
+        appState.consumeComposerQuoteRequest(request.id)
+        // The composer can lock in the same update that delivers the quote
+        // (the connection dropped); a locked draft takes nothing.
+        guard appState.composerIsEnabled else { return }
         // Quoting is composing: a pending automatic chat resume must not
         // switch away from the draft it just changed.
         appState.noteComposerUserEdit()
@@ -1255,7 +1259,6 @@ struct ComposerBar: View {
                 replyReference = reference
             }
         }
-        appState.consumeComposerQuoteRequest(request.id)
         Haptics.selection()
         isFocused = true
     }
