@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "No assistant voice is set up yet. Edge TTS is free and ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未设置助手语音。Edge TTS 免费且已就绪。"
+          }
+        }
+      }
+    },
     "%@ brings its own listening and speaking, so the speech-to-text and assistant voice steps don't apply. Pick Classic under Voice mode to use them." : {
       "localizations" : {
         "zh-Hans" : {

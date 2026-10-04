@@ -46,7 +46,7 @@ extension HermesVoiceConfigurationServiceTests {
     }
 
     func testAnAssistantVoiceThatIsNotReadySwitchesToReadyEdge() {
-        let snapshot = snapshot(
+        let snapshot = setupSnapshot(
             selectedTTS: "elevenlabs",
             ttsRows: [
                 ["name": "ElevenLabs", "tts_provider": "elevenlabs", "status": "needs_keys", "is_active": true],
@@ -64,7 +64,7 @@ extension HermesVoiceConfigurationServiceTests {
     }
 
     func testAReadyAssistantVoiceIsNeverReplaced() {
-        let snapshot = snapshot(
+        let snapshot = setupSnapshot(
             selectedTTS: "openai",
             ttsRows: [
                 ["name": "OpenAI TTS", "tts_provider": "openai", "status": "ready", "is_active": true],
@@ -77,7 +77,7 @@ extension HermesVoiceConfigurationServiceTests {
     }
 
     func testEdgeThatIsNotReadyIsNotOffered() {
-        let snapshot = snapshot(
+        let snapshot = setupSnapshot(
             selectedTTS: "elevenlabs",
             ttsRows: [
                 ["name": "ElevenLabs", "tts_provider": "elevenlabs", "status": "needs_keys", "is_active": true],
@@ -91,7 +91,7 @@ extension HermesVoiceConfigurationServiceTests {
     /// Edge already selected but not ready: switching to it again fixes
     /// nothing, so the step points at the provider list instead.
     func testEdgeAlreadySelectedIsNotSwitchedAgain() {
-        let snapshot = snapshot(
+        let snapshot = setupSnapshot(
             selectedTTS: "edge",
             ttsRows: [["name": "Microsoft Edge TTS", "tts_provider": "edge", "status": "needs_install", "is_active": true]]
         )
@@ -111,7 +111,7 @@ extension HermesVoiceConfigurationServiceTests {
     }
 
     func testProviderReadinessReadsUnselectedRows() {
-        let snapshot = snapshot(
+        let snapshot = setupSnapshot(
             selectedTTS: "edge",
             ttsRows: [setupEdgeRow(active: true)],
             sttRows: [

@@ -156,6 +156,10 @@ struct VoiceSettingsView: View {
     /// Whether the profile has a saved speech-to-text choice. Turning voice
     /// on picks "On this iPhone" only when it doesn't.
     @State private var transcriptionModeChosen: Bool
+    /// The saved preference as the host last rendered it, so a choice made
+    /// elsewhere while this page is open is kept too.
+    let savedTranscriptionModeChosen: Bool
+    @Environment(\.scenePhase) private var scenePhase
     @State private var voiceMode: VoiceMode
     @State private var isApplyingDefaults = false
     @State private var microphonePermission: AVAudioApplication.recordPermission
@@ -222,6 +226,7 @@ struct VoiceSettingsView: View {
         _voiceEnabled = State(initialValue: voiceEnabled)
         _transcriptionMode = State(initialValue: transcriptionMode)
         _transcriptionModeChosen = State(initialValue: transcriptionModeChosen)
+        self.savedTranscriptionModeChosen = transcriptionModeChosen
         _microphonePermission = State(initialValue: AVAudioApplication.shared.recordPermission)
         _voiceMode = State(initialValue: Self.mode(
             gemini: geminiLive?.enabled == true,
@@ -278,6 +283,15 @@ struct VoiceSettingsView: View {
         // A mode changed elsewhere (CarPlay, another profile's settings)
         // while this page stays open.
         .onChange(of: modelVoiceMode) { _, newValue in voiceMode = newValue }
+        .onChange(of: savedTranscriptionModeChosen) { _, chosen in
+            if chosen { transcriptionModeChosen = true }
+        }
+        // Back from iPhone Settings: the permission steps show what was allowed.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            microphonePermission = AVAudioApplication.shared.recordPermission
+            appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+        }
         .accessibilityElement(children: .contain)
     }
 
@@ -435,7 +449,9 @@ struct VoiceSettingsView: View {
         if VoiceSetupDefaults.canSwitchSpeechToEdge(service.snapshot) {
             return setupStep(
                 title,
-                detail: AppLocalization.string("\(name) isn't ready on Hermes. Edge TTS is free and ready."),
+                detail: service.snapshot.selectedTTSProvider.isEmpty
+                    ? AppLocalization.string("No assistant voice is set up yet. Edge TTS is free and ready.")
+                    : AppLocalization.string("\(name) isn't ready on Hermes. Edge TTS is free and ready."),
                 state: .attention,
                 fix: (label: AppLocalization.string("Use Edge TTS"), action: { selectProvider(VoiceSetupDefaults.edgeTTSProviderID, kind: .tts) })
             )
@@ -547,9 +563,13 @@ struct VoiceSettingsView: View {
     private func setVoice(_ requested: Bool) {
         let previous = voiceEnabled
         voiceEnabled = requested
+        // Holds the switch from the tap on, so a second tap can't turn voice
+        // off while the defaults are still being written.
+        if requested { isApplyingDefaults = true }
         Task {
             guard await setVoiceEnabled(requested) else {
                 voiceEnabled = previous
+                if requested { isApplyingDefaults = false }
                 return
             }
             if requested { await applySetupDefaults() }
