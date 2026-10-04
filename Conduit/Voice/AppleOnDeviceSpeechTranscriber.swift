@@ -4,7 +4,10 @@
 //
 
 import Foundation
+import OSLog
 import Speech
+
+private let speechTranscriberLogger = Logger(subsystem: "com.milim.relay", category: "VoiceSpeech")
 
 /// A zero-configuration transcription route backed by Apple's system-managed
 /// speech model. `requiresOnDeviceRecognition` is always true: Conduit never
@@ -101,7 +104,10 @@ final class AppleOnDeviceSpeechTranscriber: DeviceSpeechTranscriptionService {
 
     private func receive(transcript: String?, isFinal: Bool, errorDescription: String?) {
         if let errorDescription {
-            complete(.failure(VoiceAudioError.unavailable(errorDescription)))
+            // The framework's text ("kAFAssistantErrorDomain error 1101") is for
+            // the log; the person gets what to try.
+            speechTranscriberLogger.error("on-device recognition failed: \(errorDescription, privacy: .public)")
+            complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Apple speech recognition stopped. Try again, or choose another speech-to-text option in Settings > Voice."))))
             return
         }
         guard isFinal else { return }

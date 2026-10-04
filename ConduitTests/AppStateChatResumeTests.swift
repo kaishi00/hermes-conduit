@@ -2155,7 +2155,7 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(card?.clarify?.status, .error)
         XCTAssertEqual(
             card?.clarify?.questions.first?.error,
-            "This device is not paired with a push relay.",
+            "This iPhone isn't set up to answer from notifications. Set it up again in Settings > Notifications.",
             "The relay path must run before the gateway-client guard and surface relay errors"
         )
     }

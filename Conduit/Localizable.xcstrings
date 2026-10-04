@@ -21001,6 +21001,56 @@
           }
         }
       }
+    },
+    "This iPhone isn't set up to answer from notifications. Set it up again in Settings > Notifications." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 尚未设置为从通知中回复。请在“设置 > 通知”中重新设置。"
+          }
+        }
+      }
+    },
+    "Couldn't send your answer: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法发送你的回答：%@"
+          }
+        }
+      }
+    },
+    "Your answer wasn't accepted. Open the chat in Conduit and answer there." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的回答未被接受。请在 Conduit 中打开该对话并在那里回答。"
+          }
+        }
+      }
+    },
+    "The notification relay address must start with https://. Fix it in Settings > Notifications." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知中继地址必须以 https:// 开头。请在“设置 > 通知”中修正。"
+          }
+        }
+      }
+    },
+    "Apple speech recognition stopped. Try again, or choose another speech-to-text option in Settings > Voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 语音识别已停止。请重试，或在“设置 > 语音”中选择其他语音转文字选项。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
