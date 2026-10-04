@@ -187,8 +187,9 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
 
     /// Plays decoded audio (a whole speech clip in the file's own format,
     /// mono or stereo) through the same echo-cancelled output as `play`.
-    /// The player reconnects when the clip's format differs from the
-    /// stream's, which drops anything still queued in the old format.
+    /// While earlier audio is still queued, a clip in another format is
+    /// converted to the player's format so nothing queued is dropped;
+    /// otherwise the player reconnects at the clip's format.
     func play(_ buffer: AVAudioPCMBuffer) throws {
         outputWanted = true
         do {
@@ -199,12 +200,40 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
             throw error
         }
         guard let engine, let player, buffer.frameLength > 0 else { return }
-        if playerFormat != buffer.format {
-            interrupt()
+        var buffer = buffer
+        if let current = playerFormat, current != buffer.format {
+            if pendingBuffers > 0, let converted = Self.convert(buffer, to: current) {
+                buffer = converted
+            } else {
+                interrupt()
+                engine.connect(player, to: engine.mainMixerNode, format: buffer.format)
+                playerFormat = buffer.format
+            }
+        } else if playerFormat == nil {
             engine.connect(player, to: engine.mainMixerNode, format: buffer.format)
             playerFormat = buffer.format
         }
         schedule(buffer, on: player)
+    }
+
+    private static func convert(_ buffer: AVAudioPCMBuffer, to format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        guard let converter = AVAudioConverter(from: buffer.format, to: format) else { return nil }
+        let ratio = format.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up)) + 1
+        guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else { return nil }
+        var consumed = false
+        var error: NSError?
+        let status = converter.convert(to: output, error: &error) { _, inputStatus in
+            if consumed {
+                inputStatus.pointee = .endOfStream
+                return nil
+            }
+            consumed = true
+            inputStatus.pointee = .haveData
+            return buffer
+        }
+        guard status != .error, error == nil, output.frameLength > 0 else { return nil }
+        return output
     }
 
     private func schedule(_ buffer: AVAudioPCMBuffer, on player: AVAudioPlayerNode) {
