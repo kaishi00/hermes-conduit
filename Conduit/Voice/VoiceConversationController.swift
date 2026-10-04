@@ -1315,7 +1315,13 @@ final class VoiceConversationController: ObservableObject {
         guard !Task.isCancelled, !isPlaybackCaptureSuspended, isSteerAvailable else { return }
         isSteeringTurn = true
         await startListening(includePreRoll: true)
-        guard isCurrent(generation), isSteeringTurn else { return }
+        guard isCurrent(generation) else {
+            // Superseded (backgrounded, torn down): never leave reply
+            // speech held for a window that isn't open.
+            isSteeringTurn = false
+            return
+        }
+        guard isSteeringTurn else { return }
         // The window never opened (backgrounded, permission): carry on.
         if state != .listening { resumeTurnAfterSteer() }
     }
@@ -1369,9 +1375,10 @@ final class VoiceConversationController: ObservableObject {
             beginBargeInMonitoring()
             return false
         }
-        if state == .speaking || state == .muted {
-            // The steered reply is still playing: hold the follow-up until
-            // its speech settles (`replayHeldPromotedSteerReply`).
+        if state == .speaking || state == .muted || (state == .thinking && isDrainingSpeech) {
+            // The steered reply is still playing (or its speech is about to
+            // start): hold the follow-up until that speech settles
+            // (`replayHeldPromotedSteerReply`).
             heldPromotedSteerEvents.append(event)
             return true
         }
