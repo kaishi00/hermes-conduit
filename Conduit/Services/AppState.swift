@@ -2235,6 +2235,7 @@ final class AppState: ObservableObject {
             guard let self, let recorder = self.voiceCallRecorder else { return }
             self.captureVoiceCall()
             recorder.note(Self.voiceThreadTurnNote(job, thread: thread))
+            self.checkpointVoiceCall(recorder)
         }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }

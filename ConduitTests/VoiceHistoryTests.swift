@@ -508,6 +508,15 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(links.merge(into: [], chatIDs: ["st-1"], profile: "default").map(\.id), ["voice-call-c1", "voice-call-c2"])
     }
 
+    func testAResumedCallShowsOneStartedFromCardPerChat() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: start))
+        links.add(chatLink(call: "c2", row: "call-row", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(600), resumed: true))
+        links.add(chatLink(call: "c3", row: "call-row", chat: "rt-9", at: start.addingTimeInterval(1_200), resumed: true))
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["call-row"], profile: "default").map(\.id), ["voice-call-from-c1", "voice-call-from-c3"])
+    }
+
     func testAChatIsMatchedOnItsStoredIDNotAReusedRuntime() {
         let start = Date(timeIntervalSince1970: 1_000)
         var links = VoiceCallChatLinks()

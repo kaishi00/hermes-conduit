@@ -641,8 +641,13 @@ struct VoiceCallChatLinks: Codable, Equatable {
         // The open session is a call's own transcript (a resumed call has a
         // link per resume): it only leads back to its chat. Its ids can
         // carry the chat's, so no chat card is placed in it, this call's or
-        // another's.
-        let owned = profileLinks.filter { chatIDs.contains($0.callSessionID) }
+        // another's. A resume that stayed with the same chat adds no
+        // second card.
+        var ownedChats = Set<String>()
+        let owned = profileLinks
+            .filter { chatIDs.contains($0.callSessionID) }
+            .sorted { $0.startedAt < $1.startedAt }
+            .filter { ownedChats.insert($0.chatSessionID ?? $0.callID).inserted }
         let markers = owned.isEmpty
             ? profileLinks.filter { $0.belongs(toChat: chatIDs) }.map { ($0, $0.marker) }
             : owned.map { ($0, $0.originMarker) }
