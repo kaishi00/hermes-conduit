@@ -429,6 +429,9 @@ final class VoiceConversationController: ObservableObject {
         do {
             try capture.resume()
             isMicrophonePaused = false
+            // Resuming may choose this conversation's audio too (after a
+            // lifecycle suspension released it): classify the route afresh.
+            cachedRoutePolicy = nil
             // Un-pausing after a lifecycle suspension is a genuine
             // recapture: the runtime gate must end here exactly as it does
             // in startListening(), or a restored previously-paused session

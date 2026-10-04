@@ -127,9 +127,13 @@ final class EchoCancellingVoiceCapture: AudioCaptureService {
     /// Stops sending microphone audio. The engine keeps running only while
     /// Hermes still has speech queued through it; otherwise it (and its
     /// audio session lease) stops until the microphone or speech resumes.
+    /// Like the default capture, a pause keeps the listening window: after
+    /// `resume()` the utterance records again.
     func pause() {
         guard !paused else { return }
+        let recording = activelyRecording
         resetInput()
+        activelyRecording = recording
         paused = true
     }
 

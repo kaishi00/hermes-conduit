@@ -150,6 +150,18 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(engine.isPlaying)
     }
 
+    func testEchoCancellingCaptureRecordsAgainAfterPauseAndResume() throws {
+        let (selector, engine) = makeSelector(wantsEcho: true)
+        let capture = selector.capture
+        try capture.startListening(includePreRoll: false)
+        capture.pause()
+        try capture.resume()
+        engine.speak(amplitude: 0.5)
+
+        let audio = try capture.finishUtterance()
+        XCTAssertEqual(audio.pcm16Data.count, 320, "speech after a resume belongs to the utterance")
+    }
+
     func testEchoCancellingCaptureReportsInterruptionAgainstItsCurrentGeneration() async throws {
         let (selector, engine) = makeSelector(wantsEcho: true)
         let capture = selector.capture
