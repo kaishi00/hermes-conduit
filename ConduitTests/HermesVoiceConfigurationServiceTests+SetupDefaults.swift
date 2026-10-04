@@ -4,20 +4,21 @@
 //
 //  The one-switch happy path: turning Voice on fills in only what is
 //  missing, so classic Voice works without anything installed on Hermes.
+//  An extension of the voice configuration tests: the hosted CI plan is at
+//  its class budget, and these cover the same parsed snapshot.
 //
 
 import XCTest
 @testable import Conduit
 
-@MainActor
-final class VoiceSetupDefaultsTests: XCTestCase {
+extension HermesVoiceConfigurationServiceTests {
     /// The App Store reviewer's setup: nothing chosen, Hermes' default local
     /// Whisper not installed, the default Edge voice ready.
     func testFreshProfileGetsOnDeviceSpeechToTextAndKeepsEdge() {
         let plan = VoiceSetupDefaults.plan(
             transcriptionModeChosen: false,
             appleSpeechAvailability: .permissionRequired(localeIdentifier: "en-US"),
-            snapshot: snapshot(selectedTTS: "edge", ttsRows: [edgeRow(active: true)])
+            snapshot: setupSnapshot(selectedTTS: "edge", ttsRows: [setupEdgeRow(active: true)])
         )
 
         XCTAssertEqual(plan, .init(usesOnDeviceTranscription: true, switchesSpeechToEdge: false))
@@ -27,7 +28,7 @@ final class VoiceSetupDefaultsTests: XCTestCase {
         let plan = VoiceSetupDefaults.plan(
             transcriptionModeChosen: true,
             appleSpeechAvailability: .ready(localeIdentifier: "en-US"),
-            snapshot: snapshot(selectedTTS: "edge", ttsRows: [edgeRow(active: true)])
+            snapshot: setupSnapshot(selectedTTS: "edge", ttsRows: [setupEdgeRow(active: true)])
         )
 
         XCTAssertFalse(plan.usesOnDeviceTranscription)
@@ -38,7 +39,7 @@ final class VoiceSetupDefaultsTests: XCTestCase {
         let plan = VoiceSetupDefaults.plan(
             transcriptionModeChosen: false,
             appleSpeechAvailability: .unsupported(localeIdentifier: "xx-XX"),
-            snapshot: snapshot(selectedTTS: "edge", ttsRows: [edgeRow(active: true)])
+            snapshot: setupSnapshot(selectedTTS: "edge", ttsRows: [setupEdgeRow(active: true)])
         )
 
         XCTAssertFalse(plan.usesOnDeviceTranscription)
@@ -49,7 +50,7 @@ final class VoiceSetupDefaultsTests: XCTestCase {
             selectedTTS: "elevenlabs",
             ttsRows: [
                 ["name": "ElevenLabs", "tts_provider": "elevenlabs", "status": "needs_keys", "is_active": true],
-                edgeRow(active: false),
+                setupEdgeRow(active: false),
             ]
         )
 
@@ -67,7 +68,7 @@ final class VoiceSetupDefaultsTests: XCTestCase {
             selectedTTS: "openai",
             ttsRows: [
                 ["name": "OpenAI TTS", "tts_provider": "openai", "status": "ready", "is_active": true],
-                edgeRow(active: false),
+                setupEdgeRow(active: false),
             ]
         )
 
@@ -112,7 +113,7 @@ final class VoiceSetupDefaultsTests: XCTestCase {
     func testProviderReadinessReadsUnselectedRows() {
         let snapshot = snapshot(
             selectedTTS: "edge",
-            ttsRows: [edgeRow(active: true)],
+            ttsRows: [setupEdgeRow(active: true)],
             sttRows: [
                 ["name": "Local Whisper", "status": "needs_install", "is_active": true],
                 ["name": "Groq", "status": "ready", "is_active": false],
@@ -124,17 +125,17 @@ final class VoiceSetupDefaultsTests: XCTestCase {
         XCTAssertEqual(VoiceSetupDefaults.providerReadiness("deepinfra", in: snapshot.sttProviders), .unknown)
     }
 
-    func testEdgeHasAReadableName() {
+    func testSetupDefaultsEdgeHasAReadableName() {
         XCTAssertEqual(VoiceConfigurationParser.catalogDescriptor(id: "edge", kind: .tts)?.displayName, "Edge TTS")
     }
 
     // MARK: - Helpers
 
-    private func edgeRow(active: Bool) -> [String: Any] {
+    private func setupEdgeRow(active: Bool) -> [String: Any] {
         ["name": "Microsoft Edge TTS", "tts_provider": "edge", "status": "ready", "is_active": active]
     }
 
-    private func snapshot(
+    private func setupSnapshot(
         selectedTTS: String,
         ttsRows: [[String: Any]],
         sttRows: [[String: Any]] = [["name": "Local Whisper", "status": "needs_install", "is_active": true]]
