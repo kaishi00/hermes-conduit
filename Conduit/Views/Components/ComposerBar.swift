@@ -19,6 +19,9 @@ struct ComposerBar: View {
     @State private var text = ""
     @State private var composerTextHeight = ComposerPasteTextView.minimumHeight
     @State private var attachments: [Attachment] = []
+    /// A whole reply attached with its Quote button (#385); it rides along
+    /// with the next message.
+    @State private var replyReference: ComposerReplyReference?
     @State private var showAttachmentMenu = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var showDocumentPicker = false
@@ -294,6 +297,9 @@ struct ComposerBar: View {
             isFocused = !text.isEmpty
             isShowingSlashSuggestions = slashPrefix != nil
         }
+        .onChange(of: appState.composerQuoteRequest) { _, request in
+            applyQuoteRequest(request)
+        }
         .onChange(of: photoItems) { _, _ in
             handlePhotoSelection()
         }
@@ -382,6 +388,12 @@ struct ComposerBar: View {
 
             if let composerErrorMessage, !composerErrorMessage.isEmpty {
                 pasteErrorNotice(composerErrorMessage)
+            }
+
+            if let replyReference {
+                replyReferenceChip(replyReference)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 8)
             }
 
             if !attachments.isEmpty {
@@ -518,6 +530,11 @@ struct ComposerBar: View {
                 onUserEdit: { appState.noteComposerUserEdit() },
                 onCollapse: { isShowingFullEditor = false },
                 attachments: {
+                    if let replyReference {
+                        replyReferenceChip(replyReference)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 6)
+                    }
                     if !attachments.isEmpty {
                         attachmentStrip
                     }
@@ -722,8 +739,14 @@ struct ComposerBar: View {
     /// asks the user to send again.
     private func resendAfterChatTakeover() {
         guard let takeover = appState.activeChatTakeover, takeover.phase == .ready,
-              case .send = action,
-              takeover.isRefusedMessage(text, hasAttachments: !attachments.isEmpty) else { return }
+              case .send = action else { return }
+        // The refused text carried the quoted reply, if one was attached.
+        let outbound = ComposerReplyReference.outboundText(
+            text.trimmingCharacters(in: .whitespacesAndNewlines),
+            hasAttachments: !attachments.isEmpty,
+            replyingTo: replyReference
+        )
+        guard takeover.isRefusedMessage(outbound, hasAttachments: !attachments.isEmpty) else { return }
         appState.dismissChatTakeover()
         submit()
     }
@@ -957,13 +980,23 @@ struct ComposerBar: View {
         isShowingFullEditor = false
         let submittedText = text
         let submittedAttachments = attachments
+        // A slash command leaves the reply attached for the next message.
+        let submittedReply = ComposerReplyReference.appliesToDraft(
+            trimmed,
+            hasAttachments: !submittedAttachments.isEmpty
+        ) ? replyReference : nil
+        let outboundText = ComposerReplyReference.outboundText(
+            trimmed,
+            hasAttachments: !submittedAttachments.isEmpty,
+            replyingTo: submittedReply
+        )
         let submittedAction = action
         let prefillToken = appState.composerPrefillToken
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
         let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
         let submissionContext = appState.composerSubmissionContext()
         rotateAttachmentGeneration()
-        collapseSubmittedDraft()
+        collapseSubmittedDraft(clearingReply: submittedReply != nil)
 
         switch submittedAction {
         case .send: Haptics.medium()
@@ -974,7 +1007,7 @@ struct ComposerBar: View {
 
         Task {
             let didSubmit = await appState.submitComposer(
-                text: trimmed,
+                text: outboundText,
                 attachments: submittedAttachments,
                 context: submissionContext
             )
@@ -982,6 +1015,7 @@ struct ComposerBar: View {
                 restoreSubmittedDraftIfNeeded(
                     text: submittedText,
                     attachments: submittedAttachments,
+                    replyReference: submittedReply,
                     for: submittedDraftKey
                 )
                 Haptics.error()
@@ -1148,11 +1182,12 @@ struct ComposerBar: View {
     /// Collapse the draft in the same transaction that dismisses the keyboard.
     /// Waiting for the gateway RPC leaves the side controls aligned to the old
     /// multiline field while the keyboard's safe area is already animating.
-    private func collapseSubmittedDraft() {
+    private func collapseSubmittedDraft(clearingReply: Bool) {
         dismissComposer()
         let updates = {
             replaceComposerText("")
             attachments = []
+            if clearingReply { replyReference = nil }
             composerTextHeight = ComposerPasteTextView.minimumHeight
         }
         if reduceMotion {
@@ -1167,6 +1202,7 @@ struct ComposerBar: View {
     private func restoreSubmittedDraftIfNeeded(
         text submittedText: String,
         attachments submittedAttachments: [Attachment],
+        replyReference submittedReply: ComposerReplyReference?,
         for key: ComposerDraftKey
     ) {
         let restorationKey: ComposerDraftKey
@@ -1182,7 +1218,11 @@ struct ComposerBar: View {
 
         guard loadedDraftKey == restorationKey else {
             draftStore.saveIfMissing(
-                ComposerDraft(text: submittedText, attachments: submittedAttachments),
+                ComposerDraft(
+                    text: submittedText,
+                    attachments: submittedAttachments,
+                    replyReference: submittedReply
+                ),
                 for: restorationKey
             )
             return
@@ -1192,6 +1232,72 @@ struct ComposerBar: View {
         guard text.isEmpty, attachments.isEmpty else { return }
         replaceComposerText(submittedText)
         attachments = submittedAttachments
+        if replyReference == nil { replyReference = submittedReply }
+    }
+
+    /// A quote from the transcript (#385): selected text joins the draft as
+    /// a `>` quote with the cursor below it; a reply's Quote button attaches
+    /// the whole reply as the "Replying to…" chip. Either way the composer
+    /// takes focus for the reply.
+    private func applyQuoteRequest(_ request: ComposerQuoteRequest?) {
+        guard let request else { return }
+        // Quoting is composing: a pending automatic chat resume must not
+        // switch away from the draft it just changed.
+        appState.noteComposerUserEdit()
+        switch request.content {
+        case .text(let quote):
+            // A running dictation would rewrite the draft from where it began.
+            if dictation.isDictating || dictation.isStarting { dictation.cancel() }
+            replaceComposerText(ChatQuote.inserting(quote, into: text), cursorAtEnd: true)
+            isShowingSlashSuggestions = false
+        case .reply(let reference):
+            withAnimation(reduceMotion ? nil : ConduitMotion.response) {
+                replyReference = reference
+            }
+        }
+        Haptics.selection()
+        if appState.composerIsEnabled { isFocused = true }
+    }
+
+    private func replyReferenceChip(_ reference: ComposerReplyReference) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "quote.bubble")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.conduitAccent)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(AppLocalization.string("Replying to \(reference.authorName)"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(reference.excerpt)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 0)
+            Button {
+                Haptics.selection()
+                withAnimation(reduceMotion ? nil : ConduitMotion.response) {
+                    replyReference = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(AppLocalization.string("Remove quoted reply"))
+            .accessibilityIdentifier("composer.reply-reference.remove")
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 2)
+        .padding(.vertical, 2)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     /// Sending, steering, and stopping all move attention back to the live
@@ -1242,7 +1348,10 @@ struct ComposerBar: View {
     }
 
     private func saveDraft(for key: ComposerDraftKey) {
-        draftStore.save(ComposerDraft(text: text, attachments: attachments), for: key)
+        draftStore.save(
+            ComposerDraft(text: text, attachments: attachments, replyReference: replyReference),
+            for: key
+        )
     }
 
     private func loadDraft(for key: ComposerDraftKey) {
@@ -1252,6 +1361,7 @@ struct ComposerBar: View {
         }
         replaceComposerText(draft.text)
         attachments = draft.attachments
+        replyReference = draft.replyReference
         loadedDraftKey = key
         composerTextHeight = ComposerPasteTextView.minimumHeight
         isFocused = false

@@ -1271,6 +1271,9 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
+    /// A quote waiting for the composer (issue #385); see
+    /// AppState+ComposerQuote.swift.
+    @Published var composerQuoteRequest: ComposerQuoteRequest?
 
     // MARK: - Capabilities
 
@@ -5654,7 +5657,18 @@ final class AppState: ObservableObject {
     /// new turn, a busy steer, a redirect) so a mention typed while the bot
     /// is streaming is identified exactly like one sent at idle.
     private func mentionAnnotatedOutboundText(_ text: String) -> String {
-        BotMentions.middlewareAnnotation(
+        // A quoted reply (#385) can name bots the user never meant to
+        // mention: only the user's own words below the quote are scanned.
+        if let reply = ReplyQuoteEnvelope.parse(text) {
+            guard !botRoster.isEmpty else { return text }
+            let mentions = BotMentions.resolve(
+                text: reply.message,
+                roster: botRoster,
+                activeProfileName: activeConversationProfileScope
+            )
+            return BotMentions.annotated(text: text, mentions: mentions)
+        }
+        return BotMentions.middlewareAnnotation(
             text: text,
             roster: botRoster,
             activeProfileName: activeConversationProfileScope

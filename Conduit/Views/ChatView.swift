@@ -237,6 +237,12 @@ struct ChatView: View {
             // transcript; see MarkdownSelectionHandles.swift.
             MarkdownSelectionChromeRoot()
         }
+        // Selected transcript text can be quoted into the composer (#385),
+        // from the native selection menu and the cross-block pill alike.
+        .environment(
+            \.chatQuoteAction,
+            ChatQuoteAction(owner: appState, handler: appState.quoteIntoComposer)
+        )
     }
 
     // MARK: - Scroll construction (layered so the type-checker can cope)
@@ -807,12 +813,20 @@ struct SteerMessageContent: View, Equatable {
     let chatTextSize: ChatTextSize
 
     var body: some View {
+        let reply = ReplyQuoteEnvelope.parse(message.content)
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: BusyInputMode.steer.symbol)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.conduitAura)
                 .accessibilityHidden(true)
-            MarkdownText(source: message.content)
+            if let reply {
+                VStack(alignment: .leading, spacing: 8) {
+                    ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: false)
+                    MarkdownText(source: reply.message)
+                }
+            } else {
+                MarkdownText(source: message.content)
+            }
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 10)
@@ -826,7 +840,7 @@ struct SteerMessageContent: View, Equatable {
         }
         .textSelection(.enabled)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(AppLocalization.string("Steered: \(message.content)"))
+        .accessibilityLabel(AppLocalization.string("Steered: \(reply?.message ?? message.content)"))
     }
 }
 
@@ -867,9 +881,17 @@ struct UserMessageContent: View, Equatable {
     }
 
     var body: some View {
+        // A message that quoted a whole reply (#385) shows a compact
+        // "Replying to" card instead of the full quote.
+        let reply = ReplyQuoteEnvelope.parse(message.content)
+        let text = reply?.message ?? message.content
         VStack(alignment: .leading, spacing: 9) {
-            if !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                MarkdownText(source: message.content, foregroundStyle: .white, usesAccentSurface: true)
+            if let reply {
+                ReplyReferenceQuoteCard(quote: reply.quote)
+            }
+
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                MarkdownText(source: text, foregroundStyle: .white, usesAccentSurface: true)
             }
 
             if let attachments = message.attachments {
@@ -1280,7 +1302,7 @@ struct SettledAssistantMessageContent: View, Equatable {
     }
 }
 
-/// The dynamic half of an assistant row: copy/branch controls that depend
+/// The dynamic half of an assistant row: copy/quote/branch controls that depend
 /// on busy state, kept small so their per-publish re-evaluation is cheap.
 struct AssistantMessageActions: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
@@ -1299,6 +1321,21 @@ struct AssistantMessageActions: View {
         .buttonStyle(.plain)
         .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
         .accessibilityLabel(copied ? AppLocalization.string("Response copied") : AppLocalization.string("Copy response"))
+
+        // Attaches this whole reply to the next message (#385); the
+        // composer plays the haptic when the chip lands.
+        Button {
+            appState.replyInComposer(to: message)
+        } label: {
+            Image(systemName: "quote.bubble")
+                .font(.subheadline.weight(.semibold))
+                .frame(width: 34, height: 34)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .disabled(message.content.isEmpty || appState.offlineChatPresentation != nil)
+        .opacity(appState.offlineChatPresentation != nil ? 0.45 : 1)
+        .accessibilityLabel(AppLocalization.string("Quote this response"))
 
         Button {
             Haptics.medium()

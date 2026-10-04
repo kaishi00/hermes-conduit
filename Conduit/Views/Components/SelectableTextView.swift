@@ -140,11 +140,13 @@ struct SelectableTextView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> SelectableTextViewHostView {
         context.coordinator.openURL = context.environment.openURL
+        context.coordinator.quoteAction = context.environment.chatQuoteAction
         return makeUIViewForTests(coordinator: context.coordinator)
     }
 
     func updateUIView(_ uiView: SelectableTextViewHostView, context: Context) {
         context.coordinator.openURL = context.environment.openURL
+        context.coordinator.quoteAction = context.environment.chatQuoteAction
         updateUIViewForTests(uiView, coordinator: context.coordinator)
     }
 
@@ -592,6 +594,8 @@ struct SelectableTextView: UIViewRepresentable {
         /// The environment's link opener, so in-app links (a voice call's
         /// job link) open inside Conduit; others fall through to the system.
         var openURL: OpenURLAction?
+        /// Set inside a chat: the selection menu then offers Quote (#385).
+        var quoteAction: ChatQuoteAction?
 
         init(
             linkColor: UIColor,
@@ -603,14 +607,55 @@ struct SelectableTextView: UIViewRepresentable {
             self.selectionSegment = selectionSegment
         }
 
-        // NOTE: there is deliberately no edit-menu interception here. The
-        // only menuConfigurationFor delegate selector is for text items
-        // (links/attachments), not the selection menu — an interception with
-        // a near-miss selector compiles silently and never runs. And since
-        // cross-block selections dismiss the owner's first responder (see
-        // MarkdownSelectionCoordinator), they never present the system menu
-        // at all: copying goes through the coordinator-owned pill, while
-        // within-block selections keep the fully native menu.
+        // NOTE: the selection menu is only extended, never replaced, and only
+        // inside a chat. `menuConfigurationFor` is for text items (links,
+        // attachments), not the selection menu; `editMenuForTextIn` below is
+        // the selection one. Cross-block selections dismiss the owner's first
+        // responder (see MarkdownSelectionCoordinator), so they never present
+        // the system menu at all: Copy and Quote go through the
+        // coordinator-owned pill, while within-block selections keep the
+        // native menu.
+
+        /// Inside a chat, the native selection menu gains Quote right after
+        /// the standard edit group (Copy), which puts the selection in the
+        /// composer as a `>` quote (#385). Elsewhere the default menu shows.
+        func textView(
+            _ textView: UITextView,
+            editMenuForTextIn range: NSRange,
+            suggestedActions: [UIMenuElement]
+        ) -> UIMenu? {
+            guard let quoteAction, range.length > 0 else { return nil }
+            let quote = UIAction(
+                title: AppLocalization.string("Quote"),
+                image: UIImage(systemName: "text.quote")
+            ) { [weak textView] _ in
+                guard let textView else { return }
+                Self.quoteSelection(in: textView, range: range, with: quoteAction)
+            }
+            return UIMenu(children: Self.editMenuElements(suggestedActions, adding: quote))
+        }
+
+        static func editMenuElements(_ suggestedActions: [UIMenuElement], adding quote: UIMenuElement) -> [UIMenuElement] {
+            var elements = suggestedActions
+            let standardEdit = elements.firstIndex { ($0 as? UIMenu)?.identifier == .standardEdit }
+            elements.insert(quote, at: standardEdit.map { $0 + 1 } ?? 0)
+            return elements
+        }
+
+        /// Hands the selected text to the composer and clears the selection,
+        /// which dismisses the menu. A selection spanning blocks quotes all
+        /// of it, matching what Copy would take.
+        @MainActor
+        static func quoteSelection(in textView: UITextView, range: NSRange, with quoteAction: ChatQuoteAction) {
+            let fullText = textView.attributedText.string as NSString
+            let clamped = NSIntersectionRange(range, NSRange(location: 0, length: fullText.length))
+            let selected = (textView as? MarkdownSelectionTextView)?.coordinatedCopiedAttributedText()?.string
+                ?? fullText.substring(with: clamped)
+            (textView as? MarkdownSelectionTextView)?.selectionCoordinator?.clearSelection()
+            textView.selectedRange = NSRange(location: clamped.location, length: 0)
+            textView.resignFirstResponder()
+            quoteAction(selected)
+        }
 
         // shouldInteractWith is formally deprecated in iOS 17 in favor of
         // textView(_:primaryActionFor:defaultAction:) and
