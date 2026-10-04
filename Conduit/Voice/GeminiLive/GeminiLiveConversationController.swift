@@ -406,7 +406,7 @@ final class GeminiLiveConversationController: ObservableObject {
         } catch {
             guard phase == .connecting else { return }
             hostIssue = LiveVoiceHostIssue(error: error)
-            phase = .failed(error.localizedDescription)
+            phase = .failed(UserFacingError.message(for: error))
             return
         }
         guard await input.requestPermission() else {
@@ -960,7 +960,7 @@ final class GeminiLiveConversationController: ObservableObject {
             inputRunning = true
             return true
         } catch {
-            phase = .failed(error.localizedDescription)
+            phase = .failed(UserFacingError.message(for: error))
             retireSession()
             return false
         }

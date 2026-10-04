@@ -279,7 +279,7 @@ enum DashboardTicketBridgeError: LocalizedError {
         case 0:
             let lowered = trimmed.lowercased()
             if lowered.contains("abort") || lowered.contains("timeout") || lowered.contains("timed out") {
-                return HermesError.timeout("").localizedDescription
+                return HermesError.timeoutMessage
             }
             return AppLocalization.string("Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running.")
         case 401, 403:
@@ -288,8 +288,9 @@ enum DashboardTicketBridgeError: LocalizedError {
             if isMeaningful, status == 404 { return trimmed }
             return AppLocalization.string("Your Hermes server doesn't support this yet. Update Hermes, then try again.")
         case 408, 504, 524:
-            return HermesError.timeout("").localizedDescription
+            return HermesError.timeoutMessage
         case 429:
+            if isMeaningful { return trimmed }
             return AppLocalization.string("Hermes is busy right now. Wait a moment, then try again.")
         case 502, 503, 520...523:
             return AppLocalization.string("Your dashboard couldn't reach Hermes. Hermes may be restarting, so try again in a moment.")

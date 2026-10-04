@@ -231,7 +231,7 @@ final class GPTLiveConversationController: ObservableObject {
         } catch {
             guard phase == .connecting else { return }
             hostIssue = LiveVoiceHostIssue(error: error)
-            phase = .failed(error.localizedDescription)
+            phase = .failed(UserFacingError.message(for: error))
             return
         }
         guard await requestPermission() else {

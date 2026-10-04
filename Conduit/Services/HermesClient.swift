@@ -2607,9 +2607,14 @@ enum HermesError: Error, LocalizedError {
         case .connectionClosed:
             return AppLocalization.string("The connection to Hermes dropped. Conduit reconnects on its own, so try again in a moment.")
         case .timeout:
-            return AppLocalization.string("Hermes didn't answer in time. Check that your Hermes server is running, then try again.")
+            return Self.timeoutMessage
         case .steerRejected: return AppLocalization.string("Hermes could not steer the active response.")
         }
+    }
+
+    /// What any request to Hermes that ran out of time tells people.
+    static var timeoutMessage: String {
+        AppLocalization.string("Hermes didn't answer in time. Check that your Hermes server is running, then try again.")
     }
 }
 

@@ -353,7 +353,7 @@ final class GeminiLiveSession {
             guard !Task.isCancelled, state != .stopped else { return }
             // A missing plugin or key will not fix itself on retry.
             if error is GeminiLiveTokenError {
-                fail(error.localizedDescription)
+                fail(UserFacingError.message(for: error))
                 return
             }
             await retry(after: attempt, error: error)

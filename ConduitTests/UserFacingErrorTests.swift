@@ -54,7 +54,7 @@ extension ConnectionFailureTests {
         XCTAssertEqual(text(404, "Not Found"), "Your Hermes server doesn't support this yet. Update Hermes, then try again.")
         XCTAssertEqual(text(500, "Internal Server Error"), "Hermes ran into a problem on the server. Check the Hermes logs, then try again.")
         XCTAssertEqual(text(0, "TypeError: Load failed"), "Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running.")
-        XCTAssertEqual(text(0, "AbortError: The operation was aborted."), HermesError.timeout("").localizedDescription)
+        XCTAssertEqual(text(0, "AbortError: The operation was aborted."), HermesError.timeoutMessage)
         XCTAssertEqual(text(429, "Too Many Requests"), "Hermes is busy right now. Wait a moment, then try again.")
         XCTAssertEqual(text(503, "Service Unavailable"), "Your dashboard couldn't reach Hermes. Hermes may be restarting, so try again in a moment.")
         XCTAssertTrue(text(401, "Unauthorized").contains("Sign in again"))
