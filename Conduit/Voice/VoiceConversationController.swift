@@ -459,6 +459,7 @@ final class VoiceConversationController: ObservableObject {
         // acoustic barge-in provenance, and this path always lands in
         // .listening.
         let generation = operationGeneration
+        dropPromotedSteerReply()
         playback.stop()
         cancelSpeechDrainAndStream()
         clearSpeechQueue()
@@ -558,6 +559,7 @@ final class VoiceConversationController: ObservableObject {
     func setOutputMuted(_ muted: Bool) {
         isOutputMuted = muted
         if muted {
+            dropPromotedSteerReply()
             playback.stop()
             cancelSpeechDrainAndStream()
             clearSpeechQueue()
@@ -1103,7 +1105,7 @@ final class VoiceConversationController: ObservableObject {
             isAwaitingVoiceAssistant = true
             awaitedAssistantResponseStarted = false
             steerSentThisTurn = false
-            promotedSteerReplyDeadline = nil
+            dropPromotedSteerReply()
             guard await submit(transcript) else {
                 guard isCurrent(generation) else { return }
                 isAwaitingVoiceAssistant = false
@@ -1394,6 +1396,13 @@ final class VoiceConversationController: ObservableObject {
         promotedSteerReplyDeadline = nil
     }
 
+    /// The user moved past the steered reply (talked over it, interrupted,
+    /// muted, or it failed): its late follow-up isn't adopted or replayed.
+    private func dropPromotedSteerReply() {
+        heldPromotedSteerEvents = []
+        promotedSteerReplyDeadline = nil
+    }
+
     private func scheduleBargeIn() {
         guard bargeInTask == nil else { return }
         let generation = operationGeneration
@@ -1415,8 +1424,7 @@ final class VoiceConversationController: ObservableObject {
         guard isTalkOverAvailable else { return }
         lastBargeInState = state
         // Talking over the steered reply moves on from its follow-up too.
-        heldPromotedSteerEvents = []
-        promotedSteerReplyDeadline = nil
+        dropPromotedSteerReply()
         // A reply that already arrived in full has no Hermes turn left to
         // cancel: talking over it only stops the speech.
         let turnStillRunning = isAwaitingVoiceAssistant
@@ -1688,6 +1696,8 @@ final class VoiceConversationController: ObservableObject {
             guard isSpeechDrainCurrent(operation: operation, revision: revision) else { return }
             if isSpeechCancellation(error) {
                 speechStream = nil
+                // A cancelled drain never reaches the replay below.
+                dropPromotedSteerReply()
                 if assistantFinished {
                     assistantFinished = false
                     // Speaker-safe: a suspended capture must not resume
@@ -1703,6 +1713,7 @@ final class VoiceConversationController: ObservableObject {
             // terminal path so the lease and engine do not outlive the turn.
             // (The cancellation branch above intentionally keeps ownership —
             // an interrupted stream's already-scheduled audio renders out.)
+            dropPromotedSteerReply()
             playback.stop()
             endPlaybackCaptureSuspensionWithoutRelistening()
             if state == .speaking || state == .thinking { state = .failed(UserFacingError.message(for: error)) }
@@ -1727,8 +1738,7 @@ final class VoiceConversationController: ObservableObject {
             } else {
                 // Continuous conversation off: the follow-up reply isn't
                 // spoken (it still shows in chat).
-                heldPromotedSteerEvents = []
-                promotedSteerReplyDeadline = nil
+                dropPromotedSteerReply()
                 settleOpenSessionAfterAssistantTurn()
             }
         }

@@ -17686,7 +17686,8 @@ final class AppState: ObservableObject {
 
     private func steer(
         _ text: String,
-        context: ComposerSubmissionContext? = nil
+        context: ComposerSubmissionContext? = nil,
+        surfacesFailure: Bool = true
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
@@ -17731,7 +17732,10 @@ final class AppState: ObservableObject {
             // mutation, so preserve success for draft handling.
             return true
         } catch {
-            guard isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }
+            // A spoken steer that fails is dropped by Voice; there is no
+            // composer draft to recover or banner to show.
+            guard surfacesFailure,
+                  isCurrentOrAliasedComposerSubmission(submissionContext) else { return false }
             errorMessage = UserFacingError.message(for: error)
             await recoverComposerSubmission(using: submissionContext)
             return false
@@ -22464,7 +22468,7 @@ final class AppState: ObservableObject {
     func steerForVoice(_ text: String) async -> VoiceSteerOutcome {
         switch turnState {
         case .running:
-            return await steer(text) ? .steered : .failed
+            return await steer(text, surfacesFailure: false) ? .steered : .failed
         case .idle, .unsupportedGateway:
             return .noRunningTurn
         case .synchronizing, .reconnecting:
