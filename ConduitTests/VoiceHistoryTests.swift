@@ -440,3 +440,67 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(appState.voiceCallSavesBlocked)
     }
 }
+
+// MARK: - Calls started from a chat
+
+extension HermesVoiceGatewayTimeoutTests {
+    private func chatLink(call: String, row: String, chat: String, stored: String? = nil, at start: Date, resumed: Bool = false, profile: String = "default") -> VoiceCallChatLink {
+        VoiceCallChatLink(
+            callID: call, callSessionID: row, chatRuntimeSessionID: chat, chatStoredSessionID: stored,
+            chatTitle: "Build", profile: profile, startedAt: start, endedAt: start.addingTimeInterval(95), resumed: resumed
+        )
+    }
+
+    func testVoiceCallMarkerLandsWhereTheCallStartedInItsOwnChatOnly() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let iso = ISO8601DateFormatter()
+        let history = [
+            ChatMessage(id: "a", role: .user, content: "before", timestamp: iso.string(from: start.addingTimeInterval(-60))),
+            ChatMessage(id: "b", role: .user, content: "during", timestamp: iso.string(from: start.addingTimeInterval(30))),
+        ]
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: start))
+        links.add(chatLink(call: "c2", row: "other-row", chat: "rt-2", at: start))
+        links.add(chatLink(call: "c3", row: "call-row", chat: "rt-1", stored: "st-1", at: start, profile: "work"))
+
+        let merged = links.merge(into: history, chatIDs: ["st-1"], profile: "default")
+        XCTAssertEqual(merged.map(\.id), ["a", "voice-call-c1", "b"])
+        XCTAssertEqual(merged[1].role, .system)
+        XCTAssertEqual(merged[1].displayKind, VoiceCallChatLink.displayKind)
+        XCTAssertEqual(links.link(markerID: "voice-call-c1")?.callSessionID, "call-row")
+        // Merging again (a refresh) doesn't add a second marker.
+        XCTAssertEqual(links.merge(into: merged, chatIDs: ["st-1"], profile: "default").count, 3)
+        // A call later than every message goes last.
+        XCTAssertEqual(links.merge(into: Array(history.prefix(1)), chatIDs: ["rt-1"], profile: "default").last?.id, "voice-call-c1")
+    }
+
+    func testResumeCallGoesBackToTheChatTheCallWasLastAttachedTo() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: start))
+        links.add(chatLink(call: "c2", row: "call-row", chat: "rt-9", at: start.addingTimeInterval(600), resumed: true))
+        let thread = links.latest(forCall: "call-row", profile: "default")?.thread
+        XCTAssertEqual(thread?.runtimeSessionID, "rt-9")
+        XCTAssertNil(thread?.storedSessionID)
+        XCTAssertEqual(links.latest(forCall: "call-row", profile: "default").map { $0.marker.content }, "Voice call resumed")
+        XCTAssertNil(links.latest(forCall: "call-row", profile: "work"))
+
+        // The stored id is the chat's durable identity: resume targets it.
+        let first = chatLink(call: "c1", row: "call-row", chat: "rt-1", stored: "st-1", at: start).thread
+        XCTAssertEqual(first.runtimeSessionID, "st-1")
+        XCTAssertTrue(first.owns(sessionID: "st-1"))
+    }
+
+    func testVoiceCallLinksRoundTripAndStayBounded() {
+        let defaults = UserDefaults(suiteName: "voice-call-links-\(UUID().uuidString)")!
+        var links = VoiceCallChatLinks()
+        for index in 0..<(VoiceCallChatLinks.maximumLinks + 5) {
+            links.add(chatLink(call: "c\(index)", row: "row", chat: "rt", at: Date(timeIntervalSince1970: Double(index))))
+        }
+        links.store(in: defaults)
+        let loaded = VoiceCallChatLinks.load(from: defaults)
+        XCTAssertEqual(loaded.links.count, VoiceCallChatLinks.maximumLinks)
+        XCTAssertEqual(loaded.links.first?.callID, "c5")
+        XCTAssertEqual(loaded, links)
+    }
+}

@@ -715,7 +715,11 @@ struct MessageBubble: View {
         case .inputPrompt:
             InputPromptCard(message: message)
         case .system:
-            if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
+            if message.displayKind == VoiceCallChatLink.displayKind, let link = appState.voiceCallLink(markerID: message.id) {
+                VoiceCallMarkerCard(link: link) {
+                    _ = appState.requestOpenSession(link.callSessionID)
+                }
+            } else if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
                 ReviewSummaryCard(activity: review, timestamp: message.timestamp)
             } else if let modelChange = MessageNormalizer.modelChangeActivity(
                 fromText: message.rawContent ?? message.content
@@ -1587,6 +1591,59 @@ private struct ModelChangeSummaryCard: View {
     }
 }
 
+/// A voice call started from this chat: its spoken turns are saved as
+/// their own session, which the marker opens.
+private struct VoiceCallMarkerCard: View {
+    let link: VoiceCallChatLink
+    let open: () -> Void
+
+    private var duration: String? {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = link.endedAt.timeIntervalSince(link.startedAt) >= 3_600 ? [.hour, .minute] : [.minute, .second]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 2
+        return formatter.string(from: max(0, link.endedAt.timeIntervalSince(link.startedAt)))
+    }
+
+    var body: some View {
+        Button(action: open) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "phone.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.conduitAccent)
+                    .frame(width: 28, height: 28)
+                    .background(Color.conduitAccent.opacity(0.14), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(link.resumed ? "Voice call resumed" : "Voice call")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(duration.map { AppLocalization.string("\($0) · Open transcript") } ?? AppLocalization.string("Open transcript"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                MessageTimestampLabel(timestamp: ISO8601DateFormatter().string(from: link.startedAt), tone: .supporting)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(14)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .conduitGlassSurface(cornerRadius: 18, tint: .conduitAccent.opacity(0.07))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.conduitAccent.opacity(0.16), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(Text("Opens the call's transcript"))
+    }
+}
+
 /// Settled reasoning-row content, gated the same way as assistant/user
 /// content: identical presentation inputs skip body evaluation during
 /// unrelated AppState publishes. Internal (not private) so the gate
@@ -1696,7 +1753,7 @@ enum MessageTimestampFormatter {
         return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 
-    private static func date(from rawTimestamp: String) -> Date? {
+    static func date(from rawTimestamp: String) -> Date? {
         let value = rawTimestamp.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
 

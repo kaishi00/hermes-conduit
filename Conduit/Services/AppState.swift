@@ -3166,6 +3166,39 @@ final class AppState: ObservableObject {
             .map(\.message)
     }
 
+    /// The chat's "Voice call" markers for calls started from it.
+    private func mergeVoiceCallMarkers(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
+        voiceCallChatLinks.merge(into: history, chatIDs: reviewCacheSessionIDs(for: sessionId), profile: activeProfile)
+    }
+
+    /// The call a chat's "Voice call" marker opens.
+    func voiceCallLink(markerID: String) -> VoiceCallChatLink? {
+        voiceCallChatLinks.link(markerID: markerID)
+    }
+
+    /// A call attached to a chat was saved: the chat gets its marker, at
+    /// once when it's on screen.
+    private func linkVoiceCall(_ attachment: VoiceCallAttachment, callSessionID: String, profile: String) {
+        let link = VoiceCallChatLink(
+            callID: attachment.callID,
+            callSessionID: callSessionID,
+            chatRuntimeSessionID: attachment.thread.runtimeSessionID,
+            chatStoredSessionID: attachment.thread.storedSessionID,
+            chatTitle: attachment.thread.title,
+            profile: profile,
+            startedAt: attachment.startedAt,
+            endedAt: Date(),
+            resumed: attachment.resumed
+        )
+        voiceCallChatLinks.add(link)
+        voiceCallChatLinks.store(in: defaults)
+        guard profile == activeProfile, let sessionID = activeSessionId else { return }
+        let merged = mergeVoiceCallMarkers(into: messages, sessionId: sessionID)
+        guard merged.count != messages.count else { return }
+        messages = merged
+        cacheMessagePresentation()
+    }
+
     private func persistReview(_ record: ReviewSummaryRecord) {
         // Append-only by design: every review is its own row (the default
         // mode repeats "Memory updated"), and the merge dedupes by record id.
@@ -3400,6 +3433,9 @@ final class AppState: ObservableObject {
     /// the call runs stalled it, so the call is only checkpointed on the
     /// device meanwhile.
     private var voiceCallRecorder: VoiceTranscriptRecorder?
+    /// The chat the recorded call is attached to, linked to its row once saved.
+    private var voiceCallAttachment: VoiceCallAttachment?
+    private lazy var voiceCallChatLinks = VoiceCallChatLinks.load(from: defaults)
     private var voiceCallCheckpointTask: Task<Void, Never>?
     private var voiceCallTranscriptSubscription: AnyCancellable?
     static let voiceCallCheckpointInterval: Duration = .seconds(15)
@@ -3707,6 +3743,9 @@ final class AppState: ObservableObject {
         )
         if resume != nil { recorder.note(AppLocalization.string("Voice call resumed")) }
         voiceCallRecorder = recorder
+        voiceCallAttachment = voiceBackgroundJobSupervisor.liveThread.map {
+            VoiceCallAttachment(thread: $0, callID: recorder.callID, startedAt: Date(), resumed: resume != nil)
+        }
         let transcript: AnyPublisher<Void, Never>
         switch engine {
         case .geminiLive: transcript = geminiLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
@@ -3769,6 +3808,8 @@ final class AppState: ObservableObject {
         voiceCallCheckpointTask?.cancel()
         voiceCallCheckpointTask = nil
         liveVoiceResumeContext = nil
+        let attachment = voiceCallAttachment
+        voiceCallAttachment = nil
         guard let recorder = voiceCallRecorder else { return }
         captureVoiceCall()
         voiceCallTranscriptSubscription = nil
@@ -3823,6 +3864,7 @@ final class AppState: ObservableObject {
                 )
             }
             guard let sessionID = callRow else { return }
+            if let attachment { self.linkVoiceCall(attachment, callSessionID: sessionID, profile: recorder.profile) }
             if self.voiceSessionTagsByKey[key]?[sessionID] == nil {
                 self.voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: recorder.engine.rawValue)
             }
@@ -4337,12 +4379,14 @@ final class AppState: ObservableObject {
         guard profile == activeProfile, canResumeVoiceCall else { return }
         // Without the saved turns the call still continues the row.
         pendingVoiceResume = (sessionID, context ?? VoiceResumeContext(summary: nil, recent: []))
+        // A call started from a chat goes back to that chat.
+        let thread = voiceCallChatLinks.latest(forCall: sessionID, profile: profile)?.thread
         if isGeminiLiveEnabled {
-            openGeminiLiveConversation()
+            openGeminiLiveConversation(attachingTo: thread)
         } else if isGrokLiveEnabled {
-            openGrokLiveConversation()
+            openGrokLiveConversation(attachingTo: thread)
         } else {
-            openGPTLiveConversation()
+            openGPTLiveConversation(attachingTo: thread)
         }
         // Starting the call took it; a call already running didn't, and a
         // later unrelated call must not.
@@ -9710,7 +9754,7 @@ final class AppState: ObservableObject {
             includePendingApprovals: restorePendingDecisionCards,
             includePendingTools: result.snapshot.running != false
         )
-        messages = mergeCachedReviews(into: restored, sessionId: result.sessionId)
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: restored, sessionId: result.sessionId), sessionId: result.sessionId)
         if result.snapshot.running == false {
             sessionPresentationCache.removePendingTools(
                 profile: presentationProfile(for: result.sessionId),
@@ -17256,7 +17300,7 @@ final class AppState: ObservableObject {
             includePendingClarifications: false,
             includePendingApprovals: false
         )
-        messages = mergeCachedReviews(into: merged, sessionId: sessionID)
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: merged, sessionId: sessionID), sessionId: sessionID)
         // The gateway's authoritative response just replaced the transcript:
         // no local turn/ordering debt can outlive it (applyChatResume's rule).
         transcriptFreshnessIsStale = false

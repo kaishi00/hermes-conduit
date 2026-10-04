@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ · Open transcript" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 打开文字记录"
+          }
+        }
+      }
+    },
+    "Open transcript" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开文字记录"
+          }
+        }
+      }
+    },
+    "Opens the call's transcript" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开这次通话的文字记录"
+          }
+        }
+      }
+    },
     "On screen" : {
       "localizations" : {
         "zh-Hans" : {
