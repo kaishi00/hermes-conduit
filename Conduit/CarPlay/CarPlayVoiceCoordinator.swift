@@ -177,6 +177,21 @@ final class CarPlayVoiceCoordinator {
     var isObservingJobs: Bool { jobsObservation != nil }
     /// The profiles the open Voice list offered, in row order.
     private var listedAgentProfiles: [String] = []
+    /// The chat the driver picked from the chat list. A live call started
+    /// from the car's Listen button is attached to it too, not only the
+    /// call the pick starts (#378).
+    private(set) var chosenChat: CarPlayChatRow?
+    /// Rotated by every chat pick, so an earlier pick still opening never
+    /// starts a call after a newer one.
+    private var chatOpenRequest: UInt64 = 0
+    /// Rotated by the End button. A start still waiting for Hermes (or for
+    /// its chat to open) when End was tapped never goes on to start (#378).
+    private(set) var voiceStartRequest: UInt64 = 0
+    /// A list is pushed over the voice screen. A conversation that starts
+    /// meanwhile (from the phone, say) brings the voice screen back (#378).
+    private(set) var isBrowsing = false
+    /// Test seam; production asks UIKit whether the phone screen is up.
+    var phoneScreenProvider: @MainActor () -> Bool = { PhoneScenePresence.isInForeground }
 
     /// Test seam over what the Error state names as the thing to fix.
     var setupIssueProvider: @MainActor (AppState, CarPlayVoiceMode) -> VoiceSetupIssue? = {
@@ -217,6 +232,8 @@ final class CarPlayVoiceCoordinator {
         jobsObservation?.cancel()
         jobsObservation = nil
         jobsTemplate = nil
+        chosenChat = nil
+        isBrowsing = false
         self.interfacing = interfacing
         lastActivatedState = nil
         isTemplatePresented = false
@@ -231,6 +248,10 @@ final class CarPlayVoiceCoordinator {
         let appState = appStateProvider()
         lastBoundAppState = appState
         appState.setCarPlayVoiceSurfaceActive(true)
+        // The car may have launched Conduit with no phone screen at all.
+        if !phoneScreenProvider() {
+            appState.handleCarPlayConnectedWithoutPhoneScreen()
+        }
         // Re-assert the Voice gate: the phone may be locked/backgrounded with
         // a gate left false by an earlier CarPlay-only disconnect, and the
         // driver's next Listen must be able to re-arm capture.
@@ -268,6 +289,8 @@ final class CarPlayVoiceCoordinator {
         jobsObservation?.cancel()
         jobsObservation = nil
         jobsTemplate = nil
+        chosenChat = nil
+        isBrowsing = false
         lastActivatedState = nil
         isTemplatePresented = false
         pendingPresentationState = nil
@@ -432,7 +455,7 @@ final class CarPlayVoiceCoordinator {
             startListening: fenced { $0.startListeningTurn() },
             startNewChat: fenced { $0.startNewChat() },
             toggleMicrophone: fenced { $0.toggleMicrophone() },
-            endConversation: fenced { $0.endConversation() }
+            endConversation: fenced { $0.endTapped() }
         )
     }
 
@@ -560,6 +583,13 @@ final class CarPlayVoiceCoordinator {
         lastActivatedState = activated
         stateActivator(template, activated)
         if playsEarcon { playEarcon(from: previous, to: activated) }
+        // A conversation is listening or talking (one started on the phone,
+        // say): the voice screen shows it, rather than a list the driver has
+        // to back out of first. Thinking alone doesn't count: a call that is
+        // ending passes through it.
+        if activated == .listening || activated == .responding, isBrowsing {
+            returnToVoiceScreen()
+        }
     }
 
     /// Records what the Error state should name as the thing to fix.
@@ -681,6 +711,7 @@ final class CarPlayVoiceCoordinator {
         jobsObservation = nil
         jobsTemplate = nil
         guard let interfacing else { return }
+        isBrowsing = true
         interfacing.pushTemplate(browseTemplate, animated: true, completion: nil)
     }
 
@@ -693,8 +724,15 @@ final class CarPlayVoiceCoordinator {
         self.jobsTemplate = nil
     }
 
+    /// The voice screen is back on top (the car's back button included).
+    func handleTemplateDidAppear(_ appeared: CPTemplate) {
+        guard let template, appeared === template else { return }
+        isBrowsing = false
+    }
+
     /// Back to the voice screen before Voice starts.
     private func returnToVoiceScreen() {
+        isBrowsing = false
         jobsObservation?.cancel()
         jobsObservation = nil
         jobsTemplate = nil
@@ -733,6 +771,7 @@ final class CarPlayVoiceCoordinator {
     /// one tap the car used to open with.
     func startNewVoiceChat() {
         returnToVoiceScreen()
+        chosenChat = nil
         startNewChat()
     }
 
@@ -799,20 +838,35 @@ final class CarPlayVoiceCoordinator {
         }
     }
 
+    /// Voice starts as soon as the chat is picked, with no Listen tap
+    /// (#378). Hermes may still be reconnecting (the phone is usually locked
+    /// in a car), so the open waits for it rather than failing at once.
     func performOpenChat(_ row: CarPlayChatRow, generation: UInt64) async {
         guard isCurrent(generation), isConnected else { return }
+        chosenChat = row
+        chatOpenRequest &+= 1
+        let request = chatOpenRequest
+        let startRequest = voiceStartRequest
+        // A newer pick, an End tap or a lost car ends this one.
+        func isWanted() -> Bool {
+            isCurrent(generation) && isConnected
+                && chatOpenRequest == request && voiceStartRequest == startRequest
+        }
         let appState = lastBoundAppState ?? appStateProvider()
         observeCurrentVoiceMode(appState)
         let mode = CarPlayVoiceMode.current(in: appState)
         if let liveMode = CarPlayLiveVoiceMode(mode) {
             endConversation()
+            guard await waitForHermes(appState: appState, generation: generation), isWanted() else { return }
             // The phone shows the chat the call is attached to, as when the
             // call starts from that chat there.
             let opened = await appState.openSessionOutcome(row.sessionID)
-            guard isCurrent(generation), isConnected else { return }
-            guard opened == .opened else {
-                settleUnopenedChat(opened)
-                return
+            guard isWanted() else { return }
+            if opened != .opened {
+                // The phone not showing it doesn't change which chat the
+                // driver picked: the call is still attached to it, so its
+                // requests land there and not in new chats (#378).
+                carPlayLogger.notice("picked chat did not open on the phone; the call still attaches to it")
             }
             await establishLiveVoice(liveMode, appState: appState, generation: generation, attachingTo: row.thread)
             return
@@ -820,12 +874,23 @@ final class CarPlayVoiceCoordinator {
         if appState.voiceConversationController.hasLiveVoiceSession {
             appState.closeVoiceConversation()
         }
-        let opened = await appState.openSessionOutcome(row.sessionID)
+        guard await waitForHermes(appState: appState, generation: generation), isWanted() else { return }
+        var opened = await appState.openSessionOutcome(row.sessionID)
+        // Something on the phone (the automatic resume after reconnecting)
+        // can take the chat view from the pick; the driver's pick wins.
+        if opened == .superseded, isWanted() {
+            opened = await appState.openSessionOutcome(row.sessionID)
+        }
+        guard isWanted() else { return }
         guard opened == .opened else {
-            if isCurrent(generation), isConnected { settleUnopenedChat(opened) }
+            settleUnopenedChat(opened)
             return
         }
         let outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
+        guard voiceStartRequest == startRequest else {
+            closeStartEndedMeanwhile(outcome)
+            return
+        }
         await completeListenTurn(generation: generation, outcome: outcome)
     }
 
@@ -934,6 +999,8 @@ final class CarPlayVoiceCoordinator {
                 self.handleControllerState(.failed(""))
                 return
             }
+            // The picked chat belongs to the agent left behind.
+            self.chosenChat = nil
             self.observeCurrentVoiceMode(appState)
         }
     }
@@ -954,13 +1021,16 @@ final class CarPlayVoiceCoordinator {
         guard isCurrent(generation), isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
         observeCurrentVoiceMode(appState)
+        // A live call started here belongs to the chat the driver picked, as
+        // the call the pick started did (#378).
+        let thread = chosenChat?.thread
         switch CarPlayVoiceMode.current(in: appState) {
         case .classic:
             break
         case .geminiLive:
             let gemini = appState.geminiLiveController
             switch CarPlayGeminiLiveListenAction.forPhase(gemini.phase) {
-            case .start: await establishLiveVoice(.geminiLive, appState: appState, generation: generation)
+            case .start: await establishLiveVoice(.geminiLive, appState: appState, generation: generation, attachingTo: thread)
             case .interrupt: gemini.interruptSpeaking()
             case .nothing: break
             }
@@ -968,19 +1038,20 @@ final class CarPlayVoiceCoordinator {
         case .gptLive:
             let gpt = appState.gptLiveController
             switch CarPlayGPTLiveListenAction.forPhase(gpt.phase) {
-            case .start: await establishLiveVoice(.gptLive, appState: appState, generation: generation)
+            case .start: await establishLiveVoice(.gptLive, appState: appState, generation: generation, attachingTo: thread)
             case .nothing: break
             }
             return
         case .grokLive:
             let grok = appState.grokLiveController
             switch CarPlayGeminiLiveListenAction.forPhase(grok.phase) {
-            case .start: await establishLiveVoice(.grokLive, appState: appState, generation: generation)
+            case .start: await establishLiveVoice(.grokLive, appState: appState, generation: generation, attachingTo: thread)
             case .interrupt: grok.interruptSpeaking()
             case .nothing: break
             }
             return
         }
+        let startRequest = voiceStartRequest
         let controller = appState.voiceConversationController
         var outcome = AppState.VoiceConversationPrepareOutcome.handled
         if controller.hasLiveVoiceSession {
@@ -997,8 +1068,8 @@ final class CarPlayVoiceCoordinator {
             if controller.isMicrophonePaused {
                 await controller.resumeMicrophone()
                 // A mode switch during the resume leaves the car to the new
-                // mode's controller.
-                guard isCurrent(generation), isConnected,
+                // mode's controller; End tapped meanwhile already closed it.
+                guard isCurrent(generation), isConnected, voiceStartRequest == startRequest,
                       CarPlayVoiceMode.current(in: appState) == .classic else { return }
                 // A resume that failed or was refused leaves the microphone
                 // paused, and listening would run with it closed, so the car
@@ -1017,6 +1088,10 @@ final class CarPlayVoiceCoordinator {
             }
         } else {
             outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
+            guard voiceStartRequest == startRequest else {
+                closeStartEndedMeanwhile(outcome)
+                return
+            }
         }
         await completeListenTurn(generation: generation, outcome: outcome)
     }
@@ -1043,11 +1118,18 @@ final class CarPlayVoiceCoordinator {
         if appState.voiceConversationController.hasLiveVoiceSession {
             appState.closeVoiceConversation()
         }
+        // A new chat is no longer the one picked from the list.
+        chosenChat = nil
+        let startRequest = voiceStartRequest
         let outcome = await prepareWaitingForConnection(
             appState: appState,
             generation: generation,
             startsFreshConversation: true
         )
+        guard voiceStartRequest == startRequest else {
+            closeStartEndedMeanwhile(outcome)
+            return
+        }
         await completeListenTurn(generation: generation, outcome: outcome)
     }
 
@@ -1126,6 +1208,35 @@ final class CarPlayVoiceCoordinator {
         case .gptLive: appState.closeGPTLiveConversation()
         case .grokLive: appState.closeGrokLiveConversation()
         }
+    }
+
+    /// The End button. The conversation closes, and so does any start still
+    /// waiting for Hermes or for its chat to open: before, a live call
+    /// waiting to connect could not be ended from the car (#378). With
+    /// "Choose a chat first" on, the chat list comes back so the driver can
+    /// go on in another chat. The picked chat is kept on purpose: Listen
+    /// after End continues in it, as the driver picked it.
+    func endTapped() {
+        guard isConnected else { return }
+        voiceStartRequest &+= 1
+        connectionWaitTask?.cancel()
+        connectionWaitTask = nil
+        endConversation()
+        // A start that was only waiting leaves no controller state behind
+        // to bring the car back to Ready.
+        forward(.ready)
+        if preferencesProvider().choosesChatFirst {
+            showChatPicker()
+        }
+    }
+
+    /// A classic start whose prepare finished after End was tapped: a
+    /// conversation it opened is closed again rather than left open.
+    private func closeStartEndedMeanwhile(_ outcome: AppState.VoiceConversationPrepareOutcome) {
+        guard isConnected, outcome == .handled else { return }
+        let appState = lastBoundAppState ?? appStateProvider()
+        guard CarPlayVoiceMode.current(in: appState) == .classic else { return }
+        appState.closeVoiceConversation()
     }
 
     // MARK: - Voice establishment
@@ -1208,7 +1319,12 @@ final class CarPlayVoiceCoordinator {
             }
             return
         }
+        let startRequest = voiceStartRequest
         let outcome = await prepareWaitingForConnection(appState: appState, generation: generation)
+        guard voiceStartRequest == startRequest else {
+            closeStartEndedMeanwhile(outcome)
+            return
+        }
         await completeVoiceEstablishment(generation: generation, outcome: outcome)
     }
 
@@ -1221,27 +1337,13 @@ final class CarPlayVoiceCoordinator {
         generation: UInt64,
         attachingTo thread: VoiceThreadTarget? = nil
     ) async {
-        if !appState.isConnected {
-            appState.recoverTransportForCarPlayIfNeeded()
-            forward(.processing)
-            let waiter = connectionWaiter
-            let timeout = connectionWaitTimeout
-            connectionWaitTask?.cancel()
-            let waitTask = Task { @MainActor () -> Bool in
-                if let waiter { return await waiter(appState) }
-                return await Self.awaitConnection(of: appState, timeout: timeout)
-            }
-            connectionWaitTask = waitTask
-            let connected = await waitTask.value
-            if connectionWaitTask == waitTask { connectionWaitTask = nil }
-            guard connected else {
-                if isCurrent(generation), isConnected { forward(.error) }
-                return
-            }
-        }
+        let startRequest = voiceStartRequest
+        guard await waitForHermes(appState: appState, generation: generation) else { return }
         // The setting may have changed while Hermes was being reached; the
-        // controls start whichever mode is current on the next tap.
-        guard isCurrent(generation), isConnected, CarPlayVoiceMode.current(in: appState) == mode.voiceMode else { return }
+        // controls start whichever mode is current on the next tap. End
+        // tapped meanwhile starts nothing.
+        guard isCurrent(generation), isConnected, voiceStartRequest == startRequest,
+              CarPlayVoiceMode.current(in: appState) == mode.voiceMode else { return }
         switch mode {
         case .geminiLive:
             await appState.startGeminiLiveForCarPlay(attachingTo: thread)
@@ -1259,6 +1361,12 @@ final class CarPlayVoiceCoordinator {
             if !isCurrent(generation) || !isConnected {
                 appState.releaseCarPlayGrokLive()
             }
+        }
+        // End tapped while the call was starting: the call it closed may
+        // not have been running yet, so close whatever started after it.
+        if isCurrent(generation), isConnected, voiceStartRequest != startRequest {
+            endConversation()
+            forward(.ready)
         }
     }
 
@@ -1282,6 +1390,36 @@ final class CarPlayVoiceCoordinator {
         appState.recoverTransportForCarPlayIfNeeded()
         // Show that Hermes is being reached instead of sitting on Ready.
         handleControllerState(.thinking)
+        let connected = await awaitConnectionCancellably(appState) ?? false
+        guard connected, isCurrent(generation), isConnected else {
+            return .deferred
+        }
+        return await appState.prepareVoiceConversation(
+            profile: nil,
+            startsFreshConversation: startsFreshConversation
+        )
+    }
+
+    /// Waits (bounded) for Hermes when it isn't connected, showing Thinking
+    /// meanwhile. False when it never connected: the car then shows Error,
+    /// unless the car went away, End was tapped, or a newer start took the
+    /// wait over.
+    private func waitForHermes(appState: AppState, generation: UInt64) async -> Bool {
+        guard !appState.isConnected else { return true }
+        let startRequest = voiceStartRequest
+        appState.recoverTransportForCarPlayIfNeeded()
+        forward(.processing)
+        guard let connected = await awaitConnectionCancellably(appState) else { return false }
+        guard connected else {
+            if isCurrent(generation), isConnected, voiceStartRequest == startRequest { forward(.error) }
+            return false
+        }
+        return true
+    }
+
+    /// The connection wait, held where the next connect, disconnect, End
+    /// tap or newer wait can cancel it. nil when one did.
+    private func awaitConnectionCancellably(_ appState: AppState) async -> Bool? {
         let waiter = connectionWaiter
         let timeout = connectionWaitTimeout
         connectionWaitTask?.cancel()
@@ -1296,13 +1434,8 @@ final class CarPlayVoiceCoordinator {
         // Listen tap) may have replaced it, and that newer wait must stay
         // cancellable by the next connect or disconnect.
         if connectionWaitTask == waitTask { connectionWaitTask = nil }
-        guard connected, isCurrent(generation), isConnected else {
-            return .deferred
-        }
-        return await appState.prepareVoiceConversation(
-            profile: nil,
-            startsFreshConversation: startsFreshConversation
-        )
+        if waitTask.isCancelled { return nil }
+        return connected
     }
 
     /// Resolves true as soon as `appState.isConnected` is true, or false once

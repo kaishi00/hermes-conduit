@@ -263,3 +263,77 @@ final class DashboardTicketBridgeTests: XCTestCase {
         XCTAssertEqual(bridge.reloadCount, 2, "Both signInRequired retries must reload")
     }
 }
+
+// MARK: - #378: requests while the phone app is in the background
+
+@MainActor
+extension DashboardTicketBridgeTests {
+    func testRequestsWithoutThePageGoWhereThePagesFetchWould() {
+        XCTAssertEqual(
+            DashboardTicketBridge.pageRequestURL(path: "/api/auth/ws-ticket", baseURL: "https://example.com")?.absoluteString,
+            "https://example.com/api/auth/ws-ticket"
+        )
+        XCTAssertEqual(
+            DashboardTicketBridge.pageRequestURL(path: "/api/plugins/conduit_push/gpt-live/session", baseURL: "https://example.com:8443/")?.absoluteString,
+            "https://example.com:8443/api/plugins/conduit_push/gpt-live/session",
+            "an absolute path resolves against the page's origin, as fetch does"
+        )
+        XCTAssertNil(
+            DashboardTicketBridge.pageRequestURL(path: "https://elsewhere.example/api/status", baseURL: "https://example.com"),
+            "never another origin"
+        )
+    }
+
+    func testABackgroundRequestWithNoCookiesIsNotReadyRatherThanSignedOut() async {
+        let bridge = DashboardTicketBridge(baseURL: "https://no-session-\(UUID().uuidString.lowercased()).invalid")
+        bridge.webViewCanRun = { false }
+        defer { bridge.invalidate() }
+
+        do {
+            _ = try await bridge.requestJSON(path: "/api/status")
+            XCTFail("a request with no cookies to send must not go out")
+        } catch DashboardTicketBridgeError.notReady {
+            // Nothing proves the sign-in expired.
+        } catch {
+            XCTFail("unexpected \(error)")
+        }
+    }
+}
+
+@MainActor
+extension DashboardTicketBridgeTests {
+    func testBackgroundRequestsSendTheCookieThatExpiresLast() throws {
+        func cookie(_ value: String, expires: TimeInterval?) throws -> HTTPCookie {
+            var properties: [HTTPCookiePropertyKey: Any] = [
+                .name: "session", .value: value, .domain: "example.com", .path: "/",
+            ]
+            if let expires { properties[.expires] = Date(timeIntervalSinceNow: expires) }
+            return try XCTUnwrap(HTTPCookie(properties: properties))
+        }
+        let resignedIn = try cookie("new", expires: 7_200)
+        let stalePage = try cookie("old", expires: 600)
+        let chosen = DashboardTicketBridge.freshestCookies([resignedIn, stalePage])
+        XCTAssertEqual(chosen.map(\.value), ["new"], "a copy that expires sooner never replaces a fresher sign-in")
+
+        let live = try cookie("live", expires: nil)
+        XCTAssertEqual(DashboardTicketBridge.freshestCookies([stalePage, live]).map(\.value), ["live"])
+        XCTAssertEqual(
+            DashboardTicketBridge.freshestCookies([live, resignedIn]).map(\.value), ["live"],
+            "a live session cookie is never displaced by a dated copy from a later store"
+        )
+    }
+
+    func testBackgroundRequestsFollowOnlySameOriginRedirectsWithTheirHeaders() throws {
+        var original = URLRequest(url: try XCTUnwrap(URL(string: "https://example.com/api/sessions")))
+        original.setValue("session=abc", forHTTPHeaderField: "Cookie")
+        func proposed(_ url: String) throws -> URLRequest { URLRequest(url: try XCTUnwrap(URL(string: url))) }
+
+        let followed = DashboardBackgroundSession.redirect(from: original, to: try proposed("https://example.com/api/sessions/"))
+        XCTAssertEqual(followed?.value(forHTTPHeaderField: "Cookie"), "session=abc", "a trailing-slash redirect keeps the cookies")
+        XCTAssertNil(DashboardBackgroundSession.redirect(from: original, to: try proposed("https://example.com/login?next=/api")))
+        XCTAssertNil(
+            DashboardBackgroundSession.redirect(from: original, to: try proposed("https://elsewhere.example/api/sessions")),
+            "cookies never follow a redirect to another origin"
+        )
+    }
+}

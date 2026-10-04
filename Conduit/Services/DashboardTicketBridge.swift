@@ -62,6 +62,14 @@ enum DashboardCookiePersistence {
     }
 
     static func restore(into cookieStore: WKHTTPCookieStore, dashboardID: UUID? = nil) async {
+        for cookie in mirroredCookies(dashboardID: dashboardID) {
+            await cookieStore.setCookie(cookie)
+        }
+    }
+
+    /// The dashboard's cookies as last mirrored to the Keychain. Readable
+    /// with the phone locked, unlike the saved password.
+    static func mirroredCookies(dashboardID: UUID?) -> [HTTPCookie] {
         // Dashboard-scoped mirror first (#148); the legacy global record is
         // only consulted when the caller has no dashboard identity (tests).
         let data: Data?
@@ -71,10 +79,8 @@ enum DashboardCookiePersistence {
             data = KeychainHelper.loadDashboardCookies()
         }
         guard let data,
-              let saved = try? JSONDecoder().decode([StoredCookie].self, from: data) else { return }
-        for cookie in saved.compactMap(\.cookie) {
-            await cookieStore.setCookie(cookie)
-        }
+              let saved = try? JSONDecoder().decode([StoredCookie].self, from: data) else { return [] }
+        return saved.compactMap(\.cookie)
     }
 
     /// The dashboard-owned WebKit session store. `WKWebsiteDataStore` caches
@@ -423,7 +429,7 @@ final class DashboardTicketBridge: NSObject {
         case loginPage
         case loadFailure
     }
-    private var isInvalidated = false
+    private(set) var isInvalidated = false
     private var requestID = 0
     /// Identity of the current dashboard navigation, used to ignore failure
     /// callbacks for loads a reload has already replaced. `staleNavigations`
@@ -445,6 +451,14 @@ final class DashboardTicketBridge: NSObject {
     /// any caller (mint retries and AppState's sign-in recovery alike).
     /// Diagnostic/test counter for the cold-bridge recovery path.
     private(set) var reloadCount = 0
+    /// Whether the hidden dashboard page can run requests. WebKit suspends
+    /// a page whose window is off screen, so while the phone app is in the
+    /// background (driving with CarPlay, a locked phone) requests go out
+    /// natively with the page's cookies instead (#378). Test seam.
+    var webViewCanRun: @MainActor () -> Bool = { PhoneScenePresence.isInForeground }
+    /// Cookies the dashboard set on requests sent without the page, newest
+    /// last, so a rotated session cookie is the one sent next.
+    var backgroundIssuedCookies: [HTTPCookie] = []
 
     init(
         baseURL: String,
@@ -600,6 +614,13 @@ final class DashboardTicketBridge: NSObject {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
             return try await nativeOAuthSession.mintTicket()
         }
+        if !webViewCanRun() {
+            let response = try await requestJSONWithoutPage(path: "/api/auth/ws-ticket", method: "POST")
+            guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
+                throw DashboardTicketBridgeError.requestFailed(DashboardTicketBridgeError.noSessionTicketDetail)
+            }
+            return ticket
+        }
         // Retry twice on the two recoverable failures, then let the final
         // attempt's error propagate to the caller unchanged:
         //  - signInRequired: a freshly restored session cookie can reach
@@ -678,6 +699,15 @@ final class DashboardTicketBridge: NSObject {
         if let nativeOAuthSession {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
             return try await nativeOAuthSession.requestJSON(
+                path: path,
+                method: method,
+                body: body,
+                timeoutMilliseconds: timeoutMilliseconds,
+                maxResponseBytes: maxResponseBytes
+            )
+        }
+        if !webViewCanRun() {
+            return try await requestJSONWithoutPage(
                 path: path,
                 method: method,
                 body: body,

@@ -10,6 +10,7 @@
 //
 
 import AVFAudio
+import CarPlay
 import UIKit
 import XCTest
 @testable import Conduit
@@ -1563,5 +1564,120 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(controller.isMicrophoneMuted, "a mute belongs to the call it was set in")
         XCTAssertEqual(session.microphoneEnabled, true)
         controller.stop()
+    }
+}
+
+// MARK: - #378: CarPlay calls belong to the picked chat
+
+@MainActor
+extension AppStateVoiceCapabilityTests {
+    private func makeCarPlayGPTLive() async throws -> (AppState, CarPlayVoiceCoordinator, FakeGPTLiveSessionControl, InterfacingSpy) {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        let (_, session) = installFakeGPTLive(in: appState)
+        let suite = "CarPlayChooseChat.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let preferences = CarPlayPreferences(defaults: defaults)
+        let coordinator = CarPlayVoiceCoordinator()
+        coordinator.appStateProvider = { appState }
+        coordinator.autoEstablishOnConnect = false
+        coordinator.phoneScreenProvider = { true }
+        coordinator.preferencesProvider = { preferences }
+        coordinator.connectionWaiter = { $0.isConnected }
+        let spy = InterfacingSpy()
+        coordinator.handleConnect(spy)
+        // The first template was built for the classic mode; let the
+        // GPT-Live one replace it.
+        for _ in 0..<100 { await Task.yield() }
+        return (appState, coordinator, session, spy)
+    }
+
+    func testCarPlayPickedChatAttachesTheCallEvenWhenThePhoneCannotShowIt() async throws {
+        let (appState, coordinator, session, spy) = try await makeCarPlayGPTLive()
+        let row = CarPlayChatRow(sessionID: "rt-pinned", storedSessionID: "st-pinned", title: "Pinned", detail: "")
+
+        // The test AppState has no Hermes client, so the phone can't open it.
+        await coordinator.performOpenChat(row, generation: coordinator.connectionGeneration)
+
+        XCTAssertEqual(session.started, 1, "the call starts with the pick, no Listen tap")
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread, row.thread, "its requests go to the picked chat")
+        coordinator.handleDisconnect()
+        withExtendedLifetime(spy) {}
+    }
+
+    func testCarPlayListenStartsTheCallInThePickedChat() async throws {
+        let (appState, coordinator, session, spy) = try await makeCarPlayGPTLive()
+        let row = CarPlayChatRow(sessionID: "rt-pinned", storedSessionID: "st-pinned", title: "Pinned", detail: "")
+        await coordinator.performOpenChat(row, generation: coordinator.connectionGeneration)
+        session.becomeReady()
+
+        coordinator.endTapped()
+        for _ in 0..<100 { await Task.yield() }
+        XCTAssertNil(appState.voiceBackgroundJobSupervisor.liveThread, "End detaches the call")
+        XCTAssertTrue(spy.pushedTemplates.last is CPListTemplate, "the chat list is back")
+
+        await coordinator.performStartListeningTurn(generation: coordinator.connectionGeneration)
+
+        XCTAssertEqual(session.started, 2)
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread, row.thread, "not a fresh session")
+        coordinator.handleDisconnect()
+    }
+
+    func testCarPlayEndWhileTheCallIsStartingLeavesNoCall() async throws {
+        let (appState, coordinator, _, spy) = try await makeCarPlayGPTLive()
+        // A host that takes a while to say GPT-Live is available.
+        final class Gate { var isOpen = false }
+        let gate = Gate()
+        let session = FakeGPTLiveSessionControl()
+        let controller = GPTLiveConversationController(
+            makeSession: { session },
+            availability: {
+                while !gate.isOpen { await Task.yield() }
+                return .available(model: "gpt-live-1-codex", voice: "cove")
+            },
+            briefing: { "[rules]" },
+            supervisor: appState.voiceBackgroundJobSupervisor,
+            requestPermission: { true }
+        )
+        appState.gptLiveController = controller
+        coordinator.voiceModeChanged(in: appState)
+        let generation = coordinator.connectionGeneration
+        let listen = Task { await coordinator.performStartListeningTurn(generation: generation) }
+        for _ in 0..<200 where controller.phase != .connecting { await Task.yield() }
+        XCTAssertEqual(controller.phase, .connecting)
+
+        coordinator.endTapped()
+        gate.isOpen = true
+        await listen.value
+        for _ in 0..<50 { await Task.yield() }
+
+        XCTAssertEqual(session.started, 0, "no call goes live after End")
+        XCTAssertFalse(controller.isActive)
+        XCTAssertEqual(coordinator.lastActivatedState, .ready)
+        coordinator.handleDisconnect()
+        withExtendedLifetime(spy) {}
+    }
+
+    func testCarPlayEndWhileTheCallWaitsForHermesStartsNoCall() async throws {
+        let (appState, coordinator, session, spy) = try await makeCarPlayGPTLive()
+        appState.isConnected = false
+        coordinator.connectionWaiter = { _ in
+            while !Task.isCancelled { await Task.yield() }
+            return false
+        }
+        let generation = coordinator.connectionGeneration
+        let listen = Task { await coordinator.performStartListeningTurn(generation: generation) }
+        for _ in 0..<50 { await Task.yield() }
+
+        coordinator.endTapped()
+        await listen.value
+        appState.isConnected = true
+        for _ in 0..<20 { await Task.yield() }
+
+        XCTAssertEqual(session.started, 0, "End stops a call that was still waiting")
+        XCTAssertEqual(coordinator.lastActivatedState, .ready, "the car leaves Thinking for Ready, not Error")
+        coordinator.handleDisconnect()
+        withExtendedLifetime(spy) {}
     }
 }
