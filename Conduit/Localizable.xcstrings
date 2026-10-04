@@ -20911,6 +20911,16 @@
           }
         }
       }
+    },
+    "This response is too large to load safely." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此响应过大，无法安全加载。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

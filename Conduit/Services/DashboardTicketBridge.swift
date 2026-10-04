@@ -262,7 +262,7 @@ enum DashboardTicketBridgeError: LocalizedError {
             // Transcript-specific messaging is mapped in the transcript
             // layer, which knows whether the request was a legacy one-shot
             // or a bounded current-Hermes page.
-            return "This response is too large to load safely."
+            return AppLocalization.string("This response is too large to load safely.")
         }
     }
 

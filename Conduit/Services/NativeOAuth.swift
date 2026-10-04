@@ -257,7 +257,7 @@ final class NativeOAuthAPIClient {
             }
             throw DashboardTicketBridgeError.http(
                 status: http.statusCode,
-                detail: Self.errorDetail(data) ?? "Dashboard request failed (\(http.statusCode))."
+                detail: Self.errorDetail(data) ?? AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).")
             )
         }
         guard !data.isEmpty else { return [:] }

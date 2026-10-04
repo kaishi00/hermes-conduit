@@ -164,6 +164,9 @@ final class CarPlayVoiceCoordinator {
     /// The voice screen's last install failed, so nothing will be pushed
     /// over it.
     private(set) var didTemplateInstallFail = false
+    /// A pending state whose sound already played as its replacement
+    /// template began, so a failed replacement doesn't play it twice.
+    private var soundedPendingState: CarPlayVoiceState?
     /// Whether the top bar's browse buttons are showing. They show only at
     /// Ready and Error: Apple requires the voice screen while Voice runs.
     private(set) var showsBrowseButtons = false
@@ -218,6 +221,7 @@ final class CarPlayVoiceCoordinator {
         lastActivatedState = nil
         isTemplatePresented = false
         pendingPresentationState = nil
+        soundedPendingState = nil
 
         // The template install satisfies the scene time budget first; it
         // needs no AppState. Registry resolution (which may construct the
@@ -267,6 +271,7 @@ final class CarPlayVoiceCoordinator {
         lastActivatedState = nil
         isTemplatePresented = false
         pendingPresentationState = nil
+        soundedPendingState = nil
 
         let appState = lastBoundAppState ?? appStateProvider()
         appState.setCarPlayVoiceSurfaceActive(false)
@@ -341,6 +346,7 @@ final class CarPlayVoiceCoordinator {
                 // it differs, then resume normal dedupe against it.
                 let pending = self.pendingPresentationState ?? initialState
                 self.pendingPresentationState = nil
+                self.soundedPendingState = nil
                 self.lastActivatedState = pending
                 // Re-assert the top bar for the presented state, so it never
                 // rests on buttons set before the template was on screen.
@@ -401,7 +407,9 @@ final class CarPlayVoiceCoordinator {
         let pending = pendingPresentationState
         pendingPresentationState = nil
         updateBrowseButtons(for: previous.shownState, force: true)
-        if let pending { forward(pending) }
+        // The failure sound already played when the replacement began.
+        if let pending { forward(pending, playsEarcon: pending != soundedPendingState) }
+        soundedPendingState = nil
     }
 
     /// The buttons' handlers, fenced to the connection whose template they
@@ -510,7 +518,7 @@ final class CarPlayVoiceCoordinator {
         forward(CarPlayVoiceState.map(state))
     }
 
-    private func forward(_ target: CarPlayVoiceState) {
+    private func forward(_ target: CarPlayVoiceState, playsEarcon: Bool = true) {
         guard isConnected, template != nil else { return }
         var replacedFrom: CarPlayVoiceState?
         if target == .error {
@@ -531,7 +539,10 @@ final class CarPlayVoiceCoordinator {
             // and freeze the surface on the template's default state.
             pendingPresentationState = target
             // The failure sound is not held back by the new template.
-            if let replacedFrom { playEarcon(from: replacedFrom, to: target) }
+            if let replacedFrom {
+                playEarcon(from: replacedFrom, to: target)
+                soundedPendingState = target
+            }
             return
         }
         guard let activated = CarPlayVoiceStateActivation.activationTarget(
@@ -541,7 +552,7 @@ final class CarPlayVoiceCoordinator {
         let previous = lastActivatedState
         lastActivatedState = activated
         stateActivator(template, activated)
-        playEarcon(from: previous, to: activated)
+        if playsEarcon { playEarcon(from: previous, to: activated) }
     }
 
     /// Records what the Error state should name as the thing to fix.
