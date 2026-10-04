@@ -317,8 +317,8 @@ struct VoiceSettingsView: View {
             if voiceEnabled {
                 setupChecklist
                 // The tests run classic Voice's speech route; testButtons
-                // assumes Classic.
-                if voiceMode == .classic { testButtons }
+                // assumes Classic. A test already running keeps its status.
+                if voiceMode == .classic || isRunningTest { testButtons }
             }
             if let error = service.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
