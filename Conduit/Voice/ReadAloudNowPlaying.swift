@@ -33,18 +33,8 @@ protocol ReadAloudNowPlayingPresenting: AnyObject {
 @MainActor
 final class SystemReadAloudNowPlaying: ReadAloudNowPlayingPresenting {
     private var targets: [(MPRemoteCommand, Any)] = []
-
-    deinit {
-        // The command center is a singleton that would keep the handlers;
-        // the owner's deinit normally runs end() first.
-        for (command, target) in targets {
-            command.removeTarget(target)
-            command.isEnabled = false
-        }
-        if !targets.isEmpty {
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-        }
-    }
+    /// Commands `begin()` hid; `end()` restores them.
+    private var hiddenCommands: [MPRemoteCommand] = []
 
     func begin(title: String, commands: ReadAloudRemoteCommands) {
         end()
@@ -55,7 +45,8 @@ final class SystemReadAloudNowPlaying: ReadAloudNowPlayingPresenting {
         register(center.stopCommand) { commands.stop() }
         // A spoken reply has no tracks, seeking, or speed control here:
         // hide the lock-screen buttons that would do nothing.
-        for command in Self.unsupportedCommands(center) {
+        hiddenCommands = Self.unsupportedCommands(center).filter(\.isEnabled)
+        for command in hiddenCommands {
             command.isEnabled = false
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = [
@@ -79,6 +70,10 @@ final class SystemReadAloudNowPlaying: ReadAloudNowPlayingPresenting {
             command.isEnabled = false
         }
         targets.removeAll()
+        for command in hiddenCommands {
+            command.isEnabled = true
+        }
+        hiddenCommands.removeAll()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
