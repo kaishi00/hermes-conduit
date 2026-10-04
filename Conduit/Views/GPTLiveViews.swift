@@ -27,6 +27,9 @@ struct GPTLiveSettingsModel {
 
 struct GPTLiveSettingsSection: View {
     let model: GPTLiveSettingsModel
+    /// Off when Voice settings picks the mode with its own picker: the
+    /// section then only shows this mode's settings.
+    let showsModeToggle: Bool
     @State private var enabled: Bool
     /// Empty is the host's voice (a Picker tag can't be nil).
     @State private var voice: String
@@ -37,9 +40,12 @@ struct GPTLiveSettingsSection: View {
     @State private var isAvailable: Bool?
     @State private var isChecking = false
 
-    init(model: GPTLiveSettingsModel) {
+    init(model: GPTLiveSettingsModel, showsModeToggle: Bool = true) {
         self.model = model
-        _enabled = State(initialValue: model.enabled)
+        self.showsModeToggle = showsModeToggle
+        // Shown by the mode picker only once this mode is picked, maybe
+        // a render before the model catches up.
+        _enabled = State(initialValue: model.enabled || !showsModeToggle)
         _voice = State(initialValue: model.voice ?? "")
         _memory = State(initialValue: model.memory)
         _personality = State(initialValue: model.personality)
@@ -48,14 +54,16 @@ struct GPTLiveSettingsSection: View {
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("GPT-Live"), symbol: "waveform.circle", tint: .conduitAccent) {
-            Toggle("Use GPT-Live for voice", isOn: Binding(
-                get: { enabled },
-                set: { requested in
-                    enabled = requested
-                    model.setEnabled(requested)
-                    if requested { Task { await check() } }
-                }
-            ))
+            if showsModeToggle {
+                Toggle("Use GPT-Live for voice", isOn: Binding(
+                    get: { enabled },
+                    set: { requested in
+                        enabled = requested
+                        model.setEnabled(requested)
+                        if requested { Task { await check() } }
+                    }
+                ))
+            }
             Text("Talk with GPT-Live on the ChatGPT subscription your Hermes server is signed in to, instead of the Hermes speech pipeline. Hermes still does the work: GPT-Live hands requests to background jobs on this profile. The sign-in stays on your Hermes server, and it never falls back to API billing. Turning this on turns Gemini Live and Grok Live off.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

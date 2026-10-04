@@ -1,6 +1,406 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "No assistant voice is set up yet. Edge TTS is free and ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未设置助手语音。Edge TTS 免费且已就绪。"
+          }
+        }
+      }
+    },
+    "%@ brings its own listening and speaking, so the speech-to-text and assistant voice steps don't apply. Pick Classic under Voice mode to use them." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 自带收听和说话功能，因此语音转文字和助手语音这两步不适用。要使用它们，请在“语音模式”中选择“经典”。"
+          }
+        }
+      }
+    },
+    "%@ isn't ready on Hermes. Choose another under Assistant speech below." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 在 Hermes 上尚未就绪。请在下方“助手语音”中选择其他选项。"
+          }
+        }
+      }
+    },
+    "%@ isn't ready on Hermes. Edge TTS is free and ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 在 Hermes 上尚未就绪。Edge TTS 免费且已就绪。"
+          }
+        }
+      }
+    },
+    "%@ on Hermes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 上的 %@"
+          }
+        }
+      }
+    },
+    "%@ on Hermes isn't ready (%@). This iPhone can do it instead, with nothing to install." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 上的 %@ 尚未就绪（%@）。可以改用这台 iPhone，无需安装任何东西。"
+          }
+        }
+      }
+    },
+    "%@ on Hermes. Hermes doesn't report whether it's ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 上的 %@。Hermes 不报告它是否就绪。"
+          }
+        }
+      }
+    },
+    "A real-time conversation on your Hermes server's ChatGPT sign-in that hands the work to Hermes. Needs the Hermes notifier plugin." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Hermes 服务器上已登录的 ChatGPT 进行实时对话，并把任务交给 Hermes 完成。需要 Hermes 通知插件。"
+          }
+        }
+      }
+    },
+    "A real-time conversation with Gemini that hands the work to Hermes. Needs the Hermes notifier plugin and a Gemini key on your Hermes server." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 Gemini 实时对话，并把任务交给 Hermes 完成。需要 Hermes 通知插件，以及 Hermes 服务器上的 Gemini 密钥。"
+          }
+        }
+      }
+    },
+    "A real-time conversation with Grok through your Hermes server's SuperGrok sign-in that hands the work to Hermes. Needs the Hermes notifier plugin." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过 Hermes 服务器上已登录的 SuperGrok 与 Grok 实时对话，并把任务交给 Hermes 完成。需要 Hermes 通知插件。"
+          }
+        }
+      }
+    },
+    "Allow" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许"
+          }
+        }
+      }
+    },
+    "Allowed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已允许"
+          }
+        }
+      }
+    },
+    "Assistant voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "助手语音"
+          }
+        }
+      }
+    },
+    "Check again" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次检查"
+          }
+        }
+      }
+    },
+    "Classic" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "经典"
+          }
+        }
+      }
+    },
+    "Connect to Hermes before starting voice." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始语音前请先连接 Hermes。"
+          }
+        }
+      }
+    },
+    "Connected to %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接到 %@"
+          }
+        }
+      }
+    },
+    "Hermes listens and replies with the speech to text and assistant voice set up above. Works with any Hermes server." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 使用上方设置的语音转文字和助手语音来收听和回复。适用于任何 Hermes 服务器。"
+          }
+        }
+      }
+    },
+    "Microphone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风"
+          }
+        }
+      }
+    },
+    "Mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模式"
+          }
+        }
+      }
+    },
+    "Needs attention" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要处理"
+          }
+        }
+      }
+    },
+    "Not allowed. Allow the microphone for Conduit in iPhone Settings." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允许。请在 iPhone 设置中允许 Conduit 使用麦克风。"
+          }
+        }
+      }
+    },
+    "Not chosen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未选择"
+          }
+        }
+      }
+    },
+    "On this iPhone. Speech Recognition isn't allowed yet." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在这台 iPhone 上。尚未允许语音识别。"
+          }
+        }
+      }
+    },
+    "Open Settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开设置"
+          }
+        }
+      }
+    },
+    "Plays a short sample in the assistant's voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用助手的声音播放一段简短示例"
+          }
+        }
+      }
+    },
+    "Records a short sample and shows what speech to text heard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "录制一段简短示例，并显示语音转文字听到的内容"
+          }
+        }
+      }
+    },
+    "Set up voice" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置语音"
+          }
+        }
+      }
+    },
+    "Setting up voice…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在设置语音…"
+          }
+        }
+      }
+    },
+    "Speech Recognition isn't allowed. Allow it for Conduit in iPhone Settings, or choose a Hermes provider under Speech to text below." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允许语音识别。请在 iPhone 设置中为 Conduit 允许语音识别，或在下方“语音转文字”中选择 Hermes 提供商。"
+          }
+        }
+      }
+    },
+    "Test listening" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "测试收听"
+          }
+        }
+      }
+    },
+    "Test speaking" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "测试说话"
+          }
+        }
+      }
+    },
+    "This iPhone can't transcribe your language on the device. Choose a Hermes provider under Speech to text below." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 iPhone 无法在设备上转写你的语言。请在下方“语音转文字”中选择 Hermes 提供商。"
+          }
+        }
+      }
+    },
+    "Turn this on to talk to %@. Conduit asks for the microphone and Speech Recognition, uses this iPhone for speech to text, and switches the assistant's voice to Edge TTS on Hermes if the current one isn't ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开此项即可与 %@ 对话。Conduit 会请求麦克风和语音识别权限，使用这台 iPhone 进行语音转文字；如果当前助手语音未就绪，会切换为 Hermes 上的 Edge TTS。"
+          }
+        }
+      }
+    },
+    "Use Edge TTS" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Edge TTS"
+          }
+        }
+      }
+    },
+    "Use this iPhone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用这台 iPhone"
+          }
+        }
+      }
+    },
+    "Voice is on for %@ on this iPhone. Each step below turns green when it's ready; an orange step has a fix." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的语音已在这台 iPhone 上开启。下方每一步就绪后会变为绿色；橙色步骤附有修复方法。"
+          }
+        }
+      }
+    },
+    "iOS asks the first time you talk." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首次说话时 iOS 会询问。"
+          }
+        }
+      }
+    },
+    "On screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在屏幕上"
+          }
+        }
+      }
+    },
+    "Shows it again" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次显示"
+          }
+        }
+      }
+    },
     "Asked for when the call connects (an older notifier plugin sends it as the first turn):" : {
       "localizations" : {
         "zh-Hans" : {

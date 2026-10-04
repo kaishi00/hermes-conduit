@@ -32,6 +32,9 @@ struct GeminiLiveSettingsModel {
 
 struct GeminiLiveSettingsSection: View {
     let model: GeminiLiveSettingsModel
+    /// Off when Voice settings picks the mode with its own picker: the
+    /// section then only shows this mode's settings.
+    let showsModeToggle: Bool
     @State private var enabled: Bool
     @State private var search: GeminiLiveSearchMode
     /// Empty is Gemini's default voice (a Picker tag can't be nil).
@@ -44,9 +47,12 @@ struct GeminiLiveSettingsSection: View {
     @State private var isAvailable: Bool?
     @State private var isChecking = false
 
-    init(model: GeminiLiveSettingsModel) {
+    init(model: GeminiLiveSettingsModel, showsModeToggle: Bool = true) {
         self.model = model
-        _enabled = State(initialValue: model.enabled)
+        self.showsModeToggle = showsModeToggle
+        // Shown by the mode picker only once this mode is picked, maybe
+        // a render before the model catches up.
+        _enabled = State(initialValue: model.enabled || !showsModeToggle)
         _search = State(initialValue: model.search)
         _voice = State(initialValue: model.voice ?? "")
         _memory = State(initialValue: model.memory)
@@ -57,14 +63,16 @@ struct GeminiLiveSettingsSection: View {
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Gemini Live"), symbol: "waveform.badge.mic", tint: .conduitAura) {
-            Toggle("Use Gemini Live for voice", isOn: Binding(
-                get: { enabled },
-                set: { requested in
-                    enabled = requested
-                    model.setEnabled(requested)
-                    if requested { Task { await check() } }
-                }
-            ))
+            if showsModeToggle {
+                Toggle("Use Gemini Live for voice", isOn: Binding(
+                    get: { enabled },
+                    set: { requested in
+                        enabled = requested
+                        model.setEnabled(requested)
+                        if requested { Task { await check() } }
+                    }
+                ))
+            }
             Text("Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Approvals are never given by voice.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

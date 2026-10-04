@@ -28,6 +28,9 @@ struct GrokLiveSettingsModel {
 
 struct GrokLiveSettingsSection: View {
     let model: GrokLiveSettingsModel
+    /// Off when Voice settings picks the mode with its own picker: the
+    /// section then only shows this mode's settings.
+    let showsModeToggle: Bool
     @State private var enabled: Bool
     @State private var memory: Bool
     @State private var personality: Bool
@@ -37,9 +40,12 @@ struct GrokLiveSettingsSection: View {
     @State private var isAvailable: Bool?
     @State private var isChecking = false
 
-    init(model: GrokLiveSettingsModel) {
+    init(model: GrokLiveSettingsModel, showsModeToggle: Bool = true) {
         self.model = model
-        _enabled = State(initialValue: model.enabled)
+        self.showsModeToggle = showsModeToggle
+        // Shown by the mode picker only once this mode is picked, maybe
+        // a render before the model catches up.
+        _enabled = State(initialValue: model.enabled || !showsModeToggle)
         _memory = State(initialValue: model.memory)
         _personality = State(initialValue: model.personality)
         _saveCalls = State(initialValue: model.saveCalls)
@@ -48,14 +54,16 @@ struct GrokLiveSettingsSection: View {
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Grok Live"), symbol: "waveform.circle", tint: .conduitAccent) {
-            Toggle("Use Grok Live for voice", isOn: Binding(
-                get: { enabled },
-                set: { requested in
-                    enabled = requested
-                    model.setEnabled(requested)
-                    if requested { Task { await check() } }
-                }
-            ))
+            if showsModeToggle {
+                Toggle("Use Grok Live for voice", isOn: Binding(
+                    get: { enabled },
+                    set: { requested in
+                        enabled = requested
+                        model.setEnabled(requested)
+                        if requested { Task { await check() } }
+                    }
+                ))
+            }
             Text("Talk with Grok Live, xAI's realtime voice model, instead of the Hermes speech pipeline. Hermes still does the work: Grok hands requests to background jobs on this profile. Your Hermes server connects to xAI with its SuperGrok sign-in (or its XAI_API_KEY), which stays on the server. Turning this on turns Gemini Live and GPT-Live off.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

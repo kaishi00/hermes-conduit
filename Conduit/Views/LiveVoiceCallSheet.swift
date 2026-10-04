@@ -47,14 +47,31 @@ struct LiveVoiceCallSheet: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.openURL) private var openURL
     @State private var showsTranscript = false
-    @State private var selectedJob: SelectedJob?
+    @State private var selection: Selection?
     /// The job chat to open once the result sheet has gone, so the call
     /// sheet isn't dismissed while its child is still animating out.
     @State private var pendingJobChat: String?
+    /// The cards that opened by themselves, so each opens only once.
+    @State private var autoOpenedCardIDs: Set<UUID> = []
+    /// Whether what's open opened by itself, so a newer card may replace it.
+    @State private var selectionIsAutomatic = false
 
-    private struct SelectedJob: Identifiable {
-        let id: UUID
+    /// What the sheet over the call shows.
+    private enum Selection: Identifiable {
+        case job(UUID)
+        case screen(VoiceScreenCard)
+
+        var id: UUID {
+            switch self {
+            case .job(let id): return id
+            case .screen(let card): return card.id
+            }
+        }
     }
+
+    /// How recent a card must be to open by itself, so reopening a
+    /// minimised call doesn't bring back an old one.
+    private static let screenCardFreshness: TimeInterval = 5
 
     var body: some View {
         ZStack {
@@ -74,23 +91,60 @@ struct LiveVoiceCallSheet: View {
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showsTranscript)
-        .sheet(item: $selectedJob, onDismiss: {
+        .sheet(item: $selection, onDismiss: {
             // Leaving for the job's chat minimises the call.
             guard let chatID = pendingJobChat else { return }
             pendingJobChat = nil
             dismiss()
             openURL(ConduitAppLink.session(id: chatID).url)
         }) { selected in
-            LiveVoiceJobResultSheet(jobs: jobs, jobID: selected.id) { chatID in
-                pendingJobChat = chatID
-                selectedJob = nil
+            Group {
+                switch selected {
+                case .job(let jobID):
+                    LiveVoiceJobResultSheet(jobs: jobs, jobID: jobID) { chatID in
+                        pendingJobChat = chatID
+                        selection = nil
+                    }
+                case .screen(let card):
+                    LiveVoiceScreenCardSheet(card: card)
+                }
             }
             .presentationDetents([.medium, .large])
         }
+        .onReceive(jobs.$screenCards) { cards in
+            showNewScreenCard(cards)
+        }
     }
 
-    private func select(_ jobID: UUID) {
-        selectedJob = SelectedJob(id: jobID)
+    /// Nothing is open, or only a card that opened by itself: what the
+    /// user opened stays until they close it.
+    private var canReplaceSelection: Bool {
+        selection == nil || selectionIsAutomatic
+    }
+
+    private func selectJob(_ jobID: UUID) {
+        selectionIsAutomatic = false
+        selection = .job(jobID)
+    }
+
+    private func selectScreen(_ card: VoiceScreenCard) {
+        selectionIsAutomatic = false
+        selection = .screen(card)
+    }
+
+    /// Opens what the voice model just put on screen; the model tells the
+    /// user it's there. Something the user opened, or a chat being opened,
+    /// isn't replaced: the card waits in the strip and the transcript.
+    private func showNewScreenCard(_ cards: [VoiceScreenCard]) {
+        guard let card = cards.last,
+              pendingJobChat == nil,
+              canReplaceSelection,
+              card.callAnchor.callID == jobs.liveCallID,
+              !autoOpenedCardIDs.contains(card.id),
+              Date().timeIntervalSince(card.shownAt) < Self.screenCardFreshness else { return }
+        autoOpenedCardIDs.insert(card.id)
+        selectionIsAutomatic = true
+        selection = .screen(card)
     }
 
     /// Only a running call minimises; dismissing any other closes it.
@@ -162,7 +216,7 @@ struct LiveVoiceCallSheet: View {
             Spacer(minLength: 12)
             LiveVoiceQuickHint(jobs: jobs)
                 .padding(.horizontal, 24)
-            LiveVoiceCallJobStrip(jobs: jobs, onSelect: select)
+            LiveVoiceCallJobStrip(jobs: jobs, onSelectJob: selectJob, onSelectScreen: selectScreen)
                 .padding(.horizontal, 24)
             captions
         }
@@ -235,7 +289,8 @@ struct LiveVoiceCallSheet: View {
                         transcript: transcript,
                         jobs: jobs,
                         line: { entry in LiveVoiceTranscriptBubble(entry: entry, label: label(for: entry)) },
-                        onSelectJob: select
+                        onSelectJob: selectJob,
+                        onSelectScreen: selectScreen
                     )
                 }
                 .padding(.horizontal, 16)

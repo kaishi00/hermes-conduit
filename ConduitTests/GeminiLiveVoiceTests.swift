@@ -209,7 +209,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let behaviors = Dictionary(uniqueKeysWithValues: declarations.map { ($0["name"] as! String, $0["behavior"] as! String) })
         // Quick web lookups (weather, news) go to Gemini's own Search, not a Hermes job.
         XCTAssertTrue((body["tools"] as? [[String: Any]])?.contains { $0["googleSearch"] != nil } == true)
-        XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING", "end_conversation": "BLOCKING"])
+        XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING", "show_on_screen": "BLOCKING", "end_conversation": "BLOCKING"])
 
         // A first connection opts in to resumption without a handle.
         let fresh = GeminiLiveProtocol.setupMessage(systemInstruction: "", functions: [], resumptionHandle: nil)["setup"] as? [String: Any]
@@ -735,6 +735,36 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(settledID, "c1")
         XCTAssertEqual(settled["status"], "cancelled")
         XCTAssertEqual(settledScheduling, .silent, "The user just heard the cancel confirmed")
+    }
+
+    func testGeminiLiveShowOnScreenPutsTheMarkdownOnTheCallScreen() async {
+        let (supervisor, _, bridge) = makeJobs()
+        XCTAssertTrue(GeminiLiveToolBridge.functionDeclarations.contains { $0.name == "show_on_screen" })
+
+        let offCall = await bridge.handle(.init(id: "c1", name: "show_on_screen", arguments: ["title": "Weather", "markdown": "| Day | High |"]))
+        guard case .toolResponse(_, _, let refused, _)? = offCall.first else { return XCTFail("\(offCall)") }
+        XCTAssertNotNil(refused["error"], "Without a live call there is no screen to show it on")
+        XCTAssertTrue(supervisor.screenCards.isEmpty)
+
+        supervisor.liveCallTranscript = { [] }
+        supervisor.beginLiveCall()
+        let empty = await bridge.handle(.init(id: "c2", name: "show_on_screen", arguments: ["title": "Weather", "markdown": "  "]))
+        guard case .toolResponse(_, _, let missing, _)? = empty.first else { return XCTFail("\(empty)") }
+        XCTAssertEqual(missing["error"], "markdown is required")
+
+        let shown = await bridge.handle(.init(id: "c3", name: "show_on_screen", arguments: ["title": "Weather", "markdown": "| Day | High |"]))
+        guard case .toolResponse(let id, _, let result, let scheduling)? = shown.first, shown.count == 1 else { return XCTFail("\(shown)") }
+        XCTAssertEqual(id, "c3")
+        XCTAssertEqual(result["status"], "shown")
+        XCTAssertNil(scheduling, "show_on_screen is a BLOCKING answer")
+        XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).map(\.title), ["Weather"])
+        XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).first?.markdown, "| Day | High |")
+
+        let long = String(repeating: "row\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        let clipped = await bridge.handle(.init(id: "c4", name: "show_on_screen", arguments: ["title": "Rows", "markdown": long]))
+        guard case .toolResponse(_, _, let partial, _)? = clipped.first else { return XCTFail("\(clipped)") }
+        XCTAssertEqual(partial["status"], "shown")
+        XCTAssertTrue(partial["message"]?.contains("Only the start") == true, "The model hears that the card was cut")
     }
 
     func testGeminiLiveResultOfAJobWhoseCallWasLostArrivesAsAnIdleTextUpdate() async {
