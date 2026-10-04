@@ -537,6 +537,13 @@ extension HermesVoiceGatewayTimeoutTests {
         links.add(chatLink(call: "c2", row: "call-row", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(600), resumed: true))
         links.add(chatLink(call: "c3", row: "call-row", chat: "rt-9", at: start.addingTimeInterval(1_200), resumed: true))
         XCTAssertEqual(links.merge(into: [], chatIDs: ["call-row"], openIDs: ["call-row"], profile: "default").map(\.id), ["voice-call-from-c1", "voice-call-from-c3"])
+
+
+        // The chat had no stored id yet at the first start.
+        var early = VoiceCallChatLinks()
+        early.add(chatLink(call: "e1", row: "row-e", chat: "rt-1", at: start))
+        early.add(chatLink(call: "e2", row: "row-e", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(600), resumed: true))
+        XCTAssertEqual(early.merge(into: [], chatIDs: ["row-e"], openIDs: ["row-e"], profile: "default").map(\.id), ["voice-call-from-e1"])
     }
 
     func testAChatIsMatchedOnItsStoredIDNotAReusedRuntime() {

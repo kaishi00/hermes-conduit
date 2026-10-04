@@ -649,7 +649,14 @@ struct VoiceCallChatLinks: Codable, Equatable {
         let owned = profileLinks
             .filter { openIDs.contains($0.callSessionID) }
             .sorted { $0.startedAt < $1.startedAt }
-            .filter { ownedChats.insert($0.chatSessionID ?? $0.callID).inserted }
+            .filter { link in
+                // A chat seen first by its runtime and later by its stored
+                // id is still one chat.
+                let ids = Set([link.chatStoredSessionID, link.chatRuntimeSessionID].compactMap { $0 }.filter { !$0.isEmpty })
+                guard ownedChats.isDisjoint(with: ids) else { ownedChats.formUnion(ids); return false }
+                ownedChats.formUnion(ids.isEmpty ? [link.callID] : ids)
+                return true
+            }
         let markers = owned.isEmpty
             ? profileLinks.filter { $0.belongs(toChat: chatIDs) }.map { ($0, $0.marker) }
             : owned.map { ($0, $0.originMarker) }
