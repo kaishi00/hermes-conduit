@@ -806,7 +806,10 @@ final class MessageNormalizerTests: XCTestCase {
 
         let initialAttempt = service.navigationAttempt
         XCTAssertTrue(service.handleFailedNotificationRoute(target))
-        let retryDeadline = ContinuousClock.now.advanced(by: .seconds(1))
+        // A cap, not a timing: the loop exits as soon as the retry lands. A
+        // busy simulator can stall the main actor for seconds inside one
+        // yield, and a 1s cap then expired before the retry got its turn.
+        let retryDeadline = ContinuousClock.now.advanced(by: .seconds(10))
         while service.navigationAttempt == initialAttempt,
               ContinuousClock.now < retryDeadline {
             await Task.yield()
