@@ -217,6 +217,24 @@ final class BotMentionTests: XCTestCase {
         XCTAssertTrue(result!.hasPrefix("@researcher hello"))
     }
 
+    /// Quoted lines (#385) are someone else's words: only a bot the user
+    /// names in their own lines is a mention, and the note covers just that
+    /// bot while the whole text, quote included, is sent.
+    func testMiddlewareIgnoresBotsNamedOnlyInQuotedLines() {
+        let researcher = bot("researcher")
+        let roster = [researcher, bot("writer")]
+        XCTAssertNil(BotMentions.middlewareAnnotation(
+            text: "> Ask @writer for a draft\r\n\r\nSounds good",
+            roster: roster,
+            activeProfileName: "default"
+        ))
+        let text = "> Ask @writer for a draft\n\n@researcher check this first"
+        XCTAssertEqual(
+            BotMentions.middlewareAnnotation(text: text, roster: roster, activeProfileName: "default"),
+            BotMentions.annotated(text: text, mentions: [researcher])
+        )
+    }
+
     // MARK: - Forever-chat reroute
 
     func testNewAndResetRerouteToCompactOnlyInCanonicalChat() {

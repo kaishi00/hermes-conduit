@@ -192,13 +192,19 @@ enum BotMentions {
     /// no roster, no plausible tag, or nothing resolved. Upstream leaves the
     /// draft alone in exactly those cases, which is also the graceful
     /// degradation for a gateway without Bot Mode (its roster is empty).
+    ///
+    /// Unlike upstream, quoted lines (#385) are not scanned: they are someone
+    /// else's words, so a bot named only in a quote is not one the user
+    /// meant to mention. A mention in the user's own lines still annotates
+    /// the whole text.
     static func middlewareAnnotation(
         text: String,
         roster: [BotProfile],
         activeProfileName: String?
     ) -> String? {
-        guard !roster.isEmpty, textMightContainMention(text) else { return nil }
-        let mentions = resolve(text: text, roster: roster, activeProfileName: activeProfileName)
+        let ownWords = ChatQuote.removingQuotedLines(from: text)
+        guard !roster.isEmpty, textMightContainMention(ownWords) else { return nil }
+        let mentions = resolve(text: ownWords, roster: roster, activeProfileName: activeProfileName)
         guard !mentions.isEmpty else { return nil }
         return annotated(text: text, mentions: mentions)
     }

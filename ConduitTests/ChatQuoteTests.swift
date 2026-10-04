@@ -28,6 +28,15 @@ extension ChatTextSelectionTests {
         XCTAssertEqual(ChatQuote.inserting("", into: "unchanged"), "unchanged")
     }
 
+    func testOwnWordsLeaveOutQuotedLines() {
+        XCTAssertEqual(
+            ChatQuote.removingQuotedLines(from: "> Ask @researcher\n>\n  > nested\n\nWhat did they mean?"),
+            "\nWhat did they mean?"
+        )
+        XCTAssertEqual(ChatQuote.removingQuotedLines(from: "No quote here"), "No quote here")
+        XCTAssertEqual(ChatQuote.removingQuotedLines(from: "> quoted\r\nmine\r\nalso mine"), "mine\nalso mine")
+    }
+
     func testExcerptReadsLikePlainText() {
         let markdown = "## Plan\n\n- **First** step\n```swift\nlet x = 1\n```\n1. Done `now`"
         XCTAssertEqual(ChatQuote.excerpt(of: markdown), "Plan First step let x = 1 Done now")
