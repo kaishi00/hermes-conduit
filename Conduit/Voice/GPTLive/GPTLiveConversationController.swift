@@ -307,7 +307,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// Background-job updates became pending (the supervisor's
     /// onNoticePending, routed here while this mode is active).
     func deliverPendingJobUpdates() {
-        guard isActive, endRequestedAt == nil, session?.isReady == true else { return }
+        // Paused: updates wait for the audio (the resume sends them).
+        guard isActive, endRequestedAt == nil, !audioPaused, session?.isReady == true else { return }
         let outgoing = bridge.pendingUpdates()
         dispatch(outgoing)
         // Job news refreshes the model's job list; a typed exchange alone
@@ -418,7 +419,10 @@ final class GPTLiveConversationController: ObservableObject {
         default:
             break
         }
-        if !paused { scheduleIdleFlush() }
+        if !paused, endRequestedAt == nil {
+            deliverPendingJobUpdates()
+            scheduleIdleFlush()
+        }
     }
 
     private func finishEnd() {
