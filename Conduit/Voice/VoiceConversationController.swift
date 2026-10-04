@@ -1271,10 +1271,11 @@ final class VoiceConversationController: ObservableObject {
     }
 
     /// Whether speech may talk over Hermes right now: only while its reply
-    /// is audibly playing, or after the reply arrived in full, until its
-    /// speech settles. While Hermes is thinking, working between
-    /// spoken sentences, or answering with output muted, the user's speech
-    /// would only cut the turn short, so it is ignored.
+    /// is audibly playing, or once the reply has fully arrived (no Hermes
+    /// turn is left to cancel) until the speech settles. While Hermes is
+    /// thinking, working between spoken sentences, or answering with
+    /// output muted, the user's speech would only cut the turn short, so
+    /// it is ignored.
     private var isTalkOverAvailable: Bool {
         guard state == .speaking else { return false }
         return playback.isPlaying || !isAwaitingVoiceAssistant
