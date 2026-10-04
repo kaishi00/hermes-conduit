@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// One hosted Group Chat room. A room is NOT a session: this surface reads
 /// `appState.activeRoomSurface`'s replay and sends through `groups.send`,
@@ -324,7 +325,8 @@ struct GroupEventRow: View {
                 alignment: .leading,
                 speaker: speakerLabel,
                 timestamp: event.createdAt,
-                tint: Color.primary.opacity(0.05)
+                tint: Color.primary.opacity(0.05),
+                copyText: event.messageText
             ) {
                 mentionText
             }
@@ -475,12 +477,16 @@ struct MentionSuggestionList: View {
     }
 }
 
-/// One chat bubble: speaker label + content, leading or trailing.
+/// One chat bubble: speaker label + content, leading or trailing. Message
+/// text is selectable (long-press), like a single chat's transcript; a
+/// bubble given `copyText` also shows the one-tap Copy button that a
+/// single chat puts under each response.
 struct GroupChatBubble<Content: View>: View {
     let alignment: HorizontalAlignment
     let speaker: String
     let timestamp: Double?
     let tint: Color
+    var copyText: String? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -499,6 +505,10 @@ struct GroupChatBubble<Content: View>: View {
                     }
                 }
                 content
+                    .textSelection(.enabled)
+                if let copyText, !copyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    GroupMessageCopyButton(text: copyText)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -515,6 +525,36 @@ struct GroupChatBubble<Content: View>: View {
         // properties): a fresh DateFormatter per bubble per render is
         // brutally expensive across a 200-event LazyVStack.
         return GroupBubbleTimeFormatter.shared.string(from: date)
+    }
+}
+
+/// Copies a member's whole reply, mirroring a single chat's response Copy
+/// button (same icon, haptic, and brief checkmark).
+private struct GroupMessageCopyButton: View {
+    let text: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            UIPasteboard.general.string = text
+            Haptics.light()
+            copied = true
+            Task {
+                try? await Task.sleep(for: .seconds(1.4))
+                guard !Task.isCancelled else { return }
+                copied = false
+            }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.caption.weight(.semibold))
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
+        .padding(.leading, -6)
+        .padding(.bottom, -4)
+        .accessibilityLabel(copied ? AppLocalization.string("Response copied") : AppLocalization.string("Copy response"))
     }
 }
 
@@ -857,7 +897,8 @@ struct DesktopGroupChatView: View {
                 ? (speaker.isEmpty ? AppLocalization.string("Member") : speaker)
                 : AppLocalization.string("You"),
             timestamp: message.timestamp,
-            tint: message.isMember ? Color.primary.opacity(0.05) : .conduitAccent.opacity(0.14)
+            tint: message.isMember ? Color.primary.opacity(0.05) : .conduitAccent.opacity(0.14),
+            copyText: message.isMember ? message.text : nil
         ) {
             GroupMentionTextRenderer.render(message.text, members: mentionMembers)
             if message.truncated {
