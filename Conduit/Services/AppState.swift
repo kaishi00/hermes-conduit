@@ -2245,6 +2245,14 @@ final class AppState: ObservableObject {
             for (key, tags) in self.voiceSessionTagsByKey {
                 if let tag = tags[runtimeID] { self.voiceSessionTagsByKey[key]?[storedID] = tag }
             }
+            // And kept that way: the badge list and the call's tag write at
+            // its end carry the durable id as well.
+            let job = self.voiceBackgroundJobSupervisor.jobs.first { $0.runtimeSessionID == runtimeID }
+            guard job?.isThreadTurn != true else { return }
+            self.rememberVoiceJobSessions([storedID], profile: job?.profile)
+            if let recorder = self.voiceCallRecorder, recorder.jobSessionIDs.contains(runtimeID) {
+                recorder.jobSessionIDs.append(storedID)
+            }
         }
         supervisor.onJobSessionCreated = { [weak self] sessionIDs in
             guard let self else { return }
@@ -4124,7 +4132,7 @@ final class AppState: ObservableObject {
                 let openBefore = self.activeSessionId
                 await self.loadSessions(forceRefresh: true)
                 // A chat opened meanwhile is the later choice; it stays.
-                guard self.activeSessionId == openBefore, !Task.isCancelled else { return }
+                guard self.activeSessionId == openBefore else { return }
                 target = Self.linkedSessionTarget(id, rows: self.sessions + self.cronSessions, aliases: self.voiceSessionAliases)
             }
             // Only this open's own "not found" may be reworded.
