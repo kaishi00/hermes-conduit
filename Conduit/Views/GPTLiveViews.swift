@@ -228,6 +228,7 @@ struct GPTLiveVoiceSheet: View {
         case .connecting: return .connecting
         case .listening: return microphoneMuted ? .muted : .listening
         case .speaking: return .speaking
+        case .paused: return .muted
         case .ending: return .ending
         case .failed: return .failed
         }
@@ -239,6 +240,7 @@ struct GPTLiveVoiceSheet: View {
         case .connecting: return AppLocalization.string("Connecting to GPT-Live…")
         case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
         case .speaking: return AppLocalization.string("Speaking")
+        case .paused: return AppLocalization.string("Paused while another sound plays")
         case .ending: return AppLocalization.string("Ending conversation…")
         case .failed(let message): return message
         }

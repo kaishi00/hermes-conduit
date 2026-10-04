@@ -13754,6 +13754,16 @@
         }
       }
     },
+    "Paused while another sound plays" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他声音播放时已暂停"
+          }
+        }
+      }
+    },
     "Pauses microphone capture while keeping the voice session open" : {
       "localizations" : {
         "zh-Hans" : {
@@ -20158,26 +20168,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GPT-Live 连接已断开。"
-          }
-        }
-      }
-    },
-    "GPT-Live's audio couldn't resume after the audio route changed." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "音频路由改变后 GPT-Live 的音频无法恢复。"
-          }
-        }
-      }
-    },
-    "GPT-Live's audio couldn't resume after the interruption." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "中断后 GPT-Live 的音频无法恢复。"
           }
         }
       }

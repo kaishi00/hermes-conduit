@@ -261,6 +261,7 @@ struct GeminiLiveVoiceSheet: View {
         case .connecting, .reconnecting: return .connecting
         case .listening: return microphoneMuted ? .muted : .listening
         case .speaking: return .speaking
+        case .paused: return .muted
         case .ending: return .ending
         case .failed: return .failed
         }
@@ -280,6 +281,7 @@ struct GeminiLiveVoiceSheet: View {
         case .reconnecting: return AppLocalization.string("Reconnecting…")
         case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
         case .speaking: return AppLocalization.string("Speaking")
+        case .paused: return AppLocalization.string("Paused while another sound plays")
         case .ending: return AppLocalization.string("Ending conversation…")
         case .failed(let message): return message
         }

@@ -99,6 +99,24 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         )
     }
 
+    /// #378: the car launched Conduit, so no phone scene exists and no
+    /// scene-phase event ever reported the phone off screen.
+    func testCarPlayLaunchWithNoPhoneScreenReconnectsADeadTransport() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.setCarPlayVoiceSurfaceActive(true)
+        appState.handleCarPlayVoiceSurfaceActivated()
+        XCTAssertTrue(recorder.scheduledDelays.isEmpty, "the launch value claims a phone screen")
+
+        appState.handleCarPlayConnectedWithoutPhoneScreen()
+
+        XCTAssertEqual(recorder.scheduledDelays.count, 1, "CarPlay starts the reconnect itself")
+        XCTAssertEqual(recorder.scheduledDelays.first ?? 0, 0.1, accuracy: 0.001)
+        await recorder.operations.first?()
+        XCTAssertEqual(recorder.executedPurposes.count, 1)
+        XCTAssertTrue(appState.hasActiveVoiceSurface, "CarPlay still presents Voice")
+    }
+
     func testOverlayDipWithCarPlayActiveReArmsTheReconnect() {
         let recorder = ReconnectRecorder()
         let appState = makeAppState(recorder: recorder)

@@ -92,7 +92,7 @@ reply pending or playing):
 
 ## Live Voice attached to a chat (issue #290)
 
-Live Voice (Gemini, Grok or GPT-Live) started from a chat's mic is attached to that chat for the whole call. Starting it anywhere else (Siri, a wake phrase, CarPlay, a saved call, a Bot Chat, a room, or the sidebar's New voice call button) leaves it unattached, as before. So does starting it from a new chat with no messages yet: there is nothing to continue, so its work runs as jobs on the Voice Jobs model.
+Live Voice (Gemini, Grok or GPT-Live) started from a chat's mic is attached to that chat for the whole call. So is a call started in CarPlay after picking a chat from its chat list, including one started with CarPlay's Listen button after that pick. Starting it anywhere else (Siri, a wake phrase, CarPlay without a picked chat, a saved call, a Bot Chat, a room, or the sidebar's New voice call button) leaves it unattached, as before. So does starting it from a new chat with no messages yet: there is nothing to continue, so its work runs as jobs on the Voice Jobs model.
 
 - **Requests become the chat's next turn.** Gemini and Grok get `ask_thread`, and GPT-Live delegations go to the chat. No new session is created. The turn is sent as `(voice) <request>`. Hermes' reply comes back to the live model, which summarizes it unless asked to read it out. The full reply stays in the chat.
 - **Web lookups stay lookups.** Gemini and Grok still answer quick facts from the web (weather, news, prices) with their web search, not through the chat.

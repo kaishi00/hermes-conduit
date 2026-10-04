@@ -44,6 +44,8 @@ final class GPTLiveSession {
 
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
     var onStateChange: (@MainActor (State) -> Void)?
+    /// The call's audio paused for another sound or came back.
+    var onAudioPaused: (@MainActor (Bool) -> Void)?
 
     private let client: GPTLiveSessionProviding
     private let history: [[String: Any]]
@@ -103,9 +105,9 @@ final class GPTLiveSession {
             guard let self, let peer, self.peer === peer else { return }
             self.connectionInterrupted(interrupted, peer: peer)
         }
-        peer.onAudioLost = { [weak self, weak peer] message in
+        peer.onAudioPaused = { [weak self, weak peer] paused in
             guard let self, let peer, self.peer === peer, self.state == .ready || self.state == .connecting else { return }
-            self.fail(message)
+            self.onAudioPaused?(paused)
         }
         connectTask = Task { [weak self] in await self?.connect(peer) }
     }
@@ -265,7 +267,7 @@ final class GPTLiveSession {
         peer?.onMessage = nil
         peer?.onDisconnected = nil
         peer?.onConnectionInterrupted = nil
-        peer?.onAudioLost = nil
+        peer?.onAudioPaused = nil
         peer?.close()
         peer = nil
     }

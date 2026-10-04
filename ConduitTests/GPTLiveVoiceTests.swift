@@ -10,6 +10,8 @@
 //
 
 import AVFAudio
+import CarPlay
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -42,7 +44,7 @@ final class FakeGPTLivePeer: GPTLivePeer {
     var onMessage: (@MainActor (String) -> Void)?
     var onDisconnected: (@MainActor () -> Void)?
     var onConnectionInterrupted: (@MainActor (Bool) -> Void)?
-    var onAudioLost: (@MainActor (String) -> Void)?
+    var onAudioPaused: (@MainActor (Bool) -> Void)?
     var offerError: Error?
     var channelOpen = true
     /// Sends fail once this many have gone out (nil: never).
@@ -79,6 +81,7 @@ final class FakeGPTLivePeer: GPTLivePeer {
 final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
     var onStateChange: (@MainActor (GPTLiveSession.State) -> Void)?
+    var onAudioPaused: (@MainActor (Bool) -> Void)?
     var isReady = false
     var voiceNote: String?
     var briefingApplied = false
@@ -412,8 +415,8 @@ extension HermesVoiceGatewayTimeoutTests {
     func testGPTLiveAudioLinkStopsWebRTCOnInterruptionAndResumesWhenItEnds() {
         let audio = FakeGPTLiveAudio()
         let link = GPTLiveAudioLink(audio: audio, center: NotificationCenter())
-        var lost: [String] = []
-        link.onAudioLost = { lost.append($0) }
+        var paused: [Bool] = []
+        link.onPausedChanged = { paused.append($0) }
         XCTAssertNoThrow(try link.start())
         XCTAssertEqual(audio.events, ["acquire", "enable"])
 
@@ -426,6 +429,7 @@ extension HermesVoiceGatewayTimeoutTests {
         link.interruptionEnded()
         XCTAssertFalse(link.isInterrupted)
         XCTAssertEqual(Array(audio.events.suffix(2)), ["reassert", "enable"], "The lease is reapplied before WebRTC resumes")
+        XCTAssertEqual(paused, [true, false])
 
         // Every real route change reasserts the lease (a dropped headset can
         // tear the session down with its category unchanged); our own
@@ -435,17 +439,6 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(audio.events.count, before, "Our own category changes never loop")
         link.routeChanged(.oldDeviceUnavailable)
         XCTAssertEqual(audio.events.last, "reassert")
-        audio.reassertError = URLError(.cannotConnectToHost)
-        link.routeChanged(.newDeviceAvailable)
-        XCTAssertEqual(lost, [AppLocalization.string("GPT-Live's audio couldn't resume after the audio route changed.")])
-        audio.reassertError = nil
-
-        // Resuming can fail: the call is reported lost rather than left mute.
-        link.interruptionBegan()
-        audio.reassertError = URLError(.cannotConnectToHost)
-        link.interruptionEnded()
-        XCTAssertEqual(lost.count, 2)
-        XCTAssertEqual(lost.last, AppLocalization.string("GPT-Live's audio couldn't resume after the interruption."))
 
         link.stop()
         XCTAssertEqual(audio.events.last, "release")
@@ -453,6 +446,45 @@ extension HermesVoiceGatewayTimeoutTests {
         link.interruptionBegan()
         link.interruptionEnded()
         XCTAssertEqual(audio.events.count, afterStop, "Nothing after stop")
+    }
+
+    /// #376: an alarm holds the session. A route change it causes (which can
+    /// arrive before its interruption) and a resume while it still rings
+    /// pause the call's audio instead of ending the call.
+    func testGPTLiveAudioLinkPausesWhileAnAlarmHoldsTheSessionAndResumesAfter() async {
+        let audio = FakeGPTLiveAudio()
+        let center = NotificationCenter()
+        let link = GPTLiveAudioLink(audio: audio, center: center)
+        var paused: [Bool] = []
+        link.onPausedChanged = { paused.append($0) }
+        XCTAssertNoThrow(try link.start())
+
+        audio.reassertError = URLError(.cannotConnectToHost)
+        link.routeChanged(.override)
+        XCTAssertTrue(link.isInterrupted, "A policy that can't be reapplied pauses the audio")
+        XCTAssertEqual(audio.events.last, "disable")
+        XCTAssertEqual(paused, [true])
+
+        // The alarm's interruption, then an end that comes too early.
+        link.interruptionBegan()
+        link.interruptionEnded()
+        XCTAssertTrue(link.isInterrupted, "A resume that fails stays paused")
+        XCTAssertEqual(paused, [true])
+
+        // The alarm stops; the retry brings the audio back.
+        audio.reassertError = nil
+        for _ in 0..<40 where link.isInterrupted { try? await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertFalse(link.isInterrupted)
+        XCTAssertEqual(audio.events.last, "enable")
+        XCTAssertEqual(paused, [true, false])
+
+        // No end ever comes: coming back to the app resumes it.
+        link.interruptionBegan()
+        center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        await settle()
+        XCTAssertFalse(link.isInterrupted)
+        XCTAssertEqual(paused, [true, false, true, false])
+        link.stop()
     }
 
     func testGPTLiveAudioLinkHearsTheSystemsInterruptionNotifications() async {
@@ -475,14 +507,19 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(link.isInterrupted, "Observers are gone after stop")
     }
 
-    func testGPTLiveAudioThatCannotResumeFailsTheSession() async {
+    func testGPTLiveAudioPauseKeepsTheSession() async {
         let (session, peer) = makeGPTSession(client: FakeGPTLiveClient())
+        var paused: [Bool] = []
+        session.onAudioPaused = { paused.append($0) }
         session.start()
         await settle()
         peer.deliver(["type": "session.started"])
-        peer.onAudioLost?("GPT-Live's audio couldn't resume after the interruption.")
-        XCTAssertEqual(session.state, .failed("GPT-Live's audio couldn't resume after the interruption."))
-        XCTAssertTrue(peer.closed)
+        peer.onAudioPaused?(true)
+        XCTAssertEqual(session.state, .ready, "A pause never ends the call")
+        XCTAssertFalse(peer.closed)
+        peer.onAudioPaused?(false)
+        XCTAssertEqual(paused, [true, false])
+        session.stop()
     }
 
     func testGPTLiveSessionFailsWithTheHostsReasonAndClosesThePeer() async {
@@ -639,6 +676,22 @@ extension VoiceConversationControllerTests {
             headsetMute: headsetMute ?? HeadsetMicrophoneMute(system: FakeSystemInputMute())
         )
         return (controller, session, supervisor, fake)
+    }
+
+    func testGPTLiveCallShowsPausedWhileAnotherSoundHoldsTheAudio() async {
+        let (controller, controlled, _, _) = makeGPTController(clock: Date.init)
+        await controller.start()
+        controlled.becomeReady()
+        XCTAssertEqual(controller.phase, .listening)
+        controlled.onAudioPaused?(true)
+        XCTAssertEqual(controller.phase, .paused)
+        XCTAssertTrue(controller.isActive)
+        XCTAssertFalse(controller.isConversationIdle, "Nothing is sent the user can't hear")
+        controlled.onEvent?(.outputTranscript("still talking"))
+        XCTAssertEqual(controller.phase, .paused)
+        controlled.onAudioPaused?(false)
+        XCTAssertEqual(controller.phase, .speaking)
+        controller.stop()
     }
 
     func testGPTLiveUnavailableHostFailsWithTheReasonAndNeverCalls() async {
@@ -1636,5 +1689,120 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(controller.isMicrophoneMuted, "a mute belongs to the call it was set in")
         XCTAssertEqual(session.microphoneEnabled, true)
         controller.stop()
+    }
+}
+
+// MARK: - #378: CarPlay calls belong to the picked chat
+
+@MainActor
+extension AppStateVoiceCapabilityTests {
+    private func makeCarPlayGPTLive() async throws -> (AppState, CarPlayVoiceCoordinator, FakeGPTLiveSessionControl, InterfacingSpy) {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        let (_, session) = installFakeGPTLive(in: appState)
+        let suite = "CarPlayChooseChat.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let preferences = CarPlayPreferences(defaults: defaults)
+        let coordinator = CarPlayVoiceCoordinator()
+        coordinator.appStateProvider = { appState }
+        coordinator.autoEstablishOnConnect = false
+        coordinator.phoneScreenProvider = { true }
+        coordinator.preferencesProvider = { preferences }
+        coordinator.connectionWaiter = { $0.isConnected }
+        let spy = InterfacingSpy()
+        coordinator.handleConnect(spy)
+        // The first template was built for the classic mode; let the
+        // GPT-Live one replace it.
+        for _ in 0..<100 { await Task.yield() }
+        return (appState, coordinator, session, spy)
+    }
+
+    func testCarPlayPickedChatAttachesTheCallEvenWhenThePhoneCannotShowIt() async throws {
+        let (appState, coordinator, session, spy) = try await makeCarPlayGPTLive()
+        let row = CarPlayChatRow(sessionID: "rt-pinned", storedSessionID: "st-pinned", title: "Pinned", detail: "")
+
+        // The test AppState has no Hermes client, so the phone can't open it.
+        await coordinator.performOpenChat(row, generation: coordinator.connectionGeneration)
+
+        XCTAssertEqual(session.started, 1, "the call starts with the pick, no Listen tap")
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread, row.thread, "its requests go to the picked chat")
+        coordinator.handleDisconnect()
+        withExtendedLifetime(spy) {}
+    }
+
+    func testCarPlayListenStartsTheCallInThePickedChat() async throws {
+        let (appState, coordinator, session, spy) = try await makeCarPlayGPTLive()
+        let row = CarPlayChatRow(sessionID: "rt-pinned", storedSessionID: "st-pinned", title: "Pinned", detail: "")
+        await coordinator.performOpenChat(row, generation: coordinator.connectionGeneration)
+        session.becomeReady()
+
+        coordinator.endTapped()
+        for _ in 0..<100 { await Task.yield() }
+        XCTAssertNil(appState.voiceBackgroundJobSupervisor.liveThread, "End detaches the call")
+        XCTAssertTrue(spy.pushedTemplates.last is CPListTemplate, "the chat list is back")
+
+        await coordinator.performStartListeningTurn(generation: coordinator.connectionGeneration)
+
+        XCTAssertEqual(session.started, 2)
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread, row.thread, "not a fresh session")
+        coordinator.handleDisconnect()
+    }
+
+    func testCarPlayEndWhileTheCallIsStartingLeavesNoCall() async throws {
+        let (appState, coordinator, _, spy) = try await makeCarPlayGPTLive()
+        // A host that takes a while to say GPT-Live is available.
+        final class Gate { var isOpen = false }
+        let gate = Gate()
+        let session = FakeGPTLiveSessionControl()
+        let controller = GPTLiveConversationController(
+            makeSession: { session },
+            availability: {
+                while !gate.isOpen { await Task.yield() }
+                return .available(model: "gpt-live-1-codex", voice: "cove")
+            },
+            briefing: { "[rules]" },
+            supervisor: appState.voiceBackgroundJobSupervisor,
+            requestPermission: { true }
+        )
+        appState.gptLiveController = controller
+        coordinator.voiceModeChanged(in: appState)
+        let generation = coordinator.connectionGeneration
+        let listen = Task { await coordinator.performStartListeningTurn(generation: generation) }
+        for _ in 0..<200 where controller.phase != .connecting { await Task.yield() }
+        XCTAssertEqual(controller.phase, .connecting)
+
+        coordinator.endTapped()
+        gate.isOpen = true
+        await listen.value
+        for _ in 0..<50 { await Task.yield() }
+
+        XCTAssertEqual(session.started, 0, "no call goes live after End")
+        XCTAssertFalse(controller.isActive)
+        XCTAssertEqual(coordinator.lastActivatedState, .ready)
+        coordinator.handleDisconnect()
+        withExtendedLifetime(spy) {}
+    }
+
+    func testCarPlayEndWhileTheCallWaitsForHermesStartsNoCall() async throws {
+        let (appState, coordinator, session, spy) = try await makeCarPlayGPTLive()
+        appState.isConnected = false
+        coordinator.connectionWaiter = { _ in
+            while !Task.isCancelled { await Task.yield() }
+            return false
+        }
+        let generation = coordinator.connectionGeneration
+        let listen = Task { await coordinator.performStartListeningTurn(generation: generation) }
+        for _ in 0..<50 { await Task.yield() }
+
+        coordinator.endTapped()
+        await listen.value
+        appState.isConnected = true
+        for _ in 0..<20 { await Task.yield() }
+
+        XCTAssertEqual(session.started, 0, "End stops a call that was still waiting")
+        XCTAssertEqual(coordinator.lastActivatedState, .ready, "the car leaves Thinking for Ready, not Error")
+        coordinator.handleDisconnect()
+        withExtendedLifetime(spy) {}
     }
 }

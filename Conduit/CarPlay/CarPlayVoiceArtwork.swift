@@ -12,8 +12,11 @@ import UIKit
 
 @MainActor
 enum CarPlayVoiceArtwork {
-    /// The template accepts images up to 150 pt square.
-    static let side: CGFloat = 120
+    /// The template accepts images up to 150 pt square. The icon uses all
+    /// of it, and its marks fill most of that: at 120 pt with a faint disc
+    /// and a glyph a third of the width, drivers saw a tiny, unreadable
+    /// mark (#378).
+    static let side: CGFloat = 150
     /// The system clamps an animated image's cycle to 0.3 to 5 seconds.
     static let cycleDuration: TimeInterval = 1.2
     static let frameCount = 12
@@ -85,13 +88,16 @@ enum CarPlayVoiceArtwork {
         return UIImage.animatedImage(with: frames, duration: cycleDuration)
     }
 
+    /// The disc's margin inside the canvas, leaving room for the pulse ring.
+    private static let discInset: CGFloat = 0.06
+
     private static func drawDisc(in context: CGContext) {
-        context.setFillColor(accent.withAlphaComponent(0.16).cgColor)
-        context.fillEllipse(in: bounds.insetBy(dx: side * 0.12, dy: side * 0.12))
+        context.setFillColor(accent.withAlphaComponent(0.24).cgColor)
+        context.fillEllipse(in: bounds.insetBy(dx: side * discInset, dy: side * discInset))
     }
 
     private static func drawGlyph(_ name: String, color: UIColor, in context: CGContext) {
-        let configuration = UIImage.SymbolConfiguration(pointSize: side * 0.3, weight: .semibold)
+        let configuration = UIImage.SymbolConfiguration(pointSize: side * 0.42, weight: .bold)
         guard let symbol = UIImage(systemName: name, withConfiguration: configuration)?
             .withTintColor(color, renderingMode: .alwaysOriginal) else { return }
         let size = symbol.size
@@ -105,11 +111,11 @@ enum CarPlayVoiceArtwork {
 
     /// A ring that grows from the disc's edge outward and fades.
     private static func drawPulse(phase: CGFloat, in context: CGContext) {
-        let minRadius = side * 0.38
+        let minRadius = side * (0.5 - discInset)
         let maxRadius = side * 0.49
         let radius = minRadius + (maxRadius - minRadius) * phase
         context.setStrokeColor(accent.withAlphaComponent(0.8 * (1 - phase)).cgColor)
-        context.setLineWidth(side * 0.035)
+        context.setLineWidth(side * 0.04)
         context.strokeEllipse(in: CGRect(
             x: side / 2 - radius,
             y: side / 2 - radius,
@@ -120,8 +126,8 @@ enum CarPlayVoiceArtwork {
 
     /// Three dots that brighten and grow one after another.
     private static func drawDots(phase: CGFloat, in context: CGContext) {
-        let spacing = side * 0.17
-        let baseRadius = side * 0.045
+        let spacing = side * 0.22
+        let baseRadius = side * 0.07
         for index in 0..<3 {
             let offset = phase - CGFloat(index) / 3
             let wave = (sin(offset * 2 * .pi) + 1) / 2
@@ -140,10 +146,10 @@ enum CarPlayVoiceArtwork {
     /// Five rounded bars rising and falling out of step, like a voice level.
     private static func drawBars(phase: CGFloat, in context: CGContext) {
         let count = 5
-        let width = side * 0.06
-        let spacing = side * 0.1
-        let minHeight = side * 0.1
-        let maxHeight = side * 0.38
+        let width = side * 0.09
+        let spacing = side * 0.14
+        let minHeight = side * 0.14
+        let maxHeight = side * 0.56
         context.setFillColor(accent.cgColor)
         for index in 0..<count {
             let offset = phase + CGFloat(index) * 0.27

@@ -601,6 +601,8 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         let recorder = CarPlayVoiceCoordinatorTests.ActivationRecorder()
         coordinator.appStateProvider = { appState }
         coordinator.autoEstablishOnConnect = false
+        // The test host's own phone screen never decides a test.
+        coordinator.phoneScreenProvider = { true }
         coordinator.stateActivator = { _, state in recorder.states.append(state) }
         // No real connection wait by default: a disconnected harness settles
         // immediately. Tests covering the wait install their own waiter.
@@ -2158,3 +2160,118 @@ final class CarPlayVoiceRoutePolicyTests: XCTestCase {
 // the other Voice/CarPlay/AppState suites. The speech-path signals
 // (`waitUntilSpeechStreamOpened`, `waitUntilSubmitted`, `waitForState`)
 // replace the fixed settling sleeps this file previously relied on.
+
+// MARK: - #378: picked chat, End, browsing, no phone screen
+
+// Kept in an existing test class: the hosted lane plan caps batches per lane.
+@MainActor
+extension CarPlayVoiceCoordinatorTests {
+    private func choosingChatFirst(_ harness: Harness) throws {
+        let suite = "CarPlayChooseChat.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let preferences = CarPlayPreferences(defaults: defaults)
+        harness.coordinator.preferencesProvider = { preferences }
+    }
+
+    func testEndClosesTheConversationAndBringsTheChatListBack() async throws {
+        let harness = makeHarness()
+        try choosingChatFirst(harness)
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+
+        harness.coordinator.endTapped()
+        for _ in 0..<200 where harness.spy.pushedTemplates.isEmpty { await Task.yield() }
+
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession, "End closes the conversation")
+        let list = try XCTUnwrap(harness.spy.pushedTemplates.last as? CPListTemplate, "the driver can pick another chat")
+        XCTAssertEqual((list.sections.first?.items.first as? CPListItem)?.text, "New voice chat")
+        XCTAssertTrue(harness.coordinator.isBrowsing)
+    }
+
+    func testEndWhileWaitingForHermesStartsNothingAndShowsReady() async throws {
+        let harness = makeHarness(connected: false)
+        harness.appState.activeSessionId = "existing-session"
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        // Hermes never answers until the wait is cancelled.
+        harness.coordinator.connectionWaiter = { _ in
+            while !Task.isCancelled { await Task.yield() }
+            return false
+        }
+        let generation = harness.coordinator.connectionGeneration
+        let listen = Task { await harness.coordinator.performStartListeningTurn(generation: generation) }
+        for _ in 0..<200 where harness.activations.last != .processing { await Task.yield() }
+        XCTAssertEqual(harness.activations.last, .processing, "the car shows Hermes being reached")
+
+        harness.coordinator.endTapped()
+        await listen.value
+
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession, "nothing starts after End")
+        XCTAssertEqual(harness.activations.last, .ready, "End leaves the car at Ready, not Error")
+    }
+
+    func testAConversationStartingWhileBrowsingBringsTheVoiceScreenBack() async throws {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.coordinator.showChats()
+        XCTAssertTrue(harness.coordinator.isBrowsing)
+
+        // Thinking alone (a call ending passes through it) leaves the list.
+        harness.coordinator.handleControllerState(.thinking)
+        XCTAssertEqual(harness.spy.popToRootCount, 0)
+
+        // A call started on the phone is listening.
+        harness.coordinator.handleControllerState(.listening)
+
+        XCTAssertEqual(harness.spy.popToRootCount, 1, "the car shows the running call without a Back tap")
+        XCTAssertFalse(harness.coordinator.isBrowsing)
+    }
+
+    func testTheVoiceScreenReappearingEndsBrowsing() async throws {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.coordinator.showChats()
+        let list = try XCTUnwrap(harness.spy.pushedTemplates.last)
+
+        harness.coordinator.handleTemplateDidAppear(list)
+        XCTAssertTrue(harness.coordinator.isBrowsing, "only the voice screen ends browsing")
+
+        harness.coordinator.handleTemplateDidAppear(try XCTUnwrap(harness.coordinator.template))
+        XCTAssertFalse(harness.coordinator.isBrowsing, "the car's Back button returned to it")
+    }
+
+    func testCarPlayWithoutAPhoneScreenRecoversTheConnectionItself() async {
+        let harness = makeHarness()
+        harness.coordinator.phoneScreenProvider = { false }
+        XCTAssertTrue(harness.appState.isSceneActive, "the launch value")
+
+        harness.coordinator.handleConnect(harness.spy)
+
+        XCTAssertFalse(harness.appState.isSceneActive, "the phone screen isn't up, so CarPlay owns reconnecting")
+        XCTAssertTrue(harness.appState.hasActiveVoiceSurface, "CarPlay still presents Voice")
+    }
+
+    func testAPhoneScreenInTheForegroundIsLeftAlone() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        XCTAssertTrue(harness.appState.isSceneActive)
+    }
+
+    func testANewChatIsNoLongerThePickedChat() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        let row = CarPlayChatRow(sessionID: "missing", storedSessionID: nil, title: "Chat", detail: "")
+        await harness.coordinator.performOpenChat(row, generation: harness.coordinator.connectionGeneration)
+        XCTAssertEqual(harness.coordinator.chosenChat, row, "the pick is remembered")
+
+        await harness.coordinator.performStartNewChat(generation: harness.coordinator.connectionGeneration)
+
+        XCTAssertNil(harness.coordinator.chosenChat)
+    }
+}
