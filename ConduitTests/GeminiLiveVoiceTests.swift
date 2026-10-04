@@ -976,6 +976,13 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
         controller.respeakOutcomeIfSilent(jobID: supervisor.jobs.first?.id, since: current - 1)
         XCTAssertEqual(session.textTurns.count, turns)
+
+        // Nor one it answered only as text, with no audio.
+        session.onEvent?(.turnComplete)
+        current += 5
+        session.onEvent?(.outputTranscription("All green on the server."))
+        controller.respeakOutcomeIfSilent(jobID: supervisor.jobs.first?.id, since: current - 1)
+        XCTAssertEqual(session.textTurns.count, turns)
         controller.stop()
     }
 

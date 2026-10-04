@@ -296,6 +296,8 @@ final class GeminiLiveConversationController: ObservableObject {
     private var suppressingModelTurn = false
     private var lastPlaybackAt: Date?
     private var lastModelAudioAt: Date?
+    /// The model's last words as text (a turn can come without audio).
+    private var lastModelTranscriptAt: Date?
     private var inputRunning = false
     private var modelTurnActive = false
     private var lastUserSpeechAt: Date?
@@ -447,6 +449,7 @@ final class GeminiLiveConversationController: ObservableObject {
         lastModelTurnEndedAt = nil
         lastPlaybackAt = nil
         lastModelAudioAt = nil
+        lastModelTranscriptAt = nil
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
         hostIssue = nil
@@ -515,6 +518,7 @@ final class GeminiLiveConversationController: ObservableObject {
         suppressingModelTurn = false
         lastPlaybackAt = nil
         lastModelAudioAt = nil
+        lastModelTranscriptAt = nil
         // Unspoken job notices go back to the supervisor, not the bin.
         tools.returnUnsent(pendingTextTurns)
         pendingTextTurns = []
@@ -899,6 +903,7 @@ final class GeminiLiveConversationController: ObservableObject {
         case .outputTranscription(let text):
             guard !suppressingModelTurn, !audioPaused else { return }
             modelTurnActive = true
+            lastModelTranscriptAt = now()
             appendTranscript(text, speaker: .assistant)
         case .inputTranscription(let text):
             lastUserSpeechAt = now()
@@ -1000,15 +1005,17 @@ final class GeminiLiveConversationController: ObservableObject {
     /// stayed silent (it sometimes does while a NON_BLOCKING call runs),
     /// prompt a one-line acknowledgement once the conversation is quiet.
     private func ensureAcknowledgement(since calledAt: Date) {
+        let epoch = callEpoch
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.acknowledgementGrace))
-            guard let self, self.isActive else { return }
+            // A later call started nothing: never prompt it.
+            guard let self, self.isActive, self.callEpoch == epoch else { return }
             self.acknowledgeIfSilent(since: calledAt)
         }
     }
 
     func acknowledgeIfSilent(since calledAt: Date) {
-        if let lastModelAudioAt, lastModelAudioAt >= calledAt { return }
+        if modelSpoke(since: calledAt) { return }
         pendingTextTurns.insert(Self.acknowledgementPrompt, at: 0)
         scheduleIdleFlush()
         flushPendingTextIfIdle()
@@ -1121,7 +1128,8 @@ final class GeminiLiveConversationController: ObservableObject {
         guard hasPendingIdleSends, endRequestedAt == nil, isConversationIdle, let session else { return }
         sendPendingContextNotes(on: session)
         if sendHeldOutcome(on: session) { return }
-        guard !pendingTextTurns.isEmpty else { return }
+        // A held result re-issued above may already have started a turn.
+        guard !pendingTextTurns.isEmpty, isConversationIdle else { return }
         let text = pendingTextTurns.removeFirst()
         let noticeJobID = tools.textUpdateSending(text)
         modelTurnActive = true
@@ -1205,7 +1213,7 @@ final class GeminiLiveConversationController: ObservableObject {
                   self.session?.connectionGeneration == generation else {
                 // Same call, new connection: said if the model spoke since,
                 // otherwise reported again there as a tracked update.
-                if let lastModelAudioAt = self.lastModelAudioAt, lastModelAudioAt >= sentAt {
+                if self.modelSpoke(since: sentAt) {
                     self.tools.outcomeSent(jobID: jobID)
                 } else {
                     self.reissueAsTextUpdates([jobID])
@@ -1216,8 +1224,15 @@ final class GeminiLiveConversationController: ObservableObject {
         }
     }
 
+    /// Whether the model answered since `date`, out loud or as text.
+    private func modelSpoke(since date: Date) -> Bool {
+        if let lastModelAudioAt, lastModelAudioAt >= date { return true }
+        if let lastModelTranscriptAt, lastModelTranscriptAt >= date { return true }
+        return false
+    }
+
     func respeakOutcomeIfSilent(jobID: UUID?, since sentAt: Date) {
-        if let lastModelAudioAt, lastModelAudioAt >= sentAt {
+        if modelSpoke(since: sentAt) {
             tools.outcomeSent(jobID: jobID)
             return
         }

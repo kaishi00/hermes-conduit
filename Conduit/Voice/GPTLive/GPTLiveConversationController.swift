@@ -673,6 +673,8 @@ final class GPTLiveConversationController: ObservableObject {
             }
             guard item.channel == .commentary else {
                 // The model speaks it next: wait for that turn before another.
+                // Only the assistant's turn.done clears this (there is no
+                // timeout), so later results wait on GPT-Live answering.
                 modelTurnActive = true
                 lastModelOutputAt = now()
                 return
