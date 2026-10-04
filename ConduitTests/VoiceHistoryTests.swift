@@ -387,10 +387,13 @@ extension HermesVoiceGatewayTimeoutTests {
                 canonicalSession: nil, lastActive: nil, lastPreview: nil
             )
         }
-        let roster = [bot("Fam"), bot("fam"), bot("atlas")]
+        var renamed = bot("nova")
+        renamed.previousNames = ["atlas-old"]
+        let roster = [bot("Fam"), bot("fam"), bot("atlas"), renamed]
         XCTAssertEqual(AppState.linkedBot(named: "fam", in: roster)?.name, "fam")
         XCTAssertEqual(AppState.linkedBot(named: "Atlas", in: roster)?.name, "atlas")
-        XCTAssertNil(AppState.linkedBot(named: "nova", in: roster))
+        XCTAssertEqual(AppState.linkedBot(named: "atlas-old", in: roster)?.name, "nova", "a link made before a rename")
+        XCTAssertNil(AppState.linkedBot(named: "orion", in: roster))
     }
 
     func testResumeTurnsDropJobLinks() {
@@ -591,6 +594,37 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(links.merge(into: [], chatIDs: own, openIDs: own, profile: "default").map(\.id), ["voice-call-c3"])
         // A row is never found through its alternate ids.
         XCTAssertEqual(AppState.ownSessionIDs(for: ["rt-new"], in: rows), ["rt-new"])
+    }
+
+    @MainActor
+    func testANewChatsOwnIDsLeaveOutTheChatItWasStartedFrom() throws {
+        func row(_ id: String, stored: String? = nil, alternates: [String] = []) -> SessionSummary {
+            SessionSummary(
+                id: id, storedSessionId: stored, alternateIds: alternates, title: id, model: "Hermes",
+                updatedLabel: "now", profile: "default", source: .chat, isActive: false, isArchived: false,
+                lineageRootId: nil
+            )
+        }
+        let suite = "VoiceChatOwnIDs.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("default", forKey: "conduit.activeProfile")
+        let index = ConversationIdentityIndex()
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, conversationIdentityIndex: index)
+        appState.sessions = [row("rt-old", stored: "st-old")]
+        appState.activeSessionId = "rt-old"
+
+        // New chat: the reconciliation still names the chat open before it.
+        _ = appState.beginReconciliation()
+        appState.activeSessionId = "rt-new"
+        index.recordAuthoritative(runtimeID: "rt-new", durableID: "st-new", profile: "default", source: .create)
+        appState.sessions = [row("st-new", alternates: ["rt-new"]), row("rt-old", stored: "st-old")]
+
+        XCTAssertTrue(appState.activeChatScrollSessionIdentity.contains("rt-old"), "the scroll identity keeps the previous chat")
+        XCTAssertEqual(appState.chatOwnSessionIDsForTesting("rt-new"), ["rt-new", "st-new"])
+        // Reopened later under another runtime, the index still names it.
+        index.recordAuthoritative(runtimeID: "rt-new-2", durableID: "st-new", profile: "default", source: .resume)
+        XCTAssertEqual(appState.chatOwnSessionIDsForTesting("rt-new-2"), ["rt-new-2", "st-new"])
     }
 
     func testACallCardKeepsItsBotChatsProfile() throws {
