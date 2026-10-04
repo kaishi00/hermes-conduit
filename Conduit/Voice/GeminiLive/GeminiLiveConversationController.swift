@@ -694,6 +694,13 @@ final class GeminiLiveConversationController: ObservableObject {
             // Close the socket too, so nothing from it reaches a failed
             // conversation.
             retireSession()
+            // Nothing queued can go out on a failed conversation: job
+            // notices and held results go back to be reported later.
+            idleFlushTask?.cancel()
+            idleFlushTask = nil
+            tools.returnUnsent(pendingTextTurns)
+            pendingTextTurns = []
+            returnHeldOutcomes()
             // Ending: the goodbye finishes closing instead of offering a
             // retry (the end task closes the conversation).
             if endRequestedAt == nil { phase = .failed(message) }

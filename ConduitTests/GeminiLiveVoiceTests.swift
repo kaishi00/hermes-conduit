@@ -994,6 +994,25 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(supervisor.jobs[0].outcomeDelivered, "An unsaid result is reported again later")
     }
 
+    func testGeminiLiveHeldJobResultGoesBackWhenTheConversationFails() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, supervisor) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        current += 5
+        session.onEvent?(.inputTranscription("and another thing"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(controller.heldOutcomeCountForTesting, 1)
+
+        session.onStateChange?(.failed("Connection lost"))
+        XCTAssertFalse(controller.isActive)
+        XCTAssertEqual(controller.heldOutcomeCountForTesting, 0)
+        XCTAssertFalse(supervisor.jobs[0].outcomeDelivered, "An unsaid result is reported again later")
+    }
+
     func testGeminiLiveHeldJobResultWhoseCallIsWithdrawnIsSaidAsText() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, _, _, supervisor) = makeGeminiController(clock: { current })
