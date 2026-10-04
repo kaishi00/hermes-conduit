@@ -4040,7 +4040,8 @@ final class AppState: ObservableObject {
     /// The line a saved call gets where it sent work to its chat: the
     /// request and a link that opens the chat, where Hermes' reply is.
     static func voiceThreadTurnNote(_ job: VoiceBackgroundJob, thread: VoiceThreadTarget) -> String {
-        let line = AppLocalization.string("Sent to the chat: \(job.title).")
+        // Queued, not necessarily delivered: a hang-up drops unsent requests.
+        let line = AppLocalization.string("Asked the chat: \(job.title).")
         guard let id = [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return line }
         return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open chat"))
     }
@@ -4053,7 +4054,8 @@ final class AppState: ObservableObject {
             // shouldn't make the link look dead.
             requestOpenSession(id) { [weak self] in
                 guard let self, self.errorMessage == nil else { return }
-                self.errorMessage = AppLocalization.string("That job's chat is no longer available.")
+                // Job links and chat-turn links share this route.
+                self.errorMessage = AppLocalization.string("That chat is no longer available.")
             }
         }
     }
@@ -4073,8 +4075,11 @@ final class AppState: ObservableObject {
     /// Opens the chat a call was started from, from the card in the call's
     /// own transcript.
     func openVoiceCallChat(markerID: String) {
-        guard let link = voiceCallLink(markerID: markerID) else { return }
-        requestOpenSession(link.chatSessionID) { [weak self] in
+        guard let chatID = voiceCallLink(markerID: markerID)?.chatSessionID else {
+            errorMessage = AppLocalization.string("That chat is no longer available.")
+            return
+        }
+        requestOpenSession(chatID) { [weak self] in
             guard let self, self.errorMessage == nil else { return }
             self.errorMessage = AppLocalization.string("That chat is no longer available.")
         }

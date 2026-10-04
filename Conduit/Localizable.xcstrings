@@ -31,12 +31,12 @@
         }
       }
     },
-    "Sent to the chat: %@." : {
+    "Asked the chat: %@." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已发送到对话：%@。"
+            "value" : "已向对话提问：%@。"
           }
         }
       }

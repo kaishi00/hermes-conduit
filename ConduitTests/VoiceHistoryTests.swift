@@ -349,9 +349,9 @@ extension HermesVoiceGatewayTimeoutTests {
     func testChatTurnNoteLinksTheChatTheCallIsAttachedTo() {
         let job = VoiceBackgroundJob(id: UUID(), title: "Check the build", instructions: "x", status: .starting, startedAt: Date())
         let stored = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
-        XCTAssertEqual(AppState.voiceThreadTurnNote(job, thread: stored), "Sent to the chat: Check the build. [Open chat](conduit://session/st-chat)")
+        XCTAssertEqual(AppState.voiceThreadTurnNote(job, thread: stored), "Asked the chat: Check the build. [Open chat](conduit://session/st-chat)")
         let runtimeOnly = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build")
-        XCTAssertEqual(AppState.voiceThreadTurnNote(job, thread: runtimeOnly), "Sent to the chat: Check the build. [Open chat](conduit://session/rt-chat)")
+        XCTAssertEqual(AppState.voiceThreadTurnNote(job, thread: runtimeOnly), "Asked the chat: Check the build. [Open chat](conduit://session/rt-chat)")
     }
 
     func testResumeTurnsDropJobLinks() {
@@ -497,6 +497,15 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(merged.map(\.id), ["voice-call-from-c1", "t1"])
         XCTAssertEqual(merged.first?.displayKind, VoiceCallChatLink.originDisplayKind)
         XCTAssertEqual(links.link(markerID: "voice-call-from-c1")?.chatSessionID, "st-1")
+    }
+
+    func testATranscriptNeverShowsAnotherCallFromTheSameChat() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "c1", row: "row-a", chat: "rt-1", stored: "st-1", at: start))
+        links.add(chatLink(call: "c2", row: "row-b", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(60)))
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["row-a", "st-1"], profile: "default").map(\.id), ["voice-call-from-c1"])
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["st-1"], profile: "default").map(\.id), ["voice-call-c1", "voice-call-c2"])
     }
 
     func testAChatIsMatchedOnItsStoredIDNotAReusedRuntime() {

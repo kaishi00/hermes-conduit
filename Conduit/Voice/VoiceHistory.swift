@@ -568,8 +568,10 @@ struct VoiceCallChatLink: Codable, Equatable {
         return !chatRuntimeSessionID.isEmpty && ids.contains(chatRuntimeSessionID)
     }
 
-    /// The chat's id to open it by.
-    var chatSessionID: String { chatStoredSessionID.flatMap { $0.isEmpty ? nil : $0 } ?? chatRuntimeSessionID }
+    /// The chat's id to open it by; nil when the link names none.
+    var chatSessionID: String? {
+        [chatStoredSessionID, chatRuntimeSessionID].compactMap { $0 }.first { !$0.isEmpty }
+    }
 
     /// The chat as a live call's target, for Resume Call.
     var thread: VoiceThreadTarget {
@@ -635,17 +637,16 @@ struct VoiceCallChatLinks: Codable, Equatable {
     /// started. The history's own order is kept.
     func merge(into history: [ChatMessage], chatIDs: Set<String>, profile: String) -> [ChatMessage] {
         var merged = history
-        for link in links where link.profile == profile {
-            // The call's own transcript leads back to the chat; the chat
-            // leads to the transcript. Never a chat's card in the call.
-            let marker: ChatMessage
-            if chatIDs.contains(link.callSessionID) {
-                marker = link.originMarker
-            } else if link.belongs(toChat: chatIDs) {
-                marker = link.marker
-            } else {
-                continue
-            }
+        let profileLinks = links.filter { $0.profile == profile }
+        // The open session is a call's own transcript (a resumed call has a
+        // link per resume): it only leads back to its chat. Its ids can
+        // carry the chat's, so no chat card is placed in it, this call's or
+        // another's.
+        let owned = profileLinks.filter { chatIDs.contains($0.callSessionID) }
+        let markers = owned.isEmpty
+            ? profileLinks.filter { $0.belongs(toChat: chatIDs) }.map { ($0, $0.marker) }
+            : owned.map { ($0, $0.originMarker) }
+        for (link, marker) in markers {
             guard !merged.contains(where: { $0.id == marker.id }) else { continue }
             let index = merged.firstIndex {
                 MessageTimestampFormatter.date(from: $0.timestamp).map { $0 > link.startedAt } ?? false

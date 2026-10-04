@@ -1630,7 +1630,8 @@ private struct VoiceCallMarkerCard: View {
         MessageTimestampFormatter.displayString(for: Self.timestampFormatter.string(from: link.startedAt))
     }
 
-    /// Title, length and start time; "Open transcript" stays in the hint.
+    /// Title, length (not on the origin card) and start time; the action
+    /// stays in the hint.
     private var spokenLabel: String {
         [title, origin ? nil : duration, started.map { AppLocalization.string("Started \($0)") }]
             .compactMap { $0 }
