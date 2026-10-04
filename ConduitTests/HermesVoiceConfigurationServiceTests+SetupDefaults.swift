@@ -1,5 +1,5 @@
 //
-//  VoiceSetupDefaultsTests.swift
+//  HermesVoiceConfigurationServiceTests+SetupDefaults.swift
 //  Conduit
 //
 //  The one-switch happy path: turning Voice on fills in only what is

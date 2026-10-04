@@ -51,6 +51,16 @@
         }
       }
     },
+    "No assistant voice is set up yet. Choose one under Assistant speech below." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未设置助手语音。请在下方“助手语音”中选择一个。"
+          }
+        }
+      }
+    },
     "No assistant voice is set up yet. Edge TTS is free and ready." : {
       "localizations" : {
         "zh-Hans" : {
