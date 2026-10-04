@@ -792,7 +792,8 @@ extension VoiceConversationControllerTests {
     }
 
     func testGPTLiveDelegationWithoutTextHandsHermesTheUsersWords() async {
-        let (controller, session, supervisor, fake) = makeGPTController(clock: Date.init)
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, fake) = makeGPTController(clock: { current })
         await controller.start()
         session.becomeReady()
         session.onEvent?(.inputTranscript("can you check"))
@@ -807,10 +808,78 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(fake.submissions[0].1.contains("Can you check whether the build passed?"))
         XCTAssertTrue(session.appended.contains { $0.delegationID == "del_1" && $0.channel == .commentary })
 
+        session.onEvent?(.turnDone(role: "assistant", transcript: "On it."))
+        current += GPTLiveConversationController.userQuietInterval + 0.5
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "The build passed.", reasoning: nil))
         controller.deliverPendingJobUpdates()
+        controller.flushPendingContextIfIdle()
         XCTAssertTrue(session.speakable.contains { $0.delegationID == "del_1" && $0.text.contains("The build passed.") })
+        XCTAssertFalse(session.speakable.contains { $0.text.contains("kept talking") }, "Nothing was said after asking")
         controller.stop()
+    }
+
+    func testGPTLiveDelegationResultWaitsForTheUserToFinishAndTheirWordsComeFirst() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, _) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Can you check whether the build passed?"))
+        session.onEvent?(.outputTranscript("On it."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+        session.onEvent?(.turnDone(role: "assistant", transcript: "On it."))
+
+        // The user carries on, pausing mid-sentence, as the result arrives.
+        current += 5
+        session.onEvent?(.inputTranscript("So in the meantime, let's keep talking, um,"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "The build passed.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        controller.flushPendingContextIfIdle()
+        XCTAssertTrue(session.speakable.isEmpty, "A result never cuts into the user's sentence")
+        XCTAssertEqual(controller.pendingContextCountForTesting, 1)
+
+        // A pause past the quiet interval with their turn still open: still theirs.
+        current += GPTLiveConversationController.userQuietInterval + 0.5
+        controller.flushPendingContextIfIdle()
+        XCTAssertTrue(session.speakable.isEmpty, "A pause mid-turn isn't the end of the turn")
+
+        // They finish, and the model answers them first.
+        session.onEvent?(.inputTranscript(" and also add the release notes."))
+        session.onEvent?(.turnDone(role: "user", transcript: "So in the meantime, let's keep talking, um, and also add the release notes."))
+        current += GPTLiveConversationController.userQuietInterval + 0.5
+        session.onEvent?(.outputTranscript("Got it, I'll pass that on."))
+        controller.flushPendingContextIfIdle()
+        XCTAssertTrue(session.speakable.isEmpty, "Nothing is said over the model's answer")
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Got it, I'll pass that on."))
+        current += GPTLiveConversationController.modelQuietInterval + 0.5
+        controller.flushPendingContextIfIdle()
+
+        XCTAssertEqual(session.speakable.count, 1)
+        XCTAssertEqual(session.speakable.first?.delegationID, "del_1", "Still the delegation's answer")
+        let said = session.speakable.first?.text ?? ""
+        XCTAssertTrue(said.hasPrefix(GPTLiveConversationController.resultAfterUserNote), said)
+        XCTAssertTrue(said.contains("The build passed."), said)
+        XCTAssertEqual(controller.pendingContextCountForTesting, 0)
+        XCTAssertNil(supervisor.takePendingNotice(), "Delivered once, on the delegation")
+        controller.stop()
+    }
+
+    func testGPTLiveHeldDelegationResultGoesBackWhenTheCallEnds() async {
+        let current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, _) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Check the server."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+        session.onEvent?(.inputTranscript("and while you're at it"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(controller.pendingContextCountForTesting, 1)
+
+        controller.stop()
+        XCTAssertTrue(session.speakable.isEmpty)
+        XCTAssertNotNil(supervisor.takePendingNotice(), "An unsaid result is pending again, not lost")
     }
 
     func testGPTLiveTypedChatTurnIsQuietCommentary() async {

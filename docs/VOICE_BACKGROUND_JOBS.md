@@ -67,6 +67,14 @@ reply pending or playing):
   its chat.
 - Failures, cancellations from elsewhere, and "waiting for input" are spoken
   as short local notices without a Hermes turn.
+- GPT-Live (#379): a delegation's result (a job's or the chat's reply) waits
+  for the same quiet window instead of going out the moment it arrives. A
+  pause mid-sentence doesn't count while the user's words are still coming
+  in, and the model answers what the user just said first. When the user kept
+  talking after asking, the result tells the model to deal with anything they
+  said since (passing it on to Hermes if needed) and then say that Hermes has
+  come back on the earlier request. Hanging up returns an unsaid result to
+  the job, as for other notices.
 
 ## Limits of this phase
 
