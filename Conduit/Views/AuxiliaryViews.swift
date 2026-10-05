@@ -495,6 +495,8 @@ struct SettingsView: View {
             suggestedPhrase: appState.suggestedWakePhrase(forProfile: profile),
             startsFreshConversation: preferences.startsFreshConversation,
             listensOnCarPlay: appState.wakeListensOnCarPlay,
+            listensOverOtherAudio: appState.wakeListensOverOtherAudio,
+            isPausedForOtherAudio: appState.isWakePausedForOtherAudio,
             failure: appState.wakeListeningFailure,
             save: { phrases, startsFresh in
                 appState.setWakePreferences(
@@ -502,7 +504,8 @@ struct SettingsView: View {
                     forProfile: profile
                 )
             },
-            setListensOnCarPlay: { appState.setWakeListensOnCarPlay($0) }
+            setListensOnCarPlay: { appState.setWakeListensOnCarPlay($0) },
+            setListensOverOtherAudio: { appState.setWakeListensOverOtherAudio($0) }
         )
     }
 

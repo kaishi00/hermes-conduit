@@ -32,13 +32,26 @@ final class WakeConfigurationStore {
         }
     }
 
+    /// Device-wide: keep listening while another app plays audio (music, a
+    /// podcast). Off by default: recording, even mixed, moves that audio onto
+    /// a record route where iOS can play it in mono and drop it briefly, so
+    /// wake waits for it to stop instead.
+    var listensOverOtherAudio: Bool {
+        didSet {
+            guard listensOverOtherAudio != oldValue else { return }
+            defaults.set(listensOverOtherAudio, forKey: otherAudioKey)
+        }
+    }
+
     private var carPlayKey: String { storageKey + ".listensOnCarPlay" }
+    private var otherAudioKey: String { storageKey + ".listensOverOtherAudio" }
 
     init(defaults: UserDefaults = .standard, storageKey: String = "conduit.wakeConfiguration.v1") {
         self.defaults = defaults
         self.storageKey = storageKey
         values = Self.decode(defaults.data(forKey: storageKey))
         listensOnCarPlay = defaults.object(forKey: storageKey + ".listensOnCarPlay") as? Bool ?? true
+        listensOverOtherAudio = defaults.object(forKey: storageKey + ".listensOverOtherAudio") as? Bool ?? false
     }
 
     func preferences(for key: WakeProfileKey) -> WakeProfilePreferences {
