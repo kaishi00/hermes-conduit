@@ -81,22 +81,22 @@
         }
       }
     },
-    "Conduit could not open the requested profile, so the screenshot was not attached." : {
+    "Conduit could not open the profile the shortcut asked for, so the screenshot is in this one." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit 无法打开所请求的档案，因此未附加截图。"
+            "value" : "Conduit 无法打开快捷指令指定的档案，截图已放在当前档案中。"
           }
         }
       }
     },
-    "Hermes could not start a chat for the screenshot." : {
+    "Hermes could not start a chat for the screenshot. It's kept and will be attached once Hermes is ready." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes 无法为这张截图开始对话。"
+            "value" : "Hermes 无法为这张截图新建对话。截图已保留，Hermes 就绪后会自动附上。"
           }
         }
       }

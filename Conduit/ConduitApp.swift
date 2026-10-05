@@ -139,10 +139,16 @@ struct ConduitApp: App {
                 await waitOutPendingVoiceDeadline()
             }
             // A screenshot kept while Hermes was unreachable is attached
-            // once it connects.
-            .task(id: "\(appState.isConnected):\(appState.parkedScreenQuestionRevision)") {
-                await appState.resumeParkedScreenQuestion()
+            // once it connects and settles.
+            .task(id: parkedScreenQuestionKey) {
+                // Not cancelled with this task: the resume can switch
+                // profiles, which changes the key.
+                Task { await appState.resumeParkedScreenQuestion() }
             }
+    }
+
+    private var parkedScreenQuestionKey: String {
+        "\(appState.isConnected):\(appState.isConnecting):\(appState.isProfileSwitching):\(appState.parkedScreenQuestionRevision)"
     }
 
     private var notificationRouteKey: String {
@@ -192,10 +198,11 @@ struct ConduitApp: App {
             }
             appState.errorMessage = message
         case .superseded:
-            // A newer request took over while this one found Hermes gone:
-            // its screenshot is parked, and the newer one replaces it.
+            // A newer request took over while this one found Hermes gone.
+            // The newer one wins: parking this older screenshot now could
+            // replace one already parked or placed.
             if screenQuestionOpened == false, let request = routed?.screenQuestion {
-                appState.parkScreenQuestion(request, profile: routed?.profile)
+                AppState.deleteStagedScreenshot(request.attachment)
             }
         case .idle, .routed, .deferred:
             break

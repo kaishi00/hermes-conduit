@@ -1265,10 +1265,12 @@ struct ComposerBar: View {
     }
 
     /// A screenshot chat opened with the keyboard: the field takes focus.
-    private func applyFocusRequest(_ request: UUID?) {
+    private func applyFocusRequest(_ request: ComposerFocusRequest?) {
         // A locked composer keeps the request until it unlocks.
         guard let request, appState.composerIsEnabled else { return }
-        appState.consumeComposerFocusRequest(request)
+        appState.consumeComposerFocusRequest(request.id)
+        // Left for another chat before it applied: dropped.
+        guard request.sessionID == appState.activeSessionId else { return }
         // After this update: the new chat's draft load, which can land in
         // the same update, unfocuses the field.
         Task { @MainActor in

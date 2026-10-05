@@ -17,6 +17,13 @@ struct PendingScreenshot: Equatable {
     let attachment: Attachment
 }
 
+/// Asks the composer of one chat to take focus. Another chat's composer
+/// drops it.
+struct ComposerFocusRequest: Equatable {
+    let id = UUID()
+    let sessionID: String
+}
+
 /// A screenshot Hermes couldn't take yet, with the profile its shortcut
 /// named.
 struct ParkedScreenQuestion: Equatable {
@@ -69,8 +76,14 @@ extension AppState {
     /// Hands the chat's screenshot to the send that carries it. The staged
     /// file stays: the sent bubble previews from it.
     func takePendingScreenshot(forSession sessionID: String?) -> Attachment? {
+        takePendingScreenshotEntry(forSession: sessionID)?.attachment
+    }
+
+    /// The same, with the id it was kept under, so a failed send puts it
+    /// back under that id.
+    func takePendingScreenshotEntry(forSession sessionID: String?) -> PendingScreenshot? {
         guard let index = pendingScreenshotIndex(forSession: sessionID) else { return nil }
-        return pendingScreenshots.remove(at: index).attachment
+        return pendingScreenshots.remove(at: index)
     }
 
     /// A send that failed puts its screenshot back, unless a newer one
@@ -134,17 +147,25 @@ extension AppState {
     /// never the microphone, and a question waits in the composer rather
     /// than being sent long after it was asked.
     func resumeParkedScreenQuestion() async {
-        guard isConnected, let parked = parkedScreenQuestion else { return }
+        guard isConnected, !isConnecting, !isProfileSwitching, let parked = parkedScreenQuestion else { return }
         parkedScreenQuestion = nil
         if !(await openScreenQuestion(parked.request, profile: parked.profile, resumingParked: true)) {
-            // The connection dropped again before a chat opened. A newer
-            // screenshot parked meanwhile wins.
-            if parkedScreenQuestion == nil {
-                parkScreenQuestion(parked.request, profile: parked.profile)
-            } else if parkedScreenQuestion?.request.attachment.uri != parked.request.attachment.uri {
-                Self.deleteStagedScreenshot(parked.request.attachment)
-            }
+            // The connection dropped again before a chat opened.
+            holdScreenQuestion(parked.request, profile: parked.profile)
         }
+    }
+
+    /// Keeps a screenshot no chat could take yet, without a revision bump:
+    /// it is tried again when the connection changes, never in a loop. A
+    /// newer screenshot parked meanwhile wins.
+    private func holdScreenQuestion(_ request: ScreenQuestionRequest, profile: String?) {
+        if let parked = parkedScreenQuestion {
+            if parked.request.attachment.uri != request.attachment.uri {
+                Self.deleteStagedScreenshot(request.attachment)
+            }
+            return
+        }
+        parkedScreenQuestion = ParkedScreenQuestion(request: request, profile: profile)
     }
 
     private func openScreenQuestion(
@@ -160,16 +181,17 @@ extension AppState {
                 Self.deleteStagedScreenshot(parked.request.attachment)
             }
         }
+        let requestedProfile = PendingVoiceLaunchPolicy.normalizedProfile(profile)
         var switchedProfile = false
-        if let profile = PendingVoiceLaunchPolicy.normalizedProfile(profile), profile != activeProfile {
-            await switchProfile(to: profile)
-            guard profile == activeProfile else {
-                Self.deleteStagedScreenshot(request.attachment)
-                errorMessage = AppLocalization.string("Conduit could not open the requested profile, so the screenshot was not attached.")
-                return true
-            }
+        if let requestedProfile, requestedProfile != activeProfile {
+            await switchProfile(to: requestedProfile)
             guard isConnected else { return false }
-            switchedProfile = true
+            if requestedProfile == activeProfile {
+                switchedProfile = true
+            } else {
+                // Kept, not dropped: it waits in the profile on screen.
+                errorMessage = AppLocalization.string("Conduit could not open the profile the shortcut asked for, so the screenshot is in this one.")
+            }
         }
 
         let hasOpenChat = activeSessionId != nil && activeRoomSurface == nil && offlineChatPresentation == nil
@@ -196,8 +218,9 @@ extension AppState {
             await createNewSession()
             guard let created = activeSessionId, created != previous else {
                 guard isConnected else { return false }
-                Self.deleteStagedScreenshot(request.attachment)
-                errorMessage = AppLocalization.string("Hermes could not start a chat for the screenshot.")
+                // Kept, not dropped: tried again once the connection settles.
+                holdScreenQuestion(request, profile: switchedProfile ? requestedProfile : nil)
+                errorMessage = AppLocalization.string("Hermes could not start a chat for the screenshot. It's kept and will be attached once Hermes is ready.")
                 return true
             }
             sessionID = created
@@ -219,18 +242,23 @@ extension AppState {
                 if !sent {
                     prefillComposer(question)
                     // Held until the composer unlocks.
-                    composerFocusRequest = UUID()
+                    requestComposerFocus(on: sessionID)
                 }
             }
         } else {
-            composerFocusRequest = UUID()
+            requestComposerFocus(on: sessionID)
         }
         return true
     }
 
-    /// ComposerBar focused the field.
+    func requestComposerFocus(on sessionID: String) {
+        composerFocusRequest = ComposerFocusRequest(sessionID: sessionID)
+    }
+
+    /// A composer took the request: it focused, or it belongs to another
+    /// chat and dropped it.
     func consumeComposerFocusRequest(_ id: UUID) {
-        guard composerFocusRequest == id else { return }
+        guard composerFocusRequest?.id == id else { return }
         composerFocusRequest = nil
     }
 }

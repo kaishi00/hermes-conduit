@@ -193,6 +193,36 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     }
 
+    func testFailedSendPutsTheScreenshotBackUnderItsOwnID() async throws {
+        let reopened = session("runtime-new", storedID: "stored-a")
+        var operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [reopened] },
+            openSession: { _, sessionID, _ in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in .unavailable },
+            refreshContext: { _, _ in },
+            sendPrompt: { _, _, _ in .accepted }
+        )
+        operations.uploadAttachment = { _, _, _ in
+            throw URLError(.networkConnectionLost)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        openChat("runtime-new", in: harness)
+        harness.appState.sessions = [reopened]
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "stored-a")
+
+        let sent = await harness.appState.submitComposer(text: "What is this?")
+
+        XCTAssertFalse(sent)
+        XCTAssertEqual(harness.appState.pendingScreenshots, [PendingScreenshot(sessionID: "stored-a", attachment: shot)])
+    }
+
     // MARK: - The pending screenshot store
 
     func testNewerScreenshotReplacesOlderAndDeletesItsFile() throws {
@@ -369,7 +399,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(opened)
         XCTAssertEqual(harness.appState.activeSessionId, "composer-origin")
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
-        XCTAssertNotNil(harness.appState.composerFocusRequest)
+        XCTAssertEqual(harness.appState.composerFocusRequest?.sessionID, "composer-origin")
         XCTAssertTrue(recorder.prompts.isEmpty)
     }
 
@@ -451,7 +481,10 @@ final class AppStateScreenQuestionTests: XCTestCase {
             harness.appState.composerPrefillText, "What does this setting do?",
             "A question that could not be sent waits in the composer"
         )
-        XCTAssertNotNil(harness.appState.composerFocusRequest, "The keyboard comes up once the composer unlocks")
+        XCTAssertEqual(
+            harness.appState.composerFocusRequest?.sessionID, "composer-origin",
+            "The keyboard comes up once the composer unlocks"
+        )
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
         XCTAssertTrue(fileExists(shot))
     }
@@ -489,6 +522,49 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(recorder.compressions, 0, "A question is never run as a command")
         XCTAssertEqual(harness.appState.composerPrefillText, "/compress")
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+    }
+
+    func testProfileThatCannotOpenKeepsTheScreenshotHere() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        // No saved connection: the switch to "work" cannot happen.
+        harness.appState.sessions = [session("composer-origin")]
+        harness.appState.activeSessionId = "composer-origin"
+        harness.appState.isConnected = true
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, profile: "work", enqueuedAt: now))
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeProfile, "default")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+        XCTAssertTrue(fileExists(shot), "The screenshot is kept, never dropped")
+        XCTAssertNotNil(harness.appState.errorMessage)
+    }
+
+    func testNewChatThatCannotStartKeepsTheScreenshot() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        // Connected, but no client: no chat can be started.
+        harness.appState.isConnected = true
+        let shot = try stagedScreenshot()
+        let revision = harness.appState.parkedScreenQuestionRevision
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot))
+
+        XCTAssertTrue(opened)
+        XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, shot)
+        XCTAssertTrue(fileExists(shot), "The screenshot is kept, never dropped")
+        XCTAssertNotNil(harness.appState.errorMessage)
+
+        await harness.appState.resumeParkedScreenQuestion()
+
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, shot, "Still kept for later")
+        XCTAssertEqual(
+            harness.appState.parkedScreenQuestionRevision, revision,
+            "Kept without a revision bump, so it is not retried in a loop"
+        )
     }
 
     func testEmptyOpenChatIsReusedWhenNotRecent() async throws {
@@ -634,11 +710,12 @@ final class AppStateScreenQuestionTests: XCTestCase {
     private func intent(
         for attachment: Attachment,
         question: String? = nil,
+        profile: String? = nil,
         enqueuedAt: Date = Date()
     ) -> PendingVoiceIntent {
         PendingVoiceLaunchPolicy.makeScreenQuestionPendingIntent(
             request(for: attachment, question: question, enqueuedAt: enqueuedAt),
-            profile: nil
+            profile: profile
         )
     }
 }

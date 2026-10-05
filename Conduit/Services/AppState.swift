@@ -1279,7 +1279,7 @@ final class AppState: ObservableObject {
     @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
     /// Asks the composer to take focus (a screenshot chat opened with the
     /// keyboard). ComposerBar focuses and then consumes it.
-    @Published var composerFocusRequest: UUID?
+    @Published var composerFocusRequest: ComposerFocusRequest?
 
     // MARK: - Ask Hermes About Screen (AppState+ScreenQuestion.swift)
 
@@ -15206,14 +15206,14 @@ final class AppState: ObservableObject {
         // A screenshot waiting on this chat rides on its next new turn,
         // whichever path sent it (typed, classic voice, a live call's
         // ask_thread). Busy routes and slash commands above leave it.
-        let screenshot = takePendingScreenshot(forSession: submissionContext.sessionID)
+        let screenshot = takePendingScreenshotEntry(forSession: submissionContext.sessionID)
         let sent = await sendMessage(
             text,
-            attachments: attachments + [screenshot].compactMap { $0 },
+            attachments: attachments + [screenshot?.attachment].compactMap { $0 },
             context: submissionContext
         )
-        if !sent, let screenshot, let sessionID = submissionContext.sessionID {
-            restorePendingScreenshot(screenshot, forSession: sessionID)
+        if !sent, let screenshot {
+            restorePendingScreenshot(screenshot.attachment, forSession: screenshot.sessionID)
         }
         return sent
     }
