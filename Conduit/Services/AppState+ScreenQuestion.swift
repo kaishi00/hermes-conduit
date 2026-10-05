@@ -288,11 +288,32 @@ extension AppState {
         guard isConnected, !isConnecting, !isProfileSwitching, !isSettlingConnection,
               let parked = parkedScreenQuestion else { return }
         parkedScreenQuestion = nil
-        let isLate = !isSceneActive
-            || now.timeIntervalSince(parked.request.enqueuedAt) >= PendingVoiceLaunchPolicy.externalLaunchBudget
-        if !(await openScreenQuestion(parked.request, profile: parked.profile, resumingParked: isLate)) {
+        let isLate = now.timeIntervalSince(parked.request.enqueuedAt) >= PendingVoiceLaunchPolicy.externalLaunchBudget
+        // Off screen, voice can't start: it waits with the keyboard.
+        let isOffScreen = !isSceneActive
+        if !(await openScreenQuestion(parked.request, profile: parked.profile, resumingParked: isLate || isOffScreen)) {
             // The connection dropped again before a chat opened.
             holdScreenQuestion(parked.request, profile: parked.profile)
+        }
+    }
+
+    /// Starts the waiter that attaches the parked screenshot once Conduit
+    /// settles. Only one runs: a wake-up while it's busy (a newer
+    /// screenshot parked as it places one, or the connection changing)
+    /// gets one more pass when it's done. It is never cancelled, since its
+    /// resume can switch profiles and open chats, and stopping that
+    /// halfway would lose the screenshot.
+    func scheduleParkedScreenQuestionResume(recheck: Duration) {
+        guard parkedScreenQuestionResumeTask == nil else {
+            parkedScreenQuestionNeedsAnotherPass = true
+            return
+        }
+        parkedScreenQuestionResumeTask = Task { [weak self] in
+            repeat {
+                self?.parkedScreenQuestionNeedsAnotherPass = false
+                await self?.resumeParkedScreenQuestionOnceSettled(recheck: recheck)
+            } while self?.parkedScreenQuestionNeedsAnotherPass == true
+            self?.parkedScreenQuestionResumeTask = nil
         }
     }
 

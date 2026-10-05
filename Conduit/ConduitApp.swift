@@ -147,9 +147,7 @@ struct ConduitApp: App {
             // A screenshot kept while Hermes was unreachable is attached
             // once it connects and settles.
             .task(id: parkedScreenQuestionKey) {
-                // Not cancelled with this task: the resume can switch
-                // profiles, which changes the key.
-                Task { await appState.resumeParkedScreenQuestionOnceSettled(recheck: Self.settleRecheckInterval) }
+                appState.scheduleParkedScreenQuestionResume(recheck: Self.settleRecheckInterval)
             }
     }
 
