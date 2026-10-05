@@ -352,7 +352,11 @@ final class ChatScrollHostedTests: XCTestCase {
         case afterLayout
     }
 
-    private func loadEarlierMessages(stall: Stall) throws {
+    private func loadEarlierMessages(
+        stall: Stall,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
         let mounted = try mount(Self.transcript(40..<120))
         browse(mounted, to: mounted.scrollView.contentOffset.y - 1200)
         let topRow = try XCTUnwrap(mounted.engine.topVisibleMessageID)
@@ -369,8 +373,8 @@ final class ChatScrollHostedTests: XCTestCase {
         case .beforeLayout:
             // The engine publishes its new rows right after the transcript
             // lands; SwiftUI lays them out in a later pass.
-            stallSubscription = mounted.engine.objectWillChange.sink { _ in
-                guard !stalled else { return }
+            stallSubscription = mounted.engine.objectWillChange.sink { [engine = mounted.engine] _ in
+                guard !stalled, engine.prependAnchor?.landedAt != nil else { return }
                 stalled = true
                 Thread.sleep(forTimeInterval: 1)
             }
@@ -393,12 +397,19 @@ final class ChatScrollHostedTests: XCTestCase {
         stallObservation?.invalidate()
 
         let trace = "offsets:\n\(recorder.dump())\nengine:\n\(ChatViewportTrace.shared.dump())"
-        XCTAssertEqual(stalled, stall != .none, "the main thread stalled where the test meant it to")
+        XCTAssertEqual(
+            stalled, stall != .none, "the main thread stalled where the test meant it to",
+            file: file, line: line
+        )
         let after = try XCTUnwrap(
             screenY(of: topRow, in: mounted),
-            "the reader's row \(topRow) has no frame after the prepend\n\(trace)"
+            "the reader's row \(topRow) has no frame after the prepend\n\(trace)",
+            file: file, line: line
         )
-        XCTAssertEqual(after, before, accuracy: 2, "the prepend lands above without moving the reader\n\(trace)")
+        XCTAssertEqual(
+            after, before, accuracy: 2, "the prepend lands above without moving the reader\n\(trace)",
+            file: file, line: line
+        )
     }
 
     func testScrollingDoesNotReevaluateTheChat() throws {

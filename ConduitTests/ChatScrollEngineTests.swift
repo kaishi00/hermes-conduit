@@ -448,6 +448,34 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 1060, "a later change is ordinary browsing again")
     }
 
+    /// A confirmation that comes late still gets the whole tail, past the
+    /// limit that bounds an unconfirmed hold.
+    func testPrependHoldKeepsItsTailWhenTheReadersRowIsInPlaceLate() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 500)
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 492, maxY: 700, order: 2)])
+        engine.olderPageBackfillRequested(sessionKey: keyA)
+
+        engine.transcriptChanged(
+            messages: Self.messages(-5..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        surface.layOut(contentHeight: 4600)
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
+        XCTAssertEqual(surface.contentOffsetY, 1060)
+
+        clock += ChatScrollEngine.prependSettleLimit - 0.4
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
+        XCTAssertNotNil(engine.prependAnchor?.settledAt)
+
+        // Past the limit, within the tail: another writer is still undone.
+        clock += 0.5
+        surface.contentOffsetY = 300
+        engine.surfaceScrolled()
+        XCTAssertEqual(surface.contentOffsetY, 1060)
+    }
+
     func testPrependAnchorWaitsForTheActualPrepend() {
         let (engine, surface) = makeEngine()
         surface.userScroll(to: 500)

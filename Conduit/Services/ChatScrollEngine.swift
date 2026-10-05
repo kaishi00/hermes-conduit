@@ -828,8 +828,10 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     private func prependHoldLapsed(_ anchor: PrependAnchor, landedAt: TimeInterval) -> Bool {
-        if let settledAt = anchor.settledAt, now() - settledAt > Self.prependHoldDuration {
-            return true
+        // A late confirmation still gets its full tail; moving the reader
+        // clears it, so the limit below still bounds the hold.
+        if let settledAt = anchor.settledAt {
+            return now() - settledAt > Self.prependHoldDuration
         }
         return now() - landedAt > Self.prependSettleLimit
     }
