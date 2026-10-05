@@ -270,8 +270,10 @@ struct ComposerBar: View {
         colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.09)
     }
 
-    var body: some View {
-        let _ = TranscriptPerf.note(.composerBarBody)
+    /// The composer with its padding and the handlers for requests from
+    /// AppState and the draft. Split from `body` so the type checker takes
+    /// the modifier chain in two parts.
+    private var composerWithRequestHandlers: some View {
         Group {
             if #available(iOS 26.0, *) {
                 GlassEffectContainer(spacing: 16) {
@@ -326,6 +328,11 @@ struct ComposerBar: View {
             // settled after the refusal).
             resendAfterChatTakeover()
         }
+    }
+
+    var body: some View {
+        let _ = TranscriptPerf.note(.composerBarBody)
+        composerWithRequestHandlers
         .onAppear {
             if loadedDraftKey == nil {
                 loadDraft(for: activeDraftKey)
