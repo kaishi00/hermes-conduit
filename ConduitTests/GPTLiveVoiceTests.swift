@@ -1661,10 +1661,12 @@ extension AppStateVoiceCapabilityTests {
 
         XCTAssertTrue(Drag.restoresCall(translation: CGSize(width: 4, height: -Drag.restoreDistance), predictedEndTranslation: still))
         XCTAssertTrue(Drag.restoresCall(translation: CGSize(width: 0, height: -14), predictedEndTranslation: CGSize(width: 0, height: -Drag.flickDistance)), "an upward flick")
+        XCTAssertTrue(Drag.restoresCall(translation: CGSize(width: -40, height: -30), predictedEndTranslation: CGSize(width: -200, height: -300)), "a flick heading mostly up")
 
         XCTAssertFalse(Drag.restoresCall(translation: CGSize(width: 0, height: -20), predictedEndTranslation: CGSize(width: 0, height: -30)), "a short, slow drag springs back")
         XCTAssertFalse(Drag.restoresCall(translation: CGSize(width: 0, height: 60), predictedEndTranslation: CGSize(width: 0, height: 200)), "downward")
         XCTAssertFalse(Drag.restoresCall(translation: CGSize(width: -80, height: -40), predictedEndTranslation: CGSize(width: -200, height: -120)), "mostly sideways")
+        XCTAssertFalse(Drag.restoresCall(translation: CGSize(width: 0, height: 10), predictedEndTranslation: CGSize(width: 0, height: -200)), "begun downward")
     }
 
     func testTheMinimisedBarRisesUnderTheFingerAndStopsShort() {
@@ -1675,6 +1677,8 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(Drag.lift(for: CGSize(width: 0, height: -2)), -2, accuracy: 0.1, "follows the finger at first")
         XCTAssertLessThan(Drag.lift(for: CGSize(width: 0, height: -40)), Drag.lift(for: CGSize(width: 0, height: -20)))
         XCTAssertGreaterThan(Drag.lift(for: CGSize(width: 0, height: -1_000)), -Drag.maxLift)
+        XCTAssertEqual(Drag.lift(for: CGSize(width: -100, height: -40)), 0, "a sideways drag leaves the bar")
+        XCTAssertGreaterThan(Drag.lift(for: CGSize(width: 20, height: -40)), Drag.lift(for: CGSize(width: 0, height: -40)), "sideways movement takes from the rise")
     }
 }
 
