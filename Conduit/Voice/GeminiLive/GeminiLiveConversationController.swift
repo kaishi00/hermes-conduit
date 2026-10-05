@@ -171,7 +171,10 @@ final class GeminiLiveConversationController: ObservableObject {
         case .google:
             lookups = "For weather, news, sports, prices, and other quick facts from the web, use Google Search and answer directly."
         case .hermes:
-            lookups = "For weather, news, sports, prices, and other quick facts from the web, first say two or three words out loud, like \"Let me check.\", then call web_search. Its result arrives a few seconds later: wait for it and answer from it. Never guess the answer before it arrives; if it returns an error, say in a few words that the lookup failed."
+            // The answer is a turn of its own, after the call's turn ended:
+            // told only "first say 'Let me check.'", the model opened that
+            // turn with the same words again.
+            lookups = "For weather, news, sports, prices, and other quick facts from the web, call web_search. Just before you call it, say a few words out loud so the user knows you're looking it up, in your own words and different each time (for example \"One sec.\", \"Let me look that up.\" or \"Checking now.\"). Say that only once per lookup: the result arrives a few seconds later as its own turn, and that turn opens straight with the answer, never with another \"let me check\". Never guess the answer before the result arrives; if it returns an error, say in a few words that the lookup failed."
         case .none:
             lookups = "You have no web search. A question that needs current information from the web (weather, news, prices) is work for Hermes: offer to start a job for it."
         }
@@ -1316,7 +1319,7 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Not UI copy (written for the model), so not localized.
     static func lookupFallbackText(for result: [String: String]) -> String? {
         if let results = result["results"], !results.isEmpty {
-            return "[The lookup you just made returned this. Answer the user's question from it now; don't look it up again:\n\(results)]"
+            return "[The lookup you just made returned this. Answer the user's question from it now, without another lookup; don't say again that you're checking or looking it up:\n\(results)]"
         }
         if let error = result["error"], !error.isEmpty {
             return "[The lookup you just made failed (\(error)). Tell the user in one short sentence.]"
