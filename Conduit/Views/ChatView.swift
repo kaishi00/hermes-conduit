@@ -718,7 +718,14 @@ struct MessageBubble: View {
         case .reasoning:
             ThinkingCard(message: message)
         case .tool:
-            ToolCard(message: message)
+            // A finished clarify from history reads as its answered card,
+            // not the raw tool call (#394).
+            if let tool = message.tool,
+               let clarify = ClarifyActivity.historyRecord(for: tool, rowID: message.id) {
+                ClarifyCard(message: message.presenting(clarify))
+            } else {
+                ToolCard(message: message)
+            }
         case .clarify:
             ClarifyCard(message: message)
         case .approval:
