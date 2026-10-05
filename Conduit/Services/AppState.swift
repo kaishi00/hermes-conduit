@@ -4613,7 +4613,7 @@ final class AppState: ObservableObject {
         } else {
             block += "Quick facts from the web (weather, news, prices) are not work for the chat: answer them as your instructions above say. Send other work that needs Hermes to that chat with ask_thread: it becomes the chat's next message and Hermes' reply comes back to you. Use start_job instead when the user asks for work to run in the background or in a separate chat, or starts a request with \"quick\": answer a quick fact with a lookup, and send quick work that needs Hermes' tools to start_job, which runs it fast in its own chat. When the user asks to hear Hermes' last reply, call read_last_reply and read it word for word."
         }
-        block += " Otherwise don't read Hermes' replies word for word: tell the user what they say, with the details that matter; the full replies stay in the chat."
+        block += " Otherwise don't read Hermes' replies word for word: tell the user what they say, with the details that matter, and skip what doesn't work by ear, like code, long tables or links; the full replies stay in the chat."
         // #363: typed turns in the chat reach the call as quiet notes.
         block += " The user may also type in the chat during the call. Notes starting \"[Background only.\" tell you what they typed and what Hermes replied: stay quiet about them until the user brings them up, then use them to follow on."
         if let last = latestReplyInOpenChat(thread) {

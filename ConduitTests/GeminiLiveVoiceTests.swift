@@ -889,11 +889,15 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(LiveVoiceStyle.cleanedGreeting(String(repeating: "a", count: 500)).count, LiveVoiceStyle.maxGreetingCharacters)
     }
 
-    func testLiveModelsAreAskedForSubstantiveAnswersNotOneLiners() {
-        let gemini = GeminiLiveConversationController.instructions(search: .google, personality: "Judge Hermes")
+    func testLiveModelsAreAskedForSubstantiveAnswersNotOneLiners() throws {
         let gpt = GPTLiveConversationController.briefing(personality: "Judge Hermes")
         // Grok Live is built from Gemini Live's instructions (AppState.grokLiveController).
-        for (engine, text) in [("Gemini and Grok", gemini), ("GPT-Live", gpt)] {
+        let gemini: [GeminiLiveSearchSource] = [.google, .hermes, .none]
+        var engines: [(String, String)] = gemini.map { search in
+            ("Gemini and Grok (\(search))", GeminiLiveConversationController.instructions(search: search, personality: "Judge Hermes"))
+        }
+        engines.append(("GPT-Live", gpt))
+        for (engine, text) in engines {
             XCTAssertTrue(text.contains(LiveVoiceStyle.answerDepth), "\(engine) gets the answer-length rule")
             XCTAssertFalse(text.localizedCaseInsensitiveContains("keep replies short"), "\(engine) is no longer told to keep it short")
             for phrase in ["a few spoken sentences", "sentence or two", "briefly", "keep your own replies short"] {
@@ -904,8 +908,8 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(LiveVoiceStyle(tone: .professional).instructions.contains("concise"), "professional cuts filler, not substance")
         XCTAssertFalse(GeminiLiveToolBridge.webSearchDeclaration.description.contains("sentence or two"))
         XCTAssertFalse(GeminiLiveToolBridge.threadDeclarations.contains { $0.description.contains("summarize it") })
-        let lookup = GeminiLiveConversationController.lookupFallbackText(for: ["results": "1. Sunny, 21°C"])
-        XCTAssertEqual(lookup?.contains("briefly"), false, "a lookup's answer isn't cut short either")
+        let lookup = try XCTUnwrap(GeminiLiveConversationController.lookupFallbackText(for: ["results": "1. Sunny, 21°C"]))
+        XCTAssertFalse(lookup.contains("briefly"), "a lookup's answer isn't cut short either")
 
         let job = VoiceBackgroundJobSupervisor.completionPrompt(title: "Weather", result: "Sunny, 21°C.")
         let reply = VoiceBackgroundJobSupervisor.threadReplyPrompt(result: "Done.")
