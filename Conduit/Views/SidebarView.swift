@@ -1417,9 +1417,17 @@ struct CronList: View {
     @State private var searchText = ""
     @State private var selectedJob: CronJob?
     @AppStorage("conduit.cronJobsExpanded") private var cronJobsExpanded = true
-    @AppStorage("conduit.cronJobsFilter") private var jobFilter: CronJobFilter = .all
+    @AppStorage("conduit.cronJobsFilter") private var jobFilterRaw = CronJobFilter.all.rawValue
+
+    private var jobFilter: Binding<CronJobFilter> {
+        Binding(
+            get: { CronJobFilter(rawValue: jobFilterRaw) ?? .all },
+            set: { jobFilterRaw = $0.rawValue }
+        )
+    }
 
     var body: some View {
+        let jobs = CronJobFilter.visibleJobs(appState.cronJobs, filter: jobFilter.wrappedValue, query: searchText)
         List {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -1439,7 +1447,7 @@ struct CronList: View {
             .listRowSeparator(.hidden)
 
             if !appState.cronJobs.isEmpty {
-                Picker("Show jobs", selection: $jobFilter) {
+                Picker("Show jobs", selection: jobFilter) {
                     ForEach(CronJobFilter.allCases) { filter in
                         Text(filter.title).tag(filter)
                     }
@@ -1450,32 +1458,34 @@ struct CronList: View {
                 .listRowSeparator(.hidden)
             }
 
-            if filteredJobs.isEmpty && !appState.cronJobsLoading {
+            if jobs.isEmpty && !appState.cronJobsLoading {
                 let empty = CronJobFilter.emptyState(
-                    filter: jobFilter,
+                    filter: jobFilter.wrappedValue,
                     hasJobs: !appState.cronJobs.isEmpty,
                     isSearching: !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 )
                 ContentUnavailableView(empty.title, systemImage: "clock", description: Text(empty.description))
             }
 
-            DisclosureGroup(isExpanded: $cronJobsExpanded) {
-                ForEach(filteredJobs) { job in
-                    Button { selectedJob = job } label: { CronJobRow(job: job) }
-                        .buttonStyle(.plain)
-                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            if !jobs.isEmpty {
+                DisclosureGroup(isExpanded: $cronJobsExpanded) {
+                    ForEach(jobs) { job in
+                        Button { selectedJob = job } label: { CronJobRow(job: job) }
+                            .buttonStyle(.plain)
+                            .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    }
+                } label: {
+                    HStack {
+                        Text("Jobs").font(.headline)
+                        Spacer()
+                        Text("\(jobs.count)")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
                 }
-            } label: {
-                HStack {
-                    Text("Jobs").font(.headline)
-                    Spacer()
-                    Text("\(filteredJobs.count)")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
 
             if !appState.activeProfileCronSessions.isEmpty {
                 Section("Recent runs") {
@@ -1502,12 +1512,8 @@ struct CronList: View {
         .sheet(item: $selectedJob) { CronJobDetailSheet(job: $0) }
     }
 
-    private var filteredJobs: [CronJob] {
-        CronJobFilter.visibleJobs(appState.cronJobs, filter: jobFilter, query: searchText)
-    }
-
     private var activeJobCount: Int {
-        appState.cronJobs.filter(\.enabled).count
+        appState.cronJobs.filter(\.isActive).count
     }
 
     private var inactiveJobCount: Int {
@@ -1516,9 +1522,10 @@ struct CronList: View {
 }
 
 /// The Cron tab's Active / Inactive / All filter (#392). A job is active
-/// while Hermes has it enabled; paused jobs and finished one-shot jobs are
-/// inactive. Every filter lists active jobs first, then by name, so the
-/// running ones are never buried under a long tail of paused ones.
+/// while it will run on its own (`CronJob.isActive`); paused jobs and
+/// finished one-shot jobs are inactive. Every filter lists active jobs
+/// first, then by name, so the running ones are never buried under a long
+/// tail of paused ones.
 enum CronJobFilter: String, CaseIterable, Identifiable {
     case active
     case inactive
@@ -1536,8 +1543,8 @@ enum CronJobFilter: String, CaseIterable, Identifiable {
 
     func includes(_ job: CronJob) -> Bool {
         switch self {
-        case .active: job.enabled
-        case .inactive: !job.enabled
+        case .active: job.isActive
+        case .inactive: !job.isActive
         case .all: true
         }
     }
@@ -1557,7 +1564,7 @@ enum CronJobFilter: String, CaseIterable, Identifiable {
     }
 
     static func listOrder(_ lhs: CronJob, _ rhs: CronJob) -> Bool {
-        if lhs.enabled != rhs.enabled { return lhs.enabled }
+        if lhs.isActive != rhs.isActive { return lhs.isActive }
         switch lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) {
         case .orderedAscending: return true
         case .orderedDescending: return false
@@ -1568,18 +1575,19 @@ enum CronJobFilter: String, CaseIterable, Identifiable {
     /// What the list says when nothing is left to show: no jobs at all, no
     /// search match, or nothing under the chosen filter.
     static func emptyState(filter: CronJobFilter, hasJobs: Bool, isSearching: Bool) -> (title: String, description: String) {
-        if !hasJobs {
-            return (AppLocalization.string("No Scheduled Jobs"), AppLocalization.string("Scheduled jobs from Hermes appear here."))
-        }
-        if isSearching {
-            return (AppLocalization.string("No Matching Jobs"), AppLocalization.string("Scheduled jobs from Hermes appear here."))
+        if hasJobs && isSearching {
+            let hint = filter == .all
+                ? AppLocalization.string("Try a different search.")
+                : AppLocalization.string("Try a different search or filter.")
+            return (AppLocalization.string("No Matching Jobs"), hint)
         }
         switch filter {
-        case .active:
+        case .active where hasJobs:
             return (AppLocalization.string("No Active Jobs"), AppLocalization.string("Every scheduled job is paused or finished."))
-        case .inactive:
+        case .inactive where hasJobs:
             return (AppLocalization.string("No Inactive Jobs"), AppLocalization.string("Every scheduled job is active."))
-        case .all:
+        default:
+            // No jobs at all. All with jobs and no search always lists them.
             return (AppLocalization.string("No Scheduled Jobs"), AppLocalization.string("Scheduled jobs from Hermes appear here."))
         }
     }
@@ -1591,15 +1599,15 @@ private struct CronJobRow: View {
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: "clock")
-                .foregroundStyle(job.enabled ? .green : .secondary)
-                .frame(width: 30, height: 30).background((job.enabled ? Color.green : .secondary).opacity(0.13), in: Circle())
+                .foregroundStyle(job.isActive ? .green : .secondary)
+                .frame(width: 30, height: 30).background((job.isActive ? Color.green : .secondary).opacity(0.13), in: Circle())
             VStack(alignment: .leading, spacing: 3) {
                 Text(job.displayName).font(.subheadline.weight(.medium)).lineLimit(1)
                 Text(job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? AppLocalization.string("No schedule"))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            Text(job.enabled ? AppLocalization.string("Active") : AppLocalization.string("Paused")).font(.caption2.weight(.semibold)).foregroundStyle(job.enabled ? .green : .secondary)
+            Text(job.statusLabel).font(.caption2.weight(.semibold)).foregroundStyle(job.isActive ? .green : .secondary)
             Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
@@ -1611,7 +1619,17 @@ private struct CronJobDetailSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    let job: CronJob
+    /// The job as it was tapped; `job` follows the live list so Pause and
+    /// Resume flip the sheet as soon as Hermes answers.
+    let selectedJob: CronJob
+
+    init(job: CronJob) {
+        selectedJob = job
+    }
+
+    private var job: CronJob {
+        appState.cronJobs.first { $0.id == selectedJob.id } ?? selectedJob
+    }
 
     var body: some View {
         NavigationStack {
@@ -1620,18 +1638,23 @@ private struct CronJobDetailSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         ConduitSettingsSection(title: job.displayName, symbol: "clock.fill", tint: .conduitAccent) {
+                            SettingsMetricRow(label: AppLocalization.string("Status"), value: job.statusLabel)
                             SettingsMetricRow(label: AppLocalization.string("Schedule"), value: job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? "—")
-                            SettingsMetricRow(label: AppLocalization.string("Next run"), value: job.nextRunAt ?? "—")
+                            SettingsMetricRow(label: AppLocalization.string("Next run"), value: job.isFinished ? "—" : job.nextRunAt ?? "—")
                             SettingsMetricRow(label: AppLocalization.string("Last run"), value: job.lastRunAt ?? "—")
                             SettingsMetricRow(label: AppLocalization.string("Delivery"), value: job.deliver ?? "Local")
                         }
                         HStack(spacing: 10) {
-                            Button { Task { _ = await appState.performCronAction(job.enabled ? "pause" : "resume", for: job) } } label: {
-                                Label(job.enabled ? "Pause" : "Resume", systemImage: job.enabled ? "pause.fill" : "play.fill").frame(maxWidth: .infinity)
+                            // A finished one-shot job has nothing left to pause
+                            // or resume.
+                            if !job.isFinished {
+                                Button { Task { _ = await appState.performCronAction(job.enabled ? "pause" : "resume", for: job) } } label: {
+                                    Label(job.enabled ? "Pause" : "Resume", systemImage: job.enabled ? "pause.fill" : "play.fill").frame(maxWidth: .infinity)
+                                }
+                                .disabled(appState.cronJobActionID != nil)
+                                .frame(minHeight: 48)
+                                .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.18))
                             }
-                            .disabled(appState.cronJobActionID != nil)
-                            .frame(minHeight: 48)
-                            .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.18))
                             Button { Task { _ = await appState.performCronAction("trigger", for: job); await appState.loadCronRuns(for: job) } } label: {
                                 Label(appState.cronJobActionID == job.id ? "Working…" : AppLocalization.string("Run now"), systemImage: "play.fill")
                                     .frame(maxWidth: .infinity)
