@@ -3,8 +3,8 @@
 //  Conduit
 //
 //  A live call whose sheet was swiped away keeps running. This bar sits
-//  above the composer while it does: tap it to bring the sheet back, or
-//  mute or end the call from here.
+//  above the composer while it does: tap it or swipe it up to bring the
+//  sheet back, or mute or end the call from here.
 //
 
 import SwiftUI
@@ -139,6 +139,9 @@ private struct LiveVoiceBarRow: View {
     let onToggleMute: () -> Void
     let onEnd: () -> Void
     @ScaledMetric(relativeTo: .body) private var iconWidth: CGFloat = 24
+    /// How far the bar has risen under the finger; it springs back on release.
+    @GestureState(resetTransaction: Transaction(animation: .spring(response: 0.3, dampingFraction: 0.8)))
+    private var lift: CGFloat = 0
 
     var body: some View {
         HStack(spacing: 10) {
@@ -190,8 +193,60 @@ private struct LiveVoiceBarRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .conduitGlassControl(cornerRadius: 20, tint: .conduitAura.opacity(0.12))
+        // The whole bar takes the drag, the gaps between buttons included.
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .offset(y: lift)
+        .highPriorityGesture(restoreDrag)
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
         .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    /// Swiping up brings the call back, the way swiping the sheet down put
+    /// it away. It outranks the buttons, so a drag that starts on Mute or
+    /// End never presses them; a tap still does.
+    private var restoreDrag: some Gesture {
+        DragGesture(minimumDistance: MinimisedLiveVoiceBarDrag.minimumDistance, coordinateSpace: .global)
+            .updating($lift) { value, state, _ in
+                state = MinimisedLiveVoiceBarDrag.lift(for: value.translation)
+            }
+            .onEnded { value in
+                if MinimisedLiveVoiceBarDrag.restoresCall(
+                    translation: value.translation,
+                    predictedEndTranslation: value.predictedEndTranslation
+                ) {
+                    onRestore()
+                }
+            }
+    }
+}
+
+/// How the minimised call's bar answers a drag.
+enum MinimisedLiveVoiceBarDrag {
+    /// Movement below this is still a tap on whatever button is under it.
+    static let minimumDistance: CGFloat = 12
+    /// The furthest the bar rises under the finger.
+    static let maxLift: CGFloat = 56
+    /// Letting go after rising this far restores the call.
+    static let restoreDistance: CGFloat = 32
+    /// A quick flick restores it sooner, when it would carry this far.
+    static let flickDistance: CGFloat = 96
+
+    /// The bar's offset during a drag: upward only, following the finger
+    /// at first and slowing as it nears `maxLift`, so it never leaves the
+    /// composer far behind.
+    static func lift(for translation: CGSize) -> CGFloat {
+        guard translation.height < 0 else { return 0 }
+        let rise = -translation.height
+        return -maxLift * rise / (rise + maxLift)
+    }
+
+    /// Whether letting go restores the call: a mostly upward drag past
+    /// `restoreDistance`, or an upward flick. A sideways or downward drag
+    /// leaves the bar where it is.
+    static func restoresCall(translation: CGSize, predictedEndTranslation: CGSize) -> Bool {
+        let rise = -translation.height
+        guard rise > 0, rise > abs(translation.width) else { return false }
+        return rise >= restoreDistance || -predictedEndTranslation.height >= flickDistance
     }
 }

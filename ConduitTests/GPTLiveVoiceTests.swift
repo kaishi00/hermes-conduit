@@ -1655,6 +1655,28 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(controller.isActive)
         XCTAssertNil(appState.minimisedLiveVoice)
     }
+
+    func testSwipingTheMinimisedBarUpRestoresTheCall() {
+        typealias Drag = MinimisedLiveVoiceBarDrag
+        let still = CGSize.zero
+
+        XCTAssertTrue(Drag.restoresCall(translation: CGSize(width: 4, height: -Drag.restoreDistance), predictedEndTranslation: still))
+        XCTAssertTrue(Drag.restoresCall(translation: CGSize(width: 0, height: -14), predictedEndTranslation: CGSize(width: 0, height: -Drag.flickDistance)), "an upward flick")
+
+        XCTAssertFalse(Drag.restoresCall(translation: CGSize(width: 0, height: -20), predictedEndTranslation: CGSize(width: 0, height: -30)), "a short, slow drag springs back")
+        XCTAssertFalse(Drag.restoresCall(translation: CGSize(width: 0, height: 60), predictedEndTranslation: CGSize(width: 0, height: 200)), "downward")
+        XCTAssertFalse(Drag.restoresCall(translation: CGSize(width: -80, height: -40), predictedEndTranslation: CGSize(width: -200, height: -120)), "mostly sideways")
+    }
+
+    func testTheMinimisedBarRisesUnderTheFingerAndStopsShort() {
+        typealias Drag = MinimisedLiveVoiceBarDrag
+
+        XCTAssertEqual(Drag.lift(for: .zero), 0)
+        XCTAssertEqual(Drag.lift(for: CGSize(width: 0, height: 40)), 0, "never pulled down")
+        XCTAssertEqual(Drag.lift(for: CGSize(width: 0, height: -2)), -2, accuracy: 0.1, "follows the finger at first")
+        XCTAssertLessThan(Drag.lift(for: CGSize(width: 0, height: -40)), Drag.lift(for: CGSize(width: 0, height: -20)))
+        XCTAssertGreaterThan(Drag.lift(for: CGSize(width: 0, height: -1_000)), -Drag.maxLift)
+    }
 }
 
 // MARK: - CarPlay
