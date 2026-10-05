@@ -41,6 +41,11 @@ extension ClarifyActivity {
         var questions: [ClarifyQuestion] = []
         for (index, row) in rows.enumerated() {
             let call = index < asked.count ? asked[index] : [:]
+            // A row status this build doesn't know keeps the tool card
+            // rather than guessing at what happened.
+            let status = row["status"] as? String
+            let knownStatuses: [String?] = [nil, "answered", "skipped", "unanswered"]
+            guard knownStatuses.contains(status) else { return nil }
             guard let text = nonEmptyText(row["question"]) ?? nonEmptyText(call["question"]) else { continue }
             let offered = textList(row["choices_offered"]) ?? textList(call["choices"]) ?? []
             var question = ClarifyQuestion(
@@ -51,22 +56,28 @@ extension ClarifyActivity {
                 status: .expired,
                 isSyntheticID: true
             )
-            if (row["status"] as? String) == "skipped" {
+            // A multi-select answer is a JSON array, or the same array in
+            // its wire string form.
+            let values = textList(row["user_response"]) ?? jsonTextList(row["user_response"])
+            if status == "skipped" {
                 question.status = .answered
                 question.answer = AppLocalization.string("Skipped")
-            } else if let values = textList(row["user_response"]), !values.isEmpty {
+            } else if let values, !values.isEmpty {
                 question.status = .answered
                 question.multiSelect = true
                 question.answer = ClarifyQuestion.multiSelectAnswer(values)
             } else if let answer = nonEmptyText(row["user_response"]) {
                 question.status = .answered
                 question.answer = answer
+            } else if status == "answered" {
+                return nil
             }
             questions.append(question)
         }
         guard !questions.isEmpty else { return nil }
         var record = ClarifyActivity(requestId: "history-\(tool.id ?? rowID)", questions: questions)
         if questions.contains(where: { $0.status == .expired }) {
+            record.isExpired = true
             // The same notice the live card shows once Hermes stops waiting.
             let timedOut = (result["outcome"] as? String) == "timed_out"
             switch (timedOut, questions.count > 1) {
@@ -105,6 +116,14 @@ extension ClarifyActivity {
 
     private static func textList(_ value: Any?) -> [String]? {
         guard let items = value as? [Any] else { return nil }
+        return items.compactMap { nonEmptyText($0) }
+    }
+
+    /// A list sent as JSON text, such as `["lint","unit"]`.
+    private static func jsonTextList(_ value: Any?) -> [String]? {
+        guard let text = nonEmptyText(value), text.hasPrefix("["),
+              let data = text.data(using: .utf8),
+              let items = (try? JSONSerialization.jsonObject(with: data)) as? [Any] else { return nil }
         return items.compactMap { nonEmptyText($0) }
     }
 }

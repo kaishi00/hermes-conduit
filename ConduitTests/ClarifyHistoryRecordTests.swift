@@ -70,6 +70,7 @@ extension ClarifyBatchStateTests {
         let record = try XCTUnwrap(ClarifyActivity.historyRecord(for: tool, rowID: "row-1"))
 
         XCTAssertEqual(record.status, .expired)
+        XCTAssertTrue(record.isExpired)
         XCTAssertNil(record.questions[0].answer)
         XCTAssertEqual(
             record.error,
@@ -103,6 +104,37 @@ extension ClarifyBatchStateTests {
 
         XCTAssertEqual(record.status, .answered)
         XCTAssertEqual(record.questions[0].resolvedAnswer, "b")
+    }
+
+    func testHistoryClarifyRowReadsAMultiSelectAnswerInItsWireStringForm() throws {
+        let tool = clarifyHistoryRow(
+            input: #"{"questions": [{"question": "Which tests should run?", "choices": ["unit", "ui", "lint"], "multi_select": true}]}"#,
+            output: #"{"responses": [{"question": "Which tests should run?", "choices_offered": ["unit", "ui", "lint"], "status": "answered", "user_response": "[\"lint\", \"unit\"]"}], "outcome": "submitted"}"#
+        )
+
+        let record = try XCTUnwrap(ClarifyActivity.historyRecord(for: tool, rowID: "row-1"))
+
+        XCTAssertEqual(record.questions[0].resolvedAnswer, "unit, lint")
+    }
+
+    func testHistoryClarifyRowWithAnUnfamiliarResultKeepsTheToolCard() {
+        let question = #"{"questions": [{"question": "Ship it?", "choices": ["Yes", "No"]}]}"#
+        // A row status this build doesn't know.
+        XCTAssertNil(ClarifyActivity.historyRecord(
+            for: clarifyHistoryRow(
+                input: question,
+                output: #"{"responses": [{"question": "Ship it?", "choices_offered": ["Yes", "No"], "status": "deferred", "user_response": null}], "outcome": "submitted"}"#
+            ),
+            rowID: "row-1"
+        ))
+        // Answered, but with no answer to show.
+        XCTAssertNil(ClarifyActivity.historyRecord(
+            for: clarifyHistoryRow(
+                input: question,
+                output: #"{"responses": [{"question": "Ship it?", "choices_offered": ["Yes", "No"], "status": "answered", "user_response": null}], "outcome": "submitted"}"#
+            ),
+            rowID: "row-1"
+        ))
     }
 
     func testClarifyRowsWithoutAReadableResultKeepTheToolCard() {
