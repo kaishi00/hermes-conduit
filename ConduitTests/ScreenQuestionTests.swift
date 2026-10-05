@@ -215,6 +215,46 @@ final class ScreenQuestionTests: XCTestCase {
         ))
     }
 
+    // MARK: - Voice routing
+
+    func testEveryLiveEngineStartsClearedForScreenQuestions() {
+        // v1 starts in the profile's own voice mode; the device test takes
+        // an engine off this list if it doesn't hand the question to Hermes.
+        XCTAssertEqual(ScreenQuestionVoiceRouting.liveEngines, [.gptLive, .geminiLive, .grokLive])
+        XCTAssertEqual(ScreenQuestionVoiceRouting.liveEngine(for: .geminiLive), .geminiLive)
+        XCTAssertNil(ScreenQuestionVoiceRouting.liveEngine(for: nil), "A classic profile stays classic")
+    }
+
+    func testEngineOffTheListUsesClassicVoice() {
+        XCTAssertNil(ScreenQuestionVoiceRouting.liveEngine(for: .grokLive, allowed: [.gptLive]))
+        XCTAssertEqual(ScreenQuestionVoiceRouting.liveEngine(for: .gptLive, allowed: [.gptLive]), .gptLive)
+    }
+
+    func testOpensWithDefaultsToVoice() throws {
+        let suite = "ScreenQuestionTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(ScreenQuestionPreferences.startWith(defaults: defaults), .voice)
+        defaults.set("keyboard", forKey: ScreenQuestionPreferences.startWithKey)
+        XCTAssertEqual(ScreenQuestionPreferences.startWith(defaults: defaults), .keyboard)
+        defaults.set("telepathy", forKey: ScreenQuestionPreferences.startWithKey)
+        XCTAssertEqual(ScreenQuestionPreferences.startWith(defaults: defaults), .voice)
+    }
+
+    func testScreenshotTakenWhileConduitWasOnScreenCountsAsInUse() {
+        let since = Date(timeIntervalSince1970: 10_000)
+        XCTAssertTrue(ScreenQuestionPolicy.wasOnScreen(activeSince: since, enqueuedAt: since.addingTimeInterval(600)))
+        XCTAssertTrue(ScreenQuestionPolicy.wasOnScreen(
+            activeSince: since,
+            enqueuedAt: since.addingTimeInterval(ScreenQuestionPolicy.onScreenGrace)
+        ))
+        XCTAssertFalse(
+            ScreenQuestionPolicy.wasOnScreen(activeSince: since, enqueuedAt: since.addingTimeInterval(1)),
+            "The launch brought Conduit up"
+        )
+        XCTAssertFalse(ScreenQuestionPolicy.wasOnScreen(activeSince: nil, enqueuedAt: since))
+    }
+
     // MARK: - Helpers
 
     private func staged(

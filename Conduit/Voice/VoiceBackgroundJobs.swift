@@ -1062,6 +1062,20 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         if notedChatTurns.count > 10 { notedChatTurns.removeFirst() }
     }
 
+    /// The user shared a screenshot to the attached chat mid-call (Ask
+    /// Hermes About Screen). The live model can't see it, so it hears,
+    /// quietly, that the chat's next turn carries it.
+    func noteScreenshotShared() {
+        guard liveThread != nil else { return }
+        pendingChatContext.append(Self.screenshotSharedPrompt)
+        if pendingChatContext.count > Self.maximumPendingChatContext {
+            pendingChatContext.removeFirst(pendingChatContext.count - Self.maximumPendingChatContext)
+        }
+        onNoticePending?()
+    }
+
+    static let screenshotSharedPrompt = "[Background only. The user just shared a screenshot to the chat this call is attached to. You can't see it, but Hermes can. When the user asks about their screen, send their question to the chat as they asked it, and the screenshot goes with it. Don't guess what the screen shows, and don't respond to this note now.]"
+
     /// Removes and returns the oldest exchange waiting for the call.
     func takePendingChatContext() -> String? {
         pendingChatContext.isEmpty ? nil : pendingChatContext.removeFirst()

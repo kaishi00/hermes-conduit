@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Asking about this screenshot" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在询问这张截图"
+          }
+        }
+      }
+    },
+    "Opens with" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开方式"
+          }
+        }
+      }
+    },
+    "When the Ask Hermes About Screen shortcut runs without a question, Conduit opens the chat with the screenshot attached and starts your voice mode, or the keyboard." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当“向 Hermes 询问屏幕内容”快捷指令未附带问题运行时，Conduit 会打开附有截图的对话，并启动你的语音模式或键盘。"
+          }
+        }
+      }
+    },
     "Conduit couldn't reach Hermes. Your screenshot is kept and will be attached to a chat when Hermes is back." : {
       "localizations" : {
         "zh-Hans" : {

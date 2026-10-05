@@ -343,6 +343,20 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(fileExists(newer))
     }
 
+    func testParkingAnOlderScreenshotKeepsTheNewer() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let older = try stagedScreenshot()
+        let newer = try stagedScreenshot()
+        let now = Date()
+
+        harness.appState.parkScreenQuestion(request(for: newer, enqueuedAt: now), profile: nil)
+        harness.appState.parkScreenQuestion(request(for: older, enqueuedAt: now.addingTimeInterval(-10)), profile: nil)
+
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, newer, "The newest wins")
+        XCTAssertFalse(fileExists(older))
+        XCTAssertTrue(fileExists(newer))
+    }
+
     func testParkingKeepsTheProfileTheShortcutNamed() throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         let shot = try stagedScreenshot()
@@ -390,6 +404,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let harness = makeHarness(recorder: recorder)
         openChat("composer-origin", in: harness, withMessages: true)
         harness.appState.isConnected = true
+        harness.defaults.set(ScreenQuestionStart.keyboard.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
         let now = Date()
         harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
         let shot = try stagedScreenshot()
@@ -424,7 +439,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
     }
 
-    func testLeavingCountsOnlyAfterTheSceneWasOnScreen() {
+    func testLeavingCountsOnlyAfterTheSceneWasOnScreen() throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
 
         harness.appState.handleScenePhase(.inactive)
@@ -434,6 +449,9 @@ final class AppStateScreenQuestionTests: XCTestCase {
         )
 
         harness.appState.handleScenePhase(.active)
+        let onScreenSince = try XCTUnwrap(harness.appState.sceneActiveSince)
+        harness.appState.handleScenePhase(.active)
+        XCTAssertEqual(harness.appState.sceneActiveSince, onScreenSince, "Still on screen: the stretch has not restarted")
         harness.appState.handleScenePhase(.background)
         XCTAssertNotNil(harness.appState.lastLeftForegroundAt)
     }
@@ -653,8 +671,29 @@ final class AppStateScreenQuestionTests: XCTestCase {
 
         XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
         XCTAssertNil(harness.appState.parkedScreenQuestion, "Never attached to the next account's chat")
+        XCTAssertNil(harness.appState.newestScreenQuestionAt)
         XCTAssertFalse(fileExists(pending))
         XCTAssertFalse(fileExists(parked))
+    }
+
+    func testScreenshotTakenInConduitJoinsTheChatOnScreen() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeHarness(recorder: recorder)
+        openChat("composer-origin", in: harness, withMessages: true)
+        harness.appState.isConnected = true
+        harness.defaults.set(ScreenQuestionStart.keyboard.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
+        let now = Date()
+        // Last left an hour ago and on screen since: the press came from
+        // inside Conduit, so nothing stamped a departure.
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-3_600)
+        harness.appState.sceneActiveSince = now.addingTimeInterval(-600)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, enqueuedAt: now))
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeSessionId, "composer-origin")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
     }
 
     func testEmptyOpenChatIsReusedWhenNotRecent() async throws {
@@ -662,6 +701,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let harness = makeHarness(recorder: recorder)
         openChat("fresh-chat", in: harness)
         harness.appState.isConnected = true
+        harness.defaults.set(ScreenQuestionStart.keyboard.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
         harness.appState.lastLeftForegroundAt = nil
         let shot = try stagedScreenshot()
 
@@ -697,6 +737,94 @@ final class AppStateScreenQuestionTests: XCTestCase {
             harness.appState.composerFocusRequest?.sessionID, "composer-origin",
             "A locked composer still gets the keyboard once it unlocks"
         )
+    }
+
+    // MARK: - Voice
+
+    func testVoicePreferenceWithoutClassicVoiceFallsBackToKeyboard() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeHarness(recorder: recorder)
+        openChat("composer-origin", in: harness, withMessages: true)
+        harness.appState.isConnected = true
+        harness.defaults.set(ScreenQuestionStart.voice.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, enqueuedAt: now))
+
+        XCTAssertTrue(opened)
+        XCTAssertFalse(harness.appState.showVoiceSheet, "No classic voice is set up here")
+        XCTAssertNotNil(harness.appState.composerFocusRequest, "The chat opens with the keyboard instead")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+    }
+
+    func testRunningTurnGetsKeyboardEvenWhenVoiceIsPreferred() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeHarness(recorder: recorder)
+        openChat("composer-origin", in: harness, withMessages: true)
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: "composer-origin", busy: true))
+        harness.appState.isConnected = true
+        harness.defaults.set(ScreenQuestionStart.voice.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-30)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, enqueuedAt: now))
+
+        XCTAssertTrue(opened)
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        XCTAssertNotNil(harness.appState.composerFocusRequest)
+        XCTAssertTrue(recorder.steers.isEmpty)
+    }
+
+    func testScreenshotChatAttachesLiveCallAndTellsTheModel() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        XCTAssertNil(harness.appState.liveVoiceThreadForOpenChat(), "An empty chat's call works on its own")
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "composer-origin")
+
+        let thread = try XCTUnwrap(
+            harness.appState.liveVoiceThreadForOpenChat(),
+            "A call started for a screenshot chat works in that chat"
+        )
+        harness.appState.voiceBackgroundJobSupervisor.attachLiveThread(thread)
+
+        XCTAssertTrue(harness.appState.liveVoiceThreadInstructions(delegation: false).contains("with ask_thread as they asked it"))
+        XCTAssertTrue(harness.appState.liveVoiceThreadInstructions(delegation: true).contains("delegate their question about their screen"))
+        XCTAssertEqual(harness.appState.pendingScreenshot(forThread: thread), shot)
+
+        _ = harness.appState.takePendingScreenshot(forSession: "composer-origin")
+        XCTAssertFalse(harness.appState.liveVoiceThreadInstructions(delegation: false).contains("shared a screenshot"))
+    }
+
+    func testRunningCallHearsQuietlyAboutTheScreenshot() {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        supervisor.noteScreenshotShared()
+        XCTAssertNil(supervisor.takePendingChatContext(), "No call is attached to a chat")
+
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat"))
+        supervisor.noteScreenshotShared()
+
+        let note = supervisor.takePendingChatContext()
+        XCTAssertEqual(note, VoiceBackgroundJobSupervisor.screenshotSharedPrompt)
+        XCTAssertTrue(note?.hasPrefix("[Background only.") == true)
+    }
+
+    func testVoiceSheetShowsAndDiscardsTheChatsScreenshot() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        XCTAssertNil(harness.appState.voiceScreenshot)
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "composer-origin")
+
+        XCTAssertEqual(harness.appState.voiceScreenshot, shot)
+        harness.appState.discardVoiceScreenshot()
+
+        XCTAssertNil(harness.appState.voiceScreenshot)
+        XCTAssertFalse(fileExists(shot))
     }
 
     // MARK: - Harness

@@ -135,6 +135,7 @@ struct MainView: View {
                 onClose: appState.closeGeminiLiveConversation,
                 onRetry: { Task { await appState.geminiLiveController.start() } }
             )
+            .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -146,6 +147,7 @@ struct MainView: View {
                 onClose: appState.closeGrokLiveConversation,
                 onRetry: { Task { await appState.grokLiveController.start() } }
             )
+            .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -156,6 +158,7 @@ struct MainView: View {
                 onClose: appState.closeGPTLiveConversation,
                 onRetry: { Task { await appState.gptLiveController.start() } }
             )
+            .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -167,6 +170,7 @@ struct MainView: View {
                 onClose: appState.closeVoiceConversation,
                 shouldAutoListen: { appState.consumeVoiceSheetAutoListen() }
             )
+                .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -219,6 +223,14 @@ struct MainView: View {
         .onChange(of: appState.preferredReturnSurfaceRequest) { _, _ in
             presentPreferredReturnSurfaceIfNeeded()
         }
+    }
+
+    /// Ask Hermes About Screen: the screenshot the voice will ask about.
+    private var voiceScreenshotBanner: some View {
+        ScreenQuestionVoiceBanner(
+            screenshot: appState.voiceScreenshot,
+            onDiscard: appState.discardVoiceScreenshot
+        )
     }
 
     /// Routes the sidebar between its two presentations: the existing chat

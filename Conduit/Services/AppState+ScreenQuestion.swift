@@ -46,6 +46,48 @@ enum ScreenQuestionPolicy {
         guard hasOpenChat, let lastLeftForegroundAt else { return false }
         return enqueuedAt.timeIntervalSince(lastLeftForegroundAt) <= recentChatWindow
     }
+
+    /// How long Conduit must already be on screen before the screenshot
+    /// for it to count as taken in Conduit, not by the launch that
+    /// brought Conduit up.
+    static let onScreenGrace: TimeInterval = 5
+
+    /// A press inside Conduit may never take the scene off screen, so no
+    /// departure is stamped: being on screen when the screenshot was
+    /// taken counts as using Conduit now.
+    static func wasOnScreen(activeSince: Date?, enqueuedAt: Date) -> Bool {
+        guard let activeSince else { return false }
+        return enqueuedAt.timeIntervalSince(activeSince) >= onScreenGrace
+    }
+}
+
+/// "Opens with" in Voice settings: how a screenshot chat takes the
+/// question when the action doesn't say. Per device.
+enum ScreenQuestionPreferences {
+    static let startWithKey = "conduit.screenQuestion.startWith"
+
+    static func startWith(defaults: UserDefaults = .standard) -> ScreenQuestionStart {
+        defaults.string(forKey: startWithKey).flatMap(ScreenQuestionStart.init(rawValue:)) ?? .voice
+    }
+}
+
+/// Which voice takes a screen question. It starts in the profile's own
+/// voice mode, and reliable Live delegation is a device-test gate (Eric,
+/// 2026-10-05): an engine that doesn't reliably hand the first screenshot
+/// question to Hermes comes off this list, and its profiles take screen
+/// questions in classic voice.
+enum ScreenQuestionVoiceRouting {
+    static let liveEngines: Set<VoiceCallEngine> = [.gptLive, .geminiLive, .grokLive]
+
+    /// The live engine for a screen question: the profile's own when it is
+    /// cleared, otherwise nil (classic voice).
+    static func liveEngine(
+        for configured: VoiceCallEngine?,
+        allowed: Set<VoiceCallEngine> = liveEngines
+    ) -> VoiceCallEngine? {
+        guard let configured, allowed.contains(configured) else { return nil }
+        return configured
+    }
 }
 
 extension AppState {
@@ -122,6 +164,35 @@ extension AppState {
         try? FileManager.default.removeItem(at: url)
     }
 
+    /// The screenshot waiting on a live call's chat.
+    func pendingScreenshot(forThread thread: VoiceThreadTarget) -> Attachment? {
+        for id in [thread.runtimeSessionID, thread.storedSessionID].compactMap({ $0 }) {
+            if let screenshot = pendingScreenshot(forSession: id) { return screenshot }
+        }
+        return nil
+    }
+
+    /// The screenshot the voice on screen will ask about: a live call's
+    /// chat's, or the classic conversation's.
+    var voiceScreenshot: Attachment? {
+        if isLiveVoiceCallActive {
+            return voiceBackgroundJobSupervisor.liveThread.flatMap { pendingScreenshot(forThread: $0) }
+        }
+        return pendingScreenshot(forSession: activeSessionId)
+    }
+
+    /// The voice sheet's remove button.
+    func discardVoiceScreenshot() {
+        guard isLiveVoiceCallActive else {
+            discardPendingScreenshot(forSession: activeSessionId)
+            return
+        }
+        guard let thread = voiceBackgroundJobSupervisor.liveThread else { return }
+        for id in [thread.runtimeSessionID, thread.storedSessionID].compactMap({ $0 }) {
+            discardPendingScreenshot(forSession: id)
+        }
+    }
+
     // MARK: - Opening the chat
 
     /// The router's handler for an Ask Hermes About Screen launch. Returns
@@ -169,10 +240,15 @@ extension AppState {
             Self.deleteStagedScreenshot(parked.request.attachment)
         }
         parkedScreenQuestion = nil
+        newestScreenQuestionAt = nil
     }
 
     /// Keeps a screenshot Hermes couldn't take yet. The newest one wins.
     func parkScreenQuestion(_ request: ScreenQuestionRequest, profile: String?) {
+        guard !isOutdated(request) else {
+            Self.deleteStagedScreenshot(request.attachment)
+            return
+        }
         noteScreenQuestion(request)
         if let parked = parkedScreenQuestion, parked.request.attachment.uri != request.attachment.uri {
             Self.deleteStagedScreenshot(parked.request.attachment)
@@ -199,6 +275,11 @@ extension AppState {
     /// it is tried again when the connection changes, never in a loop. A
     /// newer screenshot parked meanwhile wins.
     private func holdScreenQuestion(_ request: ScreenQuestionRequest, profile: String?) {
+        // A newer screenshot placed while this one waited wins.
+        guard !isOutdated(request) else {
+            Self.deleteStagedScreenshot(request.attachment)
+            return
+        }
         if let parked = parkedScreenQuestion {
             if parked.request.attachment.uri != request.attachment.uri {
                 Self.deleteStagedScreenshot(request.attachment)
@@ -238,11 +319,22 @@ extension AppState {
             }
         }
 
+        // A live call attached to a chat takes the screenshot on that chat,
+        // so the call's next question carries it.
+        if !switchedProfile, isLiveVoiceCallActive,
+           let thread = voiceBackgroundJobSupervisor.liveThread, thread.profile == nil, !isOpenChat(thread) {
+            _ = await openSession(thread.storedSessionID ?? thread.runtimeSessionID)
+            guard isConnected else { return false }
+        }
+
         let hasOpenChat = activeSessionId != nil && activeRoomSurface == nil && offlineChatPresentation == nil
         let continuesOpenChat: Bool
         if switchedProfile {
             continuesOpenChat = false
-        } else if resumingParked || isVoiceInUse {
+        } else if resumingParked || isVoiceInUse || ScreenQuestionPolicy.wasOnScreen(
+            activeSince: isSceneActive ? sceneActiveSince : nil,
+            enqueuedAt: request.enqueuedAt
+        ) {
             // The user is in Conduit now, or talking in that chat.
             continuesOpenChat = hasOpenChat
         } else {
@@ -297,10 +389,46 @@ extension AppState {
                     requestComposerFocus(on: sessionID)
                 }
             }
-        } else {
+        } else if isVoiceInUse {
+            // A conversation already running takes it: its next question
+            // carries it.
+            noteScreenshotToLiveCall(on: sessionID)
+        } else if resumingParked {
             requestComposerFocus(on: sessionID)
+        } else {
+            await startScreenQuestionInput(request.startWith ?? screenQuestionStartPreference, on: sessionID)
         }
         return true
+    }
+
+    /// No question came with the screenshot: start the profile's voice, or
+    /// the keyboard ("Opens with" in Voice settings). A turn still running
+    /// in the chat gets the keyboard: the screenshot waits for a new turn.
+    private func startScreenQuestionInput(_ start: ScreenQuestionStart, on sessionID: String) async {
+        guard start == .voice, turnState == .idle else {
+            requestComposerFocus(on: sessionID)
+            return
+        }
+        if ScreenQuestionVoiceRouting.liveEngine(for: configuredLiveVoiceEngine(profile: activeProfile)) == nil {
+            // Classic voice: a profile without it set up gets the keyboard.
+            await refreshVoiceCapabilities()
+            guard canStartVoiceConversation else {
+                requestComposerFocus(on: sessionID)
+                return
+            }
+        }
+        let intent = PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .screenQuestion)
+        if !(await openVoiceConversation(intent)) {
+            requestComposerFocus(on: sessionID)
+        }
+    }
+
+    /// A live call attached to the chat hears, quietly, that a screenshot
+    /// arrived: it can't see it, and the chat's next turn carries it.
+    private func noteScreenshotToLiveCall(on sessionID: String) {
+        guard isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread,
+              thread.owns(sessionID: sessionID) || isOpenChat(thread) else { return }
+        voiceBackgroundJobSupervisor.noteScreenshotShared()
     }
 
     func requestComposerFocus(on sessionID: String) {
