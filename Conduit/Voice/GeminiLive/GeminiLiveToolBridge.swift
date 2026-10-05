@@ -564,10 +564,11 @@ final class GeminiLiveToolBridge {
         }
     }
 
-    /// Sent with every web_search answer. It is spoken in a turn of its
-    /// own, after the "let me check" turn ended, and the model opened it
-    /// with the same words again. Not UI copy, so not localized.
-    static let lookupAnswerNote = "Your answer starts now, with what this lookup returned: don't say you're checking or looking it up again."
+    /// Sent with every web_search answer, a failure included. It is spoken
+    /// in a turn of its own, after the "let me check" turn ended, and the
+    /// model opened it with the same words again. Not UI copy, so not
+    /// localized.
+    static let lookupAnswerNote = "Answer the user now from this result; don't say again that you're checking or looking it up."
 
     /// Results as numbered lines for the model. Not UI copy.
     static func searchSummary(_ results: [GeminiLiveWebResult]) -> String {

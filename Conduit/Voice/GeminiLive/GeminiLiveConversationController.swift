@@ -1319,7 +1319,7 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Not UI copy (written for the model), so not localized.
     static func lookupFallbackText(for result: [String: String]) -> String? {
         if let results = result["results"], !results.isEmpty {
-            return "[The lookup you just made returned this. Answer the user's question from it now, starting with the answer itself; don't say you're checking or look it up again:\n\(results)]"
+            return "[The lookup you just made returned this. Answer the user's question from it now, without another lookup; don't say again that you're checking or looking it up:\n\(results)]"
         }
         if let error = result["error"], !error.isEmpty {
             return "[The lookup you just made failed (\(error)). Tell the user in one short sentence.]"

@@ -1946,7 +1946,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(GeminiLiveConversationController.instructions(search: .none).contains("Google Search"))
     }
 
-    func testGeminiLiveLookupPreambleIsVariedAndNotRepeatedInTheAnswer() throws {
+    func testGeminiLiveLookupRuleAsksForOneVariedHeadsUpAndAnAnswerFirstTurn() throws {
         // The answer comes back as a turn of its own after the call's turn
         // ended; told only "first say 'Let me check.'", the model opened
         // that turn with the same words again.
@@ -1958,9 +1958,11 @@ extension HermesVoiceGatewayTimeoutTests {
 
         // The same reminder rides on the result itself, next to the answer,
         // and on the text update that replaces a lost call.
-        XCTAssertTrue(GeminiLiveToolBridge.lookupAnswerNote.contains("don't say you're checking"))
+        let noRepeat = "don't say again that you're checking or looking it up"
+        XCTAssertTrue(GeminiLiveToolBridge.lookupAnswerNote.contains(noRepeat))
+        XCTAssertFalse(GeminiLiveToolBridge.lookupAnswerNote.contains("what this lookup returned"), "a failed lookup returned no answer to start with")
         let lost = try XCTUnwrap(GeminiLiveConversationController.lookupFallbackText(for: ["results": "1. Sunny, 21°C"]))
-        XCTAssertTrue(lost.contains("starting with the answer itself; don't say you're checking"))
+        XCTAssertTrue(lost.contains(noRepeat))
     }
 
     func testGeminiLiveSessionWithoutGoogleSearchNeverAsksForIt() async throws {
