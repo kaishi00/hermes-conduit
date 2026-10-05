@@ -343,6 +343,20 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(fileExists(newer))
     }
 
+    func testParkingAnOlderScreenshotKeepsTheNewer() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let older = try stagedScreenshot()
+        let newer = try stagedScreenshot()
+        let now = Date()
+
+        harness.appState.parkScreenQuestion(request(for: newer, enqueuedAt: now), profile: nil)
+        harness.appState.parkScreenQuestion(request(for: older, enqueuedAt: now.addingTimeInterval(-10)), profile: nil)
+
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, newer, "The newest wins")
+        XCTAssertFalse(fileExists(older))
+        XCTAssertTrue(fileExists(newer))
+    }
+
     func testParkingKeepsTheProfileTheShortcutNamed() throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         let shot = try stagedScreenshot()
@@ -425,7 +439,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
     }
 
-    func testLeavingCountsOnlyAfterTheSceneWasOnScreen() {
+    func testLeavingCountsOnlyAfterTheSceneWasOnScreen() throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
 
         harness.appState.handleScenePhase(.inactive)
@@ -435,6 +449,9 @@ final class AppStateScreenQuestionTests: XCTestCase {
         )
 
         harness.appState.handleScenePhase(.active)
+        let onScreenSince = try XCTUnwrap(harness.appState.sceneActiveSince)
+        harness.appState.handleScenePhase(.active)
+        XCTAssertEqual(harness.appState.sceneActiveSince, onScreenSince, "Still on screen: the stretch has not restarted")
         harness.appState.handleScenePhase(.background)
         XCTAssertNotNil(harness.appState.lastLeftForegroundAt)
     }
@@ -654,8 +671,29 @@ final class AppStateScreenQuestionTests: XCTestCase {
 
         XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
         XCTAssertNil(harness.appState.parkedScreenQuestion, "Never attached to the next account's chat")
+        XCTAssertNil(harness.appState.newestScreenQuestionAt)
         XCTAssertFalse(fileExists(pending))
         XCTAssertFalse(fileExists(parked))
+    }
+
+    func testScreenshotTakenInConduitJoinsTheChatOnScreen() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeHarness(recorder: recorder)
+        openChat("composer-origin", in: harness, withMessages: true)
+        harness.appState.isConnected = true
+        harness.defaults.set(ScreenQuestionStart.keyboard.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
+        let now = Date()
+        // Last left an hour ago and on screen since: the press came from
+        // inside Conduit, so nothing stamped a departure.
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-3_600)
+        harness.appState.sceneActiveSince = now.addingTimeInterval(-600)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, enqueuedAt: now))
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeSessionId, "composer-origin")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
     }
 
     func testEmptyOpenChatIsReusedWhenNotRecent() async throws {

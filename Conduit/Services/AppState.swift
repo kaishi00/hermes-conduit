@@ -1295,6 +1295,9 @@ final class AppState: ObservableObject {
     /// When the newest screenshot routed or parked was taken: an older one
     /// superseded by it is dropped.
     var newestScreenQuestionAt: Date?
+    /// When the phone scene last came on screen: a screenshot taken a
+    /// while after that was taken in Conduit.
+    var sceneActiveSince: Date?
     /// `isSceneActive` starts true before any scene event, so a launch
     /// that never reached the foreground does not count as leaving it.
     private var sceneHasBeenActive = false
@@ -11357,6 +11360,7 @@ final class AppState: ObservableObject {
         }
         switch phase {
         case .active:
+            if !(isSceneActive && sceneHasBeenActive) { sceneActiveSince = Date() }
             isSceneActive = true
             sceneHasBeenActive = true
             scheduleWakeRefresh()

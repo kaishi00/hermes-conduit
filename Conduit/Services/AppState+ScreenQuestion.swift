@@ -46,6 +46,19 @@ enum ScreenQuestionPolicy {
         guard hasOpenChat, let lastLeftForegroundAt else { return false }
         return enqueuedAt.timeIntervalSince(lastLeftForegroundAt) <= recentChatWindow
     }
+
+    /// How long Conduit must already be on screen before the screenshot
+    /// for it to count as taken in Conduit, not by the launch that
+    /// brought Conduit up.
+    static let onScreenGrace: TimeInterval = 5
+
+    /// A press inside Conduit may never take the scene off screen, so no
+    /// departure is stamped: being on screen when the screenshot was
+    /// taken counts as using Conduit now.
+    static func wasOnScreen(activeSince: Date?, enqueuedAt: Date) -> Bool {
+        guard let activeSince else { return false }
+        return enqueuedAt.timeIntervalSince(activeSince) >= onScreenGrace
+    }
 }
 
 /// "Opens with" in Voice settings: how a screenshot chat takes the
@@ -227,10 +240,15 @@ extension AppState {
             Self.deleteStagedScreenshot(parked.request.attachment)
         }
         parkedScreenQuestion = nil
+        newestScreenQuestionAt = nil
     }
 
     /// Keeps a screenshot Hermes couldn't take yet. The newest one wins.
     func parkScreenQuestion(_ request: ScreenQuestionRequest, profile: String?) {
+        guard !isOutdated(request) else {
+            Self.deleteStagedScreenshot(request.attachment)
+            return
+        }
         noteScreenQuestion(request)
         if let parked = parkedScreenQuestion, parked.request.attachment.uri != request.attachment.uri {
             Self.deleteStagedScreenshot(parked.request.attachment)
@@ -257,6 +275,11 @@ extension AppState {
     /// it is tried again when the connection changes, never in a loop. A
     /// newer screenshot parked meanwhile wins.
     private func holdScreenQuestion(_ request: ScreenQuestionRequest, profile: String?) {
+        // A newer screenshot placed while this one waited wins.
+        guard !isOutdated(request) else {
+            Self.deleteStagedScreenshot(request.attachment)
+            return
+        }
         if let parked = parkedScreenQuestion {
             if parked.request.attachment.uri != request.attachment.uri {
                 Self.deleteStagedScreenshot(request.attachment)
@@ -308,7 +331,10 @@ extension AppState {
         let continuesOpenChat: Bool
         if switchedProfile {
             continuesOpenChat = false
-        } else if resumingParked || isVoiceInUse {
+        } else if resumingParked || isVoiceInUse || ScreenQuestionPolicy.wasOnScreen(
+            activeSince: isSceneActive ? sceneActiveSince : nil,
+            enqueuedAt: request.enqueuedAt
+        ) {
             // The user is in Conduit now, or talking in that chat.
             continuesOpenChat = hasOpenChat
         } else {

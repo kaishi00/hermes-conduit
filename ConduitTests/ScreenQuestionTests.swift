@@ -241,6 +241,20 @@ final class ScreenQuestionTests: XCTestCase {
         XCTAssertEqual(ScreenQuestionPreferences.startWith(defaults: defaults), .voice)
     }
 
+    func testScreenshotTakenWhileConduitWasOnScreenCountsAsInUse() {
+        let since = Date(timeIntervalSince1970: 10_000)
+        XCTAssertTrue(ScreenQuestionPolicy.wasOnScreen(activeSince: since, enqueuedAt: since.addingTimeInterval(600)))
+        XCTAssertTrue(ScreenQuestionPolicy.wasOnScreen(
+            activeSince: since,
+            enqueuedAt: since.addingTimeInterval(ScreenQuestionPolicy.onScreenGrace)
+        ))
+        XCTAssertFalse(
+            ScreenQuestionPolicy.wasOnScreen(activeSince: since, enqueuedAt: since.addingTimeInterval(1)),
+            "The launch brought Conduit up"
+        )
+        XCTAssertFalse(ScreenQuestionPolicy.wasOnScreen(activeSince: nil, enqueuedAt: since))
+    }
+
     // MARK: - Helpers
 
     private func staged(
