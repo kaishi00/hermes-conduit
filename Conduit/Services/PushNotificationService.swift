@@ -215,8 +215,14 @@ struct NotificationDashboardPairings: Equatable {
     /// to switch to.
     private(set) var unrecognizedCount = 0
 
+    /// Pairings are judged against the selected dashboard. With none
+    /// selected (it was just removed) there is nothing to judge them
+    /// against: routing's one-dashboard fallback would otherwise list a
+    /// legacy pairing as the selected dashboard's, and "your other
+    /// dashboards" would be relative to nothing. Nothing is listed or counted.
     @MainActor
     init(gateways: [RelayMetaInfo.Gateway], activeDashboardID: UUID?, savedDashboardIDs: [UUID]) {
+        guard activeDashboardID != nil else { return }
         for gateway in gateways {
             // Parsed like a push payload's `dashboard_id`: blank is unscoped,
             // anything else that isn't a UUID is malformed.
