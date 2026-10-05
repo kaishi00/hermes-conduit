@@ -138,6 +138,11 @@ struct ConduitApp: App {
             .task(id: voiceIntentDeadlineKey) {
                 await waitOutPendingVoiceDeadline()
             }
+            // A screenshot kept while Hermes was unreachable is attached
+            // once it connects.
+            .task(id: "\(appState.isConnected):\(appState.parkedScreenQuestionRevision)") {
+                await appState.resumeParkedScreenQuestion()
+            }
     }
 
     private var notificationRouteKey: String {
@@ -167,11 +172,21 @@ struct ConduitApp: App {
     private func resolvePendingVoiceIntent() async {
         let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
         let connection = appState.voiceLaunchConnectionSnapshot()
+        // The router takes this exact request first, before it awaits.
+        let routed = pendingVoiceIntents.peekClaim()?.intent
         let outcome = await router.routePending(connection: connection) { intent in
-            await appState.openVoiceConversation(intent)
+            if intent.source == .screenQuestion {
+                return await appState.openScreenQuestion(intent)
+            }
+            return await appState.openVoiceConversation(intent)
         }
         switch outcome {
         case .failed(let message):
+            // A screenshot is kept when Hermes can't be reached: it is
+            // attached, with the keyboard, once Hermes connects.
+            if let request = routed?.screenQuestion {
+                appState.parkScreenQuestion(request)
+            }
             appState.errorMessage = message
         case .idle, .routed, .deferred, .superseded:
             break
@@ -200,6 +215,9 @@ struct ConduitApp: App {
         }
         if expired.source == .siri {
             appState.errorMessage = PendingVoiceLaunchPolicy.expiredFailureMessage
+        } else if let request = expired.screenQuestion {
+            appState.parkScreenQuestion(request)
+            appState.errorMessage = PendingVoiceLaunchPolicy.screenQuestionFailureMessage
         }
     }
 }

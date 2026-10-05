@@ -533,8 +533,32 @@ struct PendingVoiceIntent: Equatable {
     /// deadline waiter; nil for requests with no external budget.
     var externalLaunchElapsedDeadline: ContinuousClock.Instant? = nil
 
+    /// The screenshot (and optional question) of an Ask Hermes About
+    /// Screen launch; nil for every other source.
+    var screenQuestion: ScreenQuestionRequest? = nil
+
     /// `newCall`: the sidebar's New voice call, never attached to a chat.
-    enum Source: String, Equatable { case composer, wakePhrase, siri, newCall }
+    /// `screenQuestion`: the Ask Hermes About Screen action.
+    enum Source: String, Equatable { case composer, wakePhrase, siri, newCall, screenQuestion }
+}
+
+/// How the chat opened by Ask Hermes About Screen takes the question.
+enum ScreenQuestionStart: String, Codable, Equatable, CaseIterable {
+    case voice
+    case keyboard
+}
+
+/// One image handed to Conduit by the Ask Hermes About Screen action. It
+/// waits on a chat until the next question is sent there.
+struct ScreenQuestionRequest: Equatable {
+    var attachment: Attachment
+    /// A question that came with the image; it is sent at once.
+    var question: String?
+    /// nil follows the app's setting.
+    var startWith: ScreenQuestionStart?
+    /// When the action ran, before Conduit came to the foreground: the
+    /// recent-chat rule measures from here.
+    var enqueuedAt: Date
 }
 
 /// What became of words spoken to steer a running Hermes turn.

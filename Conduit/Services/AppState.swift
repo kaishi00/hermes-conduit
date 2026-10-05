@@ -89,6 +89,9 @@ struct ChatResumeLifecycleOperations {
     /// decision RPC.
     var respondToApproval: (@MainActor (HermesClient, String, String?, String, String?) async throws -> Bool)?
     var sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
+    /// Test seam for one attachment upload (session id, attachment) before
+    /// the prompt. Not an init parameter: tests set it on the value.
+    var uploadAttachment: (@MainActor (HermesClient, String, Attachment) async throws -> Void)?
     /// Foreground transport verification. Production calls the client's
     /// `session.list` health check; tests substitute a controllable outcome.
     var verifyTransportHealth: (@MainActor (HermesClient) async throws -> Void)?
@@ -1274,6 +1277,21 @@ final class AppState: ObservableObject {
     /// A quote waiting for the composer (#385). ComposerBar, which owns the
     /// draft, applies it and then consumes it.
     @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
+    /// Asks the composer to take focus (a screenshot chat opened with the
+    /// keyboard). ComposerBar focuses and then consumes it.
+    @Published var composerFocusRequest: UUID?
+
+    // MARK: - Ask Hermes About Screen (AppState+ScreenQuestion.swift)
+
+    /// Screenshots waiting on their chat for the next question sent there.
+    @Published var pendingScreenshots: [PendingScreenshot] = []
+    /// A screenshot kept while Hermes was unreachable, attached once it
+    /// connects.
+    var parkedScreenQuestion: ScreenQuestionRequest?
+    @Published var parkedScreenQuestionRevision: UInt64 = 0
+    /// When the phone scene last left the foreground: the screenshot
+    /// action's recent-chat rule measures from it.
+    var lastLeftForegroundAt: Date?
 
     // MARK: - Capabilities
 
@@ -3268,6 +3286,12 @@ final class AppState: ObservableObject {
             ?? conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
         let seeds = [sessionId, durable, voiceSessionAliases.storedID(forRuntime: sessionId)].compactMap { $0 }
         return Self.ownSessionIDs(for: seeds, in: sessions + cronSessions)
+    }
+
+    /// The ids a pending screenshot's chat is known by: its own ids, so it
+    /// is still found when the chat is reopened under a new runtime id.
+    func screenshotChatIDs(for sessionId: String) -> Set<String> {
+        chatOwnSessionIDs(for: sessionId)
     }
 
     static func ownSessionIDs(for sessionId: String, in rows: [SessionSummary]) -> Set<String> {
@@ -5525,6 +5549,12 @@ final class AppState: ObservableObject {
             text: message.content
         )
         composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
+    }
+
+    /// Puts `text` in the composer, replacing the draft, and focuses it.
+    func prefillComposer(_ text: String) {
+        composerPrefillText = text
+        composerPrefillToken = UUID()
     }
 
     /// The composer took the quote: drop it, so the quoted text is not kept
@@ -11452,6 +11482,9 @@ final class AppState: ObservableObject {
             return task
 
         case .background:
+            // Only a departure from active counts: coming back passes
+            // through .inactive too, and that is not "last used".
+            if isSceneActive { lastLeftForegroundAt = Date() }
             isSceneActive = false
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
@@ -11526,6 +11559,9 @@ final class AppState: ObservableObject {
             return nil
 
         case .inactive:
+            // Only a departure from active counts: coming back passes
+            // through .inactive too, and that is not "last used".
+            if isSceneActive { lastLeftForegroundAt = Date() }
             isSceneActive = false
             disarmWakeListeningForBackground()
             // Same reasoning as .background: a dip through Control Center or a
@@ -15163,11 +15199,19 @@ final class AppState: ObservableObject {
             }
         }
 
-        return await sendMessage(
+        // A screenshot waiting on this chat rides on its next new turn,
+        // whichever path sent it (typed, classic voice, a live call's
+        // ask_thread). Busy routes and slash commands above leave it.
+        let screenshot = takePendingScreenshot(forSession: submissionContext.sessionID)
+        let sent = await sendMessage(
             text,
-            attachments: attachments,
+            attachments: attachments + [screenshot].compactMap { $0 },
             context: submissionContext
         )
+        if !sent, let screenshot, let sessionID = submissionContext.sessionID {
+            restorePendingScreenshot(screenshot, forSession: sessionID)
+        }
+        return sent
     }
 
     /// Read-only authoritative correction of a possibly stale local idle
@@ -15867,7 +15911,9 @@ final class AppState: ObservableObject {
 
         for attachment in attachments {
             do {
-                if attachment.kind == .image {
+                if let upload = chatResumeLifecycleOperations.uploadAttachment {
+                    try await upload(client, sessionId, attachment)
+                } else if attachment.kind == .image {
                     let base64 = await AttachmentHelper.toBase64(attachment)
                     guard isCurrentComposerSubmission(submissionContext) else { return false }
                     guard !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }

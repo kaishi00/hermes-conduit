@@ -183,6 +183,88 @@ enum AttachmentStaging {
         return UTType(identifier as String)
     }
 
+    /// What became of one file the composer tried to stage.
+    enum StagedImport {
+        case staged(Attachment)
+        case tooLarge(String)
+        case failed(String)
+    }
+
+    /// The composer's rules for a file already copied into the staging
+    /// folder: the size limit, checked before anything is decoded, and a
+    /// JPEG re-encode for image formats providers can't read.
+    static func finishStaging(fileAt url: URL, name: String, type: UTType?, limitMegabytes: Int) -> StagedImport {
+        var url = url
+        var name = name
+        var type = type
+        // Checked on the original first, so an oversized file is never
+        // decoded; a re-encoded image is checked again below.
+        if let size = AttachmentSizeLimit.fileSize(at: url),
+           !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
+            try? FileManager.default.removeItem(at: url)
+            return .tooLarge(name)
+        }
+        // The bytes decide, not the extension: a HEIC named .png still
+        // gets re-encoded. Only formats ImageIO reads are re-encoded; an
+        // SVG keeps attaching as before.
+        var sniffed: UTType?
+        if type == nil || type?.conforms(to: .image) == true {
+            sniffed = imageType(at: url)
+            if let sniffed { type = sniffed }
+        }
+        if sniffed != nil, AttachmentTypePolicy.needsJPEGTranscode(type) {
+            let jpegName = AttachmentTypePolicy.jpegFilename(for: name)
+            guard let jpegURL = try? destination(for: jpegName),
+                  writeJPEG(from: url, to: jpegURL) else {
+                try? FileManager.default.removeItem(at: url)
+                return .failed(name)
+            }
+            try? FileManager.default.removeItem(at: url)
+            url = jpegURL
+            name = jpegName
+            type = .jpeg
+        }
+        let size = AttachmentSizeLimit.fileSize(at: url)
+        if size == 0 {
+            try? FileManager.default.removeItem(at: url)
+            return .failed(name)
+        }
+        if let size, !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
+            try? FileManager.default.removeItem(at: url)
+            return .tooLarge(name)
+        }
+        return .staged(Attachment(
+            id: UUID().uuidString,
+            name: name,
+            uri: url.absoluteString,
+            mimeType: AttachmentTypePolicy.mimeType(for: type),
+            kind: AttachmentTypePolicy.kind(for: type)
+        ))
+    }
+
+    /// An image handed to the Ask Hermes About Screen action, staged like
+    /// a picked photo. A screenshot is a PNG, so it goes up as captured and
+    /// its text stays sharp; anything that isn't an image is refused.
+    static func stageScreenshot(data: Data, filename: String?, limitMegabytes: Int) -> StagedImport {
+        let suggested = (filename ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let stem = (suggested as NSString).deletingPathExtension
+        let baseName = stem.isEmpty ? "Screenshot" : stem
+        guard AttachmentSizeLimit.allows(byteCount: Int64(data.count), megabytes: limitMegabytes) else {
+            return .tooLarge(baseName)
+        }
+        guard !data.isEmpty,
+              let url = try? destination(for: baseName),
+              (try? data.write(to: url, options: .atomic)) != nil else {
+            return .failed(baseName)
+        }
+        guard let type = imageType(at: url) else {
+            try? FileManager.default.removeItem(at: url)
+            return .failed(baseName)
+        }
+        let name = AttachmentTypePolicy.filename(suggested: baseName, type: type)
+        return finishStaging(fileAt: url, name: name, type: type, limitMegabytes: limitMegabytes)
+    }
+
     /// Staged files outlive their drafts (the sent bubble previews from
     /// them), so old ones are cleared at launch. Drafts live only in
     /// memory, so nothing from a previous launch still needs them.
