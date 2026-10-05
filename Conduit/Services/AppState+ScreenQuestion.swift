@@ -129,11 +129,34 @@ extension AppState {
     /// request and the screenshot is parked.
     func openScreenQuestion(_ intent: PendingVoiceIntent) async -> Bool {
         guard let request = intent.screenQuestion else { return true }
+        noteScreenQuestion(request)
         return await openScreenQuestion(request, profile: intent.profile, resumingParked: false)
+    }
+
+    /// A launch that found Hermes gone was superseded meanwhile. The newest
+    /// screenshot wins: this one is dropped when a newer one exists, and
+    /// kept when something else (a Siri or wake phrase launch) took over.
+    func settleSupersededScreenQuestion(
+        _ request: ScreenQuestionRequest,
+        profile: String?,
+        newerScreenQuestionPending: Bool
+    ) {
+        let newerSeen = newestScreenQuestionAt.map { $0 > request.enqueuedAt } ?? false
+        if newerScreenQuestionPending || newerSeen {
+            Self.deleteStagedScreenshot(request.attachment)
+        } else {
+            parkScreenQuestion(request, profile: profile)
+        }
+    }
+
+    private func noteScreenQuestion(_ request: ScreenQuestionRequest) {
+        if let newest = newestScreenQuestionAt, newest >= request.enqueuedAt { return }
+        newestScreenQuestionAt = request.enqueuedAt
     }
 
     /// Keeps a screenshot Hermes couldn't take yet. The newest one wins.
     func parkScreenQuestion(_ request: ScreenQuestionRequest, profile: String?) {
+        noteScreenQuestion(request)
         if let parked = parkedScreenQuestion, parked.request.attachment.uri != request.attachment.uri {
             Self.deleteStagedScreenshot(parked.request.attachment)
         }
@@ -219,7 +242,8 @@ extension AppState {
             guard let created = activeSessionId, created != previous else {
                 guard isConnected else { return false }
                 // Kept, not dropped: tried again once the connection settles.
-                holdScreenQuestion(request, profile: switchedProfile ? requestedProfile : nil)
+                // A profile that couldn't open is tried again too.
+                holdScreenQuestion(request, profile: requestedProfile)
                 errorMessage = AppLocalization.string("Hermes could not start a chat for the screenshot. It's kept and will be attached once Hermes is ready.")
                 return true
             }
@@ -234,6 +258,8 @@ extension AppState {
                 // it was asked, nor run as a command: it waits in the
                 // composer.
                 prefillComposer(question)
+                // Held until the composer unlocks.
+                requestComposerFocus(on: sessionID)
             } else {
                 // A reply found running (a stale idle state) gets no steer
                 // either. A send that fails leaves the question in the

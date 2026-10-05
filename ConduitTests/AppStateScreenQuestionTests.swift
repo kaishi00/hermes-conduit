@@ -567,6 +567,61 @@ final class AppStateScreenQuestionTests: XCTestCase {
         )
     }
 
+    func testHeldScreenshotKeepsTheProfileTheShortcutNamed() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        // Connected, but no saved connection or client: neither the switch
+        // to "work" nor a new chat can happen yet.
+        harness.appState.isConnected = true
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, profile: "work"))
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.profile, "work", "The resume tries that profile again")
+        XCTAssertTrue(fileExists(shot))
+    }
+
+    // MARK: - Superseded launches
+
+    func testSupersededByANewerScreenshotDropsTheOlder() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let older = try stagedScreenshot()
+        let newer = try stagedScreenshot()
+        let now = Date()
+        harness.appState.parkScreenQuestion(request(for: newer, enqueuedAt: now), profile: nil)
+
+        harness.appState.settleSupersededScreenQuestion(
+            request(for: older, enqueuedAt: now.addingTimeInterval(-10)),
+            profile: nil,
+            newerScreenQuestionPending: false
+        )
+
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, newer, "The newest wins")
+        XCTAssertFalse(fileExists(older))
+        XCTAssertTrue(fileExists(newer))
+    }
+
+    func testSupersededWhileANewerScreenshotWaitsDropsTheOlder() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let older = try stagedScreenshot()
+
+        harness.appState.settleSupersededScreenQuestion(request(for: older), profile: nil, newerScreenQuestionPending: true)
+
+        XCTAssertNil(harness.appState.parkedScreenQuestion)
+        XCTAssertFalse(fileExists(older))
+    }
+
+    func testSupersededByAVoiceLaunchKeepsTheScreenshot() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let shot = try stagedScreenshot()
+
+        harness.appState.settleSupersededScreenQuestion(request(for: shot), profile: "work", newerScreenQuestionPending: false)
+
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, shot, "Kept, never dropped")
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.profile, "work")
+        XCTAssertTrue(fileExists(shot))
+    }
+
     func testEmptyOpenChatIsReusedWhenNotRecent() async throws {
         let recorder = ScreenQuestionCallRecorder()
         let harness = makeHarness(recorder: recorder)
@@ -603,6 +658,10 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(recorder.steers.isEmpty, "A screenshot question is a new turn, never a steer")
         XCTAssertEqual(harness.appState.composerPrefillText, "And this one?")
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+        XCTAssertEqual(
+            harness.appState.composerFocusRequest?.sessionID, "composer-origin",
+            "A locked composer still gets the keyboard once it unlocks"
+        )
     }
 
     // MARK: - Harness

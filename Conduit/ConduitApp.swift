@@ -199,10 +199,12 @@ struct ConduitApp: App {
             appState.errorMessage = message
         case .superseded:
             // A newer request took over while this one found Hermes gone.
-            // The newer one wins: parking this older screenshot now could
-            // replace one already parked or placed.
             if screenQuestionOpened == false, let request = routed?.screenQuestion {
-                AppState.deleteStagedScreenshot(request.attachment)
+                appState.settleSupersededScreenQuestion(
+                    request,
+                    profile: routed?.profile,
+                    newerScreenQuestionPending: pendingVoiceIntents.peekClaim()?.intent.screenQuestion != nil
+                )
             }
         case .idle, .routed, .deferred:
             break

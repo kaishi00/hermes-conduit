@@ -1292,6 +1292,9 @@ final class AppState: ObservableObject {
     /// When the phone scene last left the foreground: the screenshot
     /// action's recent-chat rule measures from it.
     var lastLeftForegroundAt: Date?
+    /// When the newest screenshot routed or parked was taken: an older one
+    /// superseded by it is dropped.
+    var newestScreenQuestionAt: Date?
     /// `isSceneActive` starts true before any scene event, so a launch
     /// that never reached the foreground does not count as leaving it.
     private var sceneHasBeenActive = false
