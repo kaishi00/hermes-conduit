@@ -2391,6 +2391,20 @@ final class AppState: ObservableObject {
     /// route is too costly for every publish, so it refreshes only on route
     /// changes.
     var isWakeRouteCarPlay = false
+    /// Cached `isOtherAudioPlaying`: another app's music or podcast pauses
+    /// wake unless the user keeps it listening over other audio. Refreshed
+    /// by `wakeOtherAudioMonitor`, the silence hint, and right before arming.
+    var isWakeOtherAudioPlaying = false
+    /// Wake is waiting for another app's audio to stop (shown in Voice
+    /// settings).
+    @Published var isWakePausedForOtherAudio = false
+    /// Polls other apps' audio while wake is armed or waiting for it.
+    /// AVAudioSession's silence hint reaches only an app with an active
+    /// session, so it cannot tell a paused listener when the audio stops.
+    var wakeOtherAudioMonitor: Task<Void, Never>?
+    var wakeOtherAudioPollInterval: Duration = .seconds(2)
+    /// Seam for tests.
+    var wakeOtherAudioProbe: () -> Bool = { WakeRoutePolicy.isOtherAudioPlaying() }
 
     /// Whether the CarPlay scene currently presents the shared Voice
     /// conversation. Pure surface bookkeeping: CarPlay is another Voice

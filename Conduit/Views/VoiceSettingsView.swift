@@ -1136,9 +1136,14 @@ struct WakePhraseSettingsModel {
     var startsFreshConversation: Bool
     /// Device-wide, shared by every profile's wake phrases.
     var listensOnCarPlay: Bool
+    /// Device-wide: keep listening while another app plays audio.
+    var listensOverOtherAudio: Bool
+    /// Wake is waiting for another app's audio to stop.
+    var isPausedForOtherAudio: Bool
     var failure: String?
     var save: (_ phrases: [String], _ startsFreshConversation: Bool) -> Void
     var setListensOnCarPlay: (Bool) -> Void
+    var setListensOverOtherAudio: (Bool) -> Void
 }
 
 /// Foreground wake phrase for this profile (#174). Device-local: phrases
@@ -1149,6 +1154,7 @@ private struct WakePhraseSettingsSection: View {
     @State private var phrases: [String]
     @State private var startsFresh: Bool
     @State private var listensOnCarPlay: Bool
+    @State private var listensOverOtherAudio: Bool
     /// Optimistic: stays on while the permission prompt is up.
     @State private var isEnabled: Bool
     @State private var isRequestingPermission = false
@@ -1159,6 +1165,7 @@ private struct WakePhraseSettingsSection: View {
         _phrases = State(initialValue: model.phrases)
         _startsFresh = State(initialValue: model.startsFreshConversation)
         _listensOnCarPlay = State(initialValue: model.listensOnCarPlay)
+        _listensOverOtherAudio = State(initialValue: model.listensOverOtherAudio)
         _isEnabled = State(initialValue: !model.phrases.isEmpty)
     }
 
@@ -1212,6 +1219,23 @@ private struct WakePhraseSettingsSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
+                Toggle("Listen while other audio plays", isOn: Binding(
+                    get: { listensOverOtherAudio },
+                    set: { value in
+                        listensOverOtherAudio = value
+                        model.setListensOverOtherAudio(value)
+                    }
+                ))
+                .accessibilityHint(Text("Off: wake pauses while another app plays music or a podcast, and listens again once it stops. On: wake keeps listening, but iOS may play that audio in mono or cut it out briefly."))
+                Text("Off: wake pauses while another app plays music or a podcast, and listens again once it stops. On: wake keeps listening, but iOS may play that audio in mono or cut it out briefly.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                if model.isPausedForOtherAudio {
+                    Label("Paused while another app plays audio. Wake listens again when it stops.", systemImage: "pause.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if let failure = model.failure {
                     Label(failure, systemImage: "exclamationmark.triangle")
                         .font(.caption)
@@ -1233,6 +1257,9 @@ private struct WakePhraseSettingsSection: View {
         }
         .onChange(of: model.listensOnCarPlay) { _, value in
             listensOnCarPlay = value
+        }
+        .onChange(of: model.listensOverOtherAudio) { _, value in
+            listensOverOtherAudio = value
         }
     }
 

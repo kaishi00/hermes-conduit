@@ -13,6 +13,18 @@ final class WakeConfigurationStoreTests: XCTestCase {
         XCTAssertFalse(WakeConfigurationStore(defaults: defaults, storageKey: "wake").listensOnCarPlay)
     }
 
+    func testListensOverOtherAudioDefaultsOffAndPersists() {
+        let suite = "WakeConfigurationStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WakeConfigurationStore(defaults: defaults, storageKey: "wake")
+        XCTAssertFalse(store.listensOverOtherAudio, "other apps' audio pauses wake by default")
+
+        store.listensOverOtherAudio = true
+        XCTAssertTrue(WakeConfigurationStore(defaults: defaults, storageKey: "wake").listensOverOtherAudio)
+        XCTAssertTrue(store.listensOnCarPlay, "the CarPlay setting is separate")
+    }
+
     func testStoresPreferencesPerGatewayAndProfileAndDeduplicatesPhrases() {
         let suite = "WakeConfigurationStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

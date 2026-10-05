@@ -105,6 +105,68 @@ extension WakeLifecycleTests {
         XCTAssertFalse(snapshot.canArm)
     }
 
+    func testOtherAppsAudioPausesWakeOnly() {
+        var snapshot = WakeLifecycleSnapshot(
+            isForegroundActive: true,
+            isAuthenticated: true,
+            isGatewayConnected: true,
+            microphonePermitted: true,
+            isVoiceIdle: true,
+            hasWakePhrases: true
+        )
+        XCTAssertTrue(snapshot.otherAudioAllowsListening, "allowed unless something says otherwise")
+        XCTAssertFalse(snapshot.isPausedForOtherAudio)
+
+        snapshot.otherAudioAllowsListening = false
+        XCTAssertFalse(snapshot.canArm)
+        XCTAssertTrue(snapshot.canArmIgnoringOtherAudio)
+        XCTAssertTrue(snapshot.isPausedForOtherAudio)
+
+        snapshot.isVoiceIdle = false
+        XCTAssertFalse(snapshot.isPausedForOtherAudio, "a call, not the podcast, keeps wake off")
+
+        let service = FakeWakeWordService()
+        let coordinator = WakeLifecycleCoordinator(service: service)
+        snapshot.isVoiceIdle = true
+        coordinator.update(for: snapshot)
+        XCTAssertFalse(service.isArmed, "wake waits for the other app's audio to stop")
+        snapshot.otherAudioAllowsListening = true
+        coordinator.update(for: snapshot)
+        XCTAssertTrue(service.isArmed, "and listens again once it does")
+        snapshot.otherAudioAllowsListening = false
+        coordinator.update(for: snapshot)
+        XCTAssertFalse(service.isArmed, "a podcast starting stops an armed listener")
+    }
+
+    func testAppStateOtherAudioFollowsTheSetting() throws {
+        let suite = "WakeLifecycleTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {})
+        var otherAudioPlaying = true
+        appState.wakeOtherAudioProbe = { otherAudioPlaying }
+        XCTAssertFalse(appState.wakeListensOverOtherAudio, "off by default")
+
+        appState.noteWakeOtherAudio(playing: true)
+        XCTAssertTrue(appState.isWakeOtherAudioPlaying)
+        XCTAssertFalse(appState.wakeLifecycleSnapshot.otherAudioAllowsListening)
+
+        let revision = appState.wakeSettingsRevision
+        appState.setWakeListensOverOtherAudio(true)
+        XCTAssertNotEqual(appState.wakeSettingsRevision, revision, "the change must publish")
+        XCTAssertTrue(appState.wakeLifecycleSnapshot.otherAudioAllowsListening, "kept listening over other audio")
+
+        otherAudioPlaying = false
+        appState.setWakeListensOverOtherAudio(false)
+        XCTAssertFalse(appState.isWakeOtherAudioPlaying, "turning it off re-reads what plays now")
+        XCTAssertTrue(appState.wakeLifecycleSnapshot.otherAudioAllowsListening)
+
+        otherAudioPlaying = true
+        appState.setWakeListensOverOtherAudio(true)
+        appState.setWakeListensOverOtherAudio(false)
+        XCTAssertFalse(appState.wakeLifecycleSnapshot.otherAudioAllowsListening, "a playing podcast pauses wake again")
+    }
+
     func testStaysDisarmedWithoutWakePhrases() {
         let service = FakeWakeWordService()
         let coordinator = WakeLifecycleCoordinator(service: service)

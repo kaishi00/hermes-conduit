@@ -55,6 +55,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
     /// A system interruption (a call, Siri) is in progress.
     private var isInterrupted = false
     private var observers: [NSObjectProtocol] = []
+    private var engineObserver: NSObjectProtocol?
 
     private static let maximumConsecutiveFailures = 5
 
@@ -146,22 +147,41 @@ final class AppleSpeechWakeWordService: WakeWordService {
             // appends from any thread; the sink only guards the swap.
             sink.append(buffer)
         }
+        self.engine = engine
+        observeConfigurationChanges(of: engine)
         engine.prepare()
         do {
             try engine.start()
         } catch {
-            input.removeTap(onBus: 0)
-            engine.stop()
+            stopAudio()
             throw error
         }
-        self.engine = engine
     }
 
     private func stopAudio() {
+        if let engineObserver {
+            NotificationCenter.default.removeObserver(engineObserver)
+            self.engineObserver = nil
+        }
         guard let engine else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         self.engine = nil
+    }
+
+    /// A route change reconfigures the engine and stops it: rebuild it.
+    /// Only this listener's engine: another engine in the app reconfiguring
+    /// must not restart the microphone, and every restart re-activates the
+    /// session, which makes other apps' audio drop out for a moment.
+    private func observeConfigurationChanges(of engine: AVAudioEngine) {
+        if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
+        engineObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.scheduleAudioRecovery() }
+        }
     }
 
     /// On CarPlay, record from the iPhone's own microphone: recording
@@ -199,14 +219,6 @@ final class AppleSpeechWakeWordService: WakeWordService {
     private func observeAudioDisruptions() {
         removeObservers()
         let center = NotificationCenter.default
-        // A route change reconfigures the engine and stops it: rebuild it.
-        observers.append(center.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.scheduleAudioRecovery() }
-        })
         // Connecting or leaving CarPlay changes which microphone wake must
         // use, even if the engine does not report a configuration change.
         observers.append(center.addObserver(
