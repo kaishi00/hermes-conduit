@@ -838,12 +838,11 @@ private struct SettingsHome: View {
         } message: {
             Text("Saved for your next reconnect. Your current session stays connected.")
         }
-        // The connect-time check can miss (the dashboard was still
-        // loading); without an answer the update notice never shows.
+        // Asked again on every visit and dashboard switch: the connect-time
+        // check can miss (the dashboard was still loading), and the plugin
+        // may have been updated since, which should clear the notice.
         .task(id: appState.activeDashboardID) {
-            if appState.notifierPlugin.state == .unknown {
-                await appState.refreshNotifierPluginStatus()
-            }
+            await appState.refreshNotifierPluginStatus()
         }
     }
 
@@ -2011,7 +2010,7 @@ private struct NotificationsSettingsDetail: View {
                 ConduitSettingsSection(title: AppLocalization.string("Notify me when"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
                     // The relay keeps one set of preferences per iPhone.
                     if appState.savedDashboardRegistry.dashboards.count > 1 {
-                        Text("These apply to every dashboard paired with this iPhone.")
+                        Text(AppLocalization.string("These apply to every dashboard paired with this iPhone."))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -2059,7 +2058,8 @@ private struct NotificationsSettingsDetail: View {
                             savedDashboardIDs: appState.savedDashboardRegistry.dashboards.map(\.id)
                         )
                         // Without a selected dashboard there is nothing to
-                        // pair yet; the pairing section says to connect.
+                        // pair yet (and `pairings` is empty); the pairing
+                        // section says to connect.
                         if pairings.thisDashboard.isEmpty, appState.activeDashboardID != nil {
                             compatibilityRow(
                                 title: AppLocalization.string("Not paired"),
@@ -2070,6 +2070,15 @@ private struct NotificationsSettingsDetail: View {
                         }
                         ForEach(pairings.thisDashboard) { gateway in
                             gatewayRow(gateway)
+                        }
+                        // One host, one set of commands, however many of its
+                        // pairings are behind. The host row above already
+                        // offers them when the plugin itself reports it is
+                        // behind.
+                        if !appState.notifierPlugin.needsUpdate,
+                           pairings.thisDashboard.contains(where: Self.isOutdated) {
+                            NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
+                            NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
                         }
                         ForEach(pairings.unscoped) { gateway in
                             compatibilityRow(
@@ -2273,16 +2282,20 @@ private struct NotificationsSettingsDetail: View {
         }
     }
 
+    /// The update prompt requires evidence of oldness: either a
+    /// reported-but-old version, or events that never carried one (pre-0.2).
+    /// A gateway that has sent nothing is only "waiting".
+    private static func isOutdated(_ gateway: RelayMetaInfo.Gateway) -> Bool {
+        gateway.hasSentEventsButNeverReported
+            || (gateway.pluginVersion != nil && !(gateway.supportsApprovalCards && gateway.supportsClarifyCards))
+    }
+
     /// One relay pairing of the active dashboard: whether its notifier
     /// sends decision cards, from the plugin version its last push carried.
     @ViewBuilder
     private func gatewayRow(_ gateway: RelayMetaInfo.Gateway) -> some View {
         let isSupported = gateway.supportsApprovalCards && gateway.supportsClarifyCards
-        // The update prompt requires evidence of oldness: either a
-        // reported-but-old version, or events that never carried one
-        // (pre-0.2). A gateway that has sent nothing is only "waiting".
-        let isOutdated = gateway.hasSentEventsButNeverReported
-            || (gateway.pluginVersion != nil && !isSupported)
+        let isOutdated = Self.isOutdated(gateway)
         compatibilityRow(
             title: gateway.name,
             version: gateway.pluginVersion,
@@ -2295,12 +2308,6 @@ private struct NotificationsSettingsDetail: View {
                         ? AppLocalization.string("Waiting for the first notification from this profile")
                         : AppLocalization.string("Notifier update available — approval and clarify cards need a newer plugin")
         )
-        // The host row above already offers the commands when the plugin
-        // itself reports it is behind.
-        if isOutdated && !appState.notifierPlugin.needsUpdate {
-            NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
-            NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
-        }
     }
 
     private enum CompatibilityMark {
