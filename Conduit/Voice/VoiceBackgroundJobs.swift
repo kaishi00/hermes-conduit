@@ -281,6 +281,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Exchanges in the attached chat the call didn't start (#363), oldest
     /// first, waiting to go to the live model as quiet context.
     private(set) var pendingChatContext: [String] = []
+    /// The screenshot the call was last told about, and whether it heard.
+    private struct ScreenshotNote {
+        let attachmentURI: String
+        let prompt: String
+        var heard: Bool
+    }
+    private var screenshotNote: ScreenshotNote?
     /// Older exchanges are dropped past this: the chat still has them.
     static let maximumPendingChatContext = 3
     /// Message ids of turns already noted, so a replayed completion isn't
@@ -614,6 +621,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func detachLiveThread() {
         liveThread = nil
         pendingChatContext.removeAll()
+        screenshotNote = nil
         notedChatTurns.removeAll()
         lastUnidentifiedChatReply = nil
         // Every turn of the ending call, settled ones too: none is read back
@@ -953,6 +961,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         screenCards.removeAll()
         threadTargets.removeAll()
         pendingChatContext.removeAll()
+        screenshotNote = nil
         notedChatTurns.removeAll()
         lastUnidentifiedChatReply = nil
     }
@@ -1065,19 +1074,24 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The user shared a screenshot to the attached chat mid-call (Ask
     /// Hermes About Screen). The live model can't see it, so it hears,
     /// quietly, that the chat's next turn carries it.
-    func noteScreenshotShared() {
-        queueScreenshotNote(Self.screenshotSharedPrompt)
+    func noteScreenshotShared(attachmentURI: String) {
+        queueScreenshotNote(Self.screenshotSharedPrompt, attachmentURI: attachmentURI)
     }
 
     /// The screenshot went to the chat on screen, not the one the call is
     /// attached to (a Bot Chat, or a chat that couldn't open): the call's
     /// requests can't carry it, so the model sends the user there.
-    func noteScreenshotInAnotherChat() {
-        queueScreenshotNote(Self.screenshotInAnotherChatPrompt)
+    func noteScreenshotInAnotherChat(attachmentURI: String) {
+        queueScreenshotNote(Self.screenshotInAnotherChatPrompt, attachmentURI: attachmentURI)
     }
 
-    private func queueScreenshotNote(_ note: String) {
+    private func queueScreenshotNote(_ note: String, attachmentURI: String) {
         guard liveThread != nil else { return }
+        screenshotNote = ScreenshotNote(attachmentURI: attachmentURI, prompt: note, heard: false)
+        queueChatNote(note)
+    }
+
+    private func queueChatNote(_ note: String) {
         pendingChatContext.append(note)
         if pendingChatContext.count > Self.maximumPendingChatContext {
             pendingChatContext.removeFirst(pendingChatContext.count - Self.maximumPendingChatContext)
@@ -1089,22 +1103,36 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     static let screenshotSharedPrompt = "[Background only. The user just shared a screenshot to the chat this call is attached to. You can't see it, but Hermes can. When the user asks about their screen, send their question to the chat as they asked it, and the screenshot goes with it. Don't guess what the screen shows, and don't respond to this note now.]"
 
-    /// The user removed the screenshot before asking about it. A note
-    /// still waiting is dropped; one the model already heard is answered
-    /// with a note that the screenshot is gone.
-    func retractScreenshotShared() {
+    /// The user removed a screenshot. When the call was told about it, a
+    /// note still waiting is dropped, and one the model already heard is
+    /// answered with a note that the screenshot is gone. `inInstructions`:
+    /// the call's instructions named it (it waited on the call's chat when
+    /// the call started).
+    func retractScreenshotNote(attachmentURI: String, inInstructions: Bool) {
         guard liveThread != nil else { return }
-        let waiting = pendingChatContext.count
-        pendingChatContext.removeAll { $0 == Self.screenshotSharedPrompt }
-        guard pendingChatContext.count == waiting else { return }
-        queueScreenshotNote(Self.screenshotRemovedPrompt)
+        if let note = screenshotNote, note.attachmentURI == attachmentURI {
+            screenshotNote = nil
+            guard note.heard else {
+                // Waiting, or dropped by the cap: never heard.
+                if let index = pendingChatContext.firstIndex(of: note.prompt) {
+                    pendingChatContext.remove(at: index)
+                }
+                return
+            }
+        } else if !inInstructions {
+            return
+        }
+        queueChatNote(Self.screenshotRemovedPrompt)
     }
 
     static let screenshotRemovedPrompt = "[Background only. The user removed the screenshot they shared: the chat's next turn won't carry one. Don't respond to this note now.]"
 
     /// Removes and returns the oldest exchange waiting for the call.
     func takePendingChatContext() -> String? {
-        pendingChatContext.isEmpty ? nil : pendingChatContext.removeFirst()
+        guard !pendingChatContext.isEmpty else { return nil }
+        let note = pendingChatContext.removeFirst()
+        if note == screenshotNote?.prompt { screenshotNote?.heard = true }
+        return note
     }
 
     static let maximumTypedCharacters = 2_000

@@ -22,7 +22,7 @@ struct ScreenQuestionVoiceBanner: View {
                     .foregroundStyle(.secondary)
                 ComposerAttachmentChip(attachment: screenshot, canRemove: true, onRemove: onDiscard)
             }
-            // Grouped for VoiceOver: the caption reads before the chip and its remove button.
+            // One region for VoiceOver: the caption with the chip and its remove button.
             .accessibilityElement(children: .contain)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -39,6 +39,7 @@ struct ScreenQuestionSettingsSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @AppStorage(ScreenQuestionPreferences.startWithKey) private var startWith = ScreenQuestionStart.voice.rawValue
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @State private var isOpeningShortcut = false
     @State private var lastUsed = ScreenQuestionUsage.lastUsed()
 
@@ -67,6 +68,11 @@ struct ScreenQuestionSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
         .onAppear { lastUsed = ScreenQuestionUsage.lastUsed() }
+        // Back from running the shortcut: the row shows the run.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            lastUsed = ScreenQuestionUsage.lastUsed()
+        }
     }
 
     private var addShortcutStep: some View {
@@ -110,7 +116,7 @@ struct ScreenQuestionSettingsSection: View {
         .foregroundStyle(.secondary)
     }
 
-    /// Conduit can't see the user's shortcuts; a run proves the chain works.
+    /// Conduit can't see the user's shortcuts; a run proves the shortcut ran.
     @ViewBuilder
     private var lastUsedRow: some View {
         if let lastUsed {

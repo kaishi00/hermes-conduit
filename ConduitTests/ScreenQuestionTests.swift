@@ -197,7 +197,9 @@ final class ScreenQuestionTests: XCTestCase {
             #"{"url": "https://www.icloud.com:8443/shortcuts/0a1b2c3d"}"#,
             #"{"url": "https://www.icloud.com/shortcuts/"}"#,
             #"{"url": "https://www.icloud.com/notes/0a1b2c3d"}"#,
-            #"{"url": "https://www.icloud.com/shortcuts/0a1b2c3d/extra"}"#
+            #"{"url": "https://www.icloud.com/shortcuts/0a1b2c3d/extra"}"#,
+            #"{"url": "https://www.icloud.com/shortcuts/0a1b2c3d?next=https://evil.example"}"#,
+            #"{"url": "https://www.icloud.com/shortcuts/0a1b2c3d#fragment"}"#
         ]
         for json in refused {
             XCTAssertNil(ScreenQuestionShortcutLink.shortcutURL(fromConfig: config(json)), json)

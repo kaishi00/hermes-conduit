@@ -33,7 +33,7 @@ enum ScreenQuestionStartAppEnum: String, AppEnum {
 }
 
 /// When the action last ran, for the setup screen's "Last used". Conduit
-/// can't see which shortcuts are installed; a run proves the whole chain.
+/// can't see which shortcuts are installed; a run proves the shortcut ran.
 enum ScreenQuestionUsage {
     static let lastUsedKey = "conduit.screenQuestion.lastUsedAt"
 
@@ -64,7 +64,8 @@ enum ScreenQuestionShortcutLink {
               let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
               url.scheme == "https",
               url.host?.lowercased() == "www.icloud.com",
-              url.user == nil, url.password == nil, url.port == nil
+              url.user == nil, url.password == nil, url.port == nil,
+              url.query == nil, url.fragment == nil
         else { return nil }
         let path = url.path.split(separator: "/", omittingEmptySubsequences: true)
         guard path.count == 2, path[0] == "shortcuts" else { return nil }
@@ -81,7 +82,7 @@ enum ScreenQuestionShortcutLink {
     }
 
     static func fetchConfig(_ url: URL) async throws -> Data {
-        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 3)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         return data

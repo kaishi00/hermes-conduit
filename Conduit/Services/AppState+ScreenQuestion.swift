@@ -112,7 +112,14 @@ extension AppState {
     /// The composer's remove button: the screenshot never leaves the phone.
     func discardPendingScreenshot(forSession sessionID: String?) {
         guard let index = pendingScreenshotIndex(forSession: sessionID) else { return }
-        Self.deleteStagedScreenshot(pendingScreenshots.remove(at: index).attachment)
+        let removed = pendingScreenshots[index].attachment
+        // Waiting on a live call's chat, it was named in the call's
+        // instructions or a note.
+        let onCallsChat = voiceBackgroundJobSupervisor.liveThread.map { pendingScreenshot(forThread: $0) == removed } ?? false
+        pendingScreenshots.remove(at: index)
+        Self.deleteStagedScreenshot(removed)
+        // A live call told about it hears that it's gone.
+        voiceBackgroundJobSupervisor.retractScreenshotNote(attachmentURI: removed.uri, inInstructions: onCallsChat)
     }
 
     /// Hands the chat's screenshot to the send that carries it. The staged
@@ -187,13 +194,10 @@ extension AppState {
             discardPendingScreenshot(forSession: activeSessionId)
             return
         }
-        guard let thread = voiceBackgroundJobSupervisor.liveThread,
-              pendingScreenshot(forThread: thread) != nil else { return }
+        guard let thread = voiceBackgroundJobSupervisor.liveThread else { return }
         for id in [thread.runtimeSessionID, thread.storedSessionID].compactMap({ $0 }) {
             discardPendingScreenshot(forSession: id)
         }
-        // The call was told a screenshot is waiting.
-        voiceBackgroundJobSupervisor.retractScreenshotShared()
     }
 
     // MARK: - Opening the chat
@@ -400,7 +404,7 @@ extension AppState {
         } else if isVoiceInUse {
             // A conversation already running takes it: its next question
             // carries it.
-            noteScreenshotToLiveCall(on: sessionID)
+            noteScreenshotToLiveCall(request.attachment, on: sessionID)
         } else if resumingParked {
             requestComposerFocus(on: sessionID)
         } else {
@@ -433,14 +437,19 @@ extension AppState {
 
     /// A live call attached to the chat hears, quietly, that a screenshot
     /// arrived: it can't see it, and the chat's next turn carries it.
-    private func noteScreenshotToLiveCall(on sessionID: String) {
+    private func noteScreenshotToLiveCall(_ screenshot: Attachment, on sessionID: String) {
         guard isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread else { return }
+        noteScreenshot(screenshot, on: sessionID, toCallIn: thread)
+    }
+
+    /// Tells the call attached to `thread` where the screenshot went.
+    func noteScreenshot(_ screenshot: Attachment, on sessionID: String, toCallIn thread: VoiceThreadTarget) {
         if thread.owns(sessionID: sessionID) || isOpenChat(thread) {
-            voiceBackgroundJobSupervisor.noteScreenshotShared()
+            voiceBackgroundJobSupervisor.noteScreenshotShared(attachmentURI: screenshot.uri)
         } else {
             // The call's chat couldn't come on screen: its turns can't
             // carry the screenshot, so the call sends the user to it.
-            voiceBackgroundJobSupervisor.noteScreenshotInAnotherChat()
+            voiceBackgroundJobSupervisor.noteScreenshotInAnotherChat(attachmentURI: screenshot.uri)
         }
     }
 
