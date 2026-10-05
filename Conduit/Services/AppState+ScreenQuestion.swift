@@ -187,10 +187,13 @@ extension AppState {
             discardPendingScreenshot(forSession: activeSessionId)
             return
         }
-        guard let thread = voiceBackgroundJobSupervisor.liveThread else { return }
+        guard let thread = voiceBackgroundJobSupervisor.liveThread,
+              pendingScreenshot(forThread: thread) != nil else { return }
         for id in [thread.runtimeSessionID, thread.storedSessionID].compactMap({ $0 }) {
             discardPendingScreenshot(forSession: id)
         }
+        // The call was told a screenshot is waiting.
+        voiceBackgroundJobSupervisor.retractScreenshotShared()
     }
 
     // MARK: - Opening the chat

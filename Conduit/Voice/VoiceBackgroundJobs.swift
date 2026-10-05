@@ -1076,6 +1076,23 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     static let screenshotSharedPrompt = "[Background only. The user just shared a screenshot to the chat this call is attached to. You can't see it, but Hermes can. When the user asks about their screen, send their question to the chat as they asked it, and the screenshot goes with it. Don't guess what the screen shows, and don't respond to this note now.]"
 
+    /// The user removed the screenshot before asking about it. A note
+    /// still waiting is dropped; one the model already heard is answered
+    /// with a note that the screenshot is gone.
+    func retractScreenshotShared() {
+        guard liveThread != nil else { return }
+        let waiting = pendingChatContext.count
+        pendingChatContext.removeAll { $0 == Self.screenshotSharedPrompt }
+        guard pendingChatContext.count == waiting else { return }
+        pendingChatContext.append(Self.screenshotRemovedPrompt)
+        if pendingChatContext.count > Self.maximumPendingChatContext {
+            pendingChatContext.removeFirst(pendingChatContext.count - Self.maximumPendingChatContext)
+        }
+        onNoticePending?()
+    }
+
+    static let screenshotRemovedPrompt = "[Background only. The user removed the screenshot they shared: the chat's next turn won't carry one. Don't respond to this note now.]"
+
     /// Removes and returns the oldest exchange waiting for the call.
     func takePendingChatContext() -> String? {
         pendingChatContext.isEmpty ? nil : pendingChatContext.removeFirst()

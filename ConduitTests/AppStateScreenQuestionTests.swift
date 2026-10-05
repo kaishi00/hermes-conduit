@@ -813,6 +813,24 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(note?.hasPrefix("[Background only.") == true)
     }
 
+    func testRemovedScreenshotTakesBackTheCallsNote() {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat"))
+
+        supervisor.noteScreenshotShared()
+        supervisor.retractScreenshotShared()
+        XCTAssertNil(supervisor.takePendingChatContext(), "A note not yet heard is dropped")
+
+        supervisor.noteScreenshotShared()
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotSharedPrompt)
+        supervisor.retractScreenshotShared()
+        XCTAssertEqual(
+            supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotRemovedPrompt,
+            "A note already heard is answered"
+        )
+    }
+
     func testVoiceSheetShowsAndDiscardsTheChatsScreenshot() throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         openChat("composer-origin", in: harness)
