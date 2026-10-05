@@ -190,6 +190,15 @@ private func settle(_ iterations: Int = 20) async {
     for _ in 0..<iterations { await Task.yield() }
 }
 
+/// Yields until `done` holds, capped at 10 s of wall clock. A fixed number
+/// of yields can run out on a busy hosted runner before the session's own
+/// tasks have had their turns.
+@MainActor
+private func settle(until done: () -> Bool, limit: Duration = .seconds(10)) async {
+    let deadline = ContinuousClock.now.advanced(by: limit)
+    while !done(), ContinuousClock.now < deadline { await Task.yield() }
+}
+
 // MARK: - Wire format and token client
 
 @MainActor
@@ -497,15 +506,16 @@ extension VoiceConversationControllerTests {
         let first = try XCTUnwrap(sockets().first)
         first.deliver(["setupComplete": [String: Any]()])
         first.deliver(["goAway": ["timeLeft": "5s"]])
-        await settle(40)
-        sockets()[1].serverClose(nil)
-        await settle(80)
+        await settle(until: { sockets().dropFirst().first?.sent.first != nil })
+        try XCTUnwrap(sockets().dropFirst().first).serverClose(nil)
+        // The failed attempt first waits out its close frame, then retries.
+        await settle(until: { sockets().count == 3 })
 
         XCTAssertEqual(sockets().count, 3, "A failed handoff attempt is retried")
         XCTAssertEqual(session.state, .ready, "The old connection still serves")
         XCTAssertFalse(first.closed)
-        sockets()[2].deliver(["setupComplete": [String: Any]()])
-        await settle()
+        try XCTUnwrap(sockets().dropFirst(2).first).deliver(["setupComplete": [String: Any]()])
+        await settle(until: { first.closed })
         XCTAssertTrue(first.closed)
         XCTAssertEqual(session.state, .ready)
         session.stop()

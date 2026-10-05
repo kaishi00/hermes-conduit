@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UIKit
 import XCTest
@@ -330,17 +331,86 @@ final class ChatScrollHostedTests: XCTestCase {
     }
 
     func testLoadingEarlierMessagesKeepsTheReaderInPlace() throws {
+        try loadEarlierMessages(stall: .none)
+    }
+
+    /// A busy main thread between the transcript landing and the layout
+    /// that shows the prepended page.
+    func testLoadingEarlierMessagesHoldsThroughAStallBeforeTheLayout() throws {
+        try loadEarlierMessages(stall: .beforeLayout)
+    }
+
+    /// A busy main thread right after the engine's first correction, before
+    /// SwiftUI writes its own offset and the new row frames arrive.
+    func testLoadingEarlierMessagesHoldsThroughAStallAfterTheLayout() throws {
+        try loadEarlierMessages(stall: .afterLayout)
+    }
+
+    private enum Stall {
+        case none
+        case beforeLayout
+        case afterLayout
+    }
+
+    private func loadEarlierMessages(
+        stall: Stall,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
         let mounted = try mount(Self.transcript(40..<120))
         browse(mounted, to: mounted.scrollView.contentOffset.y - 1200)
         let topRow = try XCTUnwrap(mounted.engine.topVisibleMessageID)
         let before = try XCTUnwrap(screenY(of: topRow, in: mounted))
+        let recorder = ScrollRecorder(mounted.scrollView)
 
         mounted.engine.olderPageBackfillRequested(sessionKey: mounted.engine.renderedSessionKey)
+        var stalled = false
+        var stallSubscription: AnyCancellable?
+        var stallObservation: NSKeyValueObservation?
+        switch stall {
+        case .none:
+            break
+        case .beforeLayout:
+            // The engine publishes its new rows right after the transcript
+            // lands; SwiftUI lays them out in a later pass.
+            stallSubscription = mounted.engine.objectWillChange.sink { [engine = mounted.engine] _ in
+                guard !stalled, engine.prependAnchor?.landedAt != nil else { return }
+                stalled = true
+                Thread.sleep(forTimeInterval: 1)
+            }
+        case .afterLayout:
+            // The first jump of more than a page is the engine moving the
+            // reader down past the prepended page.
+            let offsetBefore = mounted.scrollView.contentOffset.y
+            let page = mounted.scrollView.bounds.height
+            stallObservation = mounted.scrollView.observe(\.contentOffset, options: [.new]) { _, change in
+                guard !stalled, let offset = change.newValue, offset.y > offsetBefore + page else { return }
+                stalled = true
+                Thread.sleep(forTimeInterval: 1)
+            }
+        }
+        ChatViewportTrace.shared.reset()
         mounted.appState.messages = Self.transcript(0..<120)
-        settle(mounted.host.view)
+        // The stall takes a second out of the settle; the rest still gets
+        // the usual layout passes.
+        settle(mounted.host.view, seconds: stall == .none ? 0.6 : 1.6)
+        stallSubscription?.cancel()
+        stallObservation?.invalidate()
 
-        let after = try XCTUnwrap(screenY(of: topRow, in: mounted))
-        XCTAssertEqual(after, before, accuracy: 2, "the prepend lands above without moving the reader")
+        let trace = { "offsets:\n\(recorder.dump())\nengine:\n\(ChatViewportTrace.shared.dump())" }
+        XCTAssertEqual(
+            stalled, stall != .none, "the main thread stalled where the test meant it to",
+            file: file, line: line
+        )
+        let after = try XCTUnwrap(
+            screenY(of: topRow, in: mounted),
+            "the reader's row \(topRow) has no frame after the prepend\n\(trace())",
+            file: file, line: line
+        )
+        XCTAssertEqual(
+            after, before, accuracy: 2, "the prepend lands above without moving the reader\n\(trace())",
+            file: file, line: line
+        )
     }
 
     func testScrollingDoesNotReevaluateTheChat() throws {

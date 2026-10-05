@@ -19,7 +19,8 @@ final class ChatViewportTrace {
     private let limit = 600
     private let logger = Logger(subsystem: "com.milim.relay", category: "viewport")
 
-    func log(_ text: String) {
+    func log(_ message: @autoclosure () -> String) {
+        let text = message()
         entries.append(Entry(time: CFAbsoluteTimeGetCurrent(), text: text))
         if entries.count > limit {
             entries.removeFirst(entries.count - limit)
@@ -37,7 +38,8 @@ final class ChatViewportTrace {
         entries.removeAll()
     }
     #else
-    func log(_ text: String) {}
+    /// Release builds never build the message.
+    func log(_ message: @autoclosure () -> String) {}
     func dump() -> String { "" }
     func reset() {}
     #endif
