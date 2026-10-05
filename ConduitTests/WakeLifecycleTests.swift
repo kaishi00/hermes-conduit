@@ -167,6 +167,63 @@ extension WakeLifecycleTests {
         XCTAssertFalse(appState.wakeLifecycleSnapshot.otherAudioAllowsListening, "a playing podcast pauses wake again")
     }
 
+    func testOtherAudioMonitorPollsOnlyWhileWakeCouldListen() async throws {
+        let suite = "WakeLifecycleTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {})
+        var otherAudioPlaying = false
+        appState.wakeOtherAudioProbe = { otherAudioPlaying }
+        appState.wakeOtherAudioPollInterval = .milliseconds(10)
+        let ready = WakeLifecycleSnapshot(
+            isForegroundActive: true,
+            isAuthenticated: true,
+            isGatewayConnected: true,
+            microphonePermitted: true,
+            isVoiceIdle: true,
+            hasWakePhrases: true
+        )
+
+        appState.updateWakeOtherAudioMonitor(for: ready)
+        let monitor = try XCTUnwrap(appState.wakeOtherAudioMonitor, "armed wake watches for other audio")
+        appState.updateWakeOtherAudioMonitor(for: ready)
+        XCTAssertEqual(appState.wakeOtherAudioMonitor, monitor, "a refresh keeps the one monitor")
+
+        otherAudioPlaying = true
+        await waitForWake { appState.isWakeOtherAudioPlaying }
+        XCTAssertTrue(appState.isWakeOtherAudioPlaying, "a podcast starting is noticed")
+
+        var paused = ready
+        paused.otherAudioAllowsListening = false
+        appState.updateWakeOtherAudioMonitor(for: paused)
+        XCTAssertEqual(appState.wakeOtherAudioMonitor, monitor, "still polling while waiting for it to stop")
+        otherAudioPlaying = false
+        await waitForWake { !appState.isWakeOtherAudioPlaying }
+        XCTAssertFalse(appState.isWakeOtherAudioPlaying, "the podcast stopping is noticed")
+
+        var inCall = ready
+        inCall.isVoiceIdle = false
+        appState.updateWakeOtherAudioMonitor(for: inCall)
+        XCTAssertNil(appState.wakeOtherAudioMonitor, "no polling while wake could not listen anyway")
+        XCTAssertTrue(monitor.isCancelled)
+
+        appState.updateWakeOtherAudioMonitor(for: ready)
+        let restarted = try XCTUnwrap(appState.wakeOtherAudioMonitor, "polling resumes after the call")
+        appState.setWakeListensOverOtherAudio(true)
+        appState.updateWakeOtherAudioMonitor(for: ready)
+        XCTAssertNil(appState.wakeOtherAudioMonitor, "no polling when wake keeps listening over other audio")
+        XCTAssertTrue(restarted.isCancelled)
+    }
+
+    /// Lets the main actor run until `condition` holds, capped at 10 seconds
+    /// of wall clock (hosted runners can stall the main actor).
+    private func waitForWake(until condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(10)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     func testStaysDisarmedWithoutWakePhrases() {
         let service = FakeWakeWordService()
         let coordinator = WakeLifecycleCoordinator(service: service)

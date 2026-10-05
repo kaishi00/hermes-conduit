@@ -170,7 +170,7 @@ extension AppState {
     /// podcast starts) or only waiting for that audio to stop (to listen
     /// again). Off whenever wake could not listen anyway, and when the user
     /// keeps it listening over other audio.
-    private func updateWakeOtherAudioMonitor(for snapshot: WakeLifecycleSnapshot) {
+    func updateWakeOtherAudioMonitor(for snapshot: WakeLifecycleSnapshot) {
         guard snapshot.canArmIgnoringOtherAudio, !wakeConfiguration.listensOverOtherAudio else {
             stopWakeOtherAudioMonitor()
             return
@@ -213,6 +213,7 @@ extension AppState {
         // another app may start or stop playing.
         isWakeRouteCarPlay = false
         isWakeOtherAudioPlaying = false
+        if isWakePausedForOtherAudio { isWakePausedForOtherAudio = false }
     }
 
     /// Another audio owner is taking the session now: stop listening before

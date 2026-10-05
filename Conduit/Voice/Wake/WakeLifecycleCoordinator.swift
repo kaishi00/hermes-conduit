@@ -63,7 +63,10 @@ enum WakeRoutePolicy {
     }
 
     /// Whether another app is playing audio right now (music, a podcast).
-    /// Readable with Conduit's own session inactive.
+    /// Readable with Conduit's own session inactive. Short sounds count too
+    /// (a navigation prompt), so wake can pause for a moment around them.
+    /// Not main-actor isolated, so AppState's plain `() -> Bool` probe (a
+    /// test seam) can call it; AVAudioSession reads are thread-safe.
     static func isOtherAudioPlaying() -> Bool {
         AVAudioSession.sharedInstance().isOtherAudioPlaying
     }

@@ -56,6 +56,9 @@ final class AppleSpeechWakeWordService: WakeWordService {
     private var isInterrupted = false
     private var observers: [NSObjectProtocol] = []
     private var engineObserver: NSObjectProtocol?
+    /// Which engine a configuration change belongs to: a change already
+    /// queued for an engine this listener stopped or replaced is dropped.
+    private var engineGeneration: UInt64 = 0
 
     private static let maximumConsecutiveFailures = 5
 
@@ -159,10 +162,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
     }
 
     private func stopAudio() {
-        if let engineObserver {
-            NotificationCenter.default.removeObserver(engineObserver)
-            self.engineObserver = nil
-        }
+        stopObservingConfigurationChanges()
         guard let engine else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
@@ -172,16 +172,29 @@ final class AppleSpeechWakeWordService: WakeWordService {
     /// A route change reconfigures the engine and stops it: rebuild it.
     /// Only this listener's engine: another engine in the app reconfiguring
     /// must not restart the microphone, and every restart re-activates the
-    /// session, which makes other apps' audio drop out for a moment.
+    /// session, which makes other apps' audio drop out for a moment. As in
+    /// AVSpeechPlaybackService, the handler never reads the notification's
+    /// object; the captured generation says whose change it was.
     private func observeConfigurationChanges(of engine: AVAudioEngine) {
-        if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
+        stopObservingConfigurationChanges()
+        let generation = engineGeneration
         engineObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: engine,
-            queue: .main
+            queue: nil
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.scheduleAudioRecovery() }
+            Task { @MainActor [weak self] in
+                guard let self, self.engineGeneration == generation else { return }
+                self.scheduleAudioRecovery()
+            }
         }
+    }
+
+    private func stopObservingConfigurationChanges() {
+        engineGeneration &+= 1
+        guard let engineObserver else { return }
+        NotificationCenter.default.removeObserver(engineObserver)
+        self.engineObserver = nil
     }
 
     /// On CarPlay, record from the iPhone's own microphone: recording
