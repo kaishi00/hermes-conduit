@@ -64,6 +64,16 @@ final class ChatScrollEngineTests: XCTestCase {
         engines = []
     }
 
+    /// Lets every main-queue block queued so far run (the engine defers its
+    /// past-the-bottom check, and publishes made inside UIKit callbacks, to
+    /// the next turn). Waits for that turn itself: a fixed run-loop spin or a
+    /// 1 s timeout is overrun when a hosted runner stalls the main thread.
+    private func runQueuedMainWork() {
+        let turn = expectation(description: "the next main-queue turn")
+        DispatchQueue.main.async { turn.fulfill() }
+        wait(for: [turn], timeout: 10)
+    }
+
     private func identity(_ sessionID: String) -> ChatScrollSessionIdentity {
         ChatScrollSessionIdentity(
             profile: "p",
@@ -161,7 +171,7 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.sets.count, 1)
 
         // Once the turn is over, the deferred check leaves it on the bottom.
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        runQueuedMainWork()
         XCTAssertEqual(surface.contentOffsetY, 2900)
         XCTAssertEqual(surface.sets.count, 2)
         XCTAssertTrue(engine.isFollowingLatest)
@@ -175,7 +185,7 @@ final class ChatScrollEngineTests: XCTestCase {
         engine.explicitTopRequested()
         XCTAssertEqual(surface.contentOffsetY, surface.minOffsetY)
 
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        runQueuedMainWork()
         XCTAssertEqual(surface.contentOffsetY, surface.minOffsetY, "the reader asked for the top")
         XCTAssertEqual(engine.mode, .browsing)
     }
@@ -713,9 +723,7 @@ final class ChatScrollEngineTests: XCTestCase {
             "a change made inside a UIKit callback must not publish during the SwiftUI update"
         )
 
-        let published = expectation(description: "published on the next main-queue turn")
-        DispatchQueue.main.async { published.fulfill() }
-        wait(for: [published], timeout: 1)
+        runQueuedMainWork()
         XCTAssertTrue(engine.renderInputs.showsJumpToLatest)
         XCTAssertFalse(engine.renderInputs.isFollowingLatest)
 
