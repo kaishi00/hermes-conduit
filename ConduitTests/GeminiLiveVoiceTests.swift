@@ -892,18 +892,26 @@ extension VoiceConversationControllerTests {
     func testLiveModelsAreAskedForSubstantiveAnswersNotOneLiners() {
         let gemini = GeminiLiveConversationController.instructions(search: .google, personality: "Judge Hermes")
         let gpt = GPTLiveConversationController.briefing(personality: "Judge Hermes")
+        // Grok Live is built from Gemini Live's instructions (AppState.grokLiveController).
         for (engine, text) in [("Gemini and Grok", gemini), ("GPT-Live", gpt)] {
             XCTAssertTrue(text.contains(LiveVoiceStyle.answerDepth), "\(engine) gets the answer-length rule")
             XCTAssertFalse(text.localizedCaseInsensitiveContains("keep replies short"), "\(engine) is no longer told to keep it short")
-            XCTAssertFalse(text.contains("a few spoken sentences"), engine)
+            for phrase in ["a few spoken sentences", "sentence or two", "briefly", "keep your own replies short"] {
+                XCTAssertFalse(text.contains(phrase), "\(engine): \(phrase)")
+            }
             XCTAssertTrue(text.contains("not how much you say"), "\(engine): a text persona can't make spoken answers terse")
         }
         XCTAssertFalse(LiveVoiceStyle(tone: .professional).instructions.contains("concise"), "professional cuts filler, not substance")
+        XCTAssertFalse(GeminiLiveToolBridge.webSearchDeclaration.description.contains("sentence or two"))
+        XCTAssertFalse(GeminiLiveToolBridge.threadDeclarations.contains { $0.description.contains("summarize it") })
+        let lookup = GeminiLiveConversationController.lookupFallbackText(for: ["results": "1. Sunny, 21°C"])
+        XCTAssertEqual(lookup?.contains("briefly"), false, "a lookup's answer isn't cut short either")
 
         let job = VoiceBackgroundJobSupervisor.completionPrompt(title: "Weather", result: "Sunny, 21°C.")
         let reply = VoiceBackgroundJobSupervisor.threadReplyPrompt(result: "Done.")
         for prompt in [job, reply] {
             XCTAssertFalse(prompt.contains("a few spoken sentences"), "Hermes' results are passed on with their details, not as a one-line gist")
+            XCTAssertFalse(prompt.contains("the gist"))
             XCTAssertTrue(prompt.contains("the details that matter"))
         }
         XCTAssertFalse(VoiceBackgroundJobSupervisor.jobPrompt(for: "Check the weather").contains("short plain-language summary"))
