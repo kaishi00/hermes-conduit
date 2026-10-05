@@ -22,6 +22,8 @@ struct ScreenQuestionVoiceBanner: View {
                     .foregroundStyle(.secondary)
                 ComposerAttachmentChip(attachment: screenshot, canRemove: true, onRemove: onDiscard)
             }
+            // Grouped for VoiceOver: the caption reads before the chip and its remove button.
+            .accessibilityElement(children: .contain)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)

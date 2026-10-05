@@ -320,7 +320,11 @@ extension AppState {
         }
 
         // A live call attached to a chat takes the screenshot on that chat,
-        // so the call's next question carries it.
+        // so the call's next question carries it. Only a turn sent from the
+        // chat on screen carries an attachment (an off-screen thread turn is
+        // text only), so a chat that can't come on screen (a Bot Chat, which
+        // opens in the bot's profile, or a failed open) leaves the
+        // screenshot in the chat that is, sent with its next message.
         if !switchedProfile, isLiveVoiceCallActive,
            let thread = voiceBackgroundJobSupervisor.liveThread, thread.profile == nil, !isOpenChat(thread) {
             _ = await openSession(thread.storedSessionID ?? thread.runtimeSessionID)
