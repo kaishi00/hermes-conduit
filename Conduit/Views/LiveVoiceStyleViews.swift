@@ -3,8 +3,8 @@
 //  Conduit
 //
 //  Voice settings for how live calls sound (#290): a greeting when a call
-//  connects, the tone, backchannels, and a look at what Conduit sends the
-//  voice model.
+//  connects, the tone, answer length, backchannels, and a look at what
+//  Conduit sends the voice model.
 //
 
 import SwiftUI
@@ -36,6 +36,7 @@ struct LiveVoiceStyleSettingsSection: View {
     @State private var greeting: String
     /// Empty is the model's own tone (a Picker tag can't be nil).
     @State private var tone: String
+    @State private var answerLength: LiveVoiceAnswerLength
     @State private var backchannels: Bool
     @State private var preview: LiveVoiceInstructionsPreviewContent?
     @State private var showsPreview = false
@@ -51,6 +52,7 @@ struct LiveVoiceStyleSettingsSection: View {
         _greets = State(initialValue: model.style.greeting != nil)
         _greeting = State(initialValue: model.style.greeting ?? "")
         _tone = State(initialValue: model.style.tone?.rawValue ?? "")
+        _answerLength = State(initialValue: model.style.answerLength)
         _backchannels = State(initialValue: model.style.backchannels)
     }
 
@@ -58,7 +60,8 @@ struct LiveVoiceStyleSettingsSection: View {
         LiveVoiceStyle(
             tone: LiveVoiceTone(rawValue: tone),
             backchannels: backchannels,
-            greeting: greets ? LiveVoiceStyle.cleanedGreeting(greeting) : nil
+            greeting: greets ? LiveVoiceStyle.cleanedGreeting(greeting) : nil,
+            answerLength: answerLength
         )
     }
 
@@ -139,6 +142,21 @@ struct LiveVoiceStyleSettingsSection: View {
             Text("How live calls sound. Model default keeps the voice model's tone and your Hermes server's persona. Applies to the next call.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Picker("Answer length", selection: Binding(
+                get: { answerLength },
+                set: { chosen in
+                    answerLength = chosen
+                    save()
+                }
+            )) {
+                ForEach(LiveVoiceAnswerLength.allCases) { option in
+                    Text(verbatim: option.label).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            Text("How much the voice model says when you ask something. Concise gives the key point in a sentence or two, Default adds the details that make it useful, and Detailed goes in depth. Applies to the next call.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Toggle("Backchannels", isOn: Binding(
                 get: { backchannels },
                 set: { requested in
@@ -173,6 +191,7 @@ struct LiveVoiceStyleSettingsSection: View {
                 greeting = ""
             }
             tone = newValue.tone?.rawValue ?? ""
+            answerLength = newValue.answerLength
             backchannels = newValue.backchannels
             // Now in sync: coming back to an earlier profile resyncs again.
             lastSaved = newValue
@@ -185,6 +204,7 @@ struct LiveVoiceStyleSettingsSection: View {
             greets = style.greeting != nil
             greeting = style.greeting ?? ""
             tone = style.tone?.rawValue ?? ""
+            answerLength = style.answerLength
             backchannels = style.backchannels
             lastSaved = style
         }

@@ -1456,7 +1456,8 @@ final class AppState: ObservableObject {
                     systemInstruction: GeminiLiveConversationController.instructions(
                         search: search,
                         memory: memory,
-                        personality: self?.geminiLivePersonality
+                        personality: self?.geminiLivePersonality,
+                        answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
                         + (self?.liveVoiceStyle.instructions ?? ""),
@@ -1734,7 +1735,11 @@ final class AppState: ObservableObject {
                     client: client,
                     history: self?.liveVoiceResumeContext?.gptLiveHistory ?? [],
                     voice: self?.gptLiveVoice,
-                    briefing: GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
+                    briefing: GPTLiveConversationController.briefing(
+                        memory: self?.gptLiveMemoryContext,
+                        personality: self?.gptLivePersonality,
+                        answerLength: self?.liveVoiceStyle.answerLength ?? .standard
+                    )
                         + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
                         + (self?.liveVoiceStyle.instructions ?? ""),
@@ -1750,7 +1755,11 @@ final class AppState: ObservableObject {
                 return status
             },
             briefing: { [weak self] in
-                GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
+                GPTLiveConversationController.briefing(
+                    memory: self?.gptLiveMemoryContext,
+                    personality: self?.gptLivePersonality,
+                    answerLength: self?.liveVoiceStyle.answerLength ?? .standard
+                )
                     + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                     + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
                     + (self?.liveVoiceStyle.instructions ?? "")
@@ -1980,7 +1989,8 @@ final class AppState: ObservableObject {
                     instructions: GeminiLiveConversationController.instructions(
                         search: search,
                         memory: memory,
-                        personality: self?.grokLivePersonality
+                        personality: self?.grokLivePersonality,
+                        answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
                         + (self?.liveVoiceStyle.instructions ?? ""),
@@ -3627,13 +3637,16 @@ final class AppState: ObservableObject {
         var preferences = loadVoiceProfilePreferences(profile: profile)
         let greeting = style.greeting.map(LiveVoiceStyle.cleanedGreeting)
         let backchannels: Bool? = style.backchannels ? nil : false
+        let answerLength: LiveVoiceAnswerLength? = style.answerLength == .standard ? nil : style.answerLength
         guard preferences.liveVoiceTone != style.tone
             || preferences.liveVoiceBackchannels != backchannels
-            || preferences.liveVoiceGreeting != greeting else { return }
+            || preferences.liveVoiceGreeting != greeting
+            || preferences.liveVoiceAnswerLength != answerLength else { return }
         objectWillChange.send()
         preferences.liveVoiceTone = style.tone
         preferences.liveVoiceBackchannels = backchannels
         preferences.liveVoiceGreeting = greeting
+        preferences.liveVoiceAnswerLength = answerLength
         saveVoiceProfilePreferences(preferences, profile: profile)
     }
 
@@ -3652,21 +3665,24 @@ final class AppState: ObservableObject {
             mode = "GPT-Live"
             text = GPTLiveConversationController.briefing(
                 memory: gptLiveMemoryEnabled ? placeholderMemory : nil,
-                personality: gptLivePersonalityEnabled ? placeholderPersona : nil
+                personality: gptLivePersonalityEnabled ? placeholderPersona : nil,
+                answerLength: style.answerLength
             )
         } else if isGrokLiveEnabled {
             mode = "Grok Live"
             text = GeminiLiveConversationController.instructions(
                 search: grokLiveSearchSource,
                 memory: grokLiveMemoryEnabled ? placeholderMemory : nil,
-                personality: grokLivePersonalityEnabled ? placeholderPersona : nil
+                personality: grokLivePersonalityEnabled ? placeholderPersona : nil,
+                answerLength: style.answerLength
             )
         } else if isGeminiLiveEnabled {
             mode = "Gemini Live"
             text = GeminiLiveConversationController.instructions(
                 search: geminiLiveSearchSource,
                 memory: geminiLiveMemoryEnabled ? placeholderMemory : nil,
-                personality: geminiLivePersonalityEnabled ? placeholderPersona : nil
+                personality: geminiLivePersonalityEnabled ? placeholderPersona : nil,
+                answerLength: style.answerLength
             )
         } else {
             return nil

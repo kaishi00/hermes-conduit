@@ -253,9 +253,16 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// Greeting when a live call connects. Nil is off; empty is a short
     /// greeting in the model's own words.
     var liveVoiceGreeting: String? = nil
+    /// How much live models say. Nil is Default.
+    var liveVoiceAnswerLength: LiveVoiceAnswerLength? = nil
 
     var liveVoiceStyle: LiveVoiceStyle {
-        LiveVoiceStyle(tone: liveVoiceTone, backchannels: liveVoiceBackchannels ?? true, greeting: liveVoiceGreeting)
+        LiveVoiceStyle(
+            tone: liveVoiceTone,
+            backchannels: liveVoiceBackchannels ?? true,
+            greeting: liveVoiceGreeting,
+            answerLength: liveVoiceAnswerLength ?? .standard
+        )
     }
 
     var resolvedTranscriptionMode: VoiceTranscriptionMode {
@@ -318,6 +325,8 @@ struct VoiceProfilePreferences: Codable, Equatable {
         liveVoiceTone = try? container.decodeIfPresent(LiveVoiceTone.self, forKey: .liveVoiceTone)
         liveVoiceBackchannels = try? container.decodeIfPresent(Bool.self, forKey: .liveVoiceBackchannels)
         liveVoiceGreeting = try? container.decodeIfPresent(String.self, forKey: .liveVoiceGreeting)
+        // An unknown length (a newer build's) is Default.
+        liveVoiceAnswerLength = try? container.decodeIfPresent(LiveVoiceAnswerLength.self, forKey: .liveVoiceAnswerLength)
     }
 
     /// What a voice job's `session.create` asks for: the chosen voice-job

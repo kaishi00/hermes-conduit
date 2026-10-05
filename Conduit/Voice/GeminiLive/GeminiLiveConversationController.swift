@@ -163,7 +163,8 @@ final class GeminiLiveConversationController: ObservableObject {
     static func instructions(
         search: GeminiLiveSearchSource,
         memory: GeminiLiveMemoryContext? = nil,
-        personality: String? = nil
+        personality: String? = nil,
+        answerLength: LiveVoiceAnswerLength = .standard
     ) -> String {
         let lookups: String
         switch search {
@@ -176,7 +177,7 @@ final class GeminiLiveConversationController: ObservableObject {
         }
         return """
     You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. This is speech, not text: talk naturally, in full spoken sentences.
-    \(LiveVoiceStyle.answerDepth)
+    \(answerLength.instructions)
     Never speak while the user is speaking. If they interrupt you, stop and listen. If you have nothing useful to add, stay silent rather than filling the pause.
     Answer quick questions yourself. \(lookups)
     Call start_job only for work that needs the user's Hermes agent: their files, code, systems, accounts, or longer multi-step research. Pass the complete task. Every time you call start_job, first say a very short acknowledgement out loud, like "On it, I'll have Hermes look into that." Then carry on with the conversation; the job runs on Hermes in the background.

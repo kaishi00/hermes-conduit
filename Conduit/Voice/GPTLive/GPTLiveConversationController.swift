@@ -69,10 +69,10 @@ final class GPTLiveConversationController: ObservableObject {
     /// request and the host adds them to GPT-Live's instructions; a host
     /// that doesn't take them gets them as session context when the call
     /// starts. Written for the model, not shown as UI copy, so not localized.
-    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil) -> String {
+    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard) -> String {
         var text = """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. This is speech, not text: talk naturally, in full spoken sentences.
-        \(LiveVoiceStyle.answerDepth) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
+        \(answerLength.instructions) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
         Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.
         Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you. If the user wants to cancel jobs, tell them to say "cancel background jobs".
         Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.

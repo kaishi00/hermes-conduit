@@ -898,7 +898,7 @@ extension VoiceConversationControllerTests {
         }
         engines.append(("GPT-Live", gpt))
         for (engine, text) in engines {
-            XCTAssertTrue(text.contains(LiveVoiceStyle.answerDepth), "\(engine) gets the answer-length rule")
+            XCTAssertTrue(text.contains(LiveVoiceAnswerLength.standard.instructions), "\(engine) gets the answer-length rule")
             XCTAssertFalse(text.localizedCaseInsensitiveContains("keep replies short"), "\(engine) is no longer told to keep it short")
             XCTAssertFalse(text.contains("a few spoken sentences"), engine)
             XCTAssertTrue(text.contains("not how much you say"), "\(engine): a text persona can't make spoken answers terse")
@@ -930,6 +930,33 @@ extension VoiceConversationControllerTests {
             XCTAssertFalse(block.contains("keep your own replies short"), "delegation \(delegation)")
             XCTAssertTrue(block.contains("with the details that matter"), "delegation \(delegation)")
         }
+    }
+
+    func testLiveAnswerLengthPicksTheOneRuleEveryEngineGets() throws {
+        for length in LiveVoiceAnswerLength.allCases {
+            let gemini = GeminiLiveConversationController.instructions(search: .google, answerLength: length)
+            let gpt = GPTLiveConversationController.briefing(answerLength: length)
+            XCTAssertTrue(gemini.contains(length.instructions), "\(length)")
+            XCTAssertTrue(gpt.contains(length.instructions), "\(length)")
+            for other in LiveVoiceAnswerLength.allCases where other != length {
+                XCTAssertFalse(gemini.contains(other.instructions), "\(length): one length rule per call")
+                XCTAssertFalse(gpt.contains(other.instructions), "\(length): one length rule per call")
+            }
+        }
+        XCTAssertFalse(LiveVoiceAnswerLength.concise.instructions.contains("Keep it short only"), "Concise doesn't contradict itself")
+        XCTAssertTrue(LiveVoiceAnswerLength.detailed.instructions.contains("in depth"))
+        XCTAssertEqual(LiveVoiceStyle(answerLength: .detailed).instructions, "", "the length goes in the rules, not the style block")
+
+        let suite = "LiveVoiceAnswerLength.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {})
+        XCTAssertEqual(appState.liveVoiceStyle.answerLength, .standard, "Default until the user picks another")
+        appState.setLiveVoiceStyle(LiveVoiceStyle(answerLength: .concise))
+        XCTAssertEqual(appState.liveVoiceStyle.answerLength, .concise)
+        XCTAssertEqual(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, .concise)
+        appState.setLiveVoiceStyle(LiveVoiceStyle())
+        XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, "Default is stored as nothing")
     }
 
     func testGeminiLiveUnavailableHostFailsWithTheReasonAndNeverConnects() async {
@@ -1223,11 +1250,13 @@ extension ContinuousConversationPreferenceTests {
         chosen.liveVoiceTone = .relaxed
         chosen.liveVoiceBackchannels = false
         chosen.liveVoiceGreeting = ""
+        chosen.liveVoiceAnswerLength = .detailed
         let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(chosen))
-        XCTAssertEqual(roundTrip.liveVoiceStyle, LiveVoiceStyle(tone: .relaxed, backchannels: false, greeting: ""))
-        let newer = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"liveVoiceTone":"sarcastic","liveVoiceGreeting":"Hi"}"#.utf8))
+        XCTAssertEqual(roundTrip.liveVoiceStyle, LiveVoiceStyle(tone: .relaxed, backchannels: false, greeting: "", answerLength: .detailed))
+        let newer = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"liveVoiceTone":"sarcastic","liveVoiceGreeting":"Hi","liveVoiceAnswerLength":"rambling"}"#.utf8))
         XCTAssertNil(newer.liveVoiceTone)
         XCTAssertEqual(newer.liveVoiceGreeting, "Hi")
+        XCTAssertEqual(newer.liveVoiceStyle.answerLength, .standard, "an unknown length is Default")
     }
 }
 
