@@ -46,6 +46,48 @@ enum ScreenQuestionUsage {
     }
 }
 
+/// Where "Add the shortcut" goes. The app never names the iCloud link
+/// itself: a small JSON on Conduit's own site does, so a new version of
+/// the shortcut needs no app update. The page beside it explains the
+/// shortcut and redirects to the same link.
+enum ScreenQuestionShortcutLink {
+    static let configURL = URL(string: "https://kaishi00.github.io/hermes-conduit-notifier/shortcuts/ask-hermes-about-screen.json")!
+    static let pageURL = URL(string: "https://kaishi00.github.io/hermes-conduit-notifier/shortcuts/ask-hermes-about-screen/")!
+
+    typealias Fetch = (URL) async throws -> Data
+
+    /// The shared shortcut link the JSON names, only if it is an iCloud
+    /// Shortcuts link: nothing else is opened from it.
+    static func shortcutURL(fromConfig data: Data) -> URL? {
+        struct Config: Decodable { let url: String? }
+        guard let raw = (try? JSONDecoder().decode(Config.self, from: data))?.url,
+              let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              url.scheme == "https",
+              url.host?.lowercased() == "www.icloud.com",
+              url.user == nil, url.password == nil, url.port == nil
+        else { return nil }
+        let path = url.path.split(separator: "/", omittingEmptySubsequences: true)
+        guard path.count == 2, path[0] == "shortcuts" else { return nil }
+        return url
+    }
+
+    /// The iCloud link when the JSON has one, otherwise the page, which
+    /// shows how to build the shortcut by hand.
+    static func resolve(fetch: Fetch = fetchConfig) async -> URL {
+        guard let data = try? await fetch(configURL), let url = shortcutURL(fromConfig: data) else {
+            return pageURL
+        }
+        return url
+    }
+
+    static func fetchConfig(_ url: URL) async throws -> Data {
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return data
+    }
+}
+
 struct ScreenQuestionStagingError: LocalizedError {
     let message: String
     var errorDescription: String? { message }

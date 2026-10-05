@@ -178,6 +178,50 @@ final class ScreenQuestionTests: XCTestCase {
         XCTAssertEqual(ScreenQuestionUsage.lastUsed(defaults: defaults), ran)
     }
 
+    // MARK: - Shortcut link
+
+    func testShortcutLinkReadsTheICloudLink() throws {
+        let url = ScreenQuestionShortcutLink.shortcutURL(fromConfig: config(#"{"url": " https://www.icloud.com/shortcuts/0a1b2c3d "}"#))
+        XCTAssertEqual(url?.absoluteString, "https://www.icloud.com/shortcuts/0a1b2c3d")
+    }
+
+    func testShortcutLinkOpensOnlyICloudShortcuts() {
+        let refused = [
+            #"{"url": null}"#,
+            #"{}"#,
+            #"not json"#,
+            #"{"url": "http://www.icloud.com/shortcuts/0a1b2c3d"}"#,
+            #"{"url": "https://evil.example/shortcuts/0a1b2c3d"}"#,
+            #"{"url": "https://www.icloud.com.evil.example/shortcuts/0a1b2c3d"}"#,
+            #"{"url": "https://user@www.icloud.com/shortcuts/0a1b2c3d"}"#,
+            #"{"url": "https://www.icloud.com:8443/shortcuts/0a1b2c3d"}"#,
+            #"{"url": "https://www.icloud.com/shortcuts/"}"#,
+            #"{"url": "https://www.icloud.com/notes/0a1b2c3d"}"#,
+            #"{"url": "https://www.icloud.com/shortcuts/0a1b2c3d/extra"}"#
+        ]
+        for json in refused {
+            XCTAssertNil(ScreenQuestionShortcutLink.shortcutURL(fromConfig: config(json)), json)
+        }
+    }
+
+    func testAddTheShortcutOpensTheLinkTheSiteNames() async {
+        var fetched: [URL] = []
+        let url = await ScreenQuestionShortcutLink.resolve { requested in
+            fetched.append(requested)
+            return self.config(#"{"url": "https://www.icloud.com/shortcuts/0a1b2c3d", "updated": "2026-10-05"}"#)
+        }
+        XCTAssertEqual(fetched, [ScreenQuestionShortcutLink.configURL])
+        XCTAssertEqual(url.absoluteString, "https://www.icloud.com/shortcuts/0a1b2c3d")
+    }
+
+    func testAddTheShortcutFallsBackToThePage() async {
+        let unpublished = await ScreenQuestionShortcutLink.resolve { _ in self.config(#"{"url": null}"#) }
+        XCTAssertEqual(unpublished, ScreenQuestionShortcutLink.pageURL, "No link yet: the page shows how to build it")
+
+        let offline = await ScreenQuestionShortcutLink.resolve { _ in throw URLError(.notConnectedToInternet) }
+        XCTAssertEqual(offline, ScreenQuestionShortcutLink.pageURL)
+    }
+
     // MARK: - Recent chat
 
     func testScreenshotWithinFiveMinutesContinuesOpenChat() {
@@ -294,6 +338,10 @@ final class ScreenQuestionTests: XCTestCase {
         CGImageDestinationAddImage(destination, image, nil)
         XCTAssertTrue(CGImageDestinationFinalize(destination))
         return data as Data
+    }
+
+    private func config(_ json: String) -> Data {
+        Data(json.utf8)
     }
 
     private func request(question: String? = nil) -> ScreenQuestionRequest {
