@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Try a different search or filter." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "试试其他搜索词或筛选条件。"
+          }
+        }
+      }
+    },
     "%lld active · %lld inactive" : {
       "localizations" : {
         "zh-Hans" : {

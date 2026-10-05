@@ -718,6 +718,13 @@ struct CronJob: Codable, Identifiable {
     }
 
     var displayName: String { name ?? id }
+
+    /// Hermes marks a one-shot job "completed" once it has run; it will not
+    /// run again even if the record still reads enabled.
+    var isFinished: Bool { state == "completed" }
+
+    /// Whether the job will run on its own: enabled and not finished.
+    var isActive: Bool { enabled && !isFinished }
 }
 
 struct CronSchedule: Codable {

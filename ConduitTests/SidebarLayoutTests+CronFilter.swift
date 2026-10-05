@@ -17,9 +17,10 @@ extension SidebarLayoutTests {
         enabled: Bool,
         prompt: String? = nil,
         schedule: String? = nil,
-        deliver: String? = nil
+        deliver: String? = nil,
+        state: String? = nil
     ) -> CronJob {
-        CronJob(deliver: deliver, enabled: enabled, id: id, name: name ?? id, prompt: prompt, scheduleDisplay: schedule)
+        CronJob(deliver: deliver, enabled: enabled, id: id, name: name ?? id, prompt: prompt, scheduleDisplay: schedule, state: state)
     }
 
     private var mixedCronJobs: [CronJob] {
@@ -44,6 +45,18 @@ extension SidebarLayoutTests {
 
         let inactive = CronJobFilter.visibleJobs(mixedCronJobs, filter: .inactive, query: "")
         XCTAssertEqual(inactive.map(\.id), ["3", "1"])
+    }
+
+    func testCronFinishedOneShotJobsCountAsInactive() {
+        let jobs = [
+            cronJob("once", name: "Reminder", enabled: true, state: "completed"),
+            cronJob("daily", name: "Digest", enabled: true, state: "scheduled"),
+            cronJob("off", name: "Archive", enabled: false, state: "completed")
+        ]
+
+        XCTAssertEqual(CronJobFilter.visibleJobs(jobs, filter: .active, query: "").map(\.id), ["daily"])
+        XCTAssertEqual(CronJobFilter.visibleJobs(jobs, filter: .inactive, query: "").map(\.id), ["off", "once"])
+        XCTAssertEqual(CronJobFilter.visibleJobs(jobs, filter: .all, query: "").map(\.id), ["daily", "off", "once"])
     }
 
     func testCronJobsWithTheSameNameKeepAStableOrder() {
@@ -80,6 +93,14 @@ extension SidebarLayoutTests {
         XCTAssertEqual(
             CronJobFilter.emptyState(filter: .active, hasJobs: true, isSearching: true).title,
             AppLocalization.string("No Matching Jobs")
+        )
+        XCTAssertEqual(
+            CronJobFilter.emptyState(filter: .active, hasJobs: true, isSearching: true).description,
+            AppLocalization.string("Try a different search or filter.")
+        )
+        XCTAssertEqual(
+            CronJobFilter.emptyState(filter: .all, hasJobs: true, isSearching: true).description,
+            AppLocalization.string("Try a different search.")
         )
         XCTAssertEqual(
             CronJobFilter.emptyState(filter: .active, hasJobs: true, isSearching: false).title,
