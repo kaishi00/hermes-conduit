@@ -89,6 +89,9 @@ struct ChatResumeLifecycleOperations {
     /// decision RPC.
     var respondToApproval: (@MainActor (HermesClient, String, String?, String, String?) async throws -> Bool)?
     var sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
+    /// Test seam for one attachment upload (session id, attachment) before
+    /// the prompt. Not an init parameter: tests set it on the value.
+    var uploadAttachment: (@MainActor (HermesClient, String, Attachment) async throws -> Void)?
     /// Foreground transport verification. Production calls the client's
     /// `session.list` health check; tests substitute a controllable outcome.
     var verifyTransportHealth: (@MainActor (HermesClient) async throws -> Void)?
@@ -1274,6 +1277,27 @@ final class AppState: ObservableObject {
     /// A quote waiting for the composer (#385). ComposerBar, which owns the
     /// draft, applies it and then consumes it.
     @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
+    /// Asks the composer to take focus (a screenshot chat opened with the
+    /// keyboard). ComposerBar focuses and then consumes it.
+    @Published var composerFocusRequest: ComposerFocusRequest?
+
+    // MARK: - Ask Hermes About Screen (AppState+ScreenQuestion.swift)
+
+    /// Screenshots waiting on their chat for the next question sent there.
+    @Published var pendingScreenshots: [PendingScreenshot] = []
+    /// A screenshot kept while Hermes was unreachable, attached once it
+    /// connects.
+    var parkedScreenQuestion: ParkedScreenQuestion?
+    @Published var parkedScreenQuestionRevision: UInt64 = 0
+    /// When the phone scene last left the foreground: the screenshot
+    /// action's recent-chat rule measures from it.
+    var lastLeftForegroundAt: Date?
+    /// When the newest screenshot routed or parked was taken: an older one
+    /// superseded by it is dropped.
+    var newestScreenQuestionAt: Date?
+    /// `isSceneActive` starts true before any scene event, so a launch
+    /// that never reached the foreground does not count as leaving it.
+    private var sceneHasBeenActive = false
 
     // MARK: - Capabilities
 
@@ -3268,6 +3292,12 @@ final class AppState: ObservableObject {
             ?? conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
         let seeds = [sessionId, durable, voiceSessionAliases.storedID(forRuntime: sessionId)].compactMap { $0 }
         return Self.ownSessionIDs(for: seeds, in: sessions + cronSessions)
+    }
+
+    /// The ids a pending screenshot's chat is known by: its own ids, so it
+    /// is still found when the chat is reopened under a new runtime id.
+    func screenshotChatIDs(for sessionId: String) -> Set<String> {
+        chatOwnSessionIDs(for: sessionId)
     }
 
     static func ownSessionIDs(for sessionId: String, in rows: [SessionSummary]) -> Set<String> {
@@ -5527,6 +5557,12 @@ final class AppState: ObservableObject {
         composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
     }
 
+    /// Puts `text` in the composer, replacing the draft, and focuses it.
+    func prefillComposer(_ text: String) {
+        composerPrefillText = text
+        composerPrefillToken = UUID()
+    }
+
     /// The composer took the quote: drop it, so the quoted text is not kept
     /// around after it has landed.
     func consumeComposerQuoteRequest(_ id: UUID) {
@@ -7675,6 +7711,8 @@ final class AppState: ObservableObject {
         // Unsent drafts belong to the signed-out user; AppState owns the
         // store (it outlives the composer view), so sign-out must clear it.
         composerDraftStore.removeAll()
+        // So do screenshots waiting for a question.
+        discardScreenQuestions()
         cancelScenePhaseAttempt()
         owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
@@ -11305,6 +11343,7 @@ final class AppState: ObservableObject {
         switch phase {
         case .active:
             isSceneActive = true
+            sceneHasBeenActive = true
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
@@ -11452,6 +11491,9 @@ final class AppState: ObservableObject {
             return task
 
         case .background:
+            // Only a departure from active counts: coming back passes
+            // through .inactive too, and that is not "last used".
+            if isSceneActive, sceneHasBeenActive { lastLeftForegroundAt = Date() }
             isSceneActive = false
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
@@ -11526,6 +11568,9 @@ final class AppState: ObservableObject {
             return nil
 
         case .inactive:
+            // Only a departure from active counts: coming back passes
+            // through .inactive too, and that is not "last used".
+            if isSceneActive, sceneHasBeenActive { lastLeftForegroundAt = Date() }
             isSceneActive = false
             disarmWakeListeningForBackground()
             // Same reasoning as .background: a dip through Control Center or a
@@ -15163,11 +15208,19 @@ final class AppState: ObservableObject {
             }
         }
 
-        return await sendMessage(
+        // A screenshot waiting on this chat rides on its next new turn,
+        // whichever path sent it (typed, classic voice, a live call's
+        // ask_thread). Busy routes and slash commands above leave it.
+        let screenshot = takePendingScreenshotEntry(forSession: submissionContext.sessionID)
+        let sent = await sendMessage(
             text,
-            attachments: attachments,
+            attachments: attachments + [screenshot?.attachment].compactMap { $0 },
             context: submissionContext
         )
+        if !sent, let screenshot {
+            restorePendingScreenshot(screenshot.attachment, forSession: screenshot.sessionID)
+        }
+        return sent
     }
 
     /// Read-only authoritative correction of a possibly stale local idle
@@ -15867,7 +15920,9 @@ final class AppState: ObservableObject {
 
         for attachment in attachments {
             do {
-                if attachment.kind == .image {
+                if let upload = chatResumeLifecycleOperations.uploadAttachment {
+                    try await upload(client, sessionId, attachment)
+                } else if attachment.kind == .image {
                     let base64 = await AttachmentHelper.toBase64(attachment)
                     guard isCurrentComposerSubmission(submissionContext) else { return false }
                     guard !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
@@ -16766,7 +16821,7 @@ final class AppState: ObservableObject {
             .lowercased()
     }
 
-    private static func parseSlashCommand(_ text: String) -> (name: String, argument: String, cleaned: String)? {
+    static func parseSlashCommand(_ text: String) -> (name: String, argument: String, cleaned: String)? {
         let trimmed = text.replacingOccurrences(of: "^\\s+", with: "", options: .regularExpression)
         guard trimmed.hasPrefix("/") else { return nil }
         let cleaned = trimmed.replacingOccurrences(of: "^/+", with: "", options: .regularExpression)

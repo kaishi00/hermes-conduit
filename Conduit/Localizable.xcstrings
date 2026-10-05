@@ -1,6 +1,106 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Conduit couldn't reach Hermes. Your screenshot is kept and will be attached to a chat when Hermes is back." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法连接 Hermes。你的截图已保留，Hermes 恢复后会附加到对话中。"
+          }
+        }
+      }
+    },
+    "Ask Hermes About Screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向 Hermes 询问屏幕内容"
+          }
+        }
+      }
+    },
+    "Open Conduit with this screenshot attached to a chat, ready for your question." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Conduit，并把这张截图附加到对话中，等你提问。"
+          }
+        }
+      }
+    },
+    "Screenshot" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "截图"
+          }
+        }
+      }
+    },
+    "Question" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问题"
+          }
+        }
+      }
+    },
+    "Start with" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始方式"
+          }
+        }
+      }
+    },
+    "Ask Hermes about ${screenshot}" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向 Hermes 询问${screenshot}"
+          }
+        }
+      }
+    },
+    "Conduit couldn't read that image. Ask Hermes About Screen needs a screenshot or another image." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法读取该图片。「向 Hermes 询问屏幕内容」需要截图或其他图片。"
+          }
+        }
+      }
+    },
+    "Conduit could not open the profile the shortcut asked for, so the screenshot is in this one." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法打开快捷指令指定的档案，截图已放在当前档案中。"
+          }
+        }
+      }
+    },
+    "Hermes could not start a chat for the screenshot. It's kept and will be attached once Hermes is ready." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法为这张截图新建对话。截图已保留，Hermes 就绪后会自动附上。"
+          }
+        }
+      }
+    },
     "Answer length" : {
       "localizations" : {
         "zh-Hans" : {

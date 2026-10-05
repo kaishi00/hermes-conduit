@@ -215,7 +215,13 @@ struct ComposerBar: View {
     }
 
     private var action: ComposerAction {
-        appState.composerAction(hasText: hasText, hasAttachments: !attachments.isEmpty)
+        appState.composerAction(hasText: hasText, hasAttachments: !attachments.isEmpty || pendingScreenshot != nil)
+    }
+
+    /// A screenshot from Ask Hermes About Screen waiting on this chat. It
+    /// is AppState's, not the draft's, so a spoken question can carry it.
+    private var pendingScreenshot: Attachment? {
+        appState.pendingScreenshot(forSession: appState.activeSessionId)
     }
 
     private var activeDraftKey: ComposerDraftKey {
@@ -264,8 +270,10 @@ struct ComposerBar: View {
         colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.09)
     }
 
-    var body: some View {
-        let _ = TranscriptPerf.note(.composerBarBody)
+    /// The composer with its padding and the handlers for requests from
+    /// AppState and the draft. Split from `body` so the type checker takes
+    /// the modifier chain in two parts.
+    private var composerWithRequestHandlers: some View {
         Group {
             if #available(iOS 26.0, *) {
                 GlassEffectContainer(spacing: 16) {
@@ -301,6 +309,9 @@ struct ComposerBar: View {
         .onChange(of: appState.composerQuoteRequest) { _, request in
             applyQuoteRequest(request)
         }
+        .onChange(of: appState.composerFocusRequest) { _, request in
+            applyFocusRequest(request)
+        }
         .onChange(of: photoItems) { _, _ in
             handlePhotoSelection()
         }
@@ -317,9 +328,17 @@ struct ComposerBar: View {
             // settled after the refusal).
             resendAfterChatTakeover()
         }
+    }
+
+    var body: some View {
+        let _ = TranscriptPerf.note(.composerBarBody)
+        composerWithRequestHandlers
         .onAppear {
-            guard loadedDraftKey == nil else { return }
-            loadDraft(for: activeDraftKey)
+            if loadedDraftKey == nil {
+                loadDraft(for: activeDraftKey)
+            }
+            // A screenshot chat can open before this composer is on screen.
+            applyFocusRequest(appState.composerFocusRequest)
         }
         .onChange(of: activeDraftKey) { _, newKey in
             handoffComposer(to: newKey)
@@ -336,6 +355,7 @@ struct ComposerBar: View {
             // The sheet has no room for the composer's notices; the inline
             // composer explains why it is locked.
             if !enabled { isShowingFullEditor = false }
+            if enabled { applyFocusRequest(appState.composerFocusRequest) }
         }
         .onChange(of: appState.isVoiceInUse) { _, inUse in
             // Voice took the microphone: dictation steps aside.
@@ -397,7 +417,7 @@ struct ComposerBar: View {
                     .padding(.top, 8)
             }
 
-            if !attachments.isEmpty {
+            if !attachments.isEmpty || pendingScreenshot != nil {
                 attachmentStrip
             }
 
@@ -536,7 +556,7 @@ struct ComposerBar: View {
                             .padding(.horizontal, 12)
                             .padding(.top, 6)
                     }
-                    if !attachments.isEmpty {
+                    if !attachments.isEmpty || pendingScreenshot != nil {
                         attachmentStrip
                     }
                 },
@@ -790,6 +810,14 @@ struct ComposerBar: View {
     private var attachmentStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                if let pendingScreenshot {
+                    ComposerAttachmentChip(
+                        attachment: pendingScreenshot,
+                        canRemove: appState.composerIsEnabled
+                    ) {
+                        appState.discardPendingScreenshot(forSession: appState.activeSessionId)
+                    }
+                }
                 ForEach(attachments) { attachment in
                     ComposerAttachmentChip(
                         attachment: attachment,
@@ -970,7 +998,7 @@ struct ComposerBar: View {
 
     private func submit() {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || !attachments.isEmpty else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty || pendingScreenshot != nil else { return }
 
         // Send is beside the dictate button, so it can be tapped mid-dictation:
         // the words so far go out, and late results must not refill the
@@ -1236,6 +1264,20 @@ struct ComposerBar: View {
         if replyReference == nil { replyReference = submittedReply }
     }
 
+    /// A screenshot chat opened with the keyboard: the field takes focus.
+    private func applyFocusRequest(_ request: ComposerFocusRequest?) {
+        // A locked composer keeps the request until it unlocks.
+        guard let request, appState.composerIsEnabled else { return }
+        appState.consumeComposerFocusRequest(request.id)
+        // Left for another chat before it applied: dropped.
+        guard request.sessionID == appState.activeSessionId else { return }
+        // After this update: the new chat's draft load, which can land in
+        // the same update, unfocuses the field.
+        Task { @MainActor in
+            isFocused = true
+        }
+    }
+
     /// A quote from the transcript (#385): selected text joins the draft as
     /// a `>` quote with the cursor below it; a reply's Quote button attaches
     /// the whole reply as the "Replying to…" chip. Either way the composer
@@ -1477,11 +1519,7 @@ struct ComposerBar: View {
         }
     }
 
-    enum StagedImport {
-        case staged(Attachment)
-        case tooLarge(String)
-        case failed(String)
-    }
+    typealias StagedImport = AttachmentStaging.StagedImport
 
     struct ImportTally {
         var stagedAny = false
@@ -1520,7 +1558,7 @@ struct ComposerBar: View {
         if let file = try? await item.loadTransferable(type: PickedMediaFile.self) {
             let type = UTType(filenameExtension: file.url.pathExtension) ?? pickedType
             let name = AttachmentTypePolicy.filename(suggested: file.originalName, type: type, ordinal: ordinal)
-            return finishStaging(fileAt: file.url, name: name, type: type, limitMegabytes: limitMegabytes)
+            return AttachmentStaging.finishStaging(fileAt: file.url, name: name, type: type, limitMegabytes: limitMegabytes)
         }
         // Some images only hand over their bytes. Videos never take this
         // path: it would hold the whole file in memory.
@@ -1531,59 +1569,10 @@ struct ComposerBar: View {
         do {
             let url = try AttachmentStaging.destination(for: fallbackName)
             try data.write(to: url, options: .atomic)
-            return finishStaging(fileAt: url, name: fallbackName, type: pickedType, limitMegabytes: limitMegabytes)
+            return AttachmentStaging.finishStaging(fileAt: url, name: fallbackName, type: pickedType, limitMegabytes: limitMegabytes)
         } catch {
             return .failed(fallbackName)
         }
-    }
-
-    nonisolated private static func finishStaging(fileAt url: URL, name: String, type: UTType?, limitMegabytes: Int) -> StagedImport {
-        var url = url
-        var name = name
-        var type = type
-        // Checked on the original first, so an oversized file is never
-        // decoded; a re-encoded image is checked again below.
-        if let size = AttachmentSizeLimit.fileSize(at: url),
-           !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
-            try? FileManager.default.removeItem(at: url)
-            return .tooLarge(name)
-        }
-        // The bytes decide, not the extension: a HEIC named .png still
-        // gets re-encoded. Only formats ImageIO reads are re-encoded; an
-        // SVG keeps attaching as before.
-        var sniffed: UTType?
-        if type == nil || type?.conforms(to: .image) == true {
-            sniffed = AttachmentStaging.imageType(at: url)
-            if let sniffed { type = sniffed }
-        }
-        if sniffed != nil, AttachmentTypePolicy.needsJPEGTranscode(type) {
-            let jpegName = AttachmentTypePolicy.jpegFilename(for: name)
-            guard let jpegURL = try? AttachmentStaging.destination(for: jpegName),
-                  AttachmentStaging.writeJPEG(from: url, to: jpegURL) else {
-                try? FileManager.default.removeItem(at: url)
-                return .failed(name)
-            }
-            try? FileManager.default.removeItem(at: url)
-            url = jpegURL
-            name = jpegName
-            type = .jpeg
-        }
-        let size = AttachmentSizeLimit.fileSize(at: url)
-        if size == 0 {
-            try? FileManager.default.removeItem(at: url)
-            return .failed(name)
-        }
-        if let size, !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
-            try? FileManager.default.removeItem(at: url)
-            return .tooLarge(name)
-        }
-        return .staged(Attachment(
-            id: UUID().uuidString,
-            name: name,
-            uri: url.absoluteString,
-            mimeType: AttachmentTypePolicy.mimeType(for: type),
-            kind: AttachmentTypePolicy.kind(for: type)
-        ))
     }
 
     nonisolated private static func discardStagedFile(_ attachment: Attachment) {
@@ -1669,7 +1658,7 @@ struct ComposerBar: View {
         do {
             let staged = try AttachmentStaging.destination(for: name)
             try FileManager.default.copyItem(at: url, to: staged)
-            return finishStaging(
+            return AttachmentStaging.finishStaging(
                 fileAt: staged,
                 name: name,
                 type: UTType(filenameExtension: url.pathExtension),
@@ -1700,7 +1689,7 @@ struct ComposerBar: View {
             let outcome = await Task.detached(priority: .userInitiated) { () -> StagedImport in
                 guard let url = try? AttachmentStaging.destination(for: name),
                       (try? data.write(to: url, options: .atomic)) != nil else { return .failed(name) }
-                return Self.finishStaging(fileAt: url, name: name, type: type, limitMegabytes: limitMegabytes)
+                return AttachmentStaging.finishStaging(fileAt: url, name: name, type: type, limitMegabytes: limitMegabytes)
             }.value
             guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
                 if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }

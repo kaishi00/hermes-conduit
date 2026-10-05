@@ -138,6 +138,17 @@ struct ConduitApp: App {
             .task(id: voiceIntentDeadlineKey) {
                 await waitOutPendingVoiceDeadline()
             }
+            // A screenshot kept while Hermes was unreachable is attached
+            // once it connects and settles.
+            .task(id: parkedScreenQuestionKey) {
+                // Not cancelled with this task: the resume can switch
+                // profiles, which changes the key.
+                Task { await appState.resumeParkedScreenQuestion() }
+            }
+    }
+
+    private var parkedScreenQuestionKey: String {
+        "\(appState.isConnected):\(appState.isConnecting):\(appState.isProfileSwitching):\(appState.parkedScreenQuestionRevision)"
     }
 
     private var notificationRouteKey: String {
@@ -167,13 +178,35 @@ struct ConduitApp: App {
     private func resolvePendingVoiceIntent() async {
         let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
         let connection = appState.voiceLaunchConnectionSnapshot()
+        // The router takes this exact request first, before it awaits.
+        let routed = pendingVoiceIntents.peekClaim()?.intent
+        var screenQuestionOpened: Bool?
         let outcome = await router.routePending(connection: connection) { intent in
-            await appState.openVoiceConversation(intent)
+            if intent.source == .screenQuestion {
+                let opened = await appState.openScreenQuestion(intent)
+                screenQuestionOpened = opened
+                return opened
+            }
+            return await appState.openVoiceConversation(intent)
         }
         switch outcome {
         case .failed(let message):
+            // A screenshot is kept when Hermes can't be reached: it is
+            // attached, with the keyboard, once Hermes connects.
+            if let request = routed?.screenQuestion {
+                appState.parkScreenQuestion(request, profile: routed?.profile)
+            }
             appState.errorMessage = message
-        case .idle, .routed, .deferred, .superseded:
+        case .superseded:
+            // A newer request took over while this one found Hermes gone.
+            if screenQuestionOpened == false, let request = routed?.screenQuestion {
+                appState.settleSupersededScreenQuestion(
+                    request,
+                    profile: routed?.profile,
+                    newerScreenQuestionPending: pendingVoiceIntents.peekClaim()?.intent.screenQuestion != nil
+                )
+            }
+        case .idle, .routed, .deferred:
             break
         }
     }
@@ -200,6 +233,9 @@ struct ConduitApp: App {
         }
         if expired.source == .siri {
             appState.errorMessage = PendingVoiceLaunchPolicy.expiredFailureMessage
+        } else if let request = expired.screenQuestion {
+            appState.parkScreenQuestion(request, profile: expired.profile)
+            appState.errorMessage = PendingVoiceLaunchPolicy.screenQuestionFailureMessage
         }
     }
 }

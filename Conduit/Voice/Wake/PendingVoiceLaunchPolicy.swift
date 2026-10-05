@@ -132,6 +132,37 @@ enum PendingVoiceLaunchPolicy {
         )
     }
 
+    /// The screenshot is never thrown away when Hermes isn't reachable: it
+    /// is attached, with the keyboard, once Hermes connects.
+    static var screenQuestionFailureMessage: String {
+        AppLocalization.string(
+            "Conduit couldn't reach Hermes. Your screenshot is kept and will be attached to a chat when Hermes is back."
+        )
+    }
+
+    /// Builds the pending request for one Ask Hermes About Screen run. It
+    /// has Siri's budget: Conduit was just brought to the foreground for it.
+    static func makeScreenQuestionPendingIntent(
+        _ request: ScreenQuestionRequest,
+        profile: String?,
+        now: Date = Date(),
+        budget: TimeInterval = externalLaunchBudget,
+        clock: ContinuousClock = ContinuousClock()
+    ) -> PendingVoiceIntent {
+        var request = request
+        request.question = request.question
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        return PendingVoiceIntent(
+            profile: normalizedProfile(profile),
+            startsFreshConversation: false,
+            source: .screenQuestion,
+            externalLaunchDeadline: now.addingTimeInterval(budget),
+            externalLaunchElapsedDeadline: clock.now.advanced(by: .seconds(budget)),
+            screenQuestion: request
+        )
+    }
+
     enum Readiness: Equatable {
         /// Hermes is live — consume the request exactly once.
         case ready
@@ -167,7 +198,11 @@ enum PendingVoiceLaunchPolicy {
         now: Date
     ) -> Readiness {
         if let deadline = intent.externalLaunchDeadline, now >= deadline {
-            return .failed(message: intent.source == .wakePhrase ? wakePhraseFailureMessage : expiredFailureMessage)
+            switch intent.source {
+            case .wakePhrase: return .failed(message: wakePhraseFailureMessage)
+            case .screenQuestion: return .failed(message: screenQuestionFailureMessage)
+            case .siri, .composer, .newCall: return .failed(message: expiredFailureMessage)
+            }
         }
         switch connection.phase {
         case .connected:
@@ -178,6 +213,7 @@ enum PendingVoiceLaunchPolicy {
             switch intent.source {
             case .siri: return .failed(message: stableFailureMessage(for: connection))
             case .wakePhrase: return .failed(message: wakePhraseFailureMessage)
+            case .screenQuestion: return .failed(message: screenQuestionFailureMessage)
             case .composer, .newCall: return .waiting
             }
         }
@@ -193,6 +229,7 @@ enum PendingVoiceLaunchPolicy {
         switch intent.source {
         case .siri: return .terminal(message: disconnectedFailureMessage)
         case .wakePhrase: return .terminal(message: wakePhraseFailureMessage)
+        case .screenQuestion: return .terminal(message: screenQuestionFailureMessage)
         case .composer, .newCall: return .retryLater
         }
     }
