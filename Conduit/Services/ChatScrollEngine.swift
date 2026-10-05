@@ -813,7 +813,12 @@ final class ChatScrollEngine: ObservableObject {
         let target = rowTarget ?? estimate
         let moves = abs(surface.contentOffsetY - target) > 0.5
         if moves {
-            anchor.settledAt = nil
+            // Moving the reader needs a fresh confirmation, except past the
+            // limit, where only a confirmed hold is still running: there the
+            // tail restarts, so the writer's follow-up writes are answered
+            // too (including this correction's own scroll callback).
+            let pastLimit = now() - landedAt > Self.prependSettleLimit
+            anchor.settledAt = anchor.settledAt != nil && pastLimit ? now() : nil
         } else if framesReported, rowTarget != nil, anchor.settledAt == nil {
             anchor.settledAt = now()
             ChatViewportTrace.shared.log(String(format: "prepend hold settled offset %.1f", target))
@@ -828,8 +833,7 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     private func prependHoldLapsed(_ anchor: PrependAnchor, landedAt: TimeInterval) -> Bool {
-        // A late confirmation still gets its full tail; moving the reader
-        // clears it, so the limit below still bounds the hold.
+        // A late confirmation still gets its full tail.
         if let settledAt = anchor.settledAt {
             return now() - settledAt > Self.prependHoldDuration
         }

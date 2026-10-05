@@ -382,8 +382,9 @@ final class ChatScrollHostedTests: XCTestCase {
             // The first jump of more than a page is the engine moving the
             // reader down past the prepended page.
             let offsetBefore = mounted.scrollView.contentOffset.y
+            let page = mounted.scrollView.bounds.height
             stallObservation = mounted.scrollView.observe(\.contentOffset, options: [.new]) { _, change in
-                guard !stalled, let offset = change.newValue, offset.y > offsetBefore + 1000 else { return }
+                guard !stalled, let offset = change.newValue, offset.y > offsetBefore + page else { return }
                 stalled = true
                 Thread.sleep(forTimeInterval: 1)
             }
@@ -396,18 +397,18 @@ final class ChatScrollHostedTests: XCTestCase {
         stallSubscription?.cancel()
         stallObservation?.invalidate()
 
-        let trace = "offsets:\n\(recorder.dump())\nengine:\n\(ChatViewportTrace.shared.dump())"
+        let trace = { "offsets:\n\(recorder.dump())\nengine:\n\(ChatViewportTrace.shared.dump())" }
         XCTAssertEqual(
             stalled, stall != .none, "the main thread stalled where the test meant it to",
             file: file, line: line
         )
         let after = try XCTUnwrap(
             screenY(of: topRow, in: mounted),
-            "the reader's row \(topRow) has no frame after the prepend\n\(trace)",
+            "the reader's row \(topRow) has no frame after the prepend\n\(trace())",
             file: file, line: line
         )
         XCTAssertEqual(
-            after, before, accuracy: 2, "the prepend lands above without moving the reader\n\(trace)",
+            after, before, accuracy: 2, "the prepend lands above without moving the reader\n\(trace())",
             file: file, line: line
         )
     }

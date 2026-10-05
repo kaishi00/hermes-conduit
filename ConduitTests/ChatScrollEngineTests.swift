@@ -469,11 +469,23 @@ final class ChatScrollEngineTests: XCTestCase {
         engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
         XCTAssertNotNil(engine.prependAnchor?.settledAt)
 
-        // Past the limit, within the tail: another writer is still undone.
+        // Past the limit, within the tail: another writer is still undone,
+        // and so is its follow-up write.
         clock += 0.5
         surface.contentOffsetY = 300
         engine.surfaceScrolled()
         XCTAssertEqual(surface.contentOffsetY, 1060)
+        XCTAssertNotNil(engine.prependAnchor, "the correction restarts the tail")
+
+        clock += 0.5
+        surface.contentOffsetY = 2000
+        engine.surfaceScrolled()
+        XCTAssertEqual(surface.contentOffsetY, 1060)
+
+        clock += ChatScrollEngine.prependHoldDuration + 0.1
+        surface.layOut(contentHeight: 4700)
+        XCTAssertNil(engine.prependAnchor)
+        XCTAssertEqual(surface.contentOffsetY, 1060, "a later change is ordinary browsing again")
     }
 
     func testPrependAnchorWaitsForTheActualPrepend() {
