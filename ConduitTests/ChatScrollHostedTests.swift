@@ -332,15 +332,90 @@ final class ChatScrollHostedTests: XCTestCase {
     func testLoadingEarlierMessagesKeepsTheReaderInPlace() throws {
         let mounted = try mount(Self.transcript(40..<120))
         browse(mounted, to: mounted.scrollView.contentOffset.y - 1200)
+        let modeAfterBrowse = mounted.engine.mode
         let topRow = try XCTUnwrap(mounted.engine.topVisibleMessageID)
         let before = try XCTUnwrap(screenY(of: topRow, in: mounted))
+        let recorder = ScrollRecorder(mounted.scrollView)
+        let all = Self.transcript(0..<120)
+        let textBefore = textViewScreenYs(mounted, messages: all)
+        checkpoint("prepend before", mounted, recorder)
 
         mounted.engine.olderPageBackfillRequested(sessionKey: mounted.engine.renderedSessionKey)
-        mounted.appState.messages = Self.transcript(0..<120)
+        let armed = mounted.engine.prependAnchor
+        let mark = recorder.mark()
+        let start = CACurrentMediaTime()
+        mounted.appState.messages = all
         settle(mounted.host.view)
+        let settleSeconds = CACurrentMediaTime() - start
 
-        let after = try XCTUnwrap(screenY(of: topRow, in: mounted))
+        checkpoint("prepend after", mounted, recorder)
+        let textAfter = textViewScreenYs(mounted, messages: all)
+        let shared = textBefore.keys.filter { textAfter[$0] != nil }.sorted()
+        let textMoves = shared.map { "\($0) \(Int(textBefore[$0]!))->\(Int(textAfter[$0]!))" }
+        let afterY = screenY(of: topRow, in: mounted)
+        print(String(
+            format: "[ChatScrollHostedTests] prepend summary: mode after browse %@ armed %@ top %@ before %.1f after %@ settle %.2fs anchor now %@ frames %@ textMoves %@ engineWrites %ld otherWrites %ld",
+            String(describing: modeAfterBrowse),
+            armed == nil ? "no" : "yes",
+            topRow,
+            before,
+            afterY.map { String(format: "%.1f", $0) } ?? "nil",
+            settleSeconds,
+            String(describing: mounted.engine.prependAnchor),
+            framedRows(mounted, messages: all),
+            textMoves.joined(separator: ", "),
+            recorder.offsetChanges(since: mark).filter(\.byEngine).count,
+            recorder.offsetChanges(since: mark).filter { !$0.byEngine }.count
+        ))
+        guard let after = afterY else {
+            print("[ChatScrollHostedTests] prepend trace:\n\(recorder.dump(since: mark))")
+            // Does a later pass report the row (a stale preference), or is
+            // the reader really somewhere else?
+            settle(mounted.host.view, seconds: 1.0)
+            checkpoint("prepend later", mounted, recorder)
+            print(String(
+                format: "[ChatScrollHostedTests] prepend later: after %@ frames %@ text %@",
+                screenY(of: topRow, in: mounted).map { String(format: "%.1f", $0) } ?? "nil",
+                framedRows(mounted, messages: all),
+                textViewScreenYs(mounted, messages: all)
+                    .sorted { $0.value < $1.value }
+                    .map { "\($0.key) \(Int($0.value))" }
+                    .joined(separator: ", ")
+            ))
+            XCTFail("the reader's row \(topRow) has no frame after the prepend")
+            return
+        }
         XCTAssertEqual(after, before, accuracy: 2, "the prepend lands above without moving the reader")
+    }
+
+    private static func findAll<T: UIView>(_ type: T.Type, in view: UIView) -> [T] {
+        var found: [T] = []
+        if let match = view as? T { found.append(match) }
+        for subview in view.subviews {
+            found += findAll(type, in: subview)
+        }
+        return found
+    }
+
+    /// Where each message's text sits on screen (viewport-relative), read
+    /// from its text view rather than the engine's row frames.
+    private func textViewScreenYs(_ mounted: Mounted, messages: [ChatMessage]) -> [String: CGFloat] {
+        var result: [String: CGFloat] = [:]
+        for textView in Self.findAll(UITextView.self, in: mounted.scrollView) {
+            let text = textView.text ?? ""
+            guard !text.isEmpty,
+                  let message = messages.first(where: { text.hasPrefix(String($0.content.prefix(20))) }) else { continue }
+            let y = textView.convert(CGPoint.zero, to: mounted.scrollView).y - mounted.scrollView.contentOffset.y
+            result[message.id] = min(result[message.id] ?? .greatestFiniteMagnitude, y)
+        }
+        return result
+    }
+
+    /// The range of rows the engine has frames for.
+    private func framedRows(_ mounted: Mounted, messages: [ChatMessage]) -> String {
+        let framed = messages.filter { mounted.engine.rowFrame(for: $0.id) != nil }.map(\.id)
+        guard let first = framed.first, let last = framed.last else { return "none" }
+        return "\(framed.count) \(first)...\(last)"
     }
 
     func testScrollingDoesNotReevaluateTheChat() throws {
