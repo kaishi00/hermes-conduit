@@ -724,7 +724,7 @@ struct CronJob: Codable, Identifiable {
 
     /// A finished one-shot job will not run again on its own, even if the
     /// record still reads enabled.
-    var isFinished: Bool { state == Self.completedState }
+    var isFinished: Bool { state?.lowercased() == Self.completedState }
 
     /// Whether the job will run on its own: enabled and not finished.
     var isActive: Bool { enabled && !isFinished }

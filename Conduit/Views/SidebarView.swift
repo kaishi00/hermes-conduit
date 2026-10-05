@@ -1575,22 +1575,19 @@ enum CronJobFilter: String, CaseIterable, Identifiable {
     /// What the list says when nothing is left to show: no jobs at all, no
     /// search match, or nothing under the chosen filter.
     static func emptyState(filter: CronJobFilter, hasJobs: Bool, isSearching: Bool) -> (title: String, description: String) {
-        if !hasJobs {
-            return (AppLocalization.string("No Scheduled Jobs"), AppLocalization.string("Scheduled jobs from Hermes appear here."))
-        }
-        if isSearching {
+        if hasJobs && isSearching {
             let hint = filter == .all
                 ? AppLocalization.string("Try a different search.")
                 : AppLocalization.string("Try a different search or filter.")
             return (AppLocalization.string("No Matching Jobs"), hint)
         }
         switch filter {
-        case .active:
+        case .active where hasJobs:
             return (AppLocalization.string("No Active Jobs"), AppLocalization.string("Every scheduled job is paused or finished."))
-        case .inactive:
+        case .inactive where hasJobs:
             return (AppLocalization.string("No Inactive Jobs"), AppLocalization.string("Every scheduled job is active."))
-        case .all:
-            // Not reached: with jobs and no search, All always lists them.
+        default:
+            // No jobs at all. All with jobs and no search always lists them.
             return (AppLocalization.string("No Scheduled Jobs"), AppLocalization.string("Scheduled jobs from Hermes appear here."))
         }
     }

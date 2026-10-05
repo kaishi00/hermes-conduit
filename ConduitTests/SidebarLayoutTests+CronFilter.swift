@@ -68,6 +68,14 @@ extension SidebarLayoutTests {
         XCTAssertEqual(cronJob("e", enabled: false, state: "paused").statusLabel, AppLocalization.string("Paused"))
     }
 
+    func testCronFinishedMatchesCompletedInAnyCaseOnly() {
+        XCTAssertTrue(cronJob("a", enabled: true, state: "Completed").isFinished)
+        XCTAssertFalse(cronJob("b", enabled: true, state: nil).isFinished)
+        XCTAssertTrue(cronJob("b", enabled: true, state: nil).isActive)
+        XCTAssertFalse(cronJob("c", enabled: true, state: "scheduled").isFinished)
+        XCTAssertFalse(cronJob("d", enabled: false, state: "paused").isFinished)
+    }
+
     func testCronJobsWithTheSameNameKeepAStableOrder() {
         let jobs = [
             cronJob("b", name: "Sync", enabled: true),
@@ -97,6 +105,10 @@ extension SidebarLayoutTests {
     func testCronEmptyStateNamesWhatIsMissing() {
         XCTAssertEqual(
             CronJobFilter.emptyState(filter: .active, hasJobs: false, isSearching: false).title,
+            AppLocalization.string("No Scheduled Jobs")
+        )
+        XCTAssertEqual(
+            CronJobFilter.emptyState(filter: .inactive, hasJobs: false, isSearching: true).title,
             AppLocalization.string("No Scheduled Jobs")
         )
         XCTAssertEqual(
