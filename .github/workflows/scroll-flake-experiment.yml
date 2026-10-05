@@ -53,17 +53,21 @@ jobs:
               -collect-test-diagnostics never \
               -test-timeouts-enabled YES \
               -default-test-execution-time-allowance 180 \
-              -test-iterations 6 \
-              -only-testing:ConduitTests/ChatScrollHostedTests; then
+              -test-iterations "$3" \
+              "${@:4}"; then
               echo "::warning::round $1 ($2) had failures"
             fi
             echo "::endgroup::"
           }
-          run_round 1 idle
-          run_round 2 idle
+          prepend=(
+            -only-testing:ConduitTests/ChatScrollHostedTests/testLoadingEarlierMessagesKeepsTheReaderInPlace
+            -only-testing:ConduitTests/ChatScrollHostedTests/testLoadingEarlierMessagesHoldsThroughAStallBeforeTheLayout
+            -only-testing:ConduitTests/ChatScrollHostedTests/testLoadingEarlierMessagesHoldsThroughAStallAfterTheLayout
+          )
+          run_round 1 class 2 -only-testing:ConduitTests/ChatScrollHostedTests
+          run_round 2 prepend 4 "${prepend[@]}"
           # A busy runner: two CPU hogs alongside the simulator.
           yes > /dev/null & hog1=$!
           yes > /dev/null & hog2=$!
-          run_round 3 loaded
-          run_round 4 loaded
+          run_round 3 "prepend loaded" 4 "${prepend[@]}"
           kill "$hog1" "$hog2" || true

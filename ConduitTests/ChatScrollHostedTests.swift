@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UIKit
 import XCTest
@@ -330,6 +331,27 @@ final class ChatScrollHostedTests: XCTestCase {
     }
 
     func testLoadingEarlierMessagesKeepsTheReaderInPlace() throws {
+        try loadEarlierMessages(stall: .none)
+    }
+
+    /// A busy main thread between the transcript landing and the layout
+    /// that shows the prepended page.
+    func testLoadingEarlierMessagesHoldsThroughAStallBeforeTheLayout() throws {
+        try loadEarlierMessages(stall: .beforeLayout)
+    }
+
+    /// A busy main thread right after the first layout of the prepended page.
+    func testLoadingEarlierMessagesHoldsThroughAStallAfterTheLayout() throws {
+        try loadEarlierMessages(stall: .afterLayout)
+    }
+
+    private enum Stall {
+        case none
+        case beforeLayout
+        case afterLayout
+    }
+
+    private func loadEarlierMessages(stall: Stall) throws {
         let mounted = try mount(Self.transcript(40..<120))
         browse(mounted, to: mounted.scrollView.contentOffset.y - 1200)
         let modeAfterBrowse = mounted.engine.mode
@@ -342,11 +364,43 @@ final class ChatScrollHostedTests: XCTestCase {
 
         mounted.engine.olderPageBackfillRequested(sessionKey: mounted.engine.renderedSessionKey)
         let armed = mounted.engine.prependAnchor
+        var stalled = false
+        var stallSubscription: AnyCancellable?
+        var stallObservation: NSKeyValueObservation?
+        let heightBefore = mounted.scrollView.contentSize.height
+        switch stall {
+        case .none:
+            break
+        case .beforeLayout:
+            // The engine publishes its new rows right after the transcript
+            // lands; SwiftUI lays them out in a later pass.
+            stallSubscription = mounted.engine.objectWillChange.sink { _ in
+                guard !stalled else { return }
+                stalled = true
+                print(String(format: "[ChatScrollHostedTests] stall before layout at %.3f", CACurrentMediaTime()))
+                Thread.sleep(forTimeInterval: 1.0)
+            }
+        case .afterLayout:
+            stallObservation = mounted.scrollView.observe(\.contentSize, options: [.new]) { _, change in
+                guard !stalled, (change.newValue?.height ?? 0) > heightBefore + 1000 else { return }
+                stalled = true
+                DispatchQueue.main.async {
+                    print(String(format: "[ChatScrollHostedTests] stall after layout at %.3f", CACurrentMediaTime()))
+                    Thread.sleep(forTimeInterval: 1.0)
+                }
+            }
+        }
+        ChatViewportTrace.shared.reset()
         let mark = recorder.mark()
         let start = CACurrentMediaTime()
+        print(String(format: "[ChatScrollHostedTests] prepend published at %.3f", start))
         mounted.appState.messages = all
-        settle(mounted.host.view)
+        // The stall takes a second out of the settle; the rest still gets
+        // the usual 0.6 s of layout passes.
+        settle(mounted.host.view, seconds: stall == .none ? 0.6 : 1.6)
         let settleSeconds = CACurrentMediaTime() - start
+        stallSubscription?.cancel()
+        stallObservation?.invalidate()
 
         checkpoint("prepend after", mounted, recorder)
         let textAfter = textViewScreenYs(mounted, messages: all)
@@ -354,9 +408,11 @@ final class ChatScrollHostedTests: XCTestCase {
         let textMoves = shared.map { "\($0) \(Int(textBefore[$0]!))->\(Int(textAfter[$0]!))" }
         let afterY = screenY(of: topRow, in: mounted)
         print(String(
-            format: "[ChatScrollHostedTests] prepend summary: mode after browse %@ armed %@ top %@ before %.1f after %@ settle %.2fs anchor now %@ frames %@ textMoves %@ engineWrites %ld otherWrites %ld",
+            format: "[ChatScrollHostedTests] prepend summary (%@): mode after browse %@ armed %@ stalled %@ top %@ before %.1f after %@ settle %.2fs anchor now %@ frames %@ textMoves %@ engineWrites %ld otherWrites %ld",
+            String(describing: stall),
             String(describing: modeAfterBrowse),
             armed == nil ? "no" : "yes",
+            stalled ? "yes" : "no",
             topRow,
             before,
             afterY.map { String(format: "%.1f", $0) } ?? "nil",
@@ -367,8 +423,9 @@ final class ChatScrollHostedTests: XCTestCase {
             recorder.offsetChanges(since: mark).filter(\.byEngine).count,
             recorder.offsetChanges(since: mark).filter { !$0.byEngine }.count
         ))
+        print("[ChatScrollHostedTests] prepend trace (\(stall)):\n\(recorder.dump(since: mark))")
+        print("[ChatScrollHostedTests] prepend engine trace (\(stall)):\n\(ChatViewportTrace.shared.dump())")
         guard let after = afterY else {
-            print("[ChatScrollHostedTests] prepend trace:\n\(recorder.dump(since: mark))")
             // Does a later pass report the row (a stale preference), or is
             // the reader really somewhere else?
             settle(mounted.host.view, seconds: 1.0)

@@ -752,6 +752,10 @@ final class ChatScrollEngine: ObservableObject {
         var landed = anchor
         landed.landedAt = now()
         prependAnchor = landed
+        ChatViewportTrace.shared.log(String(
+            format: "prepend landed t %.3f content %.1f offset %.1f",
+            now(), surface?.contentHeight ?? -1, surface?.contentOffsetY ?? -1
+        ))
         // SwiftUI can lay out the prepended rows (and report the new content
         // size) before its onChange hands over the new transcript, so the
         // layout pass that should hold the reader may already be over. Hold
@@ -764,6 +768,10 @@ final class ChatScrollEngine: ObservableObject {
     private func holdPrependAnchor(on surface: ChatScrollSurface) {
         guard let anchor = prependAnchor, let landedAt = anchor.landedAt else { return }
         guard now() - landedAt <= Self.prependHoldDuration, mode == .browsing else {
+            ChatViewportTrace.shared.log(String(
+                format: "prepend hold expired t %.3f since landing %.3f content %.1f offset %.1f",
+                now(), now() - landedAt, surface.contentHeight, surface.contentOffsetY
+            ))
             prependAnchor = nil
             return
         }
@@ -782,6 +790,10 @@ final class ChatScrollEngine: ObservableObject {
                 target = rowTarget
             }
         }
+        ChatViewportTrace.shared.log(String(
+            format: "prepend hold t %.3f since landing %.3f content %.1f offset %.1f target %.1f",
+            now(), now() - landedAt, surface.contentHeight, surface.contentOffsetY, target
+        ))
         if abs(surface.contentOffsetY - target) > 0.5 {
             surface.setContentOffsetY(target, animated: false)
         }
