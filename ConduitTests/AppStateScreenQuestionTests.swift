@@ -483,6 +483,61 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
     }
 
+    func testParkedScreenshotHasOneWaiter() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness, withMessages: true)
+        let shot = try stagedScreenshot()
+        harness.appState.parkScreenQuestion(request(for: shot, enqueuedAt: Date(timeIntervalSinceNow: -3_600)), profile: nil)
+        harness.appState.isConnected = true
+        harness.appState.isConnecting = true
+
+        harness.appState.scheduleParkedScreenQuestionResume(recheck: .milliseconds(10))
+        let waiter = try XCTUnwrap(harness.appState.parkedScreenQuestionResumeTask)
+        harness.appState.scheduleParkedScreenQuestionResume(recheck: .milliseconds(10))
+        XCTAssertEqual(harness.appState.parkedScreenQuestionResumeTask, waiter, "A second wake-up keeps the running waiter")
+
+        harness.appState.isConnecting = false
+        await waiter.value
+
+        XCTAssertNil(harness.appState.parkedScreenQuestionResumeTask, "The waiter clears itself when it ends")
+        XCTAssertNil(harness.appState.parkedScreenQuestion)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+    }
+
+    func testScreenshotParkedWhileOneIsPlacedIsPlacedNext() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeHarness(recorder: recorder)
+        openChat("composer-origin", in: harness, withMessages: true)
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+        let newer = try stagedScreenshot()
+        let newerRequest = request(for: newer, enqueuedAt: now.addingTimeInterval(-5))
+        harness.defaults.set(ScreenQuestionStart.keyboard.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
+        harness.appState.parkScreenQuestion(request(
+            for: shot,
+            question: "What does this setting do?",
+            enqueuedAt: now.addingTimeInterval(-10)
+        ), profile: nil)
+        harness.appState.isConnected = true
+        // A newer press lands while the first screenshot is being sent,
+        // and wakes the waiter as the app does.
+        recorder.onPrompt = { [weak recorder] in
+            recorder?.onPrompt = nil
+            harness.appState.parkScreenQuestion(newerRequest, profile: nil)
+            harness.appState.scheduleParkedScreenQuestionResume(recheck: .milliseconds(10))
+        }
+
+        harness.appState.scheduleParkedScreenQuestionResume(recheck: .milliseconds(10))
+        let waiter = try XCTUnwrap(harness.appState.parkedScreenQuestionResumeTask)
+        await waiter.value
+
+        XCTAssertEqual(recorder.uploads.map { $0.attachment.uri }, [shot.uri])
+        XCTAssertNil(harness.appState.parkedScreenQuestion, "The newer screenshot isn't left waiting")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), newer)
+        XCTAssertNil(harness.appState.parkedScreenQuestionResumeTask)
+    }
+
     func testRecentLaunchJoinsOpenChatAndFocusesComposer() async throws {
         let recorder = ScreenQuestionCallRecorder()
         let harness = makeHarness(recorder: recorder)
@@ -1076,6 +1131,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         var operations = ChatResumeLifecycleOperations(
             sendPrompt: { _, sessionID, text in
                 recorder.prompts.append((sessionID, text))
+                recorder.onPrompt?()
                 return .accepted
             },
             steer: { _, sessionID, text in
@@ -1191,4 +1247,5 @@ private final class ScreenQuestionCallRecorder {
     var prompts: [(sessionID: String, text: String)] = []
     var steers: [(sessionID: String, text: String)] = []
     var compressions = 0
+    var onPrompt: (() -> Void)?
 }

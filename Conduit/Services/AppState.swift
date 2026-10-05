@@ -1289,6 +1289,11 @@ final class AppState: ObservableObject {
     /// connects.
     var parkedScreenQuestion: ParkedScreenQuestion?
     @Published var parkedScreenQuestionRevision: UInt64 = 0
+    /// The one waiter that attaches the parked screenshot once Conduit
+    /// settles; it clears itself when it ends.
+    var parkedScreenQuestionResumeTask: Task<Void, Never>?
+    /// A wake-up found that waiter busy: it takes one more pass.
+    var parkedScreenQuestionNeedsAnotherPass = false
     /// When the phone scene last left the foreground: the screenshot
     /// action's recent-chat rule measures from it.
     var lastLeftForegroundAt: Date?
@@ -5658,6 +5663,16 @@ final class AppState: ObservableObject {
     /// that is then replaced, and its voice start finds a turn in sync and
     /// falls back to the keyboard. Some of this isn't published, so a
     /// waiter re-checks it on a timer.
+    ///
+    /// Every part here is in-flight work that ends by itself: the scene
+    /// attempt (its health check times out), a reconnect timer (at most
+    /// 5 s), the automatic operations (finished with their sync or
+    /// reconnect) and the transitional turn states. A latch must never be
+    /// added, or a screenshot waits forever: that is why the recovery
+    /// sequence's purposes (kept until `complete()` or `cancel()`) and
+    /// `chatResumeRestorationRequest` (kept until the chat restores its
+    /// scroll), both in `automaticChatResumeWorkMayStillSelectSession`,
+    /// are left out.
     var isSettlingConnection: Bool {
         guard isConnected else { return false }
         return isConnecting
