@@ -327,7 +327,8 @@ extension AppState {
         // chat on screen carries an attachment (an off-screen thread turn is
         // text only), so a chat that can't come on screen (a Bot Chat, which
         // opens in the bot's profile, or a failed open) leaves the
-        // screenshot in the chat that is, sent with its next message.
+        // screenshot in the chat that is, sent with its next message, and
+        // the call is told so.
         if !switchedProfile, isLiveVoiceCallActive,
            let thread = voiceBackgroundJobSupervisor.liveThread, thread.profile == nil, !isOpenChat(thread) {
             _ = await openSession(thread.storedSessionID ?? thread.runtimeSessionID)
@@ -433,9 +434,14 @@ extension AppState {
     /// A live call attached to the chat hears, quietly, that a screenshot
     /// arrived: it can't see it, and the chat's next turn carries it.
     private func noteScreenshotToLiveCall(on sessionID: String) {
-        guard isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread,
-              thread.owns(sessionID: sessionID) || isOpenChat(thread) else { return }
-        voiceBackgroundJobSupervisor.noteScreenshotShared()
+        guard isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread else { return }
+        if thread.owns(sessionID: sessionID) || isOpenChat(thread) {
+            voiceBackgroundJobSupervisor.noteScreenshotShared()
+        } else {
+            // The call's chat couldn't come on screen: its turns can't
+            // carry the screenshot, so the call sends the user to it.
+            voiceBackgroundJobSupervisor.noteScreenshotInAnotherChat()
+        }
     }
 
     func requestComposerFocus(on sessionID: String) {

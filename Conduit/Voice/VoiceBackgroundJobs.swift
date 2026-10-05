@@ -1066,13 +1066,26 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Hermes About Screen). The live model can't see it, so it hears,
     /// quietly, that the chat's next turn carries it.
     func noteScreenshotShared() {
+        queueScreenshotNote(Self.screenshotSharedPrompt)
+    }
+
+    /// The screenshot went to the chat on screen, not the one the call is
+    /// attached to (a Bot Chat, or a chat that couldn't open): the call's
+    /// requests can't carry it, so the model sends the user there.
+    func noteScreenshotInAnotherChat() {
+        queueScreenshotNote(Self.screenshotInAnotherChatPrompt)
+    }
+
+    private func queueScreenshotNote(_ note: String) {
         guard liveThread != nil else { return }
-        pendingChatContext.append(Self.screenshotSharedPrompt)
+        pendingChatContext.append(note)
         if pendingChatContext.count > Self.maximumPendingChatContext {
             pendingChatContext.removeFirst(pendingChatContext.count - Self.maximumPendingChatContext)
         }
         onNoticePending?()
     }
+
+    static let screenshotInAnotherChatPrompt = "[Background only. The user shared a screenshot, but it went to the chat on screen, not the chat this call is attached to, so your requests can't carry it. If they ask about their screen, tell them to type the question in the chat on screen, where the screenshot is waiting. Don't guess what the screen shows, and don't respond to this note now.]"
 
     static let screenshotSharedPrompt = "[Background only. The user just shared a screenshot to the chat this call is attached to. You can't see it, but Hermes can. When the user asks about their screen, send their question to the chat as they asked it, and the screenshot goes with it. Don't guess what the screen shows, and don't respond to this note now.]"
 
@@ -1084,11 +1097,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let waiting = pendingChatContext.count
         pendingChatContext.removeAll { $0 == Self.screenshotSharedPrompt }
         guard pendingChatContext.count == waiting else { return }
-        pendingChatContext.append(Self.screenshotRemovedPrompt)
-        if pendingChatContext.count > Self.maximumPendingChatContext {
-            pendingChatContext.removeFirst(pendingChatContext.count - Self.maximumPendingChatContext)
-        }
-        onNoticePending?()
+        queueScreenshotNote(Self.screenshotRemovedPrompt)
     }
 
     static let screenshotRemovedPrompt = "[Background only. The user removed the screenshot they shared: the chat's next turn won't carry one. Don't respond to this note now.]"

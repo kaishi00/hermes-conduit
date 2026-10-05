@@ -813,6 +813,20 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(note?.hasPrefix("[Background only.") == true)
     }
 
+    func testCallWhoseChatIsOffScreenSendsTheUserToTheScreenshot() {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        supervisor.noteScreenshotInAnotherChat()
+        XCTAssertNil(supervisor.takePendingChatContext(), "No call is attached to a chat")
+
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "bot-chat", storedSessionID: nil, title: "Chat"))
+        supervisor.noteScreenshotInAnotherChat()
+
+        let note = supervisor.takePendingChatContext()
+        XCTAssertEqual(note, VoiceBackgroundJobSupervisor.screenshotInAnotherChatPrompt)
+        XCTAssertTrue(note?.hasPrefix("[Background only.") == true)
+    }
+
     func testRemovedScreenshotTakesBackTheCallsNote() {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         let supervisor = harness.appState.voiceBackgroundJobSupervisor
