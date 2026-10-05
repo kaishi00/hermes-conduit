@@ -183,6 +183,11 @@ final class ScreenQuestionTests: XCTestCase {
     func testShortcutLinkReadsTheICloudLink() throws {
         let url = ScreenQuestionShortcutLink.shortcutURL(fromConfig: config(#"{"url": " https://www.icloud.com/shortcuts/0a1b2c3d "}"#))
         XCTAssertEqual(url?.absoluteString, "https://www.icloud.com/shortcuts/0a1b2c3d")
+        // A real link's id is 32 hex digits; "-" and "_" are allowed in case one isn't.
+        let hex = "https://www.icloud.com/shortcuts/7e3f0c1a9b2d4e5f8a6b0c1d2e3f4a5b"
+        XCTAssertEqual(ScreenQuestionShortcutLink.shortcutURL(fromConfig: config(#"{"url": "\#(hex)"}"#))?.absoluteString, hex)
+        let dashed = "https://www.icloud.com/shortcuts/0a1b-2c3d_4e"
+        XCTAssertEqual(ScreenQuestionShortcutLink.shortcutURL(fromConfig: config(#"{"url": "\#(dashed)"}"#))?.absoluteString, dashed)
     }
 
     func testShortcutLinkOpensOnlyICloudShortcuts() {

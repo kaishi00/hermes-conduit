@@ -68,9 +68,9 @@ enum ScreenQuestionShortcutLink {
               url.query == nil, url.fragment == nil
         else { return nil }
         let path = url.path.split(separator: "/", omittingEmptySubsequences: true)
-        // The id is letters and digits: no "..", no escapes.
+        // The id is letters, digits, "-" or "_": no "..", no escapes.
         guard path.count == 2, path[0] == "shortcuts",
-              path[1].allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) })
+              path[1].allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") })
         else { return nil }
         return url
     }
