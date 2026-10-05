@@ -52,10 +52,14 @@ struct VoiceAudioSessionConfiguration: Equatable {
     /// A2DP stays allowed so Bluetooth headphones keep their music route.
     /// HFP is deliberately left out: it would drop headphones to call
     /// quality, so wake listening uses the phone's own microphone.
+    /// `.defaultToSpeaker`: without headphones a record category plays out of
+    /// the earpiece, and other apps' audio mixed into this session can
+    /// follow it there. By default wake does not listen at all while other
+    /// apps play (AppState), so this matters when the user keeps it on.
     static let wakeListening = Self(
         category: .playAndRecord,
         mode: .default,
-        options: [.mixWithOthers, .allowBluetoothA2DP],
+        options: [.mixWithOthers, .allowBluetoothA2DP, .defaultToSpeaker],
         outputSampleRate: 16_000,
         outputChannelCount: 1
     )

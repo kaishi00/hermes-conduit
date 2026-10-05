@@ -37,13 +37,20 @@ extension AppState {
                 && AppleSpeechWakeWordService.isMicrophoneAuthorized,
             isVoiceIdle: isVoiceIdleForWake,
             hasWakePhrases: !activeWakeBindings.isEmpty,
-            isRouteSuitable: isWakeRouteAllowed
+            isRouteSuitable: isWakeRouteAllowed,
+            otherAudioAllowsListening: isWakeOtherAudioAllowed
         )
     }
 
     /// CarPlay allows listening only while the user keeps wake on there.
     private var isWakeRouteAllowed: Bool {
         !isWakeRouteCarPlay || wakeConfiguration.listensOnCarPlay
+    }
+
+    /// Another app's music or podcast pauses wake unless the user keeps it
+    /// listening over other audio.
+    private var isWakeOtherAudioAllowed: Bool {
+        wakeConfiguration.listensOverOtherAudio || !isWakeOtherAudioPlaying
     }
 
     private var isVoiceIdleForWake: Bool {
@@ -99,6 +106,21 @@ extension AppState {
                     self.isWakeRouteCarPlay = WakeRoutePolicy.currentRouteIsCarPlay()
                     self.scheduleWakeRefresh()
                 }
+            },
+            // Another app's music or podcast starting or stopping. Delivered
+            // only while wake holds an active session, so it stops wake at
+            // once; the monitor notices when that audio ends.
+            NotificationCenter.default.publisher(
+                for: AVAudioSession.silenceSecondaryAudioHintNotification,
+                object: AVAudioSession.sharedInstance()
+            )
+            .sink { [weak self] notification in
+                let rawType = notification.userInfo?[AVAudioSessionSilenceSecondaryAudioHintTypeKey] as? UInt
+                let began = rawType.flatMap(AVAudioSession.SilenceSecondaryAudioHintType.init(rawValue:)) == .begin
+                Task { @MainActor [weak self] in
+                    guard let self, !self.wakeConfiguration.listensOverOtherAudio else { return }
+                    self.noteWakeOtherAudio(playing: began || self.wakeOtherAudioProbe())
+                }
             }
         ]
         scheduleWakeRefresh()
@@ -118,12 +140,19 @@ extension AppState {
 
     func refreshWakeListening() {
         var snapshot = wakeLifecycleSnapshot
-        // Route changes while suspended are never delivered, so confirm the
-        // cached route right before arming (rare: only when wake would start).
+        // Route changes while suspended are never delivered, and other apps'
+        // audio is only polled, so confirm both right before arming (rare:
+        // only when wake would start). Arming under a playing podcast would
+        // move it onto a record route for a moment.
         if snapshot.canArm, !wakeWordService.isArmed, snapshot != lastAppliedWakeSnapshot {
             isWakeRouteCarPlay = WakeRoutePolicy.currentRouteIsCarPlay()
             snapshot.isRouteSuitable = isWakeRouteAllowed
+            if !wakeConfiguration.listensOverOtherAudio {
+                isWakeOtherAudioPlaying = wakeOtherAudioProbe()
+                snapshot.otherAudioAllowsListening = isWakeOtherAudioAllowed
+            }
         }
+        updateWakeOtherAudioMonitor(for: snapshot)
         if snapshot.canArm { wakeWordService.bindings = activeWakeBindings }
         // Only act on a change: a failed arm is not retried on every
         // unrelated publish, only once something relevant moves.
@@ -132,6 +161,45 @@ extension AppState {
         wakeLifecycle.update(for: snapshot)
         let failure = snapshot.canArm ? wakeLifecycle.lastFailureReason : nil
         if wakeListeningFailure != failure { wakeListeningFailure = failure }
+        if isWakePausedForOtherAudio != snapshot.isPausedForOtherAudio {
+            isWakePausedForOtherAudio = snapshot.isPausedForOtherAudio
+        }
+    }
+
+    /// Polls other apps' audio while wake is armed (to step aside when a
+    /// podcast starts) or only waiting for that audio to stop (to listen
+    /// again). Off whenever wake could not listen anyway, and when the user
+    /// keeps it listening over other audio.
+    func updateWakeOtherAudioMonitor(for snapshot: WakeLifecycleSnapshot) {
+        guard snapshot.canArmIgnoringOtherAudio, !wakeConfiguration.listensOverOtherAudio else {
+            stopWakeOtherAudioMonitor()
+            return
+        }
+        guard wakeOtherAudioMonitor == nil else { return }
+        wakeOtherAudioMonitor = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let interval = self?.pollWakeOtherAudio() else { return }
+                try? await Task.sleep(for: interval)
+            }
+        }
+    }
+
+    private func stopWakeOtherAudioMonitor() {
+        wakeOtherAudioMonitor?.cancel()
+        wakeOtherAudioMonitor = nil
+    }
+
+    /// One poll: records whether other audio plays and returns the delay
+    /// before the next one.
+    private func pollWakeOtherAudio() -> Duration {
+        noteWakeOtherAudio(playing: wakeOtherAudioProbe())
+        return wakeOtherAudioPollInterval
+    }
+
+    func noteWakeOtherAudio(playing: Bool) {
+        guard isWakeOtherAudioPlaying != playing else { return }
+        isWakeOtherAudioPlaying = playing
+        scheduleWakeRefresh()
     }
 
     /// Synchronous: the microphone must stop before the app leaves the
@@ -139,9 +207,13 @@ extension AppState {
     func disarmWakeListeningForBackground() {
         guard !wakeObservations.isEmpty else { return }
         wakeLifecycle.disarmImmediately()
+        stopWakeOtherAudioMonitor()
         lastAppliedWakeSnapshot = nil
-        // Re-read on the next foreground: CarPlay may connect meanwhile.
+        // Re-read on the next foreground: CarPlay may connect meanwhile, and
+        // another app may start or stop playing.
         isWakeRouteCarPlay = false
+        isWakeOtherAudioPlaying = false
+        if isWakePausedForOtherAudio { isWakePausedForOtherAudio = false }
     }
 
     /// Another audio owner is taking the session now: stop listening before
@@ -186,6 +258,17 @@ extension AppState {
         // Judge the change against the live route, not a cache that may
         // have missed a route change.
         isWakeRouteCarPlay = WakeRoutePolicy.currentRouteIsCarPlay()
+        wakeListeningFailure = nil
+        wakeSettingsRevision &+= 1
+    }
+
+    var wakeListensOverOtherAudio: Bool { wakeConfiguration.listensOverOtherAudio }
+
+    func setWakeListensOverOtherAudio(_ enabled: Bool) {
+        wakeConfiguration.listensOverOtherAudio = enabled
+        // The monitor stops while the setting is on, so judge turning it off
+        // against what plays now, not a stale cache.
+        if !enabled { isWakeOtherAudioPlaying = wakeOtherAudioProbe() }
         wakeListeningFailure = nil
         wakeSettingsRevision &+= 1
     }

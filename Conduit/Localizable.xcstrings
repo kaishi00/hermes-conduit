@@ -1349,6 +1349,36 @@
         }
       }
     },
+    "Listen while other audio plays" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他音频播放时继续监听"
+          }
+        }
+      }
+    },
+    "Off: wake pauses while another app plays music or a podcast, and listens again once it stops. On: wake keeps listening, but iOS may play that audio in mono or cut it out briefly." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭：其他 App 播放音乐或播客时，唤醒词监听会暂停，播放停止后自动恢复。打开：唤醒词会持续监听，但 iOS 可能会以单声道播放该音频，或使其短暂中断。"
+          }
+        }
+      }
+    },
+    "Paused while another app plays audio. Wake listens again when it stops." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他 App 正在播放音频，唤醒词监听已暂停，播放停止后会自动恢复。"
+          }
+        }
+      }
+    },
     "On CarPlay, wake listens through the iPhone's microphone so music keeps playing normally in the car. Turn this off if the phrase is missed or music sounds wrong." : {
       "localizations" : {
         "zh-Hans" : {

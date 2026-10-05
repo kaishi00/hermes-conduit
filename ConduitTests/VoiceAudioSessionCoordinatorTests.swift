@@ -385,6 +385,11 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(session.categoryCalls.last?.category, .playAndRecord)
         XCTAssertEqual(session.categoryCalls.last?.mode, .default)
         XCTAssertTrue(session.categoryCalls.last?.options.contains(.mixWithOthers) ?? false)
+        XCTAssertTrue(
+            session.categoryCalls.last?.options.contains(.defaultToSpeaker) ?? false,
+            "without headphones, other apps' audio stays on the loudspeaker, not the earpiece"
+        )
+        XCTAssertFalse(session.categoryCalls.last?.options.contains(.allowBluetoothHFP) ?? true)
         XCTAssertFalse(coordinator.hasOwnersOtherThanWakeListening)
     }
 
