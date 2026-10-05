@@ -296,6 +296,17 @@ extension AppState {
         }
     }
 
+    /// Attaches the parked screenshot once Conduit settles. Part of settling
+    /// isn't published, so it's re-checked every `recheck`; the check and
+    /// the resume run without a suspension between them, so settling can't
+    /// restart in between and strand the screenshot.
+    func resumeParkedScreenQuestionOnceSettled(recheck: Duration) async {
+        while isConnected, parkedScreenQuestion != nil, isSettlingConnection {
+            do { try await Task.sleep(for: recheck) } catch { return }
+        }
+        await resumeParkedScreenQuestion()
+    }
+
     /// Keeps a screenshot no chat could take yet, without a revision bump:
     /// it is tried again when the connection changes, never in a loop. A
     /// newer screenshot parked meanwhile wins.

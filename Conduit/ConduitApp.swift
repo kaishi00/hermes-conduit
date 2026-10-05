@@ -147,13 +147,9 @@ struct ConduitApp: App {
             // A screenshot kept while Hermes was unreachable is attached
             // once it connects and settles.
             .task(id: parkedScreenQuestionKey) {
-                // Once Conduit settles too, re-checked on the same timer.
-                while appState.isConnected, appState.parkedScreenQuestion != nil, appState.isSettlingConnection {
-                    do { try await Task.sleep(for: Self.settleRecheckInterval) } catch { return }
-                }
                 // Not cancelled with this task: the resume can switch
                 // profiles, which changes the key.
-                Task { await appState.resumeParkedScreenQuestion() }
+                Task { await appState.resumeParkedScreenQuestionOnceSettled(recheck: Self.settleRecheckInterval) }
             }
     }
 
@@ -207,10 +203,15 @@ struct ConduitApp: App {
         case .failed(let message):
             // A screenshot is kept when Hermes can't be reached: it is
             // attached once Hermes connects and Conduit settles.
-            if let request = routed?.screenQuestion {
+            let request = routed?.screenQuestion
+            if let request {
                 appState.parkScreenQuestion(request, profile: routed?.profile)
             }
-            appState.errorMessage = message
+            // Past its deadline while connected but still settling, Hermes
+            // was reached: the screenshot waits without the banner.
+            if request == nil || !appState.isConnected {
+                appState.errorMessage = message
+            }
         case .superseded:
             // A newer request took over while this one found Hermes gone.
             if screenQuestionOpened == false, let request = routed?.screenQuestion {

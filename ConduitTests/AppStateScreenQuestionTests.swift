@@ -463,6 +463,26 @@ final class AppStateScreenQuestionTests: XCTestCase {
         await refresh?.value
     }
 
+    func testParkedScreenshotIsAttachedOnceConduitSettles() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness, withMessages: true)
+        let shot = try stagedScreenshot()
+        harness.appState.parkScreenQuestion(request(for: shot, enqueuedAt: Date(timeIntervalSinceNow: -3_600)), profile: nil)
+        // A reconnect keeps isConnected while it runs.
+        harness.appState.isConnected = true
+        harness.appState.isConnecting = true
+
+        let resume = Task { await harness.appState.resumeParkedScreenQuestionOnceSettled(recheck: .milliseconds(10)) }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, shot, "Waits while Conduit settles")
+
+        harness.appState.isConnecting = false
+        await resume.value
+
+        XCTAssertNil(harness.appState.parkedScreenQuestion)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+    }
+
     func testRecentLaunchJoinsOpenChatAndFocusesComposer() async throws {
         let recorder = ScreenQuestionCallRecorder()
         let harness = makeHarness(recorder: recorder)
