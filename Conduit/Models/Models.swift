@@ -719,12 +719,21 @@ struct CronJob: Codable, Identifiable {
 
     var displayName: String { name ?? id }
 
-    /// Hermes marks a one-shot job "completed" once it has run; it will not
-    /// run again even if the record still reads enabled.
-    var isFinished: Bool { state == "completed" }
+    /// The `state` Hermes gives a one-shot job once it has run.
+    static let completedState = "completed"
+
+    /// A finished one-shot job will not run again on its own, even if the
+    /// record still reads enabled.
+    var isFinished: Bool { state == Self.completedState }
 
     /// Whether the job will run on its own: enabled and not finished.
     var isActive: Bool { enabled && !isFinished }
+
+    /// The Cron row's badge: Finished, Active or Paused.
+    var statusLabel: String {
+        if isFinished { return AppLocalization.string("Finished") }
+        return isActive ? AppLocalization.string("Active") : AppLocalization.string("Paused")
+    }
 }
 
 struct CronSchedule: Codable {

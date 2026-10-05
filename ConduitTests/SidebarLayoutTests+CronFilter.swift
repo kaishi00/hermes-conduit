@@ -59,6 +59,15 @@ extension SidebarLayoutTests {
         XCTAssertEqual(CronJobFilter.visibleJobs(jobs, filter: .all, query: "").map(\.id), ["daily", "off", "once"])
     }
 
+    func testCronRowBadgeSaysFinishedActiveOrPaused() {
+        // "completed" is the Hermes wire value for a one-shot job that ran.
+        XCTAssertEqual(cronJob("a", enabled: true, state: "completed").statusLabel, AppLocalization.string("Finished"))
+        XCTAssertEqual(cronJob("b", enabled: false, state: "completed").statusLabel, AppLocalization.string("Finished"))
+        XCTAssertEqual(cronJob("c", enabled: true, state: "scheduled").statusLabel, AppLocalization.string("Active"))
+        XCTAssertEqual(cronJob("d", enabled: true).statusLabel, AppLocalization.string("Active"))
+        XCTAssertEqual(cronJob("e", enabled: false, state: "paused").statusLabel, AppLocalization.string("Paused"))
+    }
+
     func testCronJobsWithTheSameNameKeepAStableOrder() {
         let jobs = [
             cronJob("b", name: "Sync", enabled: true),

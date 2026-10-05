@@ -1610,16 +1610,11 @@ private struct CronJobRow: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            Text(statusLabel).font(.caption2.weight(.semibold)).foregroundStyle(job.isActive ? .green : .secondary)
+            Text(job.statusLabel).font(.caption2.weight(.semibold)).foregroundStyle(job.isActive ? .green : .secondary)
             Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    private var statusLabel: String {
-        if job.isFinished { return AppLocalization.string("Finished") }
-        return job.isActive ? AppLocalization.string("Active") : AppLocalization.string("Paused")
     }
 }
 
@@ -1627,7 +1622,17 @@ private struct CronJobDetailSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    let job: CronJob
+    /// The job as it was tapped; `job` follows the live list so Pause and
+    /// Resume flip the sheet as soon as Hermes answers.
+    let selectedJob: CronJob
+
+    init(job: CronJob) {
+        selectedJob = job
+    }
+
+    private var job: CronJob {
+        appState.cronJobs.first { $0.id == selectedJob.id } ?? selectedJob
+    }
 
     var body: some View {
         NavigationStack {
@@ -1636,18 +1641,23 @@ private struct CronJobDetailSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         ConduitSettingsSection(title: job.displayName, symbol: "clock.fill", tint: .conduitAccent) {
+                            SettingsMetricRow(label: AppLocalization.string("Status"), value: job.statusLabel)
                             SettingsMetricRow(label: AppLocalization.string("Schedule"), value: job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? "—")
-                            SettingsMetricRow(label: AppLocalization.string("Next run"), value: job.nextRunAt ?? "—")
+                            SettingsMetricRow(label: AppLocalization.string("Next run"), value: job.isFinished ? "—" : job.nextRunAt ?? "—")
                             SettingsMetricRow(label: AppLocalization.string("Last run"), value: job.lastRunAt ?? "—")
                             SettingsMetricRow(label: AppLocalization.string("Delivery"), value: job.deliver ?? "Local")
                         }
                         HStack(spacing: 10) {
-                            Button { Task { _ = await appState.performCronAction(job.enabled ? "pause" : "resume", for: job) } } label: {
-                                Label(job.enabled ? "Pause" : "Resume", systemImage: job.enabled ? "pause.fill" : "play.fill").frame(maxWidth: .infinity)
+                            // A finished one-shot job has nothing left to pause
+                            // or resume.
+                            if !job.isFinished {
+                                Button { Task { _ = await appState.performCronAction(job.enabled ? "pause" : "resume", for: job) } } label: {
+                                    Label(job.enabled ? "Pause" : "Resume", systemImage: job.enabled ? "pause.fill" : "play.fill").frame(maxWidth: .infinity)
+                                }
+                                .disabled(appState.cronJobActionID != nil)
+                                .frame(minHeight: 48)
+                                .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.18))
                             }
-                            .disabled(appState.cronJobActionID != nil)
-                            .frame(minHeight: 48)
-                            .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.18))
                             Button { Task { _ = await appState.performCronAction("trigger", for: job); await appState.loadCronRuns(for: job) } } label: {
                                 Label(appState.cronJobActionID == job.id ? "Working…" : AppLocalization.string("Run now"), systemImage: "play.fill")
                                     .frame(maxWidth: .infinity)
