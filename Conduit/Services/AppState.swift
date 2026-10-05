@@ -1292,6 +1292,9 @@ final class AppState: ObservableObject {
     /// When the phone scene last left the foreground: the screenshot
     /// action's recent-chat rule measures from it.
     var lastLeftForegroundAt: Date?
+    /// `isSceneActive` starts true before any scene event, so a launch
+    /// that never reached the foreground does not count as leaving it.
+    private var sceneHasBeenActive = false
 
     // MARK: - Capabilities
 
@@ -11335,6 +11338,7 @@ final class AppState: ObservableObject {
         switch phase {
         case .active:
             isSceneActive = true
+            sceneHasBeenActive = true
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
@@ -11484,7 +11488,7 @@ final class AppState: ObservableObject {
         case .background:
             // Only a departure from active counts: coming back passes
             // through .inactive too, and that is not "last used".
-            if isSceneActive { lastLeftForegroundAt = Date() }
+            if isSceneActive, sceneHasBeenActive { lastLeftForegroundAt = Date() }
             isSceneActive = false
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
@@ -11561,7 +11565,7 @@ final class AppState: ObservableObject {
         case .inactive:
             // Only a departure from active counts: coming back passes
             // through .inactive too, and that is not "last used".
-            if isSceneActive { lastLeftForegroundAt = Date() }
+            if isSceneActive, sceneHasBeenActive { lastLeftForegroundAt = Date() }
             isSceneActive = false
             disarmWakeListeningForBackground()
             // Same reasoning as .background: a dip through Control Center or a

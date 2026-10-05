@@ -384,6 +384,20 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
     }
 
+    func testLeavingCountsOnlyAfterTheSceneWasOnScreen() {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+
+        harness.appState.handleScenePhase(.inactive)
+        XCTAssertNil(
+            harness.appState.lastLeftForegroundAt,
+            "A launch that never reached the foreground has not left it"
+        )
+
+        harness.appState.handleScenePhase(.active)
+        harness.appState.handleScenePhase(.background)
+        XCTAssertNotNil(harness.appState.lastLeftForegroundAt)
+    }
+
     func testFailedQuestionSendLeavesQuestionInComposer() async throws {
         let recorder = ScreenQuestionCallRecorder()
         let origin = session("composer-origin")
