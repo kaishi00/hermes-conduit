@@ -154,7 +154,7 @@ struct LiveVoiceStyleSettingsSection: View {
                 }
             }
             .pickerStyle(.menu)
-            Text("How much the voice model says when you ask something. Concise gives the key point in a sentence or two, Default adds the details that make it useful, and Detailed goes in depth. Applies to the next call.")
+            Text("How much the voice model says when you ask something. Concise gives the key point in one to three sentences, Default adds the details that make it useful, and Detailed goes in depth. Applies to the next call.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Toggle("Backchannels", isOn: Binding(

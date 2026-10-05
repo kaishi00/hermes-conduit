@@ -906,6 +906,9 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(LiveVoiceStyle(tone: .professional).instructions.contains("concise"), "professional cuts filler, not substance")
         XCTAssertFalse(GeminiLiveToolBridge.webSearchDeclaration.description.contains("sentence or two"))
         XCTAssertFalse(GeminiLiveToolBridge.threadDeclarations.contains { $0.description.contains("summarize it") })
+        // Built once for every call, so they defer to the call's answer length.
+        XCTAssertTrue(GeminiLiveToolBridge.webSearchDeclaration.description.contains("answer length your instructions set"))
+        XCTAssertTrue(GeminiLiveToolBridge.threadDeclarations.contains { $0.description.contains("answer length your instructions set") })
         let lookup = try XCTUnwrap(GeminiLiveConversationController.lookupFallbackText(for: ["results": "1. Sunny, 21°C"]))
         XCTAssertFalse(lookup.contains("briefly"), "a lookup's answer isn't cut short either")
 
@@ -917,6 +920,7 @@ extension VoiceConversationControllerTests {
             XCTAssertTrue(prompt.contains("the details that matter"))
         }
         XCTAssertFalse(VoiceBackgroundJobSupervisor.jobPrompt(for: "Check the weather").contains("short plain-language summary"))
+        XCTAssertTrue(VoiceBackgroundJobSupervisor.jobPrompt(for: "Check the weather").contains("with the key details"))
         XCTAssertFalse(GPTLiveConversationController.resultAfterUserNote.contains("briefly"), "what the user asked meanwhile gets a full answer too")
 
         // A call attached to a chat gets its own block on top of the instructions.
@@ -955,8 +959,22 @@ extension VoiceConversationControllerTests {
         appState.setLiveVoiceStyle(LiveVoiceStyle(answerLength: .concise))
         XCTAssertEqual(appState.liveVoiceStyle.answerLength, .concise)
         XCTAssertEqual(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, .concise)
+
+        // What the next call gets, through the same builders the sessions use.
+        let detailed = LiveVoiceAnswerLength.detailed.instructions
+        appState.setLiveVoiceStyle(LiveVoiceStyle(answerLength: .detailed))
+        appState.setGeminiLiveEnabled(true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "Gemini Live")
+        appState.setGrokLiveEnabled(true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.mode, "Grok Live")
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "Grok Live")
+        appState.setGPTLiveEnabled(true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.mode, "GPT-Live")
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "GPT-Live")
+
         appState.setLiveVoiceStyle(LiveVoiceStyle())
         XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, "Default is stored as nothing")
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LiveVoiceAnswerLength.standard.instructions), true)
     }
 
     func testGeminiLiveUnavailableHostFailsWithTheReasonAndNeverConnects() async {
