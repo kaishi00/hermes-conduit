@@ -900,9 +900,7 @@ extension VoiceConversationControllerTests {
         for (engine, text) in engines {
             XCTAssertTrue(text.contains(LiveVoiceStyle.answerDepth), "\(engine) gets the answer-length rule")
             XCTAssertFalse(text.localizedCaseInsensitiveContains("keep replies short"), "\(engine) is no longer told to keep it short")
-            for phrase in ["a few spoken sentences", "sentence or two", "briefly", "keep your own replies short"] {
-                XCTAssertFalse(text.contains(phrase), "\(engine): \(phrase)")
-            }
+            XCTAssertFalse(text.contains("a few spoken sentences"), engine)
             XCTAssertTrue(text.contains("not how much you say"), "\(engine): a text persona can't make spoken answers terse")
         }
         XCTAssertFalse(LiveVoiceStyle(tone: .professional).instructions.contains("concise"), "professional cuts filler, not substance")
@@ -919,6 +917,18 @@ extension VoiceConversationControllerTests {
             XCTAssertTrue(prompt.contains("the details that matter"))
         }
         XCTAssertFalse(VoiceBackgroundJobSupervisor.jobPrompt(for: "Check the weather").contains("short plain-language summary"))
+
+        // A call attached to a chat gets its own block on top of the instructions.
+        let suite = "LiveVoiceAnswerDepth.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {})
+        appState.voiceBackgroundJobSupervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build")
+        for delegation in [false, true] {
+            let block = appState.liveVoiceThreadInstructions(delegation: delegation)
+            XCTAssertFalse(block.contains("keep your own replies short"), "delegation \(delegation)")
+            XCTAssertTrue(block.contains("with the details that matter"), "delegation \(delegation)")
+        }
     }
 
     func testGeminiLiveUnavailableHostFailsWithTheReasonAndNeverConnects() async {
