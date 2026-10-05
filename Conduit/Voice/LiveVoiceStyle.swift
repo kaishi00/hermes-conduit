@@ -39,11 +39,9 @@ struct LiveVoiceStyle: Equatable {
 
     /// How much every live model says by default. Told only to keep replies
     /// short, they answered in a line and left the user asking follow-ups
-    /// to get anything useful. An engine with a screen tool adds that the
-    /// screen takes the place of a long spoken answer (Gemini Live's
-    /// show_on_screen). Written for the model, not shown as UI copy, so not
-    /// localized.
-    static let answerDepth = "Say enough to be useful. Answer a real question fully the first time: the answer, then the details that make it useful (the reasons, numbers, names, steps or options that matter, and any caveat), usually several sentences and more when the topic needs it. Don't leave the user asking follow-up questions to get the substance, and don't stop at a headline or end on an offer to say more instead of saying it. It is still speech: say it in natural spoken sentences, not lists, headings or Markdown, and never read out URLs. Keep it short only for greetings, small talk, acknowledgements and confirmations."
+    /// to get anything useful. Written for the model, not shown as UI copy,
+    /// so not localized.
+    static let answerDepth = "Say enough to be useful. Answer a real question fully the first time: the answer, then the details that make it useful (the reasons, numbers, names, steps or options that matter, and any caveat), usually several sentences and more when the topic needs it. Don't leave the user asking follow-up questions to get the substance, and don't stop at a headline or end on an offer to say more instead of saying it. It is still speech: say it in natural spoken sentences, not lists, headings or Markdown, and never read out URLs. When the detail is on the user's screen, that takes the place of a long spoken answer. Keep it short only for greetings, small talk, acknowledgements and confirmations."
 
     /// The user's greeting on one line, without double quotes (it is quoted
     /// to the model), clipped.

@@ -917,6 +917,7 @@ extension VoiceConversationControllerTests {
             XCTAssertTrue(prompt.contains("the details that matter"))
         }
         XCTAssertFalse(VoiceBackgroundJobSupervisor.jobPrompt(for: "Check the weather").contains("short plain-language summary"))
+        XCTAssertFalse(GPTLiveConversationController.resultAfterUserNote.contains("briefly"), "what the user asked meanwhile gets a full answer too")
 
         // A call attached to a chat gets its own block on top of the instructions.
         let suite = "LiveVoiceAnswerDepth.\(UUID().uuidString)"
