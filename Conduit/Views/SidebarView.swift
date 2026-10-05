@@ -1417,13 +1417,19 @@ struct CronList: View {
     @State private var searchText = ""
     @State private var selectedJob: CronJob?
     @AppStorage("conduit.cronJobsExpanded") private var cronJobsExpanded = true
+    @AppStorage("conduit.cronJobsFilter") private var jobFilter: CronJobFilter = .all
 
     var body: some View {
         List {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Scheduled jobs").font(.headline)
-                    Text("\(appState.cronJobs.count) configured").font(.caption).foregroundStyle(.secondary)
+                    if appState.cronJobs.isEmpty {
+                        Text("\(appState.cronJobs.count) configured").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("\(activeJobCount) active · \(inactiveJobCount) inactive")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 if appState.cronJobsLoading { ProgressView().controlSize(.small) }
@@ -1432,12 +1438,25 @@ struct CronList: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
 
+            if !appState.cronJobs.isEmpty {
+                Picker("Show jobs", selection: $jobFilter) {
+                    ForEach(CronJobFilter.allCases) { filter in
+                        Text(filter.title).tag(filter)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             if filteredJobs.isEmpty && !appState.cronJobsLoading {
-                ContentUnavailableView(
-                    searchText.isEmpty ? AppLocalization.string("No Scheduled Jobs") : AppLocalization.string("No Matching Jobs"),
-                    systemImage: "clock",
-                    description: Text("Scheduled jobs from Hermes appear here.")
+                let empty = CronJobFilter.emptyState(
+                    filter: jobFilter,
+                    hasJobs: !appState.cronJobs.isEmpty,
+                    isSearching: !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 )
+                ContentUnavailableView(empty.title, systemImage: "clock", description: Text(empty.description))
             }
 
             DisclosureGroup(isExpanded: $cronJobsExpanded) {
@@ -1484,11 +1503,84 @@ struct CronList: View {
     }
 
     private var filteredJobs: [CronJob] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return appState.cronJobs }
-        return appState.cronJobs.filter { job in
-            [job.displayName, job.prompt ?? "", job.scheduleDisplay ?? job.schedule?.display ?? "", job.deliver ?? ""]
-                .contains { $0.localizedCaseInsensitiveContains(query) }
+        CronJobFilter.visibleJobs(appState.cronJobs, filter: jobFilter, query: searchText)
+    }
+
+    private var activeJobCount: Int {
+        appState.cronJobs.filter(\.enabled).count
+    }
+
+    private var inactiveJobCount: Int {
+        appState.cronJobs.count - activeJobCount
+    }
+}
+
+/// The Cron tab's Active / Inactive / All filter (#392). A job is active
+/// while Hermes has it enabled; paused jobs and finished one-shot jobs are
+/// inactive. Every filter lists active jobs first, then by name, so the
+/// running ones are never buried under a long tail of paused ones.
+enum CronJobFilter: String, CaseIterable, Identifiable {
+    case active
+    case inactive
+    case all
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .active: AppLocalization.string("Active")
+        case .inactive: AppLocalization.string("Inactive")
+        case .all: AppLocalization.string("All")
+        }
+    }
+
+    func includes(_ job: CronJob) -> Bool {
+        switch self {
+        case .active: job.enabled
+        case .inactive: !job.enabled
+        case .all: true
+        }
+    }
+
+    /// The jobs the Cron list shows: the ones this filter keeps that match
+    /// the search field, active first, then by name.
+    static func visibleJobs(_ jobs: [CronJob], filter: CronJobFilter, query: String) -> [CronJob] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return jobs
+            .filter { filter.includes($0) && (query.isEmpty || matches($0, query: query)) }
+            .sorted(by: listOrder)
+    }
+
+    static func matches(_ job: CronJob, query: String) -> Bool {
+        [job.displayName, job.prompt ?? "", job.scheduleDisplay ?? job.schedule?.display ?? "", job.deliver ?? ""]
+            .contains { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    static func listOrder(_ lhs: CronJob, _ rhs: CronJob) -> Bool {
+        if lhs.enabled != rhs.enabled { return lhs.enabled }
+        switch lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) {
+        case .orderedAscending: return true
+        case .orderedDescending: return false
+        case .orderedSame: return lhs.id < rhs.id
+        }
+    }
+
+    /// What the list says when nothing is left to show: no jobs at all, no
+    /// search match, or nothing under the chosen filter.
+    static func emptyState(filter: CronJobFilter, hasJobs: Bool, isSearching: Bool) -> (title: String, description: String) {
+        if !hasJobs {
+            return (AppLocalization.string("No Scheduled Jobs"), AppLocalization.string("Scheduled jobs from Hermes appear here."))
+        }
+        if isSearching {
+            return (AppLocalization.string("No Matching Jobs"), AppLocalization.string("Scheduled jobs from Hermes appear here."))
+        }
+        switch filter {
+        case .active:
+            return (AppLocalization.string("No Active Jobs"), AppLocalization.string("Every scheduled job is paused or finished."))
+        case .inactive:
+            return (AppLocalization.string("No Inactive Jobs"), AppLocalization.string("Every scheduled job is active."))
+        case .all:
+            return (AppLocalization.string("No Scheduled Jobs"), AppLocalization.string("Scheduled jobs from Hermes appear here."))
         }
     }
 }

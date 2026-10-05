@@ -1,6 +1,76 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%lld active · %lld inactive" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个启用中 · %lld 个未启用"
+          }
+        }
+      }
+    },
+    "Every scheduled job is active." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有定时任务都处于启用状态。"
+          }
+        }
+      }
+    },
+    "Every scheduled job is paused or finished." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有定时任务都已暂停或已完成。"
+          }
+        }
+      }
+    },
+    "Inactive" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未启用"
+          }
+        }
+      }
+    },
+    "No Active Jobs" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有启用中的任务"
+          }
+        }
+      }
+    },
+    "No Inactive Jobs" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有未启用的任务"
+          }
+        }
+      }
+    },
+    "Show jobs" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示任务"
+          }
+        }
+      }
+    },
     "%lld more pairings don't match any dashboard saved on this iPhone." : {
       "localizations" : {
         "en" : {
