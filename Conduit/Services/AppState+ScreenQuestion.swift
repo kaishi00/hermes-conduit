@@ -277,18 +277,34 @@ extension AppState {
         parkedScreenQuestionRevision &+= 1
     }
 
-    /// Attaches a screenshot kept through an outage once Hermes connects.
-    /// The user is in Conduit by then, so it joins the chat on screen (or a
-    /// new chat on the profile the shortcut named), with the keyboard:
-    /// never the microphone, and a question waits in the composer rather
-    /// than being sent long after it was asked.
-    func resumeParkedScreenQuestion() async {
-        guard isConnected, !isConnecting, !isProfileSwitching, let parked = parkedScreenQuestion else { return }
+    /// Attaches a screenshot kept through an outage once Hermes connects and
+    /// Conduit settles. Back on screen within the launch window, it starts
+    /// as the press asked (voice, or its question sent). Later, the user is
+    /// in Conduit by then, so it joins the chat on screen (or a new chat on
+    /// the profile the shortcut named), with the keyboard: never the
+    /// microphone, and a question waits in the composer rather than being
+    /// sent long after it was asked.
+    func resumeParkedScreenQuestion(now: Date = Date()) async {
+        guard isConnected, !isConnecting, !isProfileSwitching, !isSettlingConnection,
+              let parked = parkedScreenQuestion else { return }
         parkedScreenQuestion = nil
-        if !(await openScreenQuestion(parked.request, profile: parked.profile, resumingParked: true)) {
+        let isLate = !isSceneActive
+            || now.timeIntervalSince(parked.request.enqueuedAt) >= PendingVoiceLaunchPolicy.externalLaunchBudget
+        if !(await openScreenQuestion(parked.request, profile: parked.profile, resumingParked: isLate)) {
             // The connection dropped again before a chat opened.
             holdScreenQuestion(parked.request, profile: parked.profile)
         }
+    }
+
+    /// Attaches the parked screenshot once Conduit settles. Part of settling
+    /// isn't published, so it's re-checked every `recheck`; the check and
+    /// the resume run without a suspension between them, so settling can't
+    /// restart in between and strand the screenshot.
+    func resumeParkedScreenQuestionOnceSettled(recheck: Duration) async {
+        while isConnected, parkedScreenQuestion != nil, isSettlingConnection {
+            do { try await Task.sleep(for: recheck) } catch { return }
+        }
+        await resumeParkedScreenQuestion()
     }
 
     /// Keeps a screenshot no chat could take yet, without a revision bump:

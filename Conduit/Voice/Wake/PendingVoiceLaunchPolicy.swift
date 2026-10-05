@@ -33,6 +33,11 @@ struct VoiceLaunchConnectionSnapshot: Equatable {
     var hasStableFailureEvidence: Bool
     /// Classified failure when available (better user-facing copy).
     var classifiedFailure: ConnectionFailure?
+    /// Connected, but Conduit hasn't settled: a reconnect, the foreground
+    /// refresh or the connect's chat sync is still running, so the chat on
+    /// screen may yet be replaced and its turn state isn't known. Only a
+    /// screenshot waits this out (see `readiness`).
+    var isSettling = false
 
     var phase: Phase {
         if isConnected { return .connected }
@@ -58,7 +63,8 @@ extension AppState {
             isConnecting: isConnecting,
             hasStableFailureEvidence: lastConnectionFailure != nil
                 || fallbackFailure != nil,
-            classifiedFailure: lastConnectionFailure ?? fallbackFailure
+            classifiedFailure: lastConnectionFailure ?? fallbackFailure,
+            isSettling: isSettlingConnection
         )
     }
 }
@@ -133,7 +139,7 @@ enum PendingVoiceLaunchPolicy {
     }
 
     /// The screenshot is never thrown away when Hermes isn't reachable: it
-    /// is attached, with the keyboard, once Hermes connects.
+    /// is attached once Hermes connects (`resumeParkedScreenQuestion`).
     static var screenQuestionFailureMessage: String {
         AppLocalization.string(
             "Conduit couldn't reach Hermes. Your screenshot is kept and will be attached to a chat when Hermes is back."
@@ -185,7 +191,9 @@ enum PendingVoiceLaunchPolicy {
 
     /// Lifecycle decision for a pending external launch.
     ///
-    /// - Connected → ready (exactly once).
+    /// - Connected → ready (exactly once). A screenshot also waits for
+    ///   Conduit to settle: placed earlier, it lands on a chat the settling
+    ///   work then replaces, and the voice start finds a turn in sync.
     /// - Connecting / inconclusive → wait (Siri window still open).
     /// - Stable failure (positive evidence, not connecting) → terminal fail
     ///   for Siri; do not wait out the deadline.
@@ -206,6 +214,7 @@ enum PendingVoiceLaunchPolicy {
         }
         switch connection.phase {
         case .connected:
+            if intent.source == .screenQuestion, connection.isSettling { return .waiting }
             return .ready
         case .connecting, .inconclusive:
             return .waiting

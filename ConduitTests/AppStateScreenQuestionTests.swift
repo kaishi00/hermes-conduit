@@ -399,6 +399,90 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(harness.appState.composerPrefillText, "Why is this greyed out?")
     }
 
+    func testParkedScreenshotBackWithinTheLaunchWindowStartsAsAsked() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeHarness(recorder: recorder)
+        openChat("composer-origin", in: harness, withMessages: true)
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+        harness.appState.parkScreenQuestion(request(
+            for: shot,
+            question: "What does this setting do?",
+            enqueuedAt: now.addingTimeInterval(-10)
+        ), profile: nil)
+        harness.appState.isConnected = true
+
+        await harness.appState.resumeParkedScreenQuestion(now: now)
+
+        XCTAssertNil(harness.appState.parkedScreenQuestion)
+        XCTAssertEqual(
+            recorder.prompts.map { $0.text }, ["What does this setting do?"],
+            "Hermes came back while the press was fresh: it starts as the press asked"
+        )
+        XCTAssertEqual(recorder.uploads.map { $0.attachment.uri }, [shot.uri])
+    }
+
+    func testReconnectKeepsAScreenshotWaiting() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let launch = intent(for: try stagedScreenshot())
+        // A reconnect keeps isConnected while it runs.
+        harness.appState.isConnected = true
+        harness.appState.isConnecting = true
+
+        let reconnecting = harness.appState.voiceLaunchConnectionSnapshot()
+        XCTAssertEqual(reconnecting.phase, .connected)
+        XCTAssertTrue(reconnecting.isSettling)
+        XCTAssertEqual(PendingVoiceLaunchPolicy.readiness(for: launch, connection: reconnecting, now: Date()), .waiting)
+
+        harness.appState.isConnecting = false
+
+        let settled = harness.appState.voiceLaunchConnectionSnapshot()
+        XCTAssertFalse(settled.isSettling)
+        XCTAssertEqual(PendingVoiceLaunchPolicy.readiness(for: launch, connection: settled, now: Date()), .ready)
+    }
+
+    func testParkedScreenshotWaitsForTheForegroundRefresh() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness, withMessages: true)
+        harness.appState.isConnected = true
+        let shot = try stagedScreenshot()
+        harness.appState.parkScreenQuestion(request(for: shot), profile: nil)
+
+        // Back in the foreground: the refresh may yet reconnect and replace
+        // the chat on screen.
+        let refresh = harness.appState.handleScenePhase(.active)
+        XCTAssertTrue(harness.appState.isSettlingConnection)
+
+        await harness.appState.resumeParkedScreenQuestion()
+
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, shot, "Kept until Conduit settles")
+        XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
+        // Ends the refresh before it reaches the network.
+        harness.appState.disconnect()
+        await refresh?.value
+    }
+
+    func testParkedScreenshotIsAttachedOnceConduitSettles() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness, withMessages: true)
+        let shot = try stagedScreenshot()
+        harness.appState.parkScreenQuestion(request(for: shot, enqueuedAt: Date(timeIntervalSinceNow: -3_600)), profile: nil)
+        // A reconnect keeps isConnected while it runs.
+        harness.appState.isConnected = true
+        harness.appState.isConnecting = true
+
+        let resume = Task { await harness.appState.resumeParkedScreenQuestionOnceSettled(recheck: .milliseconds(10)) }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, shot, "Waits while Conduit settles")
+
+        harness.appState.isConnecting = false
+        await resume.value
+
+        XCTAssertNil(harness.appState.parkedScreenQuestion)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+    }
+
     func testRecentLaunchJoinsOpenChatAndFocusesComposer() async throws {
         let recorder = ScreenQuestionCallRecorder()
         let harness = makeHarness(recorder: recorder)
