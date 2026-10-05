@@ -100,9 +100,13 @@ extension AppState {
     /// A newer screenshot for the same chat replaces the older one.
     func setPendingScreenshot(_ attachment: Attachment, forSession sessionID: String) {
         if let index = pendingScreenshotIndex(forSession: sessionID) {
+            let onCallsChat = isOnLiveCallsChat(pendingScreenshots[index].attachment)
             let replaced = pendingScreenshots.remove(at: index)
             if replaced.attachment.uri != attachment.uri {
                 Self.deleteStagedScreenshot(replaced.attachment)
+                voiceBackgroundJobSupervisor.replaceScreenshotNote(
+                    replaced.attachment.uri, with: attachment.uri, inInstructions: onCallsChat
+                )
             }
         }
         pendingScreenshots.append(PendingScreenshot(sessionID: sessionID, attachment: attachment))
@@ -113,13 +117,17 @@ extension AppState {
     func discardPendingScreenshot(forSession sessionID: String?) {
         guard let index = pendingScreenshotIndex(forSession: sessionID) else { return }
         let removed = pendingScreenshots[index].attachment
-        // Waiting on a live call's chat, it was named in the call's
-        // instructions or a note.
-        let onCallsChat = voiceBackgroundJobSupervisor.liveThread.map { pendingScreenshot(forThread: $0) == removed } ?? false
+        let onCallsChat = isOnLiveCallsChat(removed)
         pendingScreenshots.remove(at: index)
         Self.deleteStagedScreenshot(removed)
         // A live call told about it hears that it's gone.
         voiceBackgroundJobSupervisor.retractScreenshotNote(attachmentURI: removed.uri, inInstructions: onCallsChat)
+    }
+
+    /// Waiting on a live call's chat, a screenshot was named in the call's
+    /// instructions if the call started with it.
+    private func isOnLiveCallsChat(_ screenshot: Attachment) -> Bool {
+        voiceBackgroundJobSupervisor.liveThread.map { pendingScreenshot(forThread: $0) == screenshot } ?? false
     }
 
     /// Hands the chat's screenshot to the send that carries it. The staged
