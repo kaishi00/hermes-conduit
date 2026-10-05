@@ -31,6 +31,15 @@ private func grokSettle(_ iterations: Int = 20) async {
     for _ in 0..<iterations { await Task.yield() }
 }
 
+/// Yields on the main actor until `done` holds, for at most `limit`. A cap,
+/// not a timing: it returns as soon as `done` holds. For waits that cross
+/// more awaits than a fixed number of yields covers on a loaded runner.
+@MainActor
+private func grokSettle(until done: () -> Bool, limit: Duration = .seconds(10)) async {
+    let deadline = ContinuousClock.now.advanced(by: limit)
+    while !done(), ContinuousClock.now < deadline { await Task.yield() }
+}
+
 // MARK: - Wire format
 
 @MainActor
@@ -429,14 +438,16 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.state, .ready)
 
         first.serverClose(nil)
-        await grokSettle(120)
+        // The drop, the new ticket and the new setup send cross more awaits
+        // than 120 yields always covered on a loaded runner.
+        await grokSettle(until: { sockets().count == 2 && sockets()[1].sent.first != nil })
         XCTAssertEqual(sockets().count, 2)
         XCTAssertEqual(connection.requests, 2, "every connection gets its own ticket")
         XCTAssertEqual(session.state, .reconnecting)
-        let second = sockets()[1]
+        let second = try XCTUnwrap(sockets().dropFirst().first)
         XCTAssertEqual(second.sent.first?["type"] as? String, "session.update")
         second.deliver(["type": "session.updated"])
-        await grokSettle()
+        await grokSettle(until: { session.state == .ready })
         XCTAssertEqual(session.state, .ready)
         XCTAssertEqual(session.connectionGeneration, 1)
         XCTAssertEqual(replaced, 1, "calls opened on the old session can't be answered")

@@ -24,7 +24,9 @@ final class DashboardTicketBridgeTests: XCTestCase {
             }
         }
 
-        await fulfillment(of: [requestRegistered], timeout: 1.0)
+        // A cap, not a timing: it returns as soon as the request registers.
+        // Creating the bridge's web view can stall the main actor past 1s.
+        await fulfillment(of: [requestRegistered], timeout: 10.0)
         bridge.invalidate()
 
         switch await resultTask.value {
@@ -150,7 +152,9 @@ final class DashboardTicketBridgeTests: XCTestCase {
             }
         }
 
-        await fulfillment(of: [requestRegistered], timeout: 1.0)
+        // A cap, not a timing: it returns as soon as the request registers.
+        // Creating the bridge's web view can stall the main actor past 1s.
+        await fulfillment(of: [requestRegistered], timeout: 10.0)
         bridge.webViewWebContentProcessDidTerminate(bridge.webView)
 
         switch await resultTask.value {

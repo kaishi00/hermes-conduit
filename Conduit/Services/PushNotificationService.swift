@@ -197,6 +197,51 @@ struct RelayMetaInfo: Decodable, Equatable {
     }
 }
 
+/// The relay's gateway list sorted by dashboard for Settings > Notifications.
+/// The relay lists every gateway paired with this iPhone, across all saved
+/// dashboards, so showing the list as-is reads another dashboard's notifier
+/// as this one's. Sorting uses the same ownership rule push routing applies,
+/// so each row says what a push from that pairing would actually do.
+struct NotificationDashboardPairings: Equatable {
+    /// Pairings whose pushes route to the active dashboard.
+    private(set) var thisDashboard: [RelayMetaInfo.Gateway] = []
+    /// Pairings from before dashboard scoping while several dashboards are
+    /// saved: their pushes fail closed until they are paired again.
+    private(set) var unscoped: [RelayMetaInfo.Gateway] = []
+    /// Pairings that belong to another saved dashboard.
+    private(set) var otherDashboardsCount = 0
+    /// Pairings bound to a dashboard no longer saved on this iPhone (or a
+    /// malformed binding): routing fails them closed, and there is nothing
+    /// to switch to.
+    private(set) var unrecognizedCount = 0
+
+    @MainActor
+    init(gateways: [RelayMetaInfo.Gateway], activeDashboardID: UUID?, savedDashboardIDs: [UUID]) {
+        for gateway in gateways {
+            // Parsed like a push payload's `dashboard_id`: blank is unscoped,
+            // anything else that isn't a UUID is malformed.
+            let raw = gateway.dashboardID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let dashboardID = UUID(uuidString: raw)
+            let outcome = NotificationDashboardOwnership.resolve(
+                targetDashboardID: dashboardID,
+                hasMalformedDashboardID: !raw.isEmpty && dashboardID == nil,
+                activeDashboardID: activeDashboardID,
+                savedDashboardIDs: savedDashboardIDs
+            )
+            switch outcome {
+            case .route:
+                thisDashboard.append(gateway)
+            case .failClosed(.unscopedPush):
+                unscoped.append(gateway)
+            case .switchFirst:
+                otherDashboardsCount += 1
+            case .failClosed(.unrecognizedDashboard):
+                unrecognizedCount += 1
+            }
+        }
+    }
+}
+
 /// Transport policy for the user-configurable relay URL. The pairing
 /// credential is a bearer secret: it is only sent over HTTPS, with one
 /// clearly bounded exception — plain HTTP to a loopback host, where the

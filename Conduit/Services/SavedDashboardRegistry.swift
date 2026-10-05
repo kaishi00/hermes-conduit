@@ -51,6 +51,11 @@ struct SavedDashboardRegistry: Codable, Equatable {
         dashboards.first { $0.id == id }
     }
 
+    /// The selected dashboard's display label, if one is selected.
+    var activeDashboardLabel: String? {
+        activeDashboardID.flatMap { dashboard(with: $0)?.label }
+    }
+
     /// The saved dashboard currently reached at this normalized address.
     /// Normalized URLs are unique in the registry: adoption dedupes by URL,
     /// so two saved entries can never resolve to one server.

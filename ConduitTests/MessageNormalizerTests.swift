@@ -431,6 +431,82 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(meta.supportsDecisionCards)
     }
 
+    func testNotificationPairingsShowOnlyTheActiveDashboards() throws {
+        let main = UUID()
+        let review = UUID()
+        let removed = UUID()
+        let json = """
+        {
+          "version": "0.2.0",
+          "capabilities": ["decisions"],
+          "gateways": [
+            { "id": "gw-main", "name": "Mac Hermes", "plugin_version": "0.4.0",
+              "plugin_capabilities": ["approval-decisions", "clarify-loop"], "dashboard_id": "\(main.uuidString.lowercased())" },
+            { "id": "gw-review", "name": "Mac Hermes", "plugin_version": "0.3.0",
+              "plugin_capabilities": ["approval-decisions", "clarify-loop"], "dashboard_id": "\(review.uuidString)" },
+            { "id": "gw-removed", "name": "Old", "plugin_version": "0.4.0",
+              "plugin_capabilities": [], "dashboard_id": "\(removed.uuidString)" },
+            { "id": "gw-malformed", "name": "Bad", "plugin_version": null,
+              "plugin_capabilities": [], "dashboard_id": "not-a-uuid" },
+            { "id": "gw-legacy", "name": "Legacy", "plugin_version": "0.2.0",
+              "plugin_capabilities": [], "dashboard_id": null }
+          ]
+        }
+        """
+        let meta = try JSONDecoder().decode(RelayMetaInfo.self, from: Data(json.utf8))
+
+        // On the review dashboard, the main dashboard's up-to-date pairing
+        // never stands in for the review dashboard's own.
+        let onReview = NotificationDashboardPairings(
+            gateways: meta.gateways, activeDashboardID: review, savedDashboardIDs: [main, review]
+        )
+        XCTAssertEqual(onReview.thisDashboard.map(\.id), ["gw-review"])
+        XCTAssertEqual(onReview.thisDashboard.first?.pluginVersion, "0.3.0")
+        // A pre-dashboard pairing can't be attributed while two are saved.
+        XCTAssertEqual(onReview.unscoped.map(\.id), ["gw-legacy"])
+        XCTAssertEqual(onReview.otherDashboardsCount, 1)
+        // A removed dashboard's pairing, or a malformed binding, is not
+        // "another dashboard": there is nothing to switch to.
+        XCTAssertEqual(onReview.unrecognizedCount, 2)
+
+        let onMain = NotificationDashboardPairings(
+            gateways: meta.gateways, activeDashboardID: main, savedDashboardIDs: [main, review]
+        )
+        XCTAssertEqual(onMain.thisDashboard.map(\.id), ["gw-main"])
+    }
+
+    func testNotificationPairingsWithOneDashboardKeepLegacyPairings() {
+        let only = UUID()
+        let gateway = { (id: String, dashboardID: String?) in
+            RelayMetaInfo.Gateway(
+                id: id, name: id, pluginVersion: nil, pluginCapabilities: [], lastEventAt: nil, dashboardID: dashboardID
+            )
+        }
+        let pairings = NotificationDashboardPairings(
+            gateways: [gateway("legacy", nil), gateway("blank", "  "), gateway("scoped", only.uuidString)],
+            activeDashboardID: only,
+            savedDashboardIDs: [only]
+        )
+        // Same rule as push routing: with one dashboard saved, an unscoped
+        // pairing's pushes route to it, so it is this dashboard's.
+        XCTAssertEqual(pairings.thisDashboard.map(\.id), ["legacy", "blank", "scoped"])
+        XCTAssertTrue(pairings.unscoped.isEmpty)
+        XCTAssertEqual(pairings.otherDashboardsCount, 0)
+
+        let noneActive = NotificationDashboardPairings(
+            gateways: [gateway("scoped", only.uuidString)], activeDashboardID: nil, savedDashboardIDs: [only]
+        )
+        XCTAssertTrue(noneActive.thisDashboard.isEmpty)
+        XCTAssertEqual(noneActive.otherDashboardsCount, 1)
+
+        // With every dashboard removed, leftover pairings match nothing.
+        let noneSaved = NotificationDashboardPairings(
+            gateways: [gateway("scoped", only.uuidString)], activeDashboardID: nil, savedDashboardIDs: []
+        )
+        XCTAssertEqual(noneSaved.otherDashboardsCount, 0)
+        XCTAssertEqual(noneSaved.unrecognizedCount, 1)
+    }
+
     func testExpiredPromptErrorClassification() {
         // The gateway's one-shot prompt timeout: JSON-RPC 4009.
         XCTAssertTrue(AppState.isExpiredPromptError(RpcError(code: 4009, message: "no pending approval request")))
@@ -730,7 +806,10 @@ final class MessageNormalizerTests: XCTestCase {
 
         let initialAttempt = service.navigationAttempt
         XCTAssertTrue(service.handleFailedNotificationRoute(target))
-        let retryDeadline = ContinuousClock.now.advanced(by: .seconds(1))
+        // A cap, not a timing: the loop exits as soon as the retry lands. A
+        // busy simulator can stall the main actor for seconds inside one
+        // yield, and a 1s cap then expired before the retry got its turn.
+        let retryDeadline = ContinuousClock.now.advanced(by: .seconds(10))
         while service.navigationAttempt == initialAttempt,
               ContinuousClock.now < retryDeadline {
             await Task.yield()
