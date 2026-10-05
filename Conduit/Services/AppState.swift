@@ -1523,6 +1523,7 @@ final class AppState: ObservableObject {
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .geminiLive)
+            CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             Task { await geminiLiveController.start() }
         }
         return true
@@ -1794,6 +1795,7 @@ final class AppState: ObservableObject {
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .gptLive)
+            CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             Task { await gptLiveController.start() }
         }
         return true
@@ -2056,6 +2058,7 @@ final class AppState: ObservableObject {
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .grokLive)
+            CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             Task { await grokLiveController.start() }
         }
         return true
@@ -22867,6 +22870,9 @@ final class AppState: ObservableObject {
         // attachToLiveVoiceConversation instead and never mutates
         // these presentation flags.
         showSidebar = false
+        // A connected car shows its voice screen before the sheet's
+        // auto-listen opens the microphone.
+        CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
         voiceSheetShouldAutoListen = true
         showVoiceSheet = true
         // The sheet is now the presenting Voice surface: re-assert the gate

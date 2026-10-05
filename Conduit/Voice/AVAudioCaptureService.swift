@@ -92,6 +92,13 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         observedCaptureGeneration.withLock { $0 = current }
     }
     var shouldKeepEngineRunning = false
+    /// Watches the running engine for the hardware changing under it (see
+    /// `observeEngineConfiguration`).
+    private var engineObserver: NSObjectProtocol?
+    /// Which engine a configuration change belongs to: bumped for every
+    /// engine observed and at every teardown, so a change queued for an
+    /// engine already replaced or stopped is dropped.
+    private(set) var observedEngineGeneration: UInt64 = 0
     private var lastCaptureFailure: String?
     private var continuation: AsyncStream<VoiceCaptureEvent>.Continuation?
     /// Capture holds one lease for the whole capture window (listening,
@@ -132,7 +139,10 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         )
     }
 
-    deinit { NotificationCenter.default.removeObserver(self) }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
+    }
 
     func requestPermission() async -> Bool {
         await withCheckedContinuation { continuation in
@@ -369,12 +379,14 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 self.consume(copy, generation: frameGeneration)
             }
         }
+        observeEngineConfiguration()
         engine.prepare()
         try engine.start()
     }
 
     /// Tap first, then the engine: each guards on its own state.
     private func teardownRendering() {
+        stopObservingEngineConfiguration()
         engine.removeInputTap()
         engine.stop()
         converter = nil
@@ -510,19 +522,81 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         // the converter lazily without churning an already-running engine.
         converter = nil
         if shouldKeepEngineRunning, !engine.isRunning {
-            do {
-                // The lease is still held, but the system may have torn the
-                // session down with the old route: reapply the conversation
-                // policy before restarting the engine.
-                try coordinator.reassert()
-                try startFreshEngine()
-            } catch {
-                handleStartupFailure(error, stage: "routeChange")
-                continuation?.yield(.interrupted(generation: captureGeneration))
-                return
-            }
+            guard restartStoppedEngine(stage: "routeChange") else { return }
         }
         continuation?.yield(.routeChanged)
+    }
+
+    /// The engine stopped itself because the input or output hardware
+    /// changed (a new sample rate or channel count), as when CarPlay moves
+    /// a running conversation onto the car's microphone. The session's
+    /// route change can arrive while the engine still reads as running, and
+    /// then nothing restarted it: capture stayed open on a dead engine and
+    /// nothing the driver said was heard.
+    private func engineConfigurationChanged(generation: UInt64) {
+        guard Self.restartsOnConfigurationChange(
+            from: generation,
+            liveEngine: observedEngineGeneration,
+            keepsRunning: shouldKeepEngineRunning,
+            engineRunning: engine.isRunning
+        ) else { return }
+        voiceAudioLogger.notice("Capture engine stopped for a hardware change; restarting it")
+        guard restartStoppedEngine(stage: "configurationChange") else { return }
+        continuation?.yield(.routeChanged)
+    }
+
+    /// Internal for tests: whether a configuration change restarts capture.
+    /// Only the live engine's own change counts, only while capture should
+    /// run, and only if the engine really stopped (one the route-change
+    /// path already restarted is left alone).
+    nonisolated static func restartsOnConfigurationChange(
+        from generation: UInt64,
+        liveEngine: UInt64,
+        keepsRunning: Bool,
+        engineRunning: Bool
+    ) -> Bool {
+        generation == liveEngine && keepsRunning && !engineRunning
+    }
+
+    /// Brings capture the hardware stopped back on a fresh engine. False
+    /// when it couldn't: capture is stopped and the controller is told.
+    private func restartStoppedEngine(stage: String) -> Bool {
+        do {
+            // The lease is still held, but the system may have torn the
+            // session down with the old route: reapply the conversation
+            // policy before restarting the engine.
+            try coordinator.reassert()
+            try startFreshEngine()
+            return true
+        } catch {
+            handleStartupFailure(error, stage: stage)
+            continuation?.yield(.interrupted(generation: captureGeneration))
+            return false
+        }
+    }
+
+    /// Like AVSpeechPlaybackService, the handler never reads the
+    /// notification's object (forming a reference to that engine on the
+    /// posting thread can abort the app); the captured generation says
+    /// whose change it was.
+    private func observeEngineConfiguration() {
+        stopObservingEngineConfiguration()
+        guard let source = engine.configurationChangeSource else { return }
+        let generation = observedEngineGeneration
+        engineObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: source,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.engineConfigurationChanged(generation: generation) }
+        }
+    }
+
+    private func stopObservingEngineConfiguration() {
+        observedEngineGeneration &+= 1
+        guard let engineObserver else { return }
+        NotificationCenter.default.removeObserver(engineObserver)
+        self.engineObserver = nil
     }
 
     private static func converter(_ converter: AVAudioConverter?, accepts format: AVAudioFormat) -> Bool {
@@ -594,6 +668,13 @@ protocol VoiceCaptureEngine: AnyObject {
     func prepare()
     func start() throws
     func stop()
+    /// The object that posts `AVAudioEngineConfigurationChange` for this
+    /// engine, or nil when nothing does.
+    var configurationChangeSource: AnyObject? { get }
+}
+
+extension VoiceCaptureEngine {
+    var configurationChangeSource: AnyObject? { nil }
 }
 
 final class SystemVoiceCaptureEngine: VoiceCaptureEngine {
@@ -609,6 +690,7 @@ final class SystemVoiceCaptureEngine: VoiceCaptureEngine {
     }
 
     var isRunning: Bool { engine.isRunning }
+    var configurationChangeSource: AnyObject? { engine }
     var hardwareInputFormat: AVAudioFormat { engine.inputNode.inputFormat(forBus: 0) }
     var inputNodeOutputFormat: AVAudioFormat { engine.inputNode.outputFormat(forBus: 0) }
 

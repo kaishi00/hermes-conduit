@@ -364,6 +364,72 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(factory.engines.count, 2)
     }
 
+    // MARK: - Capture after a hardware change
+
+    func testOnlyTheLiveEnginesStopRestartsCapture() {
+        typealias Service = AVAudioCaptureService
+        XCTAssertTrue(Service.restartsOnConfigurationChange(from: 3, liveEngine: 3, keepsRunning: true, engineRunning: false))
+        XCTAssertFalse(Service.restartsOnConfigurationChange(from: 2, liveEngine: 3, keepsRunning: true, engineRunning: false),
+                       "a replaced engine's change leaves the new one alone")
+        XCTAssertFalse(Service.restartsOnConfigurationChange(from: 3, liveEngine: 3, keepsRunning: false, engineRunning: false),
+                       "capture is paused or stopped")
+        XCTAssertFalse(Service.restartsOnConfigurationChange(from: 3, liveEngine: 3, keepsRunning: true, engineRunning: true),
+                       "the route change already restarted it, or it never stopped")
+    }
+
+    /// CarPlay moving a running conversation onto the car's microphone stops
+    /// the capture engine. The engine's own change notice brings capture
+    /// back on a fresh engine, even when the route change was handled while
+    /// the engine still read as running.
+    func testCaptureRestartsWhenTheHardwareStopsItsEngine() async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        try service.startListening()
+        let stopped = try XCTUnwrap(factory.engines.last)
+
+        // What the system does to an engine whose hardware changed.
+        stopped.stop()
+        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: stopped)
+        let restarted = await waitForCondition { factory.engines.count == 3 }
+
+        XCTAssertTrue(restarted, "capture moved to a fresh engine")
+        let fresh = try XCTUnwrap(factory.engines.last)
+        XCTAssertTrue(fresh.isRunning)
+        XCTAssertTrue(fresh.hasTap)
+        XCTAssertTrue(service.acceptsFrame(generation: service.captureGeneration), "the new engine's frames are recorded")
+
+        // A late notice from the replaced engine restarts nothing.
+        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: stopped)
+        await drainPendingMainActorWork()
+        XCTAssertEqual(factory.engines.count, 3)
+        service.stop()
+    }
+
+    func testAStoppedCaptureIgnoresAHardwareChange() async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        try service.startListening()
+        let engine = try XCTUnwrap(factory.engines.last)
+        service.stop()
+
+        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: engine)
+        await drainPendingMainActorWork()
+
+        XCTAssertEqual(factory.engines.count, 2, "nothing restarts a capture that ended")
+        XCTAssertFalse(engine.isRunning)
+    }
+
+    /// Waits on `condition`, never on a count of turns; the cap only stops a
+    /// stuck test.
+    private func waitForCondition(timeout: TimeInterval = 10, _ condition: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            guard Date() < deadline else { return false }
+            await drainPendingMainActorWork(rounds: 1)
+        }
+        return true
+    }
+
     // MARK: - Read Aloud speed
 
     func testPlaybackRateNeverSlowsBelowNormalSpeed() {
@@ -610,6 +676,8 @@ private final class FakeCaptureEngine: VoiceCaptureEngine {
 
     func removeInputTap() { hasTap = false }
     func prepare() {}
+    /// Tests post the engine's configuration change with the fake itself.
+    var configurationChangeSource: AnyObject? { self }
 
     func start() throws {
         if let failure = factory.nextStartFailure() { throw failure }

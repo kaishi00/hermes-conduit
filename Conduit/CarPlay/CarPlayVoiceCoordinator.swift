@@ -730,6 +730,21 @@ final class CarPlayVoiceCoordinator {
         isBrowsing = false
     }
 
+    /// A conversation is starting on the phone (its Voice button, a live
+    /// call, a wake phrase, Siri) while the car is connected. The voice
+    /// screen goes up now, before the microphone opens, as it does for
+    /// every start from the car. CarPlay lets a voice app record only
+    /// alongside its voice control template, and a phone start used to open
+    /// the microphone under the chat list and bring the voice screen back
+    /// only once it was listening: the car didn't hear the driver.
+    func conversationStartingOnPhone(in appState: AppState) {
+        guard isConnected, lastBoundAppState === appState else { return }
+        // A chat list still waiting for the voice screen stays closed.
+        isChatPickerPending = false
+        guard isBrowsing else { return }
+        returnToVoiceScreen()
+    }
+
     /// Back to the voice screen before Voice starts.
     private func returnToVoiceScreen() {
         isBrowsing = false
