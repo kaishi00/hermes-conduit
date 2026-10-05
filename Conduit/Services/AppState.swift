@@ -1456,7 +1456,8 @@ final class AppState: ObservableObject {
                     systemInstruction: GeminiLiveConversationController.instructions(
                         search: search,
                         memory: memory,
-                        personality: self?.geminiLivePersonality
+                        personality: self?.geminiLivePersonality,
+                        answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
                         + (self?.liveVoiceStyle.instructions ?? ""),
@@ -1734,7 +1735,11 @@ final class AppState: ObservableObject {
                     client: client,
                     history: self?.liveVoiceResumeContext?.gptLiveHistory ?? [],
                     voice: self?.gptLiveVoice,
-                    briefing: GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
+                    briefing: GPTLiveConversationController.briefing(
+                        memory: self?.gptLiveMemoryContext,
+                        personality: self?.gptLivePersonality,
+                        answerLength: self?.liveVoiceStyle.answerLength ?? .standard
+                    )
                         + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
                         + (self?.liveVoiceStyle.instructions ?? ""),
@@ -1750,7 +1755,11 @@ final class AppState: ObservableObject {
                 return status
             },
             briefing: { [weak self] in
-                GPTLiveConversationController.briefing(memory: self?.gptLiveMemoryContext, personality: self?.gptLivePersonality)
+                GPTLiveConversationController.briefing(
+                    memory: self?.gptLiveMemoryContext,
+                    personality: self?.gptLivePersonality,
+                    answerLength: self?.liveVoiceStyle.answerLength ?? .standard
+                )
                     + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                     + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
                     + (self?.liveVoiceStyle.instructions ?? "")
@@ -1980,7 +1989,8 @@ final class AppState: ObservableObject {
                     instructions: GeminiLiveConversationController.instructions(
                         search: search,
                         memory: memory,
-                        personality: self?.grokLivePersonality
+                        personality: self?.grokLivePersonality,
+                        answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
                         + (self?.liveVoiceStyle.instructions ?? ""),
@@ -3641,13 +3651,16 @@ final class AppState: ObservableObject {
         var preferences = loadVoiceProfilePreferences(profile: profile)
         let greeting = style.greeting.map(LiveVoiceStyle.cleanedGreeting)
         let backchannels: Bool? = style.backchannels ? nil : false
+        let answerLength: LiveVoiceAnswerLength? = style.answerLength == .standard ? nil : style.answerLength
         guard preferences.liveVoiceTone != style.tone
             || preferences.liveVoiceBackchannels != backchannels
-            || preferences.liveVoiceGreeting != greeting else { return }
+            || preferences.liveVoiceGreeting != greeting
+            || preferences.liveVoiceAnswerLength != answerLength else { return }
         objectWillChange.send()
         preferences.liveVoiceTone = style.tone
         preferences.liveVoiceBackchannels = backchannels
         preferences.liveVoiceGreeting = greeting
+        preferences.liveVoiceAnswerLength = answerLength
         saveVoiceProfilePreferences(preferences, profile: profile)
     }
 
@@ -3666,21 +3679,24 @@ final class AppState: ObservableObject {
             mode = "GPT-Live"
             text = GPTLiveConversationController.briefing(
                 memory: gptLiveMemoryEnabled ? placeholderMemory : nil,
-                personality: gptLivePersonalityEnabled ? placeholderPersona : nil
+                personality: gptLivePersonalityEnabled ? placeholderPersona : nil,
+                answerLength: style.answerLength
             )
         } else if isGrokLiveEnabled {
             mode = "Grok Live"
             text = GeminiLiveConversationController.instructions(
                 search: grokLiveSearchSource,
                 memory: grokLiveMemoryEnabled ? placeholderMemory : nil,
-                personality: grokLivePersonalityEnabled ? placeholderPersona : nil
+                personality: grokLivePersonalityEnabled ? placeholderPersona : nil,
+                answerLength: style.answerLength
             )
         } else if isGeminiLiveEnabled {
             mode = "Gemini Live"
             text = GeminiLiveConversationController.instructions(
                 search: geminiLiveSearchSource,
                 memory: geminiLiveMemoryEnabled ? placeholderMemory : nil,
-                personality: geminiLivePersonalityEnabled ? placeholderPersona : nil
+                personality: geminiLivePersonalityEnabled ? placeholderPersona : nil,
+                answerLength: style.answerLength
             )
         } else {
             return nil
@@ -4627,7 +4643,7 @@ final class AppState: ObservableObject {
         } else {
             block += "Quick facts from the web (weather, news, prices) are not work for the chat: answer them as your instructions above say. Send other work that needs Hermes to that chat with ask_thread: it becomes the chat's next message and Hermes' reply comes back to you. Use start_job instead when the user asks for work to run in the background or in a separate chat, or starts a request with \"quick\": answer a quick fact with a lookup, and send quick work that needs Hermes' tools to start_job, which runs it fast in its own chat. When the user asks to hear Hermes' last reply, call read_last_reply and read it word for word."
         }
-        block += " Otherwise keep your own replies short; the full replies stay in the chat."
+        block += " Otherwise don't read Hermes' replies word for word: tell the user what they say, with the details that matter, and skip what doesn't work by ear, like code, long tables or links; the full replies stay in the chat."
         // #363: typed turns in the chat reach the call as quiet notes.
         block += " The user may also type in the chat during the call. Notes starting \"[Background only.\" tell you what they typed and what Hermes replied: stay quiet about them until the user brings them up, then use them to follow on."
         if let last = latestReplyInOpenChat(thread) {

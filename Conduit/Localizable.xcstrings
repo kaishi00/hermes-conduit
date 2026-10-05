@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Answer length" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答长度"
+          }
+        }
+      }
+    },
+    "Detailed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "详细"
+          }
+        }
+      }
+    },
+    "How much the voice model says when you ask something. Concise gives the key point in one to three sentences, Default adds the details that make it useful, and Detailed goes in depth. Applies to the next call." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你提问时语音模型说多少。简洁用一到三句话给出要点，默认会补充有用的细节，详细则深入讲解。从下一次通话起生效。"
+          }
+        }
+      }
+    },
     "Try a different search or filter." : {
       "localizations" : {
         "zh-Hans" : {

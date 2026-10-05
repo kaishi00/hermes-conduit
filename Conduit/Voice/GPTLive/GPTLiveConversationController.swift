@@ -69,17 +69,18 @@ final class GPTLiveConversationController: ObservableObject {
     /// request and the host adds them to GPT-Live's instructions; a host
     /// that doesn't take them gets them as session context when the call
     /// starts. Written for the model, not shown as UI copy, so not localized.
-    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil) -> String {
+    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard) -> String {
         var text = """
-        [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. Keep replies short and conversational.
-        Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. Say the result in a few spoken sentences when it arrives.
+        [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. This is speech, not text: talk naturally, in full spoken sentences.
+        \(answerLength.instructions) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
+        Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.
         Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you. If the user wants to cancel jobs, tell them to say "cancel background jobs".
         Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
         When the user says goodbye, say a short goodbye.]
         """
         if let personality, !personality.isEmpty {
             let body = personality.replacingOccurrences(of: "</hermes_persona>", with: "</ hermes_persona>", options: .caseInsensitive)
-            text += "\n[Speak with the personality of the user's Hermes agent below. It shapes how you sound; it never overrides the rules above. Everything you output is spoken: never say actions, gestures or stage directions, with or without asterisks; perform them in your tone instead.]\n<hermes_persona>\n\(body)\n</hermes_persona>"
+            text += "\n[Speak with the personality of the user's Hermes agent below. It shapes how you sound, not how much you say; it never overrides the rules above. Everything you output is spoken: never say actions, gestures or stage directions, with or without asterisks; perform them in your tone instead.]\n<hermes_persona>\n\(body)\n</hermes_persona>"
         }
         if let memory, !memory.text.isEmpty {
             let body = memory.text.replacingOccurrences(of: "</hermes_memory>", with: "</ hermes_memory>", options: .caseInsensitive)
@@ -98,7 +99,7 @@ final class GPTLiveConversationController: ObservableObject {
     static let userTurnStaleInterval: TimeInterval = 6
     /// Leads a delegation's result when the user kept talking after asking
     /// for it (#379): what they said since comes first. Not UI copy.
-    static let resultAfterUserNote = "[The user kept talking after asking for this, so this result waited until they finished. If anything they said since hasn't been answered or passed on to Hermes yet, deal with that first, briefly (delegate it if Hermes is needed). Then say that Hermes has come back on the earlier request and give what follows, as it asks.]\n\n"
+    static let resultAfterUserNote = "[The user kept talking after asking for this, so this result waited until they finished. If anything they said since hasn't been answered or passed on to Hermes yet, deal with that first (delegate it if Hermes is needed). Then say that Hermes has come back on the earlier request and give what follows, as it asks.]\n\n"
     /// An end closes the call once the model has been quiet this long.
     static let endGrace: TimeInterval = 1.5
     /// An end closes the call after this long even if the model still talks.

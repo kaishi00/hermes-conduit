@@ -889,6 +889,94 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(LiveVoiceStyle.cleanedGreeting(String(repeating: "a", count: 500)).count, LiveVoiceStyle.maxGreetingCharacters)
     }
 
+    func testLiveModelsAreAskedForSubstantiveAnswersNotOneLiners() throws {
+        let gpt = GPTLiveConversationController.briefing(personality: "Judge Hermes")
+        // Grok Live is built from Gemini Live's instructions (AppState.grokLiveController).
+        let gemini: [GeminiLiveSearchSource] = [.google, .hermes, .none]
+        var engines: [(String, String)] = gemini.map { search in
+            ("Gemini and Grok (\(search))", GeminiLiveConversationController.instructions(search: search, personality: "Judge Hermes"))
+        }
+        engines.append(("GPT-Live", gpt))
+        for (engine, text) in engines {
+            XCTAssertTrue(text.contains(LiveVoiceAnswerLength.standard.instructions), "\(engine) gets the answer-length rule")
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("keep replies short"), "\(engine) is no longer told to keep it short")
+            XCTAssertFalse(text.contains("a few spoken sentences"), engine)
+            XCTAssertTrue(text.contains("not how much you say"), "\(engine): a text persona can't make spoken answers terse")
+        }
+        XCTAssertFalse(LiveVoiceStyle(tone: .professional).instructions.contains("concise"), "professional cuts filler, not substance")
+        XCTAssertFalse(GeminiLiveToolBridge.webSearchDeclaration.description.contains("sentence or two"))
+        XCTAssertFalse(GeminiLiveToolBridge.threadDeclarations.contains { $0.description.contains("summarize it") })
+        // Built once for every call, so they defer to the call's answer length.
+        XCTAssertTrue(GeminiLiveToolBridge.webSearchDeclaration.description.contains("answer length your instructions set"))
+        XCTAssertTrue(GeminiLiveToolBridge.threadDeclarations.contains { $0.description.contains("answer length your instructions set") })
+        let lookup = try XCTUnwrap(GeminiLiveConversationController.lookupFallbackText(for: ["results": "1. Sunny, 21°C"]))
+        XCTAssertFalse(lookup.contains("briefly"), "a lookup's answer isn't cut short either")
+
+        let job = VoiceBackgroundJobSupervisor.completionPrompt(title: "Weather", result: "Sunny, 21°C.")
+        let reply = VoiceBackgroundJobSupervisor.threadReplyPrompt(result: "Done.")
+        for prompt in [job, reply] {
+            XCTAssertFalse(prompt.contains("a few spoken sentences"), "Hermes' results are passed on with their details, not as a one-line gist")
+            XCTAssertFalse(prompt.contains("the gist"))
+            XCTAssertTrue(prompt.contains("the details that matter"))
+        }
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.jobPrompt(for: "Check the weather").contains("short plain-language summary"))
+        XCTAssertTrue(VoiceBackgroundJobSupervisor.jobPrompt(for: "Check the weather").contains("with the key details"))
+        XCTAssertFalse(GPTLiveConversationController.resultAfterUserNote.contains("briefly"), "what the user asked meanwhile gets a full answer too")
+
+        // A call attached to a chat gets its own block on top of the instructions.
+        let suite = "LiveVoiceAnswerDepth.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {})
+        appState.voiceBackgroundJobSupervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build")
+        for delegation in [false, true] {
+            let block = appState.liveVoiceThreadInstructions(delegation: delegation)
+            XCTAssertFalse(block.contains("keep your own replies short"), "delegation \(delegation)")
+            XCTAssertTrue(block.contains("with the details that matter"), "delegation \(delegation)")
+        }
+    }
+
+    func testLiveAnswerLengthPicksTheOneRuleEveryEngineGets() throws {
+        for length in LiveVoiceAnswerLength.allCases {
+            let gemini = GeminiLiveConversationController.instructions(search: .google, answerLength: length)
+            let gpt = GPTLiveConversationController.briefing(answerLength: length)
+            XCTAssertTrue(gemini.contains(length.instructions), "\(length)")
+            XCTAssertTrue(gpt.contains(length.instructions), "\(length)")
+            for other in LiveVoiceAnswerLength.allCases where other != length {
+                XCTAssertFalse(gemini.contains(other.instructions), "\(length): one length rule per call")
+                XCTAssertFalse(gpt.contains(other.instructions), "\(length): one length rule per call")
+            }
+        }
+        XCTAssertFalse(LiveVoiceAnswerLength.concise.instructions.contains("Keep it short only"), "Concise doesn't contradict itself")
+        XCTAssertTrue(LiveVoiceAnswerLength.detailed.instructions.contains("in depth"))
+        XCTAssertEqual(LiveVoiceStyle(answerLength: .detailed).instructions, "", "the length goes in the rules, not the style block")
+
+        let suite = "LiveVoiceAnswerLength.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {})
+        XCTAssertEqual(appState.liveVoiceStyle.answerLength, .standard, "Default until the user picks another")
+        appState.setLiveVoiceStyle(LiveVoiceStyle(answerLength: .concise))
+        XCTAssertEqual(appState.liveVoiceStyle.answerLength, .concise)
+        XCTAssertEqual(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, .concise)
+
+        // What the next call gets, through the same builders the sessions use.
+        let detailed = LiveVoiceAnswerLength.detailed.instructions
+        appState.setLiveVoiceStyle(LiveVoiceStyle(answerLength: .detailed))
+        appState.setGeminiLiveEnabled(true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "Gemini Live")
+        appState.setGrokLiveEnabled(true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.mode, "Grok Live")
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "Grok Live")
+        appState.setGPTLiveEnabled(true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.mode, "GPT-Live")
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "GPT-Live")
+
+        appState.setLiveVoiceStyle(LiveVoiceStyle())
+        XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, "Default is stored as nothing")
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LiveVoiceAnswerLength.standard.instructions), true)
+    }
+
     func testGeminiLiveUnavailableHostFailsWithTheReasonAndNeverConnects() async {
         let tokens = FakeGeminiLiveTokens()
         tokens.availabilityResult = .success(.pluginMissing)
@@ -1180,11 +1268,13 @@ extension ContinuousConversationPreferenceTests {
         chosen.liveVoiceTone = .relaxed
         chosen.liveVoiceBackchannels = false
         chosen.liveVoiceGreeting = ""
+        chosen.liveVoiceAnswerLength = .detailed
         let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(chosen))
-        XCTAssertEqual(roundTrip.liveVoiceStyle, LiveVoiceStyle(tone: .relaxed, backchannels: false, greeting: ""))
-        let newer = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"liveVoiceTone":"sarcastic","liveVoiceGreeting":"Hi"}"#.utf8))
+        XCTAssertEqual(roundTrip.liveVoiceStyle, LiveVoiceStyle(tone: .relaxed, backchannels: false, greeting: "", answerLength: .detailed))
+        let newer = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"liveVoiceTone":"sarcastic","liveVoiceGreeting":"Hi","liveVoiceAnswerLength":"rambling"}"#.utf8))
         XCTAssertNil(newer.liveVoiceTone)
         XCTAssertEqual(newer.liveVoiceGreeting, "Hi")
+        XCTAssertEqual(newer.liveVoiceStyle.answerLength, .standard, "an unknown length is Default")
     }
 }
 
