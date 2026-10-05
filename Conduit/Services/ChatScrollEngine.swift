@@ -125,22 +125,24 @@ final class ChatScrollEngine: ObservableObject {
         /// leave the top row just off screen, where it has no frame.
         var rows: [Row] = []
         var landedAt: TimeInterval?
-        /// When a row-frame report found the reader's rows where they were.
+        /// When the reader's rows were found where they were, by their own
+        /// frames in the new layout.
         var settledAt: TimeInterval?
     }
 
     static let nearBottomTolerance: CGFloat = 40
     static let maximumRestorationChecks = 80
     static let restorationRevealInterval = 4
-    /// How long a prepend keeps holding the reader's position once a
-    /// row-frame report has found their rows back where they were, for the
+    /// How long a prepend keeps holding the reader's position once their
+    /// rows' own frames have found them back where they were, for the
     /// estimated heights still settling.
     static let prependHoldDuration: TimeInterval = 0.6
     /// How long a prepend holds without that confirmation, counted from the
     /// landing. The prepended page is laid out, SwiftUI writes its own
     /// offset and the new row frames are reported over the next few passes;
     /// on a busy main thread those can arrive seconds after the landing, and
-    /// a lapsed hold would leave the reader thousands of points away.
+    /// a lapsed hold would leave the reader thousands of points away. No
+    /// hold outlives this plus one `prependHoldDuration`.
     static let prependSettleLimit: TimeInterval = 5
     /// How long an animated jump to latest suspends pinning.
     static let latestAnimationDuration: TimeInterval = 0.4
@@ -297,7 +299,7 @@ final class ChatScrollEngine: ObservableObject {
         rowFrames = frames
         guard mode == .browsing, !isPaused else { return }
         if prependAnchor?.landedAt != nil, let surface {
-            holdPrependAnchor(on: surface, framesReported: true)
+            holdPrependAnchor(on: surface)
         }
         refreshTopVisibleRow(persist: true)
     }
@@ -790,12 +792,12 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     /// Keeps the reader where they were while a landed prepend is laid out.
-    /// The hold lasts until a row-frame report finds the reader's rows back
-    /// in place, plus `prependHoldDuration` for heights still settling, not
-    /// a fixed time from the landing: the landing comes a pass before the
-    /// layout, or seconds before it on a busy main thread. Without that
-    /// report it gives up `prependSettleLimit` after the landing.
-    private func holdPrependAnchor(on surface: ChatScrollSurface, framesReported: Bool = false) {
+    /// The hold lasts until the reader's rows' own frames find them back in
+    /// place, plus `prependHoldDuration` for heights still settling, not a
+    /// fixed time from the landing: the landing comes a pass before the
+    /// layout, or seconds before it on a busy main thread. Without those
+    /// frames it gives up `prependSettleLimit` after the landing.
+    private func holdPrependAnchor(on surface: ChatScrollSurface) {
         guard var anchor = prependAnchor, let landedAt = anchor.landedAt else { return }
         if mode != .browsing || prependHoldLapsed(anchor, landedAt: landedAt) {
             ChatViewportTrace.shared.log(String(
@@ -813,13 +815,14 @@ final class ChatScrollEngine: ObservableObject {
         let target = rowTarget ?? estimate
         let moves = abs(surface.contentOffsetY - target) > 0.5
         if moves {
-            // Moving the reader needs a fresh confirmation, except past the
-            // limit, where only a confirmed hold is still running: there the
-            // tail restarts, so the writer's follow-up writes are answered
-            // too (including this correction's own scroll callback).
+            // Moving the reader needs a fresh confirmation, which the
+            // correction's own scroll callback usually gives. Past the limit
+            // that callback would find an unconfirmed hold and end it, so a
+            // confirmed hold restarts its tail instead, and a writer's
+            // follow-up writes are answered too.
             let pastLimit = now() - landedAt > Self.prependSettleLimit
             anchor.settledAt = anchor.settledAt != nil && pastLimit ? now() : nil
-        } else if framesReported, rowTarget != nil, anchor.settledAt == nil {
+        } else if rowTarget != nil, anchor.settledAt == nil {
             anchor.settledAt = now()
             ChatViewportTrace.shared.log(String(format: "prepend hold settled offset %.1f", target))
         }
@@ -833,11 +836,17 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     private func prependHoldLapsed(_ anchor: PrependAnchor, landedAt: TimeInterval) -> Bool {
-        // A late confirmation still gets its full tail.
+        let sinceLanding = now() - landedAt
+        // No hold outlives the limit plus one tail, whatever keeps moving
+        // the reader.
+        if sinceLanding > Self.prependSettleLimit + Self.prependHoldDuration {
+            return true
+        }
+        // A late confirmation still gets its tail, past the limit.
         if let settledAt = anchor.settledAt {
             return now() - settledAt > Self.prependHoldDuration
         }
-        return now() - landedAt > Self.prependSettleLimit
+        return sinceLanding > Self.prependSettleLimit
     }
 
     /// The offset that puts a row from the reader's screen back where it

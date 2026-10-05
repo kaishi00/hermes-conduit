@@ -413,8 +413,8 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 1060, "m3 is back where it was, and m2 above it")
     }
 
-    /// Once a row-frame report finds the reader's row in place, the hold
-    /// lasts `prependHoldDuration` more, for heights still settling.
+    /// Once the reader's row is in place by its own frame, the hold lasts
+    /// `prependHoldDuration` more, for heights still settling.
     func testPrependHoldEndsShortlyAfterTheReadersRowIsInPlace() {
         let (engine, surface) = makeEngine()
         surface.userScroll(to: 500)
@@ -427,30 +427,30 @@ final class ChatScrollEngineTests: XCTestCase {
             viewportTransitionGeneration: 1
         )
         surface.layOut(contentHeight: 4600)
+        XCTAssertNil(engine.prependAnchor?.settledAt, "the bottom-distance estimate alone confirms nothing")
+
         engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
         XCTAssertEqual(surface.contentOffsetY, 1060)
-        XCTAssertNil(engine.prependAnchor?.settledAt, "moving the reader is not finding them in place")
+        XCTAssertEqual(engine.prependAnchor?.settledAt, clock, "confirmed once the correction lands")
 
-        clock += 0.1
-        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
-        XCTAssertEqual(engine.prependAnchor?.settledAt, clock)
-
-        // Within the tail the hold still answers another writer.
-        clock += 0.3
+        // Within the tail the hold still answers another writer, and the
+        // tail starts again from that correction.
+        clock += 0.4
         surface.contentOffsetY = 300
         engine.surfaceScrolled()
         XCTAssertEqual(surface.contentOffsetY, 1060)
+        XCTAssertEqual(engine.prependAnchor?.settledAt, clock)
 
-        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
         clock += ChatScrollEngine.prependHoldDuration + 0.1
         surface.layOut(contentHeight: 4700)
         XCTAssertNil(engine.prependAnchor)
         XCTAssertEqual(surface.contentOffsetY, 1060, "a later change is ordinary browsing again")
     }
 
-    /// A confirmation that comes late still gets the whole tail, past the
-    /// limit that bounds an unconfirmed hold.
-    func testPrependHoldKeepsItsTailWhenTheReadersRowIsInPlaceLate() {
+    /// A confirmation that comes late still gets its tail past the limit
+    /// that bounds an unconfirmed hold, and a correction in that tail
+    /// restarts it, but nothing outlives the limit plus one tail.
+    func testPrependHoldKeepsALateConfirmationsTailUpToItsCeiling() {
         let (engine, surface) = makeEngine()
         surface.userScroll(to: 500)
         engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 492, maxY: 700, order: 2)])
@@ -462,30 +462,31 @@ final class ChatScrollEngineTests: XCTestCase {
             viewportTransitionGeneration: 1
         )
         surface.layOut(contentHeight: 4600)
-        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
-        XCTAssertEqual(surface.contentOffsetY, 1060)
+        XCTAssertEqual(surface.contentOffsetY, 1100)
 
+        // The reader's row reports its new frame late.
         clock += ChatScrollEngine.prependSettleLimit - 0.4
         engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
-        XCTAssertNotNil(engine.prependAnchor?.settledAt)
+        XCTAssertEqual(surface.contentOffsetY, 1060)
+        XCTAssertEqual(engine.prependAnchor?.settledAt, clock)
 
-        // Past the limit, within the tail: another writer is still undone,
-        // and so is its follow-up write.
+        // Past the limit, within the tail: another writer is undone, and so
+        // is its follow-up write.
         clock += 0.5
         surface.contentOffsetY = 300
         engine.surfaceScrolled()
         XCTAssertEqual(surface.contentOffsetY, 1060)
-        XCTAssertNotNil(engine.prependAnchor, "the correction restarts the tail")
-
-        clock += 0.5
+        clock += 0.3
         surface.contentOffsetY = 2000
         engine.surfaceScrolled()
         XCTAssertEqual(surface.contentOffsetY, 1060)
 
-        clock += ChatScrollEngine.prependHoldDuration + 0.1
-        surface.layOut(contentHeight: 4700)
+        // Past the limit plus one tail the hold is over.
+        clock += 0.3
+        surface.contentOffsetY = 2000
+        engine.surfaceScrolled()
         XCTAssertNil(engine.prependAnchor)
-        XCTAssertEqual(surface.contentOffsetY, 1060, "a later change is ordinary browsing again")
+        XCTAssertEqual(surface.contentOffsetY, 2000)
     }
 
     func testPrependAnchorWaitsForTheActualPrepend() {
