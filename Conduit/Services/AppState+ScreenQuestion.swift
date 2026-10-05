@@ -159,7 +159,12 @@ extension AppState {
 
     private func trimPendingScreenshots() {
         while pendingScreenshots.count > ScreenQuestionPolicy.maximumPendingScreenshots {
-            Self.deleteStagedScreenshot(pendingScreenshots.removeFirst().attachment)
+            let dropped = pendingScreenshots[0].attachment
+            let onCallsChat = isOnLiveCallsChat(dropped)
+            pendingScreenshots.removeFirst()
+            Self.deleteStagedScreenshot(dropped)
+            // A live call told about it hears that it's gone, as if removed.
+            voiceBackgroundJobSupervisor.retractScreenshotNote(attachmentURI: dropped.uri, inInstructions: onCallsChat)
         }
     }
 

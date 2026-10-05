@@ -41,6 +41,7 @@ struct ScreenQuestionSettingsSection: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @State private var isOpeningShortcut = false
+    @State private var shortcutTask: Task<Void, Never>?
     @State private var lastUsed = ScreenQuestionUsage.lastUsed()
 
     var body: some View {
@@ -68,6 +69,12 @@ struct ScreenQuestionSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
         .onAppear { lastUsed = ScreenQuestionUsage.lastUsed() }
+        // Left before the link resolved: nothing opens later.
+        .onDisappear {
+            shortcutTask?.cancel()
+            shortcutTask = nil
+            isOpeningShortcut = false
+        }
         // Back from running the shortcut: the row shows the run.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -97,6 +104,7 @@ struct ScreenQuestionSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Put it on the Action Button")
                 .font(.subheadline.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
             Text("Open Settings, then Action Button. Swipe to Shortcut and choose Ask Hermes About Screen. The Action Button is on iPhone 15 Pro and later.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -107,6 +115,7 @@ struct ScreenQuestionSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Other ways to run it")
                 .font(.subheadline.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
             Label("Siri: say “Ask Hermes About Screen”.", systemImage: "mic")
             Label("Back Tap: Settings, Accessibility, Touch, Back Tap.", systemImage: "hand.tap")
             Label("Control Center: add a Shortcut control and pick it.", systemImage: "switch.2")
@@ -136,9 +145,12 @@ struct ScreenQuestionSettingsSection: View {
 
     private func openShortcut() {
         isOpeningShortcut = true
-        Task { @MainActor in
+        shortcutTask?.cancel()
+        shortcutTask = Task { @MainActor in
             let url = await ScreenQuestionShortcutLink.resolve()
+            guard !Task.isCancelled else { return }
             isOpeningShortcut = false
+            shortcutTask = nil
             openURL(url)
         }
     }

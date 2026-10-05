@@ -950,6 +950,26 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertNil(supervisor.takePendingChatContext(), "Nothing about a screenshot the call never knew")
     }
 
+    func testScreenshotDroppedByTheCapTellsTheCall() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        let thread = VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat")
+        supervisor.attachLiveThread(thread)
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "composer-origin")
+        harness.appState.noteScreenshot(shot, on: "composer-origin", toCallIn: thread)
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotSharedPrompt)
+
+        for index in 0..<ScreenQuestionPolicy.maximumPendingScreenshots {
+            let other = try stagedScreenshot()
+            harness.appState.setPendingScreenshot(other, forSession: "chat-\(index)")
+        }
+
+        XCTAssertNil(harness.appState.pendingScreenshot(forSession: "composer-origin"), "The oldest is dropped")
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotRemovedPrompt)
+    }
+
     func testVoiceSheetShowsAndDiscardsTheChatsScreenshot() throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         openChat("composer-origin", in: harness)
