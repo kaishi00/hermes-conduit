@@ -1527,19 +1527,18 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(appState.minimisedLiveVoice)
     }
 
-    func testRestoringWhileAnotherSheetIsUpKeepsTheBar() async {
+    func testASheetFlagLeftBehindDoesNotKeepTheCallMinimised() async {
         let appState = makeGPTLiveAppState()
         let (controller, _) = await startMinimisableGPTLive(in: appState)
         swipeGPTLiveSheetAway(appState)
-        appState.showModelPicker = true
+        // Settings went with the screen that presented it, its flag still set.
+        appState.isSettingsSheetPresented = true
 
         appState.restoreMinimisedLiveVoice()
 
-        XCTAssertFalse(appState.showGPTLiveSheet)
-        XCTAssertEqual(appState.minimisedLiveVoice, .gptLive, "the call keeps its only control")
+        XCTAssertTrue(appState.showGPTLiveSheet, "a tap on the bar brings the call back")
+        XCTAssertNil(appState.minimisedLiveVoice)
         XCTAssertTrue(controller.isActive)
-        appState.showModelPicker = false
-        appState.endMinimisedLiveVoice()
     }
 
     func testTheMicReopensAMinimisedCallWithoutRestartingIt() async {

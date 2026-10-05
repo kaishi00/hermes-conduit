@@ -4452,10 +4452,12 @@ final class AppState: ObservableObject {
     }
 
     /// Brings the minimised call's sheet back.
-    /// While another sheet is up it does nothing, so the bar stays as the
-    /// call's only control instead of vanishing behind a sheet that can't show.
+    /// It doesn't wait on the other sheets' flags: the bar can only be
+    /// reached with no sheet over the chat, and a flag can outlive its sheet
+    /// (Settings leaving with the screen that presented it). Trusting one
+    /// left the call with no way back but End.
     func restoreMinimisedLiveVoice() {
-        guard let engine = minimisedLiveVoice, !isModalSheetPresented else { return }
+        guard let engine = minimisedLiveVoice else { return }
         switch engine {
         case .geminiLive: showGeminiLiveSheet = true
         case .gptLive: showGPTLiveSheet = true
