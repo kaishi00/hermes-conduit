@@ -493,18 +493,24 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(pairings.unscoped.isEmpty)
         XCTAssertEqual(pairings.otherDashboardsCount, 0)
 
+        // With the selected dashboard removed, nothing is judged: push
+        // routing would send the legacy pairing to the one saved dashboard,
+        // but listing it would present it as the selected dashboard's.
         let noneActive = NotificationDashboardPairings(
-            gateways: [gateway("scoped", only.uuidString)], activeDashboardID: nil, savedDashboardIDs: [only]
+            gateways: [gateway("legacy", nil), gateway("scoped", only.uuidString)],
+            activeDashboardID: nil,
+            savedDashboardIDs: [only]
         )
+        XCTAssertEqual(noneActive, NotificationDashboardPairings(gateways: [], activeDashboardID: nil, savedDashboardIDs: []))
         XCTAssertTrue(noneActive.thisDashboard.isEmpty)
-        XCTAssertEqual(noneActive.otherDashboardsCount, 1)
+        XCTAssertEqual(noneActive.otherDashboardsCount, 0)
 
-        // With every dashboard removed, leftover pairings match nothing.
+        // With every dashboard removed, the same: nothing is listed or counted.
         let noneSaved = NotificationDashboardPairings(
             gateways: [gateway("scoped", only.uuidString)], activeDashboardID: nil, savedDashboardIDs: []
         )
-        XCTAssertEqual(noneSaved.otherDashboardsCount, 0)
-        XCTAssertEqual(noneSaved.unrecognizedCount, 1)
+        XCTAssertEqual(noneSaved.unrecognizedCount, 0)
+        XCTAssertTrue(noneSaved.unscoped.isEmpty)
     }
 
     func testExpiredPromptErrorClassification() {
