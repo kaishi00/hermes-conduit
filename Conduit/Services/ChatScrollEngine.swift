@@ -103,29 +103,45 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     struct PrependAnchor: Equatable {
+        /// A row on screen when the backfill was requested.
+        struct Row: Equatable {
+            let id: String
+            /// Its top in the stack's space. A prepend always moves it
+            /// down, so a frame still reporting it is the old layout.
+            let minY: CGFloat
+            /// Its distance from the viewport top.
+            let screenY: CGFloat
+        }
+
         let sessionKey: ChatScrollSessionKey?
         /// Content height minus offset when the backfill was requested: the
         /// distance from the content bottom to the viewport top. Keeping it
         /// constant keeps every row below the prepended page in place.
         let bottomDistance: CGFloat
-        /// The row at the top of the viewport and its distance from the
-        /// viewport top. The bottom distance counts estimated heights of
-        /// rows not laid out yet, which change after a prepend; once the
-        /// row's own frame is believable it gives the exact position.
-        var rowID: String? = nil
-        var rowScreenY: CGFloat? = nil
-        /// The row's top when the backfill was requested. A prepend always
-        /// moves it down, so a frame still reporting it is the old layout.
-        var rowMinY: CGFloat? = nil
+        /// The rows on screen, top first. The bottom distance counts
+        /// estimated heights of rows not laid out yet, which change after a
+        /// prepend; once one of these rows reports a believable frame it
+        /// gives the exact position. Any of them will do: the estimate can
+        /// leave the top row just off screen, where it has no frame.
+        var rows: [Row] = []
         var landedAt: TimeInterval?
+        /// When a row-frame report found the reader's rows where they were.
+        var settledAt: TimeInterval?
     }
 
     static let nearBottomTolerance: CGFloat = 40
     static let maximumRestorationChecks = 80
     static let restorationRevealInterval = 4
-    /// How long a landed prepend keeps holding the reader's position while
-    /// the prepended rows' estimated heights settle.
+    /// How long a prepend keeps holding the reader's position once a
+    /// row-frame report has found their rows back where they were, for the
+    /// estimated heights still settling.
     static let prependHoldDuration: TimeInterval = 0.6
+    /// How long a prepend holds without that confirmation, counted from the
+    /// landing. The prepended page is laid out, SwiftUI writes its own
+    /// offset and the new row frames are reported over the next few passes;
+    /// on a busy main thread those can arrive seconds after the landing, and
+    /// a lapsed hold would leave the reader thousands of points away.
+    static let prependSettleLimit: TimeInterval = 5
     /// How long an animated jump to latest suspends pinning.
     static let latestAnimationDuration: TimeInterval = 0.4
     static let coordinateSpaceName = "chat-transcript-stack"
@@ -281,7 +297,7 @@ final class ChatScrollEngine: ObservableObject {
         rowFrames = frames
         guard mode == .browsing, !isPaused else { return }
         if prependAnchor?.landedAt != nil, let surface {
-            holdPrependAnchor(on: surface)
+            holdPrependAnchor(on: surface, framesReported: true)
         }
         refreshTopVisibleRow(persist: true)
     }
@@ -446,13 +462,21 @@ final class ChatScrollEngine: ObservableObject {
     /// middle keeps their distance from the content bottom.
     func olderPageBackfillRequested(sessionKey: ChatScrollSessionKey?) {
         guard mode == .browsing, let surface else { return }
-        let row = topVisibleMessageID.flatMap { id in rowFrames[id].map { (id, $0.minY) } }
+        let visible = visibleStackRange(of: surface)
+        let rows = rowFrames
+            .filter { $0.value.maxY > visible.lowerBound && $0.value.minY < visible.upperBound }
+            .sorted { $0.value.order < $1.value.order }
+            .map { id, frame in
+                PrependAnchor.Row(
+                    id: id,
+                    minY: frame.minY,
+                    screenY: surface.transcriptOriginY + frame.minY - surface.contentOffsetY
+                )
+            }
         prependAnchor = PrependAnchor(
             sessionKey: sessionKey,
             bottomDistance: surface.contentHeight - surface.contentOffsetY,
-            rowID: row?.0,
-            rowScreenY: row.map { surface.transcriptOriginY + $0.1 - surface.contentOffsetY },
-            rowMinY: row?.1
+            rows: rows
         )
     }
 
@@ -753,8 +777,8 @@ final class ChatScrollEngine: ObservableObject {
         landed.landedAt = now()
         prependAnchor = landed
         ChatViewportTrace.shared.log(String(
-            format: "prepend landed t %.3f content %.1f offset %.1f",
-            now(), surface?.contentHeight ?? -1, surface?.contentOffsetY ?? -1
+            format: "prepend landed content %.1f offset %.1f",
+            surface?.contentHeight ?? -1, surface?.contentOffsetY ?? -1
         ))
         // SwiftUI can lay out the prepended rows (and report the new content
         // size) before its onChange hands over the new transcript, so the
@@ -765,48 +789,85 @@ final class ChatScrollEngine: ObservableObject {
         }
     }
 
-    private func holdPrependAnchor(on surface: ChatScrollSurface) {
-        guard let anchor = prependAnchor, let landedAt = anchor.landedAt else { return }
-        guard now() - landedAt <= Self.prependHoldDuration, mode == .browsing else {
+    /// Keeps the reader where they were while a landed prepend is laid out.
+    /// The hold lasts until a row-frame report finds the reader's rows back
+    /// in place, plus `prependHoldDuration` for heights still settling, not
+    /// a fixed time from the landing: the landing comes a pass before the
+    /// layout, or seconds before it on a busy main thread. Without that
+    /// report it gives up `prependSettleLimit` after the landing.
+    private func holdPrependAnchor(on surface: ChatScrollSurface, framesReported: Bool = false) {
+        guard var anchor = prependAnchor, let landedAt = anchor.landedAt else { return }
+        if mode != .browsing || prependHoldLapsed(anchor, landedAt: landedAt) {
             ChatViewportTrace.shared.log(String(
-                format: "prepend hold expired t %.3f since landing %.3f content %.1f offset %.1f",
-                now(), now() - landedAt, surface.contentHeight, surface.contentOffsetY
+                format: "prepend hold ended (%@) content %.1f offset %.1f",
+                mode != .browsing ? "mode" : anchor.settledAt == nil ? "unsettled" : "settled",
+                surface.contentHeight, surface.contentOffsetY
             ))
             prependAnchor = nil
             return
         }
         // A flick after the prepend belongs to the reader.
         guard !surface.isTracking, !surface.isDecelerating else { return }
-        var target = surface.clampedOffsetY(surface.contentHeight - anchor.bottomDistance)
-        // The row's frame refines the estimate only once it describes the
-        // new layout (a prepend moved the row down) and is believable: right
-        // after a prepend LazyVStack reports provisional frames that can be
-        // thousands of points off, so it must agree with the bottom-distance
-        // estimate to within a viewport.
-        if let id = anchor.rowID, let screenY = anchor.rowScreenY, let requestedMinY = anchor.rowMinY,
-           let frame = rowFrames[id], frame.minY > requestedMinY + 0.5 {
-            let rowTarget = surface.clampedOffsetY(surface.transcriptOriginY + frame.minY - screenY)
-            if abs(rowTarget - target) < surface.viewportHeight {
-                target = rowTarget
+        let estimate = surface.clampedOffsetY(surface.contentHeight - anchor.bottomDistance)
+        let rowTarget = prependRowTarget(anchor, on: surface, near: estimate)
+        let target = rowTarget ?? estimate
+        let moves = abs(surface.contentOffsetY - target) > 0.5
+        if moves {
+            anchor.settledAt = nil
+        } else if framesReported, rowTarget != nil, anchor.settledAt == nil {
+            anchor.settledAt = now()
+            ChatViewportTrace.shared.log(String(format: "prepend hold settled offset %.1f", target))
+        }
+        prependAnchor = anchor
+        guard moves else { return }
+        ChatViewportTrace.shared.log(String(
+            format: "prepend hold content %.1f offset %.1f -> %.1f (%@)",
+            surface.contentHeight, surface.contentOffsetY, target, rowTarget == nil ? "estimate" : "row"
+        ))
+        surface.setContentOffsetY(target, animated: false)
+    }
+
+    private func prependHoldLapsed(_ anchor: PrependAnchor, landedAt: TimeInterval) -> Bool {
+        if let settledAt = anchor.settledAt, now() - settledAt > Self.prependHoldDuration {
+            return true
+        }
+        return now() - landedAt > Self.prependSettleLimit
+    }
+
+    /// The offset that puts a row from the reader's screen back where it
+    /// was, once one reports a frame that describes the new layout (moved
+    /// down) and is believable: right after a prepend LazyVStack reports
+    /// provisional frames that can be thousands of points off, so it must
+    /// agree with the bottom-distance estimate to within a viewport.
+    private func prependRowTarget(
+        _ anchor: PrependAnchor,
+        on surface: ChatScrollSurface,
+        near estimate: CGFloat
+    ) -> CGFloat? {
+        for row in anchor.rows {
+            guard let frame = rowFrames[row.id], frame.minY > row.minY + 0.5 else { continue }
+            let target = surface.clampedOffsetY(surface.transcriptOriginY + frame.minY - row.screenY)
+            if abs(target - estimate) < surface.viewportHeight {
+                return target
             }
         }
-        ChatViewportTrace.shared.log(String(
-            format: "prepend hold t %.3f since landing %.3f content %.1f offset %.1f target %.1f",
-            now(), now() - landedAt, surface.contentHeight, surface.contentOffsetY, target
-        ))
-        if abs(surface.contentOffsetY - target) > 0.5 {
-            surface.setContentOffsetY(target, animated: false)
-        }
+        return nil
+    }
+
+    /// The viewport's top and bottom in the transcript stack's space.
+    private func visibleStackRange(of surface: ChatScrollSurface) -> ClosedRange<CGFloat> {
+        let top = surface.contentOffsetY + surface.insetTop - surface.transcriptOriginY
+        let bottom = surface.contentOffsetY + surface.viewportHeight
+            - surface.insetBottom - surface.transcriptOriginY
+        return top...max(top, bottom)
     }
 
     private func refreshTopVisibleRow(persist: Bool) {
         guard let surface else { return }
         TranscriptPerf.stableTopScanTargetCount = rowFrames.count
-        let visibleTop = surface.contentOffsetY + surface.insetTop - surface.transcriptOriginY
-        let visibleBottom = surface.contentOffsetY + surface.viewportHeight
-            - surface.insetBottom - surface.transcriptOriginY
+        let visible = visibleStackRange(of: surface)
         var best: (id: String, order: Int)?
-        for (id, frame) in rowFrames where frame.maxY > visibleTop && frame.minY < visibleBottom {
+        for (id, frame) in rowFrames where frame.maxY > visible.lowerBound && frame.minY < visible.upperBound {
             if best.map({ frame.order < $0.order }) ?? true {
                 best = (id, frame.order)
             }

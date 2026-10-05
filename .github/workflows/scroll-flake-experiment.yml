@@ -64,6 +64,7 @@ jobs:
             -only-testing:ConduitTests/ChatScrollHostedTests/testLoadingEarlierMessagesHoldsThroughAStallBeforeTheLayout
             -only-testing:ConduitTests/ChatScrollHostedTests/testLoadingEarlierMessagesHoldsThroughAStallAfterTheLayout
           )
+          run_round 0 engine 1 -only-testing:ConduitTests/ChatScrollEngineTests
           run_round 1 class 2 -only-testing:ConduitTests/ChatScrollHostedTests
           run_round 2 prepend 4 "${prepend[@]}"
           # A busy runner: two CPU hogs alongside the simulator.

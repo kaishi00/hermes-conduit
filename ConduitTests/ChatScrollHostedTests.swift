@@ -340,7 +340,8 @@ final class ChatScrollHostedTests: XCTestCase {
         try loadEarlierMessages(stall: .beforeLayout)
     }
 
-    /// A busy main thread right after the first layout of the prepended page.
+    /// A busy main thread right after the engine's first correction, before
+    /// SwiftUI writes its own offset and the new row frames arrive.
     func testLoadingEarlierMessagesHoldsThroughAStallAfterTheLayout() throws {
         try loadEarlierMessages(stall: .afterLayout)
     }
@@ -354,20 +355,14 @@ final class ChatScrollHostedTests: XCTestCase {
     private func loadEarlierMessages(stall: Stall) throws {
         let mounted = try mount(Self.transcript(40..<120))
         browse(mounted, to: mounted.scrollView.contentOffset.y - 1200)
-        let modeAfterBrowse = mounted.engine.mode
         let topRow = try XCTUnwrap(mounted.engine.topVisibleMessageID)
         let before = try XCTUnwrap(screenY(of: topRow, in: mounted))
         let recorder = ScrollRecorder(mounted.scrollView)
-        let all = Self.transcript(0..<120)
-        let textBefore = textViewScreenYs(mounted, messages: all)
-        checkpoint("prepend before", mounted, recorder)
 
         mounted.engine.olderPageBackfillRequested(sessionKey: mounted.engine.renderedSessionKey)
-        let armed = mounted.engine.prependAnchor
         var stalled = false
         var stallSubscription: AnyCancellable?
         var stallObservation: NSKeyValueObservation?
-        let heightBefore = mounted.scrollView.contentSize.height
         switch stall {
         case .none:
             break
@@ -377,102 +372,33 @@ final class ChatScrollHostedTests: XCTestCase {
             stallSubscription = mounted.engine.objectWillChange.sink { _ in
                 guard !stalled else { return }
                 stalled = true
-                print(String(format: "[ChatScrollHostedTests] stall before layout at %.3f", CACurrentMediaTime()))
-                Thread.sleep(forTimeInterval: 1.0)
+                Thread.sleep(forTimeInterval: 1)
             }
         case .afterLayout:
-            stallObservation = mounted.scrollView.observe(\.contentSize, options: [.new]) { _, change in
-                guard !stalled, (change.newValue?.height ?? 0) > heightBefore + 1000 else { return }
+            // The first jump of more than a page is the engine moving the
+            // reader down past the prepended page.
+            let offsetBefore = mounted.scrollView.contentOffset.y
+            stallObservation = mounted.scrollView.observe(\.contentOffset, options: [.new]) { _, change in
+                guard !stalled, let offset = change.newValue, offset.y > offsetBefore + 1000 else { return }
                 stalled = true
-                DispatchQueue.main.async {
-                    print(String(format: "[ChatScrollHostedTests] stall after layout at %.3f", CACurrentMediaTime()))
-                    Thread.sleep(forTimeInterval: 1.0)
-                }
+                Thread.sleep(forTimeInterval: 1)
             }
         }
         ChatViewportTrace.shared.reset()
-        let mark = recorder.mark()
-        let start = CACurrentMediaTime()
-        print(String(format: "[ChatScrollHostedTests] prepend published at %.3f", start))
-        mounted.appState.messages = all
+        mounted.appState.messages = Self.transcript(0..<120)
         // The stall takes a second out of the settle; the rest still gets
-        // the usual 0.6 s of layout passes.
+        // the usual layout passes.
         settle(mounted.host.view, seconds: stall == .none ? 0.6 : 1.6)
-        let settleSeconds = CACurrentMediaTime() - start
         stallSubscription?.cancel()
         stallObservation?.invalidate()
 
-        checkpoint("prepend after", mounted, recorder)
-        let textAfter = textViewScreenYs(mounted, messages: all)
-        let shared = textBefore.keys.filter { textAfter[$0] != nil }.sorted()
-        let textMoves = shared.map { "\($0) \(Int(textBefore[$0]!))->\(Int(textAfter[$0]!))" }
-        let afterY = screenY(of: topRow, in: mounted)
-        print(String(
-            format: "[ChatScrollHostedTests] prepend summary (%@): mode after browse %@ armed %@ stalled %@ top %@ before %.1f after %@ settle %.2fs anchor now %@ frames %@ textMoves %@ engineWrites %ld otherWrites %ld",
-            String(describing: stall),
-            String(describing: modeAfterBrowse),
-            armed == nil ? "no" : "yes",
-            stalled ? "yes" : "no",
-            topRow,
-            before,
-            afterY.map { String(format: "%.1f", $0) } ?? "nil",
-            settleSeconds,
-            String(describing: mounted.engine.prependAnchor),
-            framedRows(mounted, messages: all),
-            textMoves.joined(separator: ", "),
-            recorder.offsetChanges(since: mark).filter(\.byEngine).count,
-            recorder.offsetChanges(since: mark).filter { !$0.byEngine }.count
-        ))
-        print("[ChatScrollHostedTests] prepend trace (\(stall)):\n\(recorder.dump(since: mark))")
-        print("[ChatScrollHostedTests] prepend engine trace (\(stall)):\n\(ChatViewportTrace.shared.dump())")
-        guard let after = afterY else {
-            // Does a later pass report the row (a stale preference), or is
-            // the reader really somewhere else?
-            settle(mounted.host.view, seconds: 1.0)
-            checkpoint("prepend later", mounted, recorder)
-            print(String(
-                format: "[ChatScrollHostedTests] prepend later: after %@ frames %@ text %@",
-                screenY(of: topRow, in: mounted).map { String(format: "%.1f", $0) } ?? "nil",
-                framedRows(mounted, messages: all),
-                textViewScreenYs(mounted, messages: all)
-                    .sorted { $0.value < $1.value }
-                    .map { "\($0.key) \(Int($0.value))" }
-                    .joined(separator: ", ")
-            ))
-            XCTFail("the reader's row \(topRow) has no frame after the prepend")
-            return
-        }
-        XCTAssertEqual(after, before, accuracy: 2, "the prepend lands above without moving the reader")
-    }
-
-    private static func findAll<T: UIView>(_ type: T.Type, in view: UIView) -> [T] {
-        var found: [T] = []
-        if let match = view as? T { found.append(match) }
-        for subview in view.subviews {
-            found += findAll(type, in: subview)
-        }
-        return found
-    }
-
-    /// Where each message's text sits on screen (viewport-relative), read
-    /// from its text view rather than the engine's row frames.
-    private func textViewScreenYs(_ mounted: Mounted, messages: [ChatMessage]) -> [String: CGFloat] {
-        var result: [String: CGFloat] = [:]
-        for textView in Self.findAll(UITextView.self, in: mounted.scrollView) {
-            let text = textView.text ?? ""
-            guard !text.isEmpty,
-                  let message = messages.first(where: { text.hasPrefix(String($0.content.prefix(20))) }) else { continue }
-            let y = textView.convert(CGPoint.zero, to: mounted.scrollView).y - mounted.scrollView.contentOffset.y
-            result[message.id] = min(result[message.id] ?? .greatestFiniteMagnitude, y)
-        }
-        return result
-    }
-
-    /// The range of rows the engine has frames for.
-    private func framedRows(_ mounted: Mounted, messages: [ChatMessage]) -> String {
-        let framed = messages.filter { mounted.engine.rowFrame(for: $0.id) != nil }.map(\.id)
-        guard let first = framed.first, let last = framed.last else { return "none" }
-        return "\(framed.count) \(first)...\(last)"
+        let trace = "offsets:\n\(recorder.dump())\nengine:\n\(ChatViewportTrace.shared.dump())"
+        XCTAssertEqual(stalled, stall != .none, "the main thread stalled where the test meant it to")
+        let after = try XCTUnwrap(
+            screenY(of: topRow, in: mounted),
+            "the reader's row \(topRow) has no frame after the prepend\n\(trace)"
+        )
+        XCTAssertEqual(after, before, accuracy: 2, "the prepend lands above without moving the reader\n\(trace)")
     }
 
     func testScrollingDoesNotReevaluateTheChat() throws {

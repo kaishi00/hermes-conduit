@@ -308,11 +308,36 @@ final class ChatScrollEngineTests: XCTestCase {
         surface.layOut(contentHeight: 4550)
         XCTAssertEqual(surface.contentOffsetY, 1050)
 
-        // After the hold, a later change is ordinary browsing again.
-        clock += 1
+        // No row frame ever confirms the reader's place here, so the hold
+        // gives up at its limit; a later change is ordinary browsing again.
+        clock += ChatScrollEngine.prependSettleLimit
         surface.layOut(contentHeight: 4700)
         XCTAssertEqual(surface.contentOffsetY, 1050)
         XCTAssertNil(engine.prependAnchor)
+    }
+
+    /// A busy main thread can put the layout of the prepended page, and
+    /// SwiftUI's own offset write after it, seconds after the landing.
+    func testPrependHoldsThroughALateLayout() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 500)
+        engine.olderPageBackfillRequested(sessionKey: keyA)
+
+        engine.transcriptChanged(
+            messages: Self.messages(-5..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        clock += 2
+        surface.layOut(contentHeight: 4600)
+        XCTAssertEqual(surface.contentOffsetY, 1100)
+
+        // SwiftUI writes its own offset in a later pass.
+        clock += 1
+        surface.contentOffsetY = 300
+        engine.surfaceScrolled()
+        XCTAssertEqual(surface.contentOffsetY, 1100, "the reader is put back")
+        XCTAssertNotNil(engine.prependAnchor)
     }
 
     /// SwiftUI can lay the prepended page out (content-size KVO) before its
@@ -363,6 +388,64 @@ final class ChatScrollEngineTests: XCTestCase {
         // The settled frame: the rows below were estimated 40 pt too tall.
         engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
         XCTAssertEqual(surface.contentOffsetY, 1060, "the reader's row is back where it was")
+    }
+
+    /// The estimate can leave the reader's top row just off screen, where it
+    /// reports no frame; any row that was on screen refines the position.
+    func testPrependRefinesThroughALowerRowWhenTheTopRowHasNoFrame() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 500)
+        engine.rowFramesChanged([
+            "m2": ChatScrollRowFrame(minY: 492, maxY: 700, order: 2),
+            "m3": ChatScrollRowFrame(minY: 700, maxY: 900, order: 3),
+        ])
+        engine.olderPageBackfillRequested(sessionKey: keyA)
+
+        engine.transcriptChanged(
+            messages: Self.messages(-5..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        surface.layOut(contentHeight: 4600)
+        XCTAssertEqual(surface.contentOffsetY, 1100)
+
+        engine.rowFramesChanged(["m3": ChatScrollRowFrame(minY: 1260, maxY: 1460, order: 8)])
+        XCTAssertEqual(surface.contentOffsetY, 1060, "m3 is back where it was, and m2 above it")
+    }
+
+    /// Once a row-frame report finds the reader's row in place, the hold
+    /// lasts `prependHoldDuration` more, for heights still settling.
+    func testPrependHoldEndsShortlyAfterTheReadersRowIsInPlace() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 500)
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 492, maxY: 700, order: 2)])
+        engine.olderPageBackfillRequested(sessionKey: keyA)
+
+        engine.transcriptChanged(
+            messages: Self.messages(-5..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        surface.layOut(contentHeight: 4600)
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
+        XCTAssertEqual(surface.contentOffsetY, 1060)
+        XCTAssertNil(engine.prependAnchor?.settledAt, "moving the reader is not finding them in place")
+
+        clock += 0.1
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
+        XCTAssertEqual(engine.prependAnchor?.settledAt, clock)
+
+        // Within the tail the hold still answers another writer.
+        clock += 0.3
+        surface.contentOffsetY = 300
+        engine.surfaceScrolled()
+        XCTAssertEqual(surface.contentOffsetY, 1060)
+
+        engine.rowFramesChanged(["m2": ChatScrollRowFrame(minY: 1052, maxY: 1260, order: 7)])
+        clock += ChatScrollEngine.prependHoldDuration + 0.1
+        surface.layOut(contentHeight: 4700)
+        XCTAssertNil(engine.prependAnchor)
+        XCTAssertEqual(surface.contentOffsetY, 1060, "a later change is ordinary browsing again")
     }
 
     func testPrependAnchorWaitsForTheActualPrepend() {
