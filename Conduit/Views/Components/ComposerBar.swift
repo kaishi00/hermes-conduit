@@ -355,6 +355,7 @@ struct ComposerBar: View {
             // The sheet has no room for the composer's notices; the inline
             // composer explains why it is locked.
             if !enabled { isShowingFullEditor = false }
+            if enabled { applyFocusRequest(appState.composerFocusRequest) }
         }
         .onChange(of: appState.isVoiceInUse) { _, inUse in
             // Voice took the microphone: dictation steps aside.
@@ -1265,9 +1266,9 @@ struct ComposerBar: View {
 
     /// A screenshot chat opened with the keyboard: the field takes focus.
     private func applyFocusRequest(_ request: UUID?) {
-        guard let request else { return }
+        // A locked composer keeps the request until it unlocks.
+        guard let request, appState.composerIsEnabled else { return }
         appState.consumeComposerFocusRequest(request)
-        guard appState.composerIsEnabled else { return }
         // After this update: the new chat's draft load, which can land in
         // the same update, unfocuses the field.
         Task { @MainActor in

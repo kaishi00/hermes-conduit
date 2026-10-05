@@ -222,6 +222,28 @@ final class AppStateScreenQuestionTests: XCTestCase {
 
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "chat-a"), newer)
         XCTAssertEqual(harness.appState.pendingScreenshots.count, 1)
+        XCTAssertFalse(fileExists(sending), "The screenshot that will never be sent is deleted")
+        XCTAssertTrue(fileExists(newer))
+    }
+
+    func testRestoreKeepsTheCap() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let sending = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(sending, forSession: "sending-chat")
+        XCTAssertEqual(harness.appState.takePendingScreenshot(forSession: "sending-chat"), sending)
+        var others: [Attachment] = []
+        for index in 0..<ScreenQuestionPolicy.maximumPendingScreenshots {
+            let shot = try stagedScreenshot()
+            others.append(shot)
+            harness.appState.setPendingScreenshot(shot, forSession: "chat-\(index)")
+        }
+
+        harness.appState.restorePendingScreenshot(sending, forSession: "sending-chat")
+
+        XCTAssertEqual(harness.appState.pendingScreenshots.count, ScreenQuestionPolicy.maximumPendingScreenshots)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "sending-chat"), sending)
+        XCTAssertNil(harness.appState.pendingScreenshot(forSession: "chat-0"), "The oldest is dropped")
+        XCTAssertFalse(fileExists(others[0]))
     }
 
     func testDiscardDeletesTheStagedFile() throws {
@@ -360,6 +382,53 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(recorder.prompts.map { $0.text }, ["What does this setting do?"])
         XCTAssertEqual(recorder.uploads.map { $0.attachment.uri }, [shot.uri])
         XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
+    }
+
+    func testFailedQuestionSendLeavesQuestionInComposer() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let origin = session("composer-origin")
+        var operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [origin] },
+            openSession: { _, sessionID, _ in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in .unavailable },
+            refreshContext: { _, _ in },
+            sendPrompt: { _, sessionID, text in
+                recorder.prompts.append((sessionID, text))
+                return .accepted
+            }
+        )
+        operations.uploadAttachment = { _, sessionID, attachment in
+            recorder.uploads.append((sessionID, attachment))
+            throw URLError(.networkConnectionLost)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        openChat("composer-origin", in: harness, withMessages: true)
+        harness.appState.isConnected = true
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(
+            for: shot,
+            question: "What does this setting do?",
+            enqueuedAt: now
+        ))
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(recorder.uploads.count, 1)
+        XCTAssertTrue(recorder.prompts.isEmpty)
+        XCTAssertEqual(
+            harness.appState.composerPrefillText, "What does this setting do?",
+            "A question that could not be sent waits in the composer"
+        )
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+        XCTAssertTrue(fileExists(shot))
     }
 
     func testEmptyOpenChatIsReusedWhenNotRecent() async throws {

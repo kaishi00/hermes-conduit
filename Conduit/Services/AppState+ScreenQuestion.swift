@@ -50,9 +50,7 @@ extension AppState {
             }
         }
         pendingScreenshots.append(PendingScreenshot(sessionID: sessionID, attachment: attachment))
-        while pendingScreenshots.count > ScreenQuestionPolicy.maximumPendingScreenshots {
-            Self.deleteStagedScreenshot(pendingScreenshots.removeFirst().attachment)
-        }
+        trimPendingScreenshots()
     }
 
     /// The composer's remove button: the screenshot never leaves the phone.
@@ -71,8 +69,21 @@ extension AppState {
     /// A send that failed puts its screenshot back, unless a newer one
     /// already landed on the chat meanwhile.
     func restorePendingScreenshot(_ attachment: Attachment, forSession sessionID: String) {
-        guard pendingScreenshotIndex(forSession: sessionID) == nil else { return }
+        guard pendingScreenshotIndex(forSession: sessionID) == nil else {
+            // It will never be sent now.
+            if pendingScreenshot(forSession: sessionID)?.uri != attachment.uri {
+                Self.deleteStagedScreenshot(attachment)
+            }
+            return
+        }
         pendingScreenshots.append(PendingScreenshot(sessionID: sessionID, attachment: attachment))
+        trimPendingScreenshots()
+    }
+
+    private func trimPendingScreenshots() {
+        while pendingScreenshots.count > ScreenQuestionPolicy.maximumPendingScreenshots {
+            Self.deleteStagedScreenshot(pendingScreenshots.removeFirst().attachment)
+        }
     }
 
     private func pendingScreenshotIndex(forSession sessionID: String?) -> Int? {
@@ -118,8 +129,13 @@ extension AppState {
         guard isConnected, let request = parkedScreenQuestion else { return }
         parkedScreenQuestion = nil
         if !(await openScreenQuestion(request, profile: nil, resumingParked: true)) {
-            // The connection dropped again before a chat opened.
-            if parkedScreenQuestion == nil { parkScreenQuestion(request) }
+            // The connection dropped again before a chat opened. A newer
+            // screenshot parked meanwhile wins.
+            if parkedScreenQuestion == nil {
+                parkScreenQuestion(request)
+            } else if parkedScreenQuestion?.attachment.uri != request.attachment.uri {
+                Self.deleteStagedScreenshot(request.attachment)
+            }
         }
     }
 
@@ -187,7 +203,11 @@ extension AppState {
                 // it was asked: it waits in the composer.
                 prefillComposer(question)
             } else {
-                _ = await submitComposer(text: question)
+                // A reply found running (a stale idle state) gets no steer
+                // either. A send that fails leaves the question in the
+                // composer, beside the screenshot.
+                let sent = await submitComposer(text: question, onBusy: {})
+                if !sent { prefillComposer(question) }
             }
         } else {
             composerFocusRequest = UUID()

@@ -554,7 +554,8 @@ struct ScreenQuestionRequest: Equatable {
     var attachment: Attachment
     /// A question that came with the image; it is sent at once.
     var question: String?
-    /// nil follows the app's setting.
+    /// nil follows the app's setting. Read when voice start lands (the
+    /// next PR); until then the chat opens with the keyboard.
     var startWith: ScreenQuestionStart?
     /// When the action ran, before Conduit came to the foreground: the
     /// recent-chat rule measures from here.

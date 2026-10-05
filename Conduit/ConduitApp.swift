@@ -174,9 +174,12 @@ struct ConduitApp: App {
         let connection = appState.voiceLaunchConnectionSnapshot()
         // The router takes this exact request first, before it awaits.
         let routed = pendingVoiceIntents.peekClaim()?.intent
+        var screenQuestionOpened: Bool?
         let outcome = await router.routePending(connection: connection) { intent in
             if intent.source == .screenQuestion {
-                return await appState.openScreenQuestion(intent)
+                let opened = await appState.openScreenQuestion(intent)
+                screenQuestionOpened = opened
+                return opened
             }
             return await appState.openVoiceConversation(intent)
         }
@@ -188,7 +191,13 @@ struct ConduitApp: App {
                 appState.parkScreenQuestion(request)
             }
             appState.errorMessage = message
-        case .idle, .routed, .deferred, .superseded:
+        case .superseded:
+            // A newer request took over while this one found Hermes gone:
+            // its screenshot is parked, and the newer one replaces it.
+            if screenQuestionOpened == false, let request = routed?.screenQuestion {
+                appState.parkScreenQuestion(request)
+            }
+        case .idle, .routed, .deferred:
             break
         }
     }

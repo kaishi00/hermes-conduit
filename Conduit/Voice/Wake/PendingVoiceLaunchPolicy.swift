@@ -150,7 +150,9 @@ enum PendingVoiceLaunchPolicy {
         clock: ContinuousClock = ContinuousClock()
     ) -> PendingVoiceIntent {
         var request = request
-        request.question = normalizedProfile(request.question)
+        request.question = request.question
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
         return PendingVoiceIntent(
             profile: normalizedProfile(profile),
             startsFreshConversation: false,
