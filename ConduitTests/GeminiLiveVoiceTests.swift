@@ -1946,6 +1946,23 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(GeminiLiveConversationController.instructions(search: .none).contains("Google Search"))
     }
 
+    func testGeminiLiveLookupPreambleIsVariedAndNotRepeatedInTheAnswer() throws {
+        // The answer comes back as a turn of its own after the call's turn
+        // ended; told only "first say 'Let me check.'", the model opened
+        // that turn with the same words again.
+        let rules = GeminiLiveConversationController.instructions(search: .hermes)
+        XCTAssertFalse(rules.contains("like \"Let me check.\""), "a single example gets copied word for word every time")
+        XCTAssertTrue(rules.contains("different each time"))
+        XCTAssertTrue(rules.contains("Say that only once per lookup"))
+        XCTAssertTrue(rules.contains("that turn opens straight with the answer, never with another \"let me check\""))
+
+        // The same reminder rides on the result itself, next to the answer,
+        // and on the text update that replaces a lost call.
+        XCTAssertTrue(GeminiLiveToolBridge.lookupAnswerNote.contains("don't say you're checking"))
+        let lost = try XCTUnwrap(GeminiLiveConversationController.lookupFallbackText(for: ["results": "1. Sunny, 21°C"]))
+        XCTAssertTrue(lost.contains("starting with the answer itself; don't say you're checking"))
+    }
+
     func testGeminiLiveSessionWithoutGoogleSearchNeverAsksForIt() async throws {
         let tokens = FakeGeminiLiveTokens()
         var sockets: [FakeGeminiLiveSocket] = []
@@ -1989,7 +2006,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(answer, [.toolResponse(
             id: "s1",
             name: "web_search",
-            result: ["results": "1. Toronto weather: Sunny, 21°C (https://example.com/w)\n2. Forecast: Rain tomorrow (https://example.com/f)"],
+            result: [
+                "results": "1. Toronto weather: Sunny, 21°C (https://example.com/w)\n2. Forecast: Rain tomorrow (https://example.com/f)",
+                "note": GeminiLiveToolBridge.lookupAnswerNote,
+            ],
             scheduling: .whenIdle
         )])
     }
@@ -2004,14 +2024,15 @@ extension HermesVoiceGatewayTimeoutTests {
         let failed = await bridge.handle(.init(id: "s1", name: "web_search", arguments: ["query": "news"]))
         guard case .toolResponse(_, _, let result, let scheduling) = failed.first else { return XCTFail("Expected a response") }
         XCTAssertNotNil(result["error"])
+        XCTAssertEqual(result["note"], GeminiLiveToolBridge.lookupAnswerNote)
         XCTAssertEqual(scheduling, .whenIdle)
 
         let empty = await bridge.handle(.init(id: "s2", name: "web_search", arguments: [:]))
-        XCTAssertEqual(empty, [.toolResponse(id: "s2", name: "web_search", result: ["error": "query is required"], scheduling: .whenIdle)])
+        XCTAssertEqual(empty, [.toolResponse(id: "s2", name: "web_search", result: ["error": "query is required", "note": GeminiLiveToolBridge.lookupAnswerNote], scheduling: .whenIdle)])
         XCTAssertEqual(search.queries, ["news"])
 
         let unwired = await GeminiLiveToolBridge(supervisor: supervisor).handle(.init(id: "s3", name: "web_search", arguments: ["query": "news"]))
-        XCTAssertEqual(unwired, [.toolResponse(id: "s3", name: "web_search", result: ["error": "web search is not available"], scheduling: .whenIdle)])
+        XCTAssertEqual(unwired, [.toolResponse(id: "s3", name: "web_search", result: ["error": "web search is not available", "note": GeminiLiveToolBridge.lookupAnswerNote], scheduling: .whenIdle)])
     }
 
     func testGeminiLiveWebSearchClientParsesResultsAndRequestsTheProfilesBackend() async throws {
@@ -2653,6 +2674,8 @@ extension VoiceConversationControllerTests {
 
         let response = session.sent.compactMap { ($0["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]] }.first?.first
         XCTAssertEqual(response?["id"] as? String, "s1")
+        let answer = response?["response"] as? [String: Any]
+        XCTAssertEqual(answer?["note"] as? String, GeminiLiveToolBridge.lookupAnswerNote, "the answer turn is told not to say it's checking again")
         XCTAssertEqual(controller.pendingTextTurnCountForTesting, 0)
         controller.stop()
     }

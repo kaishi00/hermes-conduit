@@ -381,7 +381,9 @@ final class GeminiLiveToolBridge {
             outgoing += settleOpenCalls()
             return outgoing
         case .webSearch:
-            return [.toolResponse(id: call.id, name: call.name, result: await searchResult(call.arguments["query"]), scheduling: .whenIdle)]
+            var result = await searchResult(call.arguments["query"])
+            result["note"] = Self.lookupAnswerNote
+            return [.toolResponse(id: call.id, name: call.name, result: result, scheduling: .whenIdle)]
         case .recallMemory:
             return [.toolResponse(id: call.id, name: call.name, result: await recallResult(call.arguments["query"]), scheduling: .whenIdle)]
         case .endConversation:
@@ -561,6 +563,11 @@ final class GeminiLiveToolBridge {
             return ["error": error.localizedDescription]
         }
     }
+
+    /// Sent with every web_search answer. It is spoken in a turn of its
+    /// own, after the "let me check" turn ended, and the model opened it
+    /// with the same words again. Not UI copy, so not localized.
+    static let lookupAnswerNote = "Your answer starts now, with what this lookup returned: don't say you're checking or looking it up again."
 
     /// Results as numbered lines for the model. Not UI copy.
     static func searchSummary(_ results: [GeminiLiveWebResult]) -> String {
