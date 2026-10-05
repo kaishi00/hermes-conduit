@@ -133,7 +133,13 @@ struct ConduitApp: App {
                 }
             }
             .task(id: voiceIntentRouteKey) {
-                await resolvePendingVoiceIntent()
+                // A screenshot waits for Conduit to settle after connecting.
+                // Settling can end on state this view doesn't observe, so
+                // the route is retried on a short timer; the launch
+                // deadline still bounds the wait.
+                while await resolvePendingVoiceIntent() {
+                    do { try await Task.sleep(for: Self.settleRecheckInterval) } catch { return }
+                }
             }
             .task(id: voiceIntentDeadlineKey) {
                 await waitOutPendingVoiceDeadline()
@@ -141,11 +147,18 @@ struct ConduitApp: App {
             // A screenshot kept while Hermes was unreachable is attached
             // once it connects and settles.
             .task(id: parkedScreenQuestionKey) {
+                // Once Conduit settles too, re-checked on the same timer.
+                while appState.isConnected, appState.parkedScreenQuestion != nil, appState.isSettlingConnection {
+                    do { try await Task.sleep(for: Self.settleRecheckInterval) } catch { return }
+                }
                 // Not cancelled with this task: the resume can switch
                 // profiles, which changes the key.
                 Task { await appState.resumeParkedScreenQuestion() }
             }
     }
+
+    /// How often a screenshot waiting for Conduit to settle checks again.
+    private static let settleRecheckInterval: Duration = .milliseconds(250)
 
     private var parkedScreenQuestionKey: String {
         "\(appState.isConnected):\(appState.isConnecting):\(appState.isProfileSwitching):\(appState.parkedScreenQuestionRevision)"
@@ -174,8 +187,9 @@ struct ConduitApp: App {
 
     /// Resolves the pending voice launch once. Ownership token: only the
     /// claimed request may be routed or failed; a superseded completion is
-    /// discarded without publishing.
-    private func resolvePendingVoiceIntent() async {
+    /// discarded without publishing. Returns true when a screenshot is
+    /// left waiting for Conduit to settle.
+    private func resolvePendingVoiceIntent() async -> Bool {
         let router = PendingVoiceIntentRouter(store: pendingVoiceIntents)
         let connection = appState.voiceLaunchConnectionSnapshot()
         // The router takes this exact request first, before it awaits.
@@ -192,7 +206,7 @@ struct ConduitApp: App {
         switch outcome {
         case .failed(let message):
             // A screenshot is kept when Hermes can't be reached: it is
-            // attached, with the keyboard, once Hermes connects.
+            // attached once Hermes connects and Conduit settles.
             if let request = routed?.screenQuestion {
                 appState.parkScreenQuestion(request, profile: routed?.profile)
             }
@@ -206,9 +220,12 @@ struct ConduitApp: App {
                     newerScreenQuestionPending: pendingVoiceIntents.peekClaim()?.intent.screenQuestion != nil
                 )
             }
-        case .idle, .routed, .deferred:
+        case .deferred:
+            return routed?.screenQuestion != nil && connection.isSettling
+        case .idle, .routed:
             break
         }
+        return false
     }
 
     /// Authoritative 30s backstop. Sleeps on the monotonic clock, then
@@ -235,7 +252,11 @@ struct ConduitApp: App {
             appState.errorMessage = PendingVoiceLaunchPolicy.expiredFailureMessage
         } else if let request = expired.screenQuestion {
             appState.parkScreenQuestion(request, profile: expired.profile)
-            appState.errorMessage = PendingVoiceLaunchPolicy.screenQuestionFailureMessage
+            // Connected but still settling, Hermes was reached: the
+            // screenshot is attached once Conduit settles.
+            if !appState.isConnected {
+                appState.errorMessage = PendingVoiceLaunchPolicy.screenQuestionFailureMessage
+            }
         }
     }
 }

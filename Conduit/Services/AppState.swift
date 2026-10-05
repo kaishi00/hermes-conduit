@@ -5650,6 +5650,26 @@ final class AppState: ObservableObject {
             || chatResumeRestorationRequest != nil
     }
 
+    /// Connected, but not settled: a reconnect (which keeps `isConnected`
+    /// while it runs), the foreground refresh, an automatic sync or the
+    /// connect's chat sync may still replace the chat on screen, and the
+    /// chat's turn state isn't known until they finish. Ask Hermes About
+    /// Screen waits this out: a screenshot placed earlier lands on a chat
+    /// that is then replaced, and its voice start finds a turn in sync and
+    /// falls back to the keyboard. Some of this isn't published, so a
+    /// waiter re-checks it on a timer.
+    var isSettlingConnection: Bool {
+        guard isConnected else { return false }
+        return isConnecting
+            || isProfileSwitching
+            || turnState == .synchronizing
+            || turnState == .reconnecting
+            || scenePhaseAttemptID != nil
+            || reconnectTask != nil
+            || activeAutomaticSyncOperation != nil
+            || activeAutomaticReconnectOperation != nil
+    }
+
     private func cancelChatResumeTransportRecovery() {
         cancelExplicitSessionOpen()
         cancelScheduledReconnect()

@@ -134,6 +134,25 @@ final class ScreenQuestionTests: XCTestCase {
         XCTAssertEqual(PendingVoiceLaunchPolicy.readiness(for: intent, connection: connection(.connecting), now: now), .waiting)
     }
 
+    func testScreenshotWaitsForConduitToSettle() {
+        let now = Date()
+        let intent = PendingVoiceLaunchPolicy.makeScreenQuestionPendingIntent(request(), profile: nil, now: now)
+        var settling = connection(.connected)
+        settling.isSettling = true
+        XCTAssertEqual(
+            PendingVoiceLaunchPolicy.readiness(for: intent, connection: settling, now: now), .waiting,
+            "Placed now, the screenshot lands on a chat the settling work replaces"
+        )
+    }
+
+    func testSiriDoesNotWaitForConduitToSettle() {
+        let now = Date()
+        let intent = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: nil, now: now)
+        var settling = connection(.connected)
+        settling.isSettling = true
+        XCTAssertEqual(PendingVoiceLaunchPolicy.readiness(for: intent, connection: settling, now: now), .ready)
+    }
+
     func testStableFailureKeepsTheScreenshot() {
         let now = Date()
         let intent = PendingVoiceLaunchPolicy.makeScreenQuestionPendingIntent(request(), profile: nil, now: now)
