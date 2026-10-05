@@ -889,6 +889,26 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(LiveVoiceStyle.cleanedGreeting(String(repeating: "a", count: 500)).count, LiveVoiceStyle.maxGreetingCharacters)
     }
 
+    func testLiveModelsAreAskedForSubstantiveAnswersNotOneLiners() {
+        let gemini = GeminiLiveConversationController.instructions(search: .google, personality: "Judge Hermes")
+        let gpt = GPTLiveConversationController.briefing(personality: "Judge Hermes")
+        for (engine, text) in [("Gemini and Grok", gemini), ("GPT-Live", gpt)] {
+            XCTAssertTrue(text.contains(LiveVoiceStyle.answerDepth), "\(engine) gets the answer-length rule")
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("keep replies short"), "\(engine) is no longer told to keep it short")
+            XCTAssertFalse(text.contains("a few spoken sentences"), engine)
+            XCTAssertTrue(text.contains("not how much you say"), "\(engine): a text persona can't make spoken answers terse")
+        }
+        XCTAssertFalse(LiveVoiceStyle(tone: .professional).instructions.contains("concise"), "professional cuts filler, not substance")
+
+        let job = VoiceBackgroundJobSupervisor.completionPrompt(title: "Weather", result: "Sunny, 21°C.")
+        let reply = VoiceBackgroundJobSupervisor.threadReplyPrompt(result: "Done.")
+        for prompt in [job, reply] {
+            XCTAssertFalse(prompt.contains("a few spoken sentences"), "Hermes' results are passed on with their details, not as a one-line gist")
+            XCTAssertTrue(prompt.contains("the details that matter"))
+        }
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.jobPrompt(for: "Check the weather").contains("short plain-language summary"))
+    }
+
     func testGeminiLiveUnavailableHostFailsWithTheReasonAndNeverConnects() async {
         let tokens = FakeGeminiLiveTokens()
         tokens.availabilityResult = .success(.pluginMissing)

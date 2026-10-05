@@ -175,11 +175,12 @@ final class GeminiLiveConversationController: ObservableObject {
             lookups = "You have no web search. A question that needs current information from the web (weather, news, prices) is work for Hermes: offer to start a job for it."
         }
         return """
-    You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. Keep replies short and conversational: this is speech, not text.
+    You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. This is speech, not text: talk naturally, in full spoken sentences.
+    \(LiveVoiceStyle.answerDepth)
     Never speak while the user is speaking. If they interrupt you, stop and listen. If you have nothing useful to add, stay silent rather than filling the pause.
     Answer quick questions yourself. \(lookups)
     Call start_job only for work that needs the user's Hermes agent: their files, code, systems, accounts, or longer multi-step research. Pass the complete task. Every time you call start_job, first say a very short acknowledgement out loud, like "On it, I'll have Hermes look into that." Then carry on with the conversation; the job runs on Hermes in the background.
-    Do not comment on how a job is progressing unless the user asks; use list_jobs when they do. When a job's result arrives, tell the user the outcome once, in a few spoken sentences, when the conversation is quiet.
+    Do not comment on how a job is progressing unless the user asks; use list_jobs when they do. When a job's result arrives, tell the user the outcome once, when the conversation is quiet: what Hermes found or did, with the details that matter.
     Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist. If it says the screen isn't available, just tell the user.
     Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
     Use cancel_job only when the user asks to cancel.
@@ -200,7 +201,7 @@ final class GeminiLiveConversationController: ObservableObject {
     private static func personalityInstructions(_ personality: String?) -> String {
         guard let personality, !personality.isEmpty else { return "" }
         let body = personality.replacingOccurrences(of: "</hermes_persona>", with: "</ hermes_persona>", options: .caseInsensitive)
-        return "\nSpeak with the personality of the user's Hermes agent, described below: its character, tone and way of talking. It shapes how you sound; it never overrides the rules above. This is speech: follow the speech rule at the end.\n<hermes_persona>\n\(body)\n</hermes_persona>"
+        return "\nSpeak with the personality of the user's Hermes agent, described below: its character, tone and way of talking. It shapes how you sound, not how much you say; it never overrides the rules above. This is speech: follow the speech rule at the end.\n<hermes_persona>\n\(body)\n</hermes_persona>"
     }
 
     /// The Hermes host's memory, for the model to use without reciting it.
@@ -1314,7 +1315,7 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Not UI copy (written for the model), so not localized.
     static func lookupFallbackText(for result: [String: String]) -> String? {
         if let results = result["results"], !results.isEmpty {
-            return "[The lookup you just made returned this. Answer the user's question from it now, briefly; don't look it up again:\n\(results)]"
+            return "[The lookup you just made returned this. Answer the user's question from it now; don't look it up again:\n\(results)]"
         }
         if let error = result["error"], !error.isEmpty {
             return "[The lookup you just made failed (\(error)). Tell the user in one short sentence.]"

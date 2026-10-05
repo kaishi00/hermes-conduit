@@ -37,6 +37,12 @@ struct LiveVoiceStyle: Equatable {
 
     static let maxGreetingCharacters = 200
 
+    /// How much every live model says by default. Told only to keep replies
+    /// short, they answered in a line and left the user asking follow-ups
+    /// to get anything useful. Written for the model, not shown as UI copy,
+    /// so not localized.
+    static let answerDepth = "Say enough to be useful. Answer a real question fully the first time: the answer, then the details that make it useful (the reasons, numbers, names, steps or options that matter, and any caveat), usually several sentences and more when the topic needs it. Don't leave the user asking follow-up questions to get the substance, and don't stop at a headline or end on an offer to say more instead of saying it. It is still speech: say it in natural spoken sentences, not lists, headings or Markdown, and never read out URLs. Keep it short only for greetings, small talk, acknowledgements and confirmations."
+
     /// The user's greeting on one line, without double quotes (it is quoted
     /// to the model), clipped.
     static func cleanedGreeting(_ text: String) -> String {
@@ -57,7 +63,7 @@ struct LiveVoiceStyle: Equatable {
         case .neutral?:
             lines.append("Tone: neutral and matter-of-fact, at a normal conversational pace. Skip filler and pleasantries.")
         case .professional?:
-            lines.append("Tone: professional and concise, at a brisk pace. No small talk, filler or pleasantries.")
+            lines.append("Tone: professional, at a brisk pace. No small talk, filler or pleasantries: spend the words on substance.")
         case nil:
             break
         }
