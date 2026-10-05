@@ -622,6 +622,41 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(fileExists(shot))
     }
 
+    func testOlderLaunchLeavesANewerScreenshotAlone() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeHarness(recorder: recorder)
+        openChat("composer-origin", in: harness, withMessages: true)
+        harness.appState.isConnected = true
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let older = try stagedScreenshot()
+        let newer = try stagedScreenshot()
+        harness.appState.parkScreenQuestion(request(for: newer, enqueuedAt: now), profile: nil)
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: older, enqueuedAt: now.addingTimeInterval(-10)))
+
+        XCTAssertTrue(opened)
+        XCTAssertNil(harness.appState.pendingScreenshot(forSession: "composer-origin"))
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, newer, "The newest wins")
+        XCTAssertFalse(fileExists(older))
+        XCTAssertTrue(fileExists(newer))
+    }
+
+    func testSignOutDiscardsWaitingScreenshots() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let pending = try stagedScreenshot()
+        let parked = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(pending, forSession: "chat-a")
+        harness.appState.parkScreenQuestion(request(for: parked), profile: nil)
+
+        harness.appState.disconnect()
+
+        XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
+        XCTAssertNil(harness.appState.parkedScreenQuestion, "Never attached to the next account's chat")
+        XCTAssertFalse(fileExists(pending))
+        XCTAssertFalse(fileExists(parked))
+    }
+
     func testEmptyOpenChatIsReusedWhenNotRecent() async throws {
         let recorder = ScreenQuestionCallRecorder()
         let harness = makeHarness(recorder: recorder)

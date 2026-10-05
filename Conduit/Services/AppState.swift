@@ -7711,6 +7711,8 @@ final class AppState: ObservableObject {
         // Unsent drafts belong to the signed-out user; AppState owns the
         // store (it outlives the composer view), so sign-out must clear it.
         composerDraftStore.removeAll()
+        // So do screenshots waiting for a question.
+        discardScreenQuestions()
         cancelScenePhaseAttempt()
         owedPostConnectBootstrap = nil
         lastConnectionFailure = nil

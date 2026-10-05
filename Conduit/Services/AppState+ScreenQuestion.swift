@@ -141,8 +141,7 @@ extension AppState {
         profile: String?,
         newerScreenQuestionPending: Bool
     ) {
-        let newerSeen = newestScreenQuestionAt.map { $0 > request.enqueuedAt } ?? false
-        if newerScreenQuestionPending || newerSeen {
+        if newerScreenQuestionPending || isOutdated(request) {
             Self.deleteStagedScreenshot(request.attachment)
         } else {
             parkScreenQuestion(request, profile: profile)
@@ -152,6 +151,24 @@ extension AppState {
     private func noteScreenQuestion(_ request: ScreenQuestionRequest) {
         if let newest = newestScreenQuestionAt, newest >= request.enqueuedAt { return }
         newestScreenQuestionAt = request.enqueuedAt
+    }
+
+    /// A newer screenshot was routed or parked since this one was taken.
+    private func isOutdated(_ request: ScreenQuestionRequest) -> Bool {
+        newestScreenQuestionAt.map { $0 > request.enqueuedAt } ?? false
+    }
+
+    /// Sign-out: screenshots waiting for a question belong to the
+    /// signed-out user, like drafts.
+    func discardScreenQuestions() {
+        for pending in pendingScreenshots {
+            Self.deleteStagedScreenshot(pending.attachment)
+        }
+        pendingScreenshots = []
+        if let parked = parkedScreenQuestion {
+            Self.deleteStagedScreenshot(parked.request.attachment)
+        }
+        parkedScreenQuestion = nil
     }
 
     /// Keeps a screenshot Hermes couldn't take yet. The newest one wins.
@@ -197,6 +214,10 @@ extension AppState {
         resumingParked: Bool
     ) async -> Bool {
         guard isConnected else { return false }
+        guard !isOutdated(request) else {
+            Self.deleteStagedScreenshot(request.attachment)
+            return true
+        }
         // A newer press replaces a screenshot kept from an outage.
         if !resumingParked, let parked = parkedScreenQuestion {
             parkedScreenQuestion = nil
@@ -250,6 +271,11 @@ extension AppState {
             sessionID = created
         }
 
+        // A newer screenshot placed while this launch waited wins.
+        guard !isOutdated(request) else {
+            Self.deleteStagedScreenshot(request.attachment)
+            return true
+        }
         setPendingScreenshot(request.attachment, forSession: sessionID)
         showSidebar = false
         if let question = request.question, !question.isEmpty {
