@@ -719,7 +719,9 @@ struct MessageBubble: View {
             ThinkingCard(message: message)
         case .tool:
             // A finished clarify from history reads as its answered card,
-            // not the raw tool call (#394).
+            // not the raw tool call (#394). Like the live card it shows
+            // whatever the tool-progress setting: it is part of the
+            // conversation, not tool progress.
             if let tool = message.tool,
                let clarify = ClarifyActivity.historyRecord(for: tool, rowID: message.id) {
                 ClarifyCard(message: message.presenting(clarify))
