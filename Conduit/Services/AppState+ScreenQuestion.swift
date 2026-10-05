@@ -17,6 +17,13 @@ struct PendingScreenshot: Equatable {
     let attachment: Attachment
 }
 
+/// A screenshot Hermes couldn't take yet, with the profile its shortcut
+/// named.
+struct ParkedScreenQuestion: Equatable {
+    let request: ScreenQuestionRequest
+    let profile: String?
+}
+
 /// Pure rules for where a screenshot goes.
 enum ScreenQuestionPolicy {
     /// Eric's "Recent chat" rule: a screenshot joins the chat on screen
@@ -113,28 +120,29 @@ extension AppState {
     }
 
     /// Keeps a screenshot Hermes couldn't take yet. The newest one wins.
-    func parkScreenQuestion(_ request: ScreenQuestionRequest) {
-        if let parked = parkedScreenQuestion, parked.attachment.uri != request.attachment.uri {
-            Self.deleteStagedScreenshot(parked.attachment)
+    func parkScreenQuestion(_ request: ScreenQuestionRequest, profile: String?) {
+        if let parked = parkedScreenQuestion, parked.request.attachment.uri != request.attachment.uri {
+            Self.deleteStagedScreenshot(parked.request.attachment)
         }
-        parkedScreenQuestion = request
+        parkedScreenQuestion = ParkedScreenQuestion(request: request, profile: profile)
         parkedScreenQuestionRevision &+= 1
     }
 
     /// Attaches a screenshot kept through an outage once Hermes connects.
-    /// The user is in Conduit by then, so it joins the chat on screen, with
-    /// the keyboard: never the microphone, and a question waits in the
-    /// composer rather than being sent long after it was asked.
+    /// The user is in Conduit by then, so it joins the chat on screen (or a
+    /// new chat on the profile the shortcut named), with the keyboard:
+    /// never the microphone, and a question waits in the composer rather
+    /// than being sent long after it was asked.
     func resumeParkedScreenQuestion() async {
-        guard isConnected, let request = parkedScreenQuestion else { return }
+        guard isConnected, let parked = parkedScreenQuestion else { return }
         parkedScreenQuestion = nil
-        if !(await openScreenQuestion(request, profile: nil, resumingParked: true)) {
+        if !(await openScreenQuestion(parked.request, profile: parked.profile, resumingParked: true)) {
             // The connection dropped again before a chat opened. A newer
             // screenshot parked meanwhile wins.
             if parkedScreenQuestion == nil {
-                parkScreenQuestion(request)
-            } else if parkedScreenQuestion?.attachment.uri != request.attachment.uri {
-                Self.deleteStagedScreenshot(request.attachment)
+                parkScreenQuestion(parked.request, profile: parked.profile)
+            } else if parkedScreenQuestion?.request.attachment.uri != parked.request.attachment.uri {
+                Self.deleteStagedScreenshot(parked.request.attachment)
             }
         }
     }
@@ -148,8 +156,8 @@ extension AppState {
         // A newer press replaces a screenshot kept from an outage.
         if !resumingParked, let parked = parkedScreenQuestion {
             parkedScreenQuestion = nil
-            if parked.attachment.uri != request.attachment.uri {
-                Self.deleteStagedScreenshot(parked.attachment)
+            if parked.request.attachment.uri != request.attachment.uri {
+                Self.deleteStagedScreenshot(parked.request.attachment)
             }
         }
         var switchedProfile = false
@@ -198,16 +206,21 @@ extension AppState {
         setPendingScreenshot(request.attachment, forSession: sessionID)
         showSidebar = false
         if let question = request.question, !question.isEmpty {
-            if resumingParked || turnState != .idle {
+            if resumingParked || turnState != .idle || Self.parseSlashCommand(question) != nil {
                 // Not sent into a running reply as a steer, nor long after
-                // it was asked: it waits in the composer.
+                // it was asked, nor run as a command: it waits in the
+                // composer.
                 prefillComposer(question)
             } else {
                 // A reply found running (a stale idle state) gets no steer
                 // either. A send that fails leaves the question in the
                 // composer, beside the screenshot.
                 let sent = await submitComposer(text: question, onBusy: {})
-                if !sent { prefillComposer(question) }
+                if !sent {
+                    prefillComposer(question)
+                    // Held until the composer unlocks.
+                    composerFocusRequest = UUID()
+                }
             }
         } else {
             composerFocusRequest = UUID()

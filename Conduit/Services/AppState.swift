@@ -1287,7 +1287,7 @@ final class AppState: ObservableObject {
     @Published var pendingScreenshots: [PendingScreenshot] = []
     /// A screenshot kept while Hermes was unreachable, attached once it
     /// connects.
-    var parkedScreenQuestion: ScreenQuestionRequest?
+    var parkedScreenQuestion: ParkedScreenQuestion?
     @Published var parkedScreenQuestionRevision: UInt64 = 0
     /// When the phone scene last left the foreground: the screenshot
     /// action's recent-chat rule measures from it.
@@ -16816,7 +16816,7 @@ final class AppState: ObservableObject {
             .lowercased()
     }
 
-    private static func parseSlashCommand(_ text: String) -> (name: String, argument: String, cleaned: String)? {
+    static func parseSlashCommand(_ text: String) -> (name: String, argument: String, cleaned: String)? {
         let trimmed = text.replacingOccurrences(of: "^\\s+", with: "", options: .regularExpression)
         guard trimmed.hasPrefix("/") else { return nil }
         let cleaned = trimmed.replacingOccurrences(of: "^/+", with: "", options: .regularExpression)

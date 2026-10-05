@@ -304,23 +304,33 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let newer = try stagedScreenshot()
         let revision = harness.appState.parkedScreenQuestionRevision
 
-        harness.appState.parkScreenQuestion(request(for: older))
-        harness.appState.parkScreenQuestion(request(for: newer))
+        harness.appState.parkScreenQuestion(request(for: older), profile: nil)
+        harness.appState.parkScreenQuestion(request(for: newer), profile: nil)
 
-        XCTAssertEqual(harness.appState.parkedScreenQuestion?.attachment, newer)
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, newer)
         XCTAssertEqual(harness.appState.parkedScreenQuestionRevision, revision &+ 2)
         XCTAssertFalse(fileExists(older))
         XCTAssertTrue(fileExists(newer))
     }
 
+    func testParkingKeepsTheProfileTheShortcutNamed() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        let shot = try stagedScreenshot()
+
+        harness.appState.parkScreenQuestion(request(for: shot), profile: "work")
+
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.profile, "work")
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, shot)
+    }
+
     func testParkedScreenshotWaitsWhileDisconnected() async throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         let shot = try stagedScreenshot()
-        harness.appState.parkScreenQuestion(request(for: shot))
+        harness.appState.parkScreenQuestion(request(for: shot), profile: nil)
 
         await harness.appState.resumeParkedScreenQuestion()
 
-        XCTAssertEqual(harness.appState.parkedScreenQuestion?.attachment, shot)
+        XCTAssertEqual(harness.appState.parkedScreenQuestion?.request.attachment, shot)
         XCTAssertTrue(harness.appState.pendingScreenshots.isEmpty)
     }
 
@@ -333,7 +343,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
             for: shot,
             question: "Why is this greyed out?",
             enqueuedAt: Date(timeIntervalSinceNow: -3_600)
-        ))
+        ), profile: nil)
         harness.appState.isConnected = true
 
         await harness.appState.resumeParkedScreenQuestion()
@@ -441,8 +451,44 @@ final class AppStateScreenQuestionTests: XCTestCase {
             harness.appState.composerPrefillText, "What does this setting do?",
             "A question that could not be sent waits in the composer"
         )
+        XCTAssertNotNil(harness.appState.composerFocusRequest, "The keyboard comes up once the composer unlocks")
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
         XCTAssertTrue(fileExists(shot))
+    }
+
+    func testSlashQuestionWaitsInComposer() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        var operations = ChatResumeLifecycleOperations(
+            sendPrompt: { _, sessionID, text in
+                recorder.prompts.append((sessionID, text))
+                return .accepted
+            },
+            compressSession: { _, _, _ in
+                recorder.compressions += 1
+                return SessionCompressResult(from: .object(["status": .string("compressed")]))
+            }
+        )
+        operations.uploadAttachment = { _, sessionID, attachment in
+            recorder.uploads.append((sessionID, attachment))
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        openChat("composer-origin", in: harness, withMessages: true)
+        harness.appState.isConnected = true
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(
+            for: shot,
+            question: "/compress",
+            enqueuedAt: now
+        ))
+
+        XCTAssertTrue(opened)
+        XCTAssertTrue(recorder.prompts.isEmpty)
+        XCTAssertEqual(recorder.compressions, 0, "A question is never run as a command")
+        XCTAssertEqual(harness.appState.composerPrefillText, "/compress")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
     }
 
     func testEmptyOpenChatIsReusedWhenNotRecent() async throws {

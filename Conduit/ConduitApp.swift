@@ -188,14 +188,14 @@ struct ConduitApp: App {
             // A screenshot is kept when Hermes can't be reached: it is
             // attached, with the keyboard, once Hermes connects.
             if let request = routed?.screenQuestion {
-                appState.parkScreenQuestion(request)
+                appState.parkScreenQuestion(request, profile: routed?.profile)
             }
             appState.errorMessage = message
         case .superseded:
             // A newer request took over while this one found Hermes gone:
             // its screenshot is parked, and the newer one replaces it.
             if screenQuestionOpened == false, let request = routed?.screenQuestion {
-                appState.parkScreenQuestion(request)
+                appState.parkScreenQuestion(request, profile: routed?.profile)
             }
         case .idle, .routed, .deferred:
             break
@@ -225,7 +225,7 @@ struct ConduitApp: App {
         if expired.source == .siri {
             appState.errorMessage = PendingVoiceLaunchPolicy.expiredFailureMessage
         } else if let request = expired.screenQuestion {
-            appState.parkScreenQuestion(request)
+            appState.parkScreenQuestion(request, profile: expired.profile)
             appState.errorMessage = PendingVoiceLaunchPolicy.screenQuestionFailureMessage
         }
     }
