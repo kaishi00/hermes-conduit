@@ -100,9 +100,13 @@ extension AppState {
     /// A newer screenshot for the same chat replaces the older one.
     func setPendingScreenshot(_ attachment: Attachment, forSession sessionID: String) {
         if let index = pendingScreenshotIndex(forSession: sessionID) {
+            let onCallsChat = isOnLiveCallsChat(pendingScreenshots[index].attachment)
             let replaced = pendingScreenshots.remove(at: index)
             if replaced.attachment.uri != attachment.uri {
                 Self.deleteStagedScreenshot(replaced.attachment)
+                voiceBackgroundJobSupervisor.replaceScreenshotNote(
+                    replaced.attachment.uri, with: attachment.uri, inInstructions: onCallsChat
+                )
             }
         }
         pendingScreenshots.append(PendingScreenshot(sessionID: sessionID, attachment: attachment))
@@ -112,7 +116,18 @@ extension AppState {
     /// The composer's remove button: the screenshot never leaves the phone.
     func discardPendingScreenshot(forSession sessionID: String?) {
         guard let index = pendingScreenshotIndex(forSession: sessionID) else { return }
-        Self.deleteStagedScreenshot(pendingScreenshots.remove(at: index).attachment)
+        let removed = pendingScreenshots[index].attachment
+        let onCallsChat = isOnLiveCallsChat(removed)
+        pendingScreenshots.remove(at: index)
+        Self.deleteStagedScreenshot(removed)
+        // A live call told about it hears that it's gone.
+        voiceBackgroundJobSupervisor.retractScreenshotNote(attachmentURI: removed.uri, inInstructions: onCallsChat)
+    }
+
+    /// Waiting on a live call's chat, a screenshot was named in the call's
+    /// instructions if the call started with it.
+    private func isOnLiveCallsChat(_ screenshot: Attachment) -> Bool {
+        voiceBackgroundJobSupervisor.liveThread.map { pendingScreenshot(forThread: $0) == screenshot } ?? false
     }
 
     /// Hands the chat's screenshot to the send that carries it. The staged
@@ -320,7 +335,12 @@ extension AppState {
         }
 
         // A live call attached to a chat takes the screenshot on that chat,
-        // so the call's next question carries it.
+        // so the call's next question carries it. Only a turn sent from the
+        // chat on screen carries an attachment (an off-screen thread turn is
+        // text only), so a chat that can't come on screen (a Bot Chat, which
+        // opens in the bot's profile, or a failed open) leaves the
+        // screenshot in the chat that is, sent with its next message, and
+        // the call is told so.
         if !switchedProfile, isLiveVoiceCallActive,
            let thread = voiceBackgroundJobSupervisor.liveThread, thread.profile == nil, !isOpenChat(thread) {
             _ = await openSession(thread.storedSessionID ?? thread.runtimeSessionID)
@@ -392,7 +412,7 @@ extension AppState {
         } else if isVoiceInUse {
             // A conversation already running takes it: its next question
             // carries it.
-            noteScreenshotToLiveCall(on: sessionID)
+            noteScreenshotToLiveCall(request.attachment, on: sessionID)
         } else if resumingParked {
             requestComposerFocus(on: sessionID)
         } else {
@@ -425,10 +445,20 @@ extension AppState {
 
     /// A live call attached to the chat hears, quietly, that a screenshot
     /// arrived: it can't see it, and the chat's next turn carries it.
-    private func noteScreenshotToLiveCall(on sessionID: String) {
-        guard isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread,
-              thread.owns(sessionID: sessionID) || isOpenChat(thread) else { return }
-        voiceBackgroundJobSupervisor.noteScreenshotShared()
+    private func noteScreenshotToLiveCall(_ screenshot: Attachment, on sessionID: String) {
+        guard isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread else { return }
+        noteScreenshot(screenshot, on: sessionID, toCallIn: thread)
+    }
+
+    /// Tells the call attached to `thread` where the screenshot went.
+    func noteScreenshot(_ screenshot: Attachment, on sessionID: String, toCallIn thread: VoiceThreadTarget) {
+        if thread.owns(sessionID: sessionID) || isOpenChat(thread) {
+            voiceBackgroundJobSupervisor.noteScreenshotShared(attachmentURI: screenshot.uri)
+        } else {
+            // The call's chat couldn't come on screen: its turns can't
+            // carry the screenshot, so the call sends the user to it.
+            voiceBackgroundJobSupervisor.noteScreenshotInAnotherChat(attachmentURI: screenshot.uri)
+        }
     }
 
     func requestComposerFocus(on sessionID: String) {

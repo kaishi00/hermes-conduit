@@ -799,18 +799,155 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertFalse(harness.appState.liveVoiceThreadInstructions(delegation: false).contains("shared a screenshot"))
     }
 
-    func testRunningCallHearsQuietlyAboutTheScreenshot() {
+    func testRunningCallHearsQuietlyAboutTheScreenshot() throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
         let supervisor = harness.appState.voiceBackgroundJobSupervisor
-        supervisor.noteScreenshotShared()
+        let shot = try stagedScreenshot()
+        supervisor.noteScreenshotShared(attachmentURI: shot.uri)
         XCTAssertNil(supervisor.takePendingChatContext(), "No call is attached to a chat")
 
-        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat"))
-        supervisor.noteScreenshotShared()
+        let thread = VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat")
+        supervisor.attachLiveThread(thread)
+        harness.appState.noteScreenshot(shot, on: "composer-origin", toCallIn: thread)
 
         let note = supervisor.takePendingChatContext()
         XCTAssertEqual(note, VoiceBackgroundJobSupervisor.screenshotSharedPrompt)
         XCTAssertTrue(note?.hasPrefix("[Background only.") == true)
+    }
+
+    func testCallWhoseChatIsOffScreenSendsTheUserToTheScreenshot() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        // A Bot Chat, or a chat that couldn't open: not the one on screen.
+        let thread = VoiceThreadTarget(runtimeSessionID: "bot-chat", storedSessionID: nil, title: "Chat")
+        harness.appState.voiceBackgroundJobSupervisor.attachLiveThread(thread)
+        let shot = try stagedScreenshot()
+
+        harness.appState.noteScreenshot(shot, on: "composer-origin", toCallIn: thread)
+
+        let note = harness.appState.voiceBackgroundJobSupervisor.takePendingChatContext()
+        XCTAssertEqual(note, VoiceBackgroundJobSupervisor.screenshotInAnotherChatPrompt)
+        XCTAssertTrue(note?.hasPrefix("[Background only.") == true)
+    }
+
+    func testRemovingTheScreenshotTakesBackTheCallsNote() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        let thread = VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat")
+        supervisor.attachLiveThread(thread)
+
+        // The composer chip's ×, before the call heard the note.
+        let first = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(first, forSession: "composer-origin")
+        harness.appState.noteScreenshot(first, on: "composer-origin", toCallIn: thread)
+        harness.appState.discardPendingScreenshot(forSession: "composer-origin")
+        XCTAssertNil(supervisor.takePendingChatContext(), "A note not yet heard is dropped")
+
+        // The voice banner's ×, after the call heard it.
+        let second = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(second, forSession: "composer-origin")
+        harness.appState.noteScreenshot(second, on: "composer-origin", toCallIn: thread)
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotSharedPrompt)
+        harness.appState.discardVoiceScreenshot()
+        XCTAssertEqual(
+            supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotRemovedPrompt,
+            "A note already heard is answered"
+        )
+    }
+
+    func testRetakenScreenshotLeavesTheCallOneNote() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        let thread = VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat")
+        supervisor.attachLiveThread(thread)
+        let first = try stagedScreenshot()
+        let retake = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(first, forSession: "composer-origin")
+        harness.appState.noteScreenshot(first, on: "composer-origin", toCallIn: thread)
+        harness.appState.setPendingScreenshot(retake, forSession: "composer-origin")
+        harness.appState.noteScreenshot(retake, on: "composer-origin", toCallIn: thread)
+
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotSharedPrompt)
+        XCTAssertNil(supervisor.takePendingChatContext(), "The retake's note replaces the first one's")
+
+        harness.appState.discardPendingScreenshot(forSession: "composer-origin")
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotRemovedPrompt)
+    }
+
+    func testRemovingARetakeBeforeTheCallHearsLeavesNoNote() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        let thread = VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat")
+        supervisor.attachLiveThread(thread)
+        let first = try stagedScreenshot()
+        let retake = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(first, forSession: "composer-origin")
+        harness.appState.noteScreenshot(first, on: "composer-origin", toCallIn: thread)
+        harness.appState.setPendingScreenshot(retake, forSession: "composer-origin")
+        harness.appState.noteScreenshot(retake, on: "composer-origin", toCallIn: thread)
+
+        harness.appState.discardPendingScreenshot(forSession: "composer-origin")
+
+        XCTAssertNil(supervisor.takePendingChatContext(), "The call never heard of either screenshot")
+    }
+
+    func testRemovingARetakeAfterTheCallHeardOfTheFirstTellsTheCall() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        let thread = VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat")
+        supervisor.attachLiveThread(thread)
+        let first = try stagedScreenshot()
+        let retake = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(first, forSession: "composer-origin")
+        harness.appState.noteScreenshot(first, on: "composer-origin", toCallIn: thread)
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotSharedPrompt)
+        harness.appState.setPendingScreenshot(retake, forSession: "composer-origin")
+        harness.appState.noteScreenshot(retake, on: "composer-origin", toCallIn: thread)
+
+        harness.appState.discardPendingScreenshot(forSession: "composer-origin")
+
+        XCTAssertEqual(
+            supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotRemovedPrompt,
+            "The retake's note is dropped, and the call that heard of a screenshot hears it's gone"
+        )
+        XCTAssertNil(supervisor.takePendingChatContext())
+    }
+
+    func testRemovingAScreenshotTheCallStartedWithTellsTheCall() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "composer-origin")
+        // The call's instructions named it: no note was needed.
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat"))
+
+        harness.appState.discardPendingScreenshot(forSession: "composer-origin")
+
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotRemovedPrompt)
+    }
+
+    func testRemovingAnotherChatsScreenshotLeavesTheCallsNote() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        let thread = VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat")
+        supervisor.attachLiveThread(thread)
+        let shot = try stagedScreenshot()
+        let other = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "composer-origin")
+        harness.appState.noteScreenshot(shot, on: "composer-origin", toCallIn: thread)
+        harness.appState.setPendingScreenshot(other, forSession: "chat-b")
+
+        harness.appState.discardPendingScreenshot(forSession: "chat-b")
+
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotSharedPrompt)
+        XCTAssertNil(supervisor.takePendingChatContext(), "Nothing about a screenshot the call never knew")
     }
 
     func testVoiceSheetShowsAndDiscardsTheChatsScreenshot() throws {

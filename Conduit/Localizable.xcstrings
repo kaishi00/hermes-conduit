@@ -1,6 +1,136 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Add the shortcut" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加快捷指令"
+          }
+        }
+      }
+    },
+    "Back Tap: Settings, Accessibility, Touch, Back Tap." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点背面：设置 › 辅助功能 › 触控 › 轻点背面。"
+          }
+        }
+      }
+    },
+    "Control Center: add a Shortcut control and pick it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控制中心：添加“快捷指令”控制并选择它。"
+          }
+        }
+      }
+    },
+    "Home Screen: in Shortcuts, touch and hold it, then Share, Add to Home Screen." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主屏幕：在“快捷指令”中按住它，然后选择“共享”›“添加到主屏幕”。"
+          }
+        }
+      }
+    },
+    "Last used" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次使用"
+          }
+        }
+      }
+    },
+    "Not run yet. Once it runs, it shows here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未运行。运行后会显示在这里。"
+          }
+        }
+      }
+    },
+    "Open Settings, then Action Button. Swipe to Shortcut and choose Ask Hermes About Screen. The Action Button is on iPhone 15 Pro and later." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开“设置”›“操作按钮”，滑到“快捷指令”，然后选择 Ask Hermes About Screen。iPhone 15 Pro 及更新机型配有操作按钮。"
+          }
+        }
+      }
+    },
+    "Opening…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在打开…"
+          }
+        }
+      }
+    },
+    "Opens Shortcuts. Tap Add Shortcut there." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将打开“快捷指令”App，在其中轻点“添加快捷指令”。"
+          }
+        }
+      }
+    },
+    "Other ways to run it" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他运行方式"
+          }
+        }
+      }
+    },
+    "Press the Action Button in any app and Conduit opens with a screenshot of it, ready for your question." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在任意 App 中按下操作按钮，Conduit 就会带着该屏幕的截图打开，等你提问。"
+          }
+        }
+      }
+    },
+    "Put it on the Action Button" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置到操作按钮"
+          }
+        }
+      }
+    },
+    "Siri: say “Ask Hermes About Screen”." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siri：说“Ask Hermes About Screen”。"
+          }
+        }
+      }
+    },
     "Asking about this screenshot" : {
       "localizations" : {
         "zh-Hans" : {
