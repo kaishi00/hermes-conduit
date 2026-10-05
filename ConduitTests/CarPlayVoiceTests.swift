@@ -240,6 +240,67 @@ final class CarPlayVoiceTemplateFactoryTests: XCTestCase {
             XCTAssertNotNil(voiceControlState.image, "\(voiceControlState.identifier) shows its icon")
         }
     }
+
+    /// The marks, not just the canvas, fill the icon: the thinking dots
+    /// span most of its width and the responding bars most of its height
+    /// (they were about two thirds and a half), and the mic fills the
+    /// middle (#378).
+    func testStateIconMarksFillTheIcon() throws {
+        let thinking = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .processing)))
+        XCTAssertGreaterThanOrEqual(thinking.width, 0.85, "the dots span the icon")
+        XCTAssertGreaterThanOrEqual(thinking.height, 0.25, "the dots are big")
+
+        let responding = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .responding)))
+        XCTAssertGreaterThanOrEqual(responding.width, 0.8, "the bars span the icon")
+        XCTAssertGreaterThanOrEqual(responding.height, 0.8, "the tallest bar nearly fills it")
+
+        let ready = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .ready)))
+        XCTAssertGreaterThanOrEqual(ready.height, 0.45, "the mic fills the middle")
+
+        let error = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .error)))
+        XCTAssertGreaterThanOrEqual(error.width, 0.45, "the warning fills the middle")
+    }
+
+    /// The box around the solid marks of every frame (the faint disc
+    /// behind them excluded), as fractions of the icon's side.
+    private func markExtent(of image: UIImage) throws -> CGSize {
+        var minX = Int.max, minY = Int.max, maxX = -1, maxY = -1
+        var side = 0
+        for frame in image.images ?? [image] {
+            let cgImage = try XCTUnwrap(frame.cgImage)
+            let width = cgImage.width
+            let height = cgImage.height
+            side = width
+            var pixels = [UInt8](repeating: 0, count: width * height * 4)
+            let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+                guard let context = CGContext(
+                    data: buffer.baseAddress,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: width * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                ) else { return false }
+                context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+                return true
+            }
+            XCTAssertTrue(drawn)
+            for y in 0..<height {
+                for x in 0..<width where pixels[(y * width + x) * 4 + 3] > 150 {
+                    minX = min(minX, x)
+                    maxX = max(maxX, x)
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                }
+            }
+        }
+        guard maxX >= minX, side > 0 else { return .zero }
+        return CGSize(
+            width: CGFloat(maxX - minX + 1) / CGFloat(side),
+            height: CGFloat(maxY - minY + 1) / CGFloat(side)
+        )
+    }
 }
 
 // MARK: - Browse screens, sounds and settings
@@ -2229,6 +2290,45 @@ extension CarPlayVoiceCoordinatorTests {
 
         XCTAssertEqual(harness.spy.popToRootCount, 1, "the car shows the running call without a Back tap")
         XCTAssertFalse(harness.coordinator.isBrowsing)
+    }
+
+    /// A start from the car always puts the voice screen up before the
+    /// microphone opens; a start on the phone now does too, instead of
+    /// waiting until it is already listening under the chat list.
+    func testAConversationStartingOnThePhoneShowsTheVoiceScreenBeforeTheMicrophoneOpens() async throws {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.coordinator.showChats()
+        XCTAssertTrue(harness.coordinator.isBrowsing)
+
+        harness.coordinator.conversationStartingOnPhone(in: harness.appState)
+
+        XCTAssertEqual(harness.spy.popToRootCount, 1, "the voice screen is up before any state arrives")
+        XCTAssertFalse(harness.coordinator.isBrowsing)
+
+        // Already on the voice screen: nothing more to do.
+        harness.coordinator.conversationStartingOnPhone(in: harness.appState)
+        XCTAssertEqual(harness.spy.popToRootCount, 1)
+    }
+
+    func testAPhoneStartForAnotherAppStateOrWithNoCarLeavesTheCarAlone() async throws {
+        let harness = makeHarness()
+        let other = Self.makeSharedHarness()
+        addTeardownBlock { [defaults = other.defaults, suite = other.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.coordinator.conversationStartingOnPhone(in: harness.appState)
+        XCTAssertEqual(harness.spy.popToRootCount, 0, "no car connected")
+
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.coordinator.showChats()
+
+        harness.coordinator.conversationStartingOnPhone(in: other.appState)
+
+        XCTAssertEqual(harness.spy.popToRootCount, 0, "only the app state the car is bound to")
+        XCTAssertTrue(harness.coordinator.isBrowsing)
     }
 
     func testTheVoiceScreenReappearingEndsBrowsing() async throws {
