@@ -3,7 +3,7 @@
 //  Conduit
 //
 //  Ask Hermes About Screen: the screenshot a voice conversation will ask
-//  about, shown over the call, and the setup section in Voice settings.
+//  about, shown over the call, and its setup page in Settings.
 //
 
 import SwiftUI
@@ -32,12 +32,11 @@ struct ScreenQuestionVoiceBanner: View {
     }
 }
 
-/// Voice settings: getting the shortcut onto the Action Button (or
-/// another trigger), whether it has run, and how a screenshot chat takes
-/// the question when the shortcut doesn't say.
+/// Settings › Ask Hermes About Screen: getting the shortcut onto the
+/// Action Button (or another trigger), and whether it has run. A
+/// screenshot opens in voice; closing voice leaves the keyboard.
 struct ScreenQuestionSettingsSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @AppStorage(ScreenQuestionPreferences.startWithKey) private var startWith = ScreenQuestionStart.voice.rawValue
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @State private var isOpeningShortcut = false
@@ -46,7 +45,7 @@ struct ScreenQuestionSettingsSection: View {
 
     var body: some View {
         ConduitSettingsSection(
-            title: AppLocalization.string("Ask Hermes About Screen"),
+            title: AppLocalization.string("Setup"),
             symbol: "camera.viewfinder",
             tint: .conduitAccent
         ) {
@@ -57,16 +56,6 @@ struct ScreenQuestionSettingsSection: View {
             actionButtonStep
             otherWaysStep
             lastUsedRow
-            Divider()
-            Picker("Opens with", selection: $startWith) {
-                Text("Voice").tag(ScreenQuestionStart.voice.rawValue)
-                Text("Keyboard").tag(ScreenQuestionStart.keyboard.rawValue)
-            }
-            .pickerStyle(.menu)
-            .accessibilityIdentifier("voice.screenQuestionStartWith")
-            Text("When the Ask Hermes About Screen shortcut runs without a question, Conduit opens the chat with the screenshot attached and starts your voice mode, or the keyboard.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .onAppear { lastUsed = ScreenQuestionUsage.lastUsed() }
         // Left before the link resolved: nothing opens later.

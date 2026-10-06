@@ -512,8 +512,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
         let shot = try stagedScreenshot()
         let newer = try stagedScreenshot()
-        let newerRequest = request(for: newer, enqueuedAt: now.addingTimeInterval(-5))
-        harness.defaults.set(ScreenQuestionStart.keyboard.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
+        let newerRequest = request(for: newer, startWith: .keyboard, enqueuedAt: now.addingTimeInterval(-5))
         harness.appState.parkScreenQuestion(request(
             for: shot,
             question: "What does this setting do?",
@@ -543,12 +542,11 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let harness = makeHarness(recorder: recorder)
         openChat("composer-origin", in: harness, withMessages: true)
         harness.appState.isConnected = true
-        harness.defaults.set(ScreenQuestionStart.keyboard.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
         let now = Date()
         harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
         let shot = try stagedScreenshot()
 
-        let opened = await harness.appState.openScreenQuestion(intent(for: shot, enqueuedAt: now))
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, startWith: .keyboard, enqueuedAt: now))
 
         XCTAssertTrue(opened)
         XCTAssertEqual(harness.appState.activeSessionId, "composer-origin")
@@ -820,7 +818,6 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let harness = makeHarness(recorder: recorder)
         openChat("composer-origin", in: harness, withMessages: true)
         harness.appState.isConnected = true
-        harness.defaults.set(ScreenQuestionStart.keyboard.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
         let now = Date()
         // Last left an hour ago and on screen since: the press came from
         // inside Conduit, so nothing stamped a departure.
@@ -828,7 +825,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         harness.appState.sceneActiveSince = now.addingTimeInterval(-600)
         let shot = try stagedScreenshot()
 
-        let opened = await harness.appState.openScreenQuestion(intent(for: shot, enqueuedAt: now))
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, startWith: .keyboard, enqueuedAt: now))
 
         XCTAssertTrue(opened)
         XCTAssertEqual(harness.appState.activeSessionId, "composer-origin")
@@ -840,11 +837,10 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let harness = makeHarness(recorder: recorder)
         openChat("fresh-chat", in: harness)
         harness.appState.isConnected = true
-        harness.defaults.set(ScreenQuestionStart.keyboard.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
         harness.appState.lastLeftForegroundAt = nil
         let shot = try stagedScreenshot()
 
-        let opened = await harness.appState.openScreenQuestion(intent(for: shot))
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, startWith: .keyboard))
 
         XCTAssertTrue(opened)
         XCTAssertEqual(harness.appState.activeSessionId, "fresh-chat", "An empty new chat is as good as a fresh one")
@@ -880,12 +876,11 @@ final class AppStateScreenQuestionTests: XCTestCase {
 
     // MARK: - Voice
 
-    func testVoicePreferenceWithoutClassicVoiceFallsBackToKeyboard() async throws {
+    func testVoiceWithoutClassicVoiceFallsBackToKeyboard() async throws {
         let recorder = ScreenQuestionCallRecorder()
         let harness = makeHarness(recorder: recorder)
         openChat("composer-origin", in: harness, withMessages: true)
         harness.appState.isConnected = true
-        harness.defaults.set(ScreenQuestionStart.voice.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
         let now = Date()
         harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
         let shot = try stagedScreenshot()
@@ -898,13 +893,12 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
     }
 
-    func testRunningTurnGetsKeyboardEvenWhenVoiceIsPreferred() async throws {
+    func testRunningTurnGetsKeyboardInsteadOfVoice() async throws {
         let recorder = ScreenQuestionCallRecorder()
         let harness = makeHarness(recorder: recorder)
         openChat("composer-origin", in: harness, withMessages: true)
         harness.appState.handleStreamEvent(.sessionBusy(sessionId: "composer-origin", busy: true))
         harness.appState.isConnected = true
-        harness.defaults.set(ScreenQuestionStart.voice.rawValue, forKey: ScreenQuestionPreferences.startWithKey)
         let now = Date()
         harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-30)
         let shot = try stagedScreenshot()
@@ -1221,19 +1215,21 @@ final class AppStateScreenQuestionTests: XCTestCase {
     private func request(
         for attachment: Attachment,
         question: String? = nil,
+        startWith: ScreenQuestionStart? = nil,
         enqueuedAt: Date = Date()
     ) -> ScreenQuestionRequest {
-        ScreenQuestionRequest(attachment: attachment, question: question, startWith: nil, enqueuedAt: enqueuedAt)
+        ScreenQuestionRequest(attachment: attachment, question: question, startWith: startWith, enqueuedAt: enqueuedAt)
     }
 
     private func intent(
         for attachment: Attachment,
         question: String? = nil,
+        startWith: ScreenQuestionStart? = nil,
         profile: String? = nil,
         enqueuedAt: Date = Date()
     ) -> PendingVoiceIntent {
         PendingVoiceLaunchPolicy.makeScreenQuestionPendingIntent(
-            request(for: attachment, question: question, enqueuedAt: enqueuedAt),
+            request(for: attachment, question: question, startWith: startWith, enqueuedAt: enqueuedAt),
             profile: profile
         )
     }

@@ -433,7 +433,7 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, workspace, memory, capabilities, gateway, savedDashboards, appearance, notifications, about
+    case profile, model, chat, voice, workspace, memory, capabilities, gateway, savedDashboards, appearance, notifications, screenQuestion, about
 }
 
 enum ProfileSettingControl {
@@ -700,6 +700,9 @@ struct SettingsView: View {
             AppearanceSettingsDetail(theme: appState.themePreference, saveTheme: saveTheme)
         case .notifications:
             NotificationsSettingsDetail()
+        case .screenQuestion:
+            SettingsDetailContainer { ScreenQuestionSettingsSection() }
+                .navigationTitle("Ask Hermes About Screen")
         case .about:
             AboutSettingsDetail(profile: snapshot.profile)
         }
@@ -794,6 +797,7 @@ private struct SettingsHome: View {
                     homeSection("On this device", tint: .conduitAccent) {
                         settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
                         settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
+                        settingsLink(.screenQuestion, icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question")
                         settingsLink(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"))
                     }
                     Text("Hermes settings follow the active profile. Appearance, notifications, and privacy controls stay on this device.")
