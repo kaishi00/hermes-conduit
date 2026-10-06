@@ -84,7 +84,11 @@ hermes gateway restart
 
 Then follow the in-app pairing flow under Settings > Notifications.
 
-The app uses a shared relay by default (`push.milim.dev`) so notifications work out of the box with no extra setup. If you prefer to run your own relay, enter its URL under Settings > Notifications > Push relay.
+The app uses a shared relay by default (`push.milim.dev`) so notifications work out of the box with no extra setup.
+
+**End-to-end encryption.** With notifier 0.5 or later, Conduit gives each pairing its own key over your dashboard connection (never through the relay) and turns encryption on by itself. Notification text, session and profile names, approval and clarify cards, and your clarify answers are then encrypted between your Hermes host and this iPhone; a Notification Service Extension decrypts them on the phone. The relay and Apple only see routing data such as the event type and timing. Settings > Notifications shows which pairings are encrypted.
+
+**Running your own relay.** Apple only delivers notifications for the App Store build when they are signed with its developer's APNs key, so a relay you run yourself can't reach the App Store app, even if you enter its URL under Settings > Notifications > Push relay. A self-hosted relay works with a Conduit build you sign with your own Apple developer account and bundle id (see [Building from source](#building-from-source) and the relay's [self-hosting guide](https://github.com/kaishi00/hermes-conduit-notifier#self-hosting)). If your goal is that the relay can't read your notifications, end-to-end encryption already covers that on the shared relay.
 
 ## Building from source
 
@@ -122,7 +126,7 @@ Key files:
 
 ## Privacy
 
-Conduit does not collect, transmit, or store your data on any third-party server. All communication goes directly between the app and your own Hermes instance. The only external connection is the optional push relay, which you control and can self-host.
+Conduit does not collect, transmit, or store your data on any third-party server. All communication goes directly between the app and your own Hermes instance. The only external connection is the optional push relay, which delivers notifications through Apple; with end-to-end encryption on, it only sees routing data, not their content.
 
 No analytics. No telemetry. No ad frameworks.
 

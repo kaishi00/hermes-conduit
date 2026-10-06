@@ -19201,22 +19201,6 @@
         }
       }
     },
-    "Leave blank to use the default relay. Change this if you run your own push relay server." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "空欄にするとデフォルトのリレーを使用します。独自のプッシュリレーサーバを運用している場合は変更してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "留空则使用默认中继。若你自建推送中继服务器，请修改此项。"
-          }
-        }
-      }
-    },
     "Leave both selections empty to inherit the chat model. Set a provider and model to route delegate agents separately." : {
       "localizations" : {
         "ja" : {
@@ -35428,6 +35412,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "网络问题导致操作未完成。请检查网络连接后重试。"
+          }
+        }
+      }
+    },
+    "Leave blank to use the default relay. A relay you run yourself only works with a Conduit build signed with your own Apple developer account, because Apple only delivers this app's notifications through its developer's key." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空欄にするとデフォルトのリレーを使用します。Apple はこのアプリの通知を開発者のキー経由でしか配信しないため、自分で運用するリレーは、自分の Apple デベロッパアカウントで署名した Conduit ビルドでのみ動作します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留空则使用默认中继。Apple 只会通过本应用开发者的密钥投递其通知，因此自建中继仅适用于用你自己的 Apple 开发者账号签名的 Conduit 版本。"
+          }
+        }
+      }
+    },
+    "End-to-end encrypted" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エンドツーエンド暗号化済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已端到端加密"
+          }
+        }
+      }
+    },
+    "Not end-to-end encrypted, so the relay can read these notifications. Update the notifier on this host, then open this page again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エンドツーエンド暗号化されていないため、リレーがこれらの通知を読み取れます。このホストの通知プラグインを更新してから、このページを開き直してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未端到端加密，因此中继可以读取这些通知。请更新此主机上的通知插件，然后重新打开此页面。"
           }
         }
       }
