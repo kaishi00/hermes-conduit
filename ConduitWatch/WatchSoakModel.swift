@@ -82,8 +82,10 @@ final class WatchSoakModel: ObservableObject {
         link.onSoakPacket = { [weak self] in self?.receivedPacket($0) }
         link.onSoakReachabilityChange = { [weak self] reachable in self?.reachabilityChanged(reachable) }
         WatchProbeLog.shared.note("soakStart", ["runID": Int(plan.runID), "label": plan.label, "durationS": Int(plan.duration)])
+        // A late answer to an earlier run must not touch this one.
+        let runID = plan.runID
         link.send(.soakStart(plan), reply: { [weak self] answer in
-            guard let self, self.isRunning else { return }
+            guard let self, self.isRunning, self.plan?.runID == runID else { return }
             // The iPhone refuses while a call runs over the same link.
             guard case .pong? = answer else {
                 self.isRunning = false
@@ -99,14 +101,13 @@ final class WatchSoakModel: ObservableObject {
                 MainActor.assumeIsolated { self?.tick() }
             }
         }, failure: { [weak self] error in
-            guard let self, self.isRunning else { return }
+            guard let self, self.isRunning, self.plan?.runID == runID else { return }
             self.isRunning = false
             self.detachFromLink()
             self.status = "Can't reach the iPhone: \(error.localizedDescription)"
             WatchProbeLog.shared.note("soakStartFailed", ["error": error.localizedDescription])
         })
         // An iPhone that never answers leaves nothing waiting.
-        let runID = plan.runID
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.isRunning, self.timer == nil, self.plan?.runID == runID else { return }

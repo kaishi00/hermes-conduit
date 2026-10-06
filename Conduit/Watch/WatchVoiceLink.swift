@@ -99,6 +99,10 @@ final class WatchVoiceLink: ObservableObject {
         func answer(_ message: WatchVoiceWire.Message) { reply?(WatchVoiceWire.encode(message)) }
         switch message {
         case .callStart(let callID, let fullDuplex, let version):
+            // The Watch starts a call only with no link test running, so
+            // one still running here lost its stop. It would share the
+            // channel with the call's audio: end it first.
+            soak.endUnfinished()
             answer(call.start(callID: callID, fullDuplex: fullDuplex, version: version))
         case .ping(let callID):
             if let callID { call.heard(callID) }
@@ -508,8 +512,15 @@ final class WatchSoakResponder {
 
     var isRunning: Bool { plan != nil }
 
+    /// Ends a test whose stop never arrived.
+    func endUnfinished() {
+        guard let plan else { return }
+        link.log.note("soakEndedUnfinished", ["runID": Int(plan.runID)])
+        _ = stop(runID: plan.runID)
+    }
+
     func start(_ plan: WatchVoiceWire.SoakPlan) {
-        if let current = self.plan { _ = stop(runID: current.runID) }
+        endUnfinished()
         self.plan = plan
         startedAt = Date()
         seq = 0
