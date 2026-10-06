@@ -46,6 +46,8 @@ final class WatchAudio {
     private let captureFormat = AVAudioFormat(standardFormatWithSampleRate: WatchAudio.captureRate, channels: 1)!
     private var captureGeneration = 0
     private var outstandingBuffers = 0
+    /// The last refused playback rate, logged once rather than per packet.
+    private var refusedRate: Double?
     private var playbackGeneration = 0
     private var startPending = false
     private var queuedDuration: TimeInterval = 0
@@ -158,7 +160,10 @@ final class WatchAudio {
     func enqueue(_ samples: [Int16], sampleRate: Double) {
         guard isRunning, let player, let playerFormat, !samples.isEmpty else { return }
         guard abs(playerFormat.sampleRate - sampleRate) < 0.5 else {
-            WatchProbeLog.shared.note("playbackRateMismatch", ["expected": playerFormat.sampleRate, "got": sampleRate])
+            if refusedRate != sampleRate {
+                refusedRate = sampleRate
+                WatchProbeLog.shared.note("playbackRateMismatch", ["expected": playerFormat.sampleRate, "got": sampleRate])
+            }
             return
         }
         guard let buffer = AVAudioPCMBuffer(pcmFormat: playerFormat, frameCapacity: AVAudioFrameCount(samples.count)),

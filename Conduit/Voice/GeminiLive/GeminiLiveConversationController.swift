@@ -346,7 +346,7 @@ final class GeminiLiveConversationController: ObservableObject {
     private var heldOutcomes: [HeldOutcome] = []
     /// Bumped on every start, so work armed for one call never acts on
     /// the next.
-    private var callEpoch = 0
+    private(set) var callEpoch = 0
     /// Typed exchanges in the attached chat (#363), sent while idle as
     /// context the model keeps without answering.
     private var pendingContextNotes: [String] = []

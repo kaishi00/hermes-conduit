@@ -69,6 +69,8 @@ final class WatchCallModel: ObservableObject {
     /// reach it.
     private var muteUnconfirmed = false
     private var resumeUnsent = false
+    /// Why the Watch paused, while that pause hasn't reached the iPhone.
+    private var pauseUnsent: String?
     private var lastPlaybackEndedAt: TimeInterval?
     private var activity = WatchVoiceActivity()
     private var uplinkSent = 0
@@ -209,7 +211,7 @@ final class WatchCallModel: ObservableObject {
             pendingSamples = []
             // As with mute: a later turn is timed from new speech only.
             activity.reset()
-            link.send(.paused(callID: callID, reason: "wristDown"))
+            sendPaused("wristDown")
         }
     }
 
@@ -457,8 +459,19 @@ final class WatchCallModel: ObservableObject {
         link.send(.mute(callID: callID, muted: isMuted))
     }
 
+    private func sendPaused(_ reason: String) {
+        let id = callID
+        pauseUnsent = nil
+        resumeUnsent = false
+        link.send(.paused(callID: id, reason: reason), failure: { [weak self] _ in
+            guard let self, self.isActive, self.callID == id, self.micPaused else { return }
+            self.pauseUnsent = reason
+        })
+    }
+
     private func sendResumed() {
         let id = callID
+        pauseUnsent = nil
         resumeUnsent = false
         link.send(.resumed(callID: id), failure: { [weak self] _ in
             guard let self, self.isActive, self.callID == id, !self.micPaused else { return }
@@ -468,6 +481,7 @@ final class WatchCallModel: ObservableObject {
 
     private func resendUnsentControls() {
         if muteUnconfirmed { sendMute() }
+        if let reason = pauseUnsent, micPaused { sendPaused(reason) }
         if resumeUnsent, !micPaused { sendResumed() }
     }
 
@@ -477,7 +491,7 @@ final class WatchCallModel: ObservableObject {
             micPaused = true
             pendingSamples = []
             activity.reset()
-            link.send(.paused(callID: callID, reason: "audioInterruption"))
+            sendPaused("audioInterruption")
             phase = .needsTap
         } else {
             // Recording can't restart in the background; in front it may.
@@ -505,6 +519,7 @@ final class WatchCallModel: ObservableObject {
         micPaused = false
         muteUnconfirmed = false
         resumeUnsent = false
+        pauseUnsent = nil
         lastPlaybackEndedAt = nil
         activity = WatchVoiceActivity()
         uplinkSent = 0

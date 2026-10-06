@@ -23456,11 +23456,13 @@ final class AppState: ObservableObject {
             guard !geminiLiveController.isActive else { return WatchVoiceStartFailure.callRunning }
             watchStartedLiveConversation = true
             beginVoiceCallRecording(engine: .geminiLive)
+            let epoch = geminiLiveController.callEpoch &+ 1
             await geminiLiveController.start()
             // Ended or replaced from the Watch while it started: nothing
-            // may keep the phone's microphone on for it.
+            // may keep the phone's microphone on for it. A conversation the
+            // phone started since is the user's and stays.
             guard isWatchVoiceCallActive, stillWanted() else {
-                closeGeminiLiveConversation()
+                if geminiLiveController.callEpoch == epoch { closeGeminiLiveConversation() }
                 return WatchVoiceStartFailure.ended
             }
         case .grokLive:
@@ -23468,9 +23470,10 @@ final class AppState: ObservableObject {
             guard !grokLiveController.isActive else { return WatchVoiceStartFailure.callRunning }
             watchStartedLiveConversation = true
             beginVoiceCallRecording(engine: .grokLive)
+            let epoch = grokLiveController.callEpoch &+ 1
             await grokLiveController.start()
             guard isWatchVoiceCallActive, stillWanted() else {
-                closeGrokLiveConversation()
+                if grokLiveController.callEpoch == epoch { closeGrokLiveConversation() }
                 return WatchVoiceStartFailure.ended
             }
         case .gptLive:
