@@ -201,6 +201,9 @@ final class AppLanguageStore: ObservableObject {
     /// Persists the selection globally for Conduit (not profile-scoped) and
     /// publishes it, which immediately re-renders the running UI.
     func select(_ language: AppLanguage) {
+        // Store the shipped spelling ("zh_hans" becomes "zh-Hans") so the
+        // picker's tags match the selection; an unshipped one follows the device.
+        let language = AppLanguage(rawValue: language.rawValue) ?? .system
         guard language != selection else { return }
         selection = language
         defaults.set(language.rawValue, forKey: Self.defaultsKey)

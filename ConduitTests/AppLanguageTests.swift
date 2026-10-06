@@ -144,6 +144,22 @@ final class AppLanguageTests: XCTestCase {
         XCTAssertEqual(AppLanguageStore(defaults: defaults).selection, .system)
     }
 
+    func testSelectingARespelledLanguageStoresTheShippedSpelling() {
+        let defaults = UserDefaults(suiteName: "AppLanguageTests")!
+        defer { defaults.removePersistentDomain(forName: "AppLanguageTests") }
+
+        for language in pinnedLanguages where language != .system {
+            let respelled = language.rawValue.replacingOccurrences(of: "-", with: "_").uppercased()
+            let store = AppLanguageStore(defaults: defaults)
+            store.select(.localization(respelled))
+            XCTAssertEqual(store.selection, language)
+            XCTAssertEqual(defaults.string(forKey: AppLanguageStore.defaultsKey), language.rawValue)
+        }
+        let store = AppLanguageStore(defaults: defaults)
+        store.select(.localization("qaa"))
+        XCTAssertEqual(store.selection, .system, "an unshipped language follows the device")
+    }
+
     func testSelectingSameLanguageDoesNotRepublish() {
         let store = AppLanguageStore()
         store.select(.system) // no-op on the default
@@ -295,7 +311,10 @@ final class AppLanguageTests: XCTestCase {
             let resolved = AppLocalization.string("\(2) conversations", language: language)
             XCTAssertTrue(resolved.contains("2"), "\(language.rawValue): \(resolved)")
             XCTAssertFalse(resolved.contains("%"), "\(language.rawValue) left a raw placeholder: \(resolved)")
-            XCTAssertNotEqual(resolved, "2 conversations", "\(language.rawValue) fell back to the source plural")
+            // Its own entry, not a fallback; the words may still match
+            // English (French "2 conversations").
+            XCTAssertNotNil(catalogValue("%lld conversations", in: language),
+                            "\(language.rawValue) has no plural entry of its own")
         }
     }
 

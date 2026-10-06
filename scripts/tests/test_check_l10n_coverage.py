@@ -203,6 +203,19 @@ class PlaceholderTests(unittest.TestCase):
         self.assertEqual(specs("%1$lld items"),
                          [(1, "int")])
 
+    def test_width_and_precision_count_as_placeholders(self):
+        self.assertEqual(specs("%.1f%%"), [(None, "float")])
+        self.assertEqual(specs("%5lld of %-8@"), [(None, "int"), (None, "object")])
+        self.assertEqual(specs("%2$.2f"), [(2, "float")])
+
+    def test_zero_padded_positional_translation_is_compatible(self):
+        key = specs("%1$02d %2$@ %3$d")
+        self.assertEqual(key, [(1, "int"), (2, "object"), (3, "int")])
+        self.assertTrue(compatible(key, specs("%3$d %2$@ %1$02d")))
+
+    def test_percent_signs_in_prose_are_not_placeholders(self):
+        self.assertEqual(specs("5% increase, 100% done"), [])
+
     def test_multiple_placeholders(self):
         self.assertEqual(specs("%@ of %lld (%@)"),
                          [(None, "object"), (None, "int"), (None, "object")])
@@ -250,6 +263,11 @@ class PlaceholderTests(unittest.TestCase):
         key = [(None, "object"), (None, "int")]
         self.assertTrue(compatible(key, [(2, "int"), (1, "object")]))
         self.assertFalse(compatible(key, [(2, "object"), (1, "int")]))
+
+    def test_positional_translation_must_use_every_argument(self):
+        key = [(None, "object"), (None, "object")]
+        self.assertFalse(compatible(key, [(1, "object"), (1, "object")]))
+        self.assertTrue(compatible(key, [(2, "object"), (1, "object")]))
 
     def test_mixed_positional_translation_fails(self):
         # "%1$@ and %lld": Foundation's numbering of the bare %lld is
@@ -462,6 +480,22 @@ class PluralCategoryTests(unittest.TestCase):
             "%lld files": {"localizations": {"fr": unit("%lld fichiers")}}}}
         self.assertEqual(problems_for(catalog, ["fr"]), {})
 
+    def test_the_table_follows_current_cldr(self):
+        # Spot checks against unicode-org/cldr plurals.xml, including rules
+        # that changed in recent CLDR versions (he lost many, gl gained it).
+        expected = {
+            "he": ("one", "two", "other"),
+            "gl": ("one", "many", "other"),
+            "vi": ("one", "other"),
+            "pt-PT": ("one", "many", "other"),
+            "mt": ("one", "two", "few", "many", "other"),
+            "zh-Hans": ("other",),
+            "ar": ("zero", "one", "two", "few", "many", "other"),
+        }
+        for language, categories in expected.items():
+            self.assertEqual(check_l10n_coverage.plural_categories(language),
+                             categories, language)
+
     def test_an_incomplete_plural_keeps_a_draft_from_being_ready(self):
         catalog = plural_catalog(ru=plural("one", "other"))
         self.assertFalse(check_l10n_coverage.language_is_complete(catalog, "ru"))
@@ -503,6 +537,22 @@ class DraftLanguageTests(unittest.TestCase):
         problems = problems_for(catalog, [], ["ja"])
         self.assertEqual(problems["Hello"], ["ja value is empty"])
 
+    def test_nested_variation_units_are_checked(self):
+        # A plural inside a device variant: its units count for coverage and
+        # get the same integrity checks as top-level ones.
+        nested = {"variations": {"device": {"iphone": {"variations": {"plural": {
+            "other": {"stringUnit": {"state": "translated", "value": "%@ 件"}}}}}}}}
+        catalog = {"strings": {"%lld items": {"localizations": {"ja": nested}}}}
+        problems = problems_for(catalog, [], ["ja"])
+        self.assertTrue(any("ja placeholders" in p for p in problems["%lld items"]))
+
+    def test_a_malformed_draft_is_not_ready_to_ship(self):
+        for key, value in (("%lld files", "%@ ファイル"), ("Hello", "\\u3053")):
+            catalog = catalog_with(key, value, language="ja")
+            self.assertFalse(check_l10n_coverage.language_is_complete(catalog, "ja"), value)
+        catalog = catalog_with("%lld files", "%lld ファイル", language="ja")
+        self.assertTrue(check_l10n_coverage.language_is_complete(catalog, "ja"))
+
     def test_the_same_partial_language_fails_once_it_ships(self):
         catalog = {"strings": {
             "Hello": {"localizations": {"ja": unit("こんにちは")}},
@@ -540,6 +590,10 @@ class LanguagePlanTests(unittest.TestCase):
     def test_the_source_language_cannot_be_a_draft(self):
         plan = self.plan(catalogs_with({"Hello": {"fr": "Bonjour"}}), ["EN"])
         self.assertTrue(any("source language" in p for p in plan.problems))
+
+    def test_base_cannot_be_a_draft(self):
+        plan = self.plan(catalogs_with({"Hello": {"fr": "Bonjour"}}), ["Base"])
+        self.assertTrue(any("lists Base" in p for p in plan.problems))
 
     def test_catalogs_must_share_a_source_language(self):
         catalogs = catalogs_with({"Hello": {"fr": "Bonjour"}})
@@ -649,6 +703,13 @@ class CatalogFileTests(unittest.TestCase):
         self.write("Conduit/Info.plist", plistlib.dumps(
             {"ConduitDraftLanguages": drafts}), mode="wb")
         self.write("Conduit/View.swift", 'Text("Hello")\nText("Bye")\n')
+
+    def test_a_corrupt_catalog_fails_the_check_cleanly(self):
+        self.write_repo(drafts=[])
+        self.write("Conduit/Localizable.xcstrings", '{"strings": {\n<<<<<<< HEAD\n')
+        with self.assertRaises(check_l10n_coverage.CatalogError) as caught:
+            check_l10n_coverage.check(self.directory.name)
+        self.assertIn("Conduit/Localizable.xcstrings", str(caught.exception))
 
     def test_an_unreadable_info_plist_fails_the_check_cleanly(self):
         self.write_repo(drafts=[])
