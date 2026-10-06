@@ -2282,7 +2282,7 @@ final class HermesClient: ObservableObject {
         let object = result.objectValue
         if let reference = object?["ref_text"]?.stringValue?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !reference.isEmpty {
+           reference.hasPrefix("@file:"), reference.count > "@file:".count {
             return reference
         }
         let path = [object?["ref_path"], object?["path"]]
@@ -3707,12 +3707,21 @@ enum MessageNormalizer {
     /// Hermes appends what it expanded for `@file:`/`@url:` references below
     /// the typed text ("--- Context Warnings ---", "--- Attached Context ---").
     /// That is for the model; like Desktop, the bubble shows only the text.
+    /// Hermes only adds the footer to a prompt holding a reference, so a
+    /// heading typed in a message without one stays.
     static func removingContextFooter(_ text: String) -> String {
         guard let footer = text.range(
             of: #"(?:^|\n)--- (?:Context Warnings|Attached Context) ---[ \t]*(?:\r?\n|$)"#,
             options: .regularExpression
         ) else { return text }
-        return String(text[..<footer.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let visible = String(text[..<footer.lowerBound])
+        // Hermes' reference shapes (`context_references.REFERENCE_PATTERN`
+        // and its plugin fallback): `@diff`, `@staged`, or `@kind:value`.
+        guard visible.range(
+            of: #"(?<![\w/])@(?:diff\b|staged\b|[A-Za-z][A-Za-z0-9_-]*:\S)"#,
+            options: .regularExpression
+        ) != nil else { return text }
+        return visible.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// One whole line holding one `@file:` reference, its value quoted the
