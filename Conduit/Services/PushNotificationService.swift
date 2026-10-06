@@ -685,10 +685,13 @@ final class PushNotificationService: ObservableObject {
             ]
             guard let response = try? await request(path, "POST", body),
                   response["ok"] as? Bool == true,
-                  response["kid"] as? String == record.kid,
-                  Self.e2eKeyStore.save(record) else {
+                  response["kid"] as? String == record.kid else {
                 continue
             }
+            // Unregistered or moved relays while the request was out: the
+            // key belongs to a pairing this iPhone no longer has.
+            guard registration?.installationID == installationID else { break }
+            guard Self.e2eKeyStore.save(record) else { continue }
             NotificationSharedSettings.keysProvisioned = true
             // The plugin now holds only this key for the pairing.
             for stale in records where stale.installationID == installationID && stale.gatewayID == gatewayID {

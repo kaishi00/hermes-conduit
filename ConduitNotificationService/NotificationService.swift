@@ -19,7 +19,7 @@ final class NotificationService: UNNotificationServiceExtension {
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
         lock.withLock { self.contentHandler = contentHandler }
         guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
-            contentHandler(request.content)
+            deliver(request.content)
             return
         }
         let userInfo = content.userInfo
