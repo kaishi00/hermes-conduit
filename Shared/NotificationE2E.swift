@@ -19,7 +19,7 @@ enum NotificationE2E {
     static let userInfoKey = "conduit_e2e"
     static let answerPrefix = "e2e1."
     static let maxAge: TimeInterval = 24 * 60 * 60
-    static let maxClockSkew: TimeInterval = 10 * 60
+    static let maxClockSkew: TimeInterval = 60 * 60
 
     private static let salt = Data("conduit-e2e-v1".utf8)
     private static let pushInfo = Data("conduit-e2e-v1 push gateway-to-device".utf8)
