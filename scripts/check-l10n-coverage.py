@@ -167,10 +167,11 @@ MODIFIER_RE = re.compile(
 # backslash-u-hex shape is targeted; ordinary backslashes stay legal.
 MALFORMED_ESCAPE_RE = re.compile("\\\\u[0-9a-fA-F]{4}")
 
-# Optional width and precision (%.1f, %5lld, %-8@) count like the bare form.
-# No space or "+" flag: "5% increase" is prose, not "% i".
+# Flags, width and precision (%.1f, %5lld, %-8@, %+d, %'d) count like the
+# bare form. No space flag ("5% increase" is prose, not "% i") and no "#"
+# ("%#@name@" is a plural substitution, not an argument).
 _PLACEHOLDER_RE = re.compile(
-    r"%(?:(\d+)\$)?(?:-?\d*(?:\.\d+)?(?=[@dfilu]))?"
+    r"%(?:(\d+)\$)?(?:[-+']*\d*(?:\.\d+)?(?=[@dfilu]))?"
     r"([@df]|l{1,2}[diu]|lf|@|d|i|u|%)")
 
 # Interpolation expressions that request an INTEGER runtime placeholder
@@ -500,8 +501,9 @@ def value_problem(language: str, value: str, key_specs):
     if MALFORMED_ESCAPE_RE.search(value):
         return (f"{language} value contains malformed literal Unicode escape "
                 f"sequences (double-escaped authoring bug)")
-    if not placeholders_compatible(key_specs, placeholder_specs(value)):
-        return (f"{language} placeholders {placeholder_specs(value)} "
+    value_specs = placeholder_specs(value)
+    if not placeholders_compatible(key_specs, value_specs):
+        return (f"{language} placeholders {value_specs} "
                 f"do not match key placeholders {key_specs}")
     return None
 
@@ -633,6 +635,34 @@ def _repeated_keys(value, path=()):
             yield from _repeated_keys(child, path)
 
 
+def _shape_problem(catalog):
+    """Where a decoded catalog departs from the String Catalog shape the
+    checker walks, or None."""
+    if not isinstance(catalog, dict) or not isinstance(catalog.get("strings"), dict):
+        return 'no "strings" object'
+    for key, entry in catalog["strings"].items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("localizations", {}), dict):
+            return f"entry {key!r} is not a catalog entry"
+        for language, localization in entry.get("localizations", {}).items():
+            if not _is_localization(localization):
+                return f"entry {key!r} has a malformed {language} localization"
+    return None
+
+
+def _is_localization(localization) -> bool:
+    """A localization dict: an optional stringUnit with a text value, and
+    optional variations whose cases are localizations themselves."""
+    if not isinstance(localization, dict):
+        return False
+    unit = localization.get("stringUnit", {})
+    if not isinstance(unit, dict) or not isinstance(unit.get("value"), (str, type(None))):
+        return False
+    variations = localization.get("variations", {})
+    return isinstance(variations, dict) and all(
+        isinstance(cases, dict) and all(_is_localization(case) for case in cases.values())
+        for cases in variations.values())
+
+
 def load_catalog(path: str):
     """Load a String Catalog. Returns (catalog, duplicates), where
     duplicates maps a catalog key to its problems: plain JSON loading
@@ -640,8 +670,9 @@ def load_catalog(path: str):
     second, conflicting translation."""
     with open(path, encoding="utf-8") as handle:
         catalog = json.load(handle, object_pairs_hook=_remember_repeats)
-    if not isinstance(catalog, dict) or not isinstance(catalog.get("strings"), dict):
-        raise ValueError('not a String Catalog (no "strings" object)')
+    problem = _shape_problem(catalog)
+    if problem:
+        raise ValueError(f"not a String Catalog ({problem})")
     duplicates = {}
     for where, key in _repeated_keys(catalog):
         if where == ("strings",):

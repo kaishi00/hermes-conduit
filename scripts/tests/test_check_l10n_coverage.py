@@ -207,6 +207,10 @@ class PlaceholderTests(unittest.TestCase):
         self.assertEqual(specs("%.1f%%"), [(None, "float")])
         self.assertEqual(specs("%5lld of %-8@"), [(None, "int"), (None, "object")])
         self.assertEqual(specs("%2$.2f"), [(2, "float")])
+        self.assertEqual(specs("%+d and %'lld"), [(None, "int"), (None, "int")])
+
+    def test_plural_substitutions_are_not_arguments(self):
+        self.assertEqual(specs("%#@conversations@"), [])
 
     def test_zero_padded_positional_translation_is_compatible(self):
         key = specs("%1$02d %2$@ %3$d")
@@ -726,7 +730,13 @@ class CatalogFileTests(unittest.TestCase):
         self.assertIn("Conduit/Localizable.xcstrings", str(caught.exception))
 
     def test_a_catalog_of_the_wrong_shape_fails_the_check_cleanly(self):
-        for content in ("[]", '{"sourceLanguage": "en"}', '{"strings": []}'):
+        for content in ("[]", '{"sourceLanguage": "en"}', '{"strings": []}',
+                        '{"strings": {"Hello": "Bonjour"}}',
+                        '{"strings": {"Hello": {"localizations": {"fr": "Bonjour"}}}}',
+                        '{"strings": {"Hello": {"localizations": {"fr": '
+                        '{"stringUnit": {"value": 3}}}}}}',
+                        '{"strings": {"%lld": {"localizations": {"fr": '
+                        '{"variations": {"plural": {"other": "x"}}}}}}}'):
             self.write_repo(drafts=[])
             self.write("Conduit/Localizable.xcstrings", content)
             with self.assertRaises(check_l10n_coverage.CatalogError, msg=content) as caught:
