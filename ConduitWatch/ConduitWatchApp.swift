@@ -77,8 +77,10 @@ struct WatchHomeView: View {
 
 struct WatchCallView: View {
     @EnvironmentObject private var call: WatchCallModel
-    /// The lab and a call can't share the audio session.
+    /// The lab shares the call's audio session and the link test its
+    /// channel to the iPhone: neither runs during a call.
     @EnvironmentObject private var lab: WatchLabModel
+    @EnvironmentObject private var soak: WatchSoakModel
 
     var body: some View {
         ScrollView {
@@ -87,6 +89,11 @@ struct WatchCallView: View {
                 Text(phaseText)
                     .font(.headline)
                     .multilineTextAlignment(.center)
+                if let startBlocked {
+                    Text(startBlocked)
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                }
                 if let caption = call.caption {
                     Text(caption)
                         .font(.footnote)
@@ -122,6 +129,14 @@ struct WatchCallView: View {
         .navigationTitle("Hermes")
     }
 
+    /// Why a call can't start now, if it can't.
+    private var startBlocked: String? {
+        guard !call.isActive else { return nil }
+        if lab.isBusy || lab.isWatching { return "End the lab test first." }
+        if soak.isRunning { return "Stop the link test first." }
+        return nil
+    }
+
     /// What a tap on the orb does now.
     private var orbLabel: String {
         if case .live = call.phase { return "Interrupt" }
@@ -143,7 +158,7 @@ struct WatchCallView: View {
                 .foregroundStyle(orbColor)
         }
         .buttonStyle(.plain)
-        .disabled(!call.isActive && (lab.isBusy || lab.isWatching))
+        .disabled(startBlocked != nil)
         .accessibilityLabel(orbLabel)
         if #available(watchOS 11, *) {
             button.handGestureShortcut(.primaryAction)
@@ -185,10 +200,15 @@ struct WatchCallView: View {
 
 struct WatchSoakView: View {
     @EnvironmentObject private var soak: WatchSoakModel
+    /// The link test would share the call's channel to the iPhone.
+    @EnvironmentObject private var call: WatchCallModel
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
+                if !soak.isRunning, call.isActive {
+                    Text("End the call to run the link test.").font(.footnote)
+                }
                 if !soak.isRunning {
                     Picker("Packets", selection: $soak.preset) {
                         ForEach(WatchSoakModel.presets) { preset in
@@ -201,6 +221,7 @@ struct WatchSoakView: View {
                         }
                     }
                     Button("Start") { soak.start() }
+                        .disabled(call.isActive)
                 } else {
                     Button("Stop", role: .destructive) { soak.stop() }
                 }

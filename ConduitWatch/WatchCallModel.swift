@@ -169,7 +169,7 @@ final class WatchCallModel: ObservableObject {
         do {
             try audio.start(options: .init(voiceProcessing: fullDuplex), playbackRate: Self.downlinkRate)
             micPaused = false
-            phase = .live(phonePhase ?? .listening)
+            phase = .live(phonePhase ?? .connecting)
             link.send(.resumed(callID: callID))
             WatchProbeLog.shared.note("callResumedByTap")
         } catch {

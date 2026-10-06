@@ -160,6 +160,9 @@ final class WatchLabModel: ObservableObject {
     /// alarm, a phone call, the wrist going down and up.
     func startWatching() async {
         guard !isWatching, !isBusy else { return }
+        // Busy while starting, so a call can't take the session meanwhile.
+        isBusy = true
+        defer { isBusy = false }
         guard await WatchAudio.requestPermission() else {
             status = WatchAudioError.permissionDenied.localizedDescription
             return

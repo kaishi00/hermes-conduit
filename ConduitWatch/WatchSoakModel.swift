@@ -82,8 +82,16 @@ final class WatchSoakModel: ObservableObject {
         link.onSoakPacket = { [weak self] in self?.receivedPacket($0) }
         link.onSoakReachabilityChange = { [weak self] reachable in self?.reachabilityChanged(reachable) }
         WatchProbeLog.shared.note("soakStart", ["runID": Int(plan.runID), "label": plan.label, "durationS": Int(plan.duration)])
-        link.send(.soakStart(plan), reply: { [weak self] _ in
+        link.send(.soakStart(plan), reply: { [weak self] answer in
             guard let self, self.isRunning else { return }
+            // The iPhone refuses while a call runs over the same link.
+            guard case .pong? = answer else {
+                self.isRunning = false
+                self.detachFromLink()
+                self.status = "The iPhone is in a call. End it to run the link test."
+                WatchProbeLog.shared.note("soakStartRefused", ["runID": Int(plan.runID)])
+                return
+            }
             self.startedAt = self.now
             self.lastTickAt = self.now
             self.status = "Running"

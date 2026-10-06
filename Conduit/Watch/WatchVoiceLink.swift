@@ -104,6 +104,11 @@ final class WatchVoiceLink: ObservableObject {
             if let callID { call.heard(callID) }
             answer(.pong(phase: callID != nil && callID == call.callID ? call.phaseName : nil))
         case .soakStart(let plan):
+            // A link test would share the channel with a call's audio.
+            guard !call.isLinked else {
+                reply?([:])
+                return
+            }
             soak.start(plan)
             answer(.pong(phase: nil))
         case .soakStop(let runID):
