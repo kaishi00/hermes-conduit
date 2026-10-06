@@ -2332,7 +2332,7 @@ private struct NotificationsSettingsDetail: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else {
-            Label(AppLocalization.string("Not end-to-end encrypted, so the relay can read these notifications. Update the notifier on this host, then open this page again."), systemImage: "lock.open")
+            Label(AppLocalization.string("Not end-to-end encrypted yet, so the relay can read these notifications. Conduit turns encryption on by itself once notifications are on and this host's notifier supports it."), systemImage: "lock.open")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

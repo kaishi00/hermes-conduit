@@ -151,18 +151,34 @@ enum NotificationE2E {
         (userInfo["conduit"] as? [String: Any]) ?? ((userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any])
     }
 
-    static func evaluate(_ userInfo: [AnyHashable: Any], records: [E2EKeyRecord], now: Date = Date()) -> Evaluation {
+    /// `knownGatewayIDs` are the relay pairings this iPhone last saw listed
+    /// for its installation (Settings > Notifications), shared through the
+    /// App Group so the extension applies the same rule.
+    static func evaluate(
+        _ userInfo: [AnyHashable: Any],
+        records: [E2EKeyRecord],
+        knownGatewayIDs: Set<String>,
+        now: Date = Date()
+    ) -> Evaluation {
         let stub = routingStub(userInfo)
         let type = (stub?["type"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard userInfo[userInfoKey] != nil else {
-            // Plaintext. Trusted only for a pairing that never provisioned a
-            // key; once one has, plaintext naming it (or naming no gateway at
-            // all while this iPhone holds any key) is a downgrade.
+            // Plaintext. With no key at all, today's behavior. Once this
+            // iPhone holds any key, plaintext is trusted only from a known
+            // pairing that never provisioned one: naming a keyed pairing, no
+            // pairing, or one this iPhone has never seen is a downgrade. The
+            // pairing list comes from the relay, so a relay that also lists
+            // a made-up pairing can still pass plaintext as that pairing; it
+            // shows up in Settings as an unencrypted pairing, and the gap
+            // closes for good once every pairing is encrypted.
+            if records.isEmpty { return .legacy }
             let gatewayID = (stub?["gateway_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if gatewayID.isEmpty {
-                return records.isEmpty ? .legacy : .untrusted(type: type)
+            guard !gatewayID.isEmpty,
+                  knownGatewayIDs.contains(gatewayID),
+                  !records.contains(where: { $0.gatewayID == gatewayID }) else {
+                return .untrusted(type: type)
             }
-            return records.contains(where: { $0.gatewayID == gatewayID }) ? .untrusted(type: type) : .legacy
+            return .legacy
         }
         guard let envelope = Envelope(userInfo[userInfoKey]),
               let type, !type.isEmpty,
@@ -216,8 +232,10 @@ enum NotificationE2E {
 
     // MARK: Generic copy
 
-    /// The private fallback for a notification Conduit can't verify. Same
-    /// wording as the relay's generic copy.
+    /// The private fallback for a notification Conduit can't verify. Kept
+    /// word for word with the relay's generic copy (English, like every
+    /// relay-written alert), so a push reads the same whether the relay or
+    /// the extension wrote it.
     static func genericCopy(for type: String?) -> (title: String, body: String) {
         switch type {
         case "approval.needed": return ("Approval needed", "Hermes is waiting for your approval.")
@@ -331,8 +349,24 @@ final class E2ESeenStore {
         return E2ESeenStore(url: container?.appendingPathComponent("e2e-seen.json"))
     }
 
-    /// Records `key` in `namespace`; false if it was already there.
+    /// Records `key` in `namespace`; false if it was already there. The app
+    /// and the extension are separate processes, so the read-modify-write
+    /// runs under a file lock beside the store.
     func insert(_ key: String, namespace: String, now: Date = Date()) -> Bool {
+        withFileLock { insertLocked(key, namespace: namespace, now: now) }
+    }
+
+    private func withFileLock<T>(_ body: () -> T) -> T {
+        guard let url else { return body() }
+        let descriptor = open(url.path + ".lock", O_CREAT | O_RDWR, 0o600)
+        guard descriptor >= 0 else { return body() }
+        defer { close(descriptor) }
+        flock(descriptor, LOCK_EX)
+        defer { flock(descriptor, LOCK_UN) }
+        return body()
+    }
+
+    private func insertLocked(_ key: String, namespace: String, now: Date) -> Bool {
         let entry = "\(namespace):\(key)"
         var entries = load()
         let cutoff = now.timeIntervalSince1970 - Self.retention
@@ -378,5 +412,14 @@ enum NotificationSharedSettings {
     static var showPreviews: Bool {
         get { defaults?.bool(forKey: showPreviewsKey) ?? false }
         set { defaults?.set(newValue, forKey: showPreviewsKey) }
+    }
+
+    private static let knownGatewayIDsKey = "conduit.notifications.knownGatewayIDs"
+
+    /// The relay pairings last listed for this iPhone (see
+    /// NotificationE2E.evaluate).
+    static var knownGatewayIDs: Set<String> {
+        get { Set(defaults?.stringArray(forKey: knownGatewayIDsKey) ?? []) }
+        set { defaults?.set(newValue.sorted(), forKey: knownGatewayIDsKey) }
     }
 }

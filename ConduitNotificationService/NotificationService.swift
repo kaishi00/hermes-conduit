@@ -24,7 +24,11 @@ final class NotificationService: UNNotificationServiceExtension {
         // Prepared up front so a timeout can only ever deliver generic text.
         fallback = Self.generic(content.mutableCopy() as? UNMutableNotificationContent ?? content, type: type)
 
-        switch NotificationE2E.evaluate(userInfo, records: KeychainE2EKeyStore().records()) {
+        switch NotificationE2E.evaluate(
+            userInfo,
+            records: KeychainE2EKeyStore().records(),
+            knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs
+        ) {
         case .legacy:
             deliver(content)
         case .untrusted(let type):

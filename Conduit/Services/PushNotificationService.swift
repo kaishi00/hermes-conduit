@@ -428,7 +428,13 @@ final class PushNotificationService: ObservableObject {
     /// Relay gateways this iPhone holds an end-to-end encryption key for
     /// (#431). Settings > Notifications marks those pairings encrypted.
     @Published private(set) var encryptedGatewayIDs: Set<String> = []
-    @Published private(set) var relayMeta: RelayMetaInfo?
+    @Published private(set) var relayMeta: RelayMetaInfo? {
+        // Plaintext from a pairing this iPhone has never seen listed isn't
+        // trusted once it holds an encryption key (#431). Kept on failure.
+        didSet {
+            if let relayMeta { NotificationSharedSettings.knownGatewayIDs = Set(relayMeta.gateways.map(\.id)) }
+        }
+    }
     @Published private(set) var isFetchingMeta = false
     /// Set after this phone moves to a different relay: pairings live on
     /// the relay, so every Hermes profile has to pair again.
@@ -596,10 +602,10 @@ final class PushNotificationService: ObservableObject {
     /// Where pairing keys live. The Keychain, shared with the Notification
     /// Service Extension; tests install an in-memory store because the
     /// unsigned simulator host has no keychain access group.
-    nonisolated(unsafe) static var e2eKeyStore: E2EKeyStoring = KeychainE2EKeyStore()
+    static let e2eKeyStore: E2EKeyStoring = KeychainE2EKeyStore()
     /// Messages already routed from a tap, shared with the extension's
     /// delivery records.
-    nonisolated(unsafe) static var e2eSeenStore: E2ESeenStore = .shared
+    static let e2eSeenStore: E2ESeenStore = .shared
 
     static let e2ePath = "/api/plugins/conduit_push/e2e"
 
@@ -1088,12 +1094,13 @@ final class PushNotificationService: ObservableObject {
 
     func receiveNotificationPayload(_ userInfo: [AnyHashable: Any]) {
         let records = Self.e2eKeyStore.records()
-        if case .verified(let verified) = NotificationE2E.evaluate(userInfo, records: records) {
+        let known = NotificationSharedSettings.knownGatewayIDs
+        guard var target = Self.parseNotificationTarget(from: userInfo, records: records, knownGatewayIDs: known) else { return }
+        if case .verified(let verified) = NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: known) {
             // A sealed message routes once: a replay of it can't open
             // anything after the original was tapped.
             guard Self.e2eSeenStore.insert(verified.envelope.replayKey, namespace: "routed") else { return }
         }
-        guard var target = Self.parseNotificationTarget(from: userInfo, records: records) else { return }
         if !preferences.decisionCards, target.decision != nil {
             // Encrypted pushes always carry the card (the relay can't strip
             // it); the preference still decides whether Conduit uses it.
@@ -1167,7 +1174,7 @@ final class PushNotificationService: ObservableObject {
     /// internal so the dashboard-identity parsing rules are testable without
     /// the singleton's registration state.
     static func parseNotificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
-        parseNotificationTarget(from: userInfo, records: e2eKeyStore.records())
+        parseNotificationTarget(from: userInfo, records: e2eKeyStore.records(), knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs)
     }
 
     /// End-to-end encryption decides what a push may drive (#431): a sealed
@@ -1177,9 +1184,10 @@ final class PushNotificationService: ObservableObject {
     static func parseNotificationTarget(
         from userInfo: [AnyHashable: Any],
         records: [E2EKeyRecord],
+        knownGatewayIDs: Set<String>,
         now: Date = Date()
     ) -> ConduitNotificationTarget? {
-        switch NotificationE2E.evaluate(userInfo, records: records, now: now) {
+        switch NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: knownGatewayIDs, now: now) {
         case .legacy:
             return parsePlaintextNotificationTarget(from: userInfo)
         case .untrusted:
