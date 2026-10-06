@@ -9,7 +9,6 @@
 //
 
 import AVFAudio
-import AudioToolbox
 import Foundation
 import SwiftUI
 
@@ -41,26 +40,22 @@ final class WatchLabModel: ObservableObject {
     func probeEncoders() {
         guard encoders.isEmpty else { return }
         let pcm = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
-        let candidates: [(String, AudioFormatID, UInt32)] = [
-            ("AAC-LC", kAudioFormatMPEG4AAC, 1_024),
-            ("AAC-ELD", kAudioFormatMPEG4AAC_ELD, 480),
-            ("Opus", kAudioFormatOpus, 320),
+        // Core Audio's format IDs as four-character codes: the watchOS SDK
+        // has no AudioToolbox module to name them.
+        let candidates: [(String, String)] = [
+            ("AAC-LC", "aac "),
+            ("AAC-ELD", "aace"),
+            ("Opus", "opus"),
         ]
         var lines: [String] = []
         var fields: [String: Any] = [:]
-        for (name, formatID, framesPerPacket) in candidates {
-            var description = AudioStreamBasicDescription(
-                mSampleRate: 16_000,
-                mFormatID: formatID,
-                mFormatFlags: 0,
-                mBytesPerPacket: 0,
-                mFramesPerPacket: framesPerPacket,
-                mBytesPerFrame: 0,
-                mChannelsPerFrame: 1,
-                mBitsPerChannel: 0,
-                mReserved: 0
-            )
-            guard let format = AVAudioFormat(streamDescription: &description),
+        for (name, code) in candidates {
+            let settings: [String: Any] = [
+                AVFormatIDKey: code.utf8.reduce(UInt32(0)) { $0 << 8 | UInt32($1) },
+                AVSampleRateKey: 16_000.0,
+                AVNumberOfChannelsKey: 1,
+            ]
+            guard let format = AVAudioFormat(settings: settings),
                   let converter = AVAudioConverter(from: pcm, to: format) else {
                 lines.append("\(name): no")
                 fields[name] = "unavailable"

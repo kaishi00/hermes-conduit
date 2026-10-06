@@ -93,6 +93,7 @@ final class WatchSoakModel: ObservableObject {
         }, failure: { [weak self] error in
             guard let self, self.isRunning else { return }
             self.isRunning = false
+            self.detachFromLink()
             self.status = "Can't reach the iPhone: \(error.localizedDescription)"
             WatchProbeLog.shared.note("soakStartFailed", ["error": error.localizedDescription])
         })
@@ -103,6 +104,7 @@ final class WatchSoakModel: ObservableObject {
         timer?.invalidate()
         timer = nil
         isRunning = false
+        detachFromLink()
         status = "Collecting the iPhone's numbers…"
         let result = makeResult(plan)
         watchResult = result
@@ -117,6 +119,11 @@ final class WatchSoakModel: ObservableObject {
             self.errors.append("soakStop: \(error.localizedDescription)")
             self.report(watch: result, phone: nil)
         })
+    }
+
+    private func detachFromLink() {
+        link.onSoakPacket = nil
+        link.onSoakReachabilityChange = nil
     }
 
     func scenePhaseChanged(_ phase: ScenePhase) {

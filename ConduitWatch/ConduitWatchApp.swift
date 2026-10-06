@@ -264,7 +264,7 @@ struct WatchLogView: View {
         List {
             Button("Clear", role: .destructive) { log.clear() }
             ForEach(Array(log.lines.reversed().enumerated()), id: \.offset) { _, line in
-                Text(line).font(.system(size: 10, design: .monospaced))
+                Text(line).font(.caption2.monospaced())
             }
         }
         .navigationTitle("Log")

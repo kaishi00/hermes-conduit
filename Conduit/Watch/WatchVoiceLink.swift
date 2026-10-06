@@ -423,6 +423,8 @@ final class WatchCallHost {
         link.send(.callState(finalState))
         let appState = AppStateRuntimeRegistry.shared.appState
         appState.finishLiveVoiceForWatch(mode)
+        input?.stop()
+        output?.stop()
         input = nil
         output = nil
         link.liveness.end("call")

@@ -139,7 +139,8 @@ final class WatchCallModel: ObservableObject {
     /// Tap on the orb while the model speaks: stop it here at once, and
     /// on the iPhone.
     func interrupt() {
-        guard isActive else { return }
+        // Nothing to stop until the iPhone's call is live.
+        guard case .live = phase else { return }
         let started = now
         audio.stopPlayback()
         stoppedTurn = currentTurn
@@ -394,7 +395,11 @@ final class WatchCallModel: ObservableObject {
                 self.finish(reason: "The call ended on your iPhone.")
                 return
             }
-            if self.phase == .unreachable { self.phase = .live(.listening) }
+            if self.phase == .unreachable {
+                var phoneName: String?
+                if case .pong(let name)? = answer { phoneName = name }
+                self.phase = .live(phoneName.flatMap(WatchVoiceWire.CallState.Phase.init(rawValue:)) ?? .listening)
+            }
         }, failure: { [weak self] error in
             guard let self, self.isActive else { return }
             self.pingFailures += 1
@@ -477,6 +482,7 @@ final class WatchCallModel: ObservableObject {
         let endToEnd = Array(turnEndToEnd.values)
         let overheads = turnEndToEnd.compactMap { turn, total in turnModelLatency[turn].map { total - $0 } }
         let battery = WKInterfaceDevice.current().batteryLevel
+        WKInterfaceDevice.current().isBatteryMonitoringEnabled = false
         WatchProbeLog.shared.report("callSummary", [
             "callID": Int(callID),
             "mode": mode as Any,

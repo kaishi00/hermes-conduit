@@ -23446,11 +23446,21 @@ final class AppState: ObservableObject {
             guard !geminiLiveController.isActive else { return WatchVoiceStartFailure.callRunning }
             beginVoiceCallRecording(engine: .geminiLive)
             await geminiLiveController.start()
+            // Ended or replaced from the Watch while it started: nothing
+            // may keep the phone's microphone on for it.
+            guard isWatchVoiceCallActive, stillWanted() else {
+                closeGeminiLiveConversation()
+                return WatchVoiceStartFailure.ended
+            }
         case .grokLive:
             stopGeminiLiveConversation()
             guard !grokLiveController.isActive else { return WatchVoiceStartFailure.callRunning }
             beginVoiceCallRecording(engine: .grokLive)
             await grokLiveController.start()
+            guard isWatchVoiceCallActive, stillWanted() else {
+                closeGrokLiveConversation()
+                return WatchVoiceStartFailure.ended
+            }
         case .gptLive:
             return WatchVoiceStartFailure.unsupportedMode
         }
