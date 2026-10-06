@@ -27,6 +27,7 @@ struct NotifierPluginStatus: Equatable {
         "gemini-live",
         "gpt-live",
         "grok-live",
+        "e2e-notifications",
     ]
 
     var state: State = .unknown

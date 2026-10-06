@@ -35,9 +35,11 @@ targets:
           - "Resources/AlternateIcons/**"
       - path: Conduit/Resources/AlternateIcons
         buildPhase: resources
-      # Apple Watch proof of concept (designs/apple-watch-voice.md): the
-      # link format and audio codec both ends share.
-      - path: Shared/WatchVoice
+      # End-to-end encrypted notifications (#431), shared with the
+      # Notification Service Extension. Also the Apple Watch proof of
+      # concept's link format and audio codec (Shared/WatchVoice,
+      # designs/apple-watch-voice.md), shared with the Watch app.
+      - path: Shared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay
@@ -54,6 +56,8 @@ targets:
     dependencies:
       - package: WebRTC
       - target: ConduitWatch
+      # Embedded as Conduit.app/PlugIns/ConduitNotificationService.appex.
+      - target: ConduitNotificationService
     postBuildScripts:
       # A draft language (Info.plist ConduitDraftLanguages) is compiled from
       # the String Catalogs like any other; drop its lproj so it never ships.
@@ -87,6 +91,30 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "Apple Development"
         PROVISIONING_PROFILE_SPECIFIER: ""
+  ConduitNotificationService:
+    # Decrypts end-to-end encrypted notifications before iOS shows them
+    # (#431). APNs still targets com.milim.relay; this App ID has no Push
+    # capability of its own.
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ConduitNotificationService
+      - path: Shared
+        # The Watch proof of concept's code, which the extension never uses.
+        excludes:
+          - "WatchVoice/**"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.NotificationService
+        PRODUCT_NAME: ConduitNotificationService
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: ConduitNotificationService/Info.plist
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        CODE_SIGN_ENTITLEMENTS: ConduitNotificationService/ConduitNotificationService.entitlements
+        PROVISIONING_PROFILE_SPECIFIER: "Conduit Notification Service App Store"
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
   ConduitTests:
     type: bundle.unit-test
     platform: iOS

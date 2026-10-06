@@ -79,7 +79,8 @@
     "WakeConfigurationStoreTests": 0.057,
     "WakeLifecycleTests": 0.015,
     "WakePhraseCompilerTests": 0.009,
-    "YoloProfileSwitchBookkeepingTests": 0.093
+    "YoloProfileSwitchBookkeepingTests": 0.093,
+    "NotificationE2ETests": 0.5
   },
   "decay": {
     "new": 0.25,
