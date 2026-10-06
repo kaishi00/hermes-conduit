@@ -43,10 +43,14 @@ struct WatchProbeSettingsSection: View {
         }
     }
 
+    // The Watch app is reachable only while it's in front with the
+    // screen awake, so a dimmed Watch reads as unreachable. Reachability
+    // comes first: `isWatchAppInstalled` has read false at launch with
+    // the Watch app installed.
     private var statusLine: String {
+        if link.isReachable { return "Watch link: Watch app reachable" }
         guard link.isActivated else { return "Watch link: not active" }
         guard link.isPaired else { return "Watch link: no Apple Watch paired" }
-        guard link.isWatchAppInstalled else { return "Watch link: Conduit isn't on the Watch yet" }
-        return link.isReachable ? "Watch link: Watch app reachable" : "Watch link: Watch app not open"
+        return "Watch link: open Conduit on the Watch and tap its screen to wake it"
     }
 }

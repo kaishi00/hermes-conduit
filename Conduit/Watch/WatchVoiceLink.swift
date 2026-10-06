@@ -25,7 +25,6 @@ final class WatchVoiceLink: ObservableObject {
 
     @Published private(set) var isActivated = false
     @Published private(set) var isPaired = false
-    @Published private(set) var isWatchAppInstalled = false
     @Published private(set) var isReachable = false
     private(set) var reachabilityChanges = 0
 
@@ -81,7 +80,6 @@ final class WatchVoiceLink: ObservableObject {
     fileprivate func sessionChanged(_ session: WCSession, activation: Bool = false) {
         isActivated = session.activationState == .activated
         isPaired = session.isPaired
-        isWatchAppInstalled = session.isWatchAppInstalled
         let reachable = session.isReachable
         if reachable != isReachable {
             isReachable = reachable
