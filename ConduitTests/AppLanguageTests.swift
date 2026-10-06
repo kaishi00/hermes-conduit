@@ -148,7 +148,7 @@ final class AppLanguageTests: XCTestCase {
         let defaults = UserDefaults(suiteName: "AppLanguageTests")!
         defer { defaults.removePersistentDomain(forName: "AppLanguageTests") }
 
-        for language in pinnedLanguages where language != .system {
+        for language in pinnedLanguages {
             let respelled = language.rawValue.replacingOccurrences(of: "-", with: "_").uppercased()
             let store = AppLanguageStore(defaults: defaults)
             store.select(.localization(respelled))
@@ -311,10 +311,15 @@ final class AppLanguageTests: XCTestCase {
             let resolved = AppLocalization.string("\(2) conversations", language: language)
             XCTAssertTrue(resolved.contains("2"), "\(language.rawValue): \(resolved)")
             XCTAssertFalse(resolved.contains("%"), "\(language.rawValue) left a raw placeholder: \(resolved)")
-            // Its own entry, not a fallback; the words may still match
-            // English (French "2 conversations").
-            XCTAssertNotNil(catalogValue("%lld conversations", in: language),
-                            "\(language.rawValue) has no plural entry of its own")
+            // Its own entry, not a fallback: the words may still match
+            // English (French "2 conversations"), so compare with the
+            // language's own compiled plural for 2.
+            guard let own = catalogValue("%lld conversations", in: language) else {
+                XCTFail("\(language.rawValue) has no plural entry of its own")
+                continue
+            }
+            XCTAssertEqual(resolved, String(format: own, locale: language.locale, 2),
+                           "\(language.rawValue) did not resolve its own plural")
         }
     }
 

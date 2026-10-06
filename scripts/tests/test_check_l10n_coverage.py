@@ -475,6 +475,20 @@ class PluralCategoryTests(unittest.TestCase):
         problems = problems_for(catalog, [], ["ru"])["%lld files"]
         self.assertEqual(problems, ["ru plural has no 'other' form"])
 
+    def test_a_plural_nested_in_a_device_variant_is_held_to_the_rules(self):
+        def on_iphone(localization):
+            return {"variations": {"device": {"iphone": localization}}}
+        catalog = plural_catalog(en=on_iphone(plural("one", "other")),
+                                 fr=on_iphone(plural("one", "other")))
+        self.assertEqual(problems_for(catalog, ["fr"])["%lld files"],
+                         ["fr plural lacks many (its plural rules use one, many, other)"])
+        self.assertFalse(check_l10n_coverage.language_is_complete(catalog, "fr"))
+
+        catalog = plural_catalog(en=on_iphone(plural("one", "other")),
+                                 ru=on_iphone(plural("one", "few", "many")))
+        problems = problems_for(catalog, [], ["ru"])["%lld files"]
+        self.assertEqual(problems, ["ru plural has no 'other' form"])
+
     def test_keys_the_source_does_not_vary_need_no_plural(self):
         catalog = {"sourceLanguage": "en", "strings": {
             "%lld files": {"localizations": {"fr": unit("%lld fichiers")}}}}
@@ -710,6 +724,14 @@ class CatalogFileTests(unittest.TestCase):
         with self.assertRaises(check_l10n_coverage.CatalogError) as caught:
             check_l10n_coverage.check(self.directory.name)
         self.assertIn("Conduit/Localizable.xcstrings", str(caught.exception))
+
+    def test_a_catalog_of_the_wrong_shape_fails_the_check_cleanly(self):
+        for content in ("[]", '{"sourceLanguage": "en"}', '{"strings": []}'):
+            self.write_repo(drafts=[])
+            self.write("Conduit/Localizable.xcstrings", content)
+            with self.assertRaises(check_l10n_coverage.CatalogError, msg=content) as caught:
+                check_l10n_coverage.check(self.directory.name)
+            self.assertIn("not a String Catalog", str(caught.exception))
 
     def test_an_unreadable_info_plist_fails_the_check_cleanly(self):
         self.write_repo(drafts=[])

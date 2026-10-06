@@ -463,22 +463,36 @@ def localization_for(localizations: dict, language: str) -> dict:
     return {}
 
 
+def plural_variations(localization) -> list:
+    """Every plural variation in a localization dict, including one nested
+    in another variation (a plural inside a device variant)."""
+    found = []
+    for dimension, variation in localization.get("variations", {}).items():
+        if dimension == "plural":
+            found.append(variation)
+        else:
+            for unit in variation.values():
+                found.extend(plural_variations(unit))
+    return found
+
+
 def plural_gap(entry: dict, language: str, source: str) -> list:
     """Plural categories `language` still lacks for a key the source varies
-    by plural. A plain string stands for the "other" form only; a missing
-    localization is reported elsewhere."""
+    by plural, at any depth. A localization with no plural variation stands
+    for the "other" form only; a missing localization is reported
+    elsewhere."""
     localizations = entry.get("localizations", {})
-    if "plural" not in localization_for(localizations, source).get("variations", {}):
+    if not plural_variations(localization_for(localizations, source)):
         return []
     localization = localization_for(localizations, language)
-    if "plural" in localization.get("variations", {}):
-        provided = set(localization["variations"]["plural"])
-    elif "stringUnit" in localization:
-        provided = {"other"}
-    else:
-        return []
+    provided = [set(plural) for plural in plural_variations(localization)]
+    if not provided:
+        if not string_unit_leaves(localization):
+            return []
+        provided = [{"other"}]
     required = plural_categories(language) or ("other",)
-    return [category for category in required if category not in provided]
+    return [category for category in required
+            if any(category not in forms for forms in provided)]
 
 
 def value_problem(language: str, value: str, key_specs):
@@ -528,8 +542,8 @@ def catalog_problems(catalog: dict, required_languages=(),
         key_specs = placeholder_specs(key)
         for language, localization in localizations.items():
             draft = normalized_language(language) in drafts
-            plural = localization.get("variations", {}).get("plural")
-            if plural is not None and "other" not in plural:
+            if any("other" not in plural
+                   for plural in plural_variations(localization)):
                 problems.setdefault(key, []).append(
                     f"{language} plural has no 'other' form")
             for unit in string_unit_leaves(localization):
@@ -558,8 +572,7 @@ def language_is_complete(catalog: dict, language: str) -> bool:
         units = string_unit_leaves(localization)
         if not units or plural_gap(entry, language, source):
             return False
-        plural = localization.get("variations", {}).get("plural")
-        if plural is not None and "other" not in plural:
+        if any("other" not in plural for plural in plural_variations(localization)):
             return False
         key_specs = placeholder_specs(key)
         for unit in units:
@@ -627,6 +640,8 @@ def load_catalog(path: str):
     second, conflicting translation."""
     with open(path, encoding="utf-8") as handle:
         catalog = json.load(handle, object_pairs_hook=_remember_repeats)
+    if not isinstance(catalog, dict) or not isinstance(catalog.get("strings"), dict):
+        raise ValueError('not a String Catalog (no "strings" object)')
     duplicates = {}
     for where, key in _repeated_keys(catalog):
         if where == ("strings",):

@@ -202,7 +202,8 @@ final class AppLanguageStore: ObservableObject {
     /// publishes it, which immediately re-renders the running UI.
     func select(_ language: AppLanguage) {
         // Store the shipped spelling ("zh_hans" becomes "zh-Hans") so the
-        // picker's tags match the selection; an unshipped one follows the device.
+        // picker's tags match the selection. A language the build doesn't
+        // ship becomes System Default, as `AppLanguage.current` reads it.
         let language = AppLanguage(rawValue: language.rawValue) ?? .system
         guard language != selection else { return }
         selection = language
