@@ -205,64 +205,83 @@ extension AppState {
 
     // MARK: - Moving to a new chat
 
-    /// "New Chat" beside the screenshot in the composer: only when it
-    /// joined a chat that's already in use. An empty chat is already new.
+    /// What a new chat for the screenshot needs: Hermes ready, and the chat
+    /// on screen already in use. An empty chat is already new.
+    private var canStartChatForScreenshot: Bool {
+        isConnected && !isConnecting && !isProfileSwitching
+            && activeRoomSurface == nil && offlineChatPresentation == nil
+            && (!messages.isEmpty || turnState.isRunning)
+    }
+
+    /// "New Chat" beside the screenshot in the composer. A screenshot the
+    /// running voice is asking about moves from the voice sheet instead.
     var canMoveComposerScreenshotToNewChat: Bool {
-        guard isConnected, !isConnecting, !isProfileSwitching, activeRoomSurface == nil,
-              pendingScreenshot(forSession: activeSessionId) != nil else { return false }
-        return !messages.isEmpty || turnState.isRunning
+        guard canStartChatForScreenshot,
+              let screenshot = pendingScreenshot(forSession: activeSessionId) else { return false }
+        return !(isVoiceInUse && voiceScreenshot == screenshot)
     }
 
-    /// "New Chat" on the voice sheet's screenshot banner, by the same rule.
-    /// A call's chat that isn't on screen can't be checked here, so it
-    /// counts as in use.
+    /// "New Chat" on the voice sheet's screenshot banner. A call whose chat
+    /// isn't on screen doesn't get it: if no new chat could start, voice
+    /// couldn't start again on that chat.
     var canMoveVoiceScreenshotToNewChat: Bool {
-        guard isConnected, !isConnecting, !isProfileSwitching, voiceScreenshot != nil else { return false }
-        if isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread, !isOpenChat(thread) {
-            return true
-        }
-        return !messages.isEmpty || turnState.isRunning
-    }
-
-    /// Moves the screenshot from the chat it joined to a fresh chat. Voice
-    /// that is open ends and starts again there; otherwise the keyboard is
-    /// ready, with `text` (what was typed beside the screenshot) carried
-    /// along. When no chat can start, both stay where they were.
-    @discardableResult
-    func moveScreenshotToNewChat(carrying text: String = "") async -> Bool {
-        let inVoice = isVoiceInUse
-        guard isConnected, let entry = takeScreenshotForNewChat() else {
-            restoreComposerText(text)
-            return false
-        }
-        if inVoice {
-            if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
-            endLiveVoiceCall()
-        }
-        let previous = activeSessionId
-        await createNewSession()
-        guard let created = activeSessionId, created != previous else {
-            // Back where it was, ready for another try.
-            setPendingScreenshot(entry.attachment, forSession: entry.sessionID)
-            restoreComposerText(text)
-            if errorMessage == nil {
-                errorMessage = AppLocalization.string("Hermes couldn't start a new chat, so the screenshot is still in this one.")
-            }
-            return false
-        }
-        setPendingScreenshot(entry.attachment, forSession: created)
-        restoreComposerText(text)
-        if inVoice {
-            await startScreenQuestionInput(.voice, on: created)
-        } else {
-            requestComposerFocus(on: created)
+        guard canStartChatForScreenshot, voiceScreenshot != nil else { return false }
+        if isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread {
+            return isOpenChat(thread)
         }
         return true
     }
 
-    /// The screenshot voice or the composer shows, taken off its chat
-    /// without deleting the file.
-    private func takeScreenshotForNewChat() -> PendingScreenshot? {
+    /// The composer's New Chat: moves the chat's screenshot, with what was
+    /// typed beside it, to a fresh chat and readies the keyboard there.
+    /// Voice running on another chat is left alone. When no chat can
+    /// start, both stay where they were.
+    @discardableResult
+    func moveComposerScreenshotToNewChat(carrying text: String = "") async -> Bool {
+        guard isConnected, let entry = takePendingScreenshotEntry(forSession: activeSessionId) else {
+            restoreComposerText(text)
+            return false
+        }
+        let created = await startChatForScreenshot(entry)
+        restoreComposerText(text)
+        guard let created else { return false }
+        requestComposerFocus(on: created)
+        return true
+    }
+
+    /// The voice sheet's New Chat: ends the voice, moves its screenshot to
+    /// a fresh chat and starts voice again there. When no chat can start,
+    /// voice starts again on the screenshot where it was.
+    @discardableResult
+    func moveVoiceScreenshotToNewChat() async -> Bool {
+        guard isConnected, let entry = takeVoiceScreenshotEntry() else { return false }
+        // Ended first: a new chat replaces the one the voice is talking in.
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        endLiveVoiceCall()
+        let created = await startChatForScreenshot(entry)
+        await startScreenQuestionInput(.voice, on: created ?? entry.sessionID)
+        return created != nil
+    }
+
+    /// Starts a chat and moves the screenshot onto it. When none starts,
+    /// the screenshot goes back where it was and the user is told.
+    private func startChatForScreenshot(_ entry: PendingScreenshot) async -> String? {
+        let previous = activeSessionId
+        await createNewSession()
+        guard let created = activeSessionId, created != previous else {
+            restorePendingScreenshot(entry.attachment, forSession: entry.sessionID)
+            if errorMessage == nil {
+                errorMessage = AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one.")
+            }
+            return nil
+        }
+        setPendingScreenshot(entry.attachment, forSession: created)
+        return created
+    }
+
+    /// The screenshot the voice sheet shows, taken off its chat without
+    /// deleting the file.
+    private func takeVoiceScreenshotEntry() -> PendingScreenshot? {
         guard isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread else {
             return takePendingScreenshotEntry(forSession: activeSessionId)
         }
@@ -344,8 +363,9 @@ extension AppState {
     /// Attaches a screenshot kept through an outage once Hermes connects and
     /// Conduit settles. Back on screen within the launch window, it starts
     /// as the press asked (voice, or its question sent). Later, the user is
-    /// in Conduit by then, so it joins the chat on screen (or a new chat on
-    /// the profile the shortcut named), with the keyboard: never the
+    /// in Conduit by then, so it joins the chat on screen (or a new chat,
+    /// when the shortcut named a profile or asked for a new chat), with
+    /// the keyboard: never the
     /// microphone, and a question waits in the composer rather than being
     /// sent long after it was asked.
     func resumeParkedScreenQuestion(now: Date = Date()) async {

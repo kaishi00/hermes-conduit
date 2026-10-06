@@ -196,7 +196,7 @@ struct ComposerBar: View {
     private func moveScreenshotToNewChat() {
         let carried = text
         replaceComposerText("")
-        Task { await appState.moveScreenshotToNewChat(carrying: carried) }
+        Task { await appState.moveComposerScreenshotToNewChat(carrying: carried) }
     }
 
     /// Returns the slash prefix being typed, or nil if the cursor has moved

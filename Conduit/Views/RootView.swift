@@ -236,7 +236,7 @@ struct MainView: View {
             screenshot: appState.voiceScreenshot,
             onDiscard: appState.discardVoiceScreenshot,
             onNewChat: appState.canMoveVoiceScreenshotToNewChat
-                ? { Task { await appState.moveScreenshotToNewChat() } }
+                ? { Task { await appState.moveVoiceScreenshotToNewChat() } }
                 : nil
         )
     }

@@ -752,7 +752,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "fresh-chat"), shot, "An empty chat is already new")
     }
 
-    func testNewChatOptionLeavesTheScreenshotWithARunningCall() async throws {
+    func testNewChatOptionLeavesTheScreenshotWithOpenVoice() async throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         openChat("composer-origin", in: harness, withMessages: true)
         harness.appState.isConnected = true
@@ -780,6 +780,11 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertTrue(harness.appState.canMoveComposerScreenshotToNewChat)
         XCTAssertTrue(harness.appState.canMoveVoiceScreenshotToNewChat)
 
+        harness.appState.showVoiceSheet = true
+        XCTAssertFalse(harness.appState.canMoveComposerScreenshotToNewChat, "Voice is asking about it: it moves from there")
+        XCTAssertTrue(harness.appState.canMoveVoiceScreenshotToNewChat)
+        harness.appState.showVoiceSheet = false
+
         harness.appState.isConnected = false
         XCTAssertFalse(harness.appState.canMoveComposerScreenshotToNewChat, "No new chat starts while disconnected")
     }
@@ -791,7 +796,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let shot = try stagedScreenshot()
         harness.appState.setPendingScreenshot(shot, forSession: "recent")
 
-        let moved = await harness.appState.moveScreenshotToNewChat(carrying: "What does this setting do?")
+        let moved = await harness.appState.moveComposerScreenshotToNewChat(carrying: "What does this setting do?")
 
         XCTAssertFalse(moved)
         XCTAssertEqual(harness.appState.activeSessionId, "recent")
@@ -801,12 +806,31 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertNotNil(harness.appState.errorMessage)
     }
 
+    func testVoiceNewChatThatCannotStartOffersTheScreenshotAgain() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChatWithoutClient("recent", in: harness)
+        harness.appState.isConnected = true
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "recent")
+
+        let moved = await harness.appState.moveVoiceScreenshotToNewChat()
+
+        XCTAssertFalse(moved)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "recent"), shot)
+        XCTAssertTrue(fileExists(shot), "Moving never deletes the screenshot")
+        XCTAssertEqual(
+            harness.appState.composerFocusRequest?.sessionID, "recent",
+            "Input starts again on the screenshot where it was (the keyboard: no voice is set up here)"
+        )
+        XCTAssertNotNil(harness.appState.errorMessage)
+    }
+
     func testNewChatWithNoScreenshotKeepsTheText() async throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         openChatWithoutClient("recent", in: harness)
         harness.appState.isConnected = true
 
-        let moved = await harness.appState.moveScreenshotToNewChat(carrying: "Typed")
+        let moved = await harness.appState.moveComposerScreenshotToNewChat(carrying: "Typed")
 
         XCTAssertFalse(moved)
         XCTAssertEqual(harness.appState.composerPrefillText, "Typed")

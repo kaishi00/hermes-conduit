@@ -11,7 +11,7 @@
         }
       }
     },
-    "Hermes couldn't start a new chat, so the screenshot is still in this one." : {
+    "Hermes could not start a new chat, so the screenshot is still in this one." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
