@@ -123,7 +123,7 @@ final class ConfigFieldLocalizationTests: XCTestCase {
             (key: $0.key, control: $0.control)
         }
         XCTAssertFalse(baseline.isEmpty)
-        for language in AppLanguage.allCases {
+        for language in AppLanguage.selectable {
             standardDefaults.set(language.rawValue, forKey: AppLanguageStore.defaultsKey)
             XCTAssertEqual(AppLanguage.current, language,
                            "each iteration must activate a different language")

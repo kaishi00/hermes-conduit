@@ -244,39 +244,66 @@ class PlaceholderTests(unittest.TestCase):
                                     [(2, "object"), (1, "int")]))
 
 
-def zh_catalog(key, value, state="translated"):
-    return {"strings": {key: {"localizations": {"zh-Hans": {
+def catalog_with(key, value, state="translated", language="zh-Hans"):
+    return {"strings": {key: {"localizations": {language: {
         "stringUnit": {"state": state, "value": value}}}}}}
 
 
+def zh_catalog(key, value, state="translated"):
+    return catalog_with(key, value, state)
+
+
+def unit(value, state="translated"):
+    return {"stringUnit": {"state": state, "value": value}}
+
+
 class CatalogProblemTests(unittest.TestCase):
-    def test_missing_zh_hans_is_reported(self):
+    def test_missing_shipped_language_is_reported(self):
         catalog = {"strings": {"Hello": {"localizations": {
-            "en": {"stringUnit": {"state": "translated", "value": "Hello"}}}}}}
-        problems = problems_for(catalog)
+            "en": unit("Hello")}}}}
+        problems = problems_for(catalog, ["zh-Hans"])
         self.assertIn("Hello", problems)
         self.assertTrue(any("missing zh-Hans" in p for p in problems["Hello"]))
 
+    def test_every_shipped_language_is_required(self):
+        # Nothing is special about zh-Hans: each shipped language must
+        # localize every key.
+        catalog = {"strings": {"Hello": {"localizations": {
+            "fr": unit("Bonjour")}}}}
+        problems = problems_for(catalog, ["fr", "ja"])
+        self.assertEqual(problems["Hello"], ["missing ja localization"])
+
+    def test_a_localization_without_units_counts_as_missing(self):
+        catalog = {"strings": {"Hello": {"localizations": {"fr": {}}}}}
+        problems = problems_for(catalog, ["fr"])
+        self.assertEqual(problems["Hello"], ["missing fr localization"])
+
+    def test_no_language_is_required_by_default(self):
+        catalog = {"strings": {"Hello": {"localizations": {}}}}
+        self.assertEqual(problems_for(catalog), {})
+
     def test_empty_value_is_reported(self):
-        problems = problems_for(zh_catalog("Hello", "  "))
+        problems = problems_for(zh_catalog("Hello", "  "), ["zh-Hans"])
         self.assertTrue(any("empty" in p for p in problems["Hello"]))
 
     def test_untranslated_state_is_reported(self):
-        problems = problems_for(zh_catalog("Hello", "你好", state="new"))
+        problems = problems_for(zh_catalog("Hello", "你好", state="new"), ["zh-Hans"])
         self.assertTrue(any("state is 'new'" in p for p in problems["Hello"]))
 
     def test_placeholder_type_mismatch_is_reported(self):
-        problems = problems_for(zh_catalog("%lld files", "%@ 个文件"))
+        problems = problems_for(zh_catalog("%lld files", "%@ 个文件"), ["zh-Hans"])
         self.assertTrue(any("placeholders" in p for p in problems["%lld files"]))
 
     def test_malformed_literal_unicode_escape_is_reported(self):
         problems = problems_for(zh_catalog("Rename conversation",
-                                           "\\u91cd\\u547d\\u540d\\u5bf9\\u8bdd"))
+                                           "\\u91cd\\u547d\\u540d\\u5bf9\\u8bdd"),
+                                ["zh-Hans"])
         self.assertTrue(any("Unicode escape" in p
                             for p in problems["Rename conversation"]))
 
     def test_real_chinese_characters_pass(self):
-        self.assertEqual(problems_for(zh_catalog("Rename conversation", "重命名对话")), {})
+        self.assertEqual(problems_for(zh_catalog("Rename conversation", "重命名对话"),
+                                      ["zh-Hans"]), {})
 
     def test_json_decoded_proper_unicode_passes(self):
         # A catalog authored with \uXXXX JSON escapes decodes to real
@@ -284,7 +311,7 @@ class CatalogProblemTests(unittest.TestCase):
         import json as j
         raw = '{"strings": {"K": {"localizations": {"zh-Hans": {"stringUnit": ' \
               '{"state": "translated", "value": "\\u91cd\\u547d\\u540d"}}}}}}'
-        problems = problems_for(j.loads(raw))
+        problems = problems_for(j.loads(raw), ["zh-Hans"])
         self.assertEqual(problems, {})
 
     def test_positional_translation_is_accepted(self):
@@ -292,22 +319,29 @@ class CatalogProblemTests(unittest.TestCase):
             "zh-Hans": {"stringUnit": {
                 "state": "translated",
                 "value": "移动所选 %1$@ 个 %2$@"}}}}}}
-        self.assertEqual(problems_for(catalog), {})
+        self.assertEqual(problems_for(catalog, ["zh-Hans"]), {})
 
     def test_translated_direct_entry_passes(self):
-        self.assertEqual(problems_for(zh_catalog("Hello", "你好")), {})
+        self.assertEqual(problems_for(zh_catalog("Hello", "你好"), ["zh-Hans"]), {})
+
+    def test_any_language_is_checked_the_same_way(self):
+        self.assertEqual(problems_for(catalog_with("Hello", "こんにちは", language="ja"),
+                                      ["ja"]), {})
+        problems = problems_for(catalog_with("%lld files", "%@ ファイル", language="ja"),
+                                ["ja"])
+        self.assertTrue(any("ja placeholders" in p for p in problems["%lld files"]))
 
     def test_variation_only_translation_passes(self):
         catalog = {"strings": {"%lld conversations": {"localizations": {
             "zh-Hans": {"variations": {"plural": {"other": {
                 "stringUnit": {"state": "translated", "value": "%lld 个会话"}}}}}}}}}
-        self.assertEqual(problems_for(catalog), {})
+        self.assertEqual(problems_for(catalog, ["zh-Hans"]), {})
 
     def test_variation_leaf_violation_is_reported(self):
         catalog = {"strings": {"%lld conversations": {"localizations": {
             "zh-Hans": {"variations": {"plural": {"other": {
                 "stringUnit": {"state": "new", "value": "%lld 个会话"}}}}}}}}}
-        problems = problems_for(catalog)
+        problems = problems_for(catalog, ["zh-Hans"])
         self.assertTrue(any("state is 'new'" in p for p in problems["%lld conversations"]))
 
     def test_stale_en_unit_with_mismatched_placeholders_is_reported(self):
@@ -319,7 +353,7 @@ class CatalogProblemTests(unittest.TestCase):
                                   "value": "%lld tasks selected"}},
             "zh-Hans": {"stringUnit": {"state": "translated",
                                        "value": "已选择 %@ 个任务"}}}}}}
-        problems = problems_for(catalog)
+        problems = problems_for(catalog, ["zh-Hans"])
         self.assertTrue(any("en placeholders" in p for p in problems["%@ tasks selected"]))
 
     def test_matching_en_unit_passes(self):
@@ -330,11 +364,11 @@ class CatalogProblemTests(unittest.TestCase):
                                          "value": "%lld conversations"}}}}},
             "zh-Hans": {"variations": {"plural": {"other": {
                 "stringUnit": {"state": "translated", "value": "%lld 个会话"}}}}}}}}}
-        self.assertEqual(problems_for(catalog), {})
+        self.assertEqual(problems_for(catalog, ["zh-Hans"]), {})
 
     def test_exempt_keys_are_not_required(self):
         catalog = {"strings": {"Hermes": {"localizations": {}}}}
-        self.assertEqual(problems_for(catalog), {})
+        self.assertEqual(problems_for(catalog, ["zh-Hans"]), {})
 
     def test_regression_keys_are_enforced(self):
         catalog = {"strings": {}}
@@ -343,9 +377,170 @@ class CatalogProblemTests(unittest.TestCase):
         self.assertIn("Missing regression key", problems)
 
 
+class DraftLanguageTests(unittest.TestCase):
+    """A draft may be partial and unreviewed, but never malformed."""
+
+    def test_partial_draft_is_not_required(self):
+        catalog = {"strings": {
+            "Hello": {"localizations": {"ja": unit("こんにちは")}},
+            "Bye": {"localizations": {}}}}
+        self.assertEqual(problems_for(catalog, [], ["ja"]), {})
+
+    def test_unreviewed_draft_units_are_allowed(self):
+        catalog = catalog_with("Hello", "こんにちは", state="needs_review", language="ja")
+        self.assertEqual(problems_for(catalog, [], ["ja"]), {})
+        catalog = catalog_with("Hello", "", state="new", language="ja")
+        self.assertEqual(problems_for(catalog, [], ["ja"]), {})
+
+    def test_draft_matching_ignores_identifier_spelling(self):
+        catalog = catalog_with("Hello", "Olá", state="new", language="pt-BR")
+        self.assertEqual(problems_for(catalog, [], ["pt_br"]), {})
+
+    def test_draft_placeholder_mismatch_is_reported(self):
+        catalog = catalog_with("%lld files", "%@ ファイル", state="needs_review", language="ja")
+        problems = problems_for(catalog, [], ["ja"])
+        self.assertTrue(any("ja placeholders" in p for p in problems["%lld files"]))
+
+    def test_draft_malformed_escape_is_reported(self):
+        catalog = catalog_with("Hello", "\\u3053", language="ja")
+        problems = problems_for(catalog, [], ["ja"])
+        self.assertTrue(any("Unicode escape" in p for p in problems["Hello"]))
+
+    def test_draft_translated_but_empty_is_reported(self):
+        catalog = catalog_with("Hello", " ", language="ja")
+        problems = problems_for(catalog, [], ["ja"])
+        self.assertEqual(problems["Hello"], ["ja value is empty"])
+
+    def test_the_same_partial_language_fails_once_it_ships(self):
+        catalog = {"strings": {
+            "Hello": {"localizations": {"ja": unit("こんにちは")}},
+            "Bye": {"localizations": {}}}}
+        self.assertEqual(problems_for(catalog, ["ja"]),
+                         {"Bye": ["missing ja localization"]})
+
+
+def catalogs_with(languages_by_key, source="en"):
+    return {check_l10n_coverage.SOURCE_CATALOG: {
+        "sourceLanguage": source,
+        "strings": {key: {"localizations": {language: unit(value)
+                                             for language, value in values.items()}}
+                    for key, values in languages_by_key.items()}}}
+
+
+class LanguagePlanTests(unittest.TestCase):
+    plan = check_l10n_coverage.LanguagePlan
+
+    def test_every_catalog_language_ships_unless_drafted(self):
+        catalogs = catalogs_with({"Hello": {"en": "Hello", "fr": "Bonjour",
+                                            "ja": "こんにちは", "de": "Hallo"}})
+        plan = self.plan(catalogs, ["ja"])
+        self.assertEqual(plan.source, "en")
+        self.assertEqual(plan.shipped, ["de", "fr"])
+        self.assertEqual(plan.drafts, ["ja"])
+        self.assertEqual(plan.problems, [])
+
+    def test_languages_in_secondary_catalogs_count(self):
+        catalogs = catalogs_with({"Hello": {"fr": "Bonjour"}})
+        catalogs["InfoPlist.xcstrings"] = {"sourceLanguage": "en", "strings": {
+            "CFBundleName": {"localizations": {"ko": unit("콘듀잇")}}}}
+        self.assertEqual(self.plan(catalogs, []).shipped, ["fr", "ko"])
+
+    def test_the_source_language_cannot_be_a_draft(self):
+        plan = self.plan(catalogs_with({"Hello": {"fr": "Bonjour"}}), ["EN"])
+        self.assertTrue(any("source language" in p for p in plan.problems))
+
+    def test_catalogs_must_share_a_source_language(self):
+        catalogs = catalogs_with({"Hello": {"fr": "Bonjour"}})
+        catalogs["InfoPlist.xcstrings"] = {"sourceLanguage": "fr", "strings": {}}
+        plan = self.plan(catalogs, [])
+        self.assertTrue(any("sourceLanguage" in p for p in plan.problems))
+
+    def test_a_complete_draft_is_flagged_ready_to_ship(self):
+        plan = self.plan(catalogs_with({"Hello": {"ja": "こんにちは"}}), ["ja"])
+        self.assertTrue(any("'ja' is complete" in note for note in plan.notes))
+
+    def test_a_partial_draft_is_not_flagged(self):
+        catalogs = catalogs_with({"Hello": {"ja": "こんにちは"}, "Bye": {"fr": "Au revoir"}})
+        self.assertEqual(self.plan(catalogs, ["ja"]).notes, [])
+
+    def test_a_draft_with_no_entries_yet_is_noted(self):
+        plan = self.plan(catalogs_with({"Hello": {"fr": "Bonjour"}}), ["ja"])
+        self.assertEqual(plan.drafts, [])
+        self.assertTrue(any("no catalog entries" in note for note in plan.notes))
+
+
+class CatalogFileTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+
+    def write(self, name, content, mode="w"):
+        path = os.path.join(self.directory.name, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, mode) as handle:
+            handle.write(content)
+        return path
+
+    def test_duplicate_catalog_keys_are_detected(self):
+        path = self.write("Localizable.xcstrings",
+                          '{"strings": {"A": {"localizations": {}}, '
+                          '"A": {"localizations": {}}}}')
+        catalog, duplicates = check_l10n_coverage.load_catalog(path)
+        self.assertEqual(duplicates, ["A"])
+        self.assertEqual(list(catalog["strings"]), ["A"])
+
+    def test_draft_languages_are_read_from_info_plist(self):
+        import plistlib
+        path = self.write("Info.plist", plistlib.dumps(
+            {"ConduitDraftLanguages": ["ja", "pt-BR"]}), mode="wb")
+        self.assertEqual(check_l10n_coverage.read_draft_languages(path), ["ja", "pt-BR"])
+
+    def test_a_missing_draft_list_means_no_drafts(self):
+        import plistlib
+        path = self.write("Info.plist", plistlib.dumps({}), mode="wb")
+        self.assertEqual(check_l10n_coverage.read_draft_languages(path), [])
+        self.assertEqual(check_l10n_coverage.read_draft_languages(
+            os.path.join(self.directory.name, "absent.plist")), [])
+
+    def test_a_malformed_draft_list_is_rejected(self):
+        import plistlib
+        path = self.write("Info.plist", plistlib.dumps(
+            {"ConduitDraftLanguages": "ja"}), mode="wb")
+        with self.assertRaises(ValueError):
+            check_l10n_coverage.read_draft_languages(path)
+
+    def write_repo(self, drafts):
+        import plistlib
+        catalog = {"sourceLanguage": "en", "strings": {
+            "Hello": {"localizations": {"fr": unit("Bonjour"), "ja": unit("こんにちは")}},
+            "Bye": {"localizations": {"fr": unit("Au revoir")}}}}
+        for key in check_l10n_coverage.REGRESSION_KEYS:
+            catalog["strings"][key] = {"localizations": {"fr": unit(key)}}
+        self.write("Conduit/Localizable.xcstrings", json.dumps(catalog))
+        self.write("Conduit/Info.plist", plistlib.dumps(
+            {"ConduitDraftLanguages": drafts}), mode="wb")
+        self.write("Conduit/View.swift", 'Text("Hello")\nText("Bye")\n')
+
+    def test_a_new_partial_language_fails_until_marked_draft(self):
+        self.write_repo(drafts=[])
+        checked, missing, key_problems, plan = check_l10n_coverage.check(
+            self.directory.name)
+        self.assertEqual((checked, missing), (2, {}))
+        self.assertEqual(plan.shipped, ["fr", "ja"])
+        self.assertIn("missing ja localization", key_problems["Bye"])
+
+        self.write_repo(drafts=["ja"])
+        _checked, _missing, key_problems, plan = check_l10n_coverage.check(
+            self.directory.name)
+        self.assertEqual(plan.shipped, ["fr"])
+        self.assertEqual(plan.drafts, ["ja"])
+        self.assertEqual(key_problems, {})
+
+
 class CheckIntegrationTests(unittest.TestCase):
     def test_repo_catalog_covers_every_call_site(self):
-        checked, missing, key_problems = check_l10n_coverage.check(
+        checked, missing, key_problems, plan = check_l10n_coverage.check(
             os.path.dirname(SCRIPTS_DIR))
         self.assertEqual(
             missing, {},
@@ -353,7 +548,9 @@ class CheckIntegrationTests(unittest.TestCase):
         self.assertGreater(checked, 1000)
         self.assertEqual(
             key_problems, {},
-            f"catalog keys without usable zh-Hans: {sorted(key_problems)}")
+            f"catalog keys with localization problems: {sorted(key_problems)}")
+        self.assertIn(plan.source, ("en",))
+        self.assertTrue(plan.shipped, "the repo ships at least one translation")
         catalog_path = os.path.join(os.path.dirname(SCRIPTS_DIR),
                                     "Conduit", "Localizable.xcstrings")
         with open(catalog_path, encoding="utf-8") as handle:

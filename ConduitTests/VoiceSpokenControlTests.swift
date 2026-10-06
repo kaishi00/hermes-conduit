@@ -183,7 +183,7 @@ final class VoiceSpokenMultilingualCommandTests: XCTestCase {
         // selection between matches (restored in defer).
         let standardDefaults = UserDefaults.standard
         defer { standardDefaults.removeObject(forKey: AppLanguageStore.defaultsKey) }
-        for language in AppLanguage.allCases {
+        for language in AppLanguage.selectable {
             standardDefaults.set(language.rawValue, forKey: AppLanguageStore.defaultsKey)
             XCTAssertEqual(AppLanguage.current, language)
             XCTAssertTrue(VoiceSpokenCommands.matches("停止", phrases: defaults),

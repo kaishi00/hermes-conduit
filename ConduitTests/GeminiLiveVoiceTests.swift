@@ -331,7 +331,7 @@ extension HermesVoiceGatewayTimeoutTests {
     func testGeminiLiveNoAPIKeyStatusHasActionablePresentationWhilePreservingOtherHostReasons() {
         let defaults = UserDefaults.standard
         let previousLanguage = defaults.string(forKey: AppLanguageStore.defaultsKey)
-        defaults.set(AppLanguage.english.rawValue, forKey: AppLanguageStore.defaultsKey)
+        defaults.set(AppLanguage.source.rawValue, forKey: AppLanguageStore.defaultsKey)
         defer {
             if let previousLanguage {
                 defaults.set(previousLanguage, forKey: AppLanguageStore.defaultsKey)
@@ -358,7 +358,7 @@ extension HermesVoiceGatewayTimeoutTests {
     func testGeminiLiveMissingEndpointHasActionableNotifierSetupMessage() async throws {
         let defaults = UserDefaults.standard
         let previousLanguage = defaults.string(forKey: AppLanguageStore.defaultsKey)
-        defaults.set(AppLanguage.english.rawValue, forKey: AppLanguageStore.defaultsKey)
+        defaults.set(AppLanguage.source.rawValue, forKey: AppLanguageStore.defaultsKey)
         defer {
             if let previousLanguage {
                 defaults.set(previousLanguage, forKey: AppLanguageStore.defaultsKey)

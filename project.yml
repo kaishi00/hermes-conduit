@@ -45,8 +45,20 @@ targets:
         CODE_SIGN_IDENTITY: "Apple Distribution"
         CODE_SIGN_ENTITLEMENTS: Conduit/Conduit.entitlements
         PROVISIONING_PROFILE_SPECIFIER: "Conduit App Store"
+        # The draft-stripping phase below deletes lprojs it can't declare
+        # up front, which the user-script sandbox would refuse.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
     dependencies:
       - package: WebRTC
+    postBuildScripts:
+      # A draft language (Info.plist ConduitDraftLanguages) is compiled from
+      # the String Catalogs like any other; drop its lproj so it never ships.
+      - name: Strip draft localizations
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/strip-draft-localizations.py" \
+            --info-plist "$SRCROOT/$INFOPLIST_FILE" \
+            --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
   ConduitTests:
     type: bundle.unit-test
     platform: iOS

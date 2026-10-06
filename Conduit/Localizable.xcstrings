@@ -889,16 +889,6 @@
         }
       }
     },
-    "Connect to Hermes before starting voice." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "开始语音前请先连接 Hermes。"
-          }
-        }
-      }
-    },
     "Connected to %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -13170,6 +13160,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "为工作区命名并添加一个或多个文件夹。"
+          }
+        }
+      }
+    },
+    "Name of this language" : {
+      "comment" : "The name of the language you are translating into, written in that language (for example 简体中文 or 日本語). Shown as this language's choice in Settings > Appearance > App language.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "English"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "简体中文"
           }
         }
       }
