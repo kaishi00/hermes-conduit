@@ -190,6 +190,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         let sent = await harness.appState.submitComposer(text: "What is this?", attachments: [photo])
 
         XCTAssertFalse(sent, "Only a refusal to read it as an image falls back")
+        XCTAssertEqual(recorder.imageUploads, ["photo.png"])
         XCTAssertTrue(recorder.fileUploads.isEmpty)
         XCTAssertTrue(recorder.prompts.isEmpty)
     }
