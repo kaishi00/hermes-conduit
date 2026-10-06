@@ -436,6 +436,26 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         }
     }
 
+    func testTheCallOrbSpendsSixtyFramesOnlyWhileSpeakingAndHoldsStillWhenHot() {
+        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(for: .speaking, lowPowerMode: false), 60)
+        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(for: .listening, lowPowerMode: false), 30,
+                       "most of a call is listening, often in silence")
+        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(for: .idle, lowPowerMode: false), 30)
+        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(for: .speaking, lowPowerMode: true), 30)
+
+        func animates(requested: Bool = true, enabled: Bool = true, reduceMotion: Bool = false,
+                      thermal: ProcessInfo.ThermalState = .nominal) -> Bool {
+            LiveVoiceOrbPower.animates(requested: requested, enabled: enabled, reduceMotion: reduceMotion, thermalState: thermal)
+        }
+        XCTAssertTrue(animates())
+        XCTAssertTrue(animates(thermal: .fair))
+        XCTAssertFalse(animates(thermal: .serious))
+        XCTAssertFalse(animates(thermal: .critical))
+        XCTAssertFalse(animates(enabled: false), "the Voice setting turns the motion off")
+        XCTAssertFalse(animates(reduceMotion: true))
+        XCTAssertFalse(animates(requested: false), "the small accessory orb stays still")
+    }
+
     func testTheLiquidOrbSpeechSwellIsSilentAtZeroAndStaysInRange() {
         XCTAssertEqual(LiquidOrbAudio.speech(intensity: 0, at: 12.3), LiquidOrbAudio())
         var untouched: [Float] = Array(repeating: 0.5, count: 136)

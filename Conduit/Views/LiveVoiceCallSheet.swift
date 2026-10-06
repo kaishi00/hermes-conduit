@@ -473,6 +473,19 @@ struct LiveVoiceOrb: View {
     var animates = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(LiveVoiceOrbPower.preferenceKey) private var motionEnabled = true
+    @ObservedObject private var power = DevicePowerState.shared
+
+    /// Whether this orb moves: also off when the user turned the motion
+    /// off or the phone runs hot (see LiveVoiceOrbPower).
+    private var isMoving: Bool {
+        LiveVoiceOrbPower.animates(
+            requested: animates,
+            enabled: motionEnabled,
+            reduceMotion: reduceMotion,
+            thermalState: power.thermalState
+        )
+    }
 
     struct Motion: Equatable {
         /// Scale swing either side of 1.
@@ -532,7 +545,13 @@ struct LiveVoiceOrb: View {
             // The sphere fills 72% of its canvas and the glow the rest: draw
             // it larger than the frame so the sphere itself keeps the old
             // orb's size, without the glow taking layout space.
-            LiquidOrbView(pipeline: pipeline, state: look.state, speech: look.speech, animates: animates && !reduceMotion)
+            LiquidOrbView(
+                pipeline: pipeline,
+                state: look.state,
+                speech: look.speech,
+                animates: isMoving,
+                framesPerSecond: LiveVoiceOrbPower.framesPerSecond(for: look.state, lowPowerMode: power.isLowPowerModeEnabled)
+            )
                 .frame(width: size * 1.3, height: size * 1.3)
                 .frame(width: proxy.size.width, height: proxy.size.height)
         }
@@ -543,7 +562,7 @@ struct LiveVoiceOrb: View {
     @ViewBuilder
     private var gradientOrb: some View {
         let motion = Self.motion(for: phase)
-        let moves = animates && !reduceMotion && motion.amplitude > 0
+        let moves = isMoving && motion.amplitude > 0
         // 30 fps is plenty for a slow swell and spares ProMotion's 120 Hz.
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !moves)) { context in
             let t = context.date.timeIntervalSinceReferenceDate

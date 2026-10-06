@@ -379,6 +379,29 @@ enum VoiceScreenAwake {
     }
 }
 
+/// How hard the live call orb works the GPU (#432). It is a heavy
+/// Metal shader, so frames are spent only where they show: 60 fps while the
+/// assistant speaks, 30 the rest of the call, 30 throughout in Low Power
+/// Mode, and a still frame when the user turns the motion off, Reduce Motion
+/// is on, or the phone runs hot.
+enum LiveVoiceOrbPower {
+    /// "Animate the call orb": a device-wide choice (not per profile).
+    static let preferenceKey = "conduit.voice.animateCallOrb"
+
+    static func animates(
+        requested: Bool,
+        enabled: Bool,
+        reduceMotion: Bool,
+        thermalState: ProcessInfo.ThermalState
+    ) -> Bool {
+        requested && enabled && !reduceMotion && thermalState.rawValue < ProcessInfo.ThermalState.serious.rawValue
+    }
+
+    static func framesPerSecond(for state: LiquidOrbState, lowPowerMode: Bool) -> Int {
+        state == .speaking && !lowPowerMode ? 60 : 30
+    }
+}
+
 /// Read Aloud playback speed: a device-wide choice (not per profile) for the
 /// speaker button under replies. Voice conversations always play at 1x.
 enum ReadAloudSpeed: Double, CaseIterable, Identifiable {

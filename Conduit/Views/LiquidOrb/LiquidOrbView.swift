@@ -311,6 +311,40 @@ private func mixSrgb(_ from: Float, _ to: Float, _ progress: Float) -> Float {
     linearToSrgb(srgbToLinear(from) + (srgbToLinear(to) - srgbToLinear(from)) * progress)
 }
 
+// MARK: - Device power
+
+/// The phone's thermal state and Low Power Mode, published on the main
+/// thread so the call orb can slow down or hold still (#432).
+final class DevicePowerState: ObservableObject {
+    static let shared = DevicePowerState()
+
+    @Published private(set) var thermalState: ProcessInfo.ThermalState
+    @Published private(set) var isLowPowerModeEnabled: Bool
+    private let notificationCenter: NotificationCenter
+    private var observers: [NSObjectProtocol] = []
+
+    init(processInfo: ProcessInfo = .processInfo, notificationCenter: NotificationCenter = .default) {
+        self.notificationCenter = notificationCenter
+        thermalState = processInfo.thermalState
+        isLowPowerModeEnabled = processInfo.isLowPowerModeEnabled
+        // Both are posted on whichever thread noticed the change.
+        observers.append(notificationCenter.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.thermalState = processInfo.thermalState
+        })
+        observers.append(notificationCenter.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.isLowPowerModeEnabled = processInfo.isLowPowerModeEnabled
+        })
+    }
+
+    deinit {
+        for observer in observers { notificationCenter.removeObserver(observer) }
+    }
+}
+
 // MARK: - View
 
 /// The Metal orb as a SwiftUI view. Check `LiquidOrbPipeline.shared` first:
@@ -321,6 +355,8 @@ struct LiquidOrbView: UIViewRepresentable {
     /// 0...1: how strongly the orb swells as if speaking.
     var speech: Float = 0
     var animates = true
+    /// See LiveVoiceOrbPower: 60 only while speaking, unless in Low Power Mode.
+    var framesPerSecond = 30
 
     func makeCoordinator() -> LiquidOrbRenderer {
         LiquidOrbRenderer(pipeline: pipeline, state: state, animates: animates)
@@ -348,8 +384,7 @@ struct LiquidOrbView: UIViewRepresentable {
     }
 
     private func configure(_ view: MTKView, renderer: LiquidOrbRenderer) {
-        // The resting orb barely drifts: half the frames is enough there.
-        view.preferredFramesPerSecond = state == .idle && speech == 0 ? 30 : 60
+        view.preferredFramesPerSecond = framesPerSecond
         view.isPaused = !animates
         view.enableSetNeedsDisplay = !animates
         if !animates { view.setNeedsDisplay() }

@@ -488,7 +488,8 @@ final class GPTLiveConversationController: ObservableObject {
             // what it said into the pause stays readable.
             modelTurnActive = true
             lastModelOutputAt = now()
-            if endRequestedAt == nil, !audioPaused { phase = .speaking }
+            // Only the change: an unchanged phase would still publish.
+            if endRequestedAt == nil, !audioPaused, phase != .speaking { phase = .speaking }
             appendTranscript(text, speaker: .assistant)
         case .turnDone(let role, let text):
             switch role {

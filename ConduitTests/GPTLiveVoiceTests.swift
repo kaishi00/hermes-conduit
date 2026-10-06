@@ -10,6 +10,7 @@
 //
 
 import AVFAudio
+import Combine
 import CarPlay
 import UIKit
 import XCTest
@@ -774,6 +775,20 @@ extension VoiceConversationControllerTests {
         olderSession.becomeReady()
         XCTAssertEqual(olderSession.speakable.map(\.text), ["[greet]"], "Once per call")
         older.stop()
+    }
+
+    func testGPTLivePublishesSpeakingOncePerTurnNotOnEveryFragment() async {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        var published: [GPTLiveConversationController.Phase] = []
+        let watch = controller.$phase.dropFirst().sink { published.append($0) }
+        for fragment in ["Hel", "lo", " the", "re."] {
+            session.onEvent?(.outputTranscript(fragment))
+        }
+        XCTAssertEqual(published, [.speaking])
+        watch.cancel()
+        controller.stop()
     }
 
     func testGPTLiveTranscriptFragmentsAreJoinedAsTheyComeWithoutAddedSpaces() async {

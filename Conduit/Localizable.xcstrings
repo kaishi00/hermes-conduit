@@ -35431,6 +35431,38 @@
           }
         }
       }
+    },
+    "Animate the call orb" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話中のオーブを動かす"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话光球动画"
+          }
+        }
+      }
+    },
+    "The orb on the live call screen moves with the call. Turn this off for a still orb that uses less battery. It also holds still while the phone is hot or Reduce Motion is on. Applies to this device." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブ通話画面のオーブは通話に合わせて動きます。オフにすると、オーブが静止してバッテリーの消費が減ります。iPhoneが熱くなっているときや「視差効果を減らす」がオンのときも静止します。このデバイスに適用されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实时通话界面上的光球会随通话而动。关闭后光球保持静止，更省电。手机发热或开启“减弱动态效果”时，光球也会保持静止。仅适用于此设备。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
