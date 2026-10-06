@@ -77,6 +77,8 @@ struct WatchHomeView: View {
 
 struct WatchCallView: View {
     @EnvironmentObject private var call: WatchCallModel
+    /// The lab and a call can't share the audio session.
+    @EnvironmentObject private var lab: WatchLabModel
 
     var body: some View {
         ScrollView {
@@ -141,6 +143,7 @@ struct WatchCallView: View {
                 .foregroundStyle(orbColor)
         }
         .buttonStyle(.plain)
+        .disabled(!call.isActive && (lab.isBusy || lab.isWatching))
         .accessibilityLabel(orbLabel)
         if #available(watchOS 11, *) {
             button.handGestureShortcut(.primaryAction)
@@ -230,32 +233,39 @@ struct WatchSoakView: View {
 
 struct WatchLabView: View {
     @EnvironmentObject private var lab: WatchLabModel
+    /// The lab and a call can't share the audio session.
+    @EnvironmentObject private var call: WatchCallModel
+
+    private var blocked: Bool { lab.isBusy || call.isActive }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
+                if call.isActive {
+                    Text("End the call to use the lab.").font(.footnote)
+                }
                 Text(lab.status).font(.footnote)
                 Text("Encoders").font(.headline)
                 ForEach(lab.encoders, id: \.self) { Text($0).font(.caption2) }
                 Text("Echo").font(.headline)
                 Button("Test, processing off") { Task { await lab.runEchoTest(voiceProcessing: false) } }
-                    .disabled(lab.isBusy)
+                    .disabled(blocked)
                 Button("Test, processing on") { Task { await lab.runEchoTest(voiceProcessing: true) } }
-                    .disabled(lab.isBusy)
+                    .disabled(blocked)
                 ForEach(lab.echoResults, id: \.voiceProcessing) { result in
                     Text(String(format: "%@: echo %.0f dB over the room (room %.0f dBFS)", result.voiceProcessing ? "On" : "Off", result.echoOverNoiseDB, result.noiseDBFS))
                         .font(.caption2)
                 }
                 if lab.hasRecording {
                     Button("Hear what the mic got") { Task { await lab.playRecording() } }
-                        .disabled(lab.isBusy)
+                        .disabled(blocked)
                 }
                 Text("Interruptions").font(.headline)
                 if lab.isWatching {
                     Button("Stop watching", role: .destructive) { lab.stopWatching() }
                 } else {
                     Button("Watch the microphone") { Task { await lab.startWatching() } }
-                        .disabled(lab.isBusy)
+                        .disabled(blocked)
                 }
             }
         }

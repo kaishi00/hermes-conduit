@@ -406,7 +406,7 @@ final class WatchCallModel: ObservableObject {
             if self.phase == .unreachable {
                 var phoneName: String?
                 if case .pong(let name)? = answer { phoneName = name }
-                self.phase = .live(phoneName.flatMap(WatchVoiceWire.CallState.Phase.init(rawValue:)) ?? .listening)
+                self.phase = .live(phoneName.flatMap(WatchVoiceWire.CallState.Phase.init(rawValue:)) ?? .connecting)
             }
         }, failure: { [weak self] error in
             guard let self, self.isActive else { return }

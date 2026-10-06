@@ -23,7 +23,6 @@ final class WatchLink: ObservableObject {
 
     /// The running call's and link test's handlers.
     var onMessage: ((WatchVoiceWire.Message) -> Void)?
-    var onSoakMessage: ((WatchVoiceWire.Message) -> Void)?
     var onCallPacket: ((WatchVoicePacket) -> Void)?
     var onSoakPacket: ((WatchVoicePacket) -> Void)?
     var onReachabilityChange: ((Bool) -> Void)?
@@ -100,13 +99,9 @@ final class WatchLink: ObservableObject {
         onSoakReachabilityChange?(reachable)
     }
 
+    /// A link test's results come back as replies, never on their own.
     fileprivate func received(_ message: WatchVoiceWire.Message) {
-        switch message {
-        case .soakResult:
-            onSoakMessage?(message)
-        default:
-            onMessage?(message)
-        }
+        onMessage?(message)
     }
 
     fileprivate func received(_ packet: WatchVoicePacket) {

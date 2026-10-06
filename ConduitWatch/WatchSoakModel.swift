@@ -97,6 +97,17 @@ final class WatchSoakModel: ObservableObject {
             self.status = "Can't reach the iPhone: \(error.localizedDescription)"
             WatchProbeLog.shared.note("soakStartFailed", ["error": error.localizedDescription])
         })
+        // An iPhone that never answers leaves nothing waiting.
+        let runID = plan.runID
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.isRunning, self.timer == nil, self.plan?.runID == runID else { return }
+                self.isRunning = false
+                self.detachFromLink()
+                self.status = "The iPhone didn't answer. Open Conduit on it and try again."
+                WatchProbeLog.shared.note("soakStartTimedOut", ["runID": Int(runID)])
+            }
+        }
     }
 
     func stop() {

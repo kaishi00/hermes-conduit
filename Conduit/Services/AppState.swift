@@ -23414,6 +23414,10 @@ final class AppState: ObservableObject {
     /// the Watch is another surface over the same live call, never a second
     /// owner: it keeps transport recovery going with the phone locked.
     @Published private(set) var isWatchVoiceCallActive = false
+    /// The Watch call started the running live conversation. A call the
+    /// Watch was refused, or ended before it started one, leaves a call
+    /// started on the phone alone.
+    private var watchStartedLiveConversation = false
 
     func setWatchVoiceCallActive(_ active: Bool) {
         isWatchVoiceCallActive = active
@@ -23447,6 +23451,7 @@ final class AppState: ObservableObject {
         case .geminiLive:
             stopGrokLiveConversation()
             guard !geminiLiveController.isActive else { return WatchVoiceStartFailure.callRunning }
+            watchStartedLiveConversation = true
             beginVoiceCallRecording(engine: .geminiLive)
             await geminiLiveController.start()
             // Ended or replaced from the Watch while it started: nothing
@@ -23458,6 +23463,7 @@ final class AppState: ObservableObject {
         case .grokLive:
             stopGeminiLiveConversation()
             guard !grokLiveController.isActive else { return WatchVoiceStartFailure.callRunning }
+            watchStartedLiveConversation = true
             beginVoiceCallRecording(engine: .grokLive)
             await grokLiveController.start()
             guard isWatchVoiceCallActive, stillWanted() else {
@@ -23470,14 +23476,17 @@ final class AppState: ObservableObject {
         return nil
     }
 
-    /// The Watch call is over: its conversation closes (and is saved) as
-    /// the phone's End button would close it.
+    /// The Watch call is over: a conversation it started closes (and is
+    /// saved) as the phone's End button would close it.
     func finishLiveVoiceForWatch(_ mode: CarPlayLiveVoiceMode) {
-        switch mode {
-        case .geminiLive: closeGeminiLiveConversation()
-        case .grokLive: closeGrokLiveConversation()
-        case .gptLive: break
+        if watchStartedLiveConversation {
+            switch mode {
+            case .geminiLive: closeGeminiLiveConversation()
+            case .grokLive: closeGrokLiveConversation()
+            case .gptLive: break
+            }
         }
+        watchStartedLiveConversation = false
         isWatchVoiceCallActive = false
     }
 
