@@ -28,6 +28,10 @@ final class WatchSystemCall: NSObject {
     private let provider: CXProvider
     private let callController = CXCallController()
     private var callUUID: UUID?
+    /// This app's calls CallKit hasn't ended yet. One whose end failed is
+    /// still on the Watch, so the next start ends it first: two calls
+    /// would change what the experiment measures.
+    private var liveUUIDs: Set<UUID> = []
     /// Calls this app asked CallKit to end, so their end action isn't
     /// taken for the Watch's End button.
     private var endingUUIDs: Set<UUID> = []
@@ -49,8 +53,10 @@ final class WatchSystemCall: NSObject {
     /// session never came; the Watch's call goes on either way.
     func start() async -> Bool {
         guard callUUID == nil, activation == nil else { return false }
+        for stale in liveUUIDs.subtracting(endingUUIDs) { requestEnd(stale) }
         let uuid = UUID()
         callUUID = uuid
+        liveUUIDs.insert(uuid)
         // CallKit activates the session as it's configured here: the same
         // setup the call's audio uses, so the audio start changes nothing.
         do {
@@ -68,7 +74,10 @@ final class WatchSystemCall: NSObject {
                     var fields: [String: Any] = ["ok": error == nil]
                     if let error { fields["error"] = error.localizedDescription }
                     WatchProbeLog.shared.note("systemCallStart", fields)
-                    guard error != nil, self.callUUID == uuid else { return }
+                    guard error != nil else { return }
+                    // CallKit never had it.
+                    self.liveUUIDs.remove(uuid)
+                    guard self.callUUID == uuid else { return }
                     self.callUUID = nil
                     self.isHolding = false
                     self.finishActivation(false)
@@ -95,12 +104,24 @@ final class WatchSystemCall: NSObject {
         guard let uuid = callUUID else { return }
         callUUID = nil
         isHolding = false
+        requestEnd(uuid)
+    }
+
+    private func requestEnd(_ uuid: UUID) {
         endingUUIDs.insert(uuid)
         callController.request(CXTransaction(action: CXEndCallAction(call: uuid))) { [weak self] error in
             WatchVoiceMain.async {
                 guard let self else { return }
                 self.endingUUIDs.remove(uuid)
-                if let error { WatchProbeLog.shared.note("systemCallEndFailed", ["error": error.localizedDescription]) }
+                guard let error else {
+                    self.liveUUIDs.remove(uuid)
+                    return
+                }
+                WatchProbeLog.shared.note("systemCallEndFailed", ["error": error.localizedDescription])
+                // Already gone from CallKit: nothing left to end.
+                if (error as? CXErrorCodeRequestTransactionError)?.code == .unknownCallUUID {
+                    self.liveUUIDs.remove(uuid)
+                }
             }
         }
     }
@@ -116,6 +137,8 @@ extension WatchSystemCall: CXProviderDelegate {
     nonisolated func providerDidReset(_ provider: CXProvider) {
         MainActor.assumeIsolated {
             WatchProbeLog.shared.note("systemCallReset")
+            // Every call is gone.
+            liveUUIDs.removeAll()
             endingUUIDs.removeAll()
             finishActivation(false)
             isHolding = false
@@ -142,6 +165,7 @@ extension WatchSystemCall: CXProviderDelegate {
         action.fulfill()
         let uuid = action.callUUID
         MainActor.assumeIsolated {
+            liveUUIDs.remove(uuid)
             // Only the Watch's End button ends a call this app didn't.
             guard !endingUUIDs.contains(uuid), callUUID == uuid else { return }
             callUUID = nil

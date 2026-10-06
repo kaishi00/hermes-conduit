@@ -217,8 +217,7 @@ final class WatchCallModel: ObservableObject {
         // instead, it lands once the iPhone can take it.
         let message = WatchVoiceWire.Message.callEnd(callID: callID)
         link.send(message, failure: { [link] error in
-            WatchProbeLog.shared.note("callEndQueued", ["error": error.localizedDescription])
-            link.queue(message)
+            WatchProbeLog.shared.note("callEndSendFailed", ["error": error.localizedDescription, "queued": link.queue(message)])
         })
         finish(reason: reason)
     }
@@ -597,8 +596,13 @@ final class WatchCallModel: ObservableObject {
         guard isActive else { return }
         timers.forEach { $0.invalidate() }
         timers = []
-        audio.stop()
+        // Read before the end clears it. Each dim's own note says whether
+        // the call held then.
+        let systemCallHolding = systemCall?.isHolding == true
+        // CallKit activated the session the audio stop deactivates: its
+        // call is asked to end first.
         systemCall?.end()
+        audio.stop()
         link.onMessage = nil
         link.onCallPacket = nil
         link.onReachabilityChange = nil
@@ -614,6 +618,7 @@ final class WatchCallModel: ObservableObject {
             "fullDuplex": fullDuplex,
             "systemCall": holdWithWatchCall,
             "systemCallActivated": systemCallActivated as Any,
+            "systemCallHolding": systemCallHolding,
             "durationS": Int(now - callStartedAt),
             "acceptedMs": WatchVoiceStats.milliseconds(acceptedAt.map { $0 - callStartedAt }) as Any,
             "listeningMs": WatchVoiceStats.milliseconds(listeningAt.map { $0 - callStartedAt }) as Any,
