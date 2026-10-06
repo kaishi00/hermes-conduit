@@ -314,7 +314,8 @@ private func mixSrgb(_ from: Float, _ to: Float, _ progress: Float) -> Float {
 // MARK: - Device power
 
 /// The phone's thermal state and Low Power Mode, published on the main
-/// thread so the call orb can slow down or hold still (#432).
+/// thread so the call orb can slow down or hold still (#432). Main thread
+/// only: its observers run on the main queue and only views read it.
 final class DevicePowerState: ObservableObject {
     static let shared = DevicePowerState()
 
@@ -331,12 +332,15 @@ final class DevicePowerState: ObservableObject {
         observers.append(notificationCenter.addObserver(
             forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.thermalState = processInfo.thermalState
+            // An unchanged value would still publish and redraw the orb.
+            let value = processInfo.thermalState
+            if self?.thermalState != value { self?.thermalState = value }
         })
         observers.append(notificationCenter.addObserver(
             forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.isLowPowerModeEnabled = processInfo.isLowPowerModeEnabled
+            let value = processInfo.isLowPowerModeEnabled
+            if self?.isLowPowerModeEnabled != value { self?.isLowPowerModeEnabled = value }
         })
     }
 

@@ -437,11 +437,11 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
     }
 
     func testTheCallOrbSpendsSixtyFramesOnlyWhileSpeakingAndHoldsStillWhenHot() {
-        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(for: .speaking, lowPowerMode: false), 60)
-        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(for: .listening, lowPowerMode: false), 30,
+        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(speaking: true, lowPowerMode: false), 60)
+        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(speaking: false, lowPowerMode: false), 30,
                        "most of a call is listening, often in silence")
-        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(for: .idle, lowPowerMode: false), 30)
-        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(for: .speaking, lowPowerMode: true), 30)
+        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(speaking: true, lowPowerMode: true), 30)
+        XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(speaking: false, lowPowerMode: true), 30)
 
         func animates(requested: Bool = true, enabled: Bool = true, reduceMotion: Bool = false,
                       thermal: ProcessInfo.ThermalState = .nominal) -> Bool {

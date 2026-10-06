@@ -550,7 +550,7 @@ struct LiveVoiceOrb: View {
                 state: look.state,
                 speech: look.speech,
                 animates: isMoving,
-                framesPerSecond: LiveVoiceOrbPower.framesPerSecond(for: look.state, lowPowerMode: power.isLowPowerModeEnabled)
+                framesPerSecond: LiveVoiceOrbPower.framesPerSecond(speaking: look.state == .speaking, lowPowerMode: power.isLowPowerModeEnabled)
             )
                 .frame(width: size * 1.3, height: size * 1.3)
                 .frame(width: proxy.size.width, height: proxy.size.height)

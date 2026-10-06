@@ -394,11 +394,15 @@ enum LiveVoiceOrbPower {
         reduceMotion: Bool,
         thermalState: ProcessInfo.ThermalState
     ) -> Bool {
-        requested && enabled && !reduceMotion && thermalState.rawValue < ProcessInfo.ThermalState.serious.rawValue
+        guard requested, enabled, !reduceMotion else { return false }
+        switch thermalState {
+        case .serious, .critical: return false
+        default: return true
+        }
     }
 
-    static func framesPerSecond(for state: LiquidOrbState, lowPowerMode: Bool) -> Int {
-        state == .speaking && !lowPowerMode ? 60 : 30
+    static func framesPerSecond(speaking: Bool, lowPowerMode: Bool) -> Int {
+        speaking && !lowPowerMode ? 60 : 30
     }
 }
 
