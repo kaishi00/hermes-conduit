@@ -155,8 +155,9 @@ enum NotificationE2E {
     /// trust plaintext from (see `knownGatewayIDs(listed:previous:holdsKeys:)`),
     /// shared through the App Group so the extension applies the same rule.
     /// `keysProvisioned` is the App Group marker that this iPhone has stored a
-    /// key: with it set, an empty `records` means the Keychain couldn't be
-    /// read (before first unlock, say), not that there are no keys.
+    /// key: with it set, an empty `records` means the keys couldn't be read
+    /// (before first unlock, say) or were lost and are being replaced; either
+    /// way any pairing may be an encrypted one.
     static func evaluate(
         _ userInfo: [AnyHashable: Any],
         records: [E2EKeyRecord],
