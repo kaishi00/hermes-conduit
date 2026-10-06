@@ -670,6 +670,10 @@ final class PushNotificationService: ObservableObject {
             // The keyless pairings plaintext stays trusted for are fixed when
             // the first key is stored: make sure they are known by then.
             await refreshMeta()
+            // Without the relay's list the frozen set would be empty and
+            // every keyless pairing would lose routing for good. Provisioning
+            // runs again on the next connect.
+            guard relayMeta != nil else { return }
         }
         for profile in profiles {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
