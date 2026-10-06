@@ -564,6 +564,13 @@ class DraftLanguageTests(unittest.TestCase):
         problems = problems_for(catalog, [], ["ja"])
         self.assertTrue(any("ja placeholders" in p for p in problems["%lld items"]))
 
+    def test_variations_beside_a_string_unit_are_checked(self):
+        localization = dict(unit("%lld 件"), variations={"device": {
+            "mac": unit("%@ 件")}})
+        catalog = {"strings": {"%lld items": {"localizations": {"ja": localization}}}}
+        problems = problems_for(catalog, [], ["ja"])
+        self.assertTrue(any("ja placeholders" in p for p in problems["%lld items"]))
+
     def test_a_malformed_draft_is_not_ready_to_ship(self):
         for key, value in (("%lld files", "%@ ファイル"), ("Hello", "\\u3053")):
             catalog = catalog_with(key, value, language="ja")

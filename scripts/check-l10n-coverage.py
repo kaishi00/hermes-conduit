@@ -358,9 +358,7 @@ def catalog_has(catalog_keys: set, skeleton: str) -> bool:
 def string_unit_leaves(localization) -> list:
     """Flatten a localization dict into every stringUnit leaf, including
     variations nested in a variation (a plural inside a device variant)."""
-    if "stringUnit" in localization:
-        return [localization["stringUnit"]]
-    leaves = []
+    leaves = [localization["stringUnit"]] if "stringUnit" in localization else []
     for variation in localization.get("variations", {}).values():
         for unit in variation.values():
             leaves.extend(string_unit_leaves(unit))
