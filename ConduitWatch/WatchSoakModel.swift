@@ -128,16 +128,29 @@ final class WatchSoakModel: ObservableObject {
         status = "Collecting the iPhone's numbers…"
         let result = makeResult(plan)
         watchResult = result
-        link.send(.soakStop(runID: plan.runID), reply: { [weak self] answer in
+        // Taken now: a run started before the iPhone answers resets them.
+        let runID = plan.runID
+        let fields: [String: Any] = [
+            "durationS": Int(plan.duration),
+            "inFrontS": Int(inFrontSeconds),
+            "reachabilityDropsInFront": reachabilityDropsInFront,
+            "failedWhileAway": failedWhileAway,
+        ]
+        link.send(.soakStop(runID: runID), reply: { [weak self] answer in
             guard let self else { return }
-            if case .soakResult(let phone)? = answer { self.phoneResult = phone }
+            var phone: WatchVoiceWire.SoakResult?
+            if case .soakResult(let phoneSide)? = answer { phone = phoneSide }
+            self.report(watch: result, phone: phone, fields: fields)
+            // A newer run owns the screen.
+            guard self.plan?.runID == runID else { return }
+            self.phoneResult = phone
             self.status = "Done"
-            self.report(watch: result, phone: self.phoneResult)
         }, failure: { [weak self] error in
             guard let self else { return }
+            WatchProbeLog.shared.note("soakStopFailed", ["runID": Int(runID), "error": error.localizedDescription])
+            self.report(watch: result, phone: nil, fields: fields)
+            guard self.plan?.runID == runID else { return }
             self.status = "Done (the iPhone's numbers didn't arrive)"
-            self.errors.append("soakStop: \(error.localizedDescription)")
-            self.report(watch: result, phone: nil)
         })
     }
 
@@ -182,8 +195,10 @@ final class WatchSoakModel: ObservableObject {
         inFlight += 1
         sent += 1
         let inFront = isInFront
+        let runID = plan.runID
         link.send(packet) { [weak self] result in
-            guard let self else { return }
+            // Acks that straddle a restart belong to the earlier run.
+            guard let self, self.plan?.runID == runID else { return }
             self.inFlight = max(0, self.inFlight - 1)
             switch result {
             case .success(let roundTrip):
@@ -233,17 +248,14 @@ final class WatchSoakModel: ObservableObject {
         )
     }
 
-    private func report(watch: WatchVoiceWire.SoakResult, phone: WatchVoiceWire.SoakResult?) {
-        WatchProbeLog.shared.report("soakSummary", [
+    private func report(watch: WatchVoiceWire.SoakResult, phone: WatchVoiceWire.SoakResult?, fields: [String: Any]) {
+        let summary: [String: Any] = [
             "runID": Int(watch.runID),
             "label": watch.label,
-            "durationS": Int(plan?.duration ?? 0),
-            "inFrontS": Int(inFrontSeconds),
-            "reachabilityDropsInFront": reachabilityDropsInFront,
-            "failedWhileAway": failedWhileAway,
             "watch": Self.fields(watch),
             "phone": phone.map(Self.fields) as Any,
-        ])
+        ]
+        WatchProbeLog.shared.report("soakSummary", fields.merging(summary) { _, new in new })
     }
 
     static func fields(_ result: WatchVoiceWire.SoakResult) -> [String: Any] {

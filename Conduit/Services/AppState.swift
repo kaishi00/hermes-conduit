@@ -3781,7 +3781,9 @@ final class AppState: ObservableObject {
                 let audio = EchoCancellingLiveVoiceAudio(outputSampleRate: outputSampleRate)
                 return (audio.input, audio.output)
             },
-            wantsWatch: { [weak self] in self?.isWatchVoiceCallActive ?? false },
+            // Only the conversation the Watch call started: a call started
+            // on the phone while a Watch call connects keeps the phone's.
+            wantsWatch: { [weak self] in self?.watchStartedLiveConversation ?? false },
             makeWatch: { WatchVoiceLink.shared.makeLiveAudio() }
         )
     }
@@ -3789,7 +3791,7 @@ final class AppState: ObservableObject {
     /// A Watch call plays on the Watch's own speaker, whatever the phone's
     /// route is: half duplex unless the Watch cancels its echo.
     private func liveVoiceRoutePolicy() -> VoiceBargeInRoutePolicy {
-        isWatchVoiceCallActive ? .speakerSafeHalfDuplex : VoiceBargeInRoutePolicy.current()
+        watchStartedLiveConversation ? .speakerSafeHalfDuplex : VoiceBargeInRoutePolicy.current()
     }
 
     /// The row's voice tag, matched through every id the row answers to.
@@ -23414,9 +23416,10 @@ final class AppState: ObservableObject {
     /// the Watch is another surface over the same live call, never a second
     /// owner: it keeps transport recovery going with the phone locked.
     @Published private(set) var isWatchVoiceCallActive = false
-    /// The Watch call started the running live conversation. A call the
-    /// Watch was refused, or ended before it started one, leaves a call
-    /// started on the phone alone.
+    /// The Watch call started the running live conversation, so it runs on
+    /// the Watch's microphone and speaker. A call the Watch was refused, or
+    /// ended before it started one, leaves a call started on the phone
+    /// alone, on the phone's own audio.
     private var watchStartedLiveConversation = false
 
     func setWatchVoiceCallActive(_ active: Bool) {

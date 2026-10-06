@@ -625,8 +625,10 @@ final class WatchSoakResponder {
         )
         inFlight += 1
         sent += 1
+        let runID = plan.runID
         link.send(packet) { [weak self] roundTrip in
-            guard let self else { return }
+            // Acks that straddle a restart belong to the earlier run.
+            guard let self, self.plan?.runID == runID else { return }
             self.inFlight = max(0, self.inFlight - 1)
             if let roundTrip {
                 self.acked += 1
