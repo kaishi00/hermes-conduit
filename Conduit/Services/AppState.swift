@@ -11352,7 +11352,7 @@ final class AppState: ObservableObject {
 
     /// Starts a fresh timeline. Used where a launch, a return to the app or
     /// a reconnect begins; every step after it lands in this one.
-    func beginConnectionTimeline(_ trigger: String) {
+    private func beginConnectionTimeline(_ trigger: String) {
         connectionTimeline = ConnectionTimeline(trigger: trigger)
     }
 
@@ -11366,7 +11366,7 @@ final class AppState: ObservableObject {
 
     /// Records one step. Purely observational: nothing reads the timeline
     /// back except Gateway Diagnostics.
-    func noteConnectionStep(_ label: String, since startedAt: Date? = nil, error: Error? = nil) {
+    private func noteConnectionStep(_ label: String, since startedAt: Date? = nil, error: Error? = nil) {
         connectionTimeline?.record(label, since: startedAt, error: error)
     }
 

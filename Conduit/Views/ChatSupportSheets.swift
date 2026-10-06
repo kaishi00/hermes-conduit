@@ -91,6 +91,7 @@ struct GatewayDiagnosticsSheet: View {
                             .font(.footnote.weight(.semibold))
                     }
                     .accessibilityLabel("Copy connection timeline")
+                    .accessibilityValue(copiedTimelineReport == report ? AppLocalization.string("Copied") : "")
                     if copiedTimelineReport == report {
                         Text("Copied")
                             .font(.footnote)

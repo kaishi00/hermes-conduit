@@ -27,8 +27,12 @@ struct ConnectionTimeline: Equatable {
     let trigger: String
     let startedAt: Date
     private(set) var events: [Event] = []
-    /// Steps that arrived after the window closed or the event cap was hit.
+    /// Steps that arrived inside the window after the event cap was hit.
     private(set) var droppedEvents = 0
+    /// Whether anything arrived after the window closed. Those steps are
+    /// ordinary use, so they are not counted: a count would keep growing for
+    /// the rest of the session.
+    private(set) var stepsAfterWindow = false
 
     init(trigger: String, startedAt: Date = Date()) {
         self.trigger = trigger
@@ -47,7 +51,11 @@ struct ConnectionTimeline: Equatable {
         error: Error? = nil,
         at date: Date = Date()
     ) {
-        guard isRecording(at: date), events.count < Self.maximumEvents else {
+        guard isRecording(at: date) else {
+            stepsAfterWindow = true
+            return
+        }
+        guard events.count < Self.maximumEvents else {
             droppedEvents += 1
             return
         }
@@ -71,7 +79,10 @@ struct ConnectionTimeline: Equatable {
             return "+\(offset)\(padding)\(event.label)"
         }
         if droppedEvents > 0 {
-            lines.append("(\(droppedEvents) later steps not recorded)")
+            lines.append(droppedEvents == 1 ? "(1 more step not recorded)" : "(\(droppedEvents) more steps not recorded)")
+        }
+        if stepsAfterWindow {
+            lines.append("(recording stopped \(Int(Self.recordingWindow)) s after the start)")
         }
         return lines.joined(separator: "\n")
     }

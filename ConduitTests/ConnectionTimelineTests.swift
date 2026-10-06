@@ -73,10 +73,15 @@ extension ConnectionFailureTests {
             "Chat list, 40 rows",
             at: start.addingTimeInterval(ConnectionTimeline.recordingWindow + 1)
         )
+        timeline.record(
+            "Chat list, 41 rows",
+            at: start.addingTimeInterval(ConnectionTimeline.recordingWindow + 3_600)
+        )
 
         XCTAssertEqual(timeline.events.map(\.label), ["Connection check"])
-        XCTAssertEqual(timeline.droppedEvents, 1)
-        XCTAssertTrue(timeline.report.hasSuffix("(1 later steps not recorded)"))
+        XCTAssertEqual(timeline.droppedEvents, 0, "Ordinary use after the window must not grow a count")
+        XCTAssertTrue(timeline.stepsAfterWindow)
+        XCTAssertTrue(timeline.report.hasSuffix("(recording stopped 120 s after the start)"))
         XCTAssertFalse(timeline.isRecording(at: start.addingTimeInterval(ConnectionTimeline.recordingWindow + 1)))
     }
 
@@ -89,6 +94,14 @@ extension ConnectionFailureTests {
 
         XCTAssertEqual(timeline.events.count, ConnectionTimeline.maximumEvents)
         XCTAssertEqual(timeline.droppedEvents, 5)
+        XCTAssertTrue(timeline.report.hasSuffix("(5 more steps not recorded)"))
+        XCTAssertFalse(timeline.stepsAfterWindow)
+
+        var oneOver = ConnectionTimeline(trigger: "reconnect", startedAt: start)
+        for index in 0...ConnectionTimeline.maximumEvents {
+            oneOver.record("Step \(index)", at: start.addingTimeInterval(Double(index) / 100))
+        }
+        XCTAssertTrue(oneOver.report.hasSuffix("(1 more step not recorded)"))
     }
 }
 
