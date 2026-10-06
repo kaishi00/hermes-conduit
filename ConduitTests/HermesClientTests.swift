@@ -2677,3 +2677,78 @@ private final class FakeTransport: HermesWebSocketTransport {
         }
     }
 }
+
+// MARK: - Foreground liveness probe (#417)
+
+extension HermesClientTests {
+    /// Sends one `healthCheck()` over a connected fake socket and returns the
+    /// request frame plus the running probe, so each test chooses the reply.
+    private func startHealthCheck(
+        profile: String? = nil
+    ) async throws -> (client: HermesClient, socket: FakeSocket, request: [String: Any], probe: Task<Void, Error>) {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport, profile: profile)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let probe = Task<Void, Error> { try await client.healthCheck() }
+        try await sent.wait("the liveness probe to be sent")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        return (client, socket, request, probe)
+    }
+
+    private func deliverReply(_ frame: [String: Any], on socket: FakeSocket) throws {
+        socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: frame), encoding: .utf8)))
+    }
+
+    func testHealthCheckSendsUnscopedPing() async throws {
+        let (client, socket, request, probe) = try await startHealthCheck(profile: "work")
+        XCTAssertEqual(request["method"] as? String, "ping", "The wake-up probe is the cheap ping, not a session list")
+        XCTAssertNil(request["params"], "ping takes no arguments, not even the client's profile")
+
+        let id = try XCTUnwrap(request["id"] as? Int)
+        try deliverReply(["jsonrpc": "2.0", "id": id, "result": ["pong": true]], on: socket)
+        try await awaitResult(of: probe, "the pong")
+        client.disconnect()
+    }
+
+    func testHealthCheckTreatsMissingPingAsAlive() async throws {
+        let (client, socket, request, probe) = try await startHealthCheck()
+        let id = try XCTUnwrap(request["id"] as? Int)
+        try deliverReply([
+            "jsonrpc": "2.0", "id": id,
+            "error": ["code": -32601, "message": "unknown method: ping"]
+        ], on: socket)
+        // A gateway older than `ping` still answered over this socket.
+        try await awaitResult(of: probe, "the method-not-found reply")
+        client.disconnect()
+    }
+
+    func testHealthCheckFailsOnOtherErrors() async throws {
+        let (client, socket, request, probe) = try await startHealthCheck()
+        let id = try XCTUnwrap(request["id"] as? Int)
+        try deliverReply([
+            "jsonrpc": "2.0", "id": id,
+            "error": ["code": -32603, "message": "internal error"]
+        ], on: socket)
+        do {
+            try await awaitResult(of: probe, "the error reply")
+            XCTFail("Only a missing ping method counts as alive")
+        } catch let error as RpcError {
+            XCTAssertEqual(error.code, -32603)
+        }
+        client.disconnect()
+    }
+
+    func testPingBudgetIsShorterThanTheOldProbe() {
+        XCTAssertEqual(HermesClient.pingTimeout, 5)
+        XCTAssertLessThan(HermesClient.pingTimeout, HermesClient.livenessProbeTimeout)
+    }
+}

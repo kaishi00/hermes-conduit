@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Copy connection timeline" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拷贝连接时间线"
+          }
+        }
+      }
+    },
+    "Last connection" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近一次连接"
+          }
+        }
+      }
+    },
+    "No connection has been timed since Conduit opened." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自 Conduit 打开以来，尚未记录任何连接耗时。"
+          }
+        }
+      }
+    },
     "Action Button shortcut for screenshots" : {
       "localizations" : {
         "zh-Hans" : {

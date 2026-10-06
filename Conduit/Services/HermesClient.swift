@@ -735,14 +735,15 @@ final class HermesClient: ObservableObject {
     /// so it gets a bounded-but-generous budget instead of the ordinary
     /// request timeout.
     static let legacyResumeTimeout: TimeInterval = 60
-    /// Shared budget for liveness probes (`healthCheck`,
-    /// `session.active_list`). These sit on latency-sensitive paths — the
-    /// foreground refresh and the pre-send stale-idle correction — so a
-    /// stalled gateway must fail them fast instead of holding the composer
-    /// for the generic request timeout. 8s matches the pre-existing
-    /// health-check budget; a timed-out probe takes the same fallback paths
-    /// as any other probe failure.
+    /// Budget for the `session.active_list` liveness probe. It sits on
+    /// latency-sensitive paths — the foreground refresh and the pre-send
+    /// stale-idle correction — so a stalled gateway must fail it fast instead
+    /// of holding the composer for the generic request timeout. 8s matches
+    /// the old `session.list` health-check budget; a timed-out probe takes
+    /// the same fallback paths as any other probe failure.
     static let livenessProbeTimeout: TimeInterval = 8
+    /// Budget for the foreground `ping` (`healthCheck`). See there.
+    static let pingTimeout: TimeInterval = 5
     /// Dedicated budget for `session.compress`. Manual compression is
     /// LLM-bound and routinely outlives the generic request timeout on large
     /// sessions, while the gateway keeps compressing after the client gives
@@ -1554,8 +1555,25 @@ final class HermesClient: ObservableObject {
         return moved.isEmpty ? cwd : moved
     }
 
+    /// Is this socket still alive? Asked when Conduit comes back to the
+    /// foreground with a socket iOS may have killed while it slept (#417).
+    ///
+    /// `ping` is Hermes' cheapest probe, answered on the WebSocket reader
+    /// thread even while every agent is mid-turn (upstream
+    /// `tui_gateway/contracts/liveness.py`), so it gets a shorter budget than
+    /// the `session.list` it replaces, which builds a whole session list:
+    /// the 5 s Hermes Desktop gives the same probe. Unscoped, like
+    /// `profiles.list`, because it takes no arguments at all.
+    ///
+    /// A gateway that predates `ping` answers "method not found". That reply
+    /// travelled over this socket, so it proves the socket alive exactly as a
+    /// pong would; Hermes Desktop reads it the same way.
     func healthCheck() async throws {
-        _ = try await rpc("session.list", params: nil, timeout: Self.livenessProbeTimeout)
+        do {
+            _ = try await rpc("ping", params: nil, timeout: Self.pingTimeout, scoped: false)
+        } catch let error where Self.isMissingRPCMethod(error) {
+            return
+        }
     }
 
     /// Resumes a session with the compact projection: `omit_messages` asks
