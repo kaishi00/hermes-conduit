@@ -70,6 +70,8 @@ final class WatchPhoneCall: NSObject {
         do {
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [])
         } catch {
+            // The call starts anyway: what the test measures is whether
+            // it keeps Conduit running, not the session's setup.
             log.note("phoneCallSessionFailed", ["error": error.localizedDescription])
         }
         let handle = CXHandle(type: .generic, value: "Hermes on Apple Watch")
@@ -118,7 +120,11 @@ final class WatchPhoneCall: NSObject {
     private func restoreSession() {
         guard let previousSession else { return }
         self.previousSession = nil
-        try? AVAudioSession.sharedInstance().setCategory(previousSession.category, mode: previousSession.mode, options: previousSession.options)
+        do {
+            try AVAudioSession.sharedInstance().setCategory(previousSession.category, mode: previousSession.mode, options: previousSession.options)
+        } catch {
+            log.note("phoneCallSessionRestoreFailed", ["error": error.localizedDescription])
+        }
     }
 }
 
@@ -137,9 +143,17 @@ extension WatchPhoneCall: CXProviderDelegate {
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
-        provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: nil)
+        let uuid = action.callUUID
+        // Ended or reset before CallKit got to it: leave no call behind.
+        let wanted = MainActor.assumeIsolated { liveUUIDs.contains(uuid) && !endingUUIDs.contains(uuid) }
+        guard wanted else {
+            MainActor.assumeIsolated { log.note("phoneCallStartDropped") }
+            action.fail()
+            return
+        }
+        provider.reportOutgoingCall(with: uuid, startedConnectingAt: nil)
         action.fulfill()
-        provider.reportOutgoingCall(with: action.callUUID, connectedAt: nil)
+        provider.reportOutgoingCall(with: uuid, connectedAt: nil)
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {

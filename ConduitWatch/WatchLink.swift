@@ -66,6 +66,14 @@ final class WatchLink: ObservableObject {
         }
     }
 
+    /// Queues a control message for whenever the iPhone app can take it,
+    /// reachable or not. In order, after anything queued before it.
+    func queue(_ message: WatchVoiceWire.Message) {
+        let session = WCSession.default
+        guard session.activationState == .activated else { return }
+        session.transferUserInfo(WatchVoiceWire.encode(message))
+    }
+
     /// Sends a packet; `done` gets the round trip to the iPhone's
     /// acknowledgement, or the error.
     func send(_ packet: WatchVoicePacket, done: @escaping (Result<TimeInterval, Error>) -> Void) {

@@ -123,6 +123,8 @@ struct WatchCallView: View {
                         .font(.footnote)
                     Toggle("Keep sending with wrist down", isOn: $call.keepStreamingWristDown)
                         .font(.footnote)
+                    Toggle("Hold through dims with a Watch call", isOn: $call.holdWithWatchCall)
+                        .font(.footnote)
                 }
             }
         }

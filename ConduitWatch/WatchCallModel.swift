@@ -46,9 +46,16 @@ final class WatchCallModel: ObservableObject {
     @Published private(set) var lastTurnSummary: String?
     @Published var fullDuplex = false
     @Published var keepStreamingWristDown = false
+    /// The dimmed-screen experiment: a CallKit call on the Watch for the
+    /// call's length, which may keep the link up through a dim.
+    @Published var holdWithWatchCall = false
 
     private let link = WatchLink.shared
     private let audio = WatchAudio()
+    private var systemCall: WatchSystemCall?
+    /// Whether this call's CallKit call got the audio session; nil
+    /// without one.
+    private var systemCallActivated: Bool?
     private var callID: UInt32 = 0
     private var callStartedAt: TimeInterval = 0
     private var acceptedAt: TimeInterval?
@@ -126,9 +133,16 @@ final class WatchCallModel: ObservableObject {
             phase = .ended(WatchAudioError.permissionDenied.localizedDescription)
             return
         }
+        if holdWithWatchCall {
+            let systemCall = self.systemCall ?? makeSystemCall()
+            systemCallActivated = await systemCall.start()
+            // Ended while CallKit started: `finish` ended its call too.
+            guard phase == .starting else { return }
+        }
         do {
             try audio.start(options: .init(voiceProcessing: fullDuplex), playbackRate: Self.downlinkRate)
         } catch {
+            systemCall?.end()
             WKInterfaceDevice.current().isBatteryMonitoringEnabled = false
             phase = .ended("The microphone didn't start: \(error.localizedDescription)")
             WatchProbeLog.shared.note("callAudioFailed", ["error": error.localizedDescription])
@@ -193,28 +207,42 @@ final class WatchCallModel: ObservableObject {
     }
 
     func end() {
+        end(reason: "ended on the Watch")
+    }
+
+    private func end(reason: String) {
         guard isActive else { return }
-        link.send(.callEnd(callID: callID))
-        finish(reason: "ended on the Watch")
+        // Lost while the link is down, the end would leave the iPhone's
+        // call (and its CallKit call) running until its watchdog: queued
+        // instead, it lands once the iPhone can take it.
+        let message = WatchVoiceWire.Message.callEnd(callID: callID)
+        link.send(message, failure: { [link] error in
+            WatchProbeLog.shared.note("callEndQueued", ["error": error.localizedDescription])
+            link.queue(message)
+        })
+        finish(reason: reason)
     }
 
     func scenePhaseChanged(_ newPhase: ScenePhase) {
         let previous = scenePhase
         scenePhase = newPhase
         guard isActive, previous != newPhase else { return }
-        WatchProbeLog.shared.note("callScenePhase", ["phase": "\(newPhase)", "reachable": link.isReachable])
+        WatchProbeLog.shared.note("callScenePhase", ["phase": "\(newPhase)", "reachable": link.isReachable, "systemCall": systemCall?.isHolding == true])
         if newPhase == .active {
             guard micPaused, audio.isRunning, phase != .needsTap else { return }
             micPaused = false
             sendResumed()
-        } else if !keepStreamingWristDown, !micPaused {
-            // The link to the iPhone only holds with the wrist up: stop
-            // sending, keep playing what's here.
+        } else if !keepStreamingWristDown, systemCall?.isHolding != true, !micPaused {
+            // The link to the iPhone holds only while Conduit is in front
+            // with the screen awake; a dimmed screen counts as away, wrist
+            // up or down. Stop sending, keep playing what's here. With a
+            // Watch call holding, sending goes on: whether the link
+            // survives the dim is what that experiment measures.
             micPaused = true
             pendingSamples = []
             // As with mute: a later turn is timed from new speech only.
             activity.reset()
-            sendPaused("wristDown")
+            sendPaused("screenDimmed")
         }
     }
 
@@ -510,8 +538,18 @@ final class WatchCallModel: ObservableObject {
 
     // MARK: Lifecycle
 
+    private func makeSystemCall() -> WatchSystemCall {
+        let systemCall = WatchSystemCall()
+        systemCall.onEndedBySystem = { [weak self] in
+            self?.end(reason: "ended from the Watch's call controls")
+        }
+        self.systemCall = systemCall
+        return systemCall
+    }
+
     private func resetCall() {
         callID = UInt32.random(in: 1...UInt32.max)
+        systemCallActivated = nil
         callStartedAt = now
         acceptedAt = nil
         startInFlight = false
@@ -560,6 +598,7 @@ final class WatchCallModel: ObservableObject {
         timers.forEach { $0.invalidate() }
         timers = []
         audio.stop()
+        systemCall?.end()
         link.onMessage = nil
         link.onCallPacket = nil
         link.onReachabilityChange = nil
@@ -573,6 +612,8 @@ final class WatchCallModel: ObservableObject {
             "mode": mode as Any,
             "reason": reason as Any,
             "fullDuplex": fullDuplex,
+            "systemCall": holdWithWatchCall,
+            "systemCallActivated": systemCallActivated as Any,
             "durationS": Int(now - callStartedAt),
             "acceptedMs": WatchVoiceStats.milliseconds(acceptedAt.map { $0 - callStartedAt }) as Any,
             "listeningMs": WatchVoiceStats.milliseconds(listeningAt.map { $0 - callStartedAt }) as Any,
