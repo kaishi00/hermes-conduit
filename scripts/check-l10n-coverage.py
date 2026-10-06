@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 """Localization catalog coverage: every localizable call site must resolve
-against a runtime-accurate key, and every required key must carry a REAL
-zh-Hans translation.
+against a runtime-accurate key, and every SHIPPED language must carry a
+real translation of every key.
+
+Languages are data, not code. The checker reads them from the String
+Catalogs and Conduit/Info.plist, so adding a language is a catalog change:
+
+  * source language - the catalogs' "sourceLanguage". Keys are its strings
+    and every other language falls back to them.
+  * draft languages - Info.plist's ConduitDraftLanguages array: translation
+    still in progress. The build strips their lprojs
+    (scripts/strip-draft-localizations.py) and the app never offers them,
+    so only their integrity is checked, not their completeness.
+  * shipped languages - every other language that appears in any catalog.
 
 Scans Conduit Swift sources for sites that look up String Catalog keys -
 
@@ -25,22 +36,25 @@ Scans Conduit Swift sources for sites that look up String Catalog keys -
 
 For every required key (static call sites plus the explicit REGRESSION_KEYS
 below - dynamic/ternary sites that cannot be extracted statically), the
-checker then validates the zh-Hans localization:
+checker then validates every catalog (Localizable, AppShortcuts,
+InfoPlist):
 
-  * the key must exist;
-  * a zh-Hans localization must be present (a key with en-only content
-    fails);
-  * every stringUnit leaf - direct or inside plural/device variations -
-    must have state == "translated" and a non-empty value;
-  * the printf placeholders of each localized value must match the key's
-    placeholder TYPE FAMILIES (object vs integer vs float) in count, order,
-    and positional index validity - %@ and %lld are never interchangeable;
-  * the value must not contain malformed literal Unicode escape sequences
-    (e.g. the text "\\u4e00") - those are double-escaped authoring bugs,
-    not legitimate backslash content.
+  * the key must exist, and appear only once in the catalog JSON;
+  * every shipped non-source language must have a localization (a key
+    with only some languages fails);
+  * every stringUnit leaf of a shipped language (source included) - direct
+    or inside plural/device variations - must have state == "translated"
+    and a non-empty value;
+  * the printf placeholders of every value in ANY language, drafts
+    included, must match the key's placeholder TYPE FAMILIES (object vs
+    integer vs float) in count, order, and positional index validity -
+    %@ and %lld are never interchangeable;
+  * no value may contain malformed literal Unicode escape sequences (e.g.
+    the text "\\u4e00") - those are double-escaped authoring bugs, not
+    legitimate backslash content.
 
-Any violation is reported with file:line (call sites) or by key (catalog)
-and fails the run.
+Any violation is reported with file:line (call sites) or by key and
+language (catalog) and fails the run.
 """
 
 from __future__ import annotations
@@ -48,10 +62,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import plistlib
 import re
 import sys
+import xml.parsers.expat
 
-REQUIRED_LANGUAGE = "zh-Hans"
+# Info.plist array of draft localization identifiers. The app reads the
+# same key (AppLocalizations.draftLanguagesInfoKey), and so does the build's
+# draft-stripping phase.
+DRAFT_LANGUAGES_KEY = "ConduitDraftLanguages"
 
 # SwiftUI initializers whose first argument is a LocalizedStringKey when a
 # string literal is passed directly. Variables/interpolations elsewhere are
@@ -341,97 +360,366 @@ def string_unit_leaves(localization) -> list:
     return leaves
 
 
+def argument_types(specs) -> list:
+    """Argument types in the order printf consumes them: by index when every
+    placeholder is positional, otherwise in order of appearance."""
+    if specs and all(position is not None for position, _ in specs):
+        return [kind for _, kind in sorted(specs)]
+    return [kind for _, kind in specs]
+
+
 def placeholders_compatible(key_specs, value_specs) -> bool:
     """A translation's placeholders must substitute like the key's.
 
-    Types are always compared as multisets. Positions matter only when BOTH
-    sides are fully positional (a translation may introduce positional
-    forms %1$@ to reorder non-positional key arguments, which printf
-    handles). Positional indices in the translation must be valid for the
-    key's argument count.
+    The argument types must match as a multiset. A non-positional
+    translation consumes the arguments in order, so its types must also
+    follow the key's argument order ("%lld and %@" for "%@ and %lld"
+    misformats). A fully positional translation (%2$lld ... %1$@) may
+    reorder, but each index must name an argument of the same type. A
+    translation that mixes positional and non-positional placeholders is
+    rejected: Foundation's argument numbering is ambiguous there.
     """
     key_types = sorted(kind for _, kind in key_specs)
     value_types = sorted(kind for _, kind in value_specs)
     if key_types != value_types:
         return False
-    key_positional = all(pos is not None for pos, _ in key_specs)
-    value_positional = all(pos is not None for pos, _ in value_specs)
-    if key_positional and value_positional:
-        return sorted(key_specs) == sorted(value_specs)
-    # A partially-positional translation must still use valid indices.
-    for position, _ in value_specs:
-        if position is not None and not 1 <= position <= len(key_specs):
-            return False
-    return True
+    key_order = argument_types(key_specs)
+    positions = [position for position, _ in value_specs]
+    if all(position is None for position in positions):
+        return [kind for _, kind in value_specs] == key_order
+    if all(position is not None for position in positions):
+        return all(1 <= position <= len(key_order) and key_order[position - 1] == kind
+                   for position, kind in value_specs)
+    return False
 
 
-def catalog_problems(catalog: dict) -> dict:
+def normalized_language(identifier: str) -> str:
+    """Comparison form of a localization identifier: the app matches
+    "zh_Hans", "zh-hans" and "zh-Hans" alike, so the checker does too."""
+    return identifier.replace("_", "-").lower()
+
+
+# CLDR cardinal plural categories (CLDR 42+, which iOS 17+ resolves) for the
+# languages Conduit is most likely to ship, keyed by base language code. When
+# the source varies a key by plural, every shipped language must provide
+# each category its rules use (Xcode's catalog editor shows the same set).
+# A language not listed only needs "other", and the checker says so.
+PLURAL_CATEGORIES = {
+    language: categories
+    for categories, languages in (
+        (("other",), "id ja km ko lo ms my th vi yue zh"),
+        (("one", "other"),
+         "af am as az bg bn da de el en et eu fa fi fil gl gu hi hu hy is ka "
+         "kk kn ky mk ml mn mr nb ne nl nn no or pa ps si sq sv sw ta te tl "
+         "tr ur uz zu"),
+        (("one", "many", "other"), "ca es fr it pt"),
+        (("zero", "one", "other"), "lv"),
+        (("one", "two", "other"), "he"),
+        (("one", "few", "other"), "bs hr ro sr"),
+        (("one", "two", "few", "other"), "dsb gd hsb sl"),
+        (("one", "few", "many", "other"), "be cs lt pl ru sk uk"),
+        (("one", "two", "few", "many", "other"), "br ga"),
+        (("zero", "one", "two", "few", "many", "other"), "ar cy"),
+    )
+    for language in languages.split()
+}
+
+
+def plural_categories(language: str):
+    """The plural categories `language` uses, or None when not on file."""
+    key = normalized_language(language)
+    return PLURAL_CATEGORIES.get(key) or PLURAL_CATEGORIES.get(key.split("-")[0])
+
+
+def localization_for(localizations: dict, language: str) -> dict:
+    """`language`'s localization, matched in any identifier spelling."""
+    wanted = normalized_language(language)
+    for candidate, localization in localizations.items():
+        if normalized_language(candidate) == wanted:
+            return localization
+    return {}
+
+
+def plural_gap(entry: dict, language: str, source: str) -> list:
+    """Plural categories `language` still lacks for a key the source varies
+    by plural. A plain string stands for the "other" form only; a missing
+    localization is reported elsewhere."""
+    localizations = entry.get("localizations", {})
+    if "plural" not in localization_for(localizations, source).get("variations", {}):
+        return []
+    localization = localization_for(localizations, language)
+    if "plural" in localization.get("variations", {}):
+        provided = set(localization["variations"]["plural"])
+    elif "stringUnit" in localization:
+        provided = {"other"}
+    else:
+        return []
+    required = plural_categories(language) or ("other",)
+    return [category for category in required if category not in provided]
+
+
+def catalog_problems(catalog: dict, required_languages=(),
+                     draft_languages=()) -> dict:
     """Return {key: [problems]} for every localization violation.
 
-    zh-Hans must exist and be usable; EVERY language's units (en included)
-    must carry placeholders compatible with the key, so a stale en value
-    like "%lld" under a "%@" key cannot survive (it misformats at runtime).
+    Every language in `required_languages` (the shipped non-source ones)
+    must localize every key, and where the source varies a key by plural,
+    every shipped language (source included) must provide each plural
+    category its rules use. Units of every non-draft language - the source
+    included, so a stale en value like "%lld" under a "%@" key cannot
+    survive (it misformats at runtime) - must be translated and non-empty.
+    Draft languages may be partial or unreviewed. Whatever value ANY
+    language carries must still be well-formed: no malformed escapes,
+    placeholders compatible with the key, and an "other" plural form.
     """
+    drafts = {normalized_language(language) for language in draft_languages}
+    source = catalog.get("sourceLanguage", "en")
+    shipped = sorted(set(required_languages) | {source})
     problems = {}
     for key, entry in catalog.get("strings", {}).items():
         if key in EXEMPT_KEYS:
             continue
         localizations = entry.get("localizations", {})
-        if REQUIRED_LANGUAGE not in localizations:
-            problems.setdefault(key, []).append(
-                f"missing {REQUIRED_LANGUAGE} localization")
+        for language in sorted(required_languages):
+            if not string_unit_leaves(localization_for(localizations, language)):
+                problems.setdefault(key, []).append(
+                    f"missing {language} localization")
+        for language in shipped:
+            gap = plural_gap(entry, language, source)
+            if gap:
+                rules = plural_categories(language) or ("other",)
+                problems.setdefault(key, []).append(
+                    f"{language} plural lacks {', '.join(gap)} "
+                    f"(its plural rules use {', '.join(rules)})")
         key_specs = placeholder_specs(key)
         for language, localization in localizations.items():
+            draft = normalized_language(language) in drafts
+            plural = localization.get("variations", {}).get("plural")
+            if plural is not None and "other" not in plural:
+                problems.setdefault(key, []).append(
+                    f"{language} plural has no 'other' form")
             for unit in string_unit_leaves(localization):
-                value = unit.get("value")
-                if unit.get("state") != "translated":
-                    problems.setdefault(key, []).append(
-                        f"{language} state is {unit.get('state')!r}, not 'translated'")
-                elif not value or not value.strip():
-                    problems.setdefault(key, []).append(
-                        f"{language} value is empty")
+                value = unit.get("value") or ""
+                state = unit.get("state")
+                problem = None
+                if state != "translated" and not draft:
+                    problem = f"{language} state is {state!r}, not 'translated'"
+                elif not value.strip():
+                    if state == "translated":
+                        problem = f"{language} value is empty"
                 elif MALFORMED_ESCAPE_RE.search(value):
-                    problems.setdefault(key, []).append(
-                        f"{language} value contains malformed literal "
-                        f"Unicode escape sequences (double-escaped authoring bug)")
+                    problem = (f"{language} value contains malformed literal "
+                               f"Unicode escape sequences (double-escaped "
+                               f"authoring bug)")
                 elif not placeholders_compatible(key_specs, placeholder_specs(value)):
-                    problems.setdefault(key, []).append(
-                        f"{language} placeholders {placeholder_specs(value)} "
-                        f"do not match key placeholders {key_specs}")
+                    problem = (f"{language} placeholders {placeholder_specs(value)} "
+                               f"do not match key placeholders {key_specs}")
+                if problem:
+                    problems.setdefault(key, []).append(problem)
     return problems
 
 
+def language_is_complete(catalog: dict, language: str) -> bool:
+    """Would `language` pass as a shipped language in this catalog?"""
+    source = catalog.get("sourceLanguage", "en")
+    for key, entry in catalog.get("strings", {}).items():
+        if key in EXEMPT_KEYS:
+            continue
+        units = string_unit_leaves(
+            localization_for(entry.get("localizations", {}), language))
+        if not units or plural_gap(entry, language, source):
+            return False
+        for unit in units:
+            if unit.get("state") != "translated" or not (unit.get("value") or "").strip():
+                return False
+    return True
+
+
 def required_key_problems(catalog: dict, required_keys) -> dict:
-    """Problems for keys the extractor cannot see (REGRESSION_KEYS)."""
+    """Problems for keys the extractor cannot see (REGRESSION_KEYS). Their
+    per-language problems are already in catalog_problems; this only
+    reports keys missing from the catalog altogether."""
     problems = {}
     strings = catalog.get("strings", {})
-    all_problems = catalog_problems(catalog)
     for key in required_keys:
         if key not in strings:
             problems.setdefault(key, []).append(
                 "regression key absent from the catalog")
-        elif key in all_problems:
-            problems.setdefault(key, []).extend(all_problems[key])
     return problems
 
 
-# Additional Conduit-owned catalogs that must satisfy the same zh-Hans
-# requirements. Key existence is validated only against Localizable
-# (call-site extraction); the others carry OS-owned Siri/InfoPlist content.
+# Every Conduit-owned catalog, in check order. Key existence is validated
+# only against Localizable (call-site extraction); the others carry
+# OS-resolved Siri/InfoPlist content but must cover the same languages.
+SOURCE_CATALOG = "Localizable.xcstrings"
 SECONDARY_CATALOGS = ("AppShortcuts.xcstrings", "InfoPlist.xcstrings")
+INFO_PLIST = os.path.join("Conduit", "Info.plist")
+
+
+class _JSONObject(dict):
+    """A decoded JSON object that remembers which of its keys repeated."""
+    repeated = ()
+
+
+def _remember_repeats(pairs):
+    seen = set()
+    repeated = []
+    for key, _value in pairs:
+        if key in seen:
+            repeated.append(key)
+        seen.add(key)
+    decoded = _JSONObject(pairs)
+    decoded.repeated = repeated
+    return decoded
+
+
+def _repeated_keys(value, path=()):
+    """Yield (path, key) for every key a JSON object in `value` repeats."""
+    if isinstance(value, _JSONObject):
+        for key in value.repeated:
+            yield path, key
+        for key, child in value.items():
+            yield from _repeated_keys(child, path + (key,))
+    elif isinstance(value, list):
+        for child in value:
+            yield from _repeated_keys(child, path)
+
+
+def load_catalog(path: str):
+    """Load a String Catalog. Returns (catalog, duplicates), where
+    duplicates maps a catalog key to its problems: plain JSON loading
+    silently keeps only the last copy of a repeated key, which hides a
+    second, conflicting translation."""
+    with open(path, encoding="utf-8") as handle:
+        catalog = json.load(handle, object_pairs_hook=_remember_repeats)
+    duplicates = {}
+    for where, key in _repeated_keys(catalog):
+        if where == ("strings",):
+            duplicates.setdefault(key, []).append(
+                "appears more than once in the catalog JSON (only one copy "
+                "survives); keep a single entry")
+        elif len(where) >= 2 and where[0] == "strings":
+            inner = "/".join(where[2:] + (key,))
+            duplicates.setdefault(where[1], []).append(
+                f"repeats {inner!r} in its JSON (only one copy survives)")
+        else:
+            duplicates.setdefault("/".join(where + (key,)), []).append(
+                "appears more than once in the catalog JSON")
+    return catalog, duplicates
+
+
+def read_draft_languages(info_plist_path: str) -> list:
+    """The draft localization identifiers Info.plist lists (may be empty)."""
+    if not os.path.exists(info_plist_path):
+        return []
+    try:
+        with open(info_plist_path, "rb") as handle:
+            info = plistlib.load(handle)
+    except (OSError, plistlib.InvalidFileException,
+            xml.parsers.expat.ExpatError) as error:
+        raise ValueError(f"unreadable: {error}") from error
+    drafts = info.get(DRAFT_LANGUAGES_KEY, [])
+    if not isinstance(drafts, list) or not all(
+            isinstance(language, str) and language.strip() for language in drafts):
+        raise ValueError(f"{DRAFT_LANGUAGES_KEY} must be an array of "
+                         f"localization identifiers")
+    return drafts
+
+
+def catalog_languages(catalog: dict) -> set:
+    """Every language with at least one localization in the catalog."""
+    languages = set()
+    for entry in catalog.get("strings", {}).values():
+        languages.update(entry.get("localizations", {}))
+    return languages
+
+
+class LanguagePlan:
+    """Which catalog languages ship, which are drafts, and which is the
+    source. `problems` are configuration errors; `notes` are advice."""
+
+    def __init__(self, catalogs: dict, drafts: list):
+        self.problems = []
+        self.notes = []
+        sources = {catalog.get("sourceLanguage", "en")
+                   for catalog in catalogs.values()}
+        primary = catalogs.get(SOURCE_CATALOG) or next(iter(catalogs.values()), {})
+        self.source = primary.get("sourceLanguage", "en")
+        if len(sources) > 1:
+            self.problems.append(
+                f"catalogs disagree on sourceLanguage: {sorted(sources)}")
+        draft_keys = {normalized_language(language) for language in drafts}
+        if normalized_language(self.source) in draft_keys:
+            self.problems.append(
+                f"{DRAFT_LANGUAGES_KEY} lists the source language "
+                f"{self.source!r}; it always ships")
+        # One spelling per language: Xcode builds a separate lproj for each
+        # spelling, so "zh_Hans" in one catalog and "zh-Hans" in another
+        # would split that language's strings across two folders.
+        spellings = {}
+        for catalog in catalogs.values():
+            for language in catalog_languages(catalog):
+                spellings.setdefault(normalized_language(language), set()).add(language)
+        for forms in spellings.values():
+            if len(forms) > 1:
+                self.problems.append(
+                    f"one language is spelled {sorted(forms)} across the "
+                    f"catalogs; use a single spelling")
+        present = {sorted(forms)[0] for forms in spellings.values()}
+        source_key = normalized_language(self.source)
+        self.shipped = sorted(
+            language for language in present
+            if normalized_language(language) != source_key
+            and normalized_language(language) not in draft_keys)
+        self.drafts = sorted(
+            language for language in present
+            if normalized_language(language) in draft_keys)
+        for language in self.shipped:
+            if plural_categories(language) is None:
+                self.notes.append(
+                    f"no plural rules on file for {language!r}, so only its "
+                    f"'other' form is required: check its plural forms in "
+                    f"Xcode, and add it to PLURAL_CATEGORIES")
+        present_keys = {normalized_language(language) for language in present}
+        for language in drafts:
+            if normalized_language(language) not in present_keys:
+                self.notes.append(
+                    f"draft {language!r} has no catalog entries yet")
+        for language in self.drafts:
+            if all(language_is_complete(catalog, language)
+                   for catalog in catalogs.values()):
+                self.notes.append(
+                    f"draft {language!r} is complete: remove it from "
+                    f"{DRAFT_LANGUAGES_KEY} in {INFO_PLIST} to ship it")
 
 
 def check(repo_root: str):
-    """Full check. Returns (checked_site_count, missing_sites, catalog_problems)."""
-    catalog_path = os.path.join(repo_root, "Conduit", "Localizable.xcstrings")
-    with open(catalog_path, encoding="utf-8") as handle:
-        catalog = json.load(handle)
+    """Full check. Returns (checked_site_count, missing_sites,
+    key_problems, language_plan)."""
+    conduit = os.path.join(repo_root, "Conduit")
+    catalogs = {}
+    duplicates = {}
+    for name in (SOURCE_CATALOG,) + SECONDARY_CATALOGS:
+        path = os.path.join(conduit, name)
+        if name != SOURCE_CATALOG and not os.path.exists(path):
+            continue
+        catalogs[name], duplicates[name] = load_catalog(path)
+    catalog = catalogs[SOURCE_CATALOG]
     catalog_keys = set(catalog["strings"])
+
+    key_problems = {}
+    try:
+        drafts = read_draft_languages(os.path.join(repo_root, INFO_PLIST))
+    except ValueError as error:
+        drafts = []
+        key_problems[f"{INFO_PLIST}: {DRAFT_LANGUAGES_KEY}"] = [str(error)]
+    plan = LanguagePlan(catalogs, drafts)
+    if plan.problems:
+        key_problems.setdefault("languages", []).extend(plan.problems)
 
     missing = {}
     checked = 0
-    source_root = os.path.join(repo_root, "Conduit")
-    for dirpath, _dirnames, filenames in os.walk(source_root):
+    for dirpath, _dirnames, filenames in os.walk(conduit):
         for name in filenames:
             if not name.endswith(".swift"):
                 continue
@@ -448,33 +736,34 @@ def check(repo_root: str):
                 rel = os.path.relpath(path, repo_root)
                 missing.setdefault(skeleton, []).append(f"{rel}:{line}")
 
-    key_problems = catalog_problems(catalog)
-    for name in SECONDARY_CATALOGS:
-        secondary_path = os.path.join(repo_root, "Conduit", name)
-        if not os.path.exists(secondary_path):
-            continue
-        with open(secondary_path, encoding="utf-8") as handle:
-            secondary = json.load(handle)
-        for key, problems in catalog_problems(secondary).items():
-            key_problems[f"{name}: {key}"] = problems
-    return checked, missing, key_problems
+    for name, current in catalogs.items():
+        prefix = "" if name == SOURCE_CATALOG else f"{name}: "
+        for key, problems in duplicates[name].items():
+            key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
+        for key, problems in catalog_problems(
+                current, plan.shipped, plan.drafts).items():
+            key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
+    for key, problems in required_key_problems(catalog, REGRESSION_KEYS).items():
+        key_problems.setdefault(key, []).extend(problems)
+    return checked, missing, key_problems, plan
+
+
+def describe(languages) -> str:
+    return ", ".join(languages) if languages else "none"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Verify every localizable call site resolves in "
-                    "Conduit/Localizable.xcstrings with a real zh-Hans "
-                    "translation.")
+                    "Conduit/Localizable.xcstrings and every shipped "
+                    "language has a complete, well-formed translation.")
     parser.add_argument("--repo-root", default=".",
                         help="Repository root (default: current directory).")
     args = parser.parse_args()
 
-    checked, missing, key_problems = check(args.repo_root)
-    regression = required_key_problems(
-        json.load(open(os.path.join(args.repo_root, "Conduit",
-                                    "Localizable.xcstrings"),
-                       encoding="utf-8")),
-        REGRESSION_KEYS)
+    checked, missing, key_problems, plan = check(args.repo_root)
+    print(f"Languages: source {plan.source}; shipped {describe(plan.shipped)}; "
+          f"drafts {describe(plan.drafts)}.")
 
     failed = False
     if missing:
@@ -488,22 +777,20 @@ def main() -> int:
     else:
         print(f"OK: {checked} localizable call sites all resolve in the catalog.")
 
-    all_key_problems = dict(key_problems)
-    for key, probs in regression.items():
-        all_key_problems.setdefault(key, []).extend(probs)
-    if all_key_problems:
+    if key_problems:
         failed = True
-        print(f"FAIL: {len(all_key_problems)} catalog key(s) lack a usable "
-              f"{REQUIRED_LANGUAGE} translation:")
-        for key in sorted(all_key_problems):
+        print(f"FAIL: {len(key_problems)} catalog key(s) have localization "
+              f"problems (shipped: {describe(plan.shipped)}):")
+        for key in sorted(key_problems):
             print(f"    {key!r}")
-            for problem in all_key_problems[key]:
+            for problem in key_problems[key]:
                 print(f"        {problem}")
-    if not failed:
-        print(f"OK: every catalog key has a real {REQUIRED_LANGUAGE} "
-              f"translation with type-matched placeholders.")
-        return 0
-    return 1
+    else:
+        print(f"OK: every catalog key is translated in every shipped language "
+              f"({describe(plan.shipped)}) with type-matched placeholders.")
+    for note in plan.notes:
+        print(f"NOTE: {note}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

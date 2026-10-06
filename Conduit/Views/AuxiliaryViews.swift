@@ -1859,15 +1859,21 @@ private struct AppearanceSettingsDetail: View {
                 Text("Choose the language Conduit’s interface uses. Speech, transcription, and provider language settings are unaffected.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                Picker("App language", selection: Binding(get: { appLanguage.selection }, set: {
+                let picker = Picker("App language", selection: Binding(get: { appLanguage.selection }, set: {
                     Haptics.selection()
                     appLanguage.select($0)
                 })) {
-                    Text("System Default").tag(AppLanguage.system)
-                    Text(verbatim: "English").tag(AppLanguage.english)
-                    Text(verbatim: "简体中文").tag(AppLanguage.simplifiedChinese)
+                    ForEach(AppLanguage.selectable) { language in
+                        Text(verbatim: language.displayName).tag(language)
+                    }
                 }
-                .pickerStyle(.segmented)
+                // System Default plus two languages fit a segmented control;
+                // more languages get a menu.
+                if AppLanguage.selectable.count <= 3 {
+                    picker.pickerStyle(.segmented)
+                } else {
+                    picker.pickerStyle(.menu)
+                }
             }
             ConduitSettingsSection(title: AppLocalization.string("App icon"), symbol: "app.badge", tint: .conduitAura) {
                 Text("Choose the icon shown on your Home Screen.")
