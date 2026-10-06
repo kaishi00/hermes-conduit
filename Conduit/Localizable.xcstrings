@@ -6796,6 +6796,16 @@
         }
       }
     },
+    "Attached file" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附件文件"
+          }
+        }
+      }
+    },
     "Attached image" : {
       "localizations" : {
         "zh-Hans" : {

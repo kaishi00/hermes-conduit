@@ -90,8 +90,9 @@ struct ChatResumeLifecycleOperations {
     var respondToApproval: (@MainActor (HermesClient, String, String?, String, String?) async throws -> Bool)?
     var sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
     /// Test seam for one attachment upload (session id, attachment) before
-    /// the prompt. Not an init parameter: tests set it on the value.
-    var uploadAttachment: (@MainActor (HermesClient, String, Attachment) async throws -> Void)?
+    /// the prompt; returns the `@file:` reference the prompt carries, nil
+    /// for an image. Not an init parameter: tests set it on the value.
+    var uploadAttachment: (@MainActor (HermesClient, String, Attachment) async throws -> String?)?
     /// Foreground transport verification. Production calls the client's
     /// `session.list` health check; tests substitute a controllable outcome.
     var verifyTransportHealth: (@MainActor (HermesClient) async throws -> Void)?
@@ -15929,6 +15930,22 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// What `prompt.submit` carries: each staged file's `@file:` reference
+    /// on its own line ahead of the typed text, as Hermes Desktop sends it,
+    /// so the agent is told where the file is.
+    nonisolated static func promptText(_ text: String, fileReferences: [String]) -> String {
+        let references = fileReferences.joined(separator: "\n")
+        guard !references.isEmpty else { return text }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return references }
+        return "\(references)\n\n\(text)"
+    }
+
+    /// Hermes refused an upload as an image (an extension it doesn't list,
+    /// or past its image size cap) rather than failing to store it.
+    nonisolated static func isImageAttachRefusal(_ error: RpcError) -> Bool {
+        error.code == 4016 || error.code == 4018
+    }
+
     func sendMessage(
         _ text: String,
         attachments: [Attachment] = [],
@@ -15985,27 +16002,42 @@ final class AppState: ObservableObject {
         clearStreamingText()
         turnState = .running
 
+        // Every file that isn't an image (PDFs included) is staged as a file,
+        // like Hermes Desktop does: Hermes' PDF route needs poppler on the
+        // host and bounced the send without it. Whether the model can read
+        // a file is up to the agent; the send never fails over its type.
+        var fileReferences: [String] = []
         for attachment in attachments {
             do {
+                let fileReference: String?
                 if let upload = chatResumeLifecycleOperations.uploadAttachment {
-                    try await upload(client, sessionId, attachment)
+                    fileReference = try await upload(client, sessionId, attachment)
                 } else if attachment.kind == .image {
                     let base64 = await AttachmentHelper.toBase64(attachment)
                     guard isCurrentComposerSubmission(submissionContext) else { return false }
                     guard !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
-                    _ = try await client.attachImage(sessionId, base64: base64, filename: attachment.name)
-                } else if attachment.name.lowercased().hasSuffix(".pdf") {
-                    let base64 = await AttachmentHelper.toBase64(attachment)
-                    guard isCurrentComposerSubmission(submissionContext) else { return false }
-                    guard !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
-                    try await client.attachPdf(sessionId, base64: base64, filename: attachment.name)
+                    do {
+                        _ = try await client.attachImage(sessionId, base64: base64, filename: attachment.name)
+                        fileReference = nil
+                    } catch let error as RpcError where Self.isImageAttachRefusal(error) {
+                        // Hermes won't take it as an image (a format it
+                        // doesn't list, or past its image size cap): it
+                        // still goes up, as a file.
+                        guard isCurrentComposerSubmission(submissionContext) else { return false }
+                        fileReference = try await client.attachFile(
+                            sessionId,
+                            dataUrl: AttachmentHelper.dataUrl(base64: base64, for: attachment),
+                            name: attachment.name
+                        )
+                    }
                 } else {
                     let dataUrl = await AttachmentHelper.toDataUrl(attachment)
                     guard isCurrentComposerSubmission(submissionContext) else { return false }
                     guard !dataUrl.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
-                    try await client.attachFile(sessionId, dataUrl: dataUrl, name: attachment.name)
+                    fileReference = try await client.attachFile(sessionId, dataUrl: dataUrl, name: attachment.name)
                 }
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
+                if let fileReference { fileReferences.append(fileReference) }
             } catch {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
                 errorMessage = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
@@ -16014,12 +16046,15 @@ final class AppState: ObservableObject {
             }
         }
 
+        // The bubble keeps the typed text; Hermes gets the files' references
+        // ahead of it.
+        let promptText = Self.promptText(outboundText, fileReferences: fileReferences)
         do {
             let outcome: PromptSubmissionOutcome
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
-                outcome = try await sendPrompt(client, sessionId, outboundText)
+                outcome = try await sendPrompt(client, sessionId, promptText)
             } else {
-                outcome = try await client.sendPrompt(sessionId, text: outboundText, surface: surface)
+                outcome = try await client.sendPrompt(sessionId, text: promptText, surface: surface)
             }
             // The gateway accepted the prompt. A session handoff may have
             // happened while the RPC was suspended, but that does not turn a
@@ -16123,9 +16158,10 @@ final class AppState: ObservableObject {
                     requestedSessionID: sessionId,
                     acceptedSessionIDs: submissionSessionIDs,
                     baseline: submissionBaseline,
-                    // The OUTBOUND text: it is what prompt.submit sent and what
-                    // the persisted user row holds (a mention annotation or
-                    // the forever-chat reroute changes it).
+                    // The OUTBOUND text: what prompt.submit sent and what
+                    // the persisted user row shows (a mention annotation or
+                    // the forever-chat reroute changes it; file references
+                    // and Hermes' attached-context footer are projected out).
                     submittedText: outboundText,
                     submissionContext: submissionContext
                 )
@@ -24024,8 +24060,12 @@ enum AttachmentHelper {
 
     static func toDataUrl(_ attachment: Attachment) async -> String {
         guard let data = data(for: attachment) else { return "" }
+        return dataUrl(base64: data.base64EncodedString(), for: attachment)
+    }
+
+    static func dataUrl(base64: String, for attachment: Attachment) -> String {
         let mimeType = attachment.mimeType?.isEmpty == false ? attachment.mimeType! : "application/octet-stream"
-        return "data:\(mimeType);base64,\(data.base64EncodedString())"
+        return "data:\(mimeType);base64,\(base64)"
     }
 
     private static func data(for attachment: Attachment) -> Data? {

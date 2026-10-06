@@ -18,7 +18,7 @@ Start a conversation on desktop, pick it up on your phone. The session list is t
 
 - Streaming responses with full Markdown — syntax-highlighted code, math, Mermaid diagrams, task lists
 - Tool call inspection, reasoning traces, and delegated-agent progress
-- Image, PDF, and text attachments, or paste an image straight into the composer
+- Attach images and any other file (PDFs, documents, code), or paste an image straight into the composer
 - Steer or interrupt an active turn mid-flight
 - Context usage meter with token counts and a progress ring
 - Slash commands and workspace file browsing
