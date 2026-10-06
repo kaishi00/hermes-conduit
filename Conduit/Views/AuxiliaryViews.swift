@@ -701,7 +701,10 @@ struct SettingsView: View {
         case .notifications:
             NotificationsSettingsDetail()
         case .screenQuestion:
-            SettingsDetailContainer { ScreenQuestionSettingsSection() }
+            SettingsDetailContainer {
+                ScreenQuestionSettingsSection()
+                ScreenQuestionHowItWorksSection()
+            }
                 .navigationTitle("Ask Hermes About Screen")
         case .about:
             AboutSettingsDetail(profile: snapshot.profile)

@@ -66,6 +66,28 @@ struct ScreenshotNewChatButton: View {
     }
 }
 
+/// Settings › Ask Hermes About Screen: what a press does, and how to get
+/// a new chat instead of the recent one.
+struct ScreenQuestionHowItWorksSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("How it works"),
+            symbol: "text.bubble",
+            tint: .conduitAccent
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("The screenshot opens in your voice mode. Close voice to type instead; the screenshot stays attached.", systemImage: "waveform")
+                Label("It joins the chat you used in the last 5 minutes, or a new chat. Tap New Chat beside the screenshot to move it to a fresh one.", systemImage: "square.and.pencil")
+                Label("To always use a new chat, open the shortcut in Shortcuts, tap Show More, and set Chat to New Chat.", systemImage: "slider.horizontal.3")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
 /// Settings › Ask Hermes About Screen: getting the shortcut onto the
 /// Action Button (or another trigger), and whether it has run. A
 /// screenshot opens in voice; closing voice leaves the keyboard.
