@@ -818,11 +818,10 @@ final class AppStateScreenQuestionTests: XCTestCase {
 
         XCTAssertFalse(moved)
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "recent"), shot)
-        XCTAssertEqual(
-            harness.appState.errorMessage,
-            AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one."),
-            "Says where the screenshot is, not only that a chat failed"
-        )
+        let message = AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one.")
+        let error = try XCTUnwrap(harness.appState.errorMessage)
+        XCTAssertTrue(error.hasPrefix(message), "Says where the screenshot is first: \(error)")
+        XCTAssertNotEqual(error, message, "Hermes's own reason follows")
     }
 
     func testVoiceNewChatThatCannotStartOffersTheScreenshotAgain() async throws {
