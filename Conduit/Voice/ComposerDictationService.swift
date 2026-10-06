@@ -276,6 +276,12 @@ enum ComposerDictation {
         return canDictate ? .start : .nothing
     }
 
+    /// Whether a change the full editor reported is the user typing:
+    /// anything but the draft dictation itself last wrote.
+    static func isTyping(_ text: String, dictationWrote dictated: String?) -> Bool {
+        text != dictated
+    }
+
     static func draft(before prefix: String, dictated: String) -> String {
         let dictated = dictated.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !dictated.isEmpty else { return prefix }

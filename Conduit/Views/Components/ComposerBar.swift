@@ -62,6 +62,9 @@ struct ComposerBar: View {
     @StateObject private var dictation = ComposerDictationService()
     /// The draft as it was when dictation began; dictated text goes after it.
     @State private var dictationPrefix = ""
+    /// The draft as dictation last wrote it, so the full editor, which
+    /// reports every change the same way, can tell it from typing.
+    @State private var dictatedDraft: String?
     /// The full-screen editor for long drafts (#335).
     @State private var isShowingFullEditor = false
 
@@ -520,11 +523,8 @@ struct ComposerBar: View {
             if showsFullEditorButton {
                 Button {
                     Haptics.selection()
-                    // The sheet's editor can't tell dictated words from typed
-                    // ones, so dictation ends here with the words so far
-                    // (one haptic: this tap's).
-                    dictation.onFinish = nil
-                    dictation.cancel()
+                    // A dictation carries on into the sheet, which has its
+                    // own dictate button.
                     isFocused = false
                     isShowingSlashSuggestions = false
                     isShowingFullEditor = true
@@ -556,7 +556,13 @@ struct ComposerBar: View {
                 text: $text,
                 placeholder: appState.composerPlaceholder,
                 enabled: appState.composerIsEnabled,
-                onUserEdit: { appState.noteComposerUserEdit() },
+                onUserEdit: { edited in
+                    // Dictation writing the draft is not typing.
+                    guard ComposerDictation.isTyping(edited, dictationWrote: dictatedDraft) else { return }
+                    appState.noteComposerUserEdit()
+                    // As inline: typing ends a dictation, keeping its words.
+                    if dictation.isDictating || dictation.isStarting { dictation.cancel() }
+                },
                 onCollapse: { isShowingFullEditor = false },
                 attachments: {
                     if let replyReference {
@@ -568,6 +574,7 @@ struct ComposerBar: View {
                         attachmentStrip
                     }
                 },
+                dictateButton: { dictateButton },
                 actionButton: { composerActionButton }
             )
             .preferredColorScheme(appState.themePreference.colorScheme)
@@ -1201,11 +1208,14 @@ struct ComposerBar: View {
         // callbacks must not be the new ones.
         guard let token = dictation.reserveStart() else { return }
         dictationPrefix = text
+        dictatedDraft = nil
         Haptics.medium()
         dictation.onTranscript = { transcript in
+            let draft = ComposerDictation.draft(before: dictationPrefix, dictated: transcript)
+            dictatedDraft = draft
             // The cursor follows the words, so the next dictation or typing
             // carries on after them.
-            replaceComposerText(ComposerDictation.draft(before: dictationPrefix, dictated: transcript), cursorAtEnd: true)
+            replaceComposerText(draft, cursorAtEnd: true)
         }
         dictation.onFinish = { _ in
             Haptics.light()
