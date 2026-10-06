@@ -420,8 +420,26 @@ final class PushNotificationService: ObservableObject {
     @Published private(set) var pairingExpiry: String?
     @Published private(set) var pendingTarget: ConduitNotificationTarget?
     @Published private(set) var navigationAttempt = 0
-    @Published var preferences = ConduitNotificationPreferences()
-    @Published private(set) var relayMeta: RelayMetaInfo?
+    @Published var preferences = ConduitNotificationPreferences() {
+        // The Notification Service Extension decides whether a decrypted
+        // push shows its real text; it reads this from the App Group.
+        didSet { NotificationSharedSettings.showPreviews = preferences.showPreviews }
+    }
+    /// Relay gateways this iPhone holds an end-to-end encryption key for
+    /// (#431). Settings > Notifications marks those pairings encrypted.
+    @Published private(set) var encryptedGatewayIDs: Set<String> = []
+    @Published private(set) var relayMeta: RelayMetaInfo? {
+        // Plaintext from a pairing this iPhone has never seen listed isn't
+        // trusted once it holds an encryption key (#431). Kept on failure.
+        didSet {
+            guard let relayMeta else { return }
+            NotificationSharedSettings.knownGatewayIDs = NotificationE2E.knownGatewayIDs(
+                listed: Set(relayMeta.gateways.map(\.id)),
+                previous: NotificationSharedSettings.knownGatewayIDs,
+                holdsKeys: NotificationSharedSettings.keysProvisioned || !Self.e2eKeyStore.records().isEmpty
+            )
+        }
+    }
     @Published private(set) var isFetchingMeta = false
     /// Set after this phone moves to a different relay: pairings live on
     /// the relay, so every Hermes profile has to pair again.
@@ -437,7 +455,34 @@ final class PushNotificationService: ObservableObject {
 
     /// The discriminator to echo for this request id, if one was retained.
     func relayGatewayID(forRequestID requestID: String) -> String? {
-        relayGatewayIDsByRequestID[requestID]
+        relayGatewayIDsByRequestID[requestID] ?? Self.encryptedDecisionGatewayIDs()[requestID]
+    }
+
+    /// Encrypted decisions keep their gateway across relaunches: the answer
+    /// has to be sealed for that pairing, and plaintext is rejected. Only
+    /// verified pushes are kept, newest last, capped.
+    static let encryptedDecisionGatewaysKey = "conduit.e2e.decisionGateways"
+    private static let encryptedDecisionGatewaysLimit = 64
+
+    private static func encryptedDecisionGatewayIDs() -> [String: String] {
+        let pairs = UserDefaults.standard.array(forKey: encryptedDecisionGatewaysKey) as? [[String]] ?? []
+        var map: [String: String] = [:]
+        for pair in pairs where pair.count == 2 { map[pair[0]] = pair[1] }
+        return map
+    }
+
+    private func persistEncryptedGatewayID(for target: ConduitNotificationTarget) {
+        guard let gatewayID = target.relayGatewayID else { return }
+        let requestID: String
+        switch target.decision {
+        case .clarify(let id, _, _): requestID = id
+        case .clarifyBatch(let id, _): requestID = id
+        default: return
+        }
+        var pairs = (UserDefaults.standard.array(forKey: Self.encryptedDecisionGatewaysKey) as? [[String]] ?? [])
+            .filter { $0.count == 2 && $0[0] != requestID }
+        pairs.append([requestID, gatewayID])
+        UserDefaults.standard.set(Array(pairs.suffix(Self.encryptedDecisionGatewaysLimit)), forKey: Self.encryptedDecisionGatewaysKey)
     }
 
     /// The respond body for a relay decision answer: answer, optional batch
@@ -580,6 +625,157 @@ final class PushNotificationService: ObservableObject {
             preferences = saved.preferences
             if needsRelayStamp { persistRegistration() }
         }
+        NotificationSharedSettings.showPreviews = preferences.showPreviews
+        refreshEncryptionState()
+    }
+
+    // MARK: End-to-end encryption (#431)
+
+    /// Where pairing keys live: the Keychain, shared with the Notification
+    /// Service Extension. The unsigned simulator host has no keychain access
+    /// group, so tests pass records to the parameterized functions instead.
+    static let e2eKeyStore: E2EKeyStoring = KeychainE2EKeyStore()
+    /// Messages already routed from a tap, shared with the extension's
+    /// delivery records.
+    static let e2eSeenStore: E2ESeenStore = .shared
+
+    static let e2ePath = "/api/plugins/conduit_push/e2e"
+    private var isProvisioningEncryption = false
+
+    func refreshEncryptionState() {
+        encryptedGatewayIDs = Set(Self.e2eKeyStore.records().map(\.gatewayID))
+    }
+
+    /// Gives every pairing of this dashboard's profiles that belongs to this
+    /// iPhone an end-to-end encryption key, over the dashboard connection so
+    /// the secret never passes through the relay. A pairing whose key the
+    /// plugin already holds is left alone; one the plugin holds a key for
+    /// that this iPhone lacks (a reinstall, or a save that never finished)
+    /// gets a new one. The key only counts as established, and the
+    /// downgrade rule only applies, after the plugin confirms it.
+    func provisionEncryption(
+        dashboardID: UUID,
+        profiles: [String],
+        request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
+    ) async {
+        // One run at a time: two overlapping runs would each post a key for
+        // the same pairing, and the plugin and this iPhone could keep
+        // different ones.
+        guard !isProvisioningEncryption, let installationID = registration?.installationID else { return }
+        isProvisioningEncryption = true
+        defer { isProvisioningEncryption = false }
+        var records = Self.e2eKeyStore.records()
+        let hadKeys = !records.isEmpty || NotificationSharedSettings.keysProvisioned
+        // Keys without the marker (a lost file, or a reinstall that kept the
+        // Keychain): put it back so unreadable keys still fail closed.
+        if !records.isEmpty { NotificationSharedSettings.markKeysProvisioned() }
+        if !hadKeys && relayMeta == nil {
+            // The keyless pairings plaintext stays trusted for are fixed when
+            // the first key is stored: make sure they are known by then.
+            await refreshMeta()
+            // Without the relay's list the frozen set would be empty and
+            // every keyless pairing would lose routing for good. Provisioning
+            // runs again on the next connect.
+            guard relayMeta != nil else { return }
+        }
+        for profile in profiles {
+            let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
+            guard let status = try? await request(path, "GET", nil),
+                  let gatewayID = Self.gatewayNeedingEncryptionKey(status: status, installationID: installationID, records: records) else {
+                continue
+            }
+            let record = NotificationE2E.newRecord(
+                installationID: installationID,
+                gatewayID: gatewayID,
+                dashboardID: dashboardID.uuidString,
+                profile: profile
+            )
+            let body: [String: Any] = [
+                "installation_id": installationID,
+                "gateway_id": gatewayID,
+                "kid": record.kid,
+                "secret": NotificationE2E.base64URL(record.secret),
+            ]
+            guard let response = try? await request(path, "POST", body),
+                  response["ok"] as? Bool == true,
+                  response["kid"] as? String == record.kid else {
+                continue
+            }
+            // Unregistered or moved relays while the request was out: the
+            // key belongs to a pairing this iPhone no longer has.
+            guard registration?.installationID == installationID else { break }
+            // The first key freezes the keyless pairings plaintext may still
+            // come from, and the marker goes down before the key so no
+            // stored key ever exists without it.
+            let firstKey = !hadKeys && records.isEmpty
+            if firstKey {
+                guard let relayMeta else { break }
+                NotificationSharedSettings.knownGatewayIDs = Set(relayMeta.gateways.map(\.id))
+            }
+            guard NotificationSharedSettings.markKeysProvisioned() else { break }
+            guard Self.e2eKeyStore.save(record) else {
+                if firstKey { NotificationSharedSettings.clearKeysProvisioned() }
+                continue
+            }
+            // The plugin now holds only this key for the pairing.
+            for stale in records where stale.installationID == installationID && stale.gatewayID == gatewayID {
+                Self.e2eKeyStore.remove(kid: stale.kid)
+            }
+            records.removeAll { $0.installationID == installationID && $0.gatewayID == gatewayID }
+            records.append(record)
+        }
+        refreshEncryptionState()
+    }
+
+    /// The relay gateway id of a profile's pairing that still needs a key
+    /// from this iPhone, or nil: not paired, paired with another device, an
+    /// old pairing without a gateway id, a host that can't encrypt, or a key
+    /// this iPhone already holds.
+    nonisolated static func gatewayNeedingEncryptionKey(status: [String: Any], installationID: String, records: [E2EKeyRecord]) -> String? {
+        guard status["ok"] as? Bool == true,
+              status["paired"] as? Bool == true,
+              status["crypto"] as? Bool != false,
+              status["installation_id"] as? String == installationID,
+              let gatewayID = status["gateway_id"] as? String, !gatewayID.isEmpty else {
+            return nil
+        }
+        if let kid = (status["e2e"] as? [String: Any])?["kid"] as? String,
+           records.contains(where: { $0.kid == kid && $0.gatewayID == gatewayID && $0.installationID == installationID }) {
+            return nil
+        }
+        return gatewayID
+    }
+
+    /// Forgets the keys of an installation this iPhone no longer uses.
+    private func removeEncryptionKeys(installationID: String) {
+        for record in Self.e2eKeyStore.records() where record.installationID == installationID {
+            Self.e2eKeyStore.remove(kid: record.kid)
+        }
+        // With no key left, the next first key freezes a fresh set.
+        if Self.e2eKeyStore.records().isEmpty {
+            NotificationSharedSettings.knownGatewayIDs = []
+            NotificationSharedSettings.clearKeysProvisioned()
+        }
+        UserDefaults.standard.removeObject(forKey: Self.encryptedDecisionGatewaysKey)
+        refreshEncryptionState()
+    }
+
+    /// A clarify answer for a gateway with an encryption key is sealed for
+    /// it; the plugin rejects plaintext from an encrypted pairing.
+    nonisolated static func sealedRespondBody(
+        _ body: [String: String],
+        requestID: String,
+        installationID: String?,
+        records: [E2EKeyRecord]
+    ) throws -> [String: String] {
+        guard let gatewayID = body["gateway_id"],
+              let answer = body["answer"],
+              let record = records.first(where: { $0.gatewayID == gatewayID && $0.installationID == installationID }) else {
+            return body
+        }
+        var sealed = body
+        sealed["answer"] = try NotificationE2E.sealAnswer(answer, record: record, requestID: requestID, questionID: body["question_id"])
+        return sealed
     }
 
     func refresh() async {
@@ -759,7 +955,13 @@ final class PushNotificationService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let sealed = try Self.sealedRespondBody(
+            body,
+            requestID: requestId,
+            installationID: registration.installationID,
+            records: Self.e2eKeyStore.records()
+        )
+        request.httpBody = try JSONSerialization.data(withJSONObject: sealed)
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
@@ -867,6 +1069,7 @@ final class PushNotificationService: ObservableObject {
             return
         }
         await revokeInstallation(previous)
+        removeEncryptionKeys(installationID: previous.installationID)
         relayMeta = nil
         pairingCode = nil
         pairingExpiry = nil
@@ -883,6 +1086,7 @@ final class PushNotificationService: ObservableObject {
     private func revokeRegistration() async {
         if let registration {
             await revokeInstallation(registration)
+            removeEncryptionKeys(installationID: registration.installationID)
         }
         registration = nil
         KeychainHelper.clearPushRegistration()
@@ -966,8 +1170,35 @@ final class PushNotificationService: ObservableObject {
     }
 
     func receiveNotificationPayload(_ userInfo: [AnyHashable: Any]) {
-        guard let target = Self.parseNotificationTarget(from: userInfo) else { return }
+        let records = Self.e2eKeyStore.records()
+        let evaluation = NotificationE2E.evaluate(
+            userInfo,
+            records: records,
+            knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
+            keysProvisioned: NotificationSharedSettings.keysProvisioned
+        )
+        guard var target = Self.target(for: evaluation, userInfo: userInfo) else { return }
+        if case .verified(let verified) = evaluation {
+            // A sealed message routes once: a replay of it can't open
+            // anything after the original was tapped.
+            guard Self.e2eSeenStore.insert(verified.envelope.replayKey, namespace: "routed") else { return }
+        }
+        if !preferences.decisionCards, target.decision != nil {
+            // Encrypted pushes always carry the card (the relay can't strip
+            // it); the preference still decides whether Conduit uses it.
+            target = ConduitNotificationTarget(
+                profile: target.profile,
+                sessionId: target.sessionId,
+                durableSessionID: target.durableSessionID,
+                dashboardID: target.dashboardID,
+                hasMalformedDashboardID: target.hasMalformedDashboardID,
+                relayGatewayID: target.relayGatewayID,
+                type: target.type,
+                decision: nil
+            )
+        }
         retainRelayGatewayID(for: target)
+        if case .verified = evaluation { persistEncryptedGatewayID(for: target) }
         navigationRetryTask?.cancel()
         navigationRetryTask = nil
         pendingTarget = target
@@ -1026,6 +1257,43 @@ final class PushNotificationService: ObservableObject {
     /// internal so the dashboard-identity parsing rules are testable without
     /// the singleton's registration state.
     static func parseNotificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
+        parseNotificationTarget(
+            from: userInfo,
+            records: e2eKeyStore.records(),
+            knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
+            keysProvisioned: NotificationSharedSettings.keysProvisioned
+        )
+    }
+
+    /// End-to-end encryption decides what a push may drive (#431): a sealed
+    /// push routes only from its verified content and the pairing its key
+    /// belongs to; plaintext routes only for pairings that never set up
+    /// encryption; anything else routes nowhere.
+    static func parseNotificationTarget(
+        from userInfo: [AnyHashable: Any],
+        records: [E2EKeyRecord],
+        knownGatewayIDs: Set<String>,
+        keysProvisioned: Bool = false,
+        now: Date = Date()
+    ) -> ConduitNotificationTarget? {
+        target(
+            for: NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: knownGatewayIDs, keysProvisioned: keysProvisioned, now: now),
+            userInfo: userInfo
+        )
+    }
+
+    private static func target(for evaluation: NotificationE2E.Evaluation, userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
+        switch evaluation {
+        case .legacy:
+            return parsePlaintextNotificationTarget(from: userInfo)
+        case .untrusted:
+            return nil
+        case .verified(let verified):
+            return target(from: verified.routingPayload)
+        }
+    }
+
+    private static func parsePlaintextNotificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
         let direct = userInfo["conduit"] as? [String: Any]
         let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
         // The relay's optimized APNs layout keeps the structured decision
@@ -1042,6 +1310,10 @@ final class PushNotificationService: ObservableObject {
         } else {
             payload = direct ?? nested ?? [:]
         }
+        return target(from: payload)
+    }
+
+    private static func target(from payload: [String: Any]) -> ConduitNotificationTarget? {
         guard let sessionId = payload["session_id"] as? String,
               !sessionId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let durableSessionID = Self.routingDurableSessionID(from: payload)
