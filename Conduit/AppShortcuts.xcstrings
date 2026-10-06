@@ -36,7 +36,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "${profile}で${applicationName}の音声"
+            "value" : "${applicationName}で${profile}の音声"
           }
         },
         "zh-Hans" : {
