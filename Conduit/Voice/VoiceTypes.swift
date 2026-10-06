@@ -559,6 +559,9 @@ struct ScreenQuestionRequest: Equatable {
     /// When the action ran, before Conduit came to the foreground: the
     /// recent-chat rule measures from here.
     var enqueuedAt: Date
+    /// The shortcut's Chat option asked for a new chat instead of the
+    /// recent one.
+    var startsNewChat = false
 }
 
 /// What became of words spoken to steer a running Hermes turn.

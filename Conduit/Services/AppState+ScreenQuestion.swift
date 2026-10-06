@@ -203,6 +203,80 @@ extension AppState {
         }
     }
 
+    // MARK: - Moving to a new chat
+
+    /// "New Chat" beside the screenshot in the composer: only when it
+    /// joined a chat that's already in use. An empty chat is already new.
+    var canMoveComposerScreenshotToNewChat: Bool {
+        guard isConnected, !isConnecting, !isProfileSwitching, activeRoomSurface == nil,
+              pendingScreenshot(forSession: activeSessionId) != nil else { return false }
+        return !messages.isEmpty || turnState.isRunning
+    }
+
+    /// "New Chat" on the voice sheet's screenshot banner, by the same rule.
+    /// A call's chat that isn't on screen can't be checked here, so it
+    /// counts as in use.
+    var canMoveVoiceScreenshotToNewChat: Bool {
+        guard isConnected, !isConnecting, !isProfileSwitching, voiceScreenshot != nil else { return false }
+        if isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread, !isOpenChat(thread) {
+            return true
+        }
+        return !messages.isEmpty || turnState.isRunning
+    }
+
+    /// Moves the screenshot from the chat it joined to a fresh chat. Voice
+    /// that is open ends and starts again there; otherwise the keyboard is
+    /// ready, with `text` (what was typed beside the screenshot) carried
+    /// along. When no chat can start, both stay where they were.
+    @discardableResult
+    func moveScreenshotToNewChat(carrying text: String = "") async -> Bool {
+        let inVoice = isVoiceInUse
+        guard isConnected, let entry = takeScreenshotForNewChat() else {
+            restoreComposerText(text)
+            return false
+        }
+        if inVoice {
+            if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+            endLiveVoiceCall()
+        }
+        let previous = activeSessionId
+        await createNewSession()
+        guard let created = activeSessionId, created != previous else {
+            // Back where it was, ready for another try.
+            setPendingScreenshot(entry.attachment, forSession: entry.sessionID)
+            restoreComposerText(text)
+            if errorMessage == nil {
+                errorMessage = AppLocalization.string("Hermes couldn't start a new chat, so the screenshot is still in this one.")
+            }
+            return false
+        }
+        setPendingScreenshot(entry.attachment, forSession: created)
+        restoreComposerText(text)
+        if inVoice {
+            await startScreenQuestionInput(.voice, on: created)
+        } else {
+            requestComposerFocus(on: created)
+        }
+        return true
+    }
+
+    /// The screenshot voice or the composer shows, taken off its chat
+    /// without deleting the file.
+    private func takeScreenshotForNewChat() -> PendingScreenshot? {
+        guard isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread else {
+            return takePendingScreenshotEntry(forSession: activeSessionId)
+        }
+        for id in [thread.runtimeSessionID, thread.storedSessionID].compactMap({ $0 }) {
+            if let entry = takePendingScreenshotEntry(forSession: id) { return entry }
+        }
+        return nil
+    }
+
+    private func restoreComposerText(_ text: String) {
+        guard !text.isEmpty else { return }
+        prefillComposer(text)
+    }
+
     // MARK: - Opening the chat
 
     /// The router's handler for an Ask Hermes About Screen launch. Returns
@@ -382,6 +456,10 @@ extension AppState {
         let hasOpenChat = activeSessionId != nil && activeRoomSurface == nil && offlineChatPresentation == nil
         let continuesOpenChat: Bool
         if switchedProfile {
+            continuesOpenChat = false
+        } else if request.startsNewChat, !isVoiceInUse {
+            // The shortcut asked for a new chat. A call already running
+            // keeps the screenshot in its chat: that's where the user is.
             continuesOpenChat = false
         } else if resumingParked || isVoiceInUse || ScreenQuestionPolicy.wasOnScreen(
             activeSince: isSceneActive ? sceneActiveSince : nil,

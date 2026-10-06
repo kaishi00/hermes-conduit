@@ -722,6 +722,96 @@ final class AppStateScreenQuestionTests: XCTestCase {
         )
     }
 
+    func testNewChatOptionSkipsTheRecentChat() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChatWithoutClient("recent", in: harness)
+        harness.appState.isConnected = true
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, enqueuedAt: now, startsNewChat: true))
+
+        XCTAssertTrue(opened)
+        XCTAssertNil(harness.appState.pendingScreenshot(forSession: "recent"), "The recent chat is passed over")
+        XCTAssertEqual(
+            harness.appState.parkedScreenQuestion?.request.attachment, shot,
+            "It waited for a new chat, which couldn't start here"
+        )
+    }
+
+    func testNewChatOptionUsesAnEmptyOpenChat() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("fresh-chat", in: harness)
+        harness.appState.isConnected = true
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, startWith: .keyboard, startsNewChat: true))
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "fresh-chat"), shot, "An empty chat is already new")
+    }
+
+    func testNewChatOptionLeavesTheScreenshotWithARunningCall() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness, withMessages: true)
+        harness.appState.isConnected = true
+        harness.appState.showVoiceSheet = true
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, startsNewChat: true))
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+    }
+
+    func testNewChatButtonShowsOnlyBesideAChatInUse() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("fresh-chat", in: harness)
+        harness.appState.isConnected = true
+        let shot = try stagedScreenshot()
+        XCTAssertFalse(harness.appState.canMoveComposerScreenshotToNewChat, "No screenshot")
+
+        harness.appState.setPendingScreenshot(shot, forSession: "fresh-chat")
+        XCTAssertFalse(harness.appState.canMoveComposerScreenshotToNewChat, "An empty chat is already new")
+        XCTAssertFalse(harness.appState.canMoveVoiceScreenshotToNewChat)
+
+        harness.appState.messages = [ChatMessage(id: "m1", role: .user, content: "Earlier", timestamp: "1")]
+        XCTAssertTrue(harness.appState.canMoveComposerScreenshotToNewChat)
+        XCTAssertTrue(harness.appState.canMoveVoiceScreenshotToNewChat)
+
+        harness.appState.isConnected = false
+        XCTAssertFalse(harness.appState.canMoveComposerScreenshotToNewChat, "No new chat starts while disconnected")
+    }
+
+    func testNewChatThatCannotStartPutsTheScreenshotAndTextBack() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChatWithoutClient("recent", in: harness)
+        harness.appState.isConnected = true
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "recent")
+
+        let moved = await harness.appState.moveScreenshotToNewChat(carrying: "What does this setting do?")
+
+        XCTAssertFalse(moved)
+        XCTAssertEqual(harness.appState.activeSessionId, "recent")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "recent"), shot)
+        XCTAssertTrue(fileExists(shot), "Moving never deletes the screenshot")
+        XCTAssertEqual(harness.appState.composerPrefillText, "What does this setting do?", "The typed text comes back")
+        XCTAssertNotNil(harness.appState.errorMessage)
+    }
+
+    func testNewChatWithNoScreenshotKeepsTheText() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChatWithoutClient("recent", in: harness)
+        harness.appState.isConnected = true
+
+        let moved = await harness.appState.moveScreenshotToNewChat(carrying: "Typed")
+
+        XCTAssertFalse(moved)
+        XCTAssertEqual(harness.appState.composerPrefillText, "Typed")
+    }
+
     func testHeldScreenshotKeepsTheProfileTheShortcutNamed() async throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         // Connected, but no saved connection or client: neither the switch
@@ -1216,9 +1306,16 @@ final class AppStateScreenQuestionTests: XCTestCase {
         for attachment: Attachment,
         question: String? = nil,
         startWith: ScreenQuestionStart? = nil,
-        enqueuedAt: Date = Date()
+        enqueuedAt: Date = Date(),
+        startsNewChat: Bool = false
     ) -> ScreenQuestionRequest {
-        ScreenQuestionRequest(attachment: attachment, question: question, startWith: startWith, enqueuedAt: enqueuedAt)
+        ScreenQuestionRequest(
+            attachment: attachment,
+            question: question,
+            startWith: startWith,
+            enqueuedAt: enqueuedAt,
+            startsNewChat: startsNewChat
+        )
     }
 
     private func intent(
@@ -1226,12 +1323,24 @@ final class AppStateScreenQuestionTests: XCTestCase {
         question: String? = nil,
         startWith: ScreenQuestionStart? = nil,
         profile: String? = nil,
-        enqueuedAt: Date = Date()
+        enqueuedAt: Date = Date(),
+        startsNewChat: Bool = false
     ) -> PendingVoiceIntent {
         PendingVoiceLaunchPolicy.makeScreenQuestionPendingIntent(
-            request(for: attachment, question: question, startWith: startWith, enqueuedAt: enqueuedAt),
+            request(for: attachment, question: question, startWith: startWith, enqueuedAt: enqueuedAt, startsNewChat: startsNewChat),
             profile: profile
         )
+    }
+
+    /// A chat with a conversation in it and no client, so a new chat
+    /// can't start.
+    private func openChatWithoutClient(_ id: String, in harness: Harness) {
+        harness.appState.sessions = [session(id)]
+        harness.appState.activeSessionId = id
+        harness.appState.messages = [
+            ChatMessage(id: "m1", role: .user, content: "Earlier", timestamp: "1"),
+            ChatMessage(id: "m2", role: .assistant, content: "Earlier answer", timestamp: "2")
+        ]
     }
 }
 

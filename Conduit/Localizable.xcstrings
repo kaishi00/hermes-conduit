@@ -11,6 +11,36 @@
         }
       }
     },
+    "Hermes couldn't start a new chat, so the screenshot is still in this one." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法新建聊天，截图仍在当前聊天中。"
+          }
+        }
+      }
+    },
+    "Moves the screenshot to a new chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将截图移到新聊天。"
+          }
+        }
+      }
+    },
+    "Recent Chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近的聊天"
+          }
+        }
+      }
+    },
     "Add the shortcut" : {
       "localizations" : {
         "zh-Hans" : {

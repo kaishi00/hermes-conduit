@@ -4419,6 +4419,14 @@ final class AppState: ObservableObject {
     /// Queued saves wait for it to end.
     var isLiveVoiceCallActive: Bool { isGeminiLiveActive || isGPTLiveActive || isGrokLiveActive }
 
+    /// Hangs up the live call that's running, shown or minimised, as its
+    /// End button does.
+    func endLiveVoiceCall() {
+        if isGeminiLiveActive || showGeminiLiveSheet || minimisedLiveVoice == .geminiLive { closeGeminiLiveConversation() }
+        if isGPTLiveActive || showGPTLiveSheet || minimisedLiveVoice == .gptLive { closeGPTLiveConversation() }
+        if isGrokLiveActive || showGrokLiveSheet || minimisedLiveVoice == .grokLive { closeGrokLiveConversation() }
+    }
+
     // MARK: Minimised live voice
 
     /// The live call whose sheet was swiped away. The call keeps running
