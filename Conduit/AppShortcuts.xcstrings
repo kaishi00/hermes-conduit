@@ -10,6 +10,12 @@
             "value" : "${applicationName} voice"
           }
         },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}の音声"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -25,6 +31,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "${applicationName} voice with ${profile}"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${profile}で${applicationName}の音声"
           }
         },
         "zh-Hans" : {
@@ -44,6 +56,12 @@
             "value" : "Start ${applicationName} voice"
           }
         },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}の音声を開始"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -59,6 +77,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Start ${profile} voice in ${applicationName}"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}で${profile}の音声を開始"
           }
         },
         "zh-Hans" : {
@@ -78,6 +102,12 @@
             "value" : "Start a voice conversation in ${applicationName}"
           }
         },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}で音声会話を開始"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -93,6 +123,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Start voice in ${applicationName}"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}で音声を開始"
           }
         },
         "zh-Hans" : {
@@ -112,6 +148,12 @@
             "value" : "Talk to ${applicationName}"
           }
         },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}と話す"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -129,6 +171,12 @@
             "value" : "Talk to Conduit"
           }
         },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitと話す"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -144,6 +192,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Voice chat in ${applicationName}"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}でボイスチャット"
           }
         },
         "zh-Hans" : {
