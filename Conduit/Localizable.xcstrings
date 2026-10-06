@@ -406,7 +406,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ask Hermes About Screen"
+            "value" : "画面についてHermesに質問"
           }
         },
         "zh-Hans" : {
@@ -502,7 +502,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduitはその画像を読み込めませんでした。「Ask Hermes About Screen」にはスクリーンショットまたはほかの画像が必要です。"
+            "value" : "Conduitはその画像を読み込めませんでした。「画面についてHermesに質問」にはスクリーンショットまたはほかの画像が必要です。"
           }
         },
         "zh-Hans" : {
@@ -31739,7 +31739,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "auto"
+            "value" : "自動"
           }
         },
         "zh-Hans" : {
