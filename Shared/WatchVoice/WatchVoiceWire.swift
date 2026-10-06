@@ -91,6 +91,8 @@ enum WatchVoiceWire {
         case soakStop(runID: UInt32)
         /// A finished test's result, as one JSON line for the iPhone's log.
         case report(String)
+        /// Any other Watch event, as one JSON line for the iPhone's log.
+        case note(String)
         // iPhone → Watch
         case callAccepted(callID: UInt32, mode: String)
         case callRefused(callID: UInt32, reason: String)

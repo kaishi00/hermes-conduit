@@ -267,7 +267,6 @@ struct WatchLabView: View {
                 if call.isActive {
                     Text("End the call to use the lab.").font(.footnote)
                 }
-                Text(lab.status).font(.footnote)
                 Text("Encoders").font(.headline)
                 ForEach(lab.encoders, id: \.self) { Text($0).font(.caption2) }
                 Text("Echo").font(.headline)
@@ -279,6 +278,9 @@ struct WatchLabView: View {
                     Text(String(format: "%@: echo %.0f dB over the room (room %.0f dBFS)", result.voiceProcessing ? "On" : "Off", result.echoOverNoiseDB, result.noiseDBFS))
                         .font(.caption2)
                 }
+                // Beside the buttons: at the top it scrolled out of view,
+                // so a failed test looked like a dead button.
+                Text(lab.status).font(.footnote)
                 if lab.hasRecording {
                     Button("Hear what the mic got") { Task { await lab.playRecording() } }
                         .disabled(blocked)

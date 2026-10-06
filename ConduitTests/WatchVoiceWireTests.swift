@@ -102,6 +102,7 @@ extension HermesVoiceGatewayTimeoutTests {
             .ping(callID: 4),
             .drained(callID: 1, turn: 2, seq: 3),
             .report("{\"event\":\"callSummary\"}"),
+            .note("{\"event\":\"pingFailed\"}"),
             .callState(.init(callID: 1, phase: .speaking, detail: nil, caption: "Hello", mode: "geminiLive", jobs: 1, muted: false)),
             .soakResult(.init(
                 side: "phone", runID: 2, label: "live", sent: 10, acked: 9, failed: 1, merged: 0,

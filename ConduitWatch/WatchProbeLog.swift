@@ -3,9 +3,9 @@
 //  Conduit Watch
 //
 //  The Watch side of the test log: every event is a JSON line kept on the
-//  Watch, and finished results also go to the iPhone (queued, so they
-//  arrive even when the iPhone isn't reachable right now), where the log
-//  can be shared.
+//  Watch and also sent to the iPhone (queued, so it arrives even when the
+//  iPhone isn't reachable right now), where the log can be shared.
+//  Finished results also show in the iPhone's Apple Watch test section.
 //
 
 import Foundation
@@ -24,23 +24,29 @@ final class WatchProbeLog: ObservableObject {
         fileURL = directory?.appendingPathComponent("watch-probe.jsonl")
     }
 
-    /// Records one event on the Watch.
+    /// Records one event, here and in the iPhone's log.
     func note(_ event: String, _ fields: [String: Any] = [:]) {
         var fields = fields
         fields["event"] = event
         fields["side"] = "watch"
-        append(WatchVoiceStats.jsonLine(fields))
+        let line = WatchVoiceStats.jsonLine(fields)
+        append(line)
+        sendToPhone(.note(line))
     }
 
-    /// Records a finished result and sends it to the iPhone's log too.
+    /// Records a finished result, which the iPhone also lists.
     func report(_ event: String, _ fields: [String: Any]) {
         var fields = fields
         fields["event"] = event
         fields["side"] = "watch"
         let line = WatchVoiceStats.jsonLine(fields)
         append(line)
+        sendToPhone(.report(line))
+    }
+
+    private func sendToPhone(_ message: WatchVoiceWire.Message) {
         guard WCSession.isSupported(), WCSession.default.activationState == .activated else { return }
-        WCSession.default.transferUserInfo(WatchVoiceWire.encode(.report(line)))
+        WCSession.default.transferUserInfo(WatchVoiceWire.encode(message))
     }
 
     func clear() {

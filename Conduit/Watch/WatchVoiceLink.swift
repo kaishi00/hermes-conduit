@@ -122,6 +122,9 @@ final class WatchVoiceLink: ObservableObject {
         case .report(let line):
             log.watchReport(line)
             reply?([:])
+        case .note(let line):
+            log.watchNote(line)
+            reply?([:])
         default:
             call.handle(message)
             reply?([:])
@@ -180,6 +183,9 @@ final class WatchCallHost {
     private var downlinkSent = 0
     private var downlinkFailed = 0
     private var downlinkRoundTrips: [Double] = []
+    /// The P3 fallback's CallKit call, made the first time Voice settings
+    /// turn it on.
+    private var phoneCall: WatchPhoneCall?
 
     init(link: WatchVoiceLink) {
         self.link = link
@@ -237,6 +243,7 @@ final class WatchCallHost {
         output = WatchLiveVoiceOutput(host: self)
         suspendedAtStart = link.liveness.suspendedMs
         link.liveness.begin("call")
+        if WatchPhoneCall.isEnabled { startPhoneCall() }
         appState.setWatchVoiceCallActive(true)
         watchdog = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkWatchdog() }
@@ -248,6 +255,7 @@ final class WatchCallHost {
             "appState": WatchProbeLiveness.appStateName,
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
+            "phoneCall": WatchPhoneCall.isEnabled,
         ])
         let previous = establishing
         establishing = Task { [weak self] in
@@ -255,6 +263,17 @@ final class WatchCallHost {
             await self?.establish(appState, mode: mode, callID: callID)
         }
         return .callAccepted(callID: callID, mode: Self.name(mode))
+    }
+
+    private func startPhoneCall() {
+        let phoneCall = self.phoneCall ?? WatchPhoneCall(log: link.log)
+        if self.phoneCall == nil {
+            phoneCall.onEndedOnPhone = { [weak self] in
+                self?.finish(reason: "Ended on the iPhone.", failed: false)
+            }
+            self.phoneCall = phoneCall
+        }
+        phoneCall.start()
     }
 
     private func establish(_ appState: AppState, mode: CarPlayLiveVoiceMode, callID: UInt32) async {
@@ -454,6 +473,7 @@ final class WatchCallHost {
         output?.stop()
         input = nil
         output = nil
+        phoneCall?.end()
         link.liveness.end("call")
         link.log.summary("watchCallSummary", [
             "callID": Int(callID),
@@ -646,11 +666,17 @@ final class WatchSoakResponder {
 
 /// Whether this app kept running during a Watch call or link test: a
 /// one-second ticker whose late ticks are time the app was suspended.
+/// The continuous clock keeps counting while the iPhone sleeps, which
+/// uptime doesn't: a locked phone's suspension would read short.
 @MainActor
-final class WatchProbeLiveness {
+final class WatchProbeLiveness: ObservableObject {
+    /// A Watch call or link test is running: the iPhone holds off
+    /// auto-lock while Conduit is on screen, so "iPhone unlocked" tests
+    /// stay unlocked.
+    @Published private(set) var isRunning = false
     private var reasons: Set<String> = []
     private var timer: Timer?
-    private var lastTick = ProcessInfo.processInfo.systemUptime
+    private var lastTick = ContinuousClock.now
     private var ticksSinceStateLog = 0
     private(set) var suspendedMs = 0
 
@@ -665,8 +691,9 @@ final class WatchProbeLiveness {
 
     func begin(_ reason: String) {
         reasons.insert(reason)
+        isRunning = true
         guard timer == nil else { return }
-        lastTick = ProcessInfo.processInfo.systemUptime
+        lastTick = ContinuousClock.now
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
@@ -675,13 +702,15 @@ final class WatchProbeLiveness {
     func end(_ reason: String) {
         reasons.remove(reason)
         guard reasons.isEmpty else { return }
+        isRunning = false
         timer?.invalidate()
         timer = nil
     }
 
     private func tick() {
-        let now = ProcessInfo.processInfo.systemUptime
-        let gap = now - lastTick
+        let now = ContinuousClock.now
+        let elapsed = (now - lastTick).components
+        let gap = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
         lastTick = now
         if gap > 1.5 {
             let missed = Int((gap - 1) * 1000)

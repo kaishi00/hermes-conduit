@@ -14,6 +14,7 @@ import SwiftUI
 struct WatchProbeSettingsSection: View {
     @ObservedObject private var link = WatchVoiceLink.shared
     @ObservedObject private var log = WatchProbePhoneLog.shared
+    @AppStorage(WatchPhoneCall.enabledKey) private var keepPhoneRunning = false
 
     var body: some View {
         ConduitSettingsSection(title: "Apple Watch test", symbol: "applewatch", tint: .conduitAura) {
@@ -21,6 +22,12 @@ struct WatchProbeSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(verbatim: "Run the tests from Conduit on your Watch. Results land here; share the log when you're done.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle(isOn: $keepPhoneRunning) {
+                Text(verbatim: "Keep the iPhone running with a call")
+            }
+            Text(verbatim: "Each Watch call also starts a call on this iPhone, so iOS keeps Conduit running while the phone is locked. For the locked-phone test.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ForEach(Array(log.summaries.suffix(6).reversed().enumerated()), id: \.offset) { _, line in

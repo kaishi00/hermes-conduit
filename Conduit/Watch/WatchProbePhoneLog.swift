@@ -53,6 +53,11 @@ final class WatchProbePhoneLog: ObservableObject {
         remember(line)
     }
 
+    /// Any other event line the Watch sent: logged, not shown.
+    func watchNote(_ line: String) {
+        append(line)
+    }
+
     func clear() {
         summaries = []
         try? FileManager.default.removeItem(at: fileURL)
