@@ -161,7 +161,7 @@ enum NotificationE2E {
         _ userInfo: [AnyHashable: Any],
         records: [E2EKeyRecord],
         knownGatewayIDs: Set<String>,
-        keysProvisioned: Bool = false,
+        keysProvisioned: Bool,
         now: Date = Date()
     ) -> Evaluation {
         let stub = routingStub(userInfo)
@@ -293,6 +293,9 @@ struct E2EKeyRecord: Codable, Equatable {
 
 protocol E2EKeyStoring {
     func records() -> [E2EKeyRecord]
+    /// The stored keys, or nil when the store can't be read right now (as
+    /// opposed to holding none).
+    func readRecords() -> [E2EKeyRecord]?
     @discardableResult func save(_ record: E2EKeyRecord) -> Bool
     func remove(kid: String)
 }
@@ -313,12 +316,17 @@ struct KeychainE2EKeyStore: E2EKeyStoring {
     }
 
     func records() -> [E2EKeyRecord] {
+        readRecords() ?? []
+    }
+
+    func readRecords() -> [E2EKeyRecord]? {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitAll
         var items: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &items) == errSecSuccess,
-              let values = items as? [Data] else { return [] }
+        let status = SecItemCopyMatching(query as CFDictionary, &items)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess, let values = items as? [Data] else { return nil }
         let decoder = JSONDecoder()
         return values.compactMap { try? decoder.decode(E2EKeyRecord.self, from: $0) }
     }

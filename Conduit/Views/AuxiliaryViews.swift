@@ -2335,6 +2335,9 @@ private struct NotificationsSettingsDetail: View {
                   !NotificationSharedSettings.knownGatewayIDs.contains(gateway.id) {
             // Paired after encryption went on elsewhere: its plaintext can't
             // be told from a relay's forgery, so it only shows generic text.
+            // These shared settings aren't observable; the row re-renders
+            // because every change to them also changes encryptedGatewayIDs
+            // or relayMeta.
             Label(AppLocalization.string("Not end-to-end encrypted, so notifications from this host show only generic text and don't open the chat. Update this host's notifier to turn encryption on."), systemImage: "lock.open")
                 .font(.footnote)
                 .foregroundStyle(.secondary)

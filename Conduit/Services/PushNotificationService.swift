@@ -664,11 +664,15 @@ final class PushNotificationService: ObservableObject {
         guard !isProvisioningEncryption, let installationID = registration?.installationID else { return }
         isProvisioningEncryption = true
         defer { isProvisioningEncryption = false }
-        var records = Self.e2eKeyStore.records()
-        // Keys this iPhone stored that can't be read right now: new ones
-        // would replace them on the plugin and leave them orphaned here.
-        // Provisioning runs again on the next connect.
-        if records.isEmpty && NotificationSharedSettings.keysProvisioned { return }
+        // Keys that can't be read right now: new ones would replace them on
+        // the plugin and leave them orphaned here. Provisioning runs again on
+        // the next connect.
+        guard var records = Self.e2eKeyStore.readRecords() else { return }
+        // A marker with no keys means they are gone for good (a restore to
+        // another iPhone drops this-device-only Keychain items but brings the
+        // App Group marker back). Start over as on the first key; the marker
+        // stays, so plaintext stays untrusted until then.
+        let markerWasSet = NotificationSharedSettings.keysProvisioned
         let hadKeys = !records.isEmpty
         // Keys without the marker (a lost file, or a reinstall that kept the
         // Keychain): put it back so unreadable keys still fail closed.
@@ -714,11 +718,15 @@ final class PushNotificationService: ObservableObject {
             let firstKey = !hadKeys && records.isEmpty
             if firstKey {
                 guard let relayMeta else { break }
-                NotificationSharedSettings.knownGatewayIDs = Set(relayMeta.gateways.map(\.id))
+                let listed = Set(relayMeta.gateways.map(\.id))
+                // Starting over keeps the set from only shrinking.
+                NotificationSharedSettings.knownGatewayIDs = markerWasSet
+                    ? NotificationSharedSettings.knownGatewayIDs.intersection(listed)
+                    : listed
             }
             guard NotificationSharedSettings.markKeysProvisioned() else { break }
             guard Self.e2eKeyStore.save(record) else {
-                if firstKey { NotificationSharedSettings.clearKeysProvisioned() }
+                if firstKey && !markerWasSet { NotificationSharedSettings.clearKeysProvisioned() }
                 continue
             }
             // The plugin now holds only this key for the pairing.
