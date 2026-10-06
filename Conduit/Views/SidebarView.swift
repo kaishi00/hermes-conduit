@@ -1760,8 +1760,8 @@ private struct RenameSheet: View {
             // the drawer sheet) can be dropped; ask again once it settles.
             fieldFocused = true
             try? await Task.sleep(for: .milliseconds(400))
-            // Only while the draft is untouched: once the user has typed or
-            // swiped the keyboard away, focus is theirs.
+            // Only while unfocused and untouched: once the user has typed,
+            // focus is theirs.
             guard !Task.isCancelled, !fieldFocused, draft == initialText else { return }
             fieldFocused = true
         }
