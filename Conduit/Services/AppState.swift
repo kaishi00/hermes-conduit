@@ -15839,6 +15839,29 @@ final class AppState: ObservableObject {
         // request says nothing new: keep the last real answer.
         guard bridge === dashboardTicketBridge, state != .unknown else { return }
         notifierPlugin.state = state
+        await provisionNotificationEncryption(bridge: bridge)
+    }
+
+    /// Hands each of this dashboard's paired profiles an end-to-end
+    /// encryption key for its notifications (#431), over this dashboard
+    /// connection so the key never passes through the push relay. Runs on
+    /// every connect and Settings > Notifications visit; pairings that
+    /// already have a key are left alone.
+    private func provisionNotificationEncryption(bridge: DashboardTicketBridge) async {
+        let notifications = PushNotificationService.shared
+        guard case .reported(_, let capabilities) = notifierPlugin.state,
+              capabilities.contains("e2e-notifications"),
+              notifications.isEnabled,
+              let dashboardID = activeDashboardID else { return }
+        let names = Array(Set(profiles + [activeProfile])).sorted()
+        await notifications.provisionEncryption(dashboardID: dashboardID, profiles: names) { [weak self] path, method, body in
+            // A dashboard switch mid-run stops it: the key would belong to
+            // the old dashboard's pairing.
+            guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == dashboardID else {
+                throw DashboardTicketBridgeError.notReady
+            }
+            return try await bridge.requestJSON(path: path, method: method, body: body)
+        }
     }
 
     lazy var chatTakeoverClient = ChatTakeoverClient(request: { [weak self] path, method, body in
