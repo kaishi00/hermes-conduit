@@ -14804,11 +14804,19 @@ final class AppState: ObservableObject {
             cancelChatViewportTransitionIfNoReplacement(generation: transitionGeneration)
         }
         let profile = activeProfile
+        let previousSessionID = activeSessionId
+        let previousTitle = activeSessionTitle
         cacheMessagePresentation()
-        activeSessionTitle = AppLocalization.string("New conversation")
+        let newTitle = AppLocalization.string("New conversation")
+        activeSessionTitle = newTitle
         let token = beginReconciliation()
         turnState = .synchronizing
         await createAndReconcileSession(using: client, profile: profile, token: token, cwd: cwd)
+        // No chat started: the one still open keeps its own title. A title
+        // set for it meanwhile (not the placeholder) is left alone.
+        if activeSessionId == previousSessionID, activeSessionTitle == newTitle {
+            activeSessionTitle = previousTitle
+        }
     }
 
     /// Re-resume the currently visible conversation. This uses the same

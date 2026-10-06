@@ -806,6 +806,24 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertNotNil(harness.appState.errorMessage)
     }
 
+    func testNewChatThatHermesRefusesNamesTheScreenshot() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        // A client whose socket never opened: Hermes refuses the new chat.
+        openChat("recent", in: harness, withMessages: true)
+        harness.appState.isConnected = true
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "recent")
+
+        let moved = await harness.appState.moveComposerScreenshotToNewChat()
+
+        XCTAssertFalse(moved)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "recent"), shot)
+        let message = AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one.")
+        let error = try XCTUnwrap(harness.appState.errorMessage)
+        XCTAssertTrue(error.hasPrefix(message), "Says where the screenshot is first: \(error)")
+        XCTAssertNotEqual(error, message, "Hermes's own reason follows")
+    }
+
     func testVoiceNewChatThatCannotStartOffersTheScreenshotAgain() async throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         openChatWithoutClient("recent", in: harness)

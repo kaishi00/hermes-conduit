@@ -1132,6 +1132,35 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.store.snapshot(for: newerKey), .latest)
     }
 
+    func testNewChatThatFailsKeepsTheOpenChatsTitle() async {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [ChatMessage(id: "m1", role: .assistant, content: "Earlier", timestamp: "1")],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        // A client whose socket never opened: creating a chat fails.
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.isConnected = true
+        harness.appState.sessions = [session("open-chat", title: "Trip plans")]
+        _ = await harness.appState.openSession("open-chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Trip plans")
+
+        await harness.appState.createNewSession()
+
+        XCTAssertEqual(harness.appState.activeSessionId, "open-chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Trip plans", "The chat still open keeps its own title")
+        XCTAssertNotNil(harness.appState.errorMessage)
+    }
+
     func testRapidExplicitSessionSwitchingSettlesTheLatestSession() async {
         let sessionIDs = (1...8).map { "stored-\($0)" }
         let gates = SessionOpenGates(sessionIDs: sessionIDs)

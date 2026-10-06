@@ -289,12 +289,17 @@ extension AppState {
     /// the screenshot goes back where it was and the user is told.
     private func startChatForScreenshot(_ entry: PendingScreenshot) async -> String? {
         let previous = activeSessionId
+        let earlierError = errorMessage
         await createNewSession()
         guard let created = activeSessionId, created != previous else {
             restorePendingScreenshot(entry.attachment, forSession: entry.sessionID)
-            if errorMessage == nil {
-                errorMessage = Self.screenshotChatNotStartedMessage
-            }
+            // Where the screenshot is first, then Hermes's own reason when
+            // this attempt gave one.
+            let reason = errorMessage != earlierError ? errorMessage : nil
+            errorMessage = [Self.screenshotChatNotStartedMessage, reason]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
             return nil
         }
         setPendingScreenshot(entry.attachment, forSession: created)
