@@ -7,7 +7,9 @@
 //  while the phone is locked. The first device log showed Conduit
 //  suspended about 30 s after the phone went to the background, which
 //  ended the call. Opt-in from Voice settings > Apple Watch test, to
-//  repeat the locked-phone test with it.
+//  repeat the locked-phone test with it. Set up the standard way for a
+//  CallKit app: `voip` beside `audio` in UIBackgroundModes, and the
+//  session CallKit activates configured for a voice call.
 //
 
 import AVFAudio
@@ -26,6 +28,11 @@ final class WatchPhoneCall: NSObject {
     private let provider: CXProvider
     private let callController = CXCallController()
     private var callUUID: UUID?
+    /// Calls this app asked CallKit to end, so their end action isn't
+    /// taken for the iPhone's End button.
+    private var endingUUIDs: Set<UUID> = []
+    /// The session's setup before the call, put back after it.
+    private var previousSession: (category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions)?
 
     init(log: WatchProbePhoneLog) {
         self.log = log
@@ -41,15 +48,19 @@ final class WatchPhoneCall: NSObject {
         provider.setDelegate(self, queue: nil)
     }
 
-    var isActive: Bool { callUUID != nil }
-
     func start() {
         guard callUUID == nil else { return }
         let uuid = UUID()
         callUUID = uuid
-        // CallKit activates the session as it's configured here.
+        // CallKit activates the session as it's configured here. The
+        // Watch call's audio never touches it: the Watch plays and
+        // records.
+        let session = AVAudioSession.sharedInstance()
+        if previousSession == nil {
+            previousSession = (session.category, session.mode, session.categoryOptions)
+        }
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [])
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [])
         } catch {
             log.note("phoneCallSessionFailed", ["error": error.localizedDescription])
         }
@@ -57,12 +68,13 @@ final class WatchPhoneCall: NSObject {
         callController.request(CXTransaction(action: CXStartCallAction(call: uuid, handle: handle))) { [weak self] error in
             WatchVoiceMain.async {
                 guard let self else { return }
-                self.log.note("phoneCallStart", [
-                    "ok": error == nil,
-                    "error": error?.localizedDescription as Any,
-                    "appState": WatchProbeLiveness.appStateName,
-                ])
-                if error != nil, self.callUUID == uuid { self.callUUID = nil }
+                var fields: [String: Any] = ["ok": error == nil, "appState": WatchProbeLiveness.appStateName]
+                if let error { fields["error"] = error.localizedDescription }
+                self.log.note("phoneCallStart", fields)
+                if error != nil, self.callUUID == uuid {
+                    self.callUUID = nil
+                    self.restoreSession()
+                }
             }
         }
     }
@@ -70,10 +82,22 @@ final class WatchPhoneCall: NSObject {
     func end() {
         guard let uuid = callUUID else { return }
         callUUID = nil
+        endingUUIDs.insert(uuid)
         callController.request(CXTransaction(action: CXEndCallAction(call: uuid))) { [weak self] error in
-            guard let error else { return }
-            WatchVoiceMain.async { self?.log.note("phoneCallEndFailed", ["error": error.localizedDescription]) }
+            WatchVoiceMain.async {
+                guard let self else { return }
+                self.endingUUIDs.remove(uuid)
+                // Still showing on the iPhone if so: its End button ends it.
+                if let error { self.log.note("phoneCallEndFailed", ["error": error.localizedDescription]) }
+            }
         }
+        restoreSession()
+    }
+
+    private func restoreSession() {
+        guard let previousSession else { return }
+        self.previousSession = nil
+        try? AVAudioSession.sharedInstance().setCategory(previousSession.category, mode: previousSession.mode, options: previousSession.options)
     }
 }
 
@@ -83,6 +107,7 @@ extension WatchPhoneCall: CXProviderDelegate {
             log.note("phoneCallReset")
             guard callUUID != nil else { return }
             callUUID = nil
+            restoreSession()
             onEndedOnPhone?()
         }
     }
@@ -97,10 +122,10 @@ extension WatchPhoneCall: CXProviderDelegate {
         action.fulfill()
         let uuid = action.callUUID
         MainActor.assumeIsolated {
-            // Ours ends here first, so only the iPhone's End button gets
-            // this far.
-            guard callUUID == uuid else { return }
+            // Only the iPhone's End button ends a call this app didn't.
+            guard !endingUUIDs.contains(uuid), callUUID == uuid else { return }
             callUUID = nil
+            restoreSession()
             log.note("phoneCallEndedOnPhone")
             onEndedOnPhone?()
         }
