@@ -491,7 +491,7 @@ struct SessionList: View {
                     .projectActionsMenu(isEnabled: appState.isProjectEditable(project)) {
                         Button {
                             Haptics.selection()
-                            projectPendingRename = project
+                            DispatchQueue.main.async { projectPendingRename = project }
                         } label: {
                             Label("Rename…", systemImage: "pencil")
                         }
@@ -910,7 +910,9 @@ private struct SessionActionMenuItems: View {
     var body: some View {
         Button {
             Haptics.selection()
-            onRename()
+            // Next turn, once the menu has started closing: the rename sheet
+            // isn't presented in the same update as the menu's dismissal.
+            DispatchQueue.main.async { onRename() }
         } label: {
             Label("Rename…", systemImage: "pencil")
         }
@@ -1700,6 +1702,8 @@ private struct RenameSheet: View {
     let normalize: @MainActor (String) -> String?
     let onRename: (String) -> Void
     @State private var draft: String
+    @State private var isCommitting = false
+    @State private var didFocus = false
     @FocusState private var fieldFocused: Bool
 
     init(
@@ -1731,6 +1735,9 @@ private struct RenameSheet: View {
             Form {
                 TextField(placeholder, text: $draft)
                     .focused($fieldFocused)
+                    .onChange(of: fieldFocused) { _, focused in
+                        if focused { didFocus = true }
+                    }
                     .submitLabel(.done)
                     .onSubmit(commit)
             }
@@ -1742,7 +1749,7 @@ private struct RenameSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Rename", action: commit)
-                        .disabled(normalize(draft) == nil)
+                        .disabled(isCommitting || normalize(draft) == nil)
                 }
             }
         }
@@ -1755,13 +1762,17 @@ private struct RenameSheet: View {
             // the drawer sheet) can be dropped; ask again once it settles.
             fieldFocused = true
             try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled else { return }
+            // Only when it never took focus: a keyboard the user swiped
+            // away stays away.
+            guard !Task.isCancelled, !didFocus else { return }
             if !fieldFocused { fieldFocused = true }
         }
     }
 
     private func commit() {
-        guard let name = normalize(draft) else { return }
+        // Return and the button can both land while the sheet slides out.
+        guard !isCommitting, let name = normalize(draft) else { return }
+        isCommitting = true
         dismiss()
         onRename(name)
     }
