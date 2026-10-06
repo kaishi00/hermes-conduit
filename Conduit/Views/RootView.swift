@@ -200,6 +200,11 @@ struct MainView: View {
             )
                 .presentationDetents([.large])
         }
+        // Settings can go with this screen (switching or adding a dashboard
+        // swaps in sign-in), and SwiftUI doesn't promise the sheet's
+        // onDismiss then. Its flag must not outlive it: it holds back the
+        // return surface while it claims a sheet is up.
+        .onDisappear { appState.isSettingsSheetPresented = false }
         .background(windowWidthReader)
         .onPreferenceChange(MainViewWindowWidthKey.self) { availableWindowWidth = $0 }
         .onChange(of: isPersistentSidebarActive) { _, persistentActive in
