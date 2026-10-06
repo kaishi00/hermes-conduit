@@ -2120,7 +2120,11 @@ private struct NotificationsSettingsDetail: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .task { await notifications.refreshMeta() }
+                .task {
+                    // A launch before first unlock couldn't read the keys.
+                    notifications.refreshEncryptionState()
+                    await notifications.refreshMeta()
+                }
                 // Asked again on every visit and dashboard switch: the
                 // connect-time check can miss (bridge still loading), and
                 // the plugin may have been updated since.

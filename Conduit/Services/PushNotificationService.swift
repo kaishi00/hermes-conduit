@@ -436,7 +436,8 @@ final class PushNotificationService: ObservableObject {
             NotificationSharedSettings.knownGatewayIDs = NotificationE2E.knownGatewayIDs(
                 listed: Set(relayMeta.gateways.map(\.id)),
                 previous: NotificationSharedSettings.knownGatewayIDs,
-                holdsKeys: NotificationSharedSettings.keysProvisioned || !Self.e2eKeyStore.records().isEmpty
+                // Keys that can't be read count as held.
+                holdsKeys: NotificationSharedSettings.keysProvisioned || Self.e2eKeyStore.readRecords()?.isEmpty != true
             )
         }
     }

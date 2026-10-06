@@ -366,7 +366,7 @@ struct KeychainE2EKeyStore: E2EKeyStoring {
         switch result {
         case let array as [[String: Any]]: return array
         case let single as [String: Any]: return [single]
-        default: return nil
+        default: return []
         }
     }
 
