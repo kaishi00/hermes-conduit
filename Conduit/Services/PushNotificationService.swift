@@ -679,7 +679,7 @@ final class PushNotificationService: ObservableObject {
         let markerWasSet = NotificationSharedSettings.keysProvisioned
         // Keys without the marker (a lost file, or a reinstall that kept the
         // Keychain): put it back so unreadable keys still fail closed.
-        if !records.isEmpty { NotificationSharedSettings.markKeysProvisioned() }
+        if !records.isEmpty { guard NotificationSharedSettings.markKeysProvisioned() else { return } }
         if records.isEmpty && relayMeta == nil {
             // The keyless pairings plaintext stays trusted for are fixed when
             // the first key is stored: make sure they are known by then.
@@ -765,8 +765,12 @@ final class PushNotificationService: ObservableObject {
 
     /// Forgets the keys of an installation this iPhone no longer uses.
     private func removeEncryptionKeys(installationID: String) {
-        for record in Self.e2eKeyStore.records() where record.installationID == installationID {
-            Self.e2eKeyStore.remove(kid: record.kid)
+        // Unreadable now: the keys stay inert (no envelope matches them) and
+        // go on the next removal.
+        if let stored = Self.e2eKeyStore.readRecords() {
+            for record in stored where record.installationID == installationID {
+                Self.e2eKeyStore.remove(kid: record.kid)
+            }
         }
         // With no key left, the next first key freezes a fresh set. Only on
         // a real read: an unreadable store may still hold other keys.
