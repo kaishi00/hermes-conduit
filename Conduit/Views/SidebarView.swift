@@ -1701,9 +1701,9 @@ private struct RenameSheet: View {
     /// (empty, or unchanged).
     let normalize: @MainActor (String) -> String?
     let onRename: @MainActor (String) -> Void
+    private let initialText: String
     @State private var draft: String
     @State private var isCommitting = false
-    @State private var didFocus = false
     @FocusState private var fieldFocused: Bool
 
     init(
@@ -1717,6 +1717,7 @@ private struct RenameSheet: View {
         self.placeholder = placeholder
         self.normalize = normalize
         self.onRename = onRename
+        self.initialText = initialText
         _draft = State(initialValue: initialText)
     }
 
@@ -1735,9 +1736,6 @@ private struct RenameSheet: View {
             Form {
                 TextField(placeholder, text: $draft)
                     .focused($fieldFocused)
-                    .onChange(of: fieldFocused) { _, focused in
-                        if focused { didFocus = true }
-                    }
                     .submitLabel(.done)
                     .onSubmit(commit)
             }
@@ -1762,15 +1760,12 @@ private struct RenameSheet: View {
             // the drawer sheet) can be dropped; ask again once it settles.
             fieldFocused = true
             try? await Task.sleep(for: .milliseconds(400))
-            // Only when it never took focus: a keyboard the user swiped
-            // away stays away.
-            guard !Task.isCancelled, !didFocus else { return }
             // A dropped request can leave the binding true with no keyboard,
-            // so clear it before asking again.
-            if fieldFocused {
-                fieldFocused = false
-                await Task.yield()
-            }
+            // so clear it and ask again. Only while the draft is untouched:
+            // once the user has typed, focus is theirs.
+            guard !Task.isCancelled, draft == initialText else { return }
+            fieldFocused = false
+            await Task.yield()
             fieldFocused = true
         }
     }
