@@ -826,7 +826,7 @@ struct ComposerBar: View {
                         appState.discardPendingScreenshot(forSession: appState.activeSessionId)
                     }
                     if appState.canMoveComposerScreenshotToNewChat {
-                        ScreenshotNewChatButton(action: moveScreenshotToNewChat)
+                        ScreenshotNewChatButton(placement: "composer", action: moveScreenshotToNewChat)
                     }
                 }
                 ForEach(attachments) { attachment in

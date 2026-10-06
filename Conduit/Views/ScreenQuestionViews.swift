@@ -25,7 +25,7 @@ struct ScreenQuestionVoiceBanner: View {
                 HStack(spacing: 8) {
                     ComposerAttachmentChip(attachment: screenshot, canRemove: true, onRemove: onDiscard)
                     if let onNewChat {
-                        ScreenshotNewChatButton(action: onNewChat)
+                        ScreenshotNewChatButton(placement: "voice", action: onNewChat)
                     }
                 }
             }
@@ -43,6 +43,8 @@ struct ScreenQuestionVoiceBanner: View {
 /// "New Chat" beside a screenshot that joined a chat already in use: it
 /// moves the screenshot, and voice when it's open, to a fresh chat.
 struct ScreenshotNewChatButton: View {
+    /// Where it sits ("composer" or "voice"), for its identifier.
+    let placement: String
     let action: () -> Void
 
     var body: some View {
@@ -62,7 +64,7 @@ struct ScreenshotNewChatButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint(AppLocalization.string("Moves the screenshot to a new chat."))
-        .accessibilityIdentifier("screenQuestion.newChat")
+        .accessibilityIdentifier("screenQuestion.newChat.\(placement)")
     }
 }
 

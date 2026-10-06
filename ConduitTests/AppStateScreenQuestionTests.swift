@@ -825,6 +825,24 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertNotNil(harness.appState.errorMessage)
     }
 
+    func testNewChatTappedAsHermesDisconnectsSaysSo() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChatWithoutClient("recent", in: harness)
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "recent")
+        // Shown while connected; the connection dropped before the tap.
+        harness.appState.isConnected = false
+
+        let moved = await harness.appState.moveComposerScreenshotToNewChat(carrying: "Typed")
+        let movedFromVoice = await harness.appState.moveVoiceScreenshotToNewChat()
+
+        XCTAssertFalse(moved)
+        XCTAssertFalse(movedFromVoice)
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "recent"), shot)
+        XCTAssertEqual(harness.appState.composerPrefillText, "Typed")
+        XCTAssertNotNil(harness.appState.errorMessage, "Not a silent tap")
+    }
+
     func testNewChatWithNoScreenshotKeepsTheText() async throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         openChatWithoutClient("recent", in: harness)

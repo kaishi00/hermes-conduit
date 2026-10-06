@@ -208,9 +208,18 @@ extension AppState {
     /// What a new chat for the screenshot needs: Hermes ready, and the chat
     /// on screen already in use. An empty chat is already new.
     private var canStartChatForScreenshot: Bool {
-        isConnected && !isConnecting && !isProfileSwitching
+        isReadyForScreenshotChat
             && activeRoomSurface == nil && offlineChatPresentation == nil
             && (!messages.isEmpty || turnState.isRunning)
+    }
+
+    /// Hermes can start a chat now: connected, and no switch under way.
+    private var isReadyForScreenshotChat: Bool {
+        isConnected && !isConnecting && !isProfileSwitching
+    }
+
+    private static var screenshotChatNotStartedMessage: String {
+        AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one.")
     }
 
     /// "New Chat" beside the screenshot in the composer. A screenshot the
@@ -238,7 +247,13 @@ extension AppState {
     /// start, both stay where they were.
     @discardableResult
     func moveComposerScreenshotToNewChat(carrying text: String = "") async -> Bool {
-        guard isConnected, let entry = takePendingScreenshotEntry(forSession: activeSessionId) else {
+        guard isReadyForScreenshotChat else {
+            restoreComposerText(text)
+            errorMessage = Self.screenshotChatNotStartedMessage
+            return false
+        }
+        // Gone already (sent or removed): nothing is left to move.
+        guard let entry = takePendingScreenshotEntry(forSession: activeSessionId) else {
             restoreComposerText(text)
             return false
         }
@@ -251,10 +266,17 @@ extension AppState {
 
     /// The voice sheet's New Chat: ends the voice, moves its screenshot to
     /// a fresh chat and starts voice again there. When no chat can start,
-    /// voice starts again on the screenshot where it was.
+    /// voice starts again on the screenshot where it was. Either way it
+    /// starts as a new screenshot's does: the keyboard when a reply is
+    /// still running or voice isn't set up.
     @discardableResult
     func moveVoiceScreenshotToNewChat() async -> Bool {
-        guard isConnected, let entry = takeVoiceScreenshotEntry() else { return false }
+        guard isReadyForScreenshotChat else {
+            // Voice keeps going, with the screenshot.
+            errorMessage = Self.screenshotChatNotStartedMessage
+            return false
+        }
+        guard let entry = takeVoiceScreenshotEntry() else { return false }
         // Ended first: a new chat replaces the one the voice is talking in.
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
         endLiveVoiceCall()
@@ -271,7 +293,7 @@ extension AppState {
         guard let created = activeSessionId, created != previous else {
             restorePendingScreenshot(entry.attachment, forSession: entry.sessionID)
             if errorMessage == nil {
-                errorMessage = AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one.")
+                errorMessage = Self.screenshotChatNotStartedMessage
             }
             return nil
         }
