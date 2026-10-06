@@ -673,11 +673,10 @@ final class PushNotificationService: ObservableObject {
         // App Group marker back). Start over as on the first key; the marker
         // stays, so plaintext stays untrusted until then.
         let markerWasSet = NotificationSharedSettings.keysProvisioned
-        let hadKeys = !records.isEmpty
         // Keys without the marker (a lost file, or a reinstall that kept the
         // Keychain): put it back so unreadable keys still fail closed.
         if !records.isEmpty { NotificationSharedSettings.markKeysProvisioned() }
-        if !hadKeys && relayMeta == nil {
+        if records.isEmpty && relayMeta == nil {
             // The keyless pairings plaintext stays trusted for are fixed when
             // the first key is stored: make sure they are known by then.
             await refreshMeta()
@@ -715,14 +714,15 @@ final class PushNotificationService: ObservableObject {
             // The first key freezes the keyless pairings plaintext may still
             // come from, and the marker goes down before the key so no
             // stored key ever exists without it.
-            let firstKey = !hadKeys && records.isEmpty
+            let firstKey = records.isEmpty
             if firstKey {
                 guard let relayMeta else { break }
-                let listed = Set(relayMeta.gateways.map(\.id))
-                // Starting over keeps the set from only shrinking.
-                NotificationSharedSettings.knownGatewayIDs = markerWasSet
-                    ? NotificationSharedSettings.knownGatewayIDs.intersection(listed)
-                    : listed
+                // Starting over after lost keys, the set still only shrinks.
+                NotificationSharedSettings.knownGatewayIDs = NotificationE2E.knownGatewayIDs(
+                    listed: Set(relayMeta.gateways.map(\.id)),
+                    previous: NotificationSharedSettings.knownGatewayIDs,
+                    holdsKeys: markerWasSet
+                )
             }
             guard NotificationSharedSettings.markKeysProvisioned() else { break }
             guard Self.e2eKeyStore.save(record) else {

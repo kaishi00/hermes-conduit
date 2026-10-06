@@ -327,7 +327,14 @@ struct KeychainE2EKeyStore: E2EKeyStoring {
         var items: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &items)
         if status == errSecItemNotFound { return [] }
-        guard status == errSecSuccess, let values = items as? [Data] else { return nil }
+        guard status == errSecSuccess else { return nil }
+        // An array for kSecMatchLimitAll; a lone item is accepted too.
+        let values: [Data]
+        switch items {
+        case let array as [Data]: values = array
+        case let single as Data: values = [single]
+        default: return nil
+        }
         let decoder = JSONDecoder()
         return values.compactMap { try? decoder.decode(E2EKeyRecord.self, from: $0) }
     }
