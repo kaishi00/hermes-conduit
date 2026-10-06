@@ -47,6 +47,11 @@ in your working copy only.
   types (`%@` vs `%lld`) match what the code passes;
 - every shipped language translates every key in every catalog, with
   state `translated` and a non-empty value;
+- where the English source varies a key by plural, every shipped language
+  provides each plural form its own rules use (French: one, many, other;
+  Japanese: other). The table is `PLURAL_CATEGORIES` in the checker; a
+  language missing from it only needs `other`, and the checker says so;
+- each language is spelled the same way in every catalog;
 - every value in every language, drafts included, keeps the key's
   placeholders (reordering with `%1$@` is fine) and has no literal `\uXXXX`
   escapes;
