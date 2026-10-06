@@ -169,7 +169,9 @@ MALFORMED_ESCAPE_RE = re.compile("\\\\u[0-9a-fA-F]{4}")
 
 # Flags, width and precision (%.1f, %5lld, %-8@, %+d, %'d) count like the
 # bare form. No space flag ("5% increase" is prose, not "% i") and no "#"
-# ("%#@name@" is a plural substitution, not an argument).
+# ("%#@name@" is a plural substitution, not an argument). A percent sign
+# directly before a conversion letter ("5%increase") still reads as one;
+# write "%%" or a space in prose.
 _PLACEHOLDER_RE = re.compile(
     r"%(?:(\d+)\$)?(?:[-+']*\d*(?:\.\d+)?(?=[@dfilu]))?"
     r"([@df]|l{1,2}[diu]|lf|@|d|i|u|%)")
@@ -640,6 +642,8 @@ def _shape_problem(catalog):
     checker walks, or None."""
     if not isinstance(catalog, dict) or not isinstance(catalog.get("strings"), dict):
         return 'no "strings" object'
+    if not isinstance(catalog.get("sourceLanguage", "en"), str):
+        return '"sourceLanguage" is not a string'
     for key, entry in catalog["strings"].items():
         if not isinstance(entry, dict) or not isinstance(entry.get("localizations", {}), dict):
             return f"entry {key!r} is not a catalog entry"
@@ -819,8 +823,13 @@ def check(repo_root: str):
             if not name.endswith(".swift"):
                 continue
             path = os.path.join(dirpath, name)
-            with open(path, encoding="utf-8") as handle:
-                source = handle.read()
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    source = handle.read()
+            except (OSError, ValueError) as error:
+                key_problems.setdefault(os.path.relpath(path, repo_root), []).append(
+                    f"can't be read as UTF-8 Swift source: {error}")
+                continue
             for skeleton, offset in extract_sites(source):
                 checked += 1
                 if skeleton in EXEMPT_KEYS:

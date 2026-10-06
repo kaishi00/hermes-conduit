@@ -731,6 +731,7 @@ class CatalogFileTests(unittest.TestCase):
 
     def test_a_catalog_of_the_wrong_shape_fails_the_check_cleanly(self):
         for content in ("[]", '{"sourceLanguage": "en"}', '{"strings": []}',
+                        '{"sourceLanguage": 42, "strings": {}}',
                         '{"strings": {"Hello": "Bonjour"}}',
                         '{"strings": {"Hello": {"localizations": {"fr": "Bonjour"}}}}',
                         '{"strings": {"Hello": {"localizations": {"fr": '
@@ -742,6 +743,14 @@ class CatalogFileTests(unittest.TestCase):
             with self.assertRaises(check_l10n_coverage.CatalogError, msg=content) as caught:
                 check_l10n_coverage.check(self.directory.name)
             self.assertIn("not a String Catalog", str(caught.exception))
+
+    def test_an_unreadable_swift_file_fails_the_check_cleanly(self):
+        self.write_repo(drafts=[])
+        self.write("Conduit/Broken.swift", b"Text(\"\xff\")\n", mode="wb")
+        _checked, _missing, key_problems, _plan = check_l10n_coverage.check(
+            self.directory.name)
+        problems = key_problems[os.path.join("Conduit", "Broken.swift")]
+        self.assertIn("can't be read as UTF-8", problems[0])
 
     def test_an_unreadable_info_plist_fails_the_check_cleanly(self):
         self.write_repo(drafts=[])
