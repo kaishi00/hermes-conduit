@@ -1697,7 +1697,7 @@ private struct RenameSheet: View {
     let placeholder: String
     /// Returns the name to commit, or nil while the draft can't be saved
     /// (empty, or unchanged).
-    let normalize: (String) -> String?
+    let normalize: @MainActor (String) -> String?
     let onRename: (String) -> Void
     @State private var draft: String
     @FocusState private var fieldFocused: Bool
@@ -1706,7 +1706,7 @@ private struct RenameSheet: View {
         title: String,
         placeholder: String,
         initialText: String,
-        normalize: @escaping (String) -> String?,
+        normalize: @escaping @MainActor (String) -> String?,
         onRename: @escaping (String) -> Void
     ) {
         self.title = title
@@ -1755,6 +1755,7 @@ private struct RenameSheet: View {
             // the drawer sheet) can be dropped; ask again once it settles.
             fieldFocused = true
             try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
             if !fieldFocused { fieldFocused = true }
         }
     }
