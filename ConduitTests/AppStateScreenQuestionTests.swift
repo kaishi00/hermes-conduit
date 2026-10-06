@@ -93,6 +93,52 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "chat-a"), shot)
     }
 
+    // MARK: - Files
+
+    func testStagedFileReferenceRidesAheadOfTheTypedText() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeFileHarness(recorder: recorder)
+        openChat("composer-origin", in: harness)
+        let report = try stagedFile(named: "Q3 Report.pdf", mimeType: "application/pdf")
+
+        let sent = await harness.appState.submitComposer(text: "Summarise this", attachments: [report])
+
+        XCTAssertTrue(sent, "A PDF sends like any other file")
+        XCTAssertEqual(recorder.uploads.map { $0.attachment.uri }, [report.uri])
+        XCTAssertEqual(
+            recorder.prompts.map { $0.text },
+            ["@file:`/root/.hermes/attachments/Q3 Report.pdf`\n\nSummarise this"]
+        )
+        XCTAssertEqual(harness.appState.messages.last?.content, "Summarise this", "The bubble keeps the typed text")
+        XCTAssertEqual(harness.appState.messages.last?.attachments?.map(\.uri), [report.uri])
+    }
+
+    func testFileSentAloneCarriesOnlyItsReference() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeFileHarness(recorder: recorder)
+        openChat("composer-origin", in: harness)
+        let notes = try stagedFile(named: "notes.txt", mimeType: "text/plain")
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "composer-origin")
+
+        let sent = await harness.appState.submitComposer(text: "", attachments: [notes])
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(recorder.uploads.map { $0.attachment.uri }, [notes.uri, shot.uri])
+        XCTAssertEqual(
+            recorder.prompts.map { $0.text },
+            ["@file:/root/.hermes/attachments/notes.txt"],
+            "Images ride as images; only the file adds a reference"
+        )
+    }
+
+    func testOnlyAnImageRefusalFallsBackToAFile() {
+        XCTAssertTrue(AppState.isImageAttachRefusal(RpcError(code: 4016, message: "unsupported image extension: .avif")))
+        XCTAssertTrue(AppState.isImageAttachRefusal(RpcError(code: 4018, message: "image too large")))
+        XCTAssertFalse(AppState.isImageAttachRefusal(RpcError(code: 4001, message: "session not found")))
+        XCTAssertFalse(AppState.isImageAttachRefusal(RpcError(code: 5027, message: "write failed")))
+    }
+
     func testSlashCommandLeavesTheScreenshotPending() async throws {
         let recorder = ScreenQuestionCallRecorder()
         var operations = ChatResumeLifecycleOperations(
@@ -107,6 +153,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         )
         operations.uploadAttachment = { _, sessionID, attachment in
             recorder.uploads.append((sessionID, attachment))
+            return nil
         }
         let harness = makeHarness(lifecycleOperations: operations)
         openChat("composer-origin", in: harness)
@@ -133,6 +180,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         )
         operations.uploadAttachment = { _, sessionID, attachment in
             recorder.uploads.append((sessionID, attachment))
+            return nil
         }
         let harness = makeHarness(lifecycleOperations: operations)
         openChat("composer-origin", in: harness)
@@ -658,6 +706,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         )
         operations.uploadAttachment = { _, sessionID, attachment in
             recorder.uploads.append((sessionID, attachment))
+            return nil
         }
         let harness = makeHarness(lifecycleOperations: operations)
         openChat("composer-origin", in: harness, withMessages: true)
@@ -1284,6 +1333,24 @@ final class AppStateScreenQuestionTests: XCTestCase {
         )
         operations.uploadAttachment = { _, sessionID, attachment in
             recorder.uploads.append((sessionID, attachment))
+            return nil
+        }
+        return makeHarness(lifecycleOperations: operations)
+    }
+
+    /// Files come back with the `@file:` reference Hermes staged them
+    /// under; images with none.
+    private func makeFileHarness(recorder: ScreenQuestionCallRecorder) -> Harness {
+        var operations = ChatResumeLifecycleOperations(
+            sendPrompt: { _, sessionID, text in
+                recorder.prompts.append((sessionID, text))
+                return .accepted
+            }
+        )
+        operations.uploadAttachment = { _, sessionID, attachment in
+            recorder.uploads.append((sessionID, attachment))
+            guard attachment.kind != .image else { return nil }
+            return "@file:" + HermesClient.formatReferenceValue("/root/.hermes/attachments/\(attachment.name)")
         }
         return makeHarness(lifecycleOperations: operations)
     }
@@ -1354,6 +1421,20 @@ final class AppStateScreenQuestionTests: XCTestCase {
             uri: url.absoluteString,
             mimeType: "image/png",
             kind: .image
+        )
+    }
+
+    /// A non-image file in the staging folder, as the composer stages one.
+    private func stagedFile(named name: String, mimeType: String) throws -> Attachment {
+        let url = try AttachmentStaging.destination(for: name)
+        try Data("%PDF-1.7".utf8).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return Attachment(
+            id: UUID().uuidString,
+            name: name,
+            uri: url.absoluteString,
+            mimeType: mimeType,
+            kind: .document
         )
     }
 

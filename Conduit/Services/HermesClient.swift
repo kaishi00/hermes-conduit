@@ -29,6 +29,7 @@
 import Foundation
 import Combine
 import os
+import UniformTypeIdentifiers
 
 // MARK: - JSON-RPC Types
 
@@ -2261,22 +2262,48 @@ final class HermesClient: ObservableObject {
         return result.objectValue?["path"]?.stringValue
     }
 
-    func attachPdf(_ sessionId: String, base64: String, filename: String) async throws {
-        _ = try await rpc("pdf.attach", params: [
-            "session_id": sessionId,
-            "content_base64": base64,
-            "filename": filename
-        ], timeout: 120)
-    }
-
-    func attachFile(_ sessionId: String, dataUrl: String, name: String, path: String = "") async throws {
-        _ = try await rpc("file.attach", params: [
+    /// Stages any non-image file (PDFs included) in the session's
+    /// attachments folder, the way Hermes Desktop sends files. Returns the
+    /// `@file:` reference the prompt must carry: without it the agent is
+    /// never told the file is there.
+    func attachFile(_ sessionId: String, dataUrl: String, name: String, path: String = "") async throws -> String? {
+        let result = try await rpc("file.attach", params: [
             "session_id": sessionId,
             "data_url": dataUrl,
             "name": name,
             "path": path
         ], timeout: 120)
+        return Self.fileAttachmentReference(from: result)
     }
+
+    /// The `@file:` reference from a `file.attach` reply: its `ref_text`,
+    /// else one built from the staged path (a reply without `ref_text`).
+    static func fileAttachmentReference(from result: AnyCodable) -> String? {
+        let object = result.objectValue
+        if let reference = object?["ref_text"]?.stringValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !reference.isEmpty {
+            return reference
+        }
+        let path = [object?["ref_path"], object?["path"]]
+            .compactMap { $0?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        guard let path else { return nil }
+        return "@file:\(formatReferenceValue(path))"
+    }
+
+    /// Quotes a reference value that holds whitespace, brackets or quotes so
+    /// Hermes reads it back whole (its `format_reference_value`).
+    static func formatReferenceValue(_ value: String) -> String {
+        guard value.rangeOfCharacter(from: referenceValueQuotingCharacters) != nil else { return value }
+        for quote in ["`", "\"", "'"] where !value.contains(quote) {
+            return "\(quote)\(value)\(quote)"
+        }
+        return value
+    }
+
+    private static let referenceValueQuotingCharacters = CharacterSet.whitespacesAndNewlines
+        .union(CharacterSet(charactersIn: "()[]{}<>\"'`"))
 
     // MARK: - Cron
 
@@ -3047,7 +3074,7 @@ enum MessageNormalizer {
                 role = .system
             }
             let userContent: (content: String, rawContent: String?, attachments: [Attachment]?) = role == .user
-                ? splitUserImageReferences(rawContent, messageId: id)
+                ? splitUserAttachmentReferences(rawContent, messageId: id)
                 : (content: rawContent, rawContent: nil, attachments: nil)
             let content: String
             if let displayKind, !isToolResult {
@@ -3651,10 +3678,88 @@ enum MessageNormalizer {
         return collapsed
     }
 
-    /// A user prompt's visible text once `@image:` tokens are projected into
-    /// attachments — what a persisted user row's `content` holds.
+    /// A user prompt's visible text once `@image:` tokens, leading `@file:`
+    /// references and Hermes' attached-context footer are projected out —
+    /// what a persisted user row's `content` holds.
     static func visibleUserText(_ source: String) -> String {
-        splitUserImageReferences(source, messageId: "").content
+        splitUserAttachmentReferences(source, messageId: "").content
+    }
+
+    /// A persisted user prompt as its bubble shows it: images (`@image:`
+    /// tokens) and staged files (leading `@file:` lines, how Conduit and
+    /// Desktop send them) become attachments, and the context Hermes
+    /// expanded for the model below the typed text is dropped. The original
+    /// prompt is retained for replay/branch operations.
+    private static func splitUserAttachmentReferences(
+        _ source: String,
+        messageId: String
+    ) -> (content: String, rawContent: String?, attachments: [Attachment]?) {
+        let images = splitUserImageReferences(source, messageId: messageId)
+        let files = splitLeadingFileReferences(
+            removingContextFooter(images.content),
+            messageId: messageId
+        )
+        guard files.content != images.content else { return images }
+        let attachments = files.attachments + (images.attachments ?? [])
+        return (files.content, source, attachments.isEmpty ? nil : attachments)
+    }
+
+    /// Hermes appends what it expanded for `@file:`/`@url:` references below
+    /// the typed text ("--- Context Warnings ---", "--- Attached Context ---").
+    /// That is for the model; like Desktop, the bubble shows only the text.
+    static func removingContextFooter(_ text: String) -> String {
+        guard let footer = text.range(
+            of: #"(?:^|\n)--- (?:Context Warnings|Attached Context) ---[ \t]*(?:\r?\n|$)"#,
+            options: .regularExpression
+        ) else { return text }
+        return String(text[..<footer.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// One whole line holding one `@file:` reference, its value quoted the
+    /// way Hermes quotes one (`format_reference_value`) or bare.
+    private static let fileReferenceLine = try? NSRegularExpression(
+        pattern: #"^@file:(?:`([^`\r\n]+)`|"([^"\r\n]+)"|'([^'\r\n]+)'|(\S+))$"#
+    )
+
+    /// The run of `@file:` lines a prompt opens with becomes document
+    /// attachments; a reference typed inside the text stays where it is.
+    private static func splitLeadingFileReferences(
+        _ text: String,
+        messageId: String
+    ) -> (content: String, attachments: [Attachment]) {
+        guard let expression = fileReferenceLine else { return (text, []) }
+        var lines = text.components(separatedBy: "\n")
+        var paths: [String] = []
+        while let first = lines.first {
+            let line = first.replacingOccurrences(of: #"\s+$"#, with: "", options: .regularExpression)
+            let range = NSRange(line.startIndex..<line.endIndex, in: line)
+            guard let match = expression.firstMatch(in: line, range: range) else { break }
+            var path: String?
+            for group in 1..<match.numberOfRanges {
+                if let valueRange = Range(match.range(at: group), in: line) {
+                    path = String(line[valueRange])
+                    break
+                }
+            }
+            guard let path, !path.isEmpty else { break }
+            paths.append(path)
+            lines.removeFirst()
+        }
+        guard !paths.isEmpty else { return (text, []) }
+        let content = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let attachments = paths.enumerated().map { index, path in
+            let url = URL(fileURLWithPath: path)
+            let name = url.lastPathComponent
+            let type = url.pathExtension.isEmpty ? nil : UTType(filenameExtension: url.pathExtension)
+            return Attachment(
+                id: "\(messageId)-gateway-file-\(index)",
+                name: name.isEmpty ? AppLocalization.string("Attached file") : name,
+                uri: path,
+                mimeType: AttachmentTypePolicy.mimeType(for: type),
+                kind: AttachmentTypePolicy.kind(for: type)
+            )
+        }
+        return (content, attachments)
     }
 
     /// Desktop persists uploaded images as `@image:/gateway/path/file.ext`
