@@ -318,7 +318,9 @@ final class WatchCallHost {
         defer { lastTurnStartUptime = now }
         guard let callID, let voicedAt = activity.lastVoicedAt else { return }
         let latency = now - voicedAt
-        guard latency > 0, latency < 30, voicedAt > (lastTurnStartUptime ?? 0) else { return }
+        // Split so `latency < 30, voicedAt >` can't parse as generics.
+        guard latency > 0, latency < 30 else { return }
+        guard voicedAt > (lastTurnStartUptime ?? 0) else { return }
         modelLatencies.append(latency)
         link.send(.turnMetrics(callID: callID, turn: turn, modelLatencyMs: Int(latency * 1000)))
     }

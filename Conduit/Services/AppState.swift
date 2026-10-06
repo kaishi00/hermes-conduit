@@ -23436,6 +23436,9 @@ final class AppState: ObservableObject {
             }
         }
         guard isWatchVoiceCallActive, stillWanted() else { return WatchVoiceStartFailure.ended }
+        // A call started on the phone while this waited for Hermes keeps
+        // going; the Watch is told instead.
+        guard !isLiveVoiceCallActive else { return WatchVoiceStartFailure.callRunning }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
         stopGPTLiveConversation()

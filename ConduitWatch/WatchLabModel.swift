@@ -190,6 +190,9 @@ final class WatchLabModel: ObservableObject {
             status = "Watching the microphone. Try Siri, an alarm, a call, lowering your wrist."
             WatchProbeLog.shared.note("labWatchStart")
         } catch {
+            // Not watching: nothing may restart the microphone later.
+            audio.onCapture = nil
+            audio.onInterruption = nil
             status = "Audio didn't start: \(error.localizedDescription)"
         }
     }

@@ -53,6 +53,8 @@ final class WatchCallModel: ObservableObject {
     private var callStartedAt: TimeInterval = 0
     private var acceptedAt: TimeInterval?
     private var startInFlight = false
+    /// The call's phase as the iPhone last reported it.
+    private var phonePhase: WatchVoiceWire.CallState.Phase?
     private var listeningAt: TimeInterval?
     private var batteryAtStart: Float = -1
 
@@ -167,7 +169,7 @@ final class WatchCallModel: ObservableObject {
         do {
             try audio.start(options: .init(voiceProcessing: fullDuplex), playbackRate: Self.downlinkRate)
             micPaused = false
-            phase = .live(.listening)
+            phase = .live(phonePhase ?? .listening)
             link.send(.resumed(callID: callID))
             WatchProbeLog.shared.note("callResumedByTap")
         } catch {
@@ -361,6 +363,7 @@ final class WatchCallModel: ObservableObject {
             case .ended, .failed:
                 finish(reason: state.detail)
             default:
+                phonePhase = state.phase
                 if phase != .needsTap { phase = .live(state.phase) }
                 if state.phase == .listening, listeningAt == nil {
                     listeningAt = now
@@ -440,6 +443,7 @@ final class WatchCallModel: ObservableObject {
         callStartedAt = now
         acceptedAt = nil
         startInFlight = false
+        phonePhase = nil
         listeningAt = nil
         WKInterfaceDevice.current().isBatteryMonitoringEnabled = true
         batteryAtStart = WKInterfaceDevice.current().batteryLevel
