@@ -459,6 +459,10 @@ final class DashboardTicketBridge: NSObject {
     /// Cookies the dashboard set on requests sent without the page, newest
     /// last, so a rotated session cookie is the one sent next.
     var backgroundIssuedCookies: [HTTPCookie] = []
+    /// Observes the hidden page's load lifecycle for AppState's connection
+    /// timeline (#417). Every request waits on this page, so when it becomes
+    /// ready is the first thing a slow launch needs to show.
+    var onPageEvent: (@MainActor (String) -> Void)?
 
     init(
         baseURL: String,
@@ -941,6 +945,7 @@ final class DashboardTicketBridge: NSObject {
         didLandOnLogin = false
         applySimulatedLanding()
         currentNavigation = webView.load(request)
+        onPageEvent?("Dashboard page loading")
     }
 
     private func rejectPending(with error: Error) {
@@ -1011,6 +1016,7 @@ extension DashboardTicketBridge: WKNavigationDelegate {
             // untouched: only an origin-matching landing can change it.
             isLoadFailed = true
             rejectPending(with: DashboardTicketBridgeError.notReady)
+            onPageEvent?("Dashboard page landed off the dashboard")
             return
         }
         isLoadFailed = false
@@ -1019,6 +1025,7 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         let landedOnLogin = landedURL.path.contains("/login")
         isReady = !landedOnLogin
         didLandOnLogin = landedOnLogin
+        onPageEvent?(landedOnLogin ? "Dashboard page landed on sign-in" : "Dashboard page ready")
         if landedOnLogin {
             rejectPending(with: DashboardTicketBridgeError.signInRequired)
         } else if !isInvalidated {
@@ -1054,6 +1061,7 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         isReady = false
         isLoadFailed = true
         rejectPending(with: error)
+        onPageEvent?("Dashboard page failed: \(ConnectionTimeline.summary(of: error))")
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -1062,6 +1070,7 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         isReady = false
         isLoadFailed = true
         rejectPending(with: error)
+        onPageEvent?("Dashboard page failed: \(ConnectionTimeline.summary(of: error))")
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -1078,6 +1087,7 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         didLandOnLogin = false
         currentNavigation = nil
         rejectPending(with: DashboardTicketBridgeError.notReady)
+        onPageEvent?("Dashboard page process ended")
     }
 }
 
