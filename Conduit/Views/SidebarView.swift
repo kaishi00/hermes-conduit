@@ -384,10 +384,7 @@ struct SessionList: View {
                 title: AppLocalization.string("Rename project"),
                 placeholder: AppLocalization.string("Project name"),
                 initialText: project.title,
-                normalize: { name in
-                    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return trimmed.isEmpty || trimmed == project.title ? nil : trimmed
-                }
+                normalize: { SessionRenameOperation.normalizedTitle($0, currentTitle: project.title) }
             ) { name in
                 Task { Haptics.mutationCompleted(await appState.renameProject(project, to: name)) }
             }
@@ -1737,7 +1734,6 @@ private struct RenameSheet: View {
                     .submitLabel(.done)
                     .onSubmit(commit)
             }
-            .scrollDisabled(true)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1750,9 +1746,17 @@ private struct RenameSheet: View {
                 }
             }
         }
-        .presentationDetents([.height(180)])
+        // Medium, not a fixed height: at accessibility text sizes the field
+        // and toolbar must stay reachable.
+        .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
-        .task { fieldFocused = true }
+        .task {
+            // A focus request made while the sheet is still sliding in (over
+            // the drawer sheet) can be dropped; ask again once it settles.
+            fieldFocused = true
+            try? await Task.sleep(for: .milliseconds(400))
+            if !fieldFocused { fieldFocused = true }
+        }
     }
 
     private func commit() {
