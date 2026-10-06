@@ -2331,6 +2331,13 @@ private struct NotificationsSettingsDetail: View {
             Label(AppLocalization.string("End-to-end encrypted"), systemImage: "lock.fill")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+        } else if NotificationSharedSettings.keysProvisioned,
+                  !NotificationSharedSettings.knownGatewayIDs.contains(gateway.id) {
+            // Paired after encryption went on elsewhere: its plaintext can't
+            // be told from a relay's forgery, so it only shows generic text.
+            Label(AppLocalization.string("Not end-to-end encrypted, so notifications from this host show only generic text and don't open the chat. Update this host's notifier to turn encryption on."), systemImage: "lock.open")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         } else {
             Label(AppLocalization.string("Not end-to-end encrypted yet, so the relay can read these notifications. Conduit turns encryption on by itself once notifications are on and this host's notifier supports it."), systemImage: "lock.open")
                 .font(.footnote)

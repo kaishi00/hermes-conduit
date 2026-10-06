@@ -665,7 +665,11 @@ final class PushNotificationService: ObservableObject {
         isProvisioningEncryption = true
         defer { isProvisioningEncryption = false }
         var records = Self.e2eKeyStore.records()
-        let hadKeys = !records.isEmpty || NotificationSharedSettings.keysProvisioned
+        // Keys this iPhone stored that can't be read right now: new ones
+        // would replace them on the plugin and leave them orphaned here.
+        // Provisioning runs again on the next connect.
+        if records.isEmpty && NotificationSharedSettings.keysProvisioned { return }
+        let hadKeys = !records.isEmpty
         // Keys without the marker (a lost file, or a reinstall that kept the
         // Keychain): put it back so unreadable keys still fail closed.
         if !records.isEmpty { NotificationSharedSettings.markKeysProvisioned() }
@@ -718,7 +722,8 @@ final class PushNotificationService: ObservableObject {
                 continue
             }
             // The plugin now holds only this key for the pairing.
-            for stale in records where stale.installationID == installationID && stale.gatewayID == gatewayID {
+            for stale in Self.e2eKeyStore.records()
+            where stale.installationID == installationID && stale.gatewayID == gatewayID && stale.kid != record.kid {
                 Self.e2eKeyStore.remove(kid: stale.kid)
             }
             records.removeAll { $0.installationID == installationID && $0.gatewayID == gatewayID }
@@ -1273,7 +1278,7 @@ final class PushNotificationService: ObservableObject {
         from userInfo: [AnyHashable: Any],
         records: [E2EKeyRecord],
         knownGatewayIDs: Set<String>,
-        keysProvisioned: Bool = false,
+        keysProvisioned: Bool,
         now: Date = Date()
     ) -> ConduitNotificationTarget? {
         target(
