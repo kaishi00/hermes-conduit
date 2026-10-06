@@ -133,7 +133,9 @@ final class WatchCallModel: ObservableObject {
             phase = .ended(WatchAudioError.permissionDenied.localizedDescription)
             return
         }
-        if holdWithWatchCall {
+        if !holdWithWatchCall {
+            systemCall?.endStaleCalls()
+        } else {
             let systemCall = self.systemCall ?? makeSystemCall()
             systemCallActivated = await systemCall.start()
             // Ended while CallKit started: `finish` ended its call too.
@@ -154,10 +156,10 @@ final class WatchCallModel: ObservableObject {
         WatchProbeLog.shared.note("callStart", ["callID": Int(callID), "fullDuplex": fullDuplex, "reachable": link.isReachable])
         sendStart()
         timers = [
-            Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            WatchVoiceMain.timer(every: 0.05, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.flushUplink() }
             },
-            Timer.scheduledTimer(withTimeInterval: Self.pingInterval, repeats: true) { [weak self] _ in
+            WatchVoiceMain.timer(every: Self.pingInterval, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.ping() }
             },
         ]
@@ -599,8 +601,9 @@ final class WatchCallModel: ObservableObject {
         // Read before the end clears it. Each dim's own note says whether
         // the call held then.
         let systemCallHolding = systemCall?.isHolding == true
-        // CallKit activated the session the audio stop deactivates: its
-        // call is asked to end first.
+        // Asked to end before the audio stops. CallKit finishes the end
+        // later, after the session is deactivated; the log's
+        // systemCallAudioInactive shows when.
         systemCall?.end()
         audio.stop()
         link.onMessage = nil

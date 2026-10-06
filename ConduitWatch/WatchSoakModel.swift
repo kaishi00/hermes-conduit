@@ -97,7 +97,7 @@ final class WatchSoakModel: ObservableObject {
             self.startedAt = self.now
             self.lastTickAt = self.now
             self.status = "Running"
-            self.timer = Timer.scheduledTimer(withTimeInterval: plan.interval, repeats: true) { [weak self] _ in
+            self.timer = WatchVoiceMain.timer(every: plan.interval, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.tick() }
             }
         }, failure: { [weak self] error in

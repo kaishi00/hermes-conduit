@@ -53,7 +53,9 @@ final class WatchSystemCall: NSObject {
     /// session never came; the Watch's call goes on either way.
     func start() async -> Bool {
         guard callUUID == nil, activation == nil else { return false }
-        for stale in liveUUIDs.subtracting(endingUUIDs) { requestEnd(stale) }
+        // CallKit runs this controller's transactions in order: the stale
+        // ends go before the new start.
+        endStaleCalls()
         let uuid = UUID()
         callUUID = uuid
         liveUUIDs.insert(uuid)
@@ -105,6 +107,14 @@ final class WatchSystemCall: NSObject {
         callUUID = nil
         isHolding = false
         requestEnd(uuid)
+    }
+
+    /// Ends calls whose earlier end failed. Also run when a call starts
+    /// without this experiment, so switching it off leaves none behind.
+    func endStaleCalls() {
+        for stale in liveUUIDs.subtracting(endingUUIDs) where stale != callUUID {
+            requestEnd(stale)
+        }
     }
 
     private func requestEnd(_ uuid: UUID) {

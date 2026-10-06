@@ -216,4 +216,13 @@ enum WatchVoiceMain {
     static func async(_ work: @escaping @MainActor () -> Void) {
         DispatchQueue.main.async { MainActor.assumeIsolated(work) }
     }
+
+    /// A timer on the main run loop's common modes. A scheduled timer
+    /// fires in the default mode only, so it stops while the user
+    /// scrolls, and the pause would read as a link stall or a suspension.
+    static func timer(every interval: TimeInterval, repeats: Bool, _ block: @escaping @Sendable (Timer) -> Void) -> Timer {
+        let timer = Timer(timeInterval: interval, repeats: repeats, block: block)
+        RunLoop.main.add(timer, forMode: .common)
+        return timer
+    }
 }

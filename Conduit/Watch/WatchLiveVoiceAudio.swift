@@ -149,7 +149,7 @@ final class WatchLiveVoiceOutput: GeminiLiveAudioOutput {
         playbackDeadline = max(playbackDeadline, now.addingTimeInterval(0.5))
             .addingTimeInterval(Double(samples.count) / sampleRate)
         if timer == nil {
-            timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            timer = WatchVoiceMain.timer(every: 0.05, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.flush() }
             }
         }

@@ -108,6 +108,7 @@ final class WatchVoiceLink: ObservableObject {
         case .soakStart(let plan):
             // A link test would share the channel with a call's audio.
             guard !call.isLinked else {
+                log.note("soakStartRefused", ["runID": Int(plan.runID), "reason": "call"])
                 reply?([:])
                 return
             }
@@ -245,7 +246,7 @@ final class WatchCallHost {
         link.liveness.begin("call")
         if WatchPhoneCall.isEnabled { startPhoneCall() }
         appState.setWatchVoiceCallActive(true)
-        watchdog = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+        watchdog = WatchVoiceMain.timer(every: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkWatchdog() }
         }
         link.log.note("watchCallStart", [
@@ -433,7 +434,7 @@ final class WatchCallHost {
         }
         pendingState = state
         guard stateTimer == nil else { return }
-        stateTimer = Timer.scheduledTimer(withTimeInterval: Self.captionInterval, repeats: false) { [weak self] _ in
+        stateTimer = WatchVoiceMain.timer(every: Self.captionInterval, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.stateTimer = nil
@@ -566,7 +567,7 @@ final class WatchSoakResponder {
         suspendedAtStart = link.liveness.suspendedMs
         link.liveness.begin("soak")
         link.log.note("soakStart", ["runID": Int(plan.runID), "label": plan.label, "appState": WatchProbeLiveness.appStateName])
-        timer = Timer.scheduledTimer(withTimeInterval: plan.interval, repeats: true) { [weak self] _ in
+        timer = WatchVoiceMain.timer(every: plan.interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
     }
@@ -694,7 +695,7 @@ final class WatchProbeLiveness: ObservableObject {
         isRunning = true
         guard timer == nil else { return }
         lastTick = ContinuousClock.now
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        timer = WatchVoiceMain.timer(every: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
     }
