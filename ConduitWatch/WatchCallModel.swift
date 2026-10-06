@@ -65,6 +65,9 @@ final class WatchCallModel: ObservableObject {
     private var inFlight = 0
     private var lastSendAt: TimeInterval = 0
     private var micPaused = false
+    /// A mute or resume that didn't reach the iPhone.
+    private var muteUnsent = false
+    private var resumeUnsent = false
     private var lastPlaybackEndedAt: TimeInterval?
     private var activity = WatchVoiceActivity()
     private var uplinkSent = 0
@@ -159,7 +162,7 @@ final class WatchCallModel: ObservableObject {
         // The model never heard speech from before or during a mute: a
         // turn after it is timed from new speech only.
         activity.reset()
-        link.send(.mute(callID: callID, muted: isMuted))
+        sendMute()
     }
 
     /// "Tap to continue": watchOS lets recording restart only from a tap
@@ -170,7 +173,7 @@ final class WatchCallModel: ObservableObject {
             try audio.start(options: .init(voiceProcessing: fullDuplex), playbackRate: Self.downlinkRate)
             micPaused = false
             phase = .live(phonePhase ?? .connecting)
-            link.send(.resumed(callID: callID))
+            sendResumed()
             WatchProbeLog.shared.note("callResumedByTap")
         } catch {
             WatchProbeLog.shared.note("callResumeFailed", ["error": error.localizedDescription])
@@ -191,7 +194,7 @@ final class WatchCallModel: ObservableObject {
         if newPhase == .active {
             guard micPaused, audio.isRunning, phase != .needsTap else { return }
             micPaused = false
-            link.send(.resumed(callID: callID))
+            sendResumed()
         } else if !keepStreamingWristDown, !micPaused {
             // The link to the iPhone only holds with the wrist up: stop
             // sending, keep playing what's here.
@@ -245,8 +248,10 @@ final class WatchCallModel: ObservableObject {
         inFlight += 1
         uplinkSent += 1
         lastSendAt = now
+        let id = callID
         link.send(packet) { [weak self] result in
-            guard let self else { return }
+            // Acks that straddle a new call belong to the earlier one.
+            guard let self, self.callID == id else { return }
             self.inFlight = max(0, self.inFlight - 1)
             switch result {
             case .success(let roundTrip):
@@ -358,7 +363,8 @@ final class WatchCallModel: ObservableObject {
             caption = state.caption
             mode = state.mode
             jobs = state.jobs
-            isMuted = state.muted
+            // A mute the iPhone hasn't had yet stays the Watch's.
+            if !muteUnsent { isMuted = state.muted }
             switch state.phase {
             case .ended, .failed:
                 finish(reason: state.detail)
@@ -408,6 +414,7 @@ final class WatchCallModel: ObservableObject {
                 if case .pong(let name)? = answer { phoneName = name }
                 self.phase = .live(phoneName.flatMap(WatchVoiceWire.CallState.Phase.init(rawValue:)) ?? .connecting)
             }
+            self.resendUnsentControls()
         }, failure: { [weak self] error in
             guard let self, self.isActive else { return }
             self.pingFailures += 1
@@ -419,7 +426,36 @@ final class WatchCallModel: ObservableObject {
 
     private func reachabilityChanged(_ reachable: Bool) {
         guard isActive else { return }
-        if !reachable, phase != .needsTap { phase = .unreachable }
+        if reachable {
+            resendUnsentControls()
+        } else if phase != .needsTap {
+            phase = .unreachable
+        }
+    }
+
+    /// Mute and resume go again if the iPhone didn't get them: the link
+    /// often drops just as the wrist comes up.
+    private func sendMute() {
+        let id = callID
+        muteUnsent = false
+        link.send(.mute(callID: id, muted: isMuted), failure: { [weak self] _ in
+            guard let self, self.isActive, self.callID == id else { return }
+            self.muteUnsent = true
+        })
+    }
+
+    private func sendResumed() {
+        let id = callID
+        resumeUnsent = false
+        link.send(.resumed(callID: id), failure: { [weak self] _ in
+            guard let self, self.isActive, self.callID == id, !self.micPaused else { return }
+            self.resumeUnsent = true
+        })
+    }
+
+    private func resendUnsentControls() {
+        if muteUnsent { sendMute() }
+        if resumeUnsent, !micPaused { sendResumed() }
     }
 
     private func audioInterrupted(began: Bool) {
@@ -453,6 +489,8 @@ final class WatchCallModel: ObservableObject {
         inFlight = 0
         lastSendAt = 0
         micPaused = false
+        muteUnsent = false
+        resumeUnsent = false
         lastPlaybackEndedAt = nil
         activity = WatchVoiceActivity()
         uplinkSent = 0

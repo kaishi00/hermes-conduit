@@ -347,11 +347,15 @@ final class WatchCallHost {
 
     func send(_ packet: WatchVoicePacket, done: @escaping (Bool) -> Void) {
         downlinkSent += 1
+        let id = callID
         link.send(packet) { [weak self] roundTrip in
-            if let roundTrip {
-                self?.downlinkRoundTrips.append(roundTrip)
-            } else {
-                self?.downlinkFailed += 1
+            // Acks that straddle a replacement belong to the earlier call.
+            if let self, self.callID == id {
+                if let roundTrip {
+                    self.downlinkRoundTrips.append(roundTrip)
+                } else {
+                    self.downlinkFailed += 1
+                }
             }
             done(roundTrip != nil)
         }
