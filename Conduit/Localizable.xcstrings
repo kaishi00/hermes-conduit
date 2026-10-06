@@ -35479,6 +35479,22 @@
           }
         }
       }
+    },
+    "Setting up encryption again, so notifications from this host show only generic text for now." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暗号化を設定し直しているため、このホストからの通知は今のところ一般的な文面だけが表示されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重新设置加密，因此此主机的通知暂时只显示通用文字。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

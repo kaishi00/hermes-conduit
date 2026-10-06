@@ -730,7 +730,7 @@ final class PushNotificationService: ObservableObject {
                 continue
             }
             // The plugin now holds only this key for the pairing.
-            for stale in Self.e2eKeyStore.records()
+            for stale in records
             where stale.installationID == installationID && stale.gatewayID == gatewayID && stale.kid != record.kid {
                 Self.e2eKeyStore.remove(kid: stale.kid)
             }

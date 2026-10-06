@@ -2331,6 +2331,12 @@ private struct NotificationsSettingsDetail: View {
             Label(AppLocalization.string("End-to-end encrypted"), systemImage: "lock.fill")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+        } else if NotificationSharedSettings.keysProvisioned, notifications.encryptedGatewayIDs.isEmpty {
+            // Keys were stored but none can be read (locked, or lost and
+            // being set up again): every plaintext push shows generic text.
+            Label(AppLocalization.string("Setting up encryption again, so notifications from this host show only generic text for now."), systemImage: "lock.open")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         } else if NotificationSharedSettings.keysProvisioned,
                   !NotificationSharedSettings.knownGatewayIDs.contains(gateway.id) {
             // Paired after encryption went on elsewhere: its plaintext can't

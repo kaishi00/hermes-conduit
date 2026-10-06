@@ -323,20 +323,39 @@ struct KeychainE2EKeyStore: E2EKeyStoring {
     func readRecords() -> [E2EKeyRecord]? {
         var query = baseQuery
         query[kSecReturnData as String] = true
+        query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitAll
         var items: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &items)
-        if status == errSecItemNotFound { return [] }
-        guard status == errSecSuccess else { return nil }
+        switch SecItemCopyMatching(query as CFDictionary, &items) {
+        case errSecSuccess:
+            break
+        case errSecInteractionNotAllowed, errSecNotAvailable:
+            // Locked before first unlock, or the Keychain is unavailable:
+            // the keys are there but can't be read yet.
+            return nil
+        default:
+            // Nothing stored, or an error waiting won't fix: treat as no
+            // keys so provisioning sets them up again.
+            return []
+        }
         // An array for kSecMatchLimitAll; a lone item is accepted too.
-        let values: [Data]
+        let found: [[String: Any]]
         switch items {
-        case let array as [Data]: values = array
-        case let single as Data: values = [single]
+        case let array as [[String: Any]]: found = array
+        case let single as [String: Any]: found = [single]
         default: return nil
         }
         let decoder = JSONDecoder()
-        return values.compactMap { try? decoder.decode(E2EKeyRecord.self, from: $0) }
+        return found.compactMap { item in
+            if let data = item[kSecValueData as String] as? Data,
+               let record = try? decoder.decode(E2EKeyRecord.self, from: data) {
+                return record
+            }
+            // A key this build can't parse is of no use and would never be
+            // pruned: drop it, and provisioning replaces it.
+            if let kid = item[kSecAttrAccount as String] as? String { remove(kid: kid) }
+            return nil
+        }
     }
 
     @discardableResult
