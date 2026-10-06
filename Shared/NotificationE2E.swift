@@ -442,27 +442,32 @@ enum NotificationSharedSettings {
     private static let knownGatewayIDsKey = "conduit.notifications.knownGatewayIDs"
     private static let keysProvisionedMarker = "e2e-keys-provisioned"
 
-    /// Whether this iPhone has stored an encryption key. A file's existence
-    /// in the App Group container, which the extension can check even before
-    /// first unlock, when the Keychain and these defaults can't be read.
+    /// Whether this iPhone has stored an encryption key: a file in the App
+    /// Group container with no data protection, so the extension can usually
+    /// check it while the Keychain and these defaults can't be read.
     static var keysProvisioned: Bool {
-        get {
-            guard let url = markerURL else { return false }
-            return FileManager.default.fileExists(atPath: url.path)
+        guard let url = markerURL else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// Writes the marker; false when it couldn't be written, and then no key
+    /// may be stored.
+    @discardableResult
+    static func markKeysProvisioned() -> Bool {
+        guard let url = markerURL else { return false }
+        if keysProvisioned { return true }
+        do {
+            // No secret in it, and it must be readable while locked.
+            try Data().write(to: url, options: [.noFileProtection])
+            return true
+        } catch {
+            return false
         }
-        set {
-            guard let url = markerURL else { return }
-            if newValue {
-                // No secret in it, and it must be readable while locked.
-                FileManager.default.createFile(
-                    atPath: url.path,
-                    contents: Data(),
-                    attributes: [.protectionKey: FileProtectionType.none]
-                )
-            } else {
-                try? FileManager.default.removeItem(at: url)
-            }
-        }
+    }
+
+    static func clearKeysProvisioned() {
+        guard let url = markerURL else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     private static var markerURL: URL? {

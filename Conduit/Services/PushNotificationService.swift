@@ -666,6 +666,9 @@ final class PushNotificationService: ObservableObject {
         defer { isProvisioningEncryption = false }
         var records = Self.e2eKeyStore.records()
         let hadKeys = !records.isEmpty || NotificationSharedSettings.keysProvisioned
+        // Keys without the marker (a lost file, or a reinstall that kept the
+        // Keychain): put it back so unreadable keys still fail closed.
+        if !records.isEmpty { NotificationSharedSettings.markKeysProvisioned() }
         if !hadKeys && relayMeta == nil {
             // The keyless pairings plaintext stays trusted for are fixed when
             // the first key is stored: make sure they are known by then.
@@ -701,11 +704,19 @@ final class PushNotificationService: ObservableObject {
             // Unregistered or moved relays while the request was out: the
             // key belongs to a pairing this iPhone no longer has.
             guard registration?.installationID == installationID else { break }
-            guard Self.e2eKeyStore.save(record) else { continue }
-            if !NotificationSharedSettings.keysProvisioned, let relayMeta {
+            // The first key freezes the keyless pairings plaintext may still
+            // come from, and the marker goes down before the key so no
+            // stored key ever exists without it.
+            let firstKey = !hadKeys && records.isEmpty
+            if firstKey {
+                guard let relayMeta else { break }
                 NotificationSharedSettings.knownGatewayIDs = Set(relayMeta.gateways.map(\.id))
             }
-            NotificationSharedSettings.keysProvisioned = true
+            guard NotificationSharedSettings.markKeysProvisioned() else { break }
+            guard Self.e2eKeyStore.save(record) else {
+                if firstKey { NotificationSharedSettings.clearKeysProvisioned() }
+                continue
+            }
             // The plugin now holds only this key for the pairing.
             for stale in records where stale.installationID == installationID && stale.gatewayID == gatewayID {
                 Self.e2eKeyStore.remove(kid: stale.kid)
@@ -740,9 +751,11 @@ final class PushNotificationService: ObservableObject {
         for record in Self.e2eKeyStore.records() where record.installationID == installationID {
             Self.e2eKeyStore.remove(kid: record.kid)
         }
-        // The installation's pairings are gone with it.
-        NotificationSharedSettings.knownGatewayIDs = []
-        if Self.e2eKeyStore.records().isEmpty { NotificationSharedSettings.keysProvisioned = false }
+        // With no key left, the next first key freezes a fresh set.
+        if Self.e2eKeyStore.records().isEmpty {
+            NotificationSharedSettings.knownGatewayIDs = []
+            NotificationSharedSettings.clearKeysProvisioned()
+        }
         UserDefaults.standard.removeObject(forKey: Self.encryptedDecisionGatewaysKey)
         refreshEncryptionState()
     }
