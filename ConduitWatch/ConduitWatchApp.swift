@@ -147,7 +147,9 @@ struct WatchCallView: View {
     @ViewBuilder
     private var orb: some View {
         let button = Button {
-            if call.isActive {
+            if call.phase == .needsTap {
+                call.continueAfterInterruption()
+            } else if call.isActive {
                 call.interrupt()
             } else {
                 Task { await call.start() }

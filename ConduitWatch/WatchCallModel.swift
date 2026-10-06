@@ -87,6 +87,9 @@ final class WatchCallModel: ObservableObject {
     private var lastDownlinkAt: TimeInterval?
     private var maxDownlinkGap: TimeInterval = 0
     private var turnSpeechEnd: [UInt32: TimeInterval] = [:]
+    /// The speech end the last timed turn answered: a turn with no newer
+    /// speech (a job result, an opening) is not a reply and isn't timed.
+    private var lastTimedSpeechEnd: TimeInterval?
     private var turnEndToEnd: [UInt32: TimeInterval] = [:]
     private var turnModelLatency: [UInt32: TimeInterval] = [:]
     private var awaitingFirstAudio: UInt32?
@@ -236,7 +239,9 @@ final class WatchCallModel: ObservableObject {
         guard isActive, !pendingSamples.isEmpty else { return }
         let pendingDuration = Double(pendingSamples.count) / WatchAudio.captureRate
         guard pendingDuration >= Self.packetInterval || now - lastSendAt >= Self.packetInterval * 2 else { return }
-        guard inFlight < Self.maxInFlight else {
+        // Audio can overtake an unanswered callStart and be dropped; it
+        // waits here (two seconds at most) until the iPhone takes the call.
+        guard inFlight < Self.maxInFlight, acceptedAt != nil else {
             // Folded into the next packet instead of queueing more sends;
             // never more than two seconds held.
             let limit = Int(WatchAudio.captureRate * 2)
@@ -291,7 +296,10 @@ final class WatchCallModel: ObservableObject {
         if packet.turn != currentTurn {
             currentTurn = packet.turn
             // The end of what the user said before this answer.
-            turnSpeechEnd[packet.turn] = activity.lastVoicedAt
+            if let voicedAt = activity.lastVoicedAt, voicedAt > (lastTimedSpeechEnd ?? 0) {
+                turnSpeechEnd[packet.turn] = voicedAt
+                lastTimedSpeechEnd = voicedAt
+            }
             awaitingFirstAudio = packet.turn
         }
         lastDownlinkSeq = packet.seq
@@ -534,6 +542,7 @@ final class WatchCallModel: ObservableObject {
         lastDownlinkAt = nil
         maxDownlinkGap = 0
         turnSpeechEnd = [:]
+        lastTimedSpeechEnd = nil
         turnEndToEnd = [:]
         turnModelLatency = [:]
         awaitingFirstAudio = nil
