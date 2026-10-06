@@ -1314,10 +1314,35 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(
             HermesClient.fileAttachmentReference(from: .object([
                 "ref_path": .string("/root/.hermes/attachments/report.pdf"),
-                "ref_text": .string("/root/.hermes/attachments/report.pdf")
+                "ref_text": .string("report.pdf")
+            ])),
+            "@file:/root/.hermes/attachments/report.pdf",
+            "A ref_text that isn't an @file: reference gives way to the staged path"
+        )
+        XCTAssertEqual(
+            HermesClient.fileAttachmentReference(from: .object([
+                "path": .string("/root/.hermes/attachments/report.pdf")
             ])),
             "@file:/root/.hermes/attachments/report.pdf"
         )
+    }
+
+    func testContextFooterBelowAnyHermesReferenceIsDropped() {
+        for typed in [
+            "Summarise @url:https://example.com/post",
+            "Review @diff please",
+            "Read @file:\"notes/Q3 plan.md\""
+        ] {
+            let original = "\(typed)\n\n--- Attached Context ---\n\n🌐 expanded content"
+            let messages = MessageNormalizer.normalizeMessages([
+                .object([
+                    "id": .number(66),
+                    "role": .string("user"),
+                    "content": .string(original)
+                ])
+            ])
+            XCTAssertEqual(messages[0].content, typed, typed)
+        }
     }
 
     func testFileAttachReplyGivesThePromptReference() {

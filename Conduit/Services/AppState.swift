@@ -16023,6 +16023,7 @@ final class AppState: ObservableObject {
         for attachment in attachments {
             do {
                 let fileReference: String?
+                var stagedAsFile = attachment.kind != .image
                 if let upload = chatResumeLifecycleOperations.uploadAttachment {
                     fileReference = try await upload(client, sessionId, attachment)
                 } else if attachment.kind == .image {
@@ -16037,6 +16038,7 @@ final class AppState: ObservableObject {
                         // doesn't list, or past its image size cap): it
                         // still goes up, as a file.
                         guard isCurrentComposerSubmission(submissionContext) else { return false }
+                        stagedAsFile = true
                         fileReference = try await attachFile(
                             client,
                             sessionId,
@@ -16053,7 +16055,7 @@ final class AppState: ObservableObject {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
                 if let fileReference {
                     fileReferences.append(fileReference)
-                } else if attachment.kind != .image {
+                } else if stagedAsFile {
                     // Staged, but the reply named no path to point the agent
                     // at: the send goes on without telling it.
                     lifecycleLog.notice(
@@ -16180,11 +16182,11 @@ final class AppState: ObservableObject {
                     requestedSessionID: sessionId,
                     acceptedSessionIDs: submissionSessionIDs,
                     baseline: submissionBaseline,
-                    // The OUTBOUND text: what prompt.submit sent and what
-                    // the persisted user row shows (a mention annotation or
-                    // the forever-chat reroute changes it; file references
-                    // and Hermes' attached-context footer are projected out).
-                    submittedText: outboundText,
+                    // Exactly what prompt.submit sent (a mention annotation
+                    // or the forever-chat reroute changes it, staged files'
+                    // references lead it); the check projects it the way
+                    // the persisted user row is shown.
+                    submittedText: promptText,
                     submissionContext: submissionContext
                 )
                 // Ordering guard for the recovery STATE stamps: the recovery
