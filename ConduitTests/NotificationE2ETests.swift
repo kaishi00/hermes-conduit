@@ -170,6 +170,11 @@ final class NotificationE2ETests: XCTestCase {
         // plaintext is a downgrade, not legacy.
         XCTAssertUntrusted(NotificationE2E.evaluate(plaintext, records: [], knownGatewayIDs: [], keysProvisioned: true, now: now))
         XCTAssertNil(PushNotificationService.parseNotificationTarget(from: plaintext, records: [], knownGatewayIDs: [], keysProvisioned: true, now: now))
+        // Even naming a listed pairing (which may be the keyed one).
+        let keyed: [AnyHashable: Any] = ["conduit": ["type": "response.ready", "session_id": "sess-6", "gateway_id": Self.gatewayID]]
+        let listed: Set<String> = [Self.gatewayID, "another-gateway"]
+        XCTAssertUntrusted(NotificationE2E.evaluate(keyed, records: [], knownGatewayIDs: listed, keysProvisioned: true, now: now))
+        XCTAssertUntrusted(NotificationE2E.evaluate(plaintext, records: [], knownGatewayIDs: listed, keysProvisioned: true, now: now))
     }
 
     func testKeylessPairingsListedAfterTheFirstKeyNeverBecomeTrusted() {

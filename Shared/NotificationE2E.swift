@@ -172,7 +172,11 @@ enum NotificationE2E {
             // pairing it already knew about when it stored its first key:
             // naming a keyed pairing, no pairing, or any pairing listed
             // since is a downgrade, so a relay can't invent one later.
-            if records.isEmpty && !keysProvisioned { return .legacy }
+            if records.isEmpty {
+                // Keys were stored but none could be read: every pairing
+                // may be an encrypted one, so no plaintext is trusted.
+                return keysProvisioned ? .untrusted(type: type) : .legacy
+            }
             let gatewayID = (stub?["gateway_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !gatewayID.isEmpty,
                   knownGatewayIDs.contains(gatewayID),
@@ -212,6 +216,8 @@ enum NotificationE2E {
     /// lists `listed`. Before this iPhone holds a key, that's whatever the
     /// relay lists. After, the set only shrinks: a pairing first listed
     /// once encryption is on (or one a hostile relay makes up) never joins.
+    /// A host paired later with an old notifier therefore shows only generic
+    /// text until it updates and gets its own key.
     static func knownGatewayIDs(listed: Set<String>, previous: Set<String>, holdsKeys: Bool) -> Set<String> {
         holdsKeys ? previous.intersection(listed) : listed
     }
@@ -365,13 +371,23 @@ final class E2ESeenStore {
         withFileLock { insertLocked(key, namespace: namespace, now: now) }
     }
 
+    /// Waits up to about a second for the lock: a process suspended while
+    /// holding it must not stall the extension past its time budget. If it
+    /// can't be had, the insert runs unlocked (best effort, as before).
     private func withFileLock<T>(_ body: () -> T) -> T {
         guard let url else { return body() }
         let descriptor = open(url.path + ".lock", O_CREAT | O_RDWR, 0o600)
         guard descriptor >= 0 else { return body() }
         defer { close(descriptor) }
-        flock(descriptor, LOCK_EX)
-        defer { flock(descriptor, LOCK_UN) }
+        var locked = false
+        for _ in 0..<20 {
+            if flock(descriptor, LOCK_EX | LOCK_NB) == 0 {
+                locked = true
+                break
+            }
+            usleep(50_000)
+        }
+        defer { if locked { flock(descriptor, LOCK_UN) } }
         return body()
     }
 
@@ -437,7 +453,12 @@ enum NotificationSharedSettings {
         set {
             guard let url = markerURL else { return }
             if newValue {
-                FileManager.default.createFile(atPath: url.path, contents: Data(), attributes: nil)
+                // No secret in it, and it must be readable while locked.
+                FileManager.default.createFile(
+                    atPath: url.path,
+                    contents: Data(),
+                    attributes: [.protectionKey: FileProtectionType.none]
+                )
             } else {
                 try? FileManager.default.removeItem(at: url)
             }

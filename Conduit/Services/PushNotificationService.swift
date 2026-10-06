@@ -665,6 +665,12 @@ final class PushNotificationService: ObservableObject {
         isProvisioningEncryption = true
         defer { isProvisioningEncryption = false }
         var records = Self.e2eKeyStore.records()
+        let hadKeys = !records.isEmpty || NotificationSharedSettings.keysProvisioned
+        if !hadKeys && relayMeta == nil {
+            // The keyless pairings plaintext stays trusted for are fixed when
+            // the first key is stored: make sure they are known by then.
+            await refreshMeta()
+        }
         for profile in profiles {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
             guard let status = try? await request(path, "GET", nil),
@@ -692,6 +698,9 @@ final class PushNotificationService: ObservableObject {
             // key belongs to a pairing this iPhone no longer has.
             guard registration?.installationID == installationID else { break }
             guard Self.e2eKeyStore.save(record) else { continue }
+            if !NotificationSharedSettings.keysProvisioned, let relayMeta {
+                NotificationSharedSettings.knownGatewayIDs = Set(relayMeta.gateways.map(\.id))
+            }
             NotificationSharedSettings.keysProvisioned = true
             // The plugin now holds only this key for the pairing.
             for stale in records where stale.installationID == installationID && stale.gatewayID == gatewayID {
