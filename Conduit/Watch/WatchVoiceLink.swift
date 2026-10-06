@@ -244,7 +244,12 @@ final class WatchCallHost {
         output = WatchLiveVoiceOutput(host: self)
         suspendedAtStart = link.liveness.suspendedMs
         link.liveness.begin("call")
-        if WatchPhoneCall.isEnabled { startPhoneCall() }
+        if WatchPhoneCall.isEnabled {
+            startPhoneCall()
+        } else {
+            // A call whose end failed goes even with the switch off.
+            phoneCall?.endStaleCalls()
+        }
         appState.setWatchVoiceCallActive(true)
         watchdog = WatchVoiceMain.timer(every: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkWatchdog() }

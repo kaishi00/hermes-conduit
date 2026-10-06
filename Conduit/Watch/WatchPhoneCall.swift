@@ -56,7 +56,7 @@ final class WatchPhoneCall: NSObject {
 
     func start() {
         guard callUUID == nil else { return }
-        for stale in liveUUIDs.subtracting(endingUUIDs) { requestEnd(stale) }
+        endStaleCalls()
         let uuid = UUID()
         callUUID = uuid
         liveUUIDs.insert(uuid)
@@ -96,6 +96,14 @@ final class WatchPhoneCall: NSObject {
         guard let uuid = callUUID else { return }
         callUUID = nil
         requestEnd(uuid)
+    }
+
+    /// Ends calls whose earlier end failed. Also run when a Watch call
+    /// starts with the switch off, so turning it off leaves none behind.
+    func endStaleCalls() {
+        for stale in liveUUIDs.subtracting(endingUUIDs) where stale != callUUID {
+            requestEnd(stale)
+        }
     }
 
     private func requestEnd(_ uuid: UUID) {
