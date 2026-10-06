@@ -302,17 +302,6 @@ final class ScreenQuestionTests: XCTestCase {
         XCTAssertEqual(ScreenQuestionVoiceRouting.liveEngine(for: .gptLive, allowed: [.gptLive]), .gptLive)
     }
 
-    func testOpensWithDefaultsToVoice() throws {
-        let suite = "ScreenQuestionTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        XCTAssertEqual(ScreenQuestionPreferences.startWith(defaults: defaults), .voice)
-        defaults.set("keyboard", forKey: ScreenQuestionPreferences.startWithKey)
-        XCTAssertEqual(ScreenQuestionPreferences.startWith(defaults: defaults), .keyboard)
-        defaults.set("telepathy", forKey: ScreenQuestionPreferences.startWithKey)
-        XCTAssertEqual(ScreenQuestionPreferences.startWith(defaults: defaults), .voice)
-    }
-
     func testScreenshotTakenWhileConduitWasOnScreenCountsAsInUse() {
         let since = Date(timeIntervalSince1970: 10_000)
         XCTAssertTrue(ScreenQuestionPolicy.wasOnScreen(activeSince: since, enqueuedAt: since.addingTimeInterval(600)))

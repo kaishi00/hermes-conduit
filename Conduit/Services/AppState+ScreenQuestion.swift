@@ -61,16 +61,6 @@ enum ScreenQuestionPolicy {
     }
 }
 
-/// "Opens with" in Voice settings: how a screenshot chat takes the
-/// question when the action doesn't say. Per device.
-enum ScreenQuestionPreferences {
-    static let startWithKey = "conduit.screenQuestion.startWith"
-
-    static func startWith(defaults: UserDefaults = .standard) -> ScreenQuestionStart {
-        defaults.string(forKey: startWithKey).flatMap(ScreenQuestionStart.init(rawValue:)) ?? .voice
-    }
-}
-
 /// Which voice takes a screen question. It starts in the profile's own
 /// voice mode, and reliable Live delegation is a device-test gate (Eric,
 /// 2026-10-05): an engine that doesn't reliably hand the first screenshot
@@ -458,14 +448,15 @@ extension AppState {
         } else if resumingParked {
             requestComposerFocus(on: sessionID)
         } else {
-            await startScreenQuestionInput(request.startWith ?? screenQuestionStartPreference, on: sessionID)
+            await startScreenQuestionInput(request.startWith ?? .voice, on: sessionID)
         }
         return true
     }
 
-    /// No question came with the screenshot: start the profile's voice, or
-    /// the keyboard ("Opens with" in Voice settings). A turn still running
-    /// in the chat gets the keyboard: the screenshot waits for a new turn.
+    /// No question came with the screenshot: start the profile's voice
+    /// (closing it leaves the keyboard with the screenshot), or the
+    /// keyboard when the shortcut asks for it. A turn still running in the
+    /// chat gets the keyboard: the screenshot waits for a new turn.
     private func startScreenQuestionInput(_ start: ScreenQuestionStart, on sessionID: String) async {
         guard start == .voice, turnState == .idle else {
             requestComposerFocus(on: sessionID)

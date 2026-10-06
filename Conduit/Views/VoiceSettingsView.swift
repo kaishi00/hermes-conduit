@@ -277,7 +277,6 @@ struct VoiceSettingsView: View {
                         VoiceJobModelSettingsSection(settings: voiceJobs)
                     }
                     CarPlaySettingsSection()
-                    ScreenQuestionSettingsSection()
                     readAloudSection
                 }
                 .padding(16)

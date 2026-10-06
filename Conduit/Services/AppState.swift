@@ -3308,11 +3308,6 @@ final class AppState: ObservableObject {
         chatOwnSessionIDs(for: sessionId)
     }
 
-    /// "Opens with" for a screenshot chat (Voice settings).
-    var screenQuestionStartPreference: ScreenQuestionStart {
-        ScreenQuestionPreferences.startWith(defaults: defaults)
-    }
-
     static func ownSessionIDs(for sessionId: String, in rows: [SessionSummary]) -> Set<String> {
         ownSessionIDs(for: [sessionId], in: rows)
     }
