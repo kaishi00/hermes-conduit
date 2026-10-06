@@ -558,11 +558,11 @@ struct ComposerBar: View {
                 enabled: appState.composerIsEnabled,
                 onUserEdit: { edited in
                     // Dictation writing the draft is not typing.
-                    // Only while dictating: a finished dictation's last write
-                    // typed again by hand is typing.
-                    guard ComposerDictation.isTyping(
-                        edited, dictationWrote: dictation.isDictating ? dictatedDraft : nil
-                    ) else { return }
+                    // Dictation's last write can be reported after it has
+                    // finished, so this doesn't ask whether it is still running.
+                    guard ComposerDictation.isTyping(edited, dictationWrote: dictatedDraft) else { return }
+                    // Spent: the same text typed again by hand is typing.
+                    dictatedDraft = nil
                     appState.noteComposerUserEdit()
                     // As inline: typing ends a dictation, keeping its words.
                     if dictation.isDictating || dictation.isStarting { dictation.cancel() }

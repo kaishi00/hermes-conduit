@@ -23,7 +23,7 @@ final class ComposerFullEditorTests: XCTestCase {
         let dictated = ComposerDictation.draft(before: "Note:", dictated: "buy milk")
         XCTAssertFalse(ComposerDictation.isTyping(dictated, dictationWrote: dictated), "dictation's own write keeps it going")
         XCTAssertTrue(ComposerDictation.isTyping(dictated + "s", dictationWrote: dictated), "a keystroke after it is typing")
-        XCTAssertTrue(ComposerDictation.isTyping("Note:", dictationWrote: nil), "no dictation running: every change is typing")
+        XCTAssertTrue(ComposerDictation.isTyping("Note:", dictationWrote: nil), "no dictation write to match: every change is typing")
     }
 
     func testADictationResultNeverWritesOverTyping() {
