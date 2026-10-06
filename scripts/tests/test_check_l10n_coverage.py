@@ -251,6 +251,13 @@ class PlaceholderTests(unittest.TestCase):
         self.assertTrue(compatible(key, [(2, "int"), (1, "object")]))
         self.assertFalse(compatible(key, [(2, "object"), (1, "int")]))
 
+    def test_mixed_positional_translation_fails(self):
+        # "%1$@ and %lld": Foundation's numbering of the bare %lld is
+        # ambiguous, so a translation uses one style throughout.
+        key = [(None, "object"), (None, "int")]
+        self.assertFalse(compatible(key, [(1, "object"), (None, "int")]))
+        self.assertFalse(compatible(key, [(None, "object"), (2, "int")]))
+
     def test_positional_on_both_sides_must_match(self):
         self.assertTrue(compatible([(1, "object"), (2, "object")],
                                    [(1, "object"), (2, "object")]))

@@ -376,7 +376,8 @@ def placeholders_compatible(key_specs, value_specs) -> bool:
     follow the key's argument order ("%lld and %@" for "%@ and %lld"
     misformats). A fully positional translation (%2$lld ... %1$@) may
     reorder, but each index must name an argument of the same type. A
-    partially positional one must at least use valid indices.
+    translation that mixes positional and non-positional placeholders is
+    rejected: Foundation's argument numbering is ambiguous there.
     """
     key_types = sorted(kind for _, kind in key_specs)
     value_types = sorted(kind for _, kind in value_specs)
@@ -389,10 +390,7 @@ def placeholders_compatible(key_specs, value_specs) -> bool:
     if all(position is not None for position in positions):
         return all(1 <= position <= len(key_order) and key_order[position - 1] == kind
                    for position, kind in value_specs)
-    for position in positions:
-        if position is not None and not 1 <= position <= len(key_specs):
-            return False
-    return True
+    return False
 
 
 def normalized_language(identifier: str) -> str:

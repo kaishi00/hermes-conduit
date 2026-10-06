@@ -53,8 +53,9 @@ in your working copy only.
   language missing from it only needs `other`, and the checker says so;
 - each language is spelled the same way in every catalog;
 - every value in every language, drafts included, keeps the key's
-  placeholders (reordering with `%1$@` is fine) and has no literal `\uXXXX`
-  escapes;
+  placeholders in the same order, or reorders all of them with positional
+  ones (`%2$lld … %1$@`; mixing `%1$@` with a bare `%lld` fails), and has no
+  literal `\uXXXX` escapes;
 - no catalog repeats a key.
 
 The unit tests in `AppLanguageTests` run over whatever languages the build
