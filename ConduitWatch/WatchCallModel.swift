@@ -65,8 +65,9 @@ final class WatchCallModel: ObservableObject {
     private var inFlight = 0
     private var lastSendAt: TimeInterval = 0
     private var micPaused = false
-    /// A mute or resume that didn't reach the iPhone.
-    private var muteUnsent = false
+    /// A mute the iPhone hasn't echoed yet, and a resume that didn't
+    /// reach it.
+    private var muteUnconfirmed = false
     private var resumeUnsent = false
     private var lastPlaybackEndedAt: TimeInterval?
     private var activity = WatchVoiceActivity()
@@ -172,9 +173,15 @@ final class WatchCallModel: ObservableObject {
         do {
             try audio.start(options: .init(voiceProcessing: fullDuplex), playbackRate: Self.downlinkRate)
             micPaused = false
-            phase = .live(phonePhase ?? .connecting)
+            if acceptedAt == nil {
+                // Interrupted before the iPhone took the call: ask again.
+                phase = .starting
+                sendStart()
+            } else {
+                phase = .live(phonePhase ?? .connecting)
+            }
             sendResumed()
-            WatchProbeLog.shared.note("callResumedByTap")
+            WatchProbeLog.shared.note("callResumedByTap", ["accepted": acceptedAt != nil])
         } catch {
             WatchProbeLog.shared.note("callResumeFailed", ["error": error.localizedDescription])
         }
@@ -200,6 +207,8 @@ final class WatchCallModel: ObservableObject {
             // sending, keep playing what's here.
             micPaused = true
             pendingSamples = []
+            // As with mute: a later turn is timed from new speech only.
+            activity.reset()
             link.send(.paused(callID: callID, reason: "wristDown"))
         }
     }
@@ -341,12 +350,16 @@ final class WatchCallModel: ObservableObject {
     }
 
     private func startAnswered(_ answer: WatchVoiceWire.Message?) {
-        guard phase == .starting || phase == .unreachable else { return }
+        // An answer that lands while paused for a tap still counts.
+        guard phase == .starting || phase == .unreachable || phase == .needsTap else {
+            WatchProbeLog.shared.note("callStartAnswerIgnored", ["phase": "\(phase)"])
+            return
+        }
         switch answer {
         case .callAccepted(let id, let mode)? where id == callID:
             acceptedAt = now
             self.mode = mode
-            phase = .live(.connecting)
+            if phase != .needsTap { phase = .live(.connecting) }
             WatchProbeLog.shared.note("callAccepted", ["mode": mode, "afterMs": Int((now - callStartedAt) * 1000)])
         case .callRefused(let id, let reason)? where id == callID:
             WatchProbeLog.shared.note("callRefused", ["reason": reason])
@@ -363,8 +376,12 @@ final class WatchCallModel: ObservableObject {
             caption = state.caption
             mode = state.mode
             jobs = state.jobs
-            // A mute the iPhone hasn't had yet stays the Watch's.
-            if !muteUnsent { isMuted = state.muted }
+            // A mute the iPhone hasn't echoed yet stays the Watch's.
+            if !muteUnconfirmed {
+                isMuted = state.muted
+            } else if state.muted == isMuted {
+                muteUnconfirmed = false
+            }
             switch state.phase {
             case .ended, .failed:
                 finish(reason: state.detail)
@@ -436,12 +453,8 @@ final class WatchCallModel: ObservableObject {
     /// Mute and resume go again if the iPhone didn't get them: the link
     /// often drops just as the wrist comes up.
     private func sendMute() {
-        let id = callID
-        muteUnsent = false
-        link.send(.mute(callID: id, muted: isMuted), failure: { [weak self] _ in
-            guard let self, self.isActive, self.callID == id else { return }
-            self.muteUnsent = true
-        })
+        muteUnconfirmed = true
+        link.send(.mute(callID: callID, muted: isMuted))
     }
 
     private func sendResumed() {
@@ -454,7 +467,7 @@ final class WatchCallModel: ObservableObject {
     }
 
     private func resendUnsentControls() {
-        if muteUnsent { sendMute() }
+        if muteUnconfirmed { sendMute() }
         if resumeUnsent, !micPaused { sendResumed() }
     }
 
@@ -463,6 +476,7 @@ final class WatchCallModel: ObservableObject {
         if began {
             micPaused = true
             pendingSamples = []
+            activity.reset()
             link.send(.paused(callID: callID, reason: "audioInterruption"))
             phase = .needsTap
         } else {
@@ -489,7 +503,7 @@ final class WatchCallModel: ObservableObject {
         inFlight = 0
         lastSendAt = 0
         micPaused = false
-        muteUnsent = false
+        muteUnconfirmed = false
         resumeUnsent = false
         lastPlaybackEndedAt = nil
         activity = WatchVoiceActivity()

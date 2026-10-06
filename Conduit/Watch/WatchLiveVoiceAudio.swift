@@ -52,7 +52,11 @@ final class WatchLiveVoiceInput: GeminiLiveAudioInput {
     func requestPermission() async -> Bool { true }
 
     func start() throws {
-        guard host?.isLinked == true, !isWatchPaused else { throw WatchVoiceAudioError.watchNotStreaming }
+        guard host?.isLinked == true else { throw WatchVoiceAudioError.watchNotStreaming }
+        // The call's first start goes ahead with the wrist down (lowered
+        // while Hermes connected): audio flows once the Watch resumes. A
+        // restart after a pause waits for the Watch instead.
+        guard !isWatchPaused || !hasStarted else { throw WatchVoiceAudioError.watchNotStreaming }
         isRunning = true
         guard !hasStarted else { return }
         hasStarted = true

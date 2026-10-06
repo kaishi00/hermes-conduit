@@ -144,7 +144,7 @@ final class WatchSoakModel: ObservableObject {
             // A newer run owns the screen.
             guard self.plan?.runID == runID else { return }
             self.phoneResult = phone
-            self.status = "Done"
+            self.status = phone == nil ? "Done (the iPhone's numbers didn't arrive)" : "Done"
         }, failure: { [weak self] error in
             guard let self else { return }
             WatchProbeLog.shared.note("soakStopFailed", ["runID": Int(runID), "error": error.localizedDescription])
