@@ -515,7 +515,7 @@ struct SessionList: View {
                             .disabled(appState.isProjectMutationInFlight)
                             Button {
                                 Haptics.selection()
-                                projectPendingRename = project
+                                DispatchQueue.main.async { projectPendingRename = project }
                             } label: {
                                 Label("Rename…", systemImage: "pencil")
                             }
@@ -897,7 +897,7 @@ private extension View {
 
 /// A conversation's touch-and-hold actions, shared by the main session list
 /// and a project's conversation list so both offer the same menu. Rename and
-/// Delete need a host-owned alert, so the host supplies those two actions.
+/// Delete need a host-owned sheet or alert, so the host supplies those two actions.
 private struct SessionActionMenuItems: View {
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
@@ -1700,7 +1700,7 @@ private struct RenameSheet: View {
     /// Returns the name to commit, or nil while the draft can't be saved
     /// (empty, or unchanged).
     let normalize: @MainActor (String) -> String?
-    let onRename: (String) -> Void
+    let onRename: @MainActor (String) -> Void
     @State private var draft: String
     @State private var isCommitting = false
     @State private var didFocus = false
@@ -1711,7 +1711,7 @@ private struct RenameSheet: View {
         placeholder: String,
         initialText: String,
         normalize: @escaping @MainActor (String) -> String?,
-        onRename: @escaping (String) -> Void
+        onRename: @escaping @MainActor (String) -> Void
     ) {
         self.title = title
         self.placeholder = placeholder
@@ -1720,7 +1720,7 @@ private struct RenameSheet: View {
         _draft = State(initialValue: initialText)
     }
 
-    static func conversation(_ session: SessionSummary, onRename: @escaping (String) -> Void) -> RenameSheet {
+    static func conversation(_ session: SessionSummary, onRename: @escaping @MainActor (String) -> Void) -> RenameSheet {
         RenameSheet(
             title: AppLocalization.string("Rename conversation"),
             placeholder: AppLocalization.string("Conversation title"),
@@ -1765,7 +1765,13 @@ private struct RenameSheet: View {
             // Only when it never took focus: a keyboard the user swiped
             // away stays away.
             guard !Task.isCancelled, !didFocus else { return }
-            if !fieldFocused { fieldFocused = true }
+            // A dropped request can leave the binding true with no keyboard,
+            // so clear it before asking again.
+            if fieldFocused {
+                fieldFocused = false
+                await Task.yield()
+            }
+            fieldFocused = true
         }
     }
 
