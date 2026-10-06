@@ -767,8 +767,9 @@ final class PushNotificationService: ObservableObject {
         for record in Self.e2eKeyStore.records() where record.installationID == installationID {
             Self.e2eKeyStore.remove(kid: record.kid)
         }
-        // With no key left, the next first key freezes a fresh set.
-        if Self.e2eKeyStore.records().isEmpty {
+        // With no key left, the next first key freezes a fresh set. Only on
+        // a real read: an unreadable store may still hold other keys.
+        if Self.e2eKeyStore.readRecords()?.isEmpty == true {
             NotificationSharedSettings.knownGatewayIDs = []
             NotificationSharedSettings.clearKeysProvisioned()
         }
