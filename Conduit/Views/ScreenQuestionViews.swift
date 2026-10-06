@@ -25,12 +25,12 @@ struct ScreenQuestionVoiceBanner: View {
                 HStack(spacing: 8) {
                     ComposerAttachmentChip(attachment: screenshot, canRemove: true, onRemove: onDiscard)
                     if let onNewChat {
-                        ScreenshotNewChatButton(placement: "voice", action: onNewChat)
+                        ScreenshotNewChatButton(placement: .voice, action: onNewChat)
                     }
                 }
             }
-            // One region for VoiceOver: the caption with the chip, its
-            // remove button and New Chat.
+            // A grouped container for VoiceOver: the caption, the chip, its
+            // remove button and New Chat, each still focusable.
             .accessibilityElement(children: .contain)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -43,8 +43,13 @@ struct ScreenQuestionVoiceBanner: View {
 /// "New Chat" beside a screenshot that joined a chat already in use: it
 /// moves the screenshot, and voice when it's open, to a fresh chat.
 struct ScreenshotNewChatButton: View {
-    /// Where it sits ("composer" or "voice"), for its identifier.
-    let placement: String
+    enum Placement: String {
+        case composer
+        case voice
+    }
+
+    /// Where it sits, for its identifier.
+    let placement: Placement
     let action: () -> Void
 
     var body: some View {
@@ -64,7 +69,7 @@ struct ScreenshotNewChatButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint(AppLocalization.string("Moves the screenshot to a new chat."))
-        .accessibilityIdentifier("screenQuestion.newChat.\(placement)")
+        .accessibilityIdentifier("screenQuestion.newChat.\(placement.rawValue)")
     }
 }
 

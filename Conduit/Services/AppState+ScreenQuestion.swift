@@ -292,9 +292,9 @@ extension AppState {
         await createNewSession()
         guard let created = activeSessionId, created != previous else {
             restorePendingScreenshot(entry.attachment, forSession: entry.sessionID)
-            if errorMessage == nil {
-                errorMessage = Self.screenshotChatNotStartedMessage
-            }
+            // Replaces the generic "Failed to create session": the user
+            // needs to know where the screenshot is.
+            errorMessage = Self.screenshotChatNotStartedMessage
             return nil
         }
         setPendingScreenshot(entry.attachment, forSession: created)
