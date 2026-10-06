@@ -1536,6 +1536,7 @@ final class AppState: ObservableObject {
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens),
             input: audio.input,
             output: audio.output,
+            routePolicy: { [weak self] in self?.liveVoiceRoutePolicy() ?? VoiceBargeInRoutePolicy.current() },
             // The same "End conversation" phrases as the classic Voice mode.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
@@ -2072,6 +2073,7 @@ final class AppState: ObservableObject {
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false),
             input: audio.input,
             output: audio.output,
+            routePolicy: { [weak self] in self?.liveVoiceRoutePolicy() ?? VoiceBargeInRoutePolicy.current() },
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
@@ -2794,7 +2796,7 @@ final class AppState: ObservableObject {
     /// left a socket lost during suspension dead for the whole drive and
     /// CarPlay reporting Voice unavailable.
     private var canRunTransportRecovery: Bool {
-        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive
+        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive
     }
     /// A transport whose handshake completed but whose post-connect bootstrap
     /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
@@ -3778,8 +3780,16 @@ final class AppState: ObservableObject {
             makeEchoCancelling: {
                 let audio = EchoCancellingLiveVoiceAudio(outputSampleRate: outputSampleRate)
                 return (audio.input, audio.output)
-            }
+            },
+            wantsWatch: { [weak self] in self?.isWatchVoiceCallActive ?? false },
+            makeWatch: { WatchVoiceLink.shared.makeLiveAudio() }
         )
+    }
+
+    /// A Watch call plays on the Watch's own speaker, whatever the phone's
+    /// route is: half duplex unless the Watch cancels its echo.
+    private func liveVoiceRoutePolicy() -> VoiceBargeInRoutePolicy {
+        isWatchVoiceCallActive ? .speakerSafeHalfDuplex : VoiceBargeInRoutePolicy.current()
     }
 
     /// The row's voice tag, matched through every id the row answers to.
@@ -23388,13 +23398,74 @@ final class AppState: ObservableObject {
     /// transitions cannot keep a dead gateway on a fixed 0.1s retry.
     func recoverTransportForCarPlayIfNeeded(immediately: Bool = false) {
         // A conversation kept running while locked relies on the transport
-        // the same way.
-        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive,
+        // the same way, and so does a call the Apple Watch started.
+        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive,
               !isSceneActive,
               connection != nil,
               !isConnected,
               !isConnecting else { return }
         scheduleReconnect(immediately: immediately, purpose: chatResumePurposeForDisconnect())
+    }
+
+    // MARK: Apple Watch voice (proof of concept)
+
+    /// A call the Apple Watch started is running, with the Watch as its
+    /// microphone and speaker (designs/apple-watch-voice.md). Like CarPlay,
+    /// the Watch is another surface over the same live call, never a second
+    /// owner: it keeps transport recovery going with the phone locked.
+    @Published private(set) var isWatchVoiceCallActive = false
+
+    func setWatchVoiceCallActive(_ active: Bool) {
+        isWatchVoiceCallActive = active
+    }
+
+    /// Starts the profile's live mode for a call the Watch started. Nil
+    /// once the call is starting; otherwise why it can't. `stillWanted`
+    /// is asked after waiting for Hermes: the Watch may have ended or
+    /// replaced the call meanwhile.
+    func startLiveVoiceForWatch(_ mode: CarPlayLiveVoiceMode, stillWanted: () -> Bool) async -> String? {
+        // Woken (or launched) by the Watch with no phone screen up.
+        if isSceneActive, !PhoneScenePresence.isInForeground {
+            isSceneActive = false
+            publishVoiceRuntimeGates()
+        }
+        if !isConnected {
+            recoverTransportForCarPlayIfNeeded(immediately: true)
+            guard await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: .seconds(20)) else {
+                return WatchVoiceStartFailure.hermesUnreachable
+            }
+        }
+        guard isWatchVoiceCallActive, stillWanted() else { return WatchVoiceStartFailure.ended }
+        messageReadAloudController.stop()
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopGPTLiveConversation()
+        voiceBackgroundJobSupervisor.detachLiveThread()
+        switch mode {
+        case .geminiLive:
+            stopGrokLiveConversation()
+            guard !geminiLiveController.isActive else { return WatchVoiceStartFailure.callRunning }
+            beginVoiceCallRecording(engine: .geminiLive)
+            await geminiLiveController.start()
+        case .grokLive:
+            stopGeminiLiveConversation()
+            guard !grokLiveController.isActive else { return WatchVoiceStartFailure.callRunning }
+            beginVoiceCallRecording(engine: .grokLive)
+            await grokLiveController.start()
+        case .gptLive:
+            return WatchVoiceStartFailure.unsupportedMode
+        }
+        return nil
+    }
+
+    /// The Watch call is over: its conversation closes (and is saved) as
+    /// the phone's End button would close it.
+    func finishLiveVoiceForWatch(_ mode: CarPlayLiveVoiceMode) {
+        switch mode {
+        case .geminiLive: closeGeminiLiveConversation()
+        case .grokLive: closeGrokLiveConversation()
+        case .gptLive: break
+        }
+        isWatchVoiceCallActive = false
     }
 
     /// Called by the CarPlay coordinator when the CarPlay Voice surface goes
