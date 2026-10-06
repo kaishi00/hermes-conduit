@@ -73,13 +73,13 @@ final class NotificationE2ETests: XCTestCase {
     }
 
     func testPluginSealedPushOpensAndRoutesFromVerifiedDataOnly() throws {
-        guard case .verified(let verified) = NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], now: now) else {
+        guard case .verified(let verified) = NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now) else {
             return XCTFail("the plugin's envelope should verify")
         }
         XCTAssertEqual(verified.content["title"] as? String, "Hermes")
         XCTAssertEqual(verified.content["body"] as? String, "Deploy to prod?")
 
-        let target = try XCTUnwrap(PushNotificationService.parseNotificationTarget(from: delivered(), records: [record], knownGatewayIDs: [], now: now))
+        let target = try XCTUnwrap(PushNotificationService.parseNotificationTarget(from: delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now))
         XCTAssertEqual(target.sessionId, "sess-1")
         XCTAssertEqual(target.profile, "coder")
         XCTAssertEqual(target.type, "input.needed")
@@ -115,53 +115,53 @@ final class NotificationE2ETests: XCTestCase {
 
     func testTamperedOrStaleOrForeignEnvelopesAreUntrusted() {
         var retyped = delivered(type: "approval.needed")
-        XCTAssertUntrusted(NotificationE2E.evaluate(retyped, records: [record], knownGatewayIDs: [], now: now))
+        XCTAssertUntrusted(NotificationE2E.evaluate(retyped, records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now))
 
         var rethreaded = Self.envelope
         rethreaded["tok"] = "0000000000000000"
-        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(envelope: rethreaded), records: [record], knownGatewayIDs: [], now: now))
+        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(envelope: rethreaded), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now))
 
         var moved = Self.envelope
         moved["req"] = "conduit-push-000000000000"
-        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(envelope: moved), records: [record], knownGatewayIDs: [], now: now))
+        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(envelope: moved), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now))
 
         let stale = Date(timeIntervalSince1970: Self.issuedAt + NotificationE2E.maxAge + 1)
-        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], now: stale))
+        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: stale))
         let early = Date(timeIntervalSince1970: Self.issuedAt - NotificationE2E.maxClockSkew - 1)
-        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], now: early))
+        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: early))
 
         // Another pairing's key, or none at all.
         let other = E2EKeyRecord(kid: Self.kid, secret: Data(repeating: 1, count: 32), installationID: Self.installationID, gatewayID: Self.gatewayID, dashboardID: nil, profile: nil, createdAt: now)
-        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(), records: [other], knownGatewayIDs: [], now: now))
-        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(), records: [], knownGatewayIDs: [], now: now))
+        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(), records: [other], knownGatewayIDs: [], keysProvisioned: false, now: now))
+        XCTAssertUntrusted(NotificationE2E.evaluate(delivered(), records: [], knownGatewayIDs: [], keysProvisioned: false, now: now))
 
         retyped["conduit_e2e"] = "garbage"
-        XCTAssertUntrusted(NotificationE2E.evaluate(retyped, records: [record], knownGatewayIDs: [], now: now))
-        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: delivered(type: "approval.needed"), records: [record], knownGatewayIDs: [], now: now))
+        XCTAssertUntrusted(NotificationE2E.evaluate(retyped, records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now))
+        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: delivered(type: "approval.needed"), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now))
     }
 
     func testPlaintextIsADowngradeOnlyForPairingsWithAKey() {
         let plaintext: [AnyHashable: Any] = ["conduit": ["type": "response.ready", "session_id": "sess-1", "gateway_id": Self.gatewayID]]
-        XCTAssertUntrusted(NotificationE2E.evaluate(plaintext, records: [record], knownGatewayIDs: [], now: now))
-        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: plaintext, records: [record], knownGatewayIDs: [], now: now))
+        XCTAssertUntrusted(NotificationE2E.evaluate(plaintext, records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now))
+        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: plaintext, records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now))
 
         // A known pairing that never provisioned a key keeps today's behavior.
         let legacy: [AnyHashable: Any] = ["conduit": ["type": "response.ready", "session_id": "sess-2", "gateway_id": "another-gateway"]]
         let known: Set<String> = [Self.gatewayID, "another-gateway"]
-        XCTAssertEqual(PushNotificationService.parseNotificationTarget(from: legacy, records: [record], knownGatewayIDs: known, now: now)?.sessionId, "sess-2")
+        XCTAssertEqual(PushNotificationService.parseNotificationTarget(from: legacy, records: [record], knownGatewayIDs: known, keysProvisioned: false, now: now)?.sessionId, "sess-2")
         // Even listed, a keyed pairing's plaintext stays a downgrade.
-        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: plaintext, records: [record], knownGatewayIDs: known, now: now))
+        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: plaintext, records: [record], knownGatewayIDs: known, keysProvisioned: false, now: now))
         // A pairing this iPhone has never seen can't vouch for plaintext.
         let invented: [AnyHashable: Any] = ["conduit": ["type": "response.ready", "session_id": "sess-4", "gateway_id": "made-up-gateway"]]
-        XCTAssertUntrusted(NotificationE2E.evaluate(invented, records: [record], knownGatewayIDs: known, now: now))
-        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: invented, records: [record], knownGatewayIDs: known, now: now))
+        XCTAssertUntrusted(NotificationE2E.evaluate(invented, records: [record], knownGatewayIDs: known, keysProvisioned: false, now: now))
+        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: invented, records: [record], knownGatewayIDs: known, keysProvisioned: false, now: now))
         // With no key at all, every plaintext push behaves as before.
-        XCTAssertEqual(PushNotificationService.parseNotificationTarget(from: invented, records: [], knownGatewayIDs: [], now: now)?.sessionId, "sess-4")
+        XCTAssertEqual(PushNotificationService.parseNotificationTarget(from: invented, records: [], knownGatewayIDs: [], keysProvisioned: false, now: now)?.sessionId, "sess-4")
 
         // No gateway named: unattributable once this iPhone holds any key.
         let unscoped: [AnyHashable: Any] = ["conduit": ["type": "response.ready", "session_id": "sess-3"]]
-        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: unscoped, records: [record], knownGatewayIDs: [], now: now))
-        XCTAssertEqual(PushNotificationService.parseNotificationTarget(from: unscoped, records: [], knownGatewayIDs: [], now: now)?.sessionId, "sess-3")
+        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: unscoped, records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now))
+        XCTAssertEqual(PushNotificationService.parseNotificationTarget(from: unscoped, records: [], knownGatewayIDs: [], keysProvisioned: false, now: now)?.sessionId, "sess-3")
     }
 
     func testAnUnreadableKeychainIsNotTreatedAsNoKeys() {
