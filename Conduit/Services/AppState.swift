@@ -93,6 +93,11 @@ struct ChatResumeLifecycleOperations {
     /// the prompt; returns the `@file:` reference the prompt carries, nil
     /// for an image. Not an init parameter: tests set it on the value.
     var uploadAttachment: (@MainActor (HermesClient, String, Attachment) async throws -> String?)?
+    /// Test seams for the two upload RPCs under the production routing:
+    /// `image.attach_bytes` (session id, base64, filename) and `file.attach`
+    /// (session id, data URL, name; returns the `@file:` reference).
+    var attachImageBytes: (@MainActor (HermesClient, String, String, String) async throws -> Void)?
+    var attachFileData: (@MainActor (HermesClient, String, String, String) async throws -> String?)?
     /// Foreground transport verification. Production calls the client's
     /// `session.list` health check; tests substitute a controllable outcome.
     var verifyTransportHealth: (@MainActor (HermesClient) async throws -> Void)?
@@ -16006,6 +16011,14 @@ final class AppState: ObservableObject {
         // like Hermes Desktop does: Hermes' PDF route needs poppler on the
         // host and bounced the send without it. Whether the model can read
         // a file is up to the agent; the send never fails over its type.
+        let attachImage: @MainActor (HermesClient, String, String, String) async throws -> Void =
+            chatResumeLifecycleOperations.attachImageBytes ?? { client, session, base64, filename in
+                _ = try await client.attachImage(session, base64: base64, filename: filename)
+            }
+        let attachFile: @MainActor (HermesClient, String, String, String) async throws -> String? =
+            chatResumeLifecycleOperations.attachFileData ?? { client, session, dataUrl, name in
+                try await client.attachFile(session, dataUrl: dataUrl, name: name)
+            }
         var fileReferences: [String] = []
         for attachment in attachments {
             do {
@@ -16017,27 +16030,36 @@ final class AppState: ObservableObject {
                     guard isCurrentComposerSubmission(submissionContext) else { return false }
                     guard !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
                     do {
-                        _ = try await client.attachImage(sessionId, base64: base64, filename: attachment.name)
+                        try await attachImage(client, sessionId, base64, attachment.name)
                         fileReference = nil
                     } catch let error as RpcError where Self.isImageAttachRefusal(error) {
                         // Hermes won't take it as an image (a format it
                         // doesn't list, or past its image size cap): it
                         // still goes up, as a file.
                         guard isCurrentComposerSubmission(submissionContext) else { return false }
-                        fileReference = try await client.attachFile(
+                        fileReference = try await attachFile(
+                            client,
                             sessionId,
-                            dataUrl: AttachmentHelper.dataUrl(base64: base64, for: attachment),
-                            name: attachment.name
+                            AttachmentHelper.dataUrl(base64: base64, for: attachment),
+                            attachment.name
                         )
                     }
                 } else {
                     let dataUrl = await AttachmentHelper.toDataUrl(attachment)
                     guard isCurrentComposerSubmission(submissionContext) else { return false }
                     guard !dataUrl.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
-                    fileReference = try await client.attachFile(sessionId, dataUrl: dataUrl, name: attachment.name)
+                    fileReference = try await attachFile(client, sessionId, dataUrl, attachment.name)
                 }
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
-                if let fileReference { fileReferences.append(fileReference) }
+                if let fileReference {
+                    fileReferences.append(fileReference)
+                } else if attachment.kind != .image {
+                    // Staged, but the reply named no path to point the agent
+                    // at: the send goes on without telling it.
+                    lifecycleLog.notice(
+                        "file.attach gave no reference; the prompt can't name the file session=\(sessionId, privacy: .public)"
+                    )
+                }
             } catch {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
                 errorMessage = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
@@ -16629,7 +16651,11 @@ final class AppState: ObservableObject {
             return .indeterminate
         }
 
-        let wanted = submittedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Compared as the persisted row shows it: a prompt typed with a
+        // leading `@file:` line or an `@image:` token is projected the same
+        // way on both sides.
+        let wanted = MessageNormalizer.visibleUserText(submittedText)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let contentMatches: (ChatMessage) -> Bool = { message in
             message.role == .user
                 && message.content.trimmingCharacters(in: .whitespacesAndNewlines) == wanted
@@ -24064,7 +24090,7 @@ enum AttachmentHelper {
     }
 
     static func dataUrl(base64: String, for attachment: Attachment) -> String {
-        let mimeType = attachment.mimeType?.isEmpty == false ? attachment.mimeType! : "application/octet-stream"
+        let mimeType = attachment.mimeType.flatMap { $0.isEmpty ? nil : $0 } ?? "application/octet-stream"
         return "data:\(mimeType);base64,\(base64)"
     }
 
