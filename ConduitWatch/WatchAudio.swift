@@ -49,6 +49,12 @@ final class WatchAudio {
     /// The last refused playback rate, logged once rather than per packet.
     private var refusedRate: Double?
     private var playbackGeneration = 0
+    /// What a failed start got as far as. Tearing down a graph that never
+    /// rendered must not reach CoreAudio, which can abort the process
+    /// ("RPC timeout. Apparently deadlocked."), the way the phone's
+    /// capture service guards it.
+    private var hasInputTap = false
+    private var hasRenderResources = false
     private var startPending = false
     private var queuedDuration: TimeInterval = 0
     private var observers: [NSObjectProtocol] = []
@@ -73,8 +79,10 @@ final class WatchAudio {
             // Nothing half started stays behind: the tap, the engine, the
             // active session.
             captureGeneration += 1
-            engine?.inputNode.removeTap(onBus: 0)
-            engine?.stop()
+            if hasInputTap { engine?.inputNode.removeTap(onBus: 0) }
+            if hasRenderResources { engine?.stop() }
+            hasInputTap = false
+            hasRenderResources = false
             engine = nil
             player = nil
             try? session.setActive(false, options: [.notifyOthersOnDeactivation])
@@ -84,8 +92,10 @@ final class WatchAudio {
 
     private func startEngine(session: AVAudioSession, options: Options, playbackRate: Double) throws {
         let engine = AVAudioEngine()
-        // Kept from the start, so a failure below can stop it.
+        // Kept from the start, so a failure below can undo it.
         self.engine = engine
+        hasInputTap = false
+        hasRenderResources = false
         if options.voiceProcessing {
             try engine.inputNode.setVoiceProcessingEnabled(true)
         }
@@ -113,12 +123,14 @@ final class WatchAudio {
                 self.consume(copy, capturedAt: capturedAt)
             }
         }
+        hasInputTap = true
 
         let player = AVAudioPlayerNode()
         engine.attach(player)
         let playerFormat = AVAudioFormat(standardFormatWithSampleRate: playbackRate, channels: 1)!
         engine.connect(player, to: engine.mainMixerNode, format: playerFormat)
         engine.prepare()
+        hasRenderResources = true
         try engine.start()
 
         self.engine = engine
@@ -143,10 +155,10 @@ final class WatchAudio {
         observers = []
         captureGeneration += 1
         stopPlayback()
-        if let engine {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
-        }
+        if hasInputTap { engine?.inputNode.removeTap(onBus: 0) }
+        if hasRenderResources { engine?.stop() }
+        hasInputTap = false
+        hasRenderResources = false
         engine = nil
         player = nil
         converter = nil

@@ -443,7 +443,7 @@ final class WatchCallModel: ObservableObject {
             }
             self.resendUnsentControls()
         }, failure: { [weak self] error in
-            guard let self, self.isActive else { return }
+            guard let self, self.isActive, self.callID == id else { return }
             self.pingFailures += 1
             if self.pingFailures <= 5 || self.pingFailures % 10 == 0 {
                 WatchProbeLog.shared.note("pingFailed", ["error": error.localizedDescription, "count": self.pingFailures, "scene": "\(self.scenePhase)"])
