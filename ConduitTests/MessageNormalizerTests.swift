@@ -1290,6 +1290,36 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertNil(messages[0].attachments)
     }
 
+    func testContextHeadingTypedWithoutAReferenceStays() {
+        let original = """
+        Hermes printed this:
+
+        --- Attached Context ---
+
+        and then stopped.
+        """
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(65),
+                "role": .string("user"),
+                "content": .string(original)
+            ])
+        ])
+
+        XCTAssertEqual(messages[0].content, original)
+        XCTAssertNil(messages[0].attachments)
+    }
+
+    func testFileAttachReplyWithoutAFileReferenceUsesThePath() {
+        XCTAssertEqual(
+            HermesClient.fileAttachmentReference(from: .object([
+                "ref_path": .string("/root/.hermes/attachments/report.pdf"),
+                "ref_text": .string("/root/.hermes/attachments/report.pdf")
+            ])),
+            "@file:/root/.hermes/attachments/report.pdf"
+        )
+    }
+
     func testFileAttachReplyGivesThePromptReference() {
         XCTAssertEqual(
             HermesClient.fileAttachmentReference(from: .object([

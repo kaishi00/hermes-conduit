@@ -139,6 +139,61 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertFalse(AppState.isImageAttachRefusal(RpcError(code: 5027, message: "write failed")))
     }
 
+    func testPDFIsStagedAsAFileNotAnImage() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeRoutingHarness(recorder: recorder)
+        openChat("composer-origin", in: harness)
+        let report = try stagedFile(named: "report.pdf", mimeType: "application/pdf")
+
+        let sent = await harness.appState.submitComposer(text: "Summarise this", attachments: [report])
+
+        XCTAssertTrue(sent)
+        XCTAssertTrue(recorder.imageUploads.isEmpty)
+        XCTAssertEqual(recorder.fileUploads.map(\.name), ["report.pdf"])
+        XCTAssertEqual(recorder.fileUploads.first?.dataUrl.hasPrefix("data:application/pdf;base64,"), true)
+        XCTAssertEqual(
+            recorder.prompts.map { $0.text },
+            ["@file:/root/.hermes/attachments/report.pdf\n\nSummarise this"]
+        )
+    }
+
+    func testImageHermesRefusesGoesUpAsAFile() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeRoutingHarness(
+            recorder: recorder,
+            imageError: RpcError(code: 4016, message: "unsupported image extension: .avif")
+        )
+        openChat("composer-origin", in: harness)
+        let photo = try stagedFile(named: "photo.avif", mimeType: "image/avif", kind: .image)
+
+        let sent = await harness.appState.submitComposer(text: "What is this?", attachments: [photo])
+
+        XCTAssertTrue(sent, "A refused image still sends")
+        XCTAssertEqual(recorder.imageUploads, ["photo.avif"])
+        XCTAssertEqual(recorder.fileUploads.map(\.name), ["photo.avif"])
+        XCTAssertEqual(recorder.fileUploads.first?.dataUrl.hasPrefix("data:image/avif;base64,"), true)
+        XCTAssertEqual(
+            recorder.prompts.map { $0.text },
+            ["@file:/root/.hermes/attachments/photo.avif\n\nWhat is this?"]
+        )
+    }
+
+    func testImageUploadThatFailsStillReturnsTheDraft() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeRoutingHarness(
+            recorder: recorder,
+            imageError: RpcError(code: 5027, message: "write failed: disk full")
+        )
+        openChat("composer-origin", in: harness)
+        let photo = try stagedFile(named: "photo.png", mimeType: "image/png", kind: .image)
+
+        let sent = await harness.appState.submitComposer(text: "What is this?", attachments: [photo])
+
+        XCTAssertFalse(sent, "Only a refusal to read it as an image falls back")
+        XCTAssertTrue(recorder.fileUploads.isEmpty)
+        XCTAssertTrue(recorder.prompts.isEmpty)
+    }
+
     func testSlashCommandLeavesTheScreenshotPending() async throws {
         let recorder = ScreenQuestionCallRecorder()
         var operations = ChatResumeLifecycleOperations(
@@ -1355,6 +1410,38 @@ final class AppStateScreenQuestionTests: XCTestCase {
         return makeHarness(lifecycleOperations: operations)
     }
 
+    /// The production upload routing, with the two upload RPCs recorded:
+    /// files come back with a reference, images throw `imageError` if set.
+    /// A failed upload's recovery resumes the chat through the seams.
+    private func makeRoutingHarness(recorder: ScreenQuestionCallRecorder, imageError: RpcError? = nil) -> Harness {
+        let origin = session("composer-origin")
+        var operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [origin] },
+            openSession: { _, sessionID, _ in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in .unavailable },
+            refreshContext: { _, _ in },
+            sendPrompt: { _, sessionID, text in
+                recorder.prompts.append((sessionID, text))
+                return .accepted
+            }
+        )
+        operations.attachImageBytes = { _, _, _, filename in
+            recorder.imageUploads.append(filename)
+            if let imageError { throw imageError }
+        }
+        operations.attachFileData = { _, _, dataUrl, name in
+            recorder.fileUploads.append((dataUrl, name))
+            return "@file:/root/.hermes/attachments/\(name)"
+        }
+        return makeHarness(lifecycleOperations: operations)
+    }
+
     private func makeHarness(lifecycleOperations: ChatResumeLifecycleOperations) -> Harness {
         let suite = "AppStateScreenQuestionTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
@@ -1425,7 +1512,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
     }
 
     /// A non-image file in the staging folder, as the composer stages one.
-    private func stagedFile(named name: String, mimeType: String) throws -> Attachment {
+    private func stagedFile(named name: String, mimeType: String, kind: Attachment.Kind = .document) throws -> Attachment {
         let url = try AttachmentStaging.destination(for: name)
         try Data("%PDF-1.7".utf8).write(to: url)
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
@@ -1434,7 +1521,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
             name: name,
             uri: url.absoluteString,
             mimeType: mimeType,
-            kind: .document
+            kind: kind
         )
     }
 
@@ -1490,6 +1577,8 @@ final class AppStateScreenQuestionTests: XCTestCase {
 @MainActor
 private final class ScreenQuestionCallRecorder {
     var uploads: [(sessionID: String, attachment: Attachment)] = []
+    var imageUploads: [String] = []
+    var fileUploads: [(dataUrl: String, name: String)] = []
     var prompts: [(sessionID: String, text: String)] = []
     var steers: [(sessionID: String, text: String)] = []
     var compressions = 0
