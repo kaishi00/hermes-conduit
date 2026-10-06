@@ -155,10 +155,8 @@ struct SessionList: View {
     @State private var showProjectCreator = false
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
-    @State private var sessionRenameTitle = ""
     @State private var selectedProject: ProjectSummary?
     @State private var projectPendingRename: ProjectSummary?
-    @State private var projectRenameTitle = ""
     @State private var projectPendingDeletion: ProjectSummary?
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
@@ -381,20 +379,18 @@ struct SessionList: View {
         .task(id: appState.activeProfile) {
             await appState.refreshProjects()
         }
-        .alert("Rename project", isPresented: Binding(
-            get: { projectPendingRename != nil },
-            set: { if !$0 { projectPendingRename = nil } }
-        )) {
-            TextField("Project name", text: $projectRenameTitle)
-            Button("Rename") {
-                guard let project = projectPendingRename else { return }
-                let name = projectRenameTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                projectPendingRename = nil
-                guard !name.isEmpty, name != project.title else { return }
+        .sheet(item: $projectPendingRename) { project in
+            RenameSheet(
+                title: AppLocalization.string("Rename project"),
+                placeholder: AppLocalization.string("Project name"),
+                initialText: project.title,
+                normalize: { name in
+                    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty || trimmed == project.title ? nil : trimmed
+                }
+            ) { name in
                 Task { Haptics.mutationCompleted(await appState.renameProject(project, to: name)) }
             }
-            .disabled(projectRenameTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            Button("Cancel", role: .cancel) { projectPendingRename = nil }
         }
         .alert("Delete project?", isPresented: Binding(
             get: { projectPendingDeletion != nil },
@@ -422,25 +418,10 @@ struct SessionList: View {
         } message: {
             Text("This permanently deletes the conversation and cannot be undone.")
         }
-        .alert("Rename conversation", isPresented: Binding(
-            get: { sessionPendingRename != nil },
-            set: { if !$0 { sessionPendingRename = nil } }
-        )) {
-            TextField("Conversation title", text: $sessionRenameTitle)
-            Button("Rename") {
-                guard let session = sessionPendingRename,
-                      let title = SessionRenameOperation.normalizedTitle(
-                          sessionRenameTitle,
-                          currentTitle: session.title
-                      ) else { return }
-                sessionPendingRename = nil
+        .sheet(item: $sessionPendingRename) { session in
+            RenameSheet.conversation(session) { title in
                 Task { await appState.renameSession(session, to: title) }
             }
-            .disabled(SessionRenameOperation.normalizedTitle(
-                sessionRenameTitle,
-                currentTitle: sessionPendingRename?.title ?? ""
-            ) == nil)
-            Button("Cancel", role: .cancel) { sessionPendingRename = nil }
         }
 
     }
@@ -513,7 +494,6 @@ struct SessionList: View {
                     .projectActionsMenu(isEnabled: appState.isProjectEditable(project)) {
                         Button {
                             Haptics.selection()
-                            projectRenameTitle = project.title
                             projectPendingRename = project
                         } label: {
                             Label("Rename…", systemImage: "pencil")
@@ -538,7 +518,6 @@ struct SessionList: View {
                             .disabled(appState.isProjectMutationInFlight)
                             Button {
                                 Haptics.selection()
-                                projectRenameTitle = project.title
                                 projectPendingRename = project
                             } label: {
                                 Label("Rename…", systemImage: "pencil")
@@ -651,10 +630,7 @@ struct SessionList: View {
         .contextMenu {
             SessionActionMenuItems(
                 session: session,
-                onRename: {
-                    sessionRenameTitle = session.title
-                    sessionPendingRename = session
-                },
+                onRename: { sessionPendingRename = session },
                 onDelete: { sessionPendingDeletion = session }
             )
         }
@@ -1048,7 +1024,6 @@ private struct ProjectSessionsSheet: View {
     @State private var isLoading = true
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
-    @State private var sessionRenameTitle = ""
 
     var body: some View {
         NavigationStack {
@@ -1098,10 +1073,7 @@ private struct ProjectSessionsSheet: View {
                                         SessionActionMenuItems(
                                             session: session,
                                             excludingProjectID: project.id,
-                                            onRename: {
-                                                sessionRenameTitle = session.title
-                                                sessionPendingRename = session
-                                            },
+                                            onRename: { sessionPendingRename = session },
                                             onDelete: { sessionPendingDeletion = session },
                                             onChanged: reloadDetail
                                         )
@@ -1183,27 +1155,12 @@ private struct ProjectSessionsSheet: View {
         } message: {
             Text("This permanently deletes the conversation and cannot be undone.")
         }
-        .alert("Rename conversation", isPresented: Binding(
-            get: { sessionPendingRename != nil },
-            set: { if !$0 { sessionPendingRename = nil } }
-        )) {
-            TextField("Conversation title", text: $sessionRenameTitle)
-            Button("Rename") {
-                guard let session = sessionPendingRename,
-                      let title = SessionRenameOperation.normalizedTitle(
-                          sessionRenameTitle,
-                          currentTitle: session.title
-                      ) else { return }
-                sessionPendingRename = nil
+        .sheet(item: $sessionPendingRename) { session in
+            RenameSheet.conversation(session) { title in
                 Task {
                     if await appState.renameSession(session, to: title) { reloadDetail() }
                 }
             }
-            .disabled(SessionRenameOperation.normalizedTitle(
-                sessionRenameTitle,
-                currentTitle: sessionPendingRename?.title ?? ""
-            ) == nil)
-            Button("Cancel", role: .cancel) { sessionPendingRename = nil }
         }
     }
 
@@ -1728,5 +1685,79 @@ enum SidebarOfflineLayout {
             liveSections: !showingProjects,
             emptyState: !showingProjects && !hasOfflineCopy && displayedSessionsEmpty
         )
+    }
+}
+
+/// Renaming a conversation or project. A sheet rather than an alert with a
+/// text field: an alert presented from a row's touch-and-hold menu inside
+/// the sessions drawer could leave its field unable to take typing, then
+/// hang the app (TestFlight 0.1.16 build 174). The draft is this sheet's own
+/// state, so each keystroke redraws only the sheet, never the session list
+/// behind it.
+private struct RenameSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let placeholder: String
+    /// Returns the name to commit, or nil while the draft can't be saved
+    /// (empty, or unchanged).
+    let normalize: (String) -> String?
+    let onRename: (String) -> Void
+    @State private var draft: String
+    @FocusState private var fieldFocused: Bool
+
+    init(
+        title: String,
+        placeholder: String,
+        initialText: String,
+        normalize: @escaping (String) -> String?,
+        onRename: @escaping (String) -> Void
+    ) {
+        self.title = title
+        self.placeholder = placeholder
+        self.normalize = normalize
+        self.onRename = onRename
+        _draft = State(initialValue: initialText)
+    }
+
+    static func conversation(_ session: SessionSummary, onRename: @escaping (String) -> Void) -> RenameSheet {
+        RenameSheet(
+            title: AppLocalization.string("Rename conversation"),
+            placeholder: AppLocalization.string("Conversation title"),
+            initialText: session.title,
+            normalize: { SessionRenameOperation.normalizedTitle($0, currentTitle: session.title) },
+            onRename: onRename
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField(placeholder, text: $draft)
+                    .focused($fieldFocused)
+                    .submitLabel(.done)
+                    .onSubmit(commit)
+            }
+            .scrollDisabled(true)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Rename", action: commit)
+                        .disabled(normalize(draft) == nil)
+                }
+            }
+        }
+        .presentationDetents([.height(180)])
+        .presentationDragIndicator(.visible)
+        .task { fieldFocused = true }
+    }
+
+    private func commit() {
+        guard let name = normalize(draft) else { return }
+        dismiss()
+        onRename(name)
     }
 }
