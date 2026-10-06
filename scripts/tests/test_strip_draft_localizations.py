@@ -88,6 +88,15 @@ class StripDraftLocalizationsTests(unittest.TestCase):
         self.assertIn("development language 'en'", result.stdout)
         self.assertEqual(len(self.contents()), 6, "nothing is stripped")
 
+    def test_command_line_refuses_to_strip_base(self):
+        plist = self.write_info_plist({"ConduitDraftLanguages": ["ja", "base"]})
+        result = subprocess.run(
+            [sys.executable, SCRIPT, "--info-plist", plist, "--bundle", self.bundle],
+            capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Base.lproj holds unlocalized resources", result.stdout)
+        self.assertEqual(len(self.contents()), 6, "nothing is stripped")
+
     def test_command_line_fails_the_build_on_a_corrupt_plist(self):
         plist = os.path.join(self.directory.name, "Info.plist")
         with open(plist, "w") as handle:

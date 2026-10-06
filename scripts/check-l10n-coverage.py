@@ -167,7 +167,14 @@ MODIFIER_RE = re.compile(
 # backslash-u-hex shape is targeted; ordinary backslashes stay legal.
 MALFORMED_ESCAPE_RE = re.compile("\\\\u[0-9a-fA-F]{4}")
 
-_PLACEHOLDER_RE = re.compile(r"%(?:(\d+)\$)?([@df]|l{1,2}[diu]|lf|@|d|i|u|%)")
+# Flags, width and precision (%.1f, %5lld, %-8@, %+d, %'d) count like the
+# bare form. No space flag ("5% increase" is prose, not "% i") and no "#"
+# ("%#@name@" is a plural substitution, not an argument). A percent sign
+# directly before a conversion letter ("5%increase") still reads as one;
+# write "%%" or a space in prose.
+_PLACEHOLDER_RE = re.compile(
+    r"%(?:(\d+)\$)?(?:[-+']*\d*(?:\.\d+)?(?=[@dfilu]))?"
+    r"([@df]|l{1,2}[diu]|lf|@|d|i|u|%)")
 
 # Interpolation expressions that request an INTEGER runtime placeholder
 # (%lld) rather than an object (%@). String-hint wins: the documented
@@ -349,14 +356,12 @@ def catalog_has(catalog_keys: set, skeleton: str) -> bool:
 
 
 def string_unit_leaves(localization) -> list:
-    """Flatten a localization dict into every stringUnit leaf."""
-    if "stringUnit" in localization:
-        return [localization["stringUnit"]]
-    leaves = []
+    """Flatten a localization dict into every stringUnit leaf, including
+    variations nested in a variation (a plural inside a device variant)."""
+    leaves = [localization["stringUnit"]] if "stringUnit" in localization else []
     for variation in localization.get("variations", {}).values():
         for unit in variation.values():
-            if "stringUnit" in unit:
-                leaves.append(unit["stringUnit"])
+            leaves.extend(string_unit_leaves(unit))
     return leaves
 
 
@@ -375,7 +380,8 @@ def placeholders_compatible(key_specs, value_specs) -> bool:
     translation consumes the arguments in order, so its types must also
     follow the key's argument order ("%lld and %@" for "%@ and %lld"
     misformats). A fully positional translation (%2$lld ... %1$@) may
-    reorder, but each index must name an argument of the same type. A
+    reorder, but each index must name an argument of the same type, and
+    every argument must appear ("%1$@ and %1$@" drops the second). A
     translation that mixes positional and non-positional placeholders is
     rejected: Foundation's argument numbering is ambiguous there.
     """
@@ -388,8 +394,9 @@ def placeholders_compatible(key_specs, value_specs) -> bool:
     if all(position is None for position in positions):
         return [kind for _, kind in value_specs] == key_order
     if all(position is not None for position in positions):
-        return all(1 <= position <= len(key_order) and key_order[position - 1] == kind
-                   for position, kind in value_specs)
+        return (set(positions) == set(range(1, len(key_order) + 1))
+                and all(key_order[position - 1] == kind
+                        for position, kind in value_specs))
     return False
 
 
@@ -399,27 +406,44 @@ def normalized_language(identifier: str) -> str:
     return identifier.replace("_", "-").lower()
 
 
-# CLDR cardinal plural categories (CLDR 42+, which iOS 17+ resolves) for the
-# languages Conduit is most likely to ship, keyed by base language code. When
-# the source varies a key by plural, every shipped language must provide
-# each category its rules use (Xcode's catalog editor shows the same set).
-# A language not listed only needs "other", and the checker says so.
+# CLDR cardinal plural categories by locale (normalized), generated from
+# unicode-org/cldr common/supplemental/plurals.xml (October 2026). When the
+# source varies a key by plural, every shipped language must provide each
+# category its rules use (Xcode's catalog editor shows the same set). An
+# older iOS whose CLDR lacks a category ignores that form, so requiring the
+# current set is safe. A language CLDR doesn't know only needs "other", and
+# the checker says so.
 PLURAL_CATEGORIES = {
     language: categories
     for categories, languages in (
-        (("other",), "id ja km ko lo ms my th vi yue zh"),
+        (("other",),
+         "bm bo dz hnj id ig ii in ja jbo jv jw kde kea km ko lkt lo ms my "
+         "nqo osa sah ses sg su th to tpi wo yo yue zh"),
         (("one", "other"),
-         "af am as az bg bn da de el en et eu fa fi fil gl gu hi hu hy is ka "
-         "kk kn ky mk ml mn mr nb ne nl nn no or pa ps si sq sv sw ta te tl "
-         "tr ur uz zu"),
-        (("one", "many", "other"), "ca es fr it pt"),
-        (("zero", "one", "other"), "lv"),
-        (("one", "two", "other"), "he"),
-        (("one", "few", "other"), "bs hr ro sr"),
-        (("one", "two", "few", "other"), "dsb gd hsb sl"),
-        (("one", "few", "many", "other"), "be cs lt pl ru sk uk"),
-        (("one", "two", "few", "many", "other"), "br ga"),
-        (("zero", "one", "two", "few", "many", "other"), "ar cy"),
+         "af ak am an as asa ast az bal bem bez bg bho bn brx ce ceb cgg chr "
+         "ckb csw da de doi dv ee el en eo et eu fa ff fi fil fo fur fy gsw "
+         "gu guw ha haw hi hu hy ia ie io is jgo ji jmc ka kab kaj kcg kk "
+         "kkj kl kn kok kok-latn ks ksb ku ky lb lg lij ln mas mg mgo mk ml "
+         "mn mr nah nb nd ne nl nn nnh no nr nso ny nyn om or os pa pap pcm "
+         "ps rm rof rwk saq sc sd sdh seh si sn so sq ss ssy st sv sw syr ta "
+         "te teo tg ti tig tk tl tn tr ts tzm ug ur uz ve vi vo vun wa wae "
+         "xh xog yi zu"),
+        (("zero", "one", "other"),
+         "blo cv ksh lag lv prg"),
+        (("one", "two", "other"),
+         "he iu iw naq sat se sma smi smj smn sms"),
+        (("one", "few", "other"),
+         "bs hr mo ro sh shi sr"),
+        (("one", "many", "other"),
+         "ca es fr gl it lld pt pt-pt scn vec"),
+        (("one", "two", "few", "other"),
+         "dsb gd hsb sl"),
+        (("one", "few", "many", "other"),
+         "be cs lt pl ru sk uk"),
+        (("one", "two", "few", "many", "other"),
+         "br ga gv mt sgs"),
+        (("zero", "one", "two", "few", "many", "other"),
+         "ar ars cy kw"),
     )
     for language in languages.split()
 }
@@ -440,22 +464,48 @@ def localization_for(localizations: dict, language: str) -> dict:
     return {}
 
 
+def plural_variations(localization) -> list:
+    """Every plural variation in a localization dict, including one nested
+    in another variation (a plural inside a device variant)."""
+    found = []
+    for dimension, variation in localization.get("variations", {}).items():
+        if dimension == "plural":
+            found.append(variation)
+        else:
+            for unit in variation.values():
+                found.extend(plural_variations(unit))
+    return found
+
+
 def plural_gap(entry: dict, language: str, source: str) -> list:
     """Plural categories `language` still lacks for a key the source varies
-    by plural. A plain string stands for the "other" form only; a missing
-    localization is reported elsewhere."""
+    by plural, at any depth. A localization with no plural variation stands
+    for the "other" form only; a missing localization is reported
+    elsewhere."""
     localizations = entry.get("localizations", {})
-    if "plural" not in localization_for(localizations, source).get("variations", {}):
+    if not plural_variations(localization_for(localizations, source)):
         return []
     localization = localization_for(localizations, language)
-    if "plural" in localization.get("variations", {}):
-        provided = set(localization["variations"]["plural"])
-    elif "stringUnit" in localization:
-        provided = {"other"}
-    else:
-        return []
+    provided = [set(plural) for plural in plural_variations(localization)]
+    if not provided:
+        if not string_unit_leaves(localization):
+            return []
+        provided = [{"other"}]
     required = plural_categories(language) or ("other",)
-    return [category for category in required if category not in provided]
+    return [category for category in required
+            if any(category not in forms for forms in provided)]
+
+
+def value_problem(language: str, value: str, key_specs):
+    """What makes a non-empty value malformed, or None."""
+    if MALFORMED_ESCAPE_RE.search(value):
+        return (f"{language} value contains malformed literal Unicode escape "
+                f"sequences (double-escaped authoring bug)")
+    value_specs = placeholder_specs(value)
+    if not placeholders_compatible(key_specs, value_specs):
+        return (f"{language} placeholders {value_specs} "
+                f"do not match key placeholders {key_specs}")
+    return None
 
 
 def catalog_problems(catalog: dict, required_languages=(),
@@ -494,8 +544,8 @@ def catalog_problems(catalog: dict, required_languages=(),
         key_specs = placeholder_specs(key)
         for language, localization in localizations.items():
             draft = normalized_language(language) in drafts
-            plural = localization.get("variations", {}).get("plural")
-            if plural is not None and "other" not in plural:
+            if any("other" not in plural
+                   for plural in plural_variations(localization)):
                 problems.setdefault(key, []).append(
                     f"{language} plural has no 'other' form")
             for unit in string_unit_leaves(localization):
@@ -507,13 +557,8 @@ def catalog_problems(catalog: dict, required_languages=(),
                 elif not value.strip():
                     if state == "translated":
                         problem = f"{language} value is empty"
-                elif MALFORMED_ESCAPE_RE.search(value):
-                    problem = (f"{language} value contains malformed literal "
-                               f"Unicode escape sequences (double-escaped "
-                               f"authoring bug)")
-                elif not placeholders_compatible(key_specs, placeholder_specs(value)):
-                    problem = (f"{language} placeholders {placeholder_specs(value)} "
-                               f"do not match key placeholders {key_specs}")
+                else:
+                    problem = value_problem(language, value, key_specs)
                 if problem:
                     problems.setdefault(key, []).append(problem)
     return problems
@@ -525,12 +570,17 @@ def language_is_complete(catalog: dict, language: str) -> bool:
     for key, entry in catalog.get("strings", {}).items():
         if key in EXEMPT_KEYS:
             continue
-        units = string_unit_leaves(
-            localization_for(entry.get("localizations", {}), language))
+        localization = localization_for(entry.get("localizations", {}), language)
+        units = string_unit_leaves(localization)
         if not units or plural_gap(entry, language, source):
             return False
+        if any("other" not in plural for plural in plural_variations(localization)):
+            return False
+        key_specs = placeholder_specs(key)
         for unit in units:
-            if unit.get("state") != "translated" or not (unit.get("value") or "").strip():
+            value = unit.get("value") or ""
+            if (unit.get("state") != "translated" or not value.strip()
+                    or value_problem(language, value, key_specs)):
                 return False
     return True
 
@@ -585,6 +635,36 @@ def _repeated_keys(value, path=()):
             yield from _repeated_keys(child, path)
 
 
+def _shape_problem(catalog):
+    """Where a decoded catalog departs from the String Catalog shape the
+    checker walks, or None."""
+    if not isinstance(catalog, dict) or not isinstance(catalog.get("strings"), dict):
+        return 'no "strings" object'
+    if not isinstance(catalog.get("sourceLanguage", "en"), str):
+        return '"sourceLanguage" is not a string'
+    for key, entry in catalog["strings"].items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("localizations", {}), dict):
+            return f"entry {key!r} is not a catalog entry"
+        for language, localization in entry.get("localizations", {}).items():
+            if not _is_localization(localization):
+                return f"entry {key!r} has a malformed {language} localization"
+    return None
+
+
+def _is_localization(localization) -> bool:
+    """A localization dict: an optional stringUnit with a text value, and
+    optional variations whose cases are localizations themselves."""
+    if not isinstance(localization, dict):
+        return False
+    unit = localization.get("stringUnit", {})
+    if not isinstance(unit, dict) or not isinstance(unit.get("value"), (str, type(None))):
+        return False
+    variations = localization.get("variations", {})
+    return isinstance(variations, dict) and all(
+        isinstance(cases, dict) and all(_is_localization(case) for case in cases.values())
+        for cases in variations.values())
+
+
 def load_catalog(path: str):
     """Load a String Catalog. Returns (catalog, duplicates), where
     duplicates maps a catalog key to its problems: plain JSON loading
@@ -592,6 +672,9 @@ def load_catalog(path: str):
     second, conflicting translation."""
     with open(path, encoding="utf-8") as handle:
         catalog = json.load(handle, object_pairs_hook=_remember_repeats)
+    problem = _shape_problem(catalog)
+    if problem:
+        raise ValueError(f"not a String Catalog ({problem})")
     duplicates = {}
     for where, key in _repeated_keys(catalog):
         if where == ("strings",):
@@ -653,6 +736,10 @@ class LanguagePlan:
             self.problems.append(
                 f"{DRAFT_LANGUAGES_KEY} lists the source language "
                 f"{self.source!r}; it always ships")
+        if "base" in draft_keys:
+            self.problems.append(
+                f"{DRAFT_LANGUAGES_KEY} lists Base; Base.lproj holds "
+                f"unlocalized resources, not a language")
         # One spelling per language: Xcode builds a separate lproj for each
         # spelling, so "zh_Hans" in one catalog and "zh-Hans" in another
         # would split that language's strings across two folders.
@@ -693,9 +780,15 @@ class LanguagePlan:
                     f"{DRAFT_LANGUAGES_KEY} in {INFO_PLIST} to ship it")
 
 
+class CatalogError(Exception):
+    """A String Catalog that can't be read or parsed (for example one left
+    with merge-conflict markers)."""
+
+
 def check(repo_root: str):
     """Full check. Returns (checked_site_count, missing_sites,
-    key_problems, language_plan)."""
+    key_problems, language_plan). Raises CatalogError for a catalog that
+    can't be read."""
     conduit = os.path.join(repo_root, "Conduit")
     catalogs = {}
     duplicates = {}
@@ -703,7 +796,11 @@ def check(repo_root: str):
         path = os.path.join(conduit, name)
         if name != SOURCE_CATALOG and not os.path.exists(path):
             continue
-        catalogs[name], duplicates[name] = load_catalog(path)
+        try:
+            catalogs[name], duplicates[name] = load_catalog(path)
+        except (OSError, ValueError) as error:
+            # json.JSONDecodeError and UnicodeDecodeError are ValueErrors.
+            raise CatalogError(f"Conduit/{name}: {error}") from error
     catalog = catalogs[SOURCE_CATALOG]
     catalog_keys = set(catalog["strings"])
 
@@ -724,8 +821,13 @@ def check(repo_root: str):
             if not name.endswith(".swift"):
                 continue
             path = os.path.join(dirpath, name)
-            with open(path, encoding="utf-8") as handle:
-                source = handle.read()
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    source = handle.read()
+            except (OSError, ValueError) as error:
+                key_problems.setdefault(os.path.relpath(path, repo_root), []).append(
+                    f"can't be read as UTF-8 Swift source: {error}")
+                continue
             for skeleton, offset in extract_sites(source):
                 checked += 1
                 if skeleton in EXEMPT_KEYS:
@@ -761,7 +863,11 @@ def main() -> int:
                         help="Repository root (default: current directory).")
     args = parser.parse_args()
 
-    checked, missing, key_problems, plan = check(args.repo_root)
+    try:
+        checked, missing, key_problems, plan = check(args.repo_root)
+    except CatalogError as error:
+        print(f"FAIL: {error}")
+        return 1
     print(f"Languages: source {plan.source}; shipped {describe(plan.shipped)}; "
           f"drafts {describe(plan.drafts)}.")
 

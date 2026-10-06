@@ -80,10 +80,15 @@ def main() -> int:
         print(f"error: {args.info_plist}: {error}")
         return 1
     source = normalized_language(args.development_language)
-    if source and any(normalized_language(language) == source for language in drafts):
-        print(f"error: {args.info_plist}: {DRAFT_LANGUAGES_KEY} lists the "
-              f"development language {args.development_language!r}; it always ships")
-        return 1
+    for language in drafts:
+        if normalized_language(language) == "base":
+            print(f"error: {args.info_plist}: {DRAFT_LANGUAGES_KEY} lists "
+                  f"{language!r}; Base.lproj holds unlocalized resources, not a language")
+            return 1
+        if source and normalized_language(language) == source:
+            print(f"error: {args.info_plist}: {DRAFT_LANGUAGES_KEY} lists the "
+                  f"development language {args.development_language!r}; it always ships")
+            return 1
     try:
         removed = strip(args.bundle, drafts)
     except OSError as error:

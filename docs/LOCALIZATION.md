@@ -49,8 +49,9 @@ in your working copy only.
   state `translated` and a non-empty value;
 - where the English source varies a key by plural, every shipped language
   provides each plural form its own rules use (French: one, many, other;
-  Japanese: other). The table is `PLURAL_CATEGORIES` in the checker; a
-  language missing from it only needs `other`, and the checker says so;
+  Japanese: other). The table is `PLURAL_CATEGORIES` in the checker,
+  generated from CLDR; a language CLDR doesn't know only needs `other`, and
+  the checker says so;
 - each language is spelled the same way in every catalog;
 - every value in every language, drafts included, keeps the key's
   placeholders in the same order, or reorders all of them with positional
