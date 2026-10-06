@@ -1191,6 +1191,127 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(messages[0].attachments?.first?.mimeType, "image/png")
     }
 
+    func testStagedFileReferenceBecomesADocumentAttachment() {
+        let original = """
+        @file:/root/.hermes/attachments/report.pdf
+
+        Summarise this.
+
+        --- Attached Context ---
+
+        📎 @file:/root/.hermes/attachments/report.pdf (application/pdf, 1.2 MB) — binary file, not inlined as text. \
+        It is available on disk at `/root/.hermes/attachments/report.pdf`. Use your tools to work with it.
+        """
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(61),
+                "role": .string("user"),
+                "content": .string(original)
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].content, "Summarise this.")
+        XCTAssertEqual(messages[0].rawContent, original)
+        XCTAssertEqual(messages[0].attachments?.count, 1)
+        XCTAssertEqual(messages[0].attachments?.first?.name, "report.pdf")
+        XCTAssertEqual(messages[0].attachments?.first?.uri, "/root/.hermes/attachments/report.pdf")
+        XCTAssertEqual(messages[0].attachments?.first?.mimeType, "application/pdf")
+        XCTAssertEqual(messages[0].attachments?.first?.kind, .document)
+    }
+
+    func testQuotedFileReferenceKeepsTheWholeName() {
+        let original = """
+        @file:`/root/.hermes/attachments/Q3 Report.pdf`
+        @file:/root/.hermes/attachments/notes.txt
+
+        --- Attached Context ---
+
+        📎 @file:`/root/.hermes/attachments/Q3 Report.pdf` (application/pdf, 80 KB) — binary file.
+        """
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(62),
+                "role": .string("user"),
+                "content": .string(original)
+            ])
+        ])
+
+        XCTAssertEqual(messages[0].content, "")
+        XCTAssertEqual(messages[0].attachments?.map(\.name), ["Q3 Report.pdf", "notes.txt"])
+        XCTAssertEqual(messages[0].attachments?.map(\.uri), [
+            "/root/.hermes/attachments/Q3 Report.pdf",
+            "/root/.hermes/attachments/notes.txt"
+        ])
+    }
+
+    func testFilesAndImagesFromOneTurnBothBecomeAttachments() {
+        let original = """
+        @file:/root/.hermes/attachments/notes.txt
+
+        Look at both
+
+        --- Attached Context ---
+
+        📌 @file:/root/.hermes/attachments/notes.txt (3 tokens)
+        hello
+        @image:/root/.hermes/images/upload_20261006_1.png
+        """
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(63),
+                "role": .string("user"),
+                "content": .string(original)
+            ])
+        ])
+
+        XCTAssertEqual(messages[0].content, "Look at both")
+        XCTAssertEqual(messages[0].attachments?.map(\.name), ["notes.txt", "upload_20261006_1.png"])
+        XCTAssertEqual(messages[0].attachments?.map(\.kind), [Attachment.Kind.document, .image])
+    }
+
+    func testFileReferenceTypedInTheTextStaysInTheText() {
+        let original = """
+        Compare @file:src/main.py with the spec
+
+        --- Context Warnings ---
+        - @file:src/main.py: file not found
+        """
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(64),
+                "role": .string("user"),
+                "content": .string(original)
+            ])
+        ])
+
+        XCTAssertEqual(messages[0].content, "Compare @file:src/main.py with the spec")
+        XCTAssertEqual(messages[0].rawContent, original)
+        XCTAssertNil(messages[0].attachments)
+    }
+
+    func testFileAttachReplyGivesThePromptReference() {
+        XCTAssertEqual(
+            HermesClient.fileAttachmentReference(from: .object([
+                "attached": .bool(true),
+                "path": .string("/root/.hermes/attachments/Q3 Report.pdf"),
+                "ref_text": .string("@file:`/root/.hermes/attachments/Q3 Report.pdf`")
+            ])),
+            "@file:`/root/.hermes/attachments/Q3 Report.pdf`"
+        )
+        XCTAssertEqual(
+            HermesClient.fileAttachmentReference(from: .object([
+                "attached": .bool(true),
+                "path": .string("/root/.hermes/attachments/Q3 Report.pdf")
+            ])),
+            "@file:`/root/.hermes/attachments/Q3 Report.pdf`",
+            "A reply without ref_text still names the staged file"
+        )
+        XCTAssertNil(HermesClient.fileAttachmentReference(from: .object(["attached": .bool(true)])))
+        XCTAssertEqual(HermesClient.formatReferenceValue("/tmp/a.pdf"), "/tmp/a.pdf")
+        XCTAssertEqual(HermesClient.formatReferenceValue("/tmp/it's `odd`.pdf"), "\"/tmp/it's `odd`.pdf\"")
+    }
+
     func testModelRuntimeNoticeBecomesACompactSystemActivity() {
         let original = """
         [System: The active model for this chat has changed to glm-5.2 via provider zai. From this point forward, use this runtime metadata when answering questions about what model/provider is active.]
