@@ -13,6 +13,11 @@ import UserNotifications
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // Set up before launch returns: a call the Apple Watch starts can
+        // launch Conduit in the background, and its message waits on this.
+        MainActor.assumeIsolated {
+            WatchVoiceLink.shared.activate()
+        }
         Task.detached(priority: .background) {
             AttachmentStaging.sweepStaleFiles()
         }
