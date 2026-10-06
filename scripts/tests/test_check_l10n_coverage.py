@@ -393,6 +393,75 @@ class CatalogProblemTests(unittest.TestCase):
         self.assertIn("Missing regression key", problems)
 
 
+def plural(*categories, value="%lld x"):
+    return {"variations": {"plural": {category: unit(value)
+                                      for category in categories}}}
+
+
+def plural_catalog(**localizations):
+    localizations.setdefault("en", plural("one", "other"))
+    return {"sourceLanguage": "en", "strings": {
+        "%lld files": {"localizations": localizations}}}
+
+
+class PluralCategoryTests(unittest.TestCase):
+    """Where the source varies a key by plural, every shipped language must
+    provide each category its own plural rules use."""
+
+    def test_single_form_language_needs_only_other(self):
+        catalog = plural_catalog(**{"zh-Hans": plural("other"), "ja": unit("%lld 件")})
+        self.assertEqual(problems_for(catalog, ["zh-Hans", "ja"]), {})
+
+    def test_missing_category_is_reported(self):
+        catalog = plural_catalog(fr=plural("one", "other"))
+        self.assertEqual(problems_for(catalog, ["fr"])["%lld files"],
+                         ["fr plural lacks many (its plural rules use one, many, other)"])
+
+    def test_a_plain_string_counts_as_other_only(self):
+        catalog = plural_catalog(ru=unit("%lld файлов"))
+        problems = problems_for(catalog, ["ru"])["%lld files"]
+        self.assertEqual(problems, ["ru plural lacks one, few, many "
+                                    "(its plural rules use one, few, many, other)"])
+
+    def test_regional_and_script_variants_use_their_language_rules(self):
+        catalog = plural_catalog(**{"pt-BR": plural("one", "many", "other"),
+                                    "sr-Latn": plural("one", "few", "other")})
+        self.assertEqual(problems_for(catalog, ["pt-BR", "sr-Latn"]), {})
+
+    def test_extra_categories_are_allowed(self):
+        catalog = plural_catalog(de=plural("zero", "one", "other"))
+        self.assertEqual(problems_for(catalog, ["de"]), {})
+
+    def test_an_unlisted_language_needs_only_other(self):
+        catalog = plural_catalog(xx=plural("other"))
+        self.assertEqual(problems_for(catalog, ["xx"]), {})
+
+    def test_the_source_language_is_held_to_its_own_rules(self):
+        catalog = plural_catalog(en=plural("other"), ja=plural("other"))
+        problems = problems_for(catalog, ["ja"])["%lld files"]
+        self.assertEqual(problems, ["en plural lacks one (its plural rules use one, other)"])
+
+    def test_drafts_need_no_plural_coverage(self):
+        catalog = plural_catalog(ru=plural("other"))
+        self.assertEqual(problems_for(catalog, [], ["ru"]), {})
+
+    def test_a_plural_without_other_is_malformed_in_any_language(self):
+        catalog = plural_catalog(ru=plural("one", "few", "many"))
+        problems = problems_for(catalog, [], ["ru"])["%lld files"]
+        self.assertEqual(problems, ["ru plural has no 'other' form"])
+
+    def test_keys_the_source_does_not_vary_need_no_plural(self):
+        catalog = {"sourceLanguage": "en", "strings": {
+            "%lld files": {"localizations": {"fr": unit("%lld fichiers")}}}}
+        self.assertEqual(problems_for(catalog, ["fr"]), {})
+
+    def test_an_incomplete_plural_keeps_a_draft_from_being_ready(self):
+        catalog = plural_catalog(ru=plural("one", "other"))
+        self.assertFalse(check_l10n_coverage.language_is_complete(catalog, "ru"))
+        catalog = plural_catalog(ru=plural("one", "few", "many", "other"))
+        self.assertTrue(check_l10n_coverage.language_is_complete(catalog, "ru"))
+
+
 class DraftLanguageTests(unittest.TestCase):
     """A draft may be partial and unreviewed, but never malformed."""
 
@@ -479,6 +548,20 @@ class LanguagePlanTests(unittest.TestCase):
         catalogs = catalogs_with({"Hello": {"ja": "こんにちは"}, "Bye": {"fr": "Au revoir"}})
         self.assertEqual(self.plan(catalogs, ["ja"]).notes, [])
 
+    def test_one_language_needs_one_spelling_across_catalogs(self):
+        catalogs = catalogs_with({"Hello": {"zh-Hans": "你好"}})
+        catalogs["InfoPlist.xcstrings"] = {"sourceLanguage": "en", "strings": {
+            "CFBundleName": {"localizations": {"zh_Hans": unit("Conduit")}}}}
+        plan = self.plan(catalogs, [])
+        self.assertEqual(plan.shipped, ["zh-Hans"])
+        self.assertTrue(any("spelled ['zh-Hans', 'zh_Hans']" in p for p in plan.problems))
+
+    def test_a_shipped_language_without_plural_rules_on_file_is_noted(self):
+        plan = self.plan(catalogs_with({"Hello": {"xx": "Hi"}}), [])
+        self.assertTrue(any("no plural rules on file for 'xx'" in n for n in plan.notes))
+        plan = self.plan(catalogs_with({"Hello": {"fr": "Salut"}}), [])
+        self.assertEqual(plan.notes, [])
+
     def test_a_draft_with_no_entries_yet_is_noted(self):
         plan = self.plan(catalogs_with({"Hello": {"fr": "Bonjour"}}), ["ja"])
         self.assertEqual(plan.drafts, [])
@@ -541,6 +624,12 @@ class CatalogFileTests(unittest.TestCase):
             {"ConduitDraftLanguages": "ja"}), mode="wb")
         with self.assertRaises(ValueError):
             check_l10n_coverage.read_draft_languages(path)
+
+    def test_a_corrupt_info_plist_is_a_value_error(self):
+        for content in ("not a plist", '<?xml version="1.0"?><plist><dict>'):
+            path = self.write("Info.plist", content)
+            with self.assertRaises(ValueError, msg=content):
+                check_l10n_coverage.read_draft_languages(path)
 
     def write_repo(self, drafts):
         import plistlib

@@ -65,6 +65,7 @@ import os
 import plistlib
 import re
 import sys
+import xml.parsers.expat
 
 # Info.plist array of draft localization identifiers. The app reads the
 # same key (AppLocalizations.draftLanguagesInfoKey), and so does the build's
@@ -400,31 +401,105 @@ def normalized_language(identifier: str) -> str:
     return identifier.replace("_", "-").lower()
 
 
+# CLDR cardinal plural categories (CLDR 42+, which iOS 17+ resolves) for the
+# languages Conduit is most likely to ship, keyed by base language code. When
+# the source varies a key by plural, every shipped language must provide
+# each category its rules use (Xcode's catalog editor shows the same set).
+# A language not listed only needs "other", and the checker says so.
+PLURAL_CATEGORIES = {
+    language: categories
+    for categories, languages in (
+        (("other",), "id ja km ko lo ms my th vi yue zh"),
+        (("one", "other"),
+         "af am as az bg bn da de el en et eu fa fi fil gl gu hi hu hy is ka "
+         "kk kn ky mk ml mn mr nb ne nl nn no or pa ps si sq sv sw ta te tl "
+         "tr ur uz zu"),
+        (("one", "many", "other"), "ca es fr it pt"),
+        (("zero", "one", "other"), "lv"),
+        (("one", "two", "other"), "he"),
+        (("one", "few", "other"), "bs hr ro sr"),
+        (("one", "two", "few", "other"), "dsb gd hsb sl"),
+        (("one", "few", "many", "other"), "be cs lt pl ru sk uk"),
+        (("one", "two", "few", "many", "other"), "br ga"),
+        (("zero", "one", "two", "few", "many", "other"), "ar cy"),
+    )
+    for language in languages.split()
+}
+
+
+def plural_categories(language: str):
+    """The plural categories `language` uses, or None when not on file."""
+    key = normalized_language(language)
+    return PLURAL_CATEGORIES.get(key) or PLURAL_CATEGORIES.get(key.split("-")[0])
+
+
+def localization_for(localizations: dict, language: str) -> dict:
+    """`language`'s localization, matched in any identifier spelling."""
+    wanted = normalized_language(language)
+    for candidate, localization in localizations.items():
+        if normalized_language(candidate) == wanted:
+            return localization
+    return {}
+
+
+def plural_gap(entry: dict, language: str, source: str) -> list:
+    """Plural categories `language` still lacks for a key the source varies
+    by plural. A plain string stands for the "other" form only; a missing
+    localization is reported elsewhere."""
+    localizations = entry.get("localizations", {})
+    if "plural" not in localization_for(localizations, source).get("variations", {}):
+        return []
+    localization = localization_for(localizations, language)
+    if "plural" in localization.get("variations", {}):
+        provided = set(localization["variations"]["plural"])
+    elif "stringUnit" in localization:
+        provided = {"other"}
+    else:
+        return []
+    required = plural_categories(language) or ("other",)
+    return [category for category in required if category not in provided]
+
+
 def catalog_problems(catalog: dict, required_languages=(),
                      draft_languages=()) -> dict:
     """Return {key: [problems]} for every localization violation.
 
     Every language in `required_languages` (the shipped non-source ones)
-    must localize every key. Units of every non-draft language - the source
+    must localize every key, and where the source varies a key by plural,
+    every shipped language (source included) must provide each plural
+    category its rules use. Units of every non-draft language - the source
     included, so a stale en value like "%lld" under a "%@" key cannot
     survive (it misformats at runtime) - must be translated and non-empty.
     Draft languages may be partial or unreviewed. Whatever value ANY
-    language carries must still be well-formed: no malformed escapes, and
-    placeholders compatible with the key.
+    language carries must still be well-formed: no malformed escapes,
+    placeholders compatible with the key, and an "other" plural form.
     """
     drafts = {normalized_language(language) for language in draft_languages}
+    source = catalog.get("sourceLanguage", "en")
+    shipped = sorted(set(required_languages) | {source})
     problems = {}
     for key, entry in catalog.get("strings", {}).items():
         if key in EXEMPT_KEYS:
             continue
         localizations = entry.get("localizations", {})
         for language in sorted(required_languages):
-            if not string_unit_leaves(localizations.get(language, {})):
+            if not string_unit_leaves(localization_for(localizations, language)):
                 problems.setdefault(key, []).append(
                     f"missing {language} localization")
+        for language in shipped:
+            gap = plural_gap(entry, language, source)
+            if gap:
+                rules = plural_categories(language) or ("other",)
+                problems.setdefault(key, []).append(
+                    f"{language} plural lacks {', '.join(gap)} "
+                    f"(its plural rules use {', '.join(rules)})")
         key_specs = placeholder_specs(key)
         for language, localization in localizations.items():
             draft = normalized_language(language) in drafts
+            plural = localization.get("variations", {}).get("plural")
+            if plural is not None and "other" not in plural:
+                problems.setdefault(key, []).append(
+                    f"{language} plural has no 'other' form")
             for unit in string_unit_leaves(localization):
                 value = unit.get("value") or ""
                 state = unit.get("state")
@@ -448,11 +523,13 @@ def catalog_problems(catalog: dict, required_languages=(),
 
 def language_is_complete(catalog: dict, language: str) -> bool:
     """Would `language` pass as a shipped language in this catalog?"""
+    source = catalog.get("sourceLanguage", "en")
     for key, entry in catalog.get("strings", {}).items():
         if key in EXEMPT_KEYS:
             continue
-        units = string_unit_leaves(entry.get("localizations", {}).get(language, {}))
-        if not units:
+        units = string_unit_leaves(
+            localization_for(entry.get("localizations", {}), language))
+        if not units or plural_gap(entry, language, source):
             return False
         for unit in units:
             if unit.get("state") != "translated" or not (unit.get("value") or "").strip():
@@ -537,8 +614,12 @@ def read_draft_languages(info_plist_path: str) -> list:
     """The draft localization identifiers Info.plist lists (may be empty)."""
     if not os.path.exists(info_plist_path):
         return []
-    with open(info_plist_path, "rb") as handle:
-        info = plistlib.load(handle)
+    try:
+        with open(info_plist_path, "rb") as handle:
+            info = plistlib.load(handle)
+    except (OSError, plistlib.InvalidFileException,
+            xml.parsers.expat.ExpatError) as error:
+        raise ValueError(f"unreadable: {error}") from error
     drafts = info.get(DRAFT_LANGUAGES_KEY, [])
     if not isinstance(drafts, list) or not all(
             isinstance(language, str) and language.strip() for language in drafts):
@@ -574,16 +655,33 @@ class LanguagePlan:
             self.problems.append(
                 f"{DRAFT_LANGUAGES_KEY} lists the source language "
                 f"{self.source!r}; it always ships")
-        present = set()
+        # One spelling per language: Xcode builds a separate lproj for each
+        # spelling, so "zh_Hans" in one catalog and "zh-Hans" in another
+        # would split that language's strings across two folders.
+        spellings = {}
         for catalog in catalogs.values():
-            present |= catalog_languages(catalog)
+            for language in catalog_languages(catalog):
+                spellings.setdefault(normalized_language(language), set()).add(language)
+        for forms in spellings.values():
+            if len(forms) > 1:
+                self.problems.append(
+                    f"one language is spelled {sorted(forms)} across the "
+                    f"catalogs; use a single spelling")
+        present = {sorted(forms)[0] for forms in spellings.values()}
+        source_key = normalized_language(self.source)
         self.shipped = sorted(
             language for language in present
-            if language != self.source
+            if normalized_language(language) != source_key
             and normalized_language(language) not in draft_keys)
         self.drafts = sorted(
             language for language in present
             if normalized_language(language) in draft_keys)
+        for language in self.shipped:
+            if plural_categories(language) is None:
+                self.notes.append(
+                    f"no plural rules on file for {language!r}, so only its "
+                    f"'other' form is required: check its plural forms in "
+                    f"Xcode, and add it to PLURAL_CATEGORIES")
         present_keys = {normalized_language(language) for language in present}
         for language in drafts:
             if normalized_language(language) not in present_keys:
@@ -614,7 +712,7 @@ def check(repo_root: str):
     key_problems = {}
     try:
         drafts = read_draft_languages(os.path.join(repo_root, INFO_PLIST))
-    except (ValueError, plistlib.InvalidFileException) as error:
+    except ValueError as error:
         drafts = []
         key_problems[f"{INFO_PLIST}: {DRAFT_LANGUAGES_KEY}"] = [str(error)]
     plan = LanguagePlan(catalogs, drafts)

@@ -15,7 +15,8 @@ locally (don't commit that until the checker passes for it).
 
 Usage (Xcode build phase):
   strip-draft-localizations.py --info-plist "$SRCROOT/$INFOPLIST_FILE" \\
-      --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+      --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \\
+      --development-language "$DEVELOPMENT_LANGUAGE"
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import os
 import plistlib
 import shutil
 import sys
+import xml.parsers.expat
 
 DRAFT_LANGUAGES_KEY = "ConduitDraftLanguages"
 
@@ -67,12 +69,20 @@ def main() -> int:
                         help="Info.plist that lists the draft languages.")
     parser.add_argument("--bundle", required=True,
                         help="The built app's resources folder.")
+    parser.add_argument("--development-language", default="",
+                        help="The source language, which can never be a draft.")
     args = parser.parse_args()
 
     try:
         drafts = draft_languages(args.info_plist)
-    except (OSError, ValueError, plistlib.InvalidFileException) as error:
+    except (OSError, ValueError, plistlib.InvalidFileException,
+            xml.parsers.expat.ExpatError) as error:
         print(f"error: {args.info_plist}: {error}")
+        return 1
+    source = normalized_language(args.development_language)
+    if source and any(normalized_language(language) == source for language in drafts):
+        print(f"error: {args.info_plist}: {DRAFT_LANGUAGES_KEY} lists the "
+              f"development language {args.development_language!r}; it always ships")
         return 1
     try:
         removed = strip(args.bundle, drafts)

@@ -58,7 +58,8 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/strip-draft-localizations.py" \
             --info-plist "$SRCROOT/$INFOPLIST_FILE" \
-            --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+            --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
+            --development-language "$DEVELOPMENT_LANGUAGE"
   ConduitTests:
     type: bundle.unit-test
     platform: iOS

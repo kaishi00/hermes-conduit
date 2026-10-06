@@ -34,6 +34,11 @@ final class AppLanguageTests: XCTestCase {
         Bundle.main.object(forInfoDictionaryKey: AppLocalizations.draftLanguagesInfoKey) as? [String] ?? []
     }
 
+    /// Identifier spelling the app ignores, as `AppLocalizations` does.
+    private func normalized(_ identifier: String) -> String {
+        identifier.replacingOccurrences(of: "_", with: "-").lowercased()
+    }
+
     /// The value a localization's own compiled catalog holds for `key`, read
     /// straight from its lproj; nil when that catalog lacks the key.
     private func catalogValue(_ key: String, in language: AppLanguage) -> String? {
@@ -61,11 +66,10 @@ final class AppLanguageTests: XCTestCase {
         let shipped = AppLocalizations.main
         XCTAssertEqual(shipped.source, Bundle.main.developmentLocalization)
         XCTAssertEqual(shipped.shipped.first, shipped.source, "the source language is listed first")
-        let drafts = Set(draftLanguages)
-        let expected = Set(Bundle.main.localizations)
-            .subtracting(["Base"])
-            .subtracting(drafts)
-            .union([shipped.source])
+        let drafts = Set(draftLanguages.map(normalized))
+        let expected = Set(Bundle.main.localizations.filter {
+            $0 != "Base" && !drafts.contains(normalized($0))
+        }).union([shipped.source])
         XCTAssertEqual(Set(shipped.shipped), expected)
         XCTAssertEqual(AppLanguage.selectable, [AppLanguage.system] + shipped.shipped.map { AppLanguage.localization($0) })
     }
@@ -87,9 +91,9 @@ final class AppLanguageTests: XCTestCase {
     func testDraftLanguagesAreStrippedFromTheBuildAndNeverSelectable() {
         // Vacuous until a draft is listed; then it proves the build phase
         // (scripts/strip-draft-localizations.py) actually ran.
+        let built = Set(Bundle.main.localizations.map(normalized))
         for draft in draftLanguages {
-            XCTAssertNil(Bundle.main.path(forResource: draft, ofType: "lproj"),
-                         "draft \(draft) must not ship in the app")
+            XCTAssertFalse(built.contains(normalized(draft)), "draft \(draft) must not ship in the app")
             XCTAssertNil(AppLanguage(rawValue: draft), "draft \(draft) must not be selectable")
         }
     }
