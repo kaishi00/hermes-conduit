@@ -169,12 +169,12 @@ MALFORMED_ESCAPE_RE = re.compile("\\\\u[0-9a-fA-F]{4}")
 
 # Flags, width and precision (%.1f, %5lld, %-8@, %+d, %'d) count like the
 # bare form. No space flag ("5% increase" is prose, not "% i") and no "#"
-# ("%#@name@" is a plural substitution, not an argument). A percent sign
-# directly before a conversion letter ("5%increase") still reads as one;
-# write "%%" or a space in prose.
+# ("%#@name@" is a plural substitution, not an argument). A bare %d, %i or
+# %u (or %td) glued to a following letter is prose too: German "100%ig",
+# "5%increase". %lld keeps a following letter ("%lldh %lldm").
 _PLACEHOLDER_RE = re.compile(
-    r"%(?:(\d+)\$)?(?:[-+']*\d*(?:\.\d+)?(?=[@dfilu]))?"
-    r"([@df]|l{1,2}[diu]|lf|@|d|i|u|%)")
+    r"%(?:(\d+)\$)?(?:[-+']*\d*(?:\.\d+)?(?=[@dfiltu]))?"
+    r"([@f]|l{1,2}[diu]|lf|t?[diu](?![A-Za-z])|%)")
 
 # Interpolation expressions that request an INTEGER runtime placeholder
 # (%lld) rather than an object (%@). String-hint wins: the documented
@@ -464,36 +464,46 @@ def localization_for(localizations: dict, language: str) -> dict:
     return {}
 
 
-def plural_variations(localization) -> list:
-    """Every plural variation in a localization dict, including one nested
-    in another variation (a plural inside a device variant)."""
+def plural_variations(localization, path=()) -> list:
+    """Every plural variation in a localization dict as (path, plural)
+    pairs, including one nested in another variation: a plural inside a
+    device variant has the path ("device", "iphone"); a top-level one, ()."""
     found = []
     for dimension, variation in localization.get("variations", {}).items():
         if dimension == "plural":
-            found.append(variation)
-        else:
-            for unit in variation.values():
-                found.extend(plural_variations(unit))
+            found.append((path, variation))
+        for case, unit in variation.items():
+            found.extend(plural_variations(unit, path + (dimension, case)))
     return found
 
 
-def plural_gap(entry: dict, language: str, source: str) -> list:
-    """Plural categories `language` still lacks for a key the source varies
-    by plural, at any depth. A localization with no plural variation stands
-    for the "other" form only; a missing localization is reported
-    elsewhere."""
+def variation_label(path) -> str:
+    """How a problem names where a nested plural sits: "" at the top
+    level, otherwise " in device/iphone"."""
+    return f" in {'/'.join(path)}" if path else ""
+
+
+def plural_gaps(entry: dict, language: str, source: str) -> list:
+    """(path, categories) for each plural in `language` that lacks a
+    category its rules use, for a key the source varies by plural at any
+    depth. A localization with no plural variation stands for the "other"
+    form only; a missing localization is reported elsewhere."""
     localizations = entry.get("localizations", {})
     if not plural_variations(localization_for(localizations, source)):
         return []
     localization = localization_for(localizations, language)
-    provided = [set(plural) for plural in plural_variations(localization)]
+    provided = [(path, set(plural)) for path, plural in plural_variations(localization)]
     if not provided:
         if not string_unit_leaves(localization):
             return []
-        provided = [{"other"}]
+        provided = [((), {"other"})]
     required = plural_categories(language) or ("other",)
-    return [category for category in required
-            if any(category not in forms for forms in provided)]
+    gaps = []
+    for path, forms in provided:
+        missing = [category for category in required if category not in forms]
+        if missing:
+            gaps.append((path, missing))
+    return gaps
 
 
 def value_problem(language: str, value: str, key_specs):
@@ -535,19 +545,18 @@ def catalog_problems(catalog: dict, required_languages=(),
                 problems.setdefault(key, []).append(
                     f"missing {language} localization")
         for language in shipped:
-            gap = plural_gap(entry, language, source)
-            if gap:
-                rules = plural_categories(language) or ("other",)
+            rules = plural_categories(language) or ("other",)
+            for path, missing in plural_gaps(entry, language, source):
                 problems.setdefault(key, []).append(
-                    f"{language} plural lacks {', '.join(gap)} "
-                    f"(its plural rules use {', '.join(rules)})")
+                    f"{language} plural{variation_label(path)} lacks "
+                    f"{', '.join(missing)} (its plural rules use {', '.join(rules)})")
         key_specs = placeholder_specs(key)
         for language, localization in localizations.items():
             draft = normalized_language(language) in drafts
-            if any("other" not in plural
-                   for plural in plural_variations(localization)):
-                problems.setdefault(key, []).append(
-                    f"{language} plural has no 'other' form")
+            for path, plural in plural_variations(localization):
+                if "other" not in plural:
+                    problems.setdefault(key, []).append(
+                        f"{language} plural{variation_label(path)} has no 'other' form")
             for unit in string_unit_leaves(localization):
                 value = unit.get("value") or ""
                 state = unit.get("state")
@@ -572,9 +581,9 @@ def language_is_complete(catalog: dict, language: str) -> bool:
             continue
         localization = localization_for(entry.get("localizations", {}), language)
         units = string_unit_leaves(localization)
-        if not units or plural_gap(entry, language, source):
+        if not units or plural_gaps(entry, language, source):
             return False
-        if any("other" not in plural for plural in plural_variations(localization)):
+        if any("other" not in plural for _, plural in plural_variations(localization)):
             return False
         key_specs = placeholder_specs(key)
         for unit in units:
@@ -885,8 +894,8 @@ def main() -> int:
 
     if key_problems:
         failed = True
-        print(f"FAIL: {len(key_problems)} catalog key(s) have localization "
-              f"problems (shipped: {describe(plan.shipped)}):")
+        print(f"FAIL: {len(key_problems)} catalog key(s) or file(s) have "
+              f"localization problems (shipped: {describe(plan.shipped)}):")
         for key in sorted(key_problems):
             print(f"    {key!r}")
             for problem in key_problems[key]:

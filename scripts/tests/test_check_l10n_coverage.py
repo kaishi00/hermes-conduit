@@ -212,6 +212,16 @@ class PlaceholderTests(unittest.TestCase):
     def test_plural_substitutions_are_not_arguments(self):
         self.assertEqual(specs("%#@conversations@"), [])
 
+    def test_a_percent_glued_to_a_word_is_prose(self):
+        self.assertEqual(specs("100%ig sicher"), [])
+        self.assertEqual(specs("5%increase"), [])
+        self.assertEqual(specs("%d件"), [(None, "int")])
+        self.assertEqual(specs("%lldh %lldm"), [(None, "int"), (None, "int")])
+
+    def test_pointer_difference_conversions_are_ints(self):
+        self.assertEqual(specs("%td of %tu"), [(None, "int"), (None, "int")])
+        self.assertEqual(specs("50%tie"), [])
+
     def test_zero_padded_positional_translation_is_compatible(self):
         key = specs("%1$02d %2$@ %3$d")
         self.assertEqual(key, [(1, "int"), (2, "object"), (3, "int")])
@@ -485,13 +495,30 @@ class PluralCategoryTests(unittest.TestCase):
         catalog = plural_catalog(en=on_iphone(plural("one", "other")),
                                  fr=on_iphone(plural("one", "other")))
         self.assertEqual(problems_for(catalog, ["fr"])["%lld files"],
-                         ["fr plural lacks many (its plural rules use one, many, other)"])
+                         ["fr plural in device/iphone lacks many "
+                          "(its plural rules use one, many, other)"])
         self.assertFalse(check_l10n_coverage.language_is_complete(catalog, "fr"))
 
         catalog = plural_catalog(en=on_iphone(plural("one", "other")),
                                  ru=on_iphone(plural("one", "few", "many")))
         problems = problems_for(catalog, [], ["ru"])["%lld files"]
-        self.assertEqual(problems, ["ru plural has no 'other' form"])
+        self.assertEqual(problems, ["ru plural in device/iphone has no 'other' form"])
+
+    def test_each_incomplete_nested_plural_is_named(self):
+        devices = {"variations": {"device": {
+            "iphone": plural("one", "many", "other"),
+            "mac": plural("one", "other")}}}
+        catalog = plural_catalog(fr=devices)
+        self.assertEqual(problems_for(catalog, ["fr"])["%lld files"],
+                         ["fr plural in device/mac lacks many "
+                          "(its plural rules use one, many, other)"])
+
+    def test_a_plural_inside_a_plural_case_is_held_to_the_rules(self):
+        inner = plural("one", "few", "many")
+        outer = {"variations": {"plural": {"other": inner}}}
+        catalog = plural_catalog(ru=outer)
+        problems = problems_for(catalog, [], ["ru"])["%lld files"]
+        self.assertEqual(problems, ["ru plural in plural/other has no 'other' form"])
 
     def test_keys_the_source_does_not_vary_need_no_plural(self):
         catalog = {"sourceLanguage": "en", "strings": {
