@@ -11,6 +11,66 @@
         }
       }
     },
+    "Hermes could not start a new chat, so the screenshot is still in this one." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法新建聊天，截图仍在当前聊天中。"
+          }
+        }
+      }
+    },
+    "Moves the screenshot to a new chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将截图移到新聊天。"
+          }
+        }
+      }
+    },
+    "Recent Chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近的聊天"
+          }
+        }
+      }
+    },
+    "The screenshot opens in your voice mode. Close voice to type instead; the screenshot stays attached." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "截图会在你的语音模式中打开。关闭语音即可改为输入，截图仍会保留。"
+          }
+        }
+      }
+    },
+    "It joins the chat you used in the last 5 minutes, or a new chat. Tap New Chat beside the screenshot to move it to a fresh one." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "截图会加入你在过去 5 分钟内使用过的聊天，否则加入新聊天。轻点截图旁的“新聊天”可将其移到一个全新的聊天。"
+          }
+        }
+      }
+    },
+    "To always use a new chat, open the shortcut in Shortcuts, tap Show More, and set Chat to New Chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "若要始终使用新聊天，请在“快捷指令”中打开此快捷指令，轻点“显示更多”，然后将“对话”设为“新聊天”。"
+          }
+        }
+      }
+    },
     "Add the shortcut" : {
       "localizations" : {
         "zh-Hans" : {

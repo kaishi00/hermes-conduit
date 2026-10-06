@@ -13,6 +13,8 @@ import SwiftUI
 struct ScreenQuestionVoiceBanner: View {
     let screenshot: Attachment?
     let onDiscard: () -> Void
+    /// Set when the screenshot joined a chat already in use.
+    var onNewChat: (() -> Void)? = nil
 
     var body: some View {
         if let screenshot {
@@ -20,14 +22,70 @@ struct ScreenQuestionVoiceBanner: View {
                 Text("Asking about this screenshot")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                ComposerAttachmentChip(attachment: screenshot, canRemove: true, onRemove: onDiscard)
+                HStack(spacing: 8) {
+                    ComposerAttachmentChip(attachment: screenshot, canRemove: true, onRemove: onDiscard)
+                    if let onNewChat {
+                        ScreenshotNewChatButton(placement: "voice", action: onNewChat)
+                    }
+                }
             }
-            // One region for VoiceOver: the caption with the chip and its remove button.
+            // One region for VoiceOver: the caption with the chip, its
+            // remove button and New Chat.
             .accessibilityElement(children: .contain)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.ultraThinMaterial)
+        }
+    }
+}
+
+/// "New Chat" beside a screenshot that joined a chat already in use: it
+/// moves the screenshot, and voice when it's open, to a fresh chat.
+struct ScreenshotNewChatButton: View {
+    /// Where it sits ("composer" or "voice"), for its identifier.
+    let placement: String
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
+            Label("New Chat", systemImage: "square.and.pencil")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.conduitAccent)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.conduitAccent.opacity(0.09), in: Capsule())
+                // A full-size tap target without growing the pill.
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(AppLocalization.string("Moves the screenshot to a new chat."))
+        .accessibilityIdentifier("screenQuestion.newChat.\(placement)")
+    }
+}
+
+/// Settings › Ask Hermes About Screen: what a press does, and how to get
+/// a new chat instead of the recent one.
+struct ScreenQuestionHowItWorksSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("How it works"),
+            symbol: "text.bubble",
+            tint: .conduitAccent
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("The screenshot opens in your voice mode. Close voice to type instead; the screenshot stays attached.", systemImage: "waveform")
+                Label("It joins the chat you used in the last 5 minutes, or a new chat. Tap New Chat beside the screenshot to move it to a fresh one.", systemImage: "square.and.pencil")
+                Label("To always use a new chat, open the shortcut in Shortcuts, tap Show More, and set Chat to New Chat.", systemImage: "slider.horizontal.3")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 }

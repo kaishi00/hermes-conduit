@@ -191,6 +191,14 @@ struct ComposerBar: View {
         composerRevision &+= 1
     }
 
+    /// "New Chat" beside the screenshot: what was typed goes with it, so
+    /// none of it is left behind in this chat's draft.
+    private func moveScreenshotToNewChat() {
+        let carried = text
+        replaceComposerText("")
+        Task { await appState.moveComposerScreenshotToNewChat(carrying: carried) }
+    }
+
     /// Returns the slash prefix being typed, or nil if the cursor has moved
     /// beyond the command name. Leading whitespace is accepted on purpose.
     private var slashPrefix: String? {
@@ -816,6 +824,9 @@ struct ComposerBar: View {
                         canRemove: appState.composerIsEnabled
                     ) {
                         appState.discardPendingScreenshot(forSession: appState.activeSessionId)
+                    }
+                    if appState.canMoveComposerScreenshotToNewChat {
+                        ScreenshotNewChatButton(placement: "composer", action: moveScreenshotToNewChat)
                     }
                 }
                 ForEach(attachments) { attachment in

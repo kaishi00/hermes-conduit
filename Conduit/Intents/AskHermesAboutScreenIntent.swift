@@ -32,6 +32,19 @@ enum ScreenQuestionStartAppEnum: String, AppEnum {
     }
 }
 
+/// The shortcut's Chat option. Unset, the recent-chat rule decides.
+@available(iOS 16.0, *)
+enum ScreenQuestionChatAppEnum: String, AppEnum {
+    case recent
+    case new
+
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Chat")
+    static var caseDisplayRepresentations: [ScreenQuestionChatAppEnum: DisplayRepresentation] = [
+        .recent: "Recent Chat",
+        .new: "New Chat"
+    ]
+}
+
 /// When the action last ran, for the setup screen's "Last used". Conduit
 /// can't see which shortcuts are installed; a run proves the shortcut ran.
 enum ScreenQuestionUsage {
@@ -133,11 +146,15 @@ struct AskHermesAboutScreenIntent: AppIntent {
     @Parameter(title: "Profile")
     var profile: ConduitProfileEntity?
 
+    @Parameter(title: "Chat")
+    var chat: ScreenQuestionChatAppEnum?
+
     static var parameterSummary: some ParameterSummary {
         Summary("Ask Hermes about \(\.$screenshot)") {
             \.$question
             \.$startWith
             \.$profile
+            \.$chat
         }
     }
 
@@ -168,7 +185,8 @@ struct AskHermesAboutScreenIntent: AppIntent {
             attachment: attachment,
             question: question,
             startWith: startWith?.start,
-            enqueuedAt: Date()
+            enqueuedAt: Date(),
+            startsNewChat: chat == .new
         )
         let pending = PendingVoiceLaunchPolicy.makeScreenQuestionPendingIntent(request, profile: profile?.id)
         await MainActor.run {

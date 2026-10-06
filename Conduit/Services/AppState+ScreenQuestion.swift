@@ -203,6 +203,121 @@ extension AppState {
         }
     }
 
+    // MARK: - Moving to a new chat
+
+    /// What a new chat for the screenshot needs: Hermes ready, and the chat
+    /// on screen already in use. An empty chat is already new.
+    private var canStartChatForScreenshot: Bool {
+        isReadyForScreenshotChat
+            && activeRoomSurface == nil && offlineChatPresentation == nil
+            && (!messages.isEmpty || turnState.isRunning)
+    }
+
+    /// Hermes can start a chat now: connected, and no switch under way.
+    private var isReadyForScreenshotChat: Bool {
+        isConnected && !isConnecting && !isProfileSwitching
+    }
+
+    private static var screenshotChatNotStartedMessage: String {
+        AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one.")
+    }
+
+    /// "New Chat" beside the screenshot in the composer. A screenshot the
+    /// running voice is asking about moves from the voice sheet instead.
+    var canMoveComposerScreenshotToNewChat: Bool {
+        guard canStartChatForScreenshot,
+              let screenshot = pendingScreenshot(forSession: activeSessionId) else { return false }
+        return !(isVoiceInUse && voiceScreenshot == screenshot)
+    }
+
+    /// "New Chat" on the voice sheet's screenshot banner. A call whose chat
+    /// isn't on screen doesn't get it: if no new chat could start, voice
+    /// couldn't start again on that chat.
+    var canMoveVoiceScreenshotToNewChat: Bool {
+        guard canStartChatForScreenshot, voiceScreenshot != nil else { return false }
+        if isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread {
+            return isOpenChat(thread)
+        }
+        return true
+    }
+
+    /// The composer's New Chat: moves the chat's screenshot, with what was
+    /// typed beside it, to a fresh chat and readies the keyboard there.
+    /// Voice running on another chat is left alone. When no chat can
+    /// start, both stay where they were.
+    @discardableResult
+    func moveComposerScreenshotToNewChat(carrying text: String = "") async -> Bool {
+        guard isReadyForScreenshotChat else {
+            restoreComposerText(text)
+            errorMessage = Self.screenshotChatNotStartedMessage
+            return false
+        }
+        // Gone already (sent or removed): nothing is left to move.
+        guard let entry = takePendingScreenshotEntry(forSession: activeSessionId) else {
+            restoreComposerText(text)
+            return false
+        }
+        let created = await startChatForScreenshot(entry)
+        restoreComposerText(text)
+        guard let created else { return false }
+        requestComposerFocus(on: created)
+        return true
+    }
+
+    /// The voice sheet's New Chat: ends the voice, moves its screenshot to
+    /// a fresh chat and starts voice again there. When no chat can start,
+    /// voice starts again on the screenshot where it was. Either way it
+    /// starts as a new screenshot's does: the keyboard when a reply is
+    /// still running or voice isn't set up.
+    @discardableResult
+    func moveVoiceScreenshotToNewChat() async -> Bool {
+        guard isReadyForScreenshotChat else {
+            // Voice keeps going, with the screenshot.
+            errorMessage = Self.screenshotChatNotStartedMessage
+            return false
+        }
+        guard let entry = takeVoiceScreenshotEntry() else { return false }
+        // Ended first: a new chat replaces the one the voice is talking in.
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        endLiveVoiceCall()
+        let created = await startChatForScreenshot(entry)
+        await startScreenQuestionInput(.voice, on: created ?? entry.sessionID)
+        return created != nil
+    }
+
+    /// Starts a chat and moves the screenshot onto it. When none starts,
+    /// the screenshot goes back where it was and the user is told.
+    private func startChatForScreenshot(_ entry: PendingScreenshot) async -> String? {
+        let previous = activeSessionId
+        await createNewSession()
+        guard let created = activeSessionId, created != previous else {
+            restorePendingScreenshot(entry.attachment, forSession: entry.sessionID)
+            if errorMessage == nil {
+                errorMessage = Self.screenshotChatNotStartedMessage
+            }
+            return nil
+        }
+        setPendingScreenshot(entry.attachment, forSession: created)
+        return created
+    }
+
+    /// The screenshot the voice sheet shows, taken off its chat without
+    /// deleting the file.
+    private func takeVoiceScreenshotEntry() -> PendingScreenshot? {
+        guard isLiveVoiceCallActive, let thread = voiceBackgroundJobSupervisor.liveThread else {
+            return takePendingScreenshotEntry(forSession: activeSessionId)
+        }
+        for id in [thread.runtimeSessionID, thread.storedSessionID].compactMap({ $0 }) {
+            if let entry = takePendingScreenshotEntry(forSession: id) { return entry }
+        }
+        return nil
+    }
+
+    private func restoreComposerText(_ text: String) {
+        guard !text.isEmpty else { return }
+        prefillComposer(text)
+    }
+
     // MARK: - Opening the chat
 
     /// The router's handler for an Ask Hermes About Screen launch. Returns
@@ -270,8 +385,9 @@ extension AppState {
     /// Attaches a screenshot kept through an outage once Hermes connects and
     /// Conduit settles. Back on screen within the launch window, it starts
     /// as the press asked (voice, or its question sent). Later, the user is
-    /// in Conduit by then, so it joins the chat on screen (or a new chat on
-    /// the profile the shortcut named), with the keyboard: never the
+    /// in Conduit by then, so it joins the chat on screen (or a new chat,
+    /// when the shortcut named a profile or asked for a new chat), with
+    /// the keyboard: never the
     /// microphone, and a question waits in the composer rather than being
     /// sent long after it was asked.
     func resumeParkedScreenQuestion(now: Date = Date()) async {
@@ -382,6 +498,10 @@ extension AppState {
         let hasOpenChat = activeSessionId != nil && activeRoomSurface == nil && offlineChatPresentation == nil
         let continuesOpenChat: Bool
         if switchedProfile {
+            continuesOpenChat = false
+        } else if request.startsNewChat, !isVoiceInUse {
+            // The shortcut asked for a new chat. A call already running
+            // keeps the screenshot in its chat: that's where the user is.
             continuesOpenChat = false
         } else if resumingParked || isVoiceInUse || ScreenQuestionPolicy.wasOnScreen(
             activeSince: isSceneActive ? sceneActiveSince : nil,
