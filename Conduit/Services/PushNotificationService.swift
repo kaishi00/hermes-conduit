@@ -608,6 +608,7 @@ final class PushNotificationService: ObservableObject {
     static let e2eSeenStore: E2ESeenStore = .shared
 
     static let e2ePath = "/api/plugins/conduit_push/e2e"
+    private var isProvisioningEncryption = false
 
     func refreshEncryptionState() {
         encryptedGatewayIDs = Set(Self.e2eKeyStore.records().map(\.gatewayID))
@@ -625,7 +626,12 @@ final class PushNotificationService: ObservableObject {
         profiles: [String],
         request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
     ) async {
-        guard let installationID = registration?.installationID else { return }
+        // One run at a time: two overlapping runs would each post a key for
+        // the same pairing, and the plugin and this iPhone could keep
+        // different ones.
+        guard !isProvisioningEncryption, let installationID = registration?.installationID else { return }
+        isProvisioningEncryption = true
+        defer { isProvisioningEncryption = false }
         var records = Self.e2eKeyStore.records()
         for profile in profiles {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
@@ -651,6 +657,11 @@ final class PushNotificationService: ObservableObject {
                   Self.e2eKeyStore.save(record) else {
                 continue
             }
+            // The plugin now holds only this key for the pairing.
+            for stale in records where stale.installationID == installationID && stale.gatewayID == gatewayID {
+                Self.e2eKeyStore.remove(kid: stale.kid)
+            }
+            records.removeAll { $0.installationID == installationID && $0.gatewayID == gatewayID }
             records.append(record)
         }
         refreshEncryptionState()
@@ -680,6 +691,8 @@ final class PushNotificationService: ObservableObject {
         for record in Self.e2eKeyStore.records() where record.installationID == installationID {
             Self.e2eKeyStore.remove(kid: record.kid)
         }
+        // The installation's pairings are gone with it.
+        NotificationSharedSettings.knownGatewayIDs = []
         refreshEncryptionState()
     }
 
@@ -1094,9 +1107,9 @@ final class PushNotificationService: ObservableObject {
 
     func receiveNotificationPayload(_ userInfo: [AnyHashable: Any]) {
         let records = Self.e2eKeyStore.records()
-        let known = NotificationSharedSettings.knownGatewayIDs
-        guard var target = Self.parseNotificationTarget(from: userInfo, records: records, knownGatewayIDs: known) else { return }
-        if case .verified(let verified) = NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: known) {
+        let evaluation = NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs)
+        guard var target = Self.target(for: evaluation, userInfo: userInfo) else { return }
+        if case .verified(let verified) = evaluation {
             // A sealed message routes once: a replay of it can't open
             // anything after the original was tapped.
             guard Self.e2eSeenStore.insert(verified.envelope.replayKey, namespace: "routed") else { return }
@@ -1187,7 +1200,11 @@ final class PushNotificationService: ObservableObject {
         knownGatewayIDs: Set<String>,
         now: Date = Date()
     ) -> ConduitNotificationTarget? {
-        switch NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: knownGatewayIDs, now: now) {
+        target(for: NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: knownGatewayIDs, now: now), userInfo: userInfo)
+    }
+
+    private static func target(for evaluation: NotificationE2E.Evaluation, userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
+        switch evaluation {
         case .legacy:
             return parsePlaintextNotificationTarget(from: userInfo)
         case .untrusted:
