@@ -10,11 +10,14 @@ import UserNotifications
 /// nowhere. Conduit itself re-verifies the envelope on tap; nothing this
 /// extension writes into the notification is trusted on its own.
 final class NotificationService: UNNotificationServiceExtension {
+    // didReceive and serviceExtensionTimeWillExpire may run on different
+    // threads; the lock makes sure the handler is called exactly once.
+    private let lock = NSLock()
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var fallback: UNMutableNotificationContent?
 
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
-        self.contentHandler = contentHandler
+        lock.withLock { self.contentHandler = contentHandler }
         guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
             contentHandler(request.content)
             return
@@ -22,12 +25,14 @@ final class NotificationService: UNNotificationServiceExtension {
         let userInfo = content.userInfo
         let type = (NotificationE2E.routingStub(userInfo)?["type"] as? String)
         // Prepared up front so a timeout can only ever deliver generic text.
-        fallback = Self.generic(content.mutableCopy() as? UNMutableNotificationContent ?? content, type: type)
+        let prepared = Self.generic(content.mutableCopy() as? UNMutableNotificationContent ?? content, type: type)
+        lock.withLock { fallback = prepared }
 
         switch NotificationE2E.evaluate(
             userInfo,
             records: KeychainE2EKeyStore().records(),
-            knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs
+            knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
+            keysProvisioned: NotificationSharedSettings.keysProvisioned
         ) {
         case .legacy:
             deliver(content)
@@ -47,13 +52,15 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 
     override func serviceExtensionTimeWillExpire() {
-        if let fallback { deliver(fallback) }
+        if let fallback = lock.withLock({ fallback }) { deliver(fallback) }
     }
 
     private func deliver(_ content: UNNotificationContent) {
-        guard let handler = contentHandler else { return }
-        contentHandler = nil
-        handler(content)
+        let handler: ((UNNotificationContent) -> Void)? = lock.withLock {
+            defer { contentHandler = nil }
+            return contentHandler
+        }
+        handler?(content)
     }
 
     /// Generic copy, and no routing data or envelope left to act on.

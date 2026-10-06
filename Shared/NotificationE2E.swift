@@ -151,27 +151,28 @@ enum NotificationE2E {
         (userInfo["conduit"] as? [String: Any]) ?? ((userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any])
     }
 
-    /// `knownGatewayIDs` are the relay pairings this iPhone last saw listed
-    /// for its installation (Settings > Notifications), shared through the
-    /// App Group so the extension applies the same rule.
+    /// `knownGatewayIDs` are the keyless relay pairings this iPhone may still
+    /// trust plaintext from (see `knownGatewayIDs(listed:previous:holdsKeys:)`),
+    /// shared through the App Group so the extension applies the same rule.
+    /// `keysProvisioned` is the App Group marker that this iPhone has stored a
+    /// key: with it set, an empty `records` means the Keychain couldn't be
+    /// read (before first unlock, say), not that there are no keys.
     static func evaluate(
         _ userInfo: [AnyHashable: Any],
         records: [E2EKeyRecord],
         knownGatewayIDs: Set<String>,
+        keysProvisioned: Bool = false,
         now: Date = Date()
     ) -> Evaluation {
         let stub = routingStub(userInfo)
         let type = (stub?["type"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard userInfo[userInfoKey] != nil else {
             // Plaintext. With no key at all, today's behavior. Once this
-            // iPhone holds any key, plaintext is trusted only from a known
-            // pairing that never provisioned one: naming a keyed pairing, no
-            // pairing, or one this iPhone has never seen is a downgrade. The
-            // pairing list comes from the relay, so a relay that also lists
-            // a made-up pairing can still pass plaintext as that pairing; it
-            // shows up in Settings as an unencrypted pairing, and the gap
-            // closes for good once every pairing is encrypted.
-            if records.isEmpty { return .legacy }
+            // iPhone holds any key, plaintext is trusted only from a keyless
+            // pairing it already knew about when it stored its first key:
+            // naming a keyed pairing, no pairing, or any pairing listed
+            // since is a downgrade, so a relay can't invent one later.
+            if records.isEmpty && !keysProvisioned { return .legacy }
             let gatewayID = (stub?["gateway_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !gatewayID.isEmpty,
                   knownGatewayIDs.contains(gatewayID),
@@ -205,6 +206,14 @@ enum NotificationE2E {
             return .untrusted(type: type)
         }
         return .verified(Verified(record: record, envelope: envelope, type: type, content: content))
+    }
+
+    /// The keyless pairings plaintext may still come from, after the relay
+    /// lists `listed`. Before this iPhone holds a key, that's whatever the
+    /// relay lists. After, the set only shrinks: a pairing first listed
+    /// once encryption is on (or one a hostile relay makes up) never joins.
+    static func knownGatewayIDs(listed: Set<String>, previous: Set<String>, holdsKeys: Bool) -> Set<String> {
+        holdsKeys ? previous.intersection(listed) : listed
     }
 
     private static func inflate(_ data: Data, compressed: Bool) -> [String: Any]? {
@@ -415,6 +424,30 @@ enum NotificationSharedSettings {
     }
 
     private static let knownGatewayIDsKey = "conduit.notifications.knownGatewayIDs"
+    private static let keysProvisionedMarker = "e2e-keys-provisioned"
+
+    /// Whether this iPhone has stored an encryption key. A file's existence
+    /// in the App Group container, which the extension can check even before
+    /// first unlock, when the Keychain and these defaults can't be read.
+    static var keysProvisioned: Bool {
+        get {
+            guard let url = markerURL else { return false }
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+        set {
+            guard let url = markerURL else { return }
+            if newValue {
+                FileManager.default.createFile(atPath: url.path, contents: Data(), attributes: nil)
+            } else {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+    }
+
+    private static var markerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: NotificationE2E.appGroup)?
+            .appendingPathComponent(keysProvisionedMarker)
+    }
 
     /// The relay pairings last listed for this iPhone (see
     /// NotificationE2E.evaluate).

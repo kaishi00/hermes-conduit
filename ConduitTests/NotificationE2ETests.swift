@@ -164,6 +164,22 @@ final class NotificationE2ETests: XCTestCase {
         XCTAssertEqual(PushNotificationService.parseNotificationTarget(from: unscoped, records: [], knownGatewayIDs: [], now: now)?.sessionId, "sess-3")
     }
 
+    func testAnUnreadableKeychainIsNotTreatedAsNoKeys() {
+        let plaintext: [AnyHashable: Any] = ["conduit": ["type": "response.ready", "session_id": "sess-5", "gateway_id": "another-gateway"]]
+        // Keys were stored but couldn't be read (say, before first unlock):
+        // plaintext is a downgrade, not legacy.
+        XCTAssertUntrusted(NotificationE2E.evaluate(plaintext, records: [], knownGatewayIDs: [], keysProvisioned: true, now: now))
+        XCTAssertNil(PushNotificationService.parseNotificationTarget(from: plaintext, records: [], knownGatewayIDs: [], keysProvisioned: true, now: now))
+    }
+
+    func testKeylessPairingsListedAfterTheFirstKeyNeverBecomeTrusted() {
+        XCTAssertEqual(NotificationE2E.knownGatewayIDs(listed: ["a", "b"], previous: [], holdsKeys: false), ["a", "b"])
+        // Once a key is held the set only shrinks: a pairing the relay lists
+        // later (real or made up) never joins.
+        XCTAssertEqual(NotificationE2E.knownGatewayIDs(listed: ["a", "b", "phantom"], previous: ["a", "b"], holdsKeys: true), ["a", "b"])
+        XCTAssertEqual(NotificationE2E.knownGatewayIDs(listed: ["b"], previous: ["a", "b"], holdsKeys: true), ["b"])
+    }
+
     func testSeenStoreRecordsEachMessageOncePerUse() {
         let store = E2ESeenStore(url: nil)
         XCTAssertTrue(store.insert("k:m", namespace: "delivered", now: now))

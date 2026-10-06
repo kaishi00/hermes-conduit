@@ -432,7 +432,12 @@ final class PushNotificationService: ObservableObject {
         // Plaintext from a pairing this iPhone has never seen listed isn't
         // trusted once it holds an encryption key (#431). Kept on failure.
         didSet {
-            if let relayMeta { NotificationSharedSettings.knownGatewayIDs = Set(relayMeta.gateways.map(\.id)) }
+            guard let relayMeta else { return }
+            NotificationSharedSettings.knownGatewayIDs = NotificationE2E.knownGatewayIDs(
+                listed: Set(relayMeta.gateways.map(\.id)),
+                previous: NotificationSharedSettings.knownGatewayIDs,
+                holdsKeys: NotificationSharedSettings.keysProvisioned || !Self.e2eKeyStore.records().isEmpty
+            )
         }
     }
     @Published private(set) var isFetchingMeta = false
@@ -450,7 +455,34 @@ final class PushNotificationService: ObservableObject {
 
     /// The discriminator to echo for this request id, if one was retained.
     func relayGatewayID(forRequestID requestID: String) -> String? {
-        relayGatewayIDsByRequestID[requestID]
+        relayGatewayIDsByRequestID[requestID] ?? Self.encryptedDecisionGatewayIDs()[requestID]
+    }
+
+    /// Encrypted decisions keep their gateway across relaunches: the answer
+    /// has to be sealed for that pairing, and plaintext is rejected. Only
+    /// verified pushes are kept, newest last, capped.
+    static let encryptedDecisionGatewaysKey = "conduit.e2e.decisionGateways"
+    private static let encryptedDecisionGatewaysLimit = 64
+
+    private static func encryptedDecisionGatewayIDs() -> [String: String] {
+        let pairs = UserDefaults.standard.array(forKey: encryptedDecisionGatewaysKey) as? [[String]] ?? []
+        var map: [String: String] = [:]
+        for pair in pairs where pair.count == 2 { map[pair[0]] = pair[1] }
+        return map
+    }
+
+    private func persistEncryptedGatewayID(for target: ConduitNotificationTarget) {
+        guard let gatewayID = target.relayGatewayID else { return }
+        let requestID: String
+        switch target.decision {
+        case .clarify(let id, _, _): requestID = id
+        case .clarifyBatch(let id, _): requestID = id
+        default: return
+        }
+        var pairs = (UserDefaults.standard.array(forKey: Self.encryptedDecisionGatewaysKey) as? [[String]] ?? [])
+            .filter { $0.count == 2 && $0[0] != requestID }
+        pairs.append([requestID, gatewayID])
+        UserDefaults.standard.set(Array(pairs.suffix(Self.encryptedDecisionGatewaysLimit)), forKey: Self.encryptedDecisionGatewaysKey)
     }
 
     /// The respond body for a relay decision answer: answer, optional batch
@@ -657,6 +689,7 @@ final class PushNotificationService: ObservableObject {
                   Self.e2eKeyStore.save(record) else {
                 continue
             }
+            NotificationSharedSettings.keysProvisioned = true
             // The plugin now holds only this key for the pairing.
             for stale in records where stale.installationID == installationID && stale.gatewayID == gatewayID {
                 Self.e2eKeyStore.remove(kid: stale.kid)
@@ -693,6 +726,8 @@ final class PushNotificationService: ObservableObject {
         }
         // The installation's pairings are gone with it.
         NotificationSharedSettings.knownGatewayIDs = []
+        if Self.e2eKeyStore.records().isEmpty { NotificationSharedSettings.keysProvisioned = false }
+        UserDefaults.standard.removeObject(forKey: Self.encryptedDecisionGatewaysKey)
         refreshEncryptionState()
     }
 
@@ -1107,7 +1142,12 @@ final class PushNotificationService: ObservableObject {
 
     func receiveNotificationPayload(_ userInfo: [AnyHashable: Any]) {
         let records = Self.e2eKeyStore.records()
-        let evaluation = NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs)
+        let evaluation = NotificationE2E.evaluate(
+            userInfo,
+            records: records,
+            knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
+            keysProvisioned: NotificationSharedSettings.keysProvisioned
+        )
         guard var target = Self.target(for: evaluation, userInfo: userInfo) else { return }
         if case .verified(let verified) = evaluation {
             // A sealed message routes once: a replay of it can't open
@@ -1129,6 +1169,7 @@ final class PushNotificationService: ObservableObject {
             )
         }
         retainRelayGatewayID(for: target)
+        if case .verified = evaluation { persistEncryptedGatewayID(for: target) }
         navigationRetryTask?.cancel()
         navigationRetryTask = nil
         pendingTarget = target
@@ -1187,7 +1228,12 @@ final class PushNotificationService: ObservableObject {
     /// internal so the dashboard-identity parsing rules are testable without
     /// the singleton's registration state.
     static func parseNotificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
-        parseNotificationTarget(from: userInfo, records: e2eKeyStore.records(), knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs)
+        parseNotificationTarget(
+            from: userInfo,
+            records: e2eKeyStore.records(),
+            knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
+            keysProvisioned: NotificationSharedSettings.keysProvisioned
+        )
     }
 
     /// End-to-end encryption decides what a push may drive (#431): a sealed
@@ -1198,9 +1244,13 @@ final class PushNotificationService: ObservableObject {
         from userInfo: [AnyHashable: Any],
         records: [E2EKeyRecord],
         knownGatewayIDs: Set<String>,
+        keysProvisioned: Bool = false,
         now: Date = Date()
     ) -> ConduitNotificationTarget? {
-        target(for: NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: knownGatewayIDs, now: now), userInfo: userInfo)
+        target(
+            for: NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: knownGatewayIDs, keysProvisioned: keysProvisioned, now: now),
+            userInfo: userInfo
+        )
     }
 
     private static func target(for evaluation: NotificationE2E.Evaluation, userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
