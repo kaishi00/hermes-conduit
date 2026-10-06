@@ -297,6 +297,9 @@ protocol E2EKeyStoring {
     /// The stored keys, or nil when the store can't be read right now (as
     /// opposed to holding none).
     func readRecords() -> [E2EKeyRecord]?
+    /// Deletes stored keys this build can't parse, so they aren't orphaned
+    /// when provisioning replaces them.
+    func removeUnparseable()
     @discardableResult func save(_ record: E2EKeyRecord) -> Bool
     func remove(kid: String)
 }
@@ -321,12 +324,33 @@ struct KeychainE2EKeyStore: E2EKeyStoring {
     }
 
     func readRecords() -> [E2EKeyRecord]? {
+        guard let found = items() else { return nil }
+        let decoder = JSONDecoder()
+        return found.compactMap { item in
+            (item[kSecValueData as String] as? Data).flatMap { try? decoder.decode(E2EKeyRecord.self, from: $0) }
+        }
+    }
+
+    func removeUnparseable() {
+        let decoder = JSONDecoder()
+        for item in items() ?? [] {
+            guard let kid = item[kSecAttrAccount as String] as? String else { continue }
+            let data = item[kSecValueData as String] as? Data
+            if data.flatMap({ try? decoder.decode(E2EKeyRecord.self, from: $0) }) == nil {
+                remove(kid: kid)
+            }
+        }
+    }
+
+    /// Every stored item with its attributes; nil when the Keychain can't be
+    /// read yet.
+    private func items() -> [[String: Any]]? {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitAll
-        var items: CFTypeRef?
-        switch SecItemCopyMatching(query as CFDictionary, &items) {
+        var result: CFTypeRef?
+        switch SecItemCopyMatching(query as CFDictionary, &result) {
         case errSecSuccess:
             break
         case errSecInteractionNotAllowed, errSecNotAvailable:
@@ -339,22 +363,10 @@ struct KeychainE2EKeyStore: E2EKeyStoring {
             return []
         }
         // An array for kSecMatchLimitAll; a lone item is accepted too.
-        let found: [[String: Any]]
-        switch items {
-        case let array as [[String: Any]]: found = array
-        case let single as [String: Any]: found = [single]
+        switch result {
+        case let array as [[String: Any]]: return array
+        case let single as [String: Any]: return [single]
         default: return nil
-        }
-        let decoder = JSONDecoder()
-        return found.compactMap { item in
-            if let data = item[kSecValueData as String] as? Data,
-               let record = try? decoder.decode(E2EKeyRecord.self, from: data) {
-                return record
-            }
-            // A key this build can't parse is of no use and would never be
-            // pruned: drop it, and provisioning replaces it.
-            if let kid = item[kSecAttrAccount as String] as? String { remove(kid: kid) }
-            return nil
         }
     }
 

@@ -643,7 +643,9 @@ final class PushNotificationService: ObservableObject {
     private var isProvisioningEncryption = false
 
     func refreshEncryptionState() {
-        encryptedGatewayIDs = Set(Self.e2eKeyStore.records().map(\.gatewayID))
+        // Unreadable (a launch before first unlock): keep what was shown.
+        guard let records = Self.e2eKeyStore.readRecords() else { return }
+        encryptedGatewayIDs = Set(records.map(\.gatewayID))
     }
 
     /// Gives every pairing of this dashboard's profiles that belongs to this
@@ -667,6 +669,7 @@ final class PushNotificationService: ObservableObject {
         // Keys that can't be read right now: new ones would replace them on
         // the plugin and leave them orphaned here. Provisioning runs again on
         // the next connect.
+        Self.e2eKeyStore.removeUnparseable()
         guard var records = Self.e2eKeyStore.readRecords() else { return }
         // A marker with no keys means they are gone for good (a restore to
         // another iPhone drops this-device-only Keychain items but brings the
