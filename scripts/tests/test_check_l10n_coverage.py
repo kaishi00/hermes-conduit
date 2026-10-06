@@ -214,7 +214,10 @@ class PlaceholderTests(unittest.TestCase):
 
     def test_a_percent_glued_to_a_word_is_prose(self):
         self.assertEqual(specs("100%ig sicher"), [])
+        self.assertEqual(specs("100%fest"), [])
+        self.assertEqual(specs("le %ième"), [])
         self.assertEqual(specs("5%increase"), [])
+        self.assertEqual(specs("%f km"), [(None, "float")])
         self.assertEqual(specs("%d件"), [(None, "int")])
         self.assertEqual(specs("%lldh %lldm"), [(None, "int"), (None, "int")])
 
@@ -512,6 +515,13 @@ class PluralCategoryTests(unittest.TestCase):
         self.assertEqual(problems_for(catalog, ["fr"])["%lld files"],
                          ["fr plural in device/mac lacks many "
                           "(its plural rules use one, many, other)"])
+
+    def test_plain_strings_per_device_are_named_too(self):
+        catalog = plural_catalog(ru={"variations": {"device": {
+            "iphone": unit("%lld файлов")}}})
+        self.assertEqual(problems_for(catalog, ["ru"])["%lld files"],
+                         ["ru plural in device/iphone lacks one, few, many "
+                          "(its plural rules use one, few, many, other)"])
 
     def test_a_plural_inside_a_plural_case_is_held_to_the_rules(self):
         inner = plural("one", "few", "many")

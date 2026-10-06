@@ -169,12 +169,14 @@ MALFORMED_ESCAPE_RE = re.compile("\\\\u[0-9a-fA-F]{4}")
 
 # Flags, width and precision (%.1f, %5lld, %-8@, %+d, %'d) count like the
 # bare form. No space flag ("5% increase" is prose, not "% i") and no "#"
-# ("%#@name@" is a plural substitution, not an argument). A bare %d, %i or
-# %u (or %td) glued to a following letter is prose too: German "100%ig",
-# "5%increase". %lld keeps a following letter ("%lldh %lldm").
+# ("%#@name@" is a plural substitution, not an argument). A bare %d, %i,
+# %u or %f (or %td) glued to a following Latin letter is prose too: German
+# "100%ig", "100%fest", French "%ième". A CJK character may follow ("%d件"),
+# and the forms Swift generates keep a following letter ("%lldh %lldm").
+_GLUED_LETTER = "(?![A-Za-z\u00c0-\u024f])"
 _PLACEHOLDER_RE = re.compile(
     r"%(?:(\d+)\$)?(?:[-+']*\d*(?:\.\d+)?(?=[@dfiltu]))?"
-    r"([@f]|l{1,2}[diu]|lf|t?[diu](?![A-Za-z])|%)")
+    r"(@|l{1,2}[diu]|lf|(?:t?[diu]|f)" + _GLUED_LETTER + r"|%)")
 
 # Interpolation expressions that request an INTEGER runtime placeholder
 # (%lld) rather than an object (%@). String-hint wins: the documented
@@ -365,6 +367,16 @@ def string_unit_leaves(localization) -> list:
     return leaves
 
 
+def string_unit_paths(localization, path=()) -> list:
+    """The variation path of every stringUnit leaf: () for a top-level
+    unit, ("device", "mac") for one inside a device variant."""
+    paths = [path] if "stringUnit" in localization else []
+    for dimension, variation in localization.get("variations", {}).items():
+        for case, unit in variation.items():
+            paths.extend(string_unit_paths(unit, path + (dimension, case)))
+    return paths
+
+
 def argument_types(specs) -> list:
     """Argument types in the order printf consumes them: by index when every
     placeholder is positional, otherwise in order of appearance."""
@@ -494,9 +506,8 @@ def plural_gaps(entry: dict, language: str, source: str) -> list:
     localization = localization_for(localizations, language)
     provided = [(path, set(plural)) for path, plural in plural_variations(localization)]
     if not provided:
-        if not string_unit_leaves(localization):
-            return []
-        provided = [((), {"other"})]
+        # Plain strings, perhaps per device: each stands for "other" only.
+        provided = [(path, {"other"}) for path in string_unit_paths(localization)]
     required = plural_categories(language) or ("other",)
     gaps = []
     for path, forms in provided:
@@ -894,8 +905,8 @@ def main() -> int:
 
     if key_problems:
         failed = True
-        print(f"FAIL: {len(key_problems)} catalog key(s) or file(s) have "
-              f"localization problems (shipped: {describe(plan.shipped)}):")
+        print(f"FAIL: localization problems under {len(key_problems)} catalog "
+              f"key(s), file(s) or setting(s) (shipped: {describe(plan.shipped)}):")
         for key in sorted(key_problems):
             print(f"    {key!r}")
             for problem in key_problems[key]:
