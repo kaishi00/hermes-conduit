@@ -1297,6 +1297,11 @@ final class AppState: ObservableObject {
     /// When the phone scene last left the foreground: the screenshot
     /// action's recent-chat rule measures from it.
     var lastLeftForegroundAt: Date?
+    /// Where the last cold launch, return or reconnect spent its time,
+    /// shown in Gateway Diagnostics (#417). Deliberately not @Published:
+    /// recording a step must not re-render every AppState observer in the
+    /// middle of the very launch it measures. The sheet reads it when shown.
+    private(set) var connectionTimeline: ConnectionTimeline?
     /// When the newest screenshot routed or parked was taken: an older one
     /// superseded by it is dropped.
     var newestScreenQuestionAt: Date?
@@ -7218,6 +7223,7 @@ final class AppState: ObservableObject {
         }
         rememberDashboardURL(dashboard.normalizedURL)
         if KeychainHelper.loadNativeOAuthTokens(dashboardID: activeID) != nil {
+            beginConnectionTimeline("cold launch, browser sign-in (OAuth)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
             showLogin = false
             isConnecting = true
@@ -7229,6 +7235,11 @@ final class AppState: ObservableObject {
                 )
             }
         } else if let credentials = KeychainHelper.loadCredentials(dashboardID: activeID) {
+            beginConnectionTimeline(
+                credentials.requiresFaceID
+                    ? "cold launch, password sign-in with Face ID"
+                    : "cold launch, password sign-in"
+            )
             // A Face ID-protected dashboard reveals its saved copy only after
             // this launch's Face ID succeeds (restoreSavedCredentials).
             if !credentials.requiresFaceID {
@@ -7240,6 +7251,7 @@ final class AppState: ObservableObject {
             }
             Task { await restoreSavedCredentials(credentials, dashboardID: activeID) }
         } else if let saved = KeychainHelper.loadConnection(dashboardID: activeID) {
+            beginConnectionTimeline("cold launch, browser sign-in (saved ticket)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
             // Keep the authenticated app shell in place while WebKit restores
             // its cookie process. A cold WebKit launch is not evidence that the
@@ -7370,6 +7382,8 @@ final class AppState: ObservableObject {
         restorePinnedSessions(for: profile)
         persistActiveProfile(profile)
         turnState = .synchronizing
+        continueConnectionTimeline("sign-in")
+        noteConnectionStep("Connecting")
         prepareDashboardBridge(for: conn.baseUrl)
 
         let previousClient = client
@@ -8225,14 +8239,22 @@ final class AppState: ObservableObject {
             }
         }
 
+        let signInStartedAt = Date()
         do {
             let access = scopedDashboardID.flatMap {
                 KeychainHelper.loadCloudflareAccess(dashboardID: $0, for: credentials.baseURL)
             }
-            let authenticatedConnection = try await NativeAuthClient(baseURL: credentials.baseURL, cloudflareAccess: access).connect(
-                username: credentials.username,
-                password: credentials.password
-            )
+            let authenticatedConnection: NativeAuthConnection
+            do {
+                authenticatedConnection = try await NativeAuthClient(baseURL: credentials.baseURL, cloudflareAccess: access).connect(
+                    username: credentials.username,
+                    password: credentials.password
+                )
+                noteConnectionStep("Password sign-in and ticket", since: signInStartedAt)
+            } catch {
+                noteConnectionStep("Password sign-in and ticket", since: signInStartedAt, error: error)
+                throw error
+            }
             // Re-fence after the network await: never install a stale
             // switch's connection (its adoptDashboard would flip selection).
             if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
@@ -8375,11 +8397,16 @@ final class AppState: ObservableObject {
                 notifierPlugin = NotifierPluginStatus()
             }
             dashboardTicketBridge?.invalidate()
-            dashboardTicketBridge = DashboardTicketBridge(
+            let bridge = DashboardTicketBridge(
                 baseURL: normalized,
                 cloudflareAccess: access,
                 dashboardID: dashboardID
             )
+            bridge.onPageEvent = { [weak self, weak bridge] event in
+                guard let self, let bridge, self.dashboardTicketBridge === bridge else { return }
+                self.noteConnectionStep(event)
+            }
+            dashboardTicketBridge = bridge
         }
     }
 
@@ -8562,6 +8589,7 @@ final class AppState: ObservableObject {
             ? captureConversationIdentity(for: activeSessionId)
             : nil
         turnState = .synchronizing
+        noteConnectionStep("Chat sync started")
 
         do {
             // This intentionally mirrors the proven React Native startup
@@ -9810,10 +9838,21 @@ final class AppState: ObservableObject {
         if let openSession = chatResumeLifecycleOperations.openSession {
             return try await openSession(client, sessionID, compact)
         }
-        if compact {
-            return try await client.openSession(sessionID, profile: profile)
+        let label = compact ? "Chat resume" : "Chat resume with full transcript"
+        let startedAt = Date()
+        do {
+            let result: SessionResumeResult
+            if compact {
+                result = try await client.openSession(sessionID, profile: profile)
+            } else {
+                result = try await client.openSessionLegacy(sessionID, profile: profile)
+            }
+            noteConnectionStep(label, since: startedAt)
+            return result
+        } catch {
+            noteConnectionStep(label, since: startedAt, error: error)
+            throw error
         }
-        return try await client.openSessionLegacy(sessionID, profile: profile)
     }
 
     private func refreshChatResumeContext(
@@ -10026,6 +10065,7 @@ final class AppState: ObservableObject {
             activeAssistantMessageId = nil
             resetReasoningTurn()
             turnState = .idle
+            noteConnectionStep("New chat ready")
             errorMessage = nil
             // A fresh conversation has no per-session override and no
             // server-reported flag yet; re-resolve from the profile mode
@@ -10345,6 +10385,7 @@ final class AppState: ObservableObject {
             for: result.sessionId
         )
 
+        noteConnectionStep("Chat ready")
         // An omitted running state is ambiguous while a decision or live
         // projection is present, but an explicit false is authoritative: the
         // session is idle even when a pending card remains answerable.
@@ -10991,6 +11032,7 @@ final class AppState: ObservableObject {
         invalidateServerCompactionState()
         guard connection != nil else { return }
         turnState = .reconnecting
+        noteConnectionStep("Socket closed")
 
         if let connectedAt, Date().timeIntervalSince(connectedAt) > 10 {
             reconnectAttempts = 0
@@ -11030,6 +11072,7 @@ final class AppState: ObservableObject {
             break
         }
         let delay = immediately ? 0.1 : min(5.0, pow(2.0, Double(reconnectAttempts)))
+        noteConnectionStep("Reconnect scheduled in \(ConnectionTimeline.seconds(delay))")
         // The backoff step is consumed only when the cycle actually runs.
         // A timer canceled by scene backgrounding — or a cycle dropped for
         // scene inactivity before execution — never counts as a gateway
@@ -11145,6 +11188,8 @@ final class AppState: ObservableObject {
         turnStateIsStale = true
         isConnecting = true
         turnState = .reconnecting
+        continueConnectionTimeline("reconnect")
+        noteConnectionStep("Reconnecting")
 
         let connection: HermesConnection
         do {
@@ -11302,20 +11347,57 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Connection timeline (#417)
+
+    /// Starts a fresh timeline. Used where a launch, a return to the app or
+    /// a reconnect begins; every step after it lands in this one.
+    func beginConnectionTimeline(_ trigger: String) {
+        connectionTimeline = ConnectionTimeline(trigger: trigger)
+    }
+
+    /// Starts a timeline only when none is still recording, so a reconnect
+    /// inside a launch extends the launch's timeline.
+    private func continueConnectionTimeline(_ trigger: String) {
+        if connectionTimeline?.isRecording() != true {
+            beginConnectionTimeline(trigger)
+        }
+    }
+
+    /// Records one step. Purely observational: nothing reads the timeline
+    /// back except Gateway Diagnostics.
+    func noteConnectionStep(_ label: String, since startedAt: Date? = nil, error: Error? = nil) {
+        connectionTimeline?.record(label, since: startedAt, error: error)
+    }
+
     private func mintChatResumeTicket(for connection: HermesConnection) async throws -> String {
         if let mintTicket = chatResumeLifecycleOperations.mintTicket {
             return try await mintTicket(connection.baseUrl)
         }
         prepareDashboardBridge(for: connection.baseUrl)
         guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await dashboardTicketBridge.mintTicket()
+        let startedAt = Date()
+        do {
+            let ticket = try await dashboardTicketBridge.mintTicket()
+            noteConnectionStep("Ticket", since: startedAt)
+            return ticket
+        } catch {
+            noteConnectionStep("Ticket", since: startedAt, error: error)
+            throw error
+        }
     }
 
     private func connectChatResumeClient(_ client: HermesClient) async throws {
         if let connectClient = chatResumeLifecycleOperations.connectClient {
             try await connectClient(client)
         } else {
-            try await client.connect()
+            let startedAt = Date()
+            do {
+                try await client.connect()
+                noteConnectionStep("Socket open", since: startedAt)
+            } catch {
+                noteConnectionStep("Socket open", since: startedAt, error: error)
+                throw error
+            }
         }
     }
 
@@ -11323,7 +11405,9 @@ final class AppState: ObservableObject {
         if let loadProfiles = chatResumeLifecycleOperations.loadProfiles {
             await loadProfiles()
         } else {
+            let startedAt = Date()
             await loadProfiles()
+            noteConnectionStep("Profile list", since: startedAt)
         }
     }
 
@@ -11355,7 +11439,9 @@ final class AppState: ObservableObject {
         // missing from a roster that still reports `.available` — and absence
         // is what the authority gates read.
         guard botRosterVerifiedForCurrentConnection else {
+            let startedAt = Date()
             await refreshBotRoster()
+            noteConnectionStep("Bot roster", since: startedAt)
             return
         }
         // Already verified for this connection: nothing left to do (the
@@ -11367,7 +11453,9 @@ final class AppState: ObservableObject {
         if let loadBusyInputMode = chatResumeLifecycleOperations.loadBusyInputMode {
             await loadBusyInputMode(client)
         } else {
+            let startedAt = Date()
             await loadBusyInputMode(using: client)
+            noteConnectionStep("Busy-input setting", since: startedAt)
         }
     }
 
@@ -11375,7 +11463,9 @@ final class AppState: ObservableObject {
         if let loadProfileDisplayPreferences = chatResumeLifecycleOperations.loadProfileDisplayPreferences {
             await loadProfileDisplayPreferences()
         } else {
+            let startedAt = Date()
             await loadProfileDisplayPreferences()
+            noteConnectionStep("Display settings", since: startedAt)
         }
     }
 
@@ -11435,6 +11525,12 @@ final class AppState: ObservableObject {
             // still wins via the suppression guards on both sides.
             if didReturnFromBackground {
                 requestPreferredReturnSurface()
+                let away = lastLeftForegroundAt.map {
+                    " after \(ConnectionTimeline.seconds(Date().timeIntervalSince($0))) away"
+                } ?? ""
+                beginConnectionTimeline("back in the app\(away)")
+            } else {
+                noteConnectionStep("App active")
             }
             cancelScenePhaseAttempt()
             // Publish the foreground reconciliation boundary synchronously.
@@ -12911,7 +13007,14 @@ final class AppState: ObservableObject {
         if let verifyTransportHealth = chatResumeLifecycleOperations.verifyTransportHealth {
             try await verifyTransportHealth(client)
         } else {
-            try await client.healthCheck()
+            let startedAt = Date()
+            do {
+                try await client.healthCheck()
+                noteConnectionStep("Connection check", since: startedAt)
+            } catch {
+                noteConnectionStep("Connection check", since: startedAt, error: error)
+                throw error
+            }
         }
     }
 
@@ -18418,11 +18521,35 @@ final class AppState: ObservableObject {
                         forKey: cacheKey,
                         forceRefresh: forceRefresh
                     )
-                    let scopedResult = try await dashboardSessions(
-                        profile: profile,
-                        loadFullHistory: shouldLoadHistory,
-                        using: dashboardTicketBridge
-                    )
+                    // Cron sessions come from a separate request (the main
+                    // query excludes them). Decide now and send it alongside
+                    // the live list rather than after it (#417): the two are
+                    // independent, and every round trip counts on a slow link.
+                    // The commit below still rejects the pair if the cache
+                    // changed while either was in flight.
+                    let reusesCachedCron = !sessionCatalogCache.shouldLoadFullHistory(
+                        forKey: cronKey,
+                        forceRefresh: forceRefresh
+                    ) && sessionCatalogCache.cachedSessions(forKey: cronKey) != nil
+                    async let cronFetch: [SessionSummary]? = reusesCachedCron
+                        ? nil
+                        : timedCronCatalogFetch(profile: profile, using: dashboardTicketBridge)
+                    let liveStartedAt = Date()
+                    let scopedResult: DashboardSessionCatalog
+                    do {
+                        scopedResult = try await dashboardSessions(
+                            profile: profile,
+                            loadFullHistory: shouldLoadHistory,
+                            using: dashboardTicketBridge
+                        )
+                        noteConnectionStep(
+                            "Chat list, \(scopedResult.sessions.count) rows",
+                            since: liveStartedAt
+                        )
+                    } catch {
+                        noteConnectionStep("Chat list", since: liveStartedAt, error: error)
+                        throw error
+                    }
                     let scoped = scopedResult.sessions.filter {
                         sessionBelongsToProfile($0, profile: profile)
                     }
@@ -18436,11 +18563,7 @@ final class AppState: ObservableObject {
                     }
                     let merged = uniqueSessions(scoped + cached)
 
-                    // Fetch cron sessions separately -- the main query excludes them.
-                    let shouldLoadCron = sessionCatalogCache.shouldLoadFullHistory(
-                        forKey: cronKey,
-                        forceRefresh: forceRefresh
-                    )
+                    let fetchedCronSessions = await cronFetch
                     let cachedCronSessions = sessionCatalogCache.cachedSessions(forKey: cronKey)?.filter {
                         sessionBelongsToProfile($0, profile: profile)
                     }
@@ -18449,22 +18572,17 @@ final class AppState: ObservableObject {
                     }
                     var didFetchCronSessions = false
                     let cronSessions: [SessionSummary]?
-                    if !shouldLoadCron, let cachedCronSessions {
+                    if reusesCachedCron, let cachedCronSessions {
                         cronSessions = cachedCronSessions
-                    } else {
-                        do {
-                            cronSessions = try await dashboardCronSessions(
-                                profile: profile,
-                                using: dashboardTicketBridge
-                            ).filter {
-                                sessionBelongsToProfile($0, profile: profile)
-                            }
-                            didFetchCronSessions = true
-                        } catch {
-                            // Keep a previous cron snapshot if one exists, but
-                            // do not cache an empty result for a failed request.
-                            cronSessions = nil
+                    } else if let fetchedCronSessions {
+                        cronSessions = fetchedCronSessions.filter {
+                            sessionBelongsToProfile($0, profile: profile)
                         }
+                        didFetchCronSessions = true
+                    } else {
+                        // Keep a previous cron snapshot if one exists, but
+                        // do not cache an empty result for a failed request.
+                        cronSessions = nil
                     }
 
                     // A delete/archive/disconnect can run while either request
@@ -18521,8 +18639,37 @@ final class AppState: ObservableObject {
                 // unavailable.
             }
         }
-        return try await client.sessions().filter {
-            sessionBelongsToProfile($0, profile: profile) && $0.messageCount != 0
+        let fallbackStartedAt = Date()
+        do {
+            let fallbackSessions = try await client.sessions().filter {
+                sessionBelongsToProfile($0, profile: profile) && $0.messageCount != 0
+            }
+            noteConnectionStep(
+                "Chat list from the gateway, \(fallbackSessions.count) rows",
+                since: fallbackStartedAt
+            )
+            return fallbackSessions
+        } catch {
+            noteConnectionStep("Chat list from the gateway", since: fallbackStartedAt, error: error)
+            throw error
+        }
+    }
+
+    /// The cron half of the catalog, run concurrently with the live list.
+    /// A failure is nil, never an empty list: the caller keeps the previous
+    /// cron snapshot rather than caching "no cron runs".
+    private func timedCronCatalogFetch(
+        profile: String,
+        using bridge: DashboardTicketBridge
+    ) async -> [SessionSummary]? {
+        let startedAt = Date()
+        do {
+            let sessions = try await dashboardCronSessions(profile: profile, using: bridge)
+            noteConnectionStep("Cron runs, \(sessions.count) rows", since: startedAt)
+            return sessions
+        } catch {
+            noteConnectionStep("Cron runs", since: startedAt, error: error)
+            return nil
         }
     }
 
@@ -18628,12 +18775,18 @@ final class AppState: ObservableObject {
         profile: String,
         using bridge: DashboardTicketBridge?
     ) async -> PersistedTranscriptOutcome {
+        let fetchStartedAt = Date()
         let fetchOutcome = await fetchPersistedHistoryPayload(
             sessionId: sessionId,
             profile: profile,
             query: PersistedTranscriptPagination.tailQuery(offset: 0),
             using: bridge
         )
+        switch fetchOutcome {
+        case .payload: noteConnectionStep("Chat history", since: fetchStartedAt)
+        case .unavailable: noteConnectionStep("Chat history endpoint unavailable", since: fetchStartedAt)
+        case .failed(let error): noteConnectionStep("Chat history", since: fetchStartedAt, error: error)
+        }
 
         switch fetchOutcome {
         case .unavailable:

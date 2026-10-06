@@ -12,6 +12,8 @@ import SwiftUI
 struct GatewayDiagnosticsSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
+    /// The report copied last, so "Copied" clears once a newer step lands.
+    @State private var copiedTimelineReport: String?
 
     var body: some View {
         NavigationStack {
@@ -20,6 +22,7 @@ struct GatewayDiagnosticsSheet: View {
                 ScrollView {
                     VStack(spacing: 14) {
                         summary
+                        lastConnection
                         connectors
                         logs
                     }
@@ -63,6 +66,43 @@ struct GatewayDiagnosticsSheet: View {
                         .frame(height: 44)
                 }
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
+            }
+        }
+    }
+
+    /// Where the last launch, return or reconnect spent its time (#417):
+    /// numbers someone on a slow network can paste into an issue. The report
+    /// itself is an English diagnostic log, like the gateway logs below.
+    private var lastConnection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Last connection"), symbol: "stopwatch", tint: .conduitAccent) {
+            if let report = appState.connectionTimeline?.report {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(verbatim: report)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                HStack(spacing: 8) {
+                    Button {
+                        UIPasteboard.general.string = report
+                        copiedTimelineReport = report
+                    } label: {
+                        Label("Copy", systemImage: copiedTimelineReport == report ? "checkmark" : "doc.on.doc")
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .accessibilityLabel("Copy connection timeline")
+                    if copiedTimelineReport == report {
+                        Text("Copied")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .buttonStyle(.borderless)
+            } else {
+                Text("No connection has been timed since Conduit opened.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }
