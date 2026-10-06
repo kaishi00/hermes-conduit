@@ -631,9 +631,9 @@ final class PushNotificationService: ObservableObject {
 
     // MARK: End-to-end encryption (#431)
 
-    /// Where pairing keys live. The Keychain, shared with the Notification
-    /// Service Extension; tests install an in-memory store because the
-    /// unsigned simulator host has no keychain access group.
+    /// Where pairing keys live: the Keychain, shared with the Notification
+    /// Service Extension. The unsigned simulator host has no keychain access
+    /// group, so tests pass records to the parameterized functions instead.
     static let e2eKeyStore: E2EKeyStoring = KeychainE2EKeyStore()
     /// Messages already routed from a tap, shared with the extension's
     /// delivery records.
