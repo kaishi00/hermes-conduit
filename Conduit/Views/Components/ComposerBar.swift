@@ -505,6 +505,9 @@ struct ComposerBar: View {
                 canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action),
                 onSubmitFromReturn: { submitFromReturnKey() },
                 onUserEdit: {
+                    // Typed here: no later change matching dictation's last
+                    // write is dictation's.
+                    dictatedDraft = nil
                     appState.noteComposerUserEdit()
                     // Typing ends a dictation: its next result would rewrite
                     // the draft from where it began and drop the keystrokes.
