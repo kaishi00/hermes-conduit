@@ -3424,6 +3424,85 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    /// A staged file's reference leads the prompt, and Hermes persists the
+    /// row expanded (reference, typed text, its attached-context footer).
+    /// The check must project what was SENT, reference included: typed
+    /// text that itself holds a footer heading only loses it on the
+    /// persisted side when a reference sits above.
+    func testAmbiguousSendWithAStagedFileIsProvenByTranscript() async {
+        let active = session("stored-a")
+        let typed = "Compare these\n\n--- Attached Context ---\nmy own notes"
+        let reference = "@file:/root/.hermes/attachments/notes.txt"
+        var submitted: [String] = []
+        var transcriptReads = 0
+        var catalogCount = 0
+        var operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in
+                catalogCount += 1
+                return [active]
+            },
+            openSession: { _, sessionID, _ in
+                SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                transcriptReads += 1
+                if transcriptReads == 1 {
+                    return .payload([
+                        "messages": [
+                            ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                            ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+                    ])
+                }
+                let persisted = "\(reference)\n\n\(typed)\n\n--- Attached Context ---\n\n"
+                    + "📎 notes.txt is available on disk at /root/.hermes/attachments/notes.txt"
+                return .payload([
+                    "messages": [
+                        ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                        ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"],
+                        ["id": "102", "role": "user", "content": persisted, "timestamp": "3"],
+                        ["id": "103", "role": "assistant", "content": "Compared", "timestamp": "4"]
+                    ],
+                    "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 4]
+                ])
+            },
+            refreshContext: { _, _ in },
+            sendPrompt: { _, _, text in
+                submitted.append(text)
+                throw HermesError.timeout("prompt.submit")
+            },
+            probeActiveSessions: { _ in [] }
+        )
+        operations.uploadAttachment = { _, _, _ in reference }
+        let harness = makeHarness(lifecycleOperations: operations)
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        let notes = Attachment(
+            id: UUID().uuidString,
+            name: "notes.txt",
+            uri: "file:///tmp/notes.txt",
+            mimeType: "text/plain",
+            kind: .document
+        )
+
+        let sent = await harness.appState.submitComposer(text: typed, attachments: [notes])
+
+        XCTAssertTrue(sent, "The expanded persisted row proves the send landed")
+        XCTAssertEqual(submitted, ["\(reference)\n\n\(typed)"], "An accepted prompt must never be re-submitted")
+        XCTAssertEqual(transcriptReads, 2)
+        XCTAssertEqual(catalogCount, 0, "No failed-send restoration may run")
+        XCTAssertEqual(harness.appState.messages.last?.content, typed)
+        box.client.disconnect()
+    }
+
     /// The genuine not-accepted case keeps its coverage: registry idle AND
     /// the durable transcript holds nothing beyond the submit-time baseline.
     func testAmbiguousPromptAbsentFromDurableTranscriptRestoresOnce() async {

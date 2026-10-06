@@ -16023,7 +16023,7 @@ final class AppState: ObservableObject {
         for attachment in attachments {
             do {
                 let fileReference: String?
-                var stagedAsFile = attachment.kind != .image
+                var stagedAsFile = false
                 if let upload = chatResumeLifecycleOperations.uploadAttachment {
                     fileReference = try await upload(client, sessionId, attachment)
                 } else if attachment.kind == .image {
@@ -16050,6 +16050,7 @@ final class AppState: ObservableObject {
                     let dataUrl = await AttachmentHelper.toDataUrl(attachment)
                     guard isCurrentComposerSubmission(submissionContext) else { return false }
                     guard !dataUrl.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
+                    stagedAsFile = true
                     fileReference = try await attachFile(client, sessionId, dataUrl, attachment.name)
                 }
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
