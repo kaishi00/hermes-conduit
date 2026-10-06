@@ -2209,7 +2209,7 @@ private struct NotificationsSettingsDetail: View {
                         .font(.footnote)
                         .foregroundStyle(.red)
                 }
-                Text("Leave blank to use the default relay. Change this if you run your own push relay server.")
+                Text("Leave blank to use the default relay. A relay you run yourself only works with a Conduit build signed with your own Apple developer account, because Apple only delivers this app's notifications through its developer's key.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 if notifications.isEnabled && relayDraftIsUnsaved {
@@ -2324,6 +2324,18 @@ private struct NotificationsSettingsDetail: View {
                         ? AppLocalization.string("Waiting for the first notification from this profile")
                         : AppLocalization.string("Notifier update available — approval and clarify cards need a newer plugin")
         )
+        // #431: whether this pairing's notifications are sealed so the relay
+        // can't read them. Keys are set up automatically over the dashboard
+        // connection once the host's notifier supports it.
+        if notifications.encryptedGatewayIDs.contains(gateway.id) {
+            Label(AppLocalization.string("End-to-end encrypted"), systemImage: "lock.fill")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else {
+            Label(AppLocalization.string("Not end-to-end encrypted yet, so the relay can read these notifications. Conduit turns encryption on by itself once notifications are on and this host's notifier supports it."), systemImage: "lock.open")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private enum CompatibilityMark {

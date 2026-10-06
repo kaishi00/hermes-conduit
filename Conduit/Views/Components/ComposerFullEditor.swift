@@ -10,15 +10,20 @@
 
 import SwiftUI
 
-struct ComposerFullEditor<Attachments: View, ActionButton: View>: View {
+struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: View>: View {
     @Binding var text: String
     let placeholder: String
     let enabled: Bool
-    let onUserEdit: () -> Void
+    /// Every change made while the editor has focus, with the new text:
+    /// typing, or dictation writing the draft.
+    let onUserEdit: (String) -> Void
     let onCollapse: () -> Void
     /// The staged attachments, so what Send will include stays visible
     /// and removable here.
     @ViewBuilder let attachments: () -> Attachments
+    /// The composer's own dictate button, so a dictation started inline
+    /// can be stopped here, and a new one started.
+    @ViewBuilder let dictateButton: () -> DictateButton
     @ViewBuilder let actionButton: () -> ActionButton
 
     @FocusState private var isFocused: Bool
@@ -62,18 +67,17 @@ struct ComposerFullEditor<Attachments: View, ActionButton: View>: View {
                     .focused($isFocused)
                     .accessibilityLabel(Text(placeholder))
                     .disabled(!enabled)
-                    .onChange(of: text) { _, _ in
-                        // Dictation ends when the sheet opens, so a change
-                        // while it has focus is typing.
-                        if isFocused { onUserEdit() }
+                    .onChange(of: text) { _, newText in
+                        if isFocused { onUserEdit(newText) }
                     }
             }
             .padding(.horizontal, 16)
 
             attachments()
 
-            HStack {
+            HStack(spacing: 8) {
                 Spacer()
+                dictateButton()
                 actionButton()
             }
             .padding(.horizontal, 16)

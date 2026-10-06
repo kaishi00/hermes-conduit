@@ -62,6 +62,9 @@ struct ComposerBar: View {
     @StateObject private var dictation = ComposerDictationService()
     /// The draft as it was when dictation began; dictated text goes after it.
     @State private var dictationPrefix = ""
+    /// The draft as dictation last wrote it, so the full editor, which
+    /// reports every change the same way, can tell it from typing.
+    @State private var dictatedDraft: String?
     /// The full-screen editor for long drafts (#335).
     @State private var isShowingFullEditor = false
 
@@ -502,6 +505,9 @@ struct ComposerBar: View {
                 canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action),
                 onSubmitFromReturn: { submitFromReturnKey() },
                 onUserEdit: {
+                    // Typed here: no later change matching dictation's last
+                    // write is dictation's.
+                    dictatedDraft = nil
                     appState.noteComposerUserEdit()
                     // Typing ends a dictation: its next result would rewrite
                     // the draft from where it began and drop the keystrokes.
@@ -520,11 +526,8 @@ struct ComposerBar: View {
             if showsFullEditorButton {
                 Button {
                     Haptics.selection()
-                    // The sheet's editor can't tell dictated words from typed
-                    // ones, so dictation ends here with the words so far
-                    // (one haptic: this tap's).
-                    dictation.onFinish = nil
-                    dictation.cancel()
+                    // A dictation carries on into the sheet, which has its
+                    // own dictate button.
                     isFocused = false
                     isShowingSlashSuggestions = false
                     isShowingFullEditor = true
@@ -556,7 +559,17 @@ struct ComposerBar: View {
                 text: $text,
                 placeholder: appState.composerPlaceholder,
                 enabled: appState.composerIsEnabled,
-                onUserEdit: { appState.noteComposerUserEdit() },
+                onUserEdit: { edited in
+                    // Dictation writing the draft is not typing.
+                    // Dictation's last write can be reported after it has
+                    // finished, so this doesn't ask whether it is still running.
+                    guard ComposerDictation.isTyping(edited, dictationWrote: dictatedDraft) else { return }
+                    // Spent: the same text typed again by hand is typing.
+                    dictatedDraft = nil
+                    appState.noteComposerUserEdit()
+                    // As inline: typing ends a dictation, keeping its words.
+                    if dictation.isDictating || dictation.isStarting { dictation.cancel() }
+                },
                 onCollapse: { isShowingFullEditor = false },
                 attachments: {
                     if let replyReference {
@@ -568,6 +581,7 @@ struct ComposerBar: View {
                         attachmentStrip
                     }
                 },
+                dictateButton: { dictateButton },
                 actionButton: { composerActionButton }
             )
             .preferredColorScheme(appState.themePreference.colorScheme)
@@ -1201,11 +1215,23 @@ struct ComposerBar: View {
         // callbacks must not be the new ones.
         guard let token = dictation.reserveStart() else { return }
         dictationPrefix = text
+        dictatedDraft = nil
         Haptics.medium()
         dictation.onTranscript = { transcript in
+            // Typed or replaced since dictation last wrote it: the sheet
+            // reports typing only on its next update, which can trail this
+            // result. End the dictation instead of writing over the change.
+            guard ComposerDictation.draftIsAsDictationLeftIt(
+                text, prefix: dictationPrefix, lastWrite: dictatedDraft
+            ) else {
+                dictation.cancel()
+                return
+            }
+            let draft = ComposerDictation.draft(before: dictationPrefix, dictated: transcript)
+            dictatedDraft = draft
             // The cursor follows the words, so the next dictation or typing
             // carries on after them.
-            replaceComposerText(ComposerDictation.draft(before: dictationPrefix, dictated: transcript), cursorAtEnd: true)
+            replaceComposerText(draft, cursorAtEnd: true)
         }
         dictation.onFinish = { _ in
             Haptics.light()

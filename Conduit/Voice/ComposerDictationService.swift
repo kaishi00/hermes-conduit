@@ -276,6 +276,20 @@ enum ComposerDictation {
         return canDictate ? .start : .nothing
     }
 
+    /// Whether a change the full editor reported counts as typing: any
+    /// change but the draft dictation itself last wrote, programmatic
+    /// replacements included (dictation would write over those too).
+    static func isTyping(_ text: String, dictationWrote dictated: String?) -> Bool {
+        text != dictated
+    }
+
+    /// Whether the draft is still what dictation last wrote, or what it
+    /// began from before its first words. Anything else changed since, and
+    /// a new result must not write over it.
+    static func draftIsAsDictationLeftIt(_ text: String, prefix: String, lastWrite: String?) -> Bool {
+        text == (lastWrite ?? prefix)
+    }
+
     static func draft(before prefix: String, dictated: String) -> String {
         let dictated = dictated.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !dictated.isEmpty else { return prefix }
