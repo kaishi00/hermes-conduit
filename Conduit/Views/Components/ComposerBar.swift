@@ -558,7 +558,11 @@ struct ComposerBar: View {
                 enabled: appState.composerIsEnabled,
                 onUserEdit: { edited in
                     // Dictation writing the draft is not typing.
-                    guard ComposerDictation.isTyping(edited, dictationWrote: dictatedDraft) else { return }
+                    // Only while dictating: a finished dictation's last write
+                    // typed again by hand is typing.
+                    guard ComposerDictation.isTyping(
+                        edited, dictationWrote: dictation.isDictating ? dictatedDraft : nil
+                    ) else { return }
                     appState.noteComposerUserEdit()
                     // As inline: typing ends a dictation, keeping its words.
                     if dictation.isDictating || dictation.isStarting { dictation.cancel() }
@@ -1211,6 +1215,15 @@ struct ComposerBar: View {
         dictatedDraft = nil
         Haptics.medium()
         dictation.onTranscript = { transcript in
+            // Typed or replaced since dictation last wrote it: the sheet
+            // reports typing only on its next update, which can trail this
+            // result. End the dictation instead of writing over the change.
+            guard ComposerDictation.draftIsAsDictationLeftIt(
+                text, prefix: dictationPrefix, lastWrite: dictatedDraft
+            ) else {
+                dictation.cancel()
+                return
+            }
             let draft = ComposerDictation.draft(before: dictationPrefix, dictated: transcript)
             dictatedDraft = draft
             // The cursor follows the words, so the next dictation or typing

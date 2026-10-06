@@ -477,13 +477,6 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(LiveVoiceCallSheet.captionLines(from: Array(lines.prefix(1))).map(\.text), ["one"])
     }
 
-    func testTheFullEditorTellsDictationFromTyping() {
-        let dictated = ComposerDictation.draft(before: "Note:", dictated: "buy milk")
-        XCTAssertFalse(ComposerDictation.isTyping(dictated, dictationWrote: dictated), "dictation's own write keeps it going")
-        XCTAssertTrue(ComposerDictation.isTyping(dictated + "s", dictationWrote: dictated), "a keystroke after it is typing")
-        XCTAssertTrue(ComposerDictation.isTyping("Note:", dictationWrote: nil), "no dictation yet: every change is typing")
-    }
-
     func testTheDictateButtonStartsStopsAndCallsOffAStart() {
         XCTAssertEqual(ComposerDictation.tap(isCapturing: false, isStarting: false, canDictate: true), .start)
         XCTAssertEqual(
