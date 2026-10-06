@@ -157,6 +157,9 @@ final class WatchCallHost {
     private var input: WatchLiveVoiceInput?
     private var output: WatchLiveVoiceOutput?
     private weak var controller: GeminiLiveConversationController?
+    /// Mute as the Watch last asked, kept for a conversation that is
+    /// still starting: its start unmutes.
+    private var watchMuted = false
     private var cancellables: Set<AnyCancellable> = []
     private var startedAt = Date()
     private var lastHeardAt = Date()
@@ -223,6 +226,7 @@ final class WatchCallHost {
         lastTurnStartUptime = nil
         lastSentState = nil
         pendingState = nil
+        watchMuted = false
         everActive = false
         modelLatencies = []
         uplinkPackets = 0
@@ -264,6 +268,7 @@ final class WatchCallHost {
         }
         let controller = mode == .geminiLive ? appState.geminiLiveController : appState.grokLiveController
         self.controller = controller
+        if watchMuted { controller.setMicrophoneMuted(true) }
         let jobs = appState.voiceBackgroundJobSupervisor
         controller.$phase
             .combineLatest(controller.$transcript, controller.$isMicrophoneMuted, jobs.$jobs)
@@ -286,6 +291,7 @@ final class WatchCallHost {
             controller?.interruptSpeaking()
         case .mute(let id, let muted) where id == callID:
             heard(id)
+            watchMuted = muted
             controller?.setMicrophoneMuted(muted)
         case .paused(let id, let reason) where id == callID:
             heard(id)
