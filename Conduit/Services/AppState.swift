@@ -99,7 +99,7 @@ struct ChatResumeLifecycleOperations {
     var attachImageBytes: (@MainActor (HermesClient, String, String, String) async throws -> Void)?
     var attachFileData: (@MainActor (HermesClient, String, String, String) async throws -> String?)?
     /// Foreground transport verification. Production calls the client's
-    /// `session.list` health check; tests substitute a controllable outcome.
+    /// `ping` health check; tests substitute a controllable outcome.
     var verifyTransportHealth: (@MainActor (HermesClient) async throws -> Void)?
     /// Foreground liveness probe against the gateway's runtime registry.
     /// Production calls `session.active_list`; unsupported gateways throw and
@@ -18607,10 +18607,6 @@ final class AppState: ObservableObject {
                             loadFullHistory: shouldLoadHistory,
                             using: dashboardTicketBridge
                         )
-                        noteConnectionStep(
-                            "Chat list, \(scopedResult.sessions.count) rows",
-                            since: liveStartedAt
-                        )
                     } catch {
                         noteConnectionStep("Chat list", since: liveStartedAt, error: error)
                         throw error
@@ -18618,6 +18614,7 @@ final class AppState: ObservableObject {
                     let scoped = scopedResult.sessions.filter {
                         sessionBelongsToProfile($0, profile: profile)
                     }
+                    noteConnectionStep("Chat list, \(scoped.count) rows", since: liveStartedAt)
 
                     let cached = sessionCatalogCache.cachedSessionsToMerge(
                         remoteSessions: scoped,
@@ -18640,9 +18637,7 @@ final class AppState: ObservableObject {
                     if reusesCachedCron, let cachedCronSessions {
                         cronSessions = cachedCronSessions
                     } else if let fetchedCronSessions {
-                        cronSessions = fetchedCronSessions.filter {
-                            sessionBelongsToProfile($0, profile: profile)
-                        }
+                        cronSessions = fetchedCronSessions
                         didFetchCronSessions = true
                     } else {
                         // Keep a previous cron snapshot if one exists, but
@@ -18720,20 +18715,34 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// The cron half of the catalog, run concurrently with the live list.
-    /// A failure is nil, never an empty list: the caller keeps the previous
-    /// cron snapshot rather than caching "no cron runs".
+    /// The cron half of the catalog, run concurrently with the live list,
+    /// already scoped to `profile`. A failure is nil, never an empty list: the
+    /// caller keeps the previous cron snapshot rather than caching "no cron
+    /// runs".
+    ///
+    /// Both requests share one dashboard page, so they share its fate: a
+    /// request that stalls the page fails the other one too, and the live list
+    /// then takes the gateway fallback. They start together with the same
+    /// deadline, so a cron stall can only catch a live request that is about
+    /// to time out anyway.
     private func timedCronCatalogFetch(
         profile: String,
         using bridge: DashboardTicketBridge
     ) async -> [SessionSummary]? {
         let startedAt = Date()
         do {
-            let sessions = try await dashboardCronSessions(profile: profile, using: bridge)
+            let sessions = try await dashboardCronSessions(profile: profile, using: bridge).filter {
+                sessionBelongsToProfile($0, profile: profile)
+            }
             noteConnectionStep("Cron runs, \(sessions.count) rows", since: startedAt)
             return sessions
         } catch {
-            noteConnectionStep("Cron runs", since: startedAt, error: error)
+            // Cancelled because the live list failed (leaving the scope
+            // cancels this child) or the whole sync was abandoned. That is
+            // not a cron failure, so the timeline doesn't list it as one.
+            if !(error is CancellationError) && !Task.isCancelled {
+                noteConnectionStep("Cron runs", since: startedAt, error: error)
+            }
             return nil
         }
     }

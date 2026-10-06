@@ -75,36 +75,49 @@ struct GatewayDiagnosticsSheet: View {
     /// itself is an English diagnostic log, like the gateway logs below.
     private var lastConnection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Last connection"), symbol: "stopwatch", tint: .conduitAccent) {
-            if let report = appState.connectionTimeline?.report {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(verbatim: report)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            // The timeline isn't @Published, so recording a step re-renders
+            // nothing. Re-read it every second while this sheet is open, so
+            // steps still landing during a slow start show up, and Copy takes
+            // what is on screen.
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                VStack(alignment: .leading, spacing: 14) {
+                    lastConnectionContent
                 }
-                HStack(spacing: 8) {
-                    Button {
-                        UIPasteboard.general.string = report
-                        copiedTimelineReport = report
-                    } label: {
-                        Label("Copy", systemImage: copiedTimelineReport == report ? "checkmark" : "doc.on.doc")
-                            .font(.footnote.weight(.semibold))
-                    }
-                    .accessibilityLabel("Copy connection timeline")
-                    .accessibilityValue(copiedTimelineReport == report ? AppLocalization.string("Copied") : "")
-                    if copiedTimelineReport == report {
-                        Text("Copied")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .buttonStyle(.borderless)
-            } else {
-                Text("No connection has been timed since Conduit opened.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var lastConnectionContent: some View {
+        if let report = appState.connectionTimeline?.report {
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(verbatim: report)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(spacing: 8) {
+                Button {
+                    UIPasteboard.general.string = report
+                    copiedTimelineReport = report
+                } label: {
+                    Label("Copy", systemImage: copiedTimelineReport == report ? "checkmark" : "doc.on.doc")
+                        .font(.footnote.weight(.semibold))
+                }
+                .accessibilityLabel("Copy connection timeline")
+                .accessibilityValue(copiedTimelineReport == report ? AppLocalization.string("Copied") : "")
+                if copiedTimelineReport == report {
+                    Text("Copied")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .buttonStyle(.borderless)
+        } else {
+            Text("No connection has been timed since Conduit opened.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
