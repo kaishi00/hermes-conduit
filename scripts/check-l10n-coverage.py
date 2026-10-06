@@ -359,25 +359,36 @@ def string_unit_leaves(localization) -> list:
     return leaves
 
 
+def argument_types(specs) -> list:
+    """Argument types in the order printf consumes them: by index when every
+    placeholder is positional, otherwise in order of appearance."""
+    if specs and all(position is not None for position, _ in specs):
+        return [kind for _, kind in sorted(specs)]
+    return [kind for _, kind in specs]
+
+
 def placeholders_compatible(key_specs, value_specs) -> bool:
     """A translation's placeholders must substitute like the key's.
 
-    Types are always compared as multisets. Positions matter only when BOTH
-    sides are fully positional (a translation may introduce positional
-    forms %1$@ to reorder non-positional key arguments, which printf
-    handles). Positional indices in the translation must be valid for the
-    key's argument count.
+    The argument types must match as a multiset. A non-positional
+    translation consumes the arguments in order, so its types must also
+    follow the key's argument order ("%lld and %@" for "%@ and %lld"
+    misformats). A fully positional translation (%2$lld ... %1$@) may
+    reorder, but each index must name an argument of the same type. A
+    partially positional one must at least use valid indices.
     """
     key_types = sorted(kind for _, kind in key_specs)
     value_types = sorted(kind for _, kind in value_specs)
     if key_types != value_types:
         return False
-    key_positional = all(pos is not None for pos, _ in key_specs)
-    value_positional = all(pos is not None for pos, _ in value_specs)
-    if key_positional and value_positional:
-        return sorted(key_specs) == sorted(value_specs)
-    # A partially-positional translation must still use valid indices.
-    for position, _ in value_specs:
+    key_order = argument_types(key_specs)
+    positions = [position for position, _ in value_specs]
+    if all(position is None for position in positions):
+        return [kind for _, kind in value_specs] == key_order
+    if all(position is not None for position in positions):
+        return all(1 <= position <= len(key_order) and key_order[position - 1] == kind
+                   for position, kind in value_specs)
+    for position in positions:
         if position is not None and not 1 <= position <= len(key_specs):
             return False
     return True
@@ -470,22 +481,56 @@ SECONDARY_CATALOGS = ("AppShortcuts.xcstrings", "InfoPlist.xcstrings")
 INFO_PLIST = os.path.join("Conduit", "Info.plist")
 
 
+class _JSONObject(dict):
+    """A decoded JSON object that remembers which of its keys repeated."""
+    repeated = ()
+
+
+def _remember_repeats(pairs):
+    seen = set()
+    repeated = []
+    for key, _value in pairs:
+        if key in seen:
+            repeated.append(key)
+        seen.add(key)
+    decoded = _JSONObject(pairs)
+    decoded.repeated = repeated
+    return decoded
+
+
+def _repeated_keys(value, path=()):
+    """Yield (path, key) for every key a JSON object in `value` repeats."""
+    if isinstance(value, _JSONObject):
+        for key in value.repeated:
+            yield path, key
+        for key, child in value.items():
+            yield from _repeated_keys(child, path + (key,))
+    elif isinstance(value, list):
+        for child in value:
+            yield from _repeated_keys(child, path)
+
+
 def load_catalog(path: str):
-    """Load a String Catalog. Returns (catalog, duplicate_keys): plain JSON
-    loading silently keeps only the last copy of a repeated key, which hides
-    a second, conflicting translation."""
-    duplicates = []
-
-    def keep_last(pairs):
-        seen = set()
-        for key, _value in pairs:
-            if key in seen:
-                duplicates.append(key)
-            seen.add(key)
-        return dict(pairs)
-
+    """Load a String Catalog. Returns (catalog, duplicates), where
+    duplicates maps a catalog key to its problems: plain JSON loading
+    silently keeps only the last copy of a repeated key, which hides a
+    second, conflicting translation."""
     with open(path, encoding="utf-8") as handle:
-        return json.load(handle, object_pairs_hook=keep_last), duplicates
+        catalog = json.load(handle, object_pairs_hook=_remember_repeats)
+    duplicates = {}
+    for where, key in _repeated_keys(catalog):
+        if where == ("strings",):
+            duplicates.setdefault(key, []).append(
+                "appears more than once in the catalog JSON (only one copy "
+                "survives); keep a single entry")
+        elif len(where) >= 2 and where[0] == "strings":
+            inner = "/".join(where[2:] + (key,))
+            duplicates.setdefault(where[1], []).append(
+                f"repeats {inner!r} in its JSON (only one copy survives)")
+        else:
+            duplicates.setdefault("/".join(where + (key,)), []).append(
+                "appears more than once in the catalog JSON")
+    return catalog, duplicates
 
 
 def read_draft_languages(info_plist_path: str) -> list:
@@ -569,7 +614,7 @@ def check(repo_root: str):
     key_problems = {}
     try:
         drafts = read_draft_languages(os.path.join(repo_root, INFO_PLIST))
-    except ValueError as error:
+    except (ValueError, plistlib.InvalidFileException) as error:
         drafts = []
         key_problems[f"{INFO_PLIST}: {DRAFT_LANGUAGES_KEY}"] = [str(error)]
     plan = LanguagePlan(catalogs, drafts)
@@ -597,10 +642,8 @@ def check(repo_root: str):
 
     for name, current in catalogs.items():
         prefix = "" if name == SOURCE_CATALOG else f"{name}: "
-        for key in duplicates[name]:
-            key_problems.setdefault(f"{prefix}{key}", []).append(
-                "appears more than once in the catalog JSON (only one copy "
-                "survives); keep a single entry")
+        for key, problems in duplicates[name].items():
+            key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
         for key, problems in catalog_problems(
                 current, plan.shipped, plan.drafts).items():
             key_problems.setdefault(f"{prefix}{key}", []).extend(problems)

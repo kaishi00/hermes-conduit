@@ -74,7 +74,12 @@ def main() -> int:
     except (OSError, ValueError, plistlib.InvalidFileException) as error:
         print(f"error: {args.info_plist}: {error}")
         return 1
-    for name in strip(args.bundle, drafts):
+    try:
+        removed = strip(args.bundle, drafts)
+    except OSError as error:
+        print(f"error: {args.bundle}: {error}")
+        return 1
+    for name in removed:
         print(f"note: removed draft localization {name}")
     return 0
 

@@ -33,7 +33,8 @@ change is needed.
 4. Run `python3 scripts/check-l10n-coverage.py --repo-root .`. It lists
    what is missing or malformed and says when a draft is complete.
 5. Remove the identifier from `ConduitDraftLanguages`. The language now
-   ships.
+   ships. If a local build doesn't show it in the picker, clean the build
+   folder once: the strip phase deleted its lproj from the earlier build.
 
 To preview a draft in the simulator, remove it from `ConduitDraftLanguages`
 in your working copy only.

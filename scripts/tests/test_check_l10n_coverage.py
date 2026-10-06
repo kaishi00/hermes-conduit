@@ -235,6 +235,22 @@ class PlaceholderTests(unittest.TestCase):
         self.assertFalse(compatible(key, [(1, "object"), (3, "int")]))
         self.assertFalse(compatible(key, [(0, "object"), (1, "int")]))
 
+    def test_non_positional_translation_must_keep_the_argument_order(self):
+        # printf consumes non-positional arguments in order: "%lld and %@"
+        # for "%@ and %lld" reads the string as an integer.
+        key = [(None, "object"), (None, "int")]
+        self.assertTrue(compatible(key, [(None, "object"), (None, "int")]))
+        self.assertFalse(compatible(key, [(None, "int"), (None, "object")]))
+        self.assertTrue(compatible([(1, "object"), (2, "int")],
+                                   [(None, "object"), (None, "int")]))
+        self.assertFalse(compatible([(2, "object"), (1, "int")],
+                                    [(None, "object"), (None, "int")]))
+
+    def test_positional_translation_must_name_matching_types(self):
+        key = [(None, "object"), (None, "int")]
+        self.assertTrue(compatible(key, [(2, "int"), (1, "object")]))
+        self.assertFalse(compatible(key, [(2, "object"), (1, "int")]))
+
     def test_positional_on_both_sides_must_match(self):
         self.assertTrue(compatible([(1, "object"), (2, "object")],
                                    [(1, "object"), (2, "object")]))
@@ -487,8 +503,24 @@ class CatalogFileTests(unittest.TestCase):
                           '{"strings": {"A": {"localizations": {}}, '
                           '"A": {"localizations": {}}}}')
         catalog, duplicates = check_l10n_coverage.load_catalog(path)
-        self.assertEqual(duplicates, ["A"])
+        self.assertEqual(list(duplicates), ["A"])
+        self.assertIn("more than once", duplicates["A"][0])
         self.assertEqual(list(catalog["strings"]), ["A"])
+
+    def test_a_repeat_inside_an_entry_is_reported_on_that_entry(self):
+        path = self.write("Localizable.xcstrings",
+                          '{"strings": {"A": {"localizations": {'
+                          '"fr": {"stringUnit": {"state": "translated", "value": "x"}},'
+                          '"fr": {"stringUnit": {"state": "translated", "value": "y"}}}}}}')
+        _catalog, duplicates = check_l10n_coverage.load_catalog(path)
+        self.assertEqual(duplicates, {"A": [
+            "repeats 'localizations/fr' in its JSON (only one copy survives)"]})
+
+    def test_a_catalog_without_repeats_has_no_duplicates(self):
+        path = self.write("Localizable.xcstrings",
+                          '{"strings": {"A": {"localizations": {}}, '
+                          '"B": {"localizations": {}}}, "version": "1.0"}')
+        self.assertEqual(check_l10n_coverage.load_catalog(path)[1], {})
 
     def test_draft_languages_are_read_from_info_plist(self):
         import plistlib
@@ -521,6 +553,13 @@ class CatalogFileTests(unittest.TestCase):
         self.write("Conduit/Info.plist", plistlib.dumps(
             {"ConduitDraftLanguages": drafts}), mode="wb")
         self.write("Conduit/View.swift", 'Text("Hello")\nText("Bye")\n')
+
+    def test_an_unreadable_info_plist_fails_the_check_cleanly(self):
+        self.write_repo(drafts=[])
+        self.write("Conduit/Info.plist", "not a plist")
+        _checked, _missing, key_problems, _plan = check_l10n_coverage.check(
+            self.directory.name)
+        self.assertIn("Conduit/Info.plist: ConduitDraftLanguages", key_problems)
 
     def test_a_new_partial_language_fails_until_marked_draft(self):
         self.write_repo(drafts=[])

@@ -68,6 +68,16 @@ class StripDraftLocalizationsTests(unittest.TestCase):
         self.assertIn("removed draft localization ja.lproj", result.stdout)
         self.assertNotIn("ja.lproj", self.contents())
 
+    def test_command_line_fails_the_build_on_a_missing_bundle(self):
+        plist = self.write_info_plist({"ConduitDraftLanguages": ["ja"]})
+        missing = os.path.join(self.directory.name, "Missing.app")
+        result = subprocess.run(
+            [sys.executable, SCRIPT, "--info-plist", plist, "--bundle", missing],
+            capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"error: {missing}:", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_command_line_fails_the_build_on_a_bad_plist(self):
         plist = os.path.join(self.directory.name, "missing.plist")
         result = subprocess.run(

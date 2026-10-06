@@ -152,6 +152,9 @@ enum AppLanguage: Hashable, Identifiable {
             return AppLocalization.string("System Default")
         case .localization(let identifier):
             if localizationIdentifier != nil {
+                // A missing entry resolves to the key itself (the fallback
+                // contract above AppLocalization), so getting the key back
+                // means the language hasn't named itself yet.
                 let name = AppLocalization.string("Name of this language", language: self)
                 if name != "Name of this language" { return name }
             }
