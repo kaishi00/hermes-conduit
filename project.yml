@@ -35,7 +35,38 @@ targets:
           - "Resources/AlternateIcons/**"
       - path: Conduit/Resources/AlternateIcons
         buildPhase: resources
-      ConduitTests:
+      # Apple Watch proof of concept (designs/apple-watch-voice.md): the
+      # link format and audio codec both ends share.
+      - path: Shared/WatchVoice
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay
+        PRODUCT_NAME: Conduit
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Conduit/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: Conduit/Conduit.entitlements
+        PROVISIONING_PROFILE_SPECIFIER: "Conduit App Store"
+        # The draft-stripping phase below deletes lprojs it can't declare
+        # up front, which the user-script sandbox would refuse.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    dependencies:
+      - package: WebRTC
+    postBuildScripts:
+      # A draft language (Info.plist ConduitDraftLanguages) is compiled from
+      # the String Catalogs like any other; drop its lproj so it never ships.
+      - name: Strip draft localizations
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/strip-draft-localizations.py" \
+            --info-plist "$SRCROOT/$INFOPLIST_FILE" \
+            --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
+            --development-language "$DEVELOPMENT_LANGUAGE"
+  # Apple Watch proof of concept (designs/apple-watch-voice.md): the
+  # Watch as the microphone and speaker of a call the iPhone runs. A test
+  # build's target, embedded in the iPhone app; signed automatically so
+  # Xcode registers its App ID on the first archive.
+  ConduitTests:
     type: bundle.unit-test
     platform: iOS
     sources:
