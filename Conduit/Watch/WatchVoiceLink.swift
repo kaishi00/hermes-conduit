@@ -152,6 +152,10 @@ final class WatchCallHost {
     private var startedAt = Date()
     private var lastHeardAt = Date()
     private var watchdog: Timer?
+    /// The newest call's start. A call that replaces one still starting
+    /// waits for it, so the older start's cleanup can't close the newer
+    /// call's conversation.
+    private var establishing: Task<Void, Never>?
     private var activity = WatchVoiceActivity()
     private var lastTurnStartUptime: TimeInterval?
     private var lastSentState: WatchVoiceWire.CallState?
@@ -234,7 +238,11 @@ final class WatchCallHost {
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
-        Task { await establish(appState, mode: mode, callID: callID) }
+        let previous = establishing
+        establishing = Task { [weak self] in
+            await previous?.value
+            await self?.establish(appState, mode: mode, callID: callID)
+        }
         return .callAccepted(callID: callID, mode: Self.name(mode))
     }
 

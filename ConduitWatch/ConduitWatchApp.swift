@@ -120,6 +120,13 @@ struct WatchCallView: View {
         .navigationTitle("Hermes")
     }
 
+    /// What a tap on the orb does now.
+    private var orbLabel: String {
+        if case .live = call.phase { return "Interrupt" }
+        // Otherwise the tap does nothing while a call is on: say its state.
+        return call.isActive ? phaseText : "Start a call"
+    }
+
     @ViewBuilder
     private var orb: some View {
         let button = Button {
@@ -134,7 +141,7 @@ struct WatchCallView: View {
                 .foregroundStyle(orbColor)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(call.isActive ? "Interrupt" : "Start a call")
+        .accessibilityLabel(orbLabel)
         if #available(watchOS 11, *) {
             button.handGestureShortcut(.primaryAction)
         } else {

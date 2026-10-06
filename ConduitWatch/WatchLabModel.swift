@@ -92,6 +92,7 @@ final class WatchLabModel: ObservableObject {
         do {
             try audio.start(options: .init(voiceProcessing: voiceProcessing), playbackRate: Self.playRate)
         } catch {
+            audio.onCapture = nil
             status = "Audio didn't start: \(error.localizedDescription)"
             WatchProbeLog.shared.note("labEchoFailed", ["error": error.localizedDescription])
             return

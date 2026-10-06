@@ -111,12 +111,14 @@ final class WatchCallModel: ObservableObject {
         resetCall()
         phase = .starting
         guard await WatchAudio.requestPermission() else {
+            WKInterfaceDevice.current().isBatteryMonitoringEnabled = false
             phase = .ended(WatchAudioError.permissionDenied.localizedDescription)
             return
         }
         do {
             try audio.start(options: .init(voiceProcessing: fullDuplex), playbackRate: Self.downlinkRate)
         } catch {
+            WKInterfaceDevice.current().isBatteryMonitoringEnabled = false
             phase = .ended("The microphone didn't start: \(error.localizedDescription)")
             WatchProbeLog.shared.note("callAudioFailed", ["error": error.localizedDescription])
             return
@@ -152,6 +154,9 @@ final class WatchCallModel: ObservableObject {
     func toggleMute() {
         guard isActive else { return }
         isMuted.toggle()
+        // The model never heard speech from before or during a mute: a
+        // turn after it is timed from new speech only.
+        activity.reset()
         link.send(.mute(callID: callID, muted: isMuted))
     }
 
