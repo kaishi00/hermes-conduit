@@ -68,17 +68,20 @@ struct MessageReactionChips: View {
         )
 
         if let onTap {
-            // The capsule stays small; the touch area grows to 44 pt tall
-            // without adding space under the bubble.
+            // The capsule stays small inside a 44 pt touch area of its own,
+            // so it never takes taps from the reply text or the action row.
             Button(action: onTap) {
                 label
-                    .padding(.vertical, 8)
+                    .frame(minHeight: 44)
                     .contentShape(Rectangle())
-                    .padding(.vertical, -8)
             }
                 .buttonStyle(.plain)
                 .accessibilityLabel(accessibilityLabel(for: group))
-                .accessibilityHint(AppLocalization.string("Change your reaction"))
+                .accessibilityHint(
+                    group.includesUser
+                        ? AppLocalization.string("Change your reaction")
+                        : AppLocalization.string("React to this response")
+                )
         } else {
             label
                 .accessibilityElement(children: .ignore)

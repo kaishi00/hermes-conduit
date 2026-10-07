@@ -252,6 +252,28 @@ extension MessageNormalizerTests {
         XCTAssertEqual(appState.messages[0].reactions, [agent, mine])
     }
 
+    func testAgentReactionOnTheLiveReplyDuringASaveKeepsTheUsersPick() async {
+        let appState = makeReactionAppState()
+        appState.messages = [
+            ChatMessage(id: "local-a1", role: .assistant, content: "Just now", timestamp: "2")
+        ]
+        let agent = MessageReaction(emoji: "👍", author: "agent", at: 1)
+        let mine = MessageReaction(emoji: "❤️", author: "user", at: 3)
+        appState.messageReactionSender = { [weak appState] _, target, _ in
+            XCTAssertEqual(target, .newest(role: "assistant"))
+            appState?.handleStreamEvent(.messageReaction(
+                sessionId: "sess-react", rowId: 9, reactions: [agent], role: "assistant"
+            ))
+            XCTAssertEqual(appState?.messages[0].reactions.map(\.emoji), ["👍", "❤️"], "The pick survives the event")
+            return MessageReactionResult(rowId: 9, reactions: [agent, mine])
+        }
+
+        await appState.react(to: "local-a1", with: "❤️")
+
+        XCTAssertEqual(appState.messages[0].rowId, 9)
+        XCTAssertEqual(appState.messages[0].reactions, [agent, mine], "The row id learned mid-save confirms the result")
+    }
+
     func testUserReactionReplacementKeepsItsPlace() {
         let agent = MessageReaction(emoji: "👍", author: "agent", at: 1)
         let old = MessageReaction(emoji: "😂", author: "user", at: 0)
