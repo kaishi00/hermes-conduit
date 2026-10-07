@@ -8,6 +8,7 @@
 //  stays gated only by its own permission/availability checks.
 //
 
+import Combine
 import XCTest
 @testable import Conduit
 import Metal
@@ -454,6 +455,21 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertFalse(animates(enabled: false), "the Voice setting turns the motion off")
         XCTAssertFalse(animates(reduceMotion: true))
         XCTAssertFalse(animates(requested: false), "the small accessory orb stays still")
+    }
+
+    func testDevicePowerStateIgnoresNotificationsThatChangeNothing() {
+        let center = NotificationCenter()
+        let power = DevicePowerState(processInfo: .processInfo, notificationCenter: center)
+        XCTAssertEqual(power.thermalState, ProcessInfo.processInfo.thermalState)
+        XCTAssertEqual(power.isLowPowerModeEnabled, ProcessInfo.processInfo.isLowPowerModeEnabled)
+
+        let republished = expectation(description: "an unchanged value redraws the orb")
+        republished.isInverted = true
+        let watch = power.objectWillChange.sink { republished.fulfill() }
+        center.post(name: ProcessInfo.thermalStateDidChangeNotification, object: ProcessInfo.processInfo)
+        center.post(name: .NSProcessInfoPowerStateDidChange, object: ProcessInfo.processInfo)
+        wait(for: [republished], timeout: 0.3)
+        watch.cancel()
     }
 
     func testTheLiquidOrbSpeechSwellIsSilentAtZeroAndStaysInRange() {

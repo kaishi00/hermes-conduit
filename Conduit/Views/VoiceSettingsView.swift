@@ -775,6 +775,7 @@ struct VoiceSettingsView: View {
                 .foregroundStyle(.secondary)
             Toggle("Animate the call orb", isOn: $animateCallOrb)
                 .accessibilityIdentifier("voice.animateCallOrb")
+                .accessibilityHint("The orb on the live call screen moves with the call. Turn this off for a still orb that uses less battery. It also holds still while the phone is hot or Reduce Motion is on. Applies to this device.")
             Text("The orb on the live call screen moves with the call. Turn this off for a still orb that uses less battery. It also holds still while the phone is hot or Reduce Motion is on. Applies to this device.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
