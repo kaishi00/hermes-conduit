@@ -226,6 +226,15 @@ final class MediaPreviewPresenter {
             popover.permittedArrowDirections = []
         }
         presenter.present(controller, animated: true)
+        // As in `show`: a presentation refused while another is in flight
+        // never calls the completion handler, so reclaim the staged copy.
+        // A sheet already closed by then has removed it itself; removing
+        // again is a no-op.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            guard controller.presentingViewController == nil else { return }
+            Self.removeDirectory(ownedDirectory)
+        }
         return true
     }
 

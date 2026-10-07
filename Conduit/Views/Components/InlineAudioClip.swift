@@ -33,8 +33,14 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
     struct Clip: Equatable {
         let id: String
         var phase: Phase
-        var currentTime: TimeInterval
         var duration: TimeInterval
+    }
+
+    /// The playing clip's position, published apart from `clip` so the
+    /// 250 ms ticks only redraw the one scrubber that shows it, not every
+    /// audio row observing the player.
+    final class Progress: ObservableObject {
+        @Published var currentTime: TimeInterval = 0
     }
 
     /// Why a clip has no playback, kept so its row can say so.
@@ -48,6 +54,7 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
     /// The clip that is loading, playing or paused, if any.
     @Published private(set) var clip: Clip?
     @Published private(set) var problems: [String: Problem] = [:]
+    let progress = Progress()
 
     private var player: AVAudioPlayer?
     private var lease: VoiceAudioLease?
@@ -83,7 +90,8 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
         }
         stop()
         problems[id] = nil
-        clip = Clip(id: id, phase: .loading, currentTime: 0, duration: 0)
+        clip = Clip(id: id, phase: .loading, duration: 0)
+        progress.currentTime = 0
         let hint = Self.fileTypeHint(for: filename)
         loadTask = Task { [weak self] in
             let data = await load()
@@ -102,7 +110,7 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
             player.delegate = self
             player.prepareToPlay()
             self.player = player
-            self.clip = Clip(id: id, phase: .paused, currentTime: 0, duration: player.duration)
+            self.clip = Clip(id: id, phase: .paused, duration: player.duration)
             self.resume()
         }
     }
@@ -110,7 +118,14 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
     func seek(id: String, to time: TimeInterval) {
         guard let player, clip?.id == id else { return }
         player.currentTime = min(max(0, time), player.duration)
-        clip?.currentTime = player.currentTime
+        progress.currentTime = player.currentTime
+    }
+
+    /// Stops `id` if it is the current clip. Rows call this as they leave
+    /// the screen, so nothing plays without a visible control.
+    func stop(id: String) {
+        guard clip?.id == id else { return }
+        stop()
     }
 
     /// Stops and forgets the current clip, releasing its audio.
@@ -130,7 +145,7 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
         player?.pause()
         progressTask?.cancel()
         progressTask = nil
-        if let player { clip?.currentTime = player.currentTime }
+        if let player { progress.currentTime = player.currentTime }
         clip?.phase = .paused
         releaseLease()
     }
@@ -153,7 +168,7 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let self, !Task.isCancelled, let player = self.player else { return }
-                self.clip?.currentTime = player.currentTime
+                self.progress.currentTime = player.currentTime
             }
         }
     }
@@ -170,9 +185,17 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
         progressTask?.cancel()
         progressTask = nil
         finishedPlayer.currentTime = 0
-        clip?.currentTime = 0
+        progress.currentTime = 0
         clip?.phase = .paused
         releaseLease()
+    }
+
+    /// A file that stops decoding partway is reported like one that never
+    /// decoded, rather than looking like an ordinary paused clip.
+    private func failedDecoding(_ failedPlayer: AVAudioPlayer) {
+        guard failedPlayer === player, let id = clip?.id else { return }
+        stop()
+        problems[id] = .unsupported
     }
 
     @objc nonisolated private func handleInterruption(_ notification: Notification) {
@@ -208,7 +231,7 @@ extension ChatAudioClipPlayer: AVAudioPlayerDelegate {
     }
 
     nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        Task { @MainActor [weak self] in self?.finished(player) }
+        Task { @MainActor [weak self] in self?.failedDecoding(player) }
     }
 }
 
@@ -232,6 +255,8 @@ struct InlineAudioClipView: View {
     let opening: Bool
     let load: () async -> Data?
     let openFull: () -> Void
+    @ScaledMetric(relativeTo: .body) private var playSize: CGFloat = 40
+    @ScaledMetric(relativeTo: .footnote) private var expandSize: CGFloat = 32
 
     private var clip: ChatAudioClipPlayer.Clip? {
         player.clip?.id == id ? player.clip : nil
@@ -265,7 +290,7 @@ struct InlineAudioClipView: View {
                     }
                 }
                 .foregroundStyle(secondary)
-                .frame(width: 32, height: 32)
+                .frame(width: expandSize, height: expandSize)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -275,6 +300,7 @@ struct InlineAudioClipView: View {
         .padding(10)
         .frame(maxWidth: 360, alignment: .leading)
         .background(background)
+        .onDisappear { player.stop(id: id) }
     }
 
     @ViewBuilder
@@ -307,7 +333,7 @@ struct InlineAudioClipView: View {
                         .foregroundStyle(tint)
                 }
             }
-            .frame(width: 40, height: 40)
+            .frame(width: playSize, height: playSize)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(clip?.phase == .playing ? Text("Pause") : Text("Play"))
@@ -317,22 +343,13 @@ struct InlineAudioClipView: View {
     @ViewBuilder
     private var detail: some View {
         if let clip, clip.duration > 0 {
-            HStack(spacing: 8) {
-                Slider(
-                    value: Binding(
-                        get: { clip.currentTime },
-                        set: { player.seek(id: id, to: $0) }
-                    ),
-                    in: 0...clip.duration
-                )
-                .tint(tint)
-                .controlSize(.mini)
-                .accessibilityLabel(Text("Playback position"))
-                Text(verbatim: "\(ChatAudioClipPlayer.timeLabel(clip.currentTime)) / \(ChatAudioClipPlayer.timeLabel(clip.duration))")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(secondary)
-                    .fixedSize()
-            }
+            AudioClipScrubber(
+                progress: player.progress,
+                duration: clip.duration,
+                tint: tint,
+                secondary: secondary,
+                seek: { player.seek(id: id, to: $0) }
+            )
         } else {
             Text(verbatim: detailText)
                 .font(.caption)
@@ -346,6 +363,32 @@ struct InlineAudioClipView: View {
         case .unavailable: return AppLocalization.string("Couldn't open this file")
         case .unsupported: return AppLocalization.string("Can't play this format here. Open it full screen instead.")
         case nil: return AppLocalization.string("Audio")
+        }
+    }
+}
+
+/// Scrubber and times for the clip that is loaded. The only view that
+/// observes the position, so playback ticks redraw just this.
+private struct AudioClipScrubber: View {
+    @ObservedObject var progress: ChatAudioClipPlayer.Progress
+    let duration: TimeInterval
+    let tint: Color
+    let secondary: Color
+    let seek: (TimeInterval) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Slider(
+                value: Binding(get: { progress.currentTime }, set: seek),
+                in: 0...duration
+            )
+            .tint(tint)
+            .controlSize(.mini)
+            .accessibilityLabel(Text("Playback position"))
+            Text(verbatim: "\(ChatAudioClipPlayer.timeLabel(progress.currentTime)) / \(ChatAudioClipPlayer.timeLabel(duration))")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(secondary)
+                .fixedSize()
         }
     }
 }

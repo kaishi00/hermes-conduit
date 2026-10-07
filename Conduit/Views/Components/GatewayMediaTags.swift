@@ -66,6 +66,13 @@ enum GatewayMediaTags {
         options: [.caseInsensitive]
     )
 
+    /// `![alt](MEDIA:/path)`: a model dressing the tag up as a Markdown
+    /// image. The whole line is the one file.
+    private static let markdownImageExpression = try! NSRegularExpression(
+        pattern: #"^!\[[^\]]*\]\([^\S\n]*MEDIA:[^\S\n]*(.+?)[^\S\n]*\)$"#,
+        options: [.caseInsensitive]
+    )
+
     /// Splits `line` into text and media, or returns nil when it holds no
     /// tag (and no directive) so the caller renders it unchanged. An empty
     /// array means the line held only directives and should be dropped.
@@ -82,8 +89,12 @@ enum GatewayMediaTags {
         // Hermes masks blockquotes: a quoted tag is an example, not a file.
         if trimmed.hasPrefix(">") { return removedDirective ? [.text(trimmed)] : nil }
 
-        let codeSpans = inlineCodeSpans(in: trimmed)
         let nsLine = trimmed as NSString
+        if let image = markdownImageExpression.firstMatch(in: trimmed, range: NSRange(location: 0, length: nsLine.length)),
+           let path = normalizedPath(nsLine.substring(with: image.range(at: 1))) {
+            return [.media(path)]
+        }
+        let codeSpans = inlineCodeSpans(in: trimmed)
         var result: [Segment] = []
         var cursor = 0
         for match in tagExpression.matches(in: trimmed, range: NSRange(location: 0, length: nsLine.length)) {
@@ -165,12 +176,15 @@ enum GatewayMediaTags {
     }
 
     /// Text between tags, dropped when it is only list markers, emphasis or
-    /// punctuation left behind by the tag ("- ", "**").
+    /// punctuation left behind by the tag ("- ", "**"). Anything else,
+    /// emoji included, is kept.
     private static func appendText(_ raw: String, to result: inout [Segment]) {
         let text = raw.trimmingCharacters(in: .whitespaces)
-        guard text.unicodeScalars.contains(where: { CharacterSet.alphanumerics.contains($0) }) else { return }
+        guard text.contains(where: { !$0.isWhitespace && !leftoverMarkers.contains($0) }) else { return }
         result.append(.text(text))
     }
+
+    private static let leftoverMarkers: Set<Character> = ["-", "+", "*", "_", "~", "`", "'", "\"", "(", ")", "[", "]", "{", "}", ".", ",", ";", ":", "!", "?", ">", "#"]
 
     /// Ranges of single-backtick inline code, so a tag shown as an example
     /// (`` `MEDIA:/path` ``) stays text.

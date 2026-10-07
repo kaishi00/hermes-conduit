@@ -62,6 +62,8 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(GatewayMediaTags.segments(in: "MEDIA:/a.pngMEDIA:/b.png"), [.media("/a.png"), .media("/b.png")])
         // A list marker or emphasis left behind is not text.
         XCTAssertEqual(GatewayMediaTags.segments(in: "- MEDIA:/tmp/x.pdf"), [.media("/tmp/x.pdf")])
+        XCTAssertEqual(GatewayMediaTags.segments(in: "MEDIA:/tmp/a.png 🎉"), [.media("/tmp/a.png"), .text("🎉")])
+        XCTAssertEqual(GatewayMediaTags.segments(in: "![Screenshot](MEDIA:/tmp/My Shot.png)"), [.media("/tmp/My Shot.png")])
         XCTAssertNil(GatewayMediaTags.segments(in: "No tags here"))
         XCTAssertNil(GatewayMediaTags.segments(in: "> MEDIA:/tmp/quoted.png"))
         XCTAssertNil(GatewayMediaTags.segments(in: "Write `MEDIA:/path/file.png` to send a file"))
