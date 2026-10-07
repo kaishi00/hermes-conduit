@@ -23,11 +23,100 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA: /tmp/report.pdf"), "/tmp/report.pdf")
     }
 
-    func testMediaPreview_GatewayMediaPathRejectsUnknownExtensionsAndProse() {
-        XCTAssertNil(MarkdownParser.gatewayMediaPath("MEDIA: /tmp/archive.tar.gz"))
-        XCTAssertNil(MarkdownParser.gatewayMediaPath("MEDIA: /tmp/no-extension"))
+    func testMediaPreview_GatewayMediaPathRejectsProseAndBarePaths() {
         XCTAssertNil(MarkdownParser.gatewayMediaPath("MEDIA: see /tmp/clip.mp4 later"))
         XCTAssertNil(MarkdownParser.gatewayMediaPath("/tmp/clip.mp4"))
+        XCTAssertNil(MarkdownParser.gatewayMediaPath("MEDIA: /"))
+        XCTAssertNil(MarkdownParser.gatewayMediaPath("`MEDIA:/tmp/example.png`"))
+        XCTAssertNil(MarkdownParser.gatewayMediaPath("MEDIA: /tmp/out is where results go"))
+    }
+
+    // MARK: - #439: any MEDIA: path Hermes would deliver
+
+    func testMediaPreview_GatewayMediaPathAcceptsPathsWithSpaces() {
+        let spaced = "/Users/nealbailey/Neal Master/Private/Mimeeq Sale/PandaDoc/Mimeeq_Overview_for_PandaDoc_2026-10.pdf"
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA:\(spaced)"), spaced)
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA: \(spaced)  "), spaced)
+    }
+
+    func testMediaPreview_GatewayMediaPathAcceptsAnyFileAloneOnItsLine() {
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA: /tmp/archive.tar.gz"), "/tmp/archive.tar.gz")
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA: /tmp/no-extension"), "/tmp/no-extension")
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA:/srv/data/map data.weird"), "/srv/data/map data.weird")
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA:~/Downloads/notes.log"), "~/Downloads/notes.log")
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA:C:\\Users\\Me\\My Docs\\a.pdf"), "C:\\Users\\Me\\My Docs\\a.pdf")
+    }
+
+    func testMediaPreview_GatewayMediaPathStripsQuotesEmphasisAndTrailingPunctuation() {
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("**MEDIA:/tmp/report.pdf**"), "/tmp/report.pdf")
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA:\"/tmp/My Report.pdf\""), "/tmp/My Report.pdf")
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA:`/tmp/My Report.pdf`"), "/tmp/My Report.pdf")
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA:/tmp/data.csv."), "/tmp/data.csv")
+    }
+
+    func testMediaPreview_SegmentsSplitSeveralTagsAndSurroundingText() {
+        XCTAssertEqual(
+            GatewayMediaTags.segments(in: "Here you go: MEDIA:/tmp/a b.png and MEDIA:/tmp/c.mp3 done"),
+            [.text("Here you go:"), .media("/tmp/a b.png"), .text("and"), .media("/tmp/c.mp3"), .text("done")]
+        )
+        XCTAssertEqual(GatewayMediaTags.segments(in: "MEDIA:/a.pngMEDIA:/b.png"), [.media("/a.png"), .media("/b.png")])
+        // A list marker or emphasis left behind is not text.
+        XCTAssertEqual(GatewayMediaTags.segments(in: "- MEDIA:/tmp/x.pdf"), [.media("/tmp/x.pdf")])
+        XCTAssertNil(GatewayMediaTags.segments(in: "No tags here"))
+        XCTAssertNil(GatewayMediaTags.segments(in: "> MEDIA:/tmp/quoted.png"))
+        XCTAssertNil(GatewayMediaTags.segments(in: "Write `MEDIA:/path/file.png` to send a file"))
+    }
+
+    func testMediaPreview_HermesDirectivesAreHidden() {
+        XCTAssertEqual(GatewayMediaTags.segments(in: "[[audio_as_voice]]"), [])
+        XCTAssertEqual(GatewayMediaTags.segments(in: "[[as_document]] Here it is"), [.text("Here it is")])
+        let blocks = MarkdownParser.parse("[[audio_as_voice]]\nMEDIA:/Users/me/.hermes/audio_cache/tts_1.mp3", recognizesGatewayMedia: true)
+        XCTAssertEqual(blocks.count, 1)
+        if case .image(let url, let alt) = blocks.first {
+            XCTAssertEqual(url, "MEDIA: /Users/me/.hermes/audio_cache/tts_1.mp3")
+            XCTAssertEqual(alt, "tts_1.mp3")
+        } else {
+            XCTFail("expected a media block, got \(blocks)")
+        }
+    }
+
+    func testMediaPreview_IssueReplyRendersTwoCardsAndNoRawTag() {
+        let source = """
+        MEDIA:/Users/nealbailey/Neal Master/Private/Mimeeq Sale/PandaDoc/Mimeeq_Overview_for_PandaDoc_2026-10.pdf
+        MEDIA:/Users/nealbailey/Downloads/Mimeeq_Overview_for_PandaDoc_2026-10.pdf
+        """
+        let blocks = MarkdownParser.parse(source, recognizesGatewayMedia: true)
+        let urls = blocks.compactMap { block -> String? in
+            if case .image(let url, _) = block { return url }
+            return nil
+        }
+        XCTAssertEqual(urls, [
+            "MEDIA: /Users/nealbailey/Neal Master/Private/Mimeeq Sale/PandaDoc/Mimeeq_Overview_for_PandaDoc_2026-10.pdf",
+            "MEDIA: /Users/nealbailey/Downloads/Mimeeq_Overview_for_PandaDoc_2026-10.pdf"
+        ])
+        XCTAssertEqual(blocks.count, 2)
+    }
+
+    func testMediaPreview_TagMidParagraphBreaksOutOfTheParagraph() {
+        let blocks = MarkdownParser.parse("The report is ready.\nMEDIA:/tmp/r.pdf\nAnything else?", recognizesGatewayMedia: true)
+        XCTAssertEqual(blocks.count, 3)
+        if case .image(let url, _) = blocks[1] { XCTAssertEqual(url, "MEDIA: /tmp/r.pdf") } else { XCTFail("\(blocks)") }
+    }
+
+    func testMediaPreview_RemovingTagsLeavesOnlyReadableText() {
+        XCTAssertEqual(
+            GatewayMediaTags.removingTags(from: "Here it is:\n[[audio_as_voice]]\nMEDIA:/tmp/My Clip.mp3\nEnjoy"),
+            "Here it is:\nEnjoy"
+        )
+        XCTAssertEqual(GatewayMediaTags.removingTags(from: "Plain text"), "Plain text")
+    }
+
+    func testMediaPreview_AudioPlayerHelpers() {
+        XCTAssertEqual(ChatAudioClipPlayer.timeLabel(65), "1:05")
+        XCTAssertEqual(ChatAudioClipPlayer.timeLabel(3725), "1:02:05")
+        XCTAssertEqual(ChatAudioClipPlayer.timeLabel(-3), "0:00")
+        XCTAssertEqual(ChatAudioClipPlayer.fileTypeHint(for: "/tmp/My Clip.mp3"), "public.mp3")
+        XCTAssertNil(ChatAudioClipPlayer.fileTypeHint(for: "/tmp/clip"))
     }
 
     func testMediaPreview_ParsedVideoLineBecomesMediaBlockOnlyWhenGatewayMediaIsRecognized() {
@@ -49,7 +138,12 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(GatewayMediaKind(path: "/a/b.mov"), .video)
         XCTAssertEqual(GatewayMediaKind(path: "/a/b.m4a?x=1"), .audio)
         XCTAssertEqual(GatewayMediaKind(path: "/a/b.docx"), .document)
-        XCTAssertNil(GatewayMediaKind(path: "/a/b.exe"))
+        XCTAssertEqual(GatewayMediaKind(path: "/a/b.TIFF"), .image)
+        XCTAssertEqual(GatewayMediaKind(path: "/a/b.opus"), .audio)
+        // Anything else is still a file card (#439); SVG is never rendered.
+        XCTAssertEqual(GatewayMediaKind(path: "/a/b.exe"), .document)
+        XCTAssertEqual(GatewayMediaKind(path: "/a/b.svg"), .document)
+        XCTAssertEqual(GatewayMediaKind(path: "/a/Makefile"), .document)
     }
 
     // MARK: - File naming
@@ -86,7 +180,8 @@ extension MarkdownLargeDocumentTests {
         XCTAssertFalse(MediaPreviewPresenter.isPreviewable(filename: "report.pdf", mimeType: "text/html; charset=utf-8"))
         XCTAssertTrue(MediaPreviewPresenter.isPreviewable(filename: "report.pdf", mimeType: "application/pdf"))
         XCTAssertTrue(MediaPreviewPresenter.isPreviewable(filename: "clip.mp4", mimeType: nil))
-        XCTAssertNil(MarkdownParser.gatewayMediaPath("MEDIA: /tmp/page.html"))
+        // Still a card, so it can be shared, but never previewed.
+        XCTAssertEqual(MarkdownParser.gatewayMediaPath("MEDIA: /tmp/page.html"), "/tmp/page.html")
     }
 
     func testMediaPreview_ReadsMIMETypeFromDataURLHeader() {
