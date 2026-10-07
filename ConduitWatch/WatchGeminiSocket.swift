@@ -244,6 +244,7 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
                 let reason = message.data.flatMap { String(data: $0, encoding: .utf8) }?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 recordedClose = GeminiLiveServerClose(code: message.metadata.map { Self.number($0.closeCode) } ?? 0, reason: reason)
+                if closedError == nil { onState?("closed by server \(recordedClose?.code ?? 0)") }
                 fail(NetworkGeminiLiveSocketError.closed)
                 throw NetworkGeminiLiveSocketError.closed
             }
@@ -251,6 +252,7 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
             if let data = message.data, !data.isEmpty { return data }
             // Nothing more will come.
             if opcode == nil, message.isComplete {
+                if closedError == nil { onState?("ended by server") }
                 fail(NetworkGeminiLiveSocketError.closed)
                 throw NetworkGeminiLiveSocketError.closed
             }
@@ -258,6 +260,7 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
     }
 
     func close() {
+        if closedError == nil { onState?("closed by app") }
         fail(NetworkGeminiLiveSocketError.closed)
     }
 
@@ -312,7 +315,11 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
             onWaiting?("\(error)")
             guard waitTimer == nil else { return }
             waitTimer = WatchVoiceMain.timer(every: Self.waitLimit, repeats: false) { [weak self] _ in
-                MainActor.assumeIsolated { self?.fail(error) }
+                MainActor.assumeIsolated {
+                    guard let self, self.closedError == nil else { return }
+                    self.onState?("gave up waiting after \(Int(Self.waitLimit)) s")
+                    self.fail(error)
+                }
             }
         case .failed(let error):
             fail(error)
@@ -367,6 +374,10 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
             "expensive": path.isExpensive,
             "constrained": path.isConstrained,
         ]
+        // A connection's own path: which address it left from, so a
+        // route through the iPhone shows.
+        if let local = path.localEndpoint { fields["local"] = "\(local)" }
+        if let remote = path.remoteEndpoint { fields["remote"] = "\(remote)" }
         if path.status != .satisfied { fields["unsatisfiedReason"] = "\(path.unsatisfiedReason)" }
         return fields
     }
@@ -514,6 +525,9 @@ private final class WatchURLSessionSocketDelegate: NSObject, URLSessionWebSocket
             "cellular": last.isCellular,
             "expensive": last.isExpensive,
             "constrained": last.isConstrained,
+            "multipath": last.isMultipath,
+            "local": last.localAddress ?? "",
+            "remote": last.remoteAddress ?? "",
             "reused": last.isReusedConnection,
             "transactions": metrics.transactionMetrics.count,
         ])

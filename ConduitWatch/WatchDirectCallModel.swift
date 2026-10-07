@@ -202,12 +202,14 @@ final class WatchDirectCallModel: ObservableObject {
     private var loggedResumable = false
     private var socketWaitNotes = 0
     private var socketNotes = 0
+    private var restartingAudio = false
     /// The Watch's network path for the whole call, whichever socket runs:
     /// a refused WebSocket was reported with the path unsatisfied, and
     /// FB24377808 revokes it about 35 s after activation.
     private var pathMonitor: NWPathMonitor?
     private var monitorFirstStatus: String?
     private var monitorStatus: String?
+    private var monitorUses: [String] = []
     private var monitorUpdates = 0
     private var firstUnsatisfiedAt: TimeInterval?
     private var tokensFromPhone = 0
@@ -334,6 +336,12 @@ final class WatchDirectCallModel: ObservableObject {
             let activated = await systemCall.start()
             guard callID == id else { return }
             systemCallActivated = activated
+            // CallKit activated the session: the path and socket timings
+            // count from here, as option E's do from its activation.
+            if activated {
+                audioActivatedAt = now
+                lastActivationAt = now
+            }
         case .audioSession:
             // A CallKit call left from an earlier test would grant the
             // network itself.
@@ -356,9 +364,15 @@ final class WatchDirectCallModel: ObservableObject {
             }
             return
         }
+        // No falling back to the synchronous activation: that is what the
+        // test rules out.
+        if keepAlive == .audioSession, !activatedHere {
+            finish("The Watch's audio session didn't start. Try again.")
+            return
+        }
         systemCallReadyAt = now
         do {
-            try audio.start(options: .init(), playbackRate: GeminiLiveProtocol.outputSampleRate)
+            try audio.start(options: audioOptions, playbackRate: GeminiLiveProtocol.outputSampleRate)
         } catch {
             finish("The microphone didn't start: \(error.localizedDescription)")
             return
@@ -386,6 +400,12 @@ final class WatchDirectCallModel: ObservableObject {
 
     func end() {
         end(reason: "ended on the Watch")
+    }
+
+    /// Option E activated the session itself, asynchronously; the engine
+    /// only starts in it. Option D's CallKit call keeps its own setup.
+    private var audioOptions: WatchAudio.Options {
+        WatchAudio.Options(activatesSession: keepAlive != .audioSession)
     }
 
     /// Option E: the session activated the way the reports of a working
@@ -704,6 +724,7 @@ final class WatchDirectCallModel: ObservableObject {
         let status = fields["status"] as? String
         if monitorFirstStatus == nil { monitorFirstStatus = status }
         monitorStatus = status
+        monitorUses = (fields["uses"] as? [String]) ?? []
         monitorUpdates += 1
         if path.status != .satisfied, firstUnsatisfiedAt == nil, audioActivatedAt != nil {
             firstUnsatisfiedAt = now
@@ -1128,9 +1149,38 @@ final class WatchDirectCallModel: ObservableObject {
         }
     }
 
+    /// Option E activates the session again asynchronously first, as at
+    /// the start; never with the synchronous call.
     private func restartAudio() {
+        guard keepAlive == .audioSession else {
+            startAudioAgain()
+            return
+        }
+        guard !restartingAudio else { return }
+        restartingAudio = true
+        let id = callID
+        Task { [weak self] in
+            guard let self else { return }
+            let activated = await self.activateAudioSession()
+            self.restartingAudio = false
+            guard self.callID == id, self.isActive else {
+                if activated, !self.isActive {
+                    try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+                }
+                return
+            }
+            guard activated else {
+                // Still waiting for a tap, which tries again.
+                WatchProbeLog.shared.note("directAudioRestartFailed", ["error": "activation failed"])
+                return
+            }
+            self.startAudioAgain()
+        }
+    }
+
+    private func startAudioAgain() {
         do {
-            try audio.start(options: .init(), playbackRate: GeminiLiveProtocol.outputSampleRate)
+            try audio.start(options: audioOptions, playbackRate: GeminiLiveProtocol.outputSampleRate)
             phase = session?.isReady == true ? restingPhase : .reconnecting
             // The restart activated the session again: the revocation
             // timing and the reactivation cadence count from here.
@@ -1285,6 +1335,7 @@ final class WatchDirectCallModel: ObservableObject {
             "path": pathStatus as Any,
             "pathUses": pathUses,
             "monitorPath": monitorStatus as Any,
+            "monitorUses": monitorUses,
             "capturedMs": (samplesCaptured - mark.captured) * 1000 / Int(WatchAudio.captureRate),
             "maxCaptureGapMs": Int(gap * 1000),
             "chunksSent": chunksSent - mark.chunksSent,
@@ -1362,9 +1413,11 @@ final class WatchDirectCallModel: ObservableObject {
         stopPathMonitor()
         monitorFirstStatus = nil
         monitorStatus = nil
+        monitorUses = []
         monitorUpdates = 0
         firstUnsatisfiedAt = nil
         socketNotes = 0
+        restartingAudio = false
         openingPrompt = nil
         hasSentOpening = false
         caption = nil

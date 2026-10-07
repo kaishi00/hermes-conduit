@@ -19,6 +19,11 @@ final class WatchAudio {
         var voiceProcessing = false
         /// The voice chat session mode instead of the default one.
         var voiceChatMode = false
+        /// Sets the session up and activates it here, synchronously. The
+        /// direct call's option E activates it itself first, asynchronously:
+        /// Apple DTS saw that difference decide whether watchOS allowed the
+        /// network.
+        var activatesSession = true
     }
 
     static let captureRate: Double = 16_000
@@ -73,16 +78,19 @@ final class WatchAudio {
     /// Starts the microphone and the player. Must run from a tap while the
     /// app is in front: watchOS only starts recording then.
     func start(options: Options, playbackRate: Double) throws {
-        stop()
+        // A session the caller activated stays active.
+        stop(deactivating: options.activatesSession)
         self.options = options
         let session = AVAudioSession.sharedInstance()
         startStep = "session"
-        do {
-            try session.setCategory(.playAndRecord, mode: options.voiceChatMode ? .voiceChat : .default, policy: .default, options: [])
-            try session.setActive(true)
-        } catch {
-            logStartFailure(error)
-            throw error
+        if options.activatesSession {
+            do {
+                try session.setCategory(.playAndRecord, mode: options.voiceChatMode ? .voiceChat : .default, policy: .default, options: [])
+                try session.setActive(true)
+            } catch {
+                logStartFailure(error)
+                throw error
+            }
         }
         do {
             try startEngine(session: session, options: options, playbackRate: playbackRate)
@@ -178,7 +186,7 @@ final class WatchAudio {
         ])
     }
 
-    func stop() {
+    func stop(deactivating: Bool = true) {
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = []
         captureGeneration += 1
@@ -192,6 +200,7 @@ final class WatchAudio {
         converter = nil
         guard isRunning else { return }
         isRunning = false
+        guard deactivating else { return }
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
