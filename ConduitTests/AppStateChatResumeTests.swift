@@ -1331,6 +1331,15 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.sessions = [session("runtime-new"), session("stored-a")]
         harness.appState.activeSessionId = "runtime-new"
         XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "stored-a")
+
+        // With no recorded stored id, two own-id matches name neither chat
+        // (a row without a stored id must not win by nil matching nil).
+        harness.appState.sessions = [
+            session("runtime-r", storedID: "stored-s"),
+            session("stored-s")
+        ]
+        harness.appState.activeSessionId = "runtime-r"
+        XCTAssertNil(harness.appState.activeChatSessionSummary)
     }
 
     func testResumeDedupNormalizesPersistedBoundaryBeforeReplayingBufferedDelta() async {

@@ -3344,14 +3344,16 @@ final class AppState: ObservableObject {
     }
 
     /// The open chat's row in the session list, for the chat title's
-    /// touch-and-hold menu. Nil for a room, a Bot Chat (no row of its own),
-    /// a cron run (the menu's actions are for ordinary chats), or a new chat
+    /// touch-and-hold menu. Nil for a room, an offline copy, a Bot Chat (no
+    /// row of its own), a cron run (the menu's actions are for ordinary chats), or a new chat
     /// Hermes hasn't listed yet. A reopened chat runs under a
     /// runtime id its row may not name yet, so the row is found through the
     /// chat's own ids and handed back carrying the open id too: rename,
     /// archive and delete then reach the open chat as well.
     var activeChatSessionSummary: SessionSummary? {
-        guard activeRoomSurface == nil,
+        // While an offline copy is on screen the title is that copy's, which
+        // can be another chat than the active id.
+        guard activeRoomSurface == nil, offlineChatPresentation == nil,
               let sessionId = activeSessionId, !sessionId.isEmpty,
               botConversationProfile(for: sessionId) == nil else { return nil }
         let rows = activeProfileSessions
@@ -3371,9 +3373,12 @@ final class AppState: ObservableObject {
         if ownMatches.count == 1 {
             match = ownMatches.first
         } else if ownMatches.count > 1 {
-            let durable = conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
-            let durableMatches = ownMatches.filter { $0.id == durable || $0.storedSessionId == durable }
-            match = durableMatches.count == 1 ? durableMatches.first : nil
+            if let durable = conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile) {
+                let durableMatches = ownMatches.filter { $0.id == durable || $0.storedSessionId == durable }
+                match = durableMatches.count == 1 ? durableMatches.first : nil
+            } else {
+                match = nil
+            }
         } else {
             match = alternateMatches.count == 1 ? alternateMatches.first : nil
         }

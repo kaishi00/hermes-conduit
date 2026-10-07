@@ -438,8 +438,8 @@ private struct MainViewWindowWidthKey: PreferenceKey {
 /// The open chat's title. A tap scrolls to the top of the conversation;
 /// touch and hold opens the session list's actions for this chat (Rename,
 /// Pin, Move to Project, Archive, Delete), so it can be fixed without
-/// leaving the chat (#446). A chat with no row in the list yet (a new chat,
-/// a Bot Chat) keeps the plain tap-only title.
+/// leaving the chat (#446). A chat without a row of its own (a new chat, a
+/// Bot Chat, a cron run, an offline copy) keeps the plain tap-only title.
 private struct ChatTitleControl: View {
     @EnvironmentObject var appState: AppState
     let onRename: (SessionSummary) -> Void
