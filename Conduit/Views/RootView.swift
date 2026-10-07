@@ -74,6 +74,8 @@ struct MainView: View {
     @State private var availableWindowWidth: CGFloat = 0
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
+    @State private var chatTitlePendingRename: SessionSummary?
+    @State private var chatTitlePendingDeletion: SessionSummary?
 
     private var sidebarPresentation: SidebarPresentation {
         SidebarLayoutPolicy.resolvePresentation(
@@ -317,19 +319,10 @@ struct MainView: View {
                 // conversation behind it.
                 if appState.activeRoomSurface == nil {
                     ToolbarItem(placement: .principal) {
-                        Button {
-                            appState.requestChatScrollToTop()
-                        } label: {
-                            Text(appState.displayedChatTitle)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(appState.displayedChatTitle)
-                        .accessibilityHint("Scroll to top of conversation")
+                        ChatTitleControl(
+                            onRename: { chatTitlePendingRename = $0 },
+                            onDelete: { chatTitlePendingDeletion = $0 }
+                        )
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
@@ -355,6 +348,26 @@ struct MainView: View {
                     ConnectionStatusIndicator()
                 }
             }
+        }
+        // The chat title's menu needs host-owned rename and delete prompts,
+        // like the session list's rows.
+        .sheet(item: $chatTitlePendingRename) { session in
+            RenameSheet.conversation(session) { title in
+                Task { await appState.renameSession(session, to: title) }
+            }
+        }
+        .alert("Delete conversation?", isPresented: Binding(
+            get: { chatTitlePendingDeletion != nil },
+            set: { if !$0 { chatTitlePendingDeletion = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                guard let session = chatTitlePendingDeletion else { return }
+                chatTitlePendingDeletion = nil
+                Task { await appState.deleteSession(session) }
+            }
+            Button("Cancel", role: .cancel) { chatTitlePendingDeletion = nil }
+        } message: {
+            Text("This permanently deletes the conversation and cannot be undone.")
         }
         .sheet(isPresented: $appState.showSidebar, onDismiss: presentSettingsAfterSidebarDismissal) {
             SidebarView(onRequestSettings: presentSettingsFromDrawer)
@@ -417,6 +430,58 @@ private struct MainViewWindowWidthKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+// MARK: - Chat Title
+
+/// The open chat's title. A tap scrolls to the top of the conversation;
+/// touch and hold opens the session list's actions for this chat (Rename,
+/// Pin, Move to Project, Archive, Delete), so it can be fixed without
+/// leaving the chat (#446). A chat with no row in the list yet (a new chat,
+/// a Bot Chat) keeps the plain tap-only title.
+private struct ChatTitleControl: View {
+    @EnvironmentObject var appState: AppState
+    let onRename: (SessionSummary) -> Void
+    let onDelete: (SessionSummary) -> Void
+
+    var body: some View {
+        if let session = appState.activeChatSessionSummary {
+            Menu {
+                SessionActionMenuItems(
+                    session: session,
+                    onRename: { onRename(session) },
+                    onDelete: { onDelete(session) }
+                )
+            } label: {
+                titleLabel
+            } primaryAction: {
+                appState.requestChatScrollToTop()
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .accessibilityLabel(appState.displayedChatTitle)
+            .accessibilityHint(AppLocalization.string("Scroll to top of conversation. Touch and hold for conversation actions."))
+        } else {
+            Button {
+                appState.requestChatScrollToTop()
+            } label: {
+                titleLabel
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(appState.displayedChatTitle)
+            .accessibilityHint("Scroll to top of conversation")
+        }
+    }
+
+    private var titleLabel: some View {
+        Text(appState.displayedChatTitle)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
     }
 }
 

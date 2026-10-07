@@ -3343,6 +3343,28 @@ final class AppState: ObservableObject {
         return Self.ownSessionIDs(for: seeds, in: sessions + cronSessions)
     }
 
+    /// The open chat's row in the session list, for the chat title's
+    /// touch-and-hold menu. Nil for a room, a Bot Chat (no row of its own),
+    /// or a new chat Hermes hasn't listed yet. A reopened chat runs under a
+    /// runtime id its row may not name yet, so the row is found through the
+    /// chat's own ids and handed back carrying the open id too: rename,
+    /// archive and delete then reach the open chat as well.
+    var activeChatSessionSummary: SessionSummary? {
+        guard activeRoomSurface == nil,
+              let sessionId = activeSessionId, !sessionId.isEmpty,
+              botConversationProfile(for: sessionId) == nil else { return nil }
+        let ownIDs = chatOwnSessionIDs(for: sessionId)
+        guard var row = activeProfileSessions.first(where: { candidate in
+            !ownIDs.isDisjoint(with: [candidate.id, candidate.storedSessionId].compactMap {
+                ChatScrollIdentityNormalization.sessionID($0)
+            }) || candidate.alternateIds.contains(sessionId)
+        }) else { return nil }
+        if row.id != sessionId, !row.alternateIds.contains(sessionId) {
+            row.alternateIds.append(sessionId)
+        }
+        return row
+    }
+
     /// The ids a pending screenshot's chat is known by: its own ids, so it
     /// is still found when the chat is reopened under a new runtime id.
     func screenshotChatIDs(for sessionId: String) -> Set<String> {
@@ -13415,6 +13437,19 @@ final class AppState: ObservableObject {
                 durableSessionID = canonical
             }
         }
+        // A reopened chat's runtime id is often in neither place, but the
+        // resume that produced it recorded the stored id it belongs to.
+        // Without it, recovery would resume the runtime id, which Hermes
+        // stops recognizing once that runtime is reaped.
+        if durableSessionID == nil,
+           let durable = conversationIdentityIndex.durableID(
+            forRuntime: selectedID,
+            profile: scopeProfile ?? activeProfile
+           ) ?? conversationIdentityIndex.durableID(forRuntime: selectedID, profile: activeProfile),
+           durable != selectedID {
+            durableSessionID = durable
+            accepted.insert(durable)
+        }
         return ConversationIdentity(
             // Capture metadata for the conversation's owning workspace: a
             // canonical Bot Chat belongs to the bot's profile, not the
@@ -14969,13 +15004,23 @@ final class AppState: ObservableObject {
         defer { isChatRefreshing = false }
         let previousMessages = messages
 
+        // The open id is the runtime Hermes gave this chat when it was
+        // resumed. Hermes drops runtimes (socket reconnects, idle reaping)
+        // and only resumes by the stored id, so refresh addresses the stored
+        // id whenever it is known; resuming the runtime id failed with
+        // "session not found" and left the chat synchronizing (#446).
+        let identity = captureConversationIdentity(
+            for: sessionId,
+            scopeProfile: botConversationProfile(for: sessionId)
+        )
+        let target = identity?.resumeTargetID ?? sessionId
         let token = beginReconciliation()
         let succeeded = await reconcile(
-            sessionId: sessionId,
+            sessionId: target,
             using: client,
             token: token,
-            acceptedSessionIDs: knownSessionIDs(for: sessionId),
-            conversationIdentity: captureConversationIdentity(for: sessionId),
+            acceptedSessionIDs: identity?.acceptedSessionIDs ?? knownSessionIDs(for: sessionId),
+            conversationIdentity: identity,
             requiredViewportTransitionGeneration: transitionGeneration
         )
         if !succeeded || messages == previousMessages {
