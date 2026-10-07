@@ -438,7 +438,7 @@ struct VoiceReplyModelSetting: Equatable {
         guard let row = tasks.first(where: { $0["task"] as? String == Self.task }) else { return nil }
         let provider = (row["provider"] as? String ?? "").trimmingCharacters(in: .whitespaces)
         self.provider = provider.isEmpty ? "auto" : provider
-        model = row["model"] as? String ?? ""
+        model = (row["model"] as? String ?? "").trimmingCharacters(in: .whitespaces)
         let effort = (row["reasoning_effort"] as? String ?? "").trimmingCharacters(in: .whitespaces)
         reasoningEffort = effort.isEmpty ? nil : effort
     }
