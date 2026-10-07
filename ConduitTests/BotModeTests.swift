@@ -1542,6 +1542,60 @@ final class BotModeTests: XCTestCase {
         )
     }
 
+    /// #442: going atlas → scout → atlas used to leave scout's chat as the
+    /// open atlas chat's durable identity (Bot Chats have no catalog row to
+    /// correct it). The next preserve-current sync — the one a follow-up send
+    /// runs — then resumed scout's chat under atlas's header, and the message
+    /// went to the wrong bot.
+    func testPreserveCurrentSyncAfterSwitchingBackKeepsTheReopenedBotChat() async {
+        var resumes: [(id: String, profile: String?)] = []
+        var runtimeCounter = 0
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.makeSessionSummary(id: "ordinary-1", title: "Design review")] },
+            openSessionWithProfile: { _, id, _, profile in
+                resumes.append((id, profile))
+                runtimeCounter += 1
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime-\(runtimeCounter)",
+                    storedSessionId: "\(bot)-chat",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in
+                [BotChatLookupRow(id: "\(profile)-chat", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        let atlas = makeBot(name: "atlas")
+        let openedAtlas = await harness.appState.openBotChat(for: atlas)
+        let openedScout = await harness.appState.openBotChat(for: makeBot(name: "scout"))
+        let reopenedAtlas = await harness.appState.openBotChat(for: atlas)
+        XCTAssertTrue(openedAtlas)
+        XCTAssertTrue(openedScout)
+        XCTAssertTrue(reopenedAtlas)
+        XCTAssertEqual(harness.appState.activeSessionId, "atlas-runtime-3")
+        XCTAssertEqual(harness.appState.activeChatScrollSessionIdentity.canonicalSessionID, "atlas-chat")
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.contains("scout-chat"))
+
+        await harness.appState.syncSession(
+            purpose: .preserveCurrent,
+            using: nil,
+            automaticWorkToken: nil
+        )
+
+        XCTAssertEqual(resumes.last?.id, "atlas-chat", "the sync resumes the chat on screen")
+        XCTAssertEqual(resumes.last?.profile, "atlas")
+        XCTAssertEqual(harness.appState.activeSessionId, "atlas-runtime-4")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "atlas")
+    }
+
     /// The durable selection is state written by earlier builds: a bare session
     /// id with no kind. When positive bot evidence (the roster loaded at
     /// connect) attributes that id to a Bot Chat, restoring it as an ordinary
