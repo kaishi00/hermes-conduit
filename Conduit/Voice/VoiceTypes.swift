@@ -397,7 +397,9 @@ enum LiveVoiceOrbPower {
         guard requested, enabled, !reduceMotion else { return false }
         switch thermalState {
         case .serious, .critical: return false
-        default: return true
+        case .nominal, .fair: return true
+        // A state iOS adds later is most likely hotter still.
+        @unknown default: return false
         }
     }
 

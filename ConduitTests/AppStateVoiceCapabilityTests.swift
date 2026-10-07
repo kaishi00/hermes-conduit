@@ -8,6 +8,7 @@
 //  stays gated only by its own permission/availability checks.
 //
 
+import Combine
 import XCTest
 @testable import Conduit
 import Metal
@@ -454,6 +455,36 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertFalse(animates(enabled: false), "the Voice setting turns the motion off")
         XCTAssertFalse(animates(reduceMotion: true))
         XCTAssertFalse(animates(requested: false), "the small accessory orb stays still")
+    }
+
+    func testDevicePowerStatePublishesOnlyRealChangesFromItsOwnProcessInfo() {
+        final class FakeProcessInfo: ProcessInfo {
+            var fakeThermalState: ProcessInfo.ThermalState = .nominal
+            var fakeLowPowerMode = false
+            override var thermalState: ProcessInfo.ThermalState { fakeThermalState }
+            override var isLowPowerModeEnabled: Bool { fakeLowPowerMode }
+        }
+        let center = NotificationCenter()
+        let info = FakeProcessInfo()
+        let power = DevicePowerState(processInfo: info, notificationCenter: center)
+        var published = 0
+        let watch = power.objectWillChange.sink { published += 1 }
+
+        // Unchanged values, or another ProcessInfo's notices, publish nothing.
+        center.post(name: ProcessInfo.thermalStateDidChangeNotification, object: info)
+        center.post(name: .NSProcessInfoPowerStateDidChange, object: info)
+        info.fakeThermalState = .serious
+        center.post(name: ProcessInfo.thermalStateDidChangeNotification, object: NSObject())
+        XCTAssertEqual(published, 0)
+        XCTAssertEqual(power.thermalState, .nominal)
+
+        center.post(name: ProcessInfo.thermalStateDidChangeNotification, object: info)
+        XCTAssertEqual(power.thermalState, .serious)
+        info.fakeLowPowerMode = true
+        center.post(name: .NSProcessInfoPowerStateDidChange, object: info)
+        XCTAssertTrue(power.isLowPowerModeEnabled)
+        XCTAssertEqual(published, 2)
+        watch.cancel()
     }
 
     func testTheLiquidOrbSpeechSwellIsSilentAtZeroAndStaysInRange() {

@@ -330,17 +330,19 @@ final class DevicePowerState: ObservableObject {
         isLowPowerModeEnabled = processInfo.isLowPowerModeEnabled
         // Both are posted on whichever thread noticed the change.
         observers.append(notificationCenter.addObserver(
-            forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
+            forName: ProcessInfo.thermalStateDidChangeNotification, object: processInfo, queue: .main
         ) { [weak self] _ in
+            guard let self else { return }
             // An unchanged value would still publish and redraw the orb.
             let value = processInfo.thermalState
-            if self?.thermalState != value { self?.thermalState = value }
+            if thermalState != value { thermalState = value }
         })
         observers.append(notificationCenter.addObserver(
-            forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
+            forName: .NSProcessInfoPowerStateDidChange, object: processInfo, queue: .main
         ) { [weak self] _ in
+            guard let self else { return }
             let value = processInfo.isLowPowerModeEnabled
-            if self?.isLowPowerModeEnabled != value { self?.isLowPowerModeEnabled = value }
+            if isLowPowerModeEnabled != value { isLowPowerModeEnabled = value }
         })
     }
 
