@@ -436,7 +436,8 @@ final class PushNotificationService: ObservableObject {
             NotificationSharedSettings.knownGatewayIDs = NotificationE2E.knownGatewayIDs(
                 listed: Set(relayMeta.gateways.map(\.id)),
                 previous: NotificationSharedSettings.knownGatewayIDs,
-                holdsKeys: NotificationSharedSettings.keysProvisioned || !Self.e2eKeyStore.records().isEmpty
+                // Keys that can't be read count as held.
+                holdsKeys: NotificationSharedSettings.keysProvisioned || Self.e2eKeyStore.readRecords()?.isEmpty != true
             )
         }
     }
@@ -643,7 +644,9 @@ final class PushNotificationService: ObservableObject {
     private var isProvisioningEncryption = false
 
     func refreshEncryptionState() {
-        encryptedGatewayIDs = Set(Self.e2eKeyStore.records().map(\.gatewayID))
+        // Unreadable (a launch before first unlock): keep what was shown.
+        guard let records = Self.e2eKeyStore.readRecords() else { return }
+        encryptedGatewayIDs = Set(records.map(\.gatewayID))
     }
 
     /// Gives every pairing of this dashboard's profiles that belongs to this
@@ -664,12 +667,20 @@ final class PushNotificationService: ObservableObject {
         guard !isProvisioningEncryption, let installationID = registration?.installationID else { return }
         isProvisioningEncryption = true
         defer { isProvisioningEncryption = false }
-        var records = Self.e2eKeyStore.records()
-        let hadKeys = !records.isEmpty || NotificationSharedSettings.keysProvisioned
+        // Keys that can't be read right now: new ones would replace them on
+        // the plugin and leave them orphaned here. Provisioning runs again on
+        // the next connect.
+        Self.e2eKeyStore.removeUnparseable()
+        guard var records = Self.e2eKeyStore.readRecords() else { return }
+        // A marker with no keys means they are gone for good (a restore to
+        // another iPhone drops this-device-only Keychain items but brings the
+        // App Group marker back). Start over as on the first key; the marker
+        // stays, so plaintext stays untrusted until then.
+        let markerWasSet = NotificationSharedSettings.keysProvisioned
         // Keys without the marker (a lost file, or a reinstall that kept the
         // Keychain): put it back so unreadable keys still fail closed.
-        if !records.isEmpty { NotificationSharedSettings.markKeysProvisioned() }
-        if !hadKeys && relayMeta == nil {
+        if !records.isEmpty { guard NotificationSharedSettings.markKeysProvisioned() else { return } }
+        if records.isEmpty && relayMeta == nil {
             // The keyless pairings plaintext stays trusted for are fixed when
             // the first key is stored: make sure they are known by then.
             await refreshMeta()
@@ -707,18 +718,24 @@ final class PushNotificationService: ObservableObject {
             // The first key freezes the keyless pairings plaintext may still
             // come from, and the marker goes down before the key so no
             // stored key ever exists without it.
-            let firstKey = !hadKeys && records.isEmpty
+            let firstKey = records.isEmpty
             if firstKey {
                 guard let relayMeta else { break }
-                NotificationSharedSettings.knownGatewayIDs = Set(relayMeta.gateways.map(\.id))
+                // Starting over after lost keys, the set still only shrinks.
+                NotificationSharedSettings.knownGatewayIDs = NotificationE2E.knownGatewayIDs(
+                    listed: Set(relayMeta.gateways.map(\.id)),
+                    previous: NotificationSharedSettings.knownGatewayIDs,
+                    holdsKeys: markerWasSet
+                )
             }
             guard NotificationSharedSettings.markKeysProvisioned() else { break }
             guard Self.e2eKeyStore.save(record) else {
-                if firstKey { NotificationSharedSettings.clearKeysProvisioned() }
+                if firstKey && !markerWasSet { NotificationSharedSettings.clearKeysProvisioned() }
                 continue
             }
             // The plugin now holds only this key for the pairing.
-            for stale in records where stale.installationID == installationID && stale.gatewayID == gatewayID {
+            for stale in records
+            where stale.installationID == installationID && stale.gatewayID == gatewayID && stale.kid != record.kid {
                 Self.e2eKeyStore.remove(kid: stale.kid)
             }
             records.removeAll { $0.installationID == installationID && $0.gatewayID == gatewayID }
@@ -748,11 +765,16 @@ final class PushNotificationService: ObservableObject {
 
     /// Forgets the keys of an installation this iPhone no longer uses.
     private func removeEncryptionKeys(installationID: String) {
-        for record in Self.e2eKeyStore.records() where record.installationID == installationID {
-            Self.e2eKeyStore.remove(kid: record.kid)
+        // Unreadable now: the keys stay inert (no envelope matches them) and
+        // go on the next removal.
+        if let stored = Self.e2eKeyStore.readRecords() {
+            for record in stored where record.installationID == installationID {
+                Self.e2eKeyStore.remove(kid: record.kid)
+            }
         }
-        // With no key left, the next first key freezes a fresh set.
-        if Self.e2eKeyStore.records().isEmpty {
+        // With no key left, the next first key freezes a fresh set. Only on
+        // a real read: an unreadable store may still hold other keys.
+        if Self.e2eKeyStore.readRecords()?.isEmpty == true {
             NotificationSharedSettings.knownGatewayIDs = []
             NotificationSharedSettings.clearKeysProvisioned()
         }
@@ -1273,7 +1295,7 @@ final class PushNotificationService: ObservableObject {
         from userInfo: [AnyHashable: Any],
         records: [E2EKeyRecord],
         knownGatewayIDs: Set<String>,
-        keysProvisioned: Bool = false,
+        keysProvisioned: Bool,
         now: Date = Date()
     ) -> ConduitNotificationTarget? {
         target(

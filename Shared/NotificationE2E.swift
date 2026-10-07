@@ -155,13 +155,14 @@ enum NotificationE2E {
     /// trust plaintext from (see `knownGatewayIDs(listed:previous:holdsKeys:)`),
     /// shared through the App Group so the extension applies the same rule.
     /// `keysProvisioned` is the App Group marker that this iPhone has stored a
-    /// key: with it set, an empty `records` means the Keychain couldn't be
-    /// read (before first unlock, say), not that there are no keys.
+    /// key: with it set, an empty `records` means the keys couldn't be read
+    /// (before first unlock, say) or were lost and are being replaced; either
+    /// way any pairing may be an encrypted one.
     static func evaluate(
         _ userInfo: [AnyHashable: Any],
         records: [E2EKeyRecord],
         knownGatewayIDs: Set<String>,
-        keysProvisioned: Bool = false,
+        keysProvisioned: Bool,
         now: Date = Date()
     ) -> Evaluation {
         let stub = routingStub(userInfo)
@@ -293,6 +294,12 @@ struct E2EKeyRecord: Codable, Equatable {
 
 protocol E2EKeyStoring {
     func records() -> [E2EKeyRecord]
+    /// The stored keys, or nil when the store can't be read right now (as
+    /// opposed to holding none).
+    func readRecords() -> [E2EKeyRecord]?
+    /// Deletes stored keys this build can't parse, so they aren't orphaned
+    /// when provisioning replaces them.
+    func removeUnparseable()
     @discardableResult func save(_ record: E2EKeyRecord) -> Bool
     func remove(kid: String)
 }
@@ -313,14 +320,54 @@ struct KeychainE2EKeyStore: E2EKeyStoring {
     }
 
     func records() -> [E2EKeyRecord] {
+        readRecords() ?? []
+    }
+
+    func readRecords() -> [E2EKeyRecord]? {
+        guard let found = items() else { return nil }
+        let decoder = JSONDecoder()
+        return found.compactMap { item in
+            (item[kSecValueData as String] as? Data).flatMap { try? decoder.decode(E2EKeyRecord.self, from: $0) }
+        }
+    }
+
+    func removeUnparseable() {
+        let decoder = JSONDecoder()
+        for item in items() ?? [] {
+            guard let kid = item[kSecAttrAccount as String] as? String else { continue }
+            let data = item[kSecValueData as String] as? Data
+            if data.flatMap({ try? decoder.decode(E2EKeyRecord.self, from: $0) }) == nil {
+                remove(kid: kid)
+            }
+        }
+    }
+
+    /// Every stored item with its attributes; nil when the Keychain can't be
+    /// read yet.
+    private func items() -> [[String: Any]]? {
         var query = baseQuery
         query[kSecReturnData as String] = true
+        query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitAll
-        var items: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &items) == errSecSuccess,
-              let values = items as? [Data] else { return [] }
-        let decoder = JSONDecoder()
-        return values.compactMap { try? decoder.decode(E2EKeyRecord.self, from: $0) }
+        var result: CFTypeRef?
+        switch SecItemCopyMatching(query as CFDictionary, &result) {
+        case errSecSuccess:
+            break
+        case errSecInteractionNotAllowed, errSecNotAvailable:
+            // Locked before first unlock, or the Keychain is unavailable:
+            // the keys are there but can't be read yet.
+            return nil
+        default:
+            // Nothing stored, or an error waiting won't fix: treat as no
+            // keys so provisioning sets them up again.
+            return []
+        }
+        // An array for kSecMatchLimitAll; a lone item is accepted too.
+        switch result {
+        case let array as [[String: Any]]: return array
+        case let single as [String: Any]: return [single]
+        default: return []
+        }
     }
 
     @discardableResult
