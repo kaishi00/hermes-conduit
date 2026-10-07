@@ -35703,6 +35703,70 @@
           }
         }
       }
+    },
+    "Play" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再生"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放"
+          }
+        }
+      }
+    },
+    "Open full screen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フルスクリーンで開く"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全屏打开"
+          }
+        }
+      }
+    },
+    "Playback position" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再生位置"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放位置"
+          }
+        }
+      }
+    },
+    "Can't play this format here. Open it full screen instead." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この形式はここでは再生できません。フルスクリーンで開いてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在此播放此格式，请改为全屏打开。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

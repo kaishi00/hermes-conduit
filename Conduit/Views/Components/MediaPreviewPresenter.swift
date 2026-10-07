@@ -24,31 +24,29 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// What an inline `MEDIA:` path points at, decided from its extension.
+/// What an inline `MEDIA:` path points at, decided from its extension. Any
+/// other file is a `.document`: it still gets a card, and opens in Quick
+/// Look or, for types Quick Look must not render, the share sheet (#439).
 enum GatewayMediaKind: Equatable {
     case image
     case video
     case audio
     case document
 
-    static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "heic"]
-    static let videoExtensions: Set<String> = ["mp4", "mov", "m4v", "webm", "mkv", "avi"]
-    static let audioExtensions: Set<String> = ["mp3", "m4a", "wav", "aac", "ogg", "oga", "opus", "flac", "caf", "aiff"]
-    static let documentExtensions: Set<String> = [
-        "pdf", "txt", "md", "csv", "json", "rtf",
-        "doc", "docx", "xls", "xlsx", "ppt", "pptx", "key", "pages", "numbers"
-    ]
+    /// Formats `UIImage` decodes inline. SVG is a document: it is active
+    /// content that is shared, never rendered.
+    static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif", "tiff", "tif"]
+    static let videoExtensions: Set<String> = ["mp4", "mov", "m4v", "webm", "mkv", "avi", "3gp"]
+    static let audioExtensions: Set<String> = ["mp3", "m2a", "m4a", "wav", "aac", "ogg", "oga", "opus", "flac", "caf", "aiff", "aif"]
 
-    /// Classifies a gateway path (optionally carrying a `?query`), or nil
-    /// when the extension is not one Conduit renders as chat media.
-    init?(path: String) {
+    /// Classifies a gateway path (optionally carrying a `?query`).
+    init(path: String) {
         let withoutQuery = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? path
         let ext = (withoutQuery as NSString).pathExtension.lowercased()
         if Self.imageExtensions.contains(ext) { self = .image }
         else if Self.videoExtensions.contains(ext) { self = .video }
         else if Self.audioExtensions.contains(ext) { self = .audio }
-        else if Self.documentExtensions.contains(ext) { self = .document }
-        else { return nil }
+        else { self = .document }
     }
 
     var systemImage: String {
@@ -119,25 +117,29 @@ final class MediaPreviewPresenter {
     private var sessions: [ObjectIdentifier: Session] = [:]
 
     /// Previews a file already on disk (a local attachment). The file is
-    /// left in place afterwards.
+    /// left in place afterwards. A type Quick Look must not render opens the
+    /// share sheet instead, so it can still be saved or sent on.
     @discardableResult
     func present(fileURL: URL, title: String? = nil) -> Bool {
-        guard Self.isPreviewable(filename: fileURL.lastPathComponent, mimeType: nil),
-              FileManager.default.fileExists(atPath: fileURL.path) else { return false }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
+        guard Self.isPreviewable(filename: fileURL.lastPathComponent, mimeType: nil) else {
+            return share(fileURL: fileURL, ownedDirectory: nil)
+        }
         return show(Session(url: fileURL, title: title ?? fileURL.lastPathComponent, ownedDirectory: nil))
     }
 
     /// Previews in-memory bytes (a download) under `filename`, so Save/Share
     /// keep the original name and type. Active web content (HTML, SVG, XML)
-    /// is refused rather than handed to Quick Look's web renderer. The disk
-    /// write runs off the main actor; a cancelled caller presents nothing.
+    /// is never handed to Quick Look's web renderer: it opens the share
+    /// sheet instead. The disk write runs off the main actor; a cancelled
+    /// caller presents nothing.
     @discardableResult
     func present(data: Data, filename: String, mimeType: String? = nil) async -> Bool {
-        guard Self.isPreviewable(filename: filename, mimeType: mimeType) else { return false }
+        let previewable = Self.isPreviewable(filename: filename, mimeType: mimeType)
         let staged = await Task.detached(priority: .userInitiated) {
             Self.stage(data: data, filename: filename)
         }.value
-        return presentStaged(staged)
+        return presentStaged(staged, previewable: previewable)
     }
 
     /// Previews a gateway `data:` URL, refusing active web content by its
@@ -146,20 +148,21 @@ final class MediaPreviewPresenter {
     /// the transcript on tap.
     @discardableResult
     func present(dataURL: String, filename: String) async -> Bool {
-        guard Self.isPreviewable(filename: filename, mimeType: Self.mimeType(ofDataURL: dataURL)) else { return false }
+        let previewable = Self.isPreviewable(filename: filename, mimeType: Self.mimeType(ofDataURL: dataURL))
         let staged = await Task.detached(priority: .userInitiated) { () -> (directory: URL, file: URL)? in
             guard let data = DataURLLimits.decodeBase64DataURL(dataURL) else { return nil }
             return Self.stage(data: data, filename: filename)
         }.value
-        return presentStaged(staged)
+        return presentStaged(staged, previewable: previewable)
     }
 
-    private func presentStaged(_ staged: (directory: URL, file: URL)?) -> Bool {
+    private func presentStaged(_ staged: (directory: URL, file: URL)?, previewable: Bool) -> Bool {
         guard let staged else { return false }
         guard !Task.isCancelled else {
             Self.removeDirectory(staged.directory)
             return false
         }
+        guard previewable else { return share(fileURL: staged.file, ownedDirectory: staged.directory) }
         return show(Session(url: staged.file, title: staged.file.lastPathComponent, ownedDirectory: staged.directory))
     }
 
@@ -200,6 +203,37 @@ final class MediaPreviewPresenter {
             guard !session.didPresent, controller.presentingViewController == nil else { return }
             self?.sessions[key] = nil
             Self.removeDirectory(session.ownedDirectory)
+        }
+        return true
+    }
+
+    /// The system share sheet for a file Quick Look must not render (HTML,
+    /// SVG, XML), so it can still be saved to Files or sent to another app
+    /// without Conduit displaying it. A staged copy is removed once the
+    /// sheet closes.
+    private func share(fileURL: URL, ownedDirectory: URL?) -> Bool {
+        guard let presenter = Self.topViewController() else {
+            Self.removeDirectory(ownedDirectory)
+            return false
+        }
+        let controller = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        controller.completionWithItemsHandler = { _, _, _, _ in
+            Self.removeDirectory(ownedDirectory)
+        }
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        presenter.present(controller, animated: true)
+        // As in `show`: a presentation refused while another is in flight
+        // never calls the completion handler, so reclaim the staged copy.
+        // A sheet already closed by then has removed it itself; removing
+        // again is a no-op.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            guard controller.presentingViewController == nil else { return }
+            Self.removeDirectory(ownedDirectory)
         }
         return true
     }

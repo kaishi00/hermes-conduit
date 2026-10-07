@@ -1663,8 +1663,9 @@ private struct RemoteMarkdownImage: View {
     /// and is only fetched when opened, so scrolling past a video never
     /// downloads it.
     private var gatewayFileKind: GatewayMediaKind? {
-        guard isGatewayMedia, let kind = GatewayMediaKind(path: gatewayPath), kind != .image else { return nil }
-        return kind
+        guard isGatewayMedia else { return nil }
+        let kind = GatewayMediaKind(path: gatewayPath)
+        return kind == .image ? nil : kind
     }
 
     var body: some View {
@@ -1793,6 +1794,31 @@ private struct GatewayMediaFileCard: View {
     @State private var openTask: Task<Void, Never>?
 
     var body: some View {
+        Group {
+            if kind == .audio {
+                // Audio plays in place (#439); expand still opens Quick Look.
+                InlineAudioClipView(
+                    id: "MEDIA:\(path)",
+                    name: displayName,
+                    filename: path,
+                    style: .card,
+                    opening: loading,
+                    openFailed: failed,
+                    load: loadAudio,
+                    openFull: open
+                )
+            } else {
+                fileCard
+            }
+        }
+        .onDisappear {
+            openTask?.cancel()
+            openTask = nil
+            loading = false
+        }
+    }
+
+    private var fileCard: some View {
         HStack(spacing: 12) {
             Image(systemName: failed ? "exclamationmark.triangle.fill" : kind.systemImage)
                 .font(.title2)
@@ -1825,15 +1851,18 @@ private struct GatewayMediaFileCard: View {
         }
         .accessibilityElement(children: .combine)
         .opensMediaPreview(open)
-        .onDisappear {
-            openTask?.cancel()
-            openTask = nil
-            loading = false
-        }
     }
 
     private var displayName: String {
         name.isEmpty ? MediaPreviewPresenter.sanitizedFilename(path) : name
+    }
+
+    /// The clip's bytes for inline playback, decoded off the main actor.
+    private func loadAudio() async -> Data? {
+        guard let gatewayMediaDataURL, let dataURL = await gatewayMediaDataURL(path) else { return nil }
+        return await Task.detached(priority: .userInitiated) {
+            DataURLLimits.decodeBase64DataURL(dataURL)
+        }.value
     }
 
     private func open() {
@@ -2564,7 +2593,22 @@ enum MarkdownParser {
                 continue
             }
 
-            if recognizesGatewayMedia, let mediaPath = gatewayMediaPath(trimmed) { blocks.append(.image(url: "MEDIA: \(mediaPath)", alt: mediaName(mediaPath))); index += 1; continue }
+            // A line holding `MEDIA:` tags splits into media and the text
+            // around them (#439); a line of only Hermes directives drops.
+            if recognizesGatewayMedia, !isTableHeader(lines, at: index), let segments = GatewayMediaTags.segments(in: trimmed) {
+                for segment in segments {
+                    switch segment {
+                    case .media(let mediaPath, let alt):
+                        blocks.append(.image(url: "MEDIA: \(mediaPath)", alt: alt ?? mediaName(mediaPath)))
+                    case .text(let text):
+                        // The text carries no tags any more, so this cannot
+                        // recurse back into this branch.
+                        blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: false))
+                    }
+                }
+                index += 1
+                continue
+            }
             if let image = imageMarkdown(trimmed) { blocks.append(.image(url: image.url, alt: image.alt)); index += 1; continue }
             if let imageURL = directImageURL(trimmed) { blocks.append(.image(url: imageURL, alt: "")); index += 1; continue }
             if isDivider(trimmed) { blocks.append(.divider); index += 1; continue }
@@ -2606,7 +2650,7 @@ enum MarkdownParser {
             while index < lines.count {
                 let candidate = lines[index]
                 let next = candidate.trimmingCharacters(in: .whitespaces)
-                if next.isEmpty || fenceStart(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && gatewayMediaPath(next) != nil) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
+                if next.isEmpty || fenceStart(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && GatewayMediaTags.segments(in: next) != nil) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
                 paragraph.append(candidate); index += 1
             }
             blocks.append(.paragraph(paragraph.joined(separator: "\n")))
@@ -2711,11 +2755,9 @@ enum MarkdownParser {
     private static func directImageURL(_ value: String) -> String? {
         value.range(of: #"^https?://\S+\.(png|jpe?g|gif|webp)(\?\S*)?$"#, options: [.regularExpression, .caseInsensitive]) != nil ? value : nil
     }
+    /// The path when `value` is a line holding exactly one `MEDIA:` tag.
     static func gatewayMediaPath(_ value: String) -> String? {
-        guard value.range(of: #"^MEDIA:\s*\S+\.[A-Za-z0-9]+(\?\S*)?$"#, options: [.regularExpression, .caseInsensitive]) != nil else { return nil }
-        let path = String(value.dropFirst("MEDIA:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !path.isEmpty, GatewayMediaKind(path: path) != nil else { return nil }
-        return path
+        GatewayMediaTags.soleMediaPath(value)
     }
     private static func mediaName(_ path: String) -> String {
         path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? "Image"

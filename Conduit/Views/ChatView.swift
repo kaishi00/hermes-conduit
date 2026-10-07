@@ -1194,7 +1194,35 @@ private struct UserDocumentAttachmentChip: View {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
+    /// Audio the user attached plays in place, like the agent's (#439).
+    private var isAudio: Bool {
+        GatewayMediaKind(path: attachment.name) == .audio || GatewayMediaKind(path: attachment.uri) == .audio
+    }
+
     var body: some View {
+        Group {
+            if isAudio {
+                InlineAudioClipView(
+                    id: "attachment:\(attachment.uri)",
+                    name: attachment.name,
+                    filename: AttachmentPreviewFilename.make(name: attachment.name, uri: attachment.uri),
+                    style: .bubble,
+                    opening: loading,
+                    load: loadAudio,
+                    openFull: open
+                )
+            } else {
+                chip
+            }
+        }
+        .onDisappear {
+            openTask?.cancel()
+            openTask = nil
+            loading = false
+        }
+    }
+
+    private var chip: some View {
         HStack(spacing: 6) {
             Label(attachment.name, systemImage: AttachmentTypePolicy.symbolName(for: attachment))
                 .lineLimit(1)
@@ -1210,11 +1238,21 @@ private struct UserDocumentAttachmentChip: View {
         .padding(.vertical, 7)
         .background(Color.white.opacity(0.13), in: Capsule())
         .opensMediaPreview(open)
-        .onDisappear {
-            openTask?.cancel()
-            openTask = nil
-            loading = false
+    }
+
+    /// The clip's bytes: the local file while it is still on this device,
+    /// otherwise fetched from Hermes. Read and decoded off the main actor.
+    private func loadAudio() async -> Data? {
+        if let localFileURL {
+            return await Task.detached(priority: .userInitiated) {
+                try? Data(contentsOf: localFileURL, options: .mappedIfSafe)
+            }.value
         }
+        guard attachment.uri.hasPrefix("/"), let gatewayResolver,
+              let dataURL = await gatewayResolver.dataURL(for: attachment.uri) else { return nil }
+        return await Task.detached(priority: .userInitiated) {
+            DataURLLimits.decodeBase64DataURL(dataURL)
+        }.value
     }
 
     private func open() {
