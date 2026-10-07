@@ -75,9 +75,9 @@ enum WatchVoiceWire {
     }
 
     /// A single-use Gemini Live token the iPhone got from the Hermes host
-    /// (designs/apple-watch-voice-direct.md). The only credential the
-    /// Watch ever holds: it works for one session and expires within the
-    /// half hour.
+    /// (designs/apple-watch-voice-direct.md). With the call's tool grant,
+    /// the only credential the Watch ever holds: it works for one session
+    /// and expires within the half hour.
     struct DirectToken: Codable, Equatable {
         var token: String
         var expiresAt: Date?
@@ -100,6 +100,29 @@ enum WatchVoiceWire {
         var voice: String?
         /// The call's greeting turn, when the user asked for one.
         var openingPrompt: String?
+        /// Lets the call's lookups reach Hermes through the push relay
+        /// while the iPhone can't be reached. Nil when the host can't
+        /// grant one: lookups then go through the iPhone only.
+        var toolGrant: DirectToolGrant?
+    }
+
+    /// One call's grant to run web_search and recall_memory through the
+    /// push relay, without the iPhone (designs/apple-watch-voice-direct.md,
+    /// "Wrist-down tools through the relay"). It works for this call's
+    /// Hermes profile, those tools, half an hour and a call budget. The
+    /// key seals what the Watch asks and what Hermes answers; the relay
+    /// never gets it, and keeps only a hash of `watchKey`.
+    struct DirectToolGrant: Codable, Equatable {
+        var grantID: String
+        /// The relay's https base URL.
+        var relayURL: String
+        /// The 32-byte root of the grant's two sealing keys, base64url.
+        var key: String
+        /// The Watch's key to the grant on the relay, base64url.
+        var watchKey: String
+        var expiresAt: Date?
+        var tools: [String]
+        var maxCalls: Int
     }
 
     /// The setup's long part. Function declarations travel as their JSON:
@@ -191,6 +214,8 @@ enum WatchVoiceWire {
         /// The call ended; queued, so it arrives even if the iPhone is
         /// asleep right now.
         case directEnd(callID: UInt32, transcript: DirectTranscript)
+        /// A new tool grant, before the call's runs out.
+        case directGrant(callID: UInt32)
         // iPhone → Watch
         case callAccepted(callID: UInt32, mode: String)
         case callRefused(callID: UInt32, reason: String)
@@ -209,6 +234,8 @@ enum WatchVoiceWire {
         case directTokenIssued(callID: UInt32, token: DirectToken)
         /// The answer to `directTool` and `directPoll`.
         case directToolResult(callID: UInt32, result: DirectToolResult)
+        /// The answer to `directGrant`; a refusal comes as `callRefused`.
+        case directGrantIssued(callID: UInt32, grant: DirectToolGrant)
     }
 
     static func encode(_ message: Message) -> [String: Any] {

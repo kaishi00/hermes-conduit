@@ -12,13 +12,17 @@
 //    answering start_job as soon as Hermes takes the job (Grok Live's way),
 //    never holding the answer for the job's lifetime;
 //  - answers the Watch's polls while jobs run;
+//  - asks Hermes for the call's tool grant, so its lookups reach Hermes
+//    through the push relay while the Watch can't reach this phone, and
+//    ends it with the call;
 //  - saves the finished call in voice history.
 //  Each is a short answer to a Watch message, which wakes Conduit in the
 //  background; nothing here runs between them.
 //
 //  Nothing lasting goes to the Watch: no Hermes password, dashboard
-//  session, Gemini API key or Cloudflare Access credential. Only tokens
-//  that work for one session, the setup, and tool results.
+//  session, Gemini API key, relay pairing or Cloudflare Access credential.
+//  Only tokens that work for one session, the call's tool grant, the
+//  setup, and tool results.
 //
 
 import Foundation
@@ -51,6 +55,15 @@ final class WatchDirectBroker {
     /// start_job, or a call queued while the Watch couldn't wait): sent
     /// with the next poll.
     private var lateOutgoing: [GeminiLiveToolBridge.Outgoing] = []
+    /// The tools the running call's grants cover, and the grants it got:
+    /// all revoked when it ends.
+    private var grantTools: [String] = []
+    private var grantIDs: [String] = []
+
+    private lazy var grantClient = WatchToolGrantClient(request: { path, method, body, timeout in
+        guard let bridge = AppStateRuntimeRegistry.shared.appState.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+    })
 
     init(link: WatchVoiceLink) {
         self.link = link
@@ -119,6 +132,13 @@ final class WatchDirectBroker {
         case .directEnd(let id, let transcript):
             reply?([:])
             ended(id, transcript: transcript)
+        case .directGrant(let id):
+            heard(id)
+            let end = Self.beginBackgroundTask("conduit.watchDirect.grant")
+            Task {
+                defer { end() }
+                answer(await self.renewGrant(id))
+            }
         default:
             reply?([:])
         }
@@ -152,13 +172,19 @@ final class WatchDirectBroker {
             guard setup.functions.count == plan.functions.count, let packed = setup.compressed() else {
                 throw WatchDirectPrepareError("The call's setup couldn't be packed for the Watch.")
             }
+            // Only the lookups the call declares; the call goes on without
+            // a grant when the host can't give one.
+            grantTools = plan.functions.map(\.name).filter { WatchToolAnswer.tools.contains($0) }
+            let grant = grantTools.isEmpty ? nil : await requestGrant(id, profile: plan.profile)
+            guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             let session = WatchVoiceWire.DirectSession(
                 token: .init(plan.token),
                 setup: packed.data,
                 setupBytes: packed.bytes,
                 googleSearch: plan.googleSearch,
                 voice: plan.voice,
-                openingPrompt: plan.openingPrompt
+                openingPrompt: plan.openingPrompt,
+                toolGrant: grant
             )
             link.log.note("watchDirectPrepared", [
                 "callID": Int(id),
@@ -169,6 +195,7 @@ final class WatchDirectBroker {
                 "googleSearch": plan.googleSearch,
                 "memory": plan.memoryIncluded,
                 "personality": plan.personalityIncluded,
+                "toolGrant": grant != nil,
                 "appState": WatchProbeLiveness.appStateName,
             ])
             return .directSession(callID: id, session: session)
@@ -254,7 +281,7 @@ final class WatchDirectBroker {
             }
             let result: [String: String] = isJob
                 ? ["status": "accepted", "message": "Hermes is starting the job. Its result will arrive later as a message; don't wait for it."]
-                : ["error": "That took too long. Tell the user in a few words."]
+                : WatchToolAnswer.tookTooLong
             outgoing = [.toolResponse(id: call.id, name: call.name, result: result, scheduling: isJob ? nil : .whenIdle)]
         }
         var fields: [String: Any] = [
@@ -338,6 +365,69 @@ final class WatchDirectBroker {
         }
     }
 
+    // MARK: Tool grant
+
+    /// A grant for the running call's lookups; nil when the host can't
+    /// give one. The log has its outcome and limits, never its keys.
+    private func requestGrant(_ id: UInt32, profile: String) async -> WatchVoiceWire.DirectToolGrant? {
+        let startedAt = Date()
+        do {
+            let grant = try await grantClient.grant(tools: grantTools, profile: profile)
+            guard callID == id else {
+                // The call ended while the host answered.
+                let client = grantClient
+                Task { await client.revoke(grantID: grant.grantID, profile: profile) }
+                return nil
+            }
+            grantIDs.append(grant.grantID)
+            link.log.note("watchToolGrant", [
+                "callID": Int(id),
+                "ok": true,
+                "ms": Self.milliseconds(since: startedAt),
+                "tools": grant.tools,
+                "maxCalls": grant.maxCalls,
+                "expiresInS": grant.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any,
+            ])
+            return grant
+        } catch {
+            link.log.note("watchToolGrant", [
+                "callID": Int(id),
+                "ok": false,
+                "ms": Self.milliseconds(since: startedAt),
+                "error": error.localizedDescription,
+            ])
+            return nil
+        }
+    }
+
+    /// The Watch's ask for a new grant, before its grant runs out.
+    private func renewGrant(_ id: UInt32) async -> WatchVoiceWire.Message {
+        guard id == callID, let profile, !grantTools.isEmpty else {
+            return .callRefused(callID: id, reason: "This call has no Watch lookups to renew.")
+        }
+        guard await appState.connectForWatchDirectCall(timeout: Self.connectWait) else {
+            return .callRefused(callID: id, reason: WatchVoiceStartFailure.hermesUnreachable)
+        }
+        guard let grant = await requestGrant(id, profile: profile) else {
+            return .callRefused(callID: id, reason: "Hermes couldn't renew the Watch lookups.")
+        }
+        return .directGrantIssued(callID: id, grant: grant)
+    }
+
+    /// Ends the call's grants on Hermes, which closes them on the relay.
+    private func revokeGrants() {
+        let ids = grantIDs
+        grantIDs = []
+        grantTools = []
+        guard !ids.isEmpty, let profile else { return }
+        let client = grantClient
+        let end = Self.beginBackgroundTask("conduit.watchDirect.revoke")
+        Task {
+            for id in ids { await client.revoke(grantID: id, profile: profile) }
+            end()
+        }
+    }
+
     // MARK: End
 
     private func ended(_ id: UInt32, transcript: WatchVoiceWire.DirectTranscript) {
@@ -378,6 +468,7 @@ final class WatchDirectBroker {
         }
         bridge = nil
         lateOutgoing = []
+        revokeGrants()
         callID = nil
         profile = nil
         dashboard = nil

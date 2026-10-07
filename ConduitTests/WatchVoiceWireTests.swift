@@ -8,6 +8,7 @@
 //  new XCTestCase classes.
 //
 
+import CryptoKit
 import XCTest
 @testable import Conduit
 
@@ -173,7 +174,10 @@ extension HermesVoiceGatewayTimeoutTests {
                 turns: [.init(role: .user, text: "Hi", at: Date(timeIntervalSince1970: 1_700_000_001))]
             )),
             .directSession(callID: 7, session: .init(token: token, setup: Data([1, 2, 3]), setupBytes: 900, googleSearch: false, voice: "Kore", openingPrompt: nil)),
+            .directSession(callID: 7, session: .init(token: token, setup: Data([1, 2, 3]), setupBytes: 900, googleSearch: false, voice: "Kore", openingPrompt: nil, toolGrant: Self.watchToolGrant)),
             .directTokenIssued(callID: 7, token: token),
+            .directGrant(callID: 7),
+            .directGrantIssued(callID: 7, grant: Self.watchToolGrant),
             .directToolResult(callID: 7, result: .init(outgoing: [
                 .toolResponse(id: "c1", name: "start_job", result: ["status": "running"], scheduling: nil, fallback: "Hermes started it."),
                 .textWhenIdle("The build passed."),
@@ -245,5 +249,327 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WatchDirectBroker.wire(.endConversation), .endConversation)
         let silent = WatchDirectBroker.wire(.toolResponse(id: "c1", name: "recall_memory", result: ["status": "ok"], scheduling: .silent))
         XCTAssertEqual(silent, .toolResponse(id: "c1", name: "recall_memory", result: ["status": "ok"], scheduling: "SILENT", fallback: nil))
+    }
+
+    // MARK: Wrist-down tools through the relay
+
+    static let watchToolGrant = WatchVoiceWire.DirectToolGrant(
+        grantID: String(repeating: "G", count: 22),
+        relayURL: "https://relay.example.test",
+        key: WatchToolSeal.base64URL(Data(0..<32)),
+        watchKey: WatchToolSeal.base64URL(Data(repeating: 7, count: 32)),
+        expiresAt: Date(timeIntervalSinceNow: 1_800),
+        tools: ["web_search", "recall_memory"],
+        maxCalls: 60
+    )
+
+    private static func hex(_ key: SymmetricKey) -> String {
+        key.withUnsafeBytes { Data($0) }.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The vectors conduit_push's tests/test_watch_tools.py checks the
+    /// plugin against: the Watch seals what the host opens, and opens
+    /// what the host seals.
+    func testWatchToolSealMatchesTheHostPluginsVectors() throws {
+        let keys = try XCTUnwrap(WatchToolSeal.Keys(root: Data(0..<32)))
+        XCTAssertEqual(Self.hex(keys.call), "76bee458fa181a0da7695798b6de8a0be9bf13587ecac450ff389d0094b5bbdf")
+        XCTAssertEqual(Self.hex(keys.result), "06499568025534ab010493728680fd7bc9216867d0012198cc6d6a9e450fc703")
+
+        let grantID = String(repeating: "G", count: 22)
+        let rid = String(repeating: "R", count: 22)
+        let nonce = try ChaChaPoly.Nonce(data: Data(0..<12))
+        let call = try WatchToolSeal.json(["tool": "web_search", "args": ["query": "weather in Tokyo"]])
+        XCTAssertEqual(String(decoding: call, as: UTF8.self), #"{"args":{"query":"weather in Tokyo"},"tool":"web_search"}"#)
+        let sealed = try WatchToolSeal.seal(call, keys: keys, direction: .call, grantID: grantID, rid: rid, nonce: nonce)
+        XCTAssertEqual(sealed, .init(
+            n: "AAECAwQFBgcICQoL",
+            ct: "usQw1Mc1f6DtZfIgf1Dd3VKsJq3JjVCOQUQYKH3nr0mk-Lb0ZEN1IoBA1LY1CEkYy8BAT4aGVN28rrFCyuXKvKmk7un4LOPnaA"
+        ))
+
+        let answer = WatchToolSeal.Sealed(
+            n: "AAECAwQFBgcICQoL",
+            ct: "Mmf4pRBwr3HNiVGcy-x-KIXRml6fz7xmr32vPgunMfFVqBvDAEImsfwkDEGZP28NtM89wF7XhlAhL99eH7KBpO0cVQc4roUey5BFrzA84ybx4K1PD28aY05sabPmNAQBqZoEkZR-bA1IdfVrmkLNhhbS7Qi1TfDsHIIgVOxQ1PVG2ohffj1meUdS-EskwQTMUW_iivE2GQ"
+        )
+        let opened = try WatchToolSeal.open(answer, keys: keys, direction: .result, grantID: grantID, rid: rid)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: opened) as? [String: Any])
+        XCTAssertEqual(WatchToolAnswer.result(name: "web_search", body: body), [
+            "results": "1. Tokyo weather: Sunny, 21°C (https://example.com/tokyo)",
+            "note": WatchToolAnswer.lookupAnswerNote,
+        ])
+
+        // Bound to its direction, grant and call: anything else is refused.
+        XCTAssertThrowsError(try WatchToolSeal.open(answer, keys: keys, direction: .call, grantID: grantID, rid: rid)) {
+            XCTAssertEqual($0 as? WatchToolSeal.Failure, .didNotVerify)
+        }
+        XCTAssertThrowsError(try WatchToolSeal.open(answer, keys: keys, direction: .result, grantID: grantID, rid: String(repeating: "S", count: 22)))
+        XCTAssertThrowsError(try WatchToolSeal.open(answer, keys: keys, direction: .result, grantID: String(repeating: "H", count: 22), rid: rid))
+        var flipped = answer
+        flipped.ct = (flipped.ct.first == "A" ? "B" : "A") + flipped.ct.dropFirst()
+        XCTAssertThrowsError(try WatchToolSeal.open(flipped, keys: keys, direction: .result, grantID: grantID, rid: rid))
+        XCTAssertThrowsError(try WatchToolSeal.open(.init(n: "AAEC", ct: answer.ct), keys: keys, direction: .result, grantID: grantID, rid: rid)) {
+            XCTAssertEqual($0 as? WatchToolSeal.Failure, .malformed)
+        }
+        XCTAssertNil(WatchToolSeal.Keys(root: Data(0..<31)))
+    }
+
+    func testWatchToolSealBase64URLRefusesOtherAlphabets() {
+        XCTAssertEqual(WatchToolSeal.base64URL(Data([0xfb, 0xff, 0xfe])), "-__-")
+        XCTAssertEqual(WatchToolSeal.data(base64URL: "-__-"), Data([0xfb, 0xff, 0xfe]))
+        XCTAssertEqual(WatchToolSeal.data(base64URL: "AQ"), Data([1]))
+        XCTAssertNil(WatchToolSeal.data(base64URL: "+//+"))
+        XCTAssertNil(WatchToolSeal.data(base64URL: "AQ=="))
+        XCTAssertNil(WatchToolSeal.data(base64URL: "AQIDB"))
+        XCTAssertEqual(WatchToolSeal.newRequestID().count, 22)
+        XCTAssertNotEqual(WatchToolSeal.newRequestID(), WatchToolSeal.newRequestID())
+    }
+
+    /// A lookup through the relay must reach the model exactly as the same
+    /// host response would through the iPhone: the bridge's result, its
+    /// scheduling, and the broker's fallback.
+    @MainActor
+    func testWatchToolAnswersMatchWhatTheIPhoneSendsForTheSameHostResponse() async throws {
+        let backend = FakeVoiceJobBackend()
+        defer { withExtendedLifetime(backend) {} }
+        let supervisor = VoiceBackgroundJobSupervisor(backend: backend.backend, pollInterval: .seconds(3_600))
+        let search = FakeGeminiLiveWebSearch()
+        let memory = FakeGeminiLiveMemory()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor, webSearch: search, memory: memory, holdsJobCalls: false)
+
+        XCTAssertEqual(WatchToolAnswer.webSearchLimit, GeminiLiveTokenClient.webSearchLimit)
+        XCTAssertEqual(WatchToolAnswer.memoryRecallLimit, GeminiLiveTokenClient.memoryRecallLimit)
+        XCTAssertEqual(WatchToolAnswer.lookupAnswerNote, GeminiLiveToolBridge.lookupAnswerNote)
+        XCTAssertEqual(WatchToolAnswer.tools, [GeminiLiveToolBridge.Tool.webSearch.rawValue, GeminiLiveToolBridge.Tool.recallMemory.rawValue])
+
+        let searchBodies: [[String: Any]] = [
+            ["ok": true, "query": "q", "results": [
+                ["title": "Tokyo weather", "url": "https://example.com/tokyo", "snippet": "Sunny, 21°C"],
+                ["title": "No link", "url": "", "snippet": "Dropped"],
+                ["url": "https://example.com/bare"],
+            ]],
+            ["ok": true, "query": "q", "results": [] as [Any]],
+            ["ok": false, "status": 503, "detail": "No web search provider configured."],
+            ["ok": false, "status": 500],
+        ]
+        for (index, body) in searchBodies.enumerated() {
+            do {
+                search.results = try GeminiLiveTokenClient.webResults(from: body)
+                search.error = nil
+            } catch {
+                search.results = []
+                search.error = error
+            }
+            let id = "s\(index)"
+            let phone = await bridge.handle(.init(id: id, name: "web_search", arguments: ["query": "  q "]))
+            let watch = WatchToolAnswer.outgoing(id: id, name: "web_search", result: WatchToolAnswer.result(name: "web_search", body: body))
+            XCTAssertEqual(phone.map { WatchDirectBroker.wire($0) }, [watch], "web_search body \(index)")
+        }
+
+        let recallBodies: [[String: Any]] = [
+            ["ok": true, "available": true, "results": "  Eric drinks oolong.  "],
+            ["ok": true, "available": true, "results": ""],
+            ["ok": true, "available": true, "results": String(repeating: "x", count: 5_000)],
+            ["ok": true, "available": false, "reason": "No memory provider is configured."],
+            ["ok": false, "status": 504, "detail": "Memory recall timed out"],
+        ]
+        for (index, body) in recallBodies.enumerated() {
+            do {
+                memory.results = try GeminiLiveTokenClient.memoryRecall(from: body)
+                memory.error = nil
+            } catch {
+                memory.results = ""
+                memory.error = error
+            }
+            let id = "m\(index)"
+            let phone = await bridge.handle(.init(id: id, name: "recall_memory", arguments: ["query": "tea"]))
+            let watch = WatchToolAnswer.outgoing(id: id, name: "recall_memory", result: WatchToolAnswer.result(name: "recall_memory", body: body))
+            XCTAssertEqual(phone.map { WatchDirectBroker.wire($0) }, [watch], "recall_memory body \(index)")
+        }
+
+        for name in ["web_search", "recall_memory"] {
+            XCTAssertNil(WatchToolAnswer.query(["query": "  "]))
+            let phone = await bridge.handle(.init(id: "e-\(name)", name: name, arguments: [:]))
+            let watch = WatchToolAnswer.outgoing(id: "e-\(name)", name: name, result: WatchToolAnswer.missingQuery(name: name))
+            XCTAssertEqual(phone.map { WatchDirectBroker.wire($0) }, [watch], name)
+        }
+        XCTAssertEqual(search.queries.count, searchBodies.count)
+        XCTAssertEqual(memory.queries.count, recallBodies.count)
+    }
+
+    /// What the host runs for the Watch: the arguments the iPhone's client
+    /// sends the same route.
+    @MainActor
+    func testWatchToolRequestsAskTheHostWhatTheIPhoneWould() throws {
+        let search = WatchToolAnswer.request(name: "web_search", query: "weather")
+        XCTAssertEqual(search["tool"] as? String, "web_search")
+        let searchArgs = try XCTUnwrap(search["args"] as? [String: Any])
+        XCTAssertEqual(searchArgs["query"] as? String, "weather")
+        XCTAssertEqual(searchArgs["limit"] as? Int, GeminiLiveTokenClient.webSearchLimit)
+        let recall = WatchToolAnswer.request(name: "recall_memory", query: "tea")
+        XCTAssertEqual(recall["args"] as? [String: String], ["query": "tea"])
+        XCTAssertEqual(WatchToolAnswer.query(["query": "  tea "]), "tea")
+    }
+
+    @MainActor
+    func testWatchToolGrantClientAsksTheProfilesHostAndReadsTheGrant() async throws {
+        var asked: [(path: String, method: String, body: [String: Any]?)] = []
+        let response: [String: Any] = [
+            "ok": true,
+            "grant_id": Self.watchToolGrant.grantID,
+            "relay_url": "https://relay.example.test",
+            "key": Self.watchToolGrant.key,
+            "watch_key": Self.watchToolGrant.watchKey,
+            "expires_at": "2026-10-07T11:00:00Z",
+            "tools": ["web_search"],
+            "max_calls": 60,
+        ]
+        let client = WatchToolGrantClient(request: { path, method, body, _ in
+            asked.append((path, method, body))
+            return path.contains("/grant") ? response : ["ok": true, "revoked": true]
+        })
+
+        let grant = try await client.grant(tools: ["web_search"], profile: "work")
+        XCTAssertEqual(grant.grantID, Self.watchToolGrant.grantID)
+        XCTAssertEqual(grant.relayURL, "https://relay.example.test")
+        XCTAssertEqual(grant.tools, ["web_search"])
+        XCTAssertEqual(grant.maxCalls, 60)
+        XCTAssertEqual(grant.expiresAt, Date(timeIntervalSince1970: 1_791_370_800))
+        await client.revoke(grantID: grant.grantID, profile: "work")
+
+        XCTAssertEqual(asked.map(\.path), [
+            "/api/plugins/conduit_push/watch-tools/grant?profile=work",
+            "/api/plugins/conduit_push/watch-tools/revoke?profile=work",
+        ])
+        XCTAssertEqual(asked.map(\.method), ["POST", "POST"])
+        XCTAssertEqual(asked.first?.body?["tools"] as? [String], ["web_search"])
+        XCTAssertEqual(asked.last?.body?["grant_id"] as? String, grant.grantID)
+
+        var http = response
+        http["relay_url"] = "http://relay.example.test"
+        XCTAssertNil(WatchToolGrantClient.grant(from: http))
+        var keyless = response
+        keyless["key"] = nil
+        XCTAssertNil(WatchToolGrantClient.grant(from: keyless))
+        XCTAssertNil(WatchToolGrantClient.grant(from: ["ok": false, "detail": "not paired"]))
+    }
+
+    /// The Watch's side of a relayed lookup, against a stand-in relay that
+    /// answers as the host would: sealed both ways, bound to the call.
+    @MainActor
+    func testWatchToolRelayClientSealsTheCallAndOpensOnlyItsOwnAnswer() async throws {
+        let grant = Self.watchToolGrant
+        let keys = try XCTUnwrap(WatchToolSeal.Keys(root: Data(0..<32)))
+        defer { WatchToolRelayStubProtocol.handler = nil }
+        var seen: [URLRequest] = []
+        var answerFor: (_ rid: String) throws -> (Int, [String: Any]) = { rid in
+            let sealed = try WatchToolSeal.seal(
+                WatchToolSeal.json(["ok": true, "query": "weather", "results": [["title": "T", "url": "https://t.example", "snippet": "S"]]]),
+                keys: keys, direction: .result, grantID: grant.grantID, rid: rid
+            )
+            return (200, ["n": sealed.n, "ct": sealed.ct])
+        }
+        WatchToolRelayStubProtocol.handler = { request, body in
+            seen.append(request)
+            guard request.httpMethod == "POST" else { return (200, ["ok": true]) }
+            let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+            let rid = try XCTUnwrap(envelope["rid"])
+            // The host opens it with the call key, bound to this grant and call.
+            let opened = try WatchToolSeal.open(.init(n: envelope["n"] ?? "", ct: envelope["ct"] ?? ""), keys: keys, direction: .call, grantID: grant.grantID, rid: rid)
+            let call = try XCTUnwrap(JSONSerialization.jsonObject(with: opened) as? [String: Any])
+            XCTAssertEqual(call["tool"] as? String, "web_search")
+            XCTAssertEqual((call["args"] as? [String: Any])?["query"] as? String, "weather")
+            return try answerFor(rid)
+        }
+        let client = try XCTUnwrap(WatchToolRelayClient(grant, protocolClasses: [WatchToolRelayStubProtocol.self]))
+        XCTAssertEqual(client.tools, ["web_search", "recall_memory"])
+        XCTAssertFalse(client.canRun("start_job"))
+
+        guard case .answered(let body) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected an answer") }
+        XCTAssertEqual(WatchToolAnswer.result(name: "web_search", body: body)["results"], "1. T: S (https://t.example)")
+        let request = try XCTUnwrap(seen.last)
+        XCTAssertEqual(request.url?.absoluteString, "https://relay.example.test/v1/watch-tools/grants/\(grant.grantID)/calls")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(grant.watchKey)")
+
+        // An answer sealed for another call is refused, not read.
+        answerFor = { _ in
+            let other = try WatchToolSeal.seal(WatchToolSeal.json(["ok": true, "results": [] as [Any]]), keys: keys, direction: .result, grantID: grant.grantID, rid: WatchToolSeal.newRequestID())
+            return (200, ["n": other.n, "ct": other.ct])
+        }
+        guard case .unavailable("unreadableAnswer", false) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected a refusal") }
+
+        answerFor = { _ in (504, ["error": "host_timeout"]) }
+        guard case .timedOut = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected a timeout") }
+
+        answerFor = { _ in (503, ["error": "host_offline"]) }
+        guard case .unavailable(_, false) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected a fallback") }
+        XCTAssertTrue(client.canRun("web_search"))
+
+        // Hermes' own word that the grant is over ends it here too.
+        answerFor = { rid in
+            let sealed = try WatchToolSeal.seal(WatchToolSeal.json(["ok": false, "status": 410, "detail": "ended"]), keys: keys, direction: .result, grantID: grant.grantID, rid: rid)
+            return (200, ["n": sealed.n, "ct": sealed.ct])
+        }
+        guard case .unavailable(_, true) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected the grant to end") }
+        XCTAssertFalse(client.canRun("web_search"))
+        XCTAssertEqual(client.callsSent, 5)
+
+        let closing = expectation(description: "closed on the relay")
+        WatchToolRelayStubProtocol.handler = { request, _ in
+            XCTAssertEqual(request.httpMethod, "DELETE")
+            XCTAssertEqual(request.url?.absoluteString, "https://relay.example.test/v1/watch-tools/grants/\(grant.grantID)")
+            closing.fulfill()
+            return (200, ["ok": true])
+        }
+        client.close()
+        client.close()
+        await fulfillment(of: [closing], timeout: 5)
+
+        var plain = grant
+        plain.relayURL = "http://relay.example.test"
+        XCTAssertNil(WatchToolRelayClient(plain))
+        var spent = grant
+        spent.expiresAt = Date(timeIntervalSinceNow: 10)
+        XCTAssertFalse(try XCTUnwrap(WatchToolRelayClient(spent)).canRun("web_search"))
+    }
+}
+
+/// A stand-in push relay for WatchToolRelayClient: hands each request and
+/// its body to `handler`.
+private final class WatchToolRelayStubProtocol: URLProtocol {
+    static var handler: ((URLRequest, Data) throws -> (Int, [String: Any]))?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        do {
+            guard let handler = Self.handler, let url = request.url else { throw URLError(.badServerResponse) }
+            let (status, body) = try handler(request, Self.body(of: request))
+            guard let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"]) else {
+                throw URLError(.badURL)
+            }
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: try JSONSerialization.data(withJSONObject: body))
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+
+    /// URLSession hands a protocol the body as a stream.
+    private static func body(of request: URLRequest) -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: buffer.count)
+            guard read > 0 else { break }
+            data.append(buffer, count: read)
+        }
+        return data
     }
 }

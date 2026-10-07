@@ -131,7 +131,7 @@ final class WatchVoiceLink: ObservableObject {
         case .directStart:
             soak.endUnfinished()
             direct.handle(message, reply: reply)
-        case .directToken, .directTool, .directToolCancel, .directPoll, .directEnd:
+        case .directToken, .directTool, .directToolCancel, .directPoll, .directEnd, .directGrant:
             direct.handle(message, reply: reply)
         default:
             call.handle(message)

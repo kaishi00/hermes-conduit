@@ -141,6 +141,12 @@ final class WatchDirectCallModel: ObservableObject {
     static let reactivationTimeout: TimeInterval = 10
     /// Calls the iPhone answers once nobody speaks (NON_BLOCKING lookups).
     static let whenIdleTools: Set<String> = ["web_search", "recall_memory"]
+    /// A tool grant this close to its end is renewed while the iPhone can
+    /// be reached.
+    static let grantRenewMargin: TimeInterval = 10 * 60
+    /// Between asks for a new grant, and how many a call makes at most.
+    static let grantRequestInterval: TimeInterval = 60
+    static let maxGrantRequests = 6
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var caption: String?
@@ -242,9 +248,22 @@ final class WatchDirectCallModel: ObservableObject {
     /// 2026-10-07): each was answered at once with a request to raise the
     /// wrist, and runs on the iPhone once the link is back. A job goes by
     /// `transferUserInfo` instead, which also outlives the call.
-    private var wristQueue: [(call: WatchVoiceWire.DirectToolCall, at: TimeInterval)] = []
+    private var wristQueue: [(call: WatchVoiceWire.DirectToolCall, at: TimeInterval, date: Date)] = []
     private var toolsWaitedForWrist = 0
     private var wristWaits: [TimeInterval] = []
+    /// The call's lookups through the push relay while the iPhone can't be
+    /// reached (WatchToolRelayClient). Nil without a grant, or once it
+    /// ended; the iPhone's path then takes every call.
+    private var toolRelay: WatchToolRelayClient?
+    private var hadToolGrant = false
+    private var grantRequestInFlight = false
+    private var lastGrantRequestAt: TimeInterval = 0
+    private var grantRequests = 0
+    private var grantsRenewed = 0
+    private var toolsViaRelay = 0
+    private var relayTimeouts = 0
+    private var relayFallbacks = 0
+    private var relayTimes: [TimeInterval] = []
     private var pollInFlight = false
     private var lastPollAt: TimeInterval = 0
     private var polls = 0
@@ -559,6 +578,10 @@ final class WatchDirectCallModel: ObservableObject {
         session.onConnectionReplaced = { [weak self] in self?.connectionReplaced() }
         self.tokens = tokens
         self.session = session
+        if let grant = direct.toolGrant {
+            hadToolGrant = true
+            toolRelay = WatchToolRelayClient(grant)
+        }
         WatchProbeLog.shared.note("directSession", [
             "afterTapMs": Int((now - callStartedAt) * 1000),
             "requests": sessionRequests,
@@ -570,6 +593,9 @@ final class WatchDirectCallModel: ObservableObject {
             "googleSearch": direct.googleSearch,
             "opening": direct.openingPrompt != nil,
             "tokenExpiresInS": token.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any,
+            "toolGrant": direct.toolGrant == nil ? "none" : (toolRelay == nil ? "unreadable" : "ok"),
+            "relayTools": toolRelay.map { $0.tools.sorted() } as Any,
+            "grantExpiresInS": toolRelay?.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any,
         ])
         phase = .connecting
         connectStartedAt = now
@@ -938,21 +964,34 @@ final class WatchDirectCallModel: ObservableObject {
             return
         }
         let generation = session?.connectionGeneration
+        // Sampled as the call arrives: the link can drop later for other
+        // reasons, with the wrist still up.
+        let wristDown = scenePhase != .active
+        let wire = WatchVoiceWire.DirectToolCall(id: call.id, name: call.name, arguments: call.arguments)
+        if let relay = toolRelay, relay.canRun(call.name), wristDown || !link.isReachable {
+            runThroughRelay(wire, relay: relay, generation: generation, wristDown: wristDown, phoneTried: false)
+            return
+        }
+        sendToPhone(wire, generation: generation, wristDown: wristDown, relayTried: false)
+    }
+
+    /// The call through the iPhone's bridge; if the iPhone doesn't answer,
+    /// through the relay when it hasn't been tried yet.
+    private func sendToPhone(_ wire: WatchVoiceWire.DirectToolCall, generation: Int?, wristDown: Bool, relayTried: Bool) {
         let id = callID
         let sentAt = now
-        let wire = WatchVoiceWire.DirectToolCall(id: call.id, name: call.name, arguments: call.arguments)
-        toolsInFlight.insert(call.id)
+        toolsInFlight.insert(wire.id)
         link.send(.directTool(callID: id, call: wire), reply: { [weak self] answer in
             guard let self, self.callID == id, self.isActive else { return }
-            self.toolsInFlight.remove(call.id)
-            let withdrawn = self.withdrawnToolIDs.remove(call.id) != nil
+            self.toolsInFlight.remove(wire.id)
+            let withdrawn = self.withdrawnToolIDs.remove(wire.id) != nil
             guard case .directToolResult(_, let result)? = answer else {
-                self.toolUnreachable(wire, generation: generation, error: "unreadable answer", withdrawn: withdrawn)
+                self.phoneFailed(wire, generation: generation, error: "unreadable answer", withdrawn: withdrawn, wristDown: wristDown, relayTried: relayTried)
                 return
             }
             self.toolsAnsweredLive += 1
             WatchProbeLog.shared.note("directTool", [
-                "name": call.name,
+                "name": wire.name,
                 "live": true,
                 "ms": Int((self.now - sentAt) * 1000),
                 "outgoing": result.outgoing.count,
@@ -960,13 +999,88 @@ final class WatchDirectCallModel: ObservableObject {
                 "withdrawn": withdrawn,
                 "screen": "\(self.scenePhase)",
             ])
-            self.apply(result, answering: call.id, generation: generation, withdrawn: withdrawn)
+            self.apply(result, answering: wire.id, generation: generation, withdrawn: withdrawn)
         }, failure: { [weak self] error in
             guard let self, self.callID == id, self.isActive else { return }
-            self.toolsInFlight.remove(call.id)
-            let withdrawn = self.withdrawnToolIDs.remove(call.id) != nil
-            self.toolUnreachable(wire, generation: generation, error: error.localizedDescription, withdrawn: withdrawn)
+            self.toolsInFlight.remove(wire.id)
+            let withdrawn = self.withdrawnToolIDs.remove(wire.id) != nil
+            self.phoneFailed(wire, generation: generation, error: error.localizedDescription, withdrawn: withdrawn, wristDown: wristDown, relayTried: relayTried)
         })
+    }
+
+    private func phoneFailed(_ wire: WatchVoiceWire.DirectToolCall, generation: Int?, error: String, withdrawn: Bool, wristDown: Bool, relayTried: Bool) {
+        if !withdrawn, !relayTried, let relay = toolRelay, relay.canRun(wire.name) {
+            WatchProbeLog.shared.note("directTool", ["name": wire.name, "live": false, "error": error, "next": "relay", "screen": "\(scenePhase)"])
+            runThroughRelay(wire, relay: relay, generation: generation, wristDown: wristDown, phoneTried: true)
+            return
+        }
+        toolUnreachable(wire, generation: generation, error: error, withdrawn: withdrawn, wristDown: wristDown)
+    }
+
+    /// A lookup through the push relay, answered as the iPhone's bridge
+    /// would answer it. Whatever doesn't get Hermes' answer this way goes
+    /// the iPhone's way, as without a grant, unless that was tried first.
+    /// The log carries the tool, the time and how it went: never the query
+    /// or the answer.
+    private func runThroughRelay(_ wire: WatchVoiceWire.DirectToolCall, relay: WatchToolRelayClient, generation: Int?, wristDown: Bool, phoneTried: Bool) {
+        guard let query = WatchToolAnswer.query(wire.arguments) else {
+            // The bridge's answer, no lookup needed.
+            answer(WatchToolAnswer.outgoing(id: wire.id, name: wire.name, result: WatchToolAnswer.missingQuery(name: wire.name)), generation: generation)
+            return
+        }
+        let id = callID
+        let sentAt = now
+        toolsInFlight.insert(wire.id)
+        Task { [weak self] in
+            let outcome = await relay.run(name: wire.name, query: query)
+            guard let self, self.callID == id, self.isActive else { return }
+            self.toolsInFlight.remove(wire.id)
+            let withdrawn = self.withdrawnToolIDs.remove(wire.id) != nil
+            let elapsed = self.now - sentAt
+            var fields: [String: Any] = [
+                "name": wire.name,
+                "ms": Int(elapsed * 1000),
+                "withdrawn": withdrawn,
+                "screen": "\(self.scenePhase)",
+                "reachable": self.link.isReachable,
+                "grantCalls": relay.callsSent,
+            ]
+            switch outcome {
+            case .answered(let body):
+                self.toolsViaRelay += 1
+                self.relayTimes.append(elapsed)
+                let result = WatchToolAnswer.result(name: wire.name, body: body)
+                fields["outcome"] = "answered"
+                if result["error"] != nil { fields["resultError"] = true }
+                WatchProbeLog.shared.note("directToolRelay", fields)
+                guard !withdrawn else { return }
+                self.answer(WatchToolAnswer.outgoing(id: wire.id, name: wire.name, result: result), generation: generation)
+            case .timedOut:
+                // Hermes has the call: answered as the iPhone's broker
+                // answers one that outlasts its wait.
+                self.relayTimeouts += 1
+                fields["outcome"] = "timedOut"
+                WatchProbeLog.shared.note("directToolRelay", fields)
+                guard !withdrawn else { return }
+                self.answer(WatchToolAnswer.outgoing(id: wire.id, name: wire.name, result: WatchToolAnswer.tookTooLong), generation: generation)
+            case .unavailable(let reason, let grantGone):
+                self.relayFallbacks += 1
+                if grantGone, self.toolRelay === relay {
+                    relay.close()
+                    self.toolRelay = nil
+                }
+                fields["outcome"] = "fallback"
+                fields["reason"] = reason
+                fields["grantGone"] = grantGone
+                WatchProbeLog.shared.note("directToolRelay", fields)
+                guard !withdrawn else { return }
+                if phoneTried {
+                    self.toolUnreachable(wire, generation: generation, error: "relay: \(reason)", withdrawn: false, wristDown: wristDown)
+                } else {
+                    self.sendToPhone(wire, generation: generation, wristDown: wristDown, relayTried: true)
+                }
+            }
+        }
     }
 
     /// The iPhone didn't take the call. With the wrist down (the link is
@@ -974,12 +1088,12 @@ final class WatchDirectCallModel: ObservableObject {
     /// anything else waits for the wrist; either way Hermes asks for it.
     /// Otherwise the call is answered with why it can't be done. Function
     /// results are written for the model, not shown.
-    private func toolUnreachable(_ call: WatchVoiceWire.DirectToolCall, generation: Int?, error: String, withdrawn: Bool) {
+    private func toolUnreachable(_ call: WatchVoiceWire.DirectToolCall, generation: Int?, error: String, withdrawn: Bool, wristDown: Bool) {
         toolsUnreachable += 1
         var result: [String: String]
         var queued = false
         var waiting = false
-        let wristDown = !link.isReachable
+        var duplicate = false
         if call.name == "start_job" {
             queued = link.queue(.directTool(callID: callID, call: call))
             if queued {
@@ -1000,7 +1114,9 @@ final class WatchDirectCallModel: ObservableObject {
         } else if wristDown, !withdrawn {
             waiting = true
             toolsWaitedForWrist += 1
-            wristQueue.append((call, now))
+            // The same lookup asked again runs once.
+            duplicate = wristQueue.contains { $0.call.name == call.name && $0.call.arguments == call.arguments }
+            if !duplicate { wristQueue.append((call, now, Date())) }
             result = ["status": "waiting_for_wrist", "message": Self.wristWaitMessage]
         } else {
             result = ["error": "Conduit on the user's iPhone can't be reached right now, so this isn't available. Tell the user in a few words."]
@@ -1010,9 +1126,11 @@ final class WatchDirectCallModel: ObservableObject {
             "live": false,
             "queued": queued,
             "waitingForWrist": waiting,
+            "duplicate": duplicate,
             "error": error,
             "withdrawn": withdrawn,
             "screen": "\(scenePhase)",
+            "wristDownAtCall": wristDown,
             "reachable": link.isReachable,
         ])
         guard !withdrawn else { return }
@@ -1028,13 +1146,19 @@ final class WatchDirectCallModel: ObservableObject {
     /// reached. Their calls were answered already, so each result goes to
     /// the model as a text update at the next quiet moment.
     private func runWristQueueIfReachable() {
-        guard !wristQueue.isEmpty, link.isReachable else { return }
+        // Ending: nothing new goes to the model.
+        guard !wristQueue.isEmpty, link.isReachable, endRequestedAt == nil else { return }
         let waiting = wristQueue
         wristQueue = []
         let id = callID
-        for (call, parkedAt) in waiting {
+        for (call, parkedAt, parkedDate) in waiting {
+            // In flight again, so a cancellation from the model reaches it.
+            toolsInFlight.insert(call.id)
             link.send(.directTool(callID: id, call: call), reply: { [weak self] answer in
-                guard let self, self.callID == id, self.isActive else { return }
+                guard let self else { return Self.wristToolAbandoned(call, callEnded: true) }
+                guard self.callID == id, self.isActive else { return Self.wristToolAbandoned(call, callEnded: !self.isActive) }
+                self.toolsInFlight.remove(call.id)
+                let withdrawn = self.withdrawnToolIDs.remove(call.id) != nil
                 guard case .directToolResult(_, let result)? = answer else {
                     WatchProbeLog.shared.note("directToolAfterWristFailed", ["name": call.name, "error": "unreadable answer"])
                     return
@@ -1044,23 +1168,80 @@ final class WatchDirectCallModel: ObservableObject {
                 WatchProbeLog.shared.note("directToolAfterWrist", [
                     "name": call.name,
                     "waitedMs": Int(waited * 1000),
+                    "waitedWallMs": Int(Date().timeIntervalSince(parkedDate) * 1000),
                     "outgoing": result.outgoing.count,
+                    "withdrawn": withdrawn,
                     "screen": "\(self.scenePhase)",
                 ])
-                // The call's own answer becomes a text update; anything
-                // else is handled as a poll's would be.
-                let outgoing: [WatchVoiceWire.DirectOutgoing] = result.outgoing.map { item in
+                // The call's own answer becomes a text update, unless the
+                // model withdrew the call meanwhile; anything else is
+                // handled as a poll's would be.
+                let outgoing: [WatchVoiceWire.DirectOutgoing] = result.outgoing.compactMap { item in
                     guard case .toolResponse(let responseID, let name, let response, _, let fallback) = item, responseID == call.id else { return item }
-                    return .textWhenIdle(fallback ?? Self.wristResultText(name: name, result: response))
+                    return withdrawn ? nil : .textWhenIdle(fallback ?? Self.wristResultText(name: name, result: response))
                 }
                 self.apply(WatchVoiceWire.DirectToolResult(outgoing: outgoing, runningJobs: result.runningJobs), answering: nil, generation: nil, withdrawn: false)
             }, failure: { [weak self] error in
-                guard let self, self.callID == id, self.isActive else { return }
-                // The link went again: wait for the next raise.
-                self.wristQueue.append((call, parkedAt))
+                guard let self else { return Self.wristToolAbandoned(call, callEnded: true) }
+                guard self.callID == id, self.isActive else { return Self.wristToolAbandoned(call, callEnded: !self.isActive) }
+                self.toolsInFlight.remove(call.id)
                 WatchProbeLog.shared.note("directToolAfterWristFailed", ["name": call.name, "error": error.localizedDescription])
+                // The link went again: wait for the next raise, unless the
+                // model withdrew the call meanwhile.
+                guard self.withdrawnToolIDs.remove(call.id) == nil else { return }
+                self.wristQueue.append((call, parkedAt, parkedDate))
             })
         }
+    }
+
+    /// A wrist-queued tool whose answer came after its call was over.
+    private static func wristToolAbandoned(_ call: WatchVoiceWire.DirectToolCall, callEnded: Bool) {
+        WatchProbeLog.shared.note("directToolAfterWristAbandoned", ["name": call.name, "reason": callEnded ? "callEnded" : "replaced"])
+    }
+
+    /// While the iPhone can be reached, a new tool grant for one that ends
+    /// soon or ended early (a host restart, a spent budget). The old one is
+    /// closed once nothing waits on it.
+    private func renewGrantIfDue() {
+        guard hadToolGrant, endRequestedAt == nil, !grantRequestInFlight, link.isReachable,
+              grantRequests < Self.maxGrantRequests,
+              now - lastGrantRequestAt >= Self.grantRequestInterval else { return }
+        if let relay = toolRelay, !relay.isGone, !relay.expires(within: Self.grantRenewMargin) { return }
+        grantRequestInFlight = true
+        grantRequests += 1
+        lastGrantRequestAt = now
+        let id = callID
+        let sentAt = now
+        link.send(.directGrant(callID: id), reply: { [weak self] answer in
+            guard let self, self.callID == id, self.isActive else { return }
+            self.grantRequestInFlight = false
+            var fields: [String: Any] = ["ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
+            switch answer {
+            case .directGrantIssued(_, let grant)?:
+                guard let relay = WatchToolRelayClient(grant) else {
+                    fields["ok"] = false
+                    fields["error"] = "unreadable grant"
+                    WatchProbeLog.shared.note("directGrantRenewed", fields)
+                    return
+                }
+                self.toolRelay?.close()
+                self.toolRelay = relay
+                self.grantsRenewed += 1
+                fields["ok"] = true
+                fields["expiresInS"] = relay.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any
+            case .callRefused(_, let reason)?:
+                fields["ok"] = false
+                fields["error"] = reason
+            default:
+                fields["ok"] = false
+                fields["error"] = "unreadable answer"
+            }
+            WatchProbeLog.shared.note("directGrantRenewed", fields)
+        }, failure: { [weak self] error in
+            guard let self, self.callID == id else { return }
+            self.grantRequestInFlight = false
+            WatchProbeLog.shared.note("directGrantRenewed", ["ok": false, "error": error.localizedDescription])
+        })
     }
 
     /// A tool's answer as a text update, for a call already answered with
@@ -1333,6 +1514,7 @@ final class WatchDirectCallModel: ObservableObject {
             }
         }
         runWristQueueIfReachable()
+        renewGrantIfDue()
         pollIfNeeded()
         reactivateIfDue()
         probeLinkIfDue()
@@ -1604,6 +1786,17 @@ final class WatchDirectCallModel: ObservableObject {
         wristQueue = []
         toolsWaitedForWrist = 0
         wristWaits = []
+        toolRelay?.close()
+        toolRelay = nil
+        hadToolGrant = false
+        grantRequestInFlight = false
+        lastGrantRequestAt = 0
+        grantRequests = 0
+        grantsRenewed = 0
+        toolsViaRelay = 0
+        relayTimeouts = 0
+        relayFallbacks = 0
+        relayTimes = []
         pollInFlight = false
         lastPollAt = 0
         polls = 0
@@ -1641,6 +1834,10 @@ final class WatchDirectCallModel: ObservableObject {
         session?.stop()
         session = nil
         tokens = nil
+        // Ends the grant on the relay and so on Hermes; the iPhone revokes
+        // it too once the call's end reaches it.
+        toolRelay?.close()
+        toolRelay = nil
         stopPathMonitor()
         // Asked to end before the audio stops; CallKit finishes later.
         if keepAlive == .callKit { WatchSystemCall.shared.end() }
@@ -1729,6 +1926,14 @@ final class WatchDirectCallModel: ObservableObject {
             "toolsStillWaiting": wristQueue.count,
             "wristWaitP50Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(wristWaits, 0.5)) as Any,
             "wristWaitMaxMs": WatchVoiceStats.milliseconds(wristWaits.max()) as Any,
+            "toolGrant": hadToolGrant,
+            "toolsViaRelay": toolsViaRelay,
+            "relayP50Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(relayTimes, 0.5)) as Any,
+            "relayMaxMs": WatchVoiceStats.milliseconds(relayTimes.max()) as Any,
+            "relayTimeouts": relayTimeouts,
+            "relayFallbacks": relayFallbacks,
+            "grantRequests": grantRequests,
+            "grantsRenewed": grantsRenewed,
             "polls": polls,
             "pollsFailed": pollsFailed,
             "textUpdatesSent": textUpdatesSent,
