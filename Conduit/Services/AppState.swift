@@ -14959,9 +14959,12 @@ final class AppState: ObservableObject {
     /// Test seam for the `message.react` transport; production leaves it
     /// nil and uses the live client.
     var messageReactionSender: (@MainActor (_ sessionId: String, _ target: MessageReactionTarget, _ emoji: String?) async throws -> MessageReactionResult)?
-    /// Latest tapback per message id, so an older reply to a quick re-tap
-    /// can't overwrite the newer one.
+    /// Latest in-flight tapback per message id, so an older reply to a
+    /// quick re-tap can't overwrite the newer one. Generations come from one
+    /// counter that only grows, so a settled entry can be dropped without a
+    /// later tap reusing a number an older request still holds.
     private var reactionRequestGenerations: [String: Int] = [:]
+    private var lastReactionRequestGeneration = 0
 
     /// Which row a reaction on `message` addresses, or nil when it can't be
     /// addressed yet. A row with a durable id is always addressable. A live
@@ -15000,8 +15003,14 @@ final class AppState: ObservableObject {
             author: MessageReaction.userAuthor,
             to: previous
         )
-        let generation = (reactionRequestGenerations[messageId] ?? 0) + 1
+        lastReactionRequestGeneration += 1
+        let generation = lastReactionRequestGeneration
         reactionRequestGenerations[messageId] = generation
+        defer {
+            if reactionRequestGenerations[messageId] == generation {
+                reactionRequestGenerations[messageId] = nil
+            }
+        }
         Haptics.light()
 
         do {
@@ -15016,7 +15025,6 @@ final class AppState: ObservableObject {
             guard activeSessionId == sessionId,
                   reactionRequestGenerations[messageId] == generation,
                   let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
-            reactionRequestGenerations[messageId] = nil
             // "Newest assistant row" is resolved when Hermes handles the
             // call. If a newer reply landed meanwhile, the returned row is
             // that one, not this; keep the paint and let the next reload
@@ -15030,7 +15038,6 @@ final class AppState: ObservableObject {
             guard activeSessionId == sessionId,
                   reactionRequestGenerations[messageId] == generation,
                   let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
-            reactionRequestGenerations[messageId] = nil
             // Put back only the user's own reaction: an agent reaction that
             // arrived during the call stays.
             let previousMine = previous.first(where: \.isFromUser)

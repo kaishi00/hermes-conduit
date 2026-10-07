@@ -3315,7 +3315,8 @@ enum MessageNormalizer {
     }
 
     /// Reactions persisted under `display_metadata.reactions`. Entries
-    /// without an emoji are skipped; anything malformed reads as none.
+    /// without an emoji or an author are skipped; anything malformed reads
+    /// as none.
     static func messageReactions(fromMetadata metadata: AnyCodable?) -> [MessageReaction] {
         messageReactions(from: displayMetadataObject(metadata)?["reactions"])
     }
@@ -3328,13 +3329,10 @@ enum MessageNormalizer {
                   let emoji = object["emoji"]?.stringValue?
                       .trimmingCharacters(in: .whitespacesAndNewlines),
                   !emoji.isEmpty else { return nil }
-            let author = object["author"]?.stringValue?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return MessageReaction(
-                emoji: emoji,
-                author: author.isEmpty ? MessageReaction.userAuthor : author,
-                at: object["at"]?.doubleValue
-            )
+            guard let author = object["author"]?.stringValue?
+                      .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !author.isEmpty else { return nil }
+            return MessageReaction(emoji: emoji, author: author, at: object["at"]?.doubleValue)
         }
     }
 
