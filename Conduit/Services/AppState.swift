@@ -15030,6 +15030,12 @@ final class AppState: ObservableObject {
             // that one, not this; keep the paint and let the next reload
             // bring the real id.
             if case .newest = target, reactionTarget(for: messages[current]) != target {
+                // The save may have landed on that newer row, so this one
+                // stops claiming it; the next reload paints the truth.
+                messages[current].reactions = Self.reactions(
+                    messages[current].reactions,
+                    withUserReaction: previous.first(where: \.isFromUser)
+                )
                 return
             }
             messages[current].rowId = result.rowId
@@ -15040,12 +15046,27 @@ final class AppState: ObservableObject {
                   let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
             // Put back only the user's own reaction: an agent reaction that
             // arrived during the call stays.
-            let previousMine = previous.first(where: \.isFromUser)
-            var restored = messages[current].reactions.filter { !$0.isFromUser }
-            if let previousMine { restored.append(previousMine) }
-            messages[current].reactions = restored
+            messages[current].reactions = Self.reactions(
+                messages[current].reactions,
+                withUserReaction: previous.first(where: \.isFromUser)
+            )
             errorMessage = AppLocalization.string("Your reaction wasn't saved. \(UserFacingError.message(for: error))")
         }
+    }
+
+    /// `reactions` with the user's entry replaced by `userReaction` (or
+    /// removed when nil), keeping it where it sat in `reactions` if it did.
+    static func reactions(
+        _ reactions: [MessageReaction],
+        withUserReaction userReaction: MessageReaction?
+    ) -> [MessageReaction] {
+        var result = reactions
+        let index = result.firstIndex(where: \.isFromUser)
+        result.removeAll(where: \.isFromUser)
+        if let userReaction {
+            result.insert(userReaction, at: min(index ?? result.count, result.count))
+        }
+        return result
     }
 
     /// The agent's `message.reaction` event, carrying the row's full
@@ -15055,7 +15076,12 @@ final class AppState: ObservableObject {
     /// addresses it directly. An unknown role only matches by id.
     private func applyAgentReaction(rowId: Int, reactions: [MessageReaction], role: String) {
         if let index = messages.firstIndex(where: { $0.rowId == rowId }) {
-            messages[index].reactions = reactions
+            // While the user's own tapback is still saving, the event's list
+            // can predate it: keep the user's pick until the save answers.
+            let message = messages[index]
+            messages[index].reactions = reactionRequestGenerations[message.id] == nil
+                ? reactions
+                : Self.reactions(reactions, withUserReaction: message.reactions.first(where: \.isFromUser))
             return
         }
         let messageRole: MessageRole

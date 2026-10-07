@@ -68,7 +68,14 @@ struct MessageReactionChips: View {
         )
 
         if let onTap {
-            Button(action: onTap) { label }
+            // The capsule stays small; the touch area grows to 44 pt tall
+            // without adding space under the bubble.
+            Button(action: onTap) {
+                label
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, -8)
+            }
                 .buttonStyle(.plain)
                 .accessibilityLabel(accessibilityLabel(for: group))
                 .accessibilityHint(AppLocalization.string("Change your reaction"))
@@ -154,7 +161,17 @@ struct MessageReactButton: View {
         .foregroundStyle(mine == nil ? Color.secondary : Color.conduitAccent)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.45)
-        .accessibilityLabel(AppLocalization.string("React to this response"))
+        .accessibilityLabel(
+            mine == nil
+                ? AppLocalization.string("React to this response")
+                : AppLocalization.string("Change your reaction")
+        )
+        .accessibilityAddTraits(mine == nil ? [] : .isSelected)
+        // A turn starting while the bar is open makes a live reply
+        // unaddressable; close the bar rather than let a pick do nothing.
+        .onChange(of: enabled) { _, isEnabled in
+            if !isEnabled { isPresented = false }
+        }
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             TapbackPicker(selected: mine) { emoji in
                 isPresented = false

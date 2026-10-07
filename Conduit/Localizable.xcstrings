@@ -35530,6 +35530,12 @@
     },
     "Change your reaction" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change your reaction"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -35656,6 +35662,12 @@
     },
     "React to this response" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "React to this response"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
