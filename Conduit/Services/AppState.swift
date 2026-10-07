@@ -15034,9 +15034,10 @@ final class AppState: ObservableObject {
         // and only resumes by the stored id, so refresh addresses the stored
         // id whenever it is known; resuming the runtime id failed with
         // "session not found" and left the chat synchronizing (#446).
-        // A Bot Chat's scope is read from the open id here and passed on,
-        // so it doesn't depend on the stored id being registered too.
-        let botProfile = botConversationProfile(for: sessionId)
+        // A Bot Chat's scope is read from the open id here (registry, roster
+        // and saved reference, as reconcile does) and passed on, so it
+        // doesn't depend on the stored id being registered too.
+        let botProfile = botScopeProfile(forSessionIDs: [sessionId], workspaceProfile: activeProfile)
         let identity = captureConversationIdentity(for: sessionId, scopeProfile: botProfile)
         let token = beginReconciliation()
         let succeeded = await reconcile(
