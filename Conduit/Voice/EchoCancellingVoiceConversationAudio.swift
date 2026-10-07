@@ -63,6 +63,7 @@ final class EchoCancellingVoiceCapture: AudioCaptureService {
     private var paused = false
     private(set) var isHeldForPlayback = false
     private var capturedPCM = Data()
+    var recordedPCM16: Data { activelyRecording ? capturedPCM : Data() }
     private var preRollPCM = Data()
     private let maximumPreRollBytes = Int(EchoCancellingVoiceCapture.sampleRate * EchoCancellingVoiceCapture.preRollDuration) * EchoCancellingVoiceCapture.bytesPerFrame
 
@@ -418,6 +419,7 @@ final class VoiceConversationAudioSelector {
         var events: AsyncStream<VoiceCaptureEvent> { selector.events }
         var captureGeneration: UInt64 { selector.currentCapture.captureGeneration }
         var isHeldForPlayback: Bool { selector.currentCapture.isHeldForPlayback }
+        var recordedPCM16: Data { selector.currentCapture.recordedPCM16 }
 
         /// One app-wide microphone permission, whichever capture records:
         /// always asked through the default capture.

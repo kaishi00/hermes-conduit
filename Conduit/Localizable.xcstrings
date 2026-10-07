@@ -35767,6 +35767,134 @@
           }
         }
       }
+    },
+    "Could not save live transcription: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブ文字起こしを保存できませんでした: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存实时转写：%@"
+          }
+        }
+      }
+    },
+    "Could not save the voice reply model: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声返信のモデルを保存できませんでした: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存语音回复模型：%@"
+          }
+        }
+      }
+    },
+    "Hermes transcribes while you talk, so your words show up as you say them and are ready as soon as you stop. Works with OpenAI, xAI and ElevenLabs speech to text. This is a Hermes setting, so Hermes Desktop and the terminal use it too." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "話している間に Hermes が文字起こしするので、言葉が話すそばから表示され、話し終えた瞬間に準備が整います。OpenAI、xAI、ElevenLabs の音声認識で使えます。Hermes の設定なので、Hermes Desktop とターミナルにも適用されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 会在你说话时同步转写，你说的话会即时显示，说完就能立即使用。适用于 OpenAI、xAI 和 ElevenLabs 语音转文字。这是 Hermes 的设置，Hermes Desktop 和终端也会使用它。"
+          }
+        }
+      }
+    },
+    "Same as chats" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャットと同じ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与聊天相同"
+          }
+        }
+      }
+    },
+    "Show words while you speak" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "話している言葉を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说话时显示文字"
+          }
+        }
+      }
+    },
+    "Still listening" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだ聞き取り中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在聆听"
+          }
+        }
+      }
+    },
+    "The model Hermes answers you with in a voice conversation. Reasoning is off by default so replies start sooner; typed messages keep the chat's model. Hermes Desktop uses this setting too." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声会話で Hermes が返答に使うモデルです。返答が早く始まるよう、推論は既定でオフです。入力したメッセージにはチャットのモデルが使われます。Hermes Desktop もこの設定を使います。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 在语音对话中回复你时使用的模型。推理默认关闭，以便更快开始回复；输入的消息仍使用聊天的模型。Hermes Desktop 也使用此设置。"
+          }
+        }
+      }
+    },
+    "Voice replies" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声の返答"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音回复"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

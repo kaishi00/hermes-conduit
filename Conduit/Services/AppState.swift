@@ -1367,6 +1367,36 @@ final class AppState: ObservableObject {
         return (try? await client.modelOptions(sessionId: activeSessionId))?.2 ?? []
     }
 
+    /// Hermes' voice reply model (`auxiliary.voice_chat`) for this profile,
+    /// or nil when this Hermes has no such slot.
+    func loadVoiceReplyModel() async -> VoiceReplyModelSetting? {
+        let profile = activeProfile
+        guard let dashboardTicketBridge,
+              let response = try? await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/model/auxiliary", profile: profile)),
+              profile == activeProfile else { return nil }
+        return VoiceReplyModelSetting(auxiliaryResponse: response)
+    }
+
+    func setVoiceReplyModel(_ setting: VoiceReplyModelSetting) async -> Bool {
+        let profile = activeProfile
+        guard let dashboardTicketBridge else { return false }
+        do {
+            let result = try await dashboardTicketBridge.requestJSON(
+                path: dashboardPath("/api/model/set", profile: profile),
+                method: "POST",
+                body: setting.assignmentBody(profile: profile)
+            )
+            if result["confirm_required"] as? Bool == true {
+                errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
+                return false
+            }
+            return true
+        } catch {
+            errorMessage = AppLocalization.string("Could not save the voice reply model: \(UserFacingError.message(for: error))")
+            return false
+        }
+    }
+
     /// Where Gemini Live's quick lookups search on this profile.
     var geminiLiveSearchMode: GeminiLiveSearchMode {
         loadVoiceProfilePreferences(profile: activeProfile).geminiLiveSearch ?? .automatic
@@ -16357,7 +16387,10 @@ final class AppState: ObservableObject {
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
                 outcome = try await sendPrompt(client, sessionId, promptText)
             } else {
-                outcome = try await client.sendPrompt(sessionId, text: promptText, surface: surface)
+                outcome = try await client.sendPrompt(
+                    sessionId, text: promptText, surface: surface,
+                    voiceTurn: surface == Self.spokenPromptSurface
+                )
             }
             // The gateway accepted the prompt. A session handoff may have
             // happened while the RPC was suspended, but that does not turn a
@@ -23023,7 +23056,8 @@ final class AppState: ObservableObject {
     }
 
     /// Hermes' surface for a spoken turn: its note asks for plain, short,
-    /// speakable prose in the model input only.
+    /// speakable prose in the model input only. The same send also marks
+    /// `voice_turn`, so Hermes answers on its voice model when one is set.
     static let spokenPromptSurface = "voice-live"
 
     /// Voice uses the same submission and active-turn interruption policy as

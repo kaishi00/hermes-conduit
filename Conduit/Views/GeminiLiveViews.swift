@@ -420,3 +420,136 @@ struct VoiceJobModelSettingsSection: View {
         return (parts[0].isEmpty ? nil : String(parts[0]), String(parts[1]))
     }
 }
+
+/// Hermes' model slot for spoken classic-voice turns
+/// (`auxiliary.voice_chat`), read from `/api/model/auxiliary`.
+struct VoiceReplyModelSetting: Equatable {
+    static let task = "voice_chat"
+
+    /// `auto` with an empty model follows the chat's model.
+    var provider: String
+    var model: String
+    /// Nil follows the chat's reasoning; `none` (Hermes' default) is off.
+    var reasoningEffort: String?
+
+    /// Nil when this Hermes has no voice reply slot.
+    init?(auxiliaryResponse response: [String: Any]) {
+        let tasks = response["tasks"] as? [[String: Any]] ?? []
+        guard let row = tasks.first(where: { $0["task"] as? String == Self.task }) else { return nil }
+        let provider = (row["provider"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+        self.provider = provider.isEmpty ? "auto" : provider
+        model = (row["model"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+        let effort = (row["reasoning_effort"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+        reasoningEffort = effort.isEmpty ? nil : effort
+    }
+
+    init(provider: String, model: String, reasoningEffort: String?) {
+        self.provider = provider
+        self.model = model
+        self.reasoningEffort = reasoningEffort
+    }
+
+    /// `POST /api/model/set` body. An explicit null reasoning means "same as
+    /// chats"; Hermes keeps it from falling back to its off default.
+    func assignmentBody(profile: String) -> [String: Any] {
+        [
+            "scope": "auxiliary",
+            "task": Self.task,
+            "provider": provider.isEmpty ? "auto" : provider,
+            "model": model,
+            "reasoning_effort": reasoningEffort ?? NSNull(),
+            "profile": profile
+        ]
+    }
+}
+
+/// What Voice settings needs for the voice reply model choice.
+struct VoiceReplyModelSettingsModel {
+    var load: () async -> VoiceReplyModelSetting?
+    var loadProviders: () async -> [ProviderInfo]
+    var save: (VoiceReplyModelSetting) async -> Bool
+}
+
+/// The model and reasoning Hermes answers classic-voice turns with. Hidden
+/// on a Hermes without the slot.
+struct VoiceReplyModelSettingsSection: View {
+    let settings: VoiceReplyModelSettingsModel
+    @State private var saved: VoiceReplyModelSetting?
+    @State private var selection = Self.sameAsChats
+    @State private var reasoning = "none"
+    @State private var providers: [ProviderInfo] = []
+
+    private static let sameAsChats = ""
+    private static let inheritReasoning = "inherit"
+
+    var body: some View {
+        Group {
+            if saved != nil {
+                ConduitSettingsSection(title: AppLocalization.string("Voice replies"), symbol: "waveform.circle", tint: .conduitAura) {
+                    Picker("Model", selection: $selection) {
+                        Text("Same as chats").tag(Self.sameAsChats)
+                        // Keep a saved choice visible even before the list loads.
+                        if selection != Self.sameAsChats, !providers.contains(where: { provider in
+                            provider.models.contains { VoiceJobModelSettingsSection.tag(provider: provider.name, model: $0.id) == selection }
+                        }) {
+                            Text(VoiceJobModelSettingsSection.parse(selection).model).tag(selection)
+                        }
+                        ForEach(providers, id: \.name) { provider in
+                            ForEach(provider.models, id: \.id) { model in
+                                Text("\(model.label ?? model.id) · \(provider.name)")
+                                    .tag(VoiceJobModelSettingsSection.tag(provider: provider.name, model: model.id))
+                            }
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    Picker("Reasoning", selection: $reasoning) {
+                        Text("Off").tag("none")
+                        Text("Minimal").tag("minimal")
+                        Text("Low").tag("low")
+                        Text("Medium").tag("medium")
+                        Text("High").tag("high")
+                        Text("Extra High").tag("xhigh")
+                        Text("Max").tag("max")
+                        Text("Same as chats").tag(Self.inheritReasoning)
+                    }
+                    .pickerStyle(.menu)
+                    Text("The model Hermes answers you with in a voice conversation. Reasoning is off by default so replies start sooner; typed messages keep the chat's model. Hermes Desktop uses this setting too.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .task {
+            guard let setting = await settings.load() else { return }
+            providers = await settings.loadProviders()
+            selection = setting.model.isEmpty
+                ? Self.sameAsChats
+                : VoiceJobModelSettingsSection.tag(provider: setting.provider, model: setting.model)
+            reasoning = setting.reasoningEffort ?? Self.inheritReasoning
+            saved = setting
+        }
+        .onChange(of: selection) { _, _ in save() }
+        .onChange(of: reasoning) { _, _ in save() }
+    }
+
+    private var chosen: VoiceReplyModelSetting {
+        let pick = selection == Self.sameAsChats ? nil : VoiceJobModelSettingsSection.parse(selection)
+        // "Same as chats" keeps a provider pinned without a model as is.
+        let unpinnedProvider = saved.map { $0.model.isEmpty ? $0.provider : "auto" } ?? "auto"
+        return VoiceReplyModelSetting(
+            provider: pick.map { $0.provider ?? "auto" } ?? unpinnedProvider,
+            model: pick?.model ?? "",
+            reasoningEffort: reasoning == Self.inheritReasoning ? nil : reasoning
+        )
+    }
+
+    private func save() {
+        // Loading the saved values fires these changes too: only a real
+        // change is written.
+        guard let saved, chosen != saved else { return }
+        let next = chosen
+        Task {
+            if await settings.save(next) { self.saved = next }
+        }
+    }
+}

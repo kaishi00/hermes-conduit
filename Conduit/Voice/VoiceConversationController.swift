@@ -22,6 +22,10 @@ final class VoiceConversationController: ObservableObject {
 
     @Published private(set) var state: VoiceConversationState = .idle
     @Published private(set) var latestTranscript = ""
+    /// Words Hermes has recognized so far in the open utterance, when the
+    /// profile streams speech-to-text (`stt.streaming`). Cleared when the
+    /// next listening window opens.
+    @Published private(set) var liveTranscript = ""
     @Published private(set) var lastBargeInState: VoiceConversationState?
     /// The current listening window steers the running Hermes turn instead
     /// of starting a new one: the user spoke while Hermes was thinking.
@@ -151,6 +155,22 @@ final class VoiceConversationController: ObservableObject {
     private var suspendedInFlightTurnOrphaned = false
     private var operationGeneration: UInt64 = 0
     private var utteranceTask: Task<Void, Never>?
+    /// Live speech-to-text for the open listening window: opened when speech
+    /// starts, fed the recording as it grows, finished with the utterance.
+    private var liveTranscription: VoiceLiveTranscription?
+    private var liveTranscriptionOpening: Task<Void, Never>?
+    /// The utterance's session while it delivers the final transcript.
+    private var finishingLiveTranscription: VoiceLiveTranscription?
+    /// Bumped per listening window, so a session that opens late, or a
+    /// partial from an earlier window, can't land in this one.
+    private var liveTranscriptionWindow: UInt64 = 0
+    /// The window that already tried to open a session: one attempt per
+    /// window, so a failed open isn't retried on every level event.
+    private var liveTranscriptionAttemptedWindow: UInt64?
+    private var liveTranscriptionSentBytes = 0
+    /// This profile has no live speech-to-text (stt.streaming off, an old
+    /// Hermes): stop asking until the conversation ends or the gateway changes.
+    private var liveTranscriptionUnavailable = false
     private var bargeInTask: Task<Void, Never>?
     private var speechDrainTask: Task<Void, Never>?
     private var speechDrainRevision: UInt64 = 0
@@ -212,7 +232,10 @@ final class VoiceConversationController: ObservableObject {
     /// refreshes install fresh-but-equivalent instances (same bridge, server,
     /// and profile) mid-conversation by design, so pointer inequality is not
     /// a signal that the old operation's server authority ended.
-    func setGateway(_ gateway: VoiceGatewayService?) { self.gateway = gateway }
+    func setGateway(_ gateway: VoiceGatewayService?) {
+        if gateway !== self.gateway { liveTranscriptionUnavailable = false }
+        self.gateway = gateway
+    }
 
     /// Establishes explicit ownership of assistant events for one voice turn.
     /// UI integration should refresh this when a fresh session is created.
@@ -369,6 +392,7 @@ final class VoiceConversationController: ObservableObject {
         guard isCurrent(generation) else { return }
         do {
             try capture.startListening(includePreRoll: includePreRoll)
+            resetLiveTranscription()
             // Starting may choose this conversation's audio (echo-cancelling
             // or not), which decides the route policy: classify it afresh
             // rather than trust a value cached while idle.
@@ -403,6 +427,7 @@ final class VoiceConversationController: ObservableObject {
         // handled by the sheet, which shows the user-paused state whenever
         // `isMicrophonePaused` is set.
         capture.pause()
+        resetLiveTranscription()
         speechDetector.reset()
         resetMicrophoneMeter()
         isMicrophonePaused = true
@@ -494,6 +519,7 @@ final class VoiceConversationController: ObservableObject {
 
     func stop() {
         releaseRuntimeResources()
+        liveTranscriptionUnavailable = false
         isMicrophonePaused = false
         isVoiceSessionActive = false
         isAwaitingVoiceAssistant = false
@@ -553,6 +579,7 @@ final class VoiceConversationController: ObservableObject {
         cancelBackgroundHandBackWatchdog()
         cancelSpeechDrainAndStream()
         capture.stop()
+        cancelLiveTranscription()
         deviceTranscriber.cancel()
         playback.stop()
         clearSpeechQueue()
@@ -737,9 +764,12 @@ final class VoiceConversationController: ObservableObject {
         case .listening:
             if utteranceStartedAt == nil { utteranceStartedAt = date }
             switch speechDetector.observe(level) {
-            case .started, .continued: lastSpeechAt = date
+            case .started, .continued:
+                lastSpeechAt = date
+                openLiveTranscriptionIfNeeded()
             case .none: break
             }
+            pumpLiveTranscription()
             if let started = utteranceStartedAt, date.timeIntervalSince(started) >= configuration.maximumUtterance {
                 scheduleFinishUtterance()
             } else if let speech = lastSpeechAt, date.timeIntervalSince(speech) >= configuration.trailingSilence {
@@ -953,6 +983,7 @@ final class VoiceConversationController: ObservableObject {
     private func restartSilentListeningWindow(at date: Date) {
         do {
             try capture.startListening(includePreRoll: false)
+            resetLiveTranscription()
             // A fresh window, as after a resume: no speech or barge-in state
             // carries over from the silence.
             speechDetector.reset()
@@ -977,16 +1008,25 @@ final class VoiceConversationController: ObservableObject {
         defer { if operationGeneration == generation { utteranceTask = nil } }
         guard state == .listening, let gateway else { return }
         do {
-            let audio = try capture.finishUtterance()
+            let live = detachLiveTranscription()
+            let audio: VoiceCapturedAudio
+            do {
+                audio = try capture.finishUtterance()
+            } catch {
+                live?.cancel()
+                throw error
+            }
             state = .transcribing
             // Utterance complete: the meter follows the now-inactive capture
             // and the detector must not carry this turn's noise/speech state
             // into the next one.
             resetMicrophoneMeter()
             speechDetector.reset()
-            let transcript = try await transcribe(audio, gateway: gateway)
+            let transcript = try await transcribe(audio, gateway: gateway, live: live)
             guard isCurrent(generation) else { return }
             latestTranscript = transcript
+            // The final words replace the live ones on screen.
+            liveTranscript = ""
             let steering = isSteeringTurn
             if transcript.isEmpty {
                 if steering {
@@ -1122,9 +1162,13 @@ final class VoiceConversationController: ObservableObject {
             guard isCurrent(generation) else { return }
         } catch is CancellationError {
             isSteeringTurn = false
-            if isCurrent(generation) { state = .idle }
+            if isCurrent(generation) {
+                liveTranscript = ""
+                state = .idle
+            }
         } catch {
             guard isCurrent(generation) else { return }
+            liveTranscript = ""
             // A steer that couldn't be heard is dropped; the turn it was
             // meant for carries on.
             if isSteeringTurn {
@@ -1135,13 +1179,100 @@ final class VoiceConversationController: ObservableObject {
         }
     }
 
-    private func transcribe(_ audio: VoiceCapturedAudio, gateway: VoiceGatewayService) async throws -> String {
+    private func transcribe(
+        _ audio: VoiceCapturedAudio,
+        gateway: VoiceGatewayService,
+        live: VoiceLiveTranscription? = nil
+    ) async throws -> String {
         switch preferences.resolvedTranscriptionMode {
         case .hermes:
+            if let live {
+                // The live result is ready at the end of speech; without one
+                // (an error, nothing recognized) the recording is uploaded.
+                finishingLiveTranscription = live
+                let text = await live.finish()
+                if finishingLiveTranscription === live { finishingLiveTranscription = nil }
+                if let text { return text }
+                try Task.checkCancellation()
+            }
             return try await gateway.transcribe(audio)
         case .appleOnDevice:
+            live?.cancel()
             return try await deviceTranscriber.transcribe(audio)
         }
+    }
+
+    /// A new listening window (or none): anything streamed for the last one
+    /// is dropped, and its words leave the screen.
+    private func resetLiveTranscription() {
+        liveTranscriptionWindow &+= 1
+        liveTranscriptionOpening?.cancel()
+        liveTranscriptionOpening = nil
+        liveTranscription?.cancel()
+        liveTranscription = nil
+        liveTranscriptionSentBytes = 0
+        if !liveTranscript.isEmpty { liveTranscript = "" }
+    }
+
+    /// Runtime teardown: the open window's session and one still finishing.
+    private func cancelLiveTranscription() {
+        resetLiveTranscription()
+        finishingLiveTranscription?.cancel()
+        finishingLiveTranscription = nil
+    }
+
+    /// Opens Hermes' live speech-to-text when speech starts in a window, so
+    /// a silent window never opens a socket. Hermes transcription only.
+    private func openLiveTranscriptionIfNeeded() {
+        guard liveTranscriptionAttemptedWindow != liveTranscriptionWindow,
+              !liveTranscriptionUnavailable, !isProviderTestRunning,
+              preferences.resolvedTranscriptionMode == .hermes,
+              let liveGateway = gateway as? VoiceLiveTranscriptionGateway else { return }
+        let window = liveTranscriptionWindow
+        liveTranscriptionAttemptedWindow = window
+        liveTranscriptionOpening = Task { [weak self] in
+            let session = await liveGateway.openLiveTranscription(
+                sampleRate: VoiceAudioSessionConfiguration.capture.outputSampleRate,
+                onPartial: { [weak self] text in
+                    guard let self, self.liveTranscriptionWindow == window else { return }
+                    self.liveTranscript = text
+                },
+                onUnavailable: { [weak self] in self?.liveTranscriptionUnavailable = true }
+            )
+            guard let self, !Task.isCancelled, self.liveTranscriptionWindow == window else {
+                session?.cancel()
+                return
+            }
+            self.liveTranscriptionOpening = nil
+            self.liveTranscription = session
+            // Everything recorded so far, pre-roll included, goes first.
+            self.pumpLiveTranscription()
+        }
+    }
+
+    /// Sends what the open utterance recorded since the last push.
+    private func pumpLiveTranscription() {
+        guard let liveTranscription else { return }
+        let recorded = capture.recordedPCM16
+        guard recorded.count > liveTranscriptionSentBytes else { return }
+        let start = recorded.index(recorded.startIndex, offsetBy: liveTranscriptionSentBytes)
+        liveTranscription.push(recorded.subdata(in: start..<recorded.endIndex))
+        liveTranscriptionSentBytes = recorded.count
+    }
+
+    /// The utterance is over: its session gets the last of the recording
+    /// and leaves the window. A session still opening is dropped, and the
+    /// recording is uploaded instead. The words stay on screen until the
+    /// next window opens.
+    private func detachLiveTranscription() -> VoiceLiveTranscription? {
+        pumpLiveTranscription()
+        let session = liveTranscription
+        liveTranscription = nil
+        liveTranscriptionWindow &+= 1
+        liveTranscriptionOpening?.cancel()
+        liveTranscriptionOpening = nil
+        liveTranscriptionSentBytes = 0
+        return session
     }
 
     private func beginBargeInMonitoring() {
@@ -1249,6 +1380,7 @@ final class VoiceConversationController: ObservableObject {
         cancelBackgroundHandBackWatchdog()
         cancelSpeechDrainAndStream()
         capture.stop()
+        cancelLiveTranscription()
         deviceTranscriber.cancel()
         playback.stop()
         clearSpeechQueue()

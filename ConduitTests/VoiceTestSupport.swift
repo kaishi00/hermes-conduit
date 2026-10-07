@@ -311,6 +311,8 @@ final class MockCapture: AudioCaptureService {
     var resumeError: Error?
     private(set) var stopCount = 0
     private(set) var finishUtteranceCount = 0
+    /// What live transcription reads as the open utterance's recording.
+    var recordedPCM16 = Data()
     private let starts = AwaitableCounter()
 
     var startCount: Int { starts.value }

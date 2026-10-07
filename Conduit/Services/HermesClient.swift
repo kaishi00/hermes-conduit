@@ -109,6 +109,13 @@ struct RpcError: Decodable, Error, LocalizedError {
     /// Hermes refused the send because another live surface (Hermes
     /// Desktop, a terminal) owns this chat.
     var isSessionNotOwned: Bool { reason == "SESSION_NOT_OWNED" }
+
+    /// Hermes' contract check refused a key this gateway doesn't know
+    /// (`4000 invalid params for <method>: <key>: Extra inputs are not
+    /// permitted`). Nothing ran, so the request is safe to resend without it.
+    func refusesUnknownParam(_ key: String) -> Bool {
+        code == 4000 && message.contains("invalid params") && message.contains(key)
+    }
 }
 
 extension RpcError {
@@ -1889,17 +1896,36 @@ final class HermesClient: ObservableObject {
     /// turn). Hermes adds its spoken-reply note to the model input only, so
     /// the persisted user row stays what the user said; older gateways
     /// ignore the key.
-    func sendPrompt(_ sessionId: String, text: String, surface: String? = nil) async throws -> PromptSubmissionOutcome {
+    ///
+    /// `voiceTurn` marks a spoken voice-conversation turn, which Hermes runs
+    /// on its `auxiliary.voice_chat` model (reasoning off by default). A
+    /// gateway from before that slot refuses the unknown key with `4000`
+    /// before anything runs, so the turn is resent once without it and the
+    /// key is dropped for this client from then on.
+    func sendPrompt(_ sessionId: String, text: String, surface: String? = nil, voiceTurn: Bool = false) async throws -> PromptSubmissionOutcome {
         var params: [String: Any] = [
             "session_id": sessionId,
             "text": text
         ]
         if let surface { params["surface"] = surface }
-        let result = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
+        let marksVoiceTurn = voiceTurn && !gatewayRefusesVoiceTurn
+        if marksVoiceTurn { params["voice_turn"] = true }
+        let result: AnyCodable
+        do {
+            result = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
+        } catch let error as RpcError where marksVoiceTurn && error.refusesUnknownParam("voice_turn") {
+            gatewayRefusesVoiceTurn = true
+            params.removeValue(forKey: "voice_turn")
+            result = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
+        }
         return PromptSubmissionOutcome(
             gatewayStatus: result.objectValue?["status"]?.stringValue
         )
     }
+
+    /// Set once this gateway refused `prompt.submit`'s `voice_turn` key
+    /// (a Hermes from before `auxiliary.voice_chat`).
+    private var gatewayRefusesVoiceTurn = false
 
     /// Read-only liveness probe against the gateway's in-memory runtime
     /// registry (`session.active_list`). Unlike `session.resume` this does not

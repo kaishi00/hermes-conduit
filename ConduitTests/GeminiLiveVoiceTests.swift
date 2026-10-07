@@ -481,17 +481,17 @@ extension VoiceConversationControllerTests {
         first.deliver(["setupComplete": [String: Any]()])
         first.deliver(["sessionResumptionUpdate": ["newHandle": "h-1", "resumable": true]])
         first.deliver(["goAway": ["timeLeft": "1s"]])
-        await settle(40)
+        await settle(until: { sockets().count == 2 })
         XCTAssertEqual(sockets().count, 2)
 
         // timeLeft runs out before the new connection is set up.
         first.serverClose(nil)
-        await settle(80)
+        await settle(until: { session.state == .reconnecting })
         XCTAssertEqual(session.state, .reconnecting)
         XCTAssertEqual(sockets().count, 2, "The handoff connection already under way takes over; no third one")
 
         sockets()[1].deliver(["setupComplete": [String: Any]()])
-        await settle()
+        await settle(until: { session.state == .ready })
         XCTAssertEqual(session.state, .ready)
         session.send(.audio(Data([1])))
         await settle()

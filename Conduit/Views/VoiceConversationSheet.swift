@@ -88,7 +88,7 @@ struct VoiceConversationSheet: View {
 
     private var conversationCard: some View {
         ConduitSettingsSection(title: AppLocalization.string("Conversation"), symbol: "text.bubble", tint: .conduitAura) {
-            if controller.conversationTranscript.isEmpty {
+            if controller.conversationTranscript.isEmpty, controller.liveTranscript.isEmpty {
                 Text("Your spoken words and Hermes' replies will appear here.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -98,6 +98,15 @@ struct VoiceConversationSheet: View {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     ForEach(controller.conversationTranscript) { entry in
                         VoiceConversationTranscriptBubble(entry: entry)
+                    }
+                    // Words Hermes has heard so far, while the user is
+                    // still talking (live speech-to-text).
+                    if !controller.liveTranscript.isEmpty {
+                        VoiceConversationTranscriptBubble(
+                            entry: VoiceConversationTranscriptEntry(speaker: .user, text: controller.liveTranscript)
+                        )
+                        .opacity(0.6)
+                        .accessibilityHint("Still listening")
                     }
                 }
             }
