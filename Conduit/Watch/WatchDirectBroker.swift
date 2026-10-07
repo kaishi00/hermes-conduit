@@ -214,13 +214,23 @@ final class WatchDirectBroker {
         let functionCall = GeminiLiveProtocol.FunctionCall(id: call.id, name: call.name, arguments: call.arguments)
         let isJob = call.name == GeminiLiveToolBridge.Tool.startJob.rawValue
         let handled = Task { await bridge.handle(functionCall) }
-        var outgoing: [GeminiLiveToolBridge.Outgoing]
-        if !waiting {
-            // Queued while the Watch couldn't reach this phone: nobody waits
-            // on the answer, so it goes out with the next poll.
-            lateOutgoing += await handled.value
-            outgoing = []
-        } else if let answered = await Self.value(of: handled, within: isJob ? Self.jobStartWait : Self.toolWait) {
+        guard waiting else {
+            // Queued while the Watch couldn't reach this phone: the Watch
+            // answered the call itself, and nothing reads this answer. What
+            // comes after the call's own answer waits for the next poll.
+            let late = await handled.value
+            if callID == id { lateOutgoing += late.filter { !$0.answers(call.id) } }
+            link.log.note("watchDirectTool", [
+                "name": call.name,
+                "ms": Self.milliseconds(since: startedAt),
+                "connected": connected,
+                "queued": true,
+                "appState": WatchProbeLiveness.appStateName,
+            ])
+            return WatchVoiceWire.DirectToolResult(outgoing: [], runningJobs: appState.voiceBackgroundJobSupervisor.activeJobCount)
+        }
+        let outgoing: [GeminiLiveToolBridge.Outgoing]
+        if let answered = await Self.value(of: handled, within: isJob ? Self.jobStartWait : Self.toolWait) {
             outgoing = answered
         } else {
             // Still running: answer now, and keep whatever it gives later
@@ -239,7 +249,7 @@ final class WatchDirectBroker {
             "name": call.name,
             "ms": Self.milliseconds(since: startedAt),
             "connected": connected,
-            "queued": !waiting,
+            "queued": false,
             "outgoing": outgoing.count,
             "appState": WatchProbeLiveness.appStateName,
         ])

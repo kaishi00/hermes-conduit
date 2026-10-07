@@ -237,33 +237,41 @@ final class WatchDirectCallModel: ObservableObject {
         guard !isActive else { return }
         reset()
         phase = .preparing
+        // Each await below can outlast the call: ended, and maybe a new
+        // one started, by the time it returns.
+        let id = callID
         guard await WatchAudio.requestPermission() else {
-            finish(WatchAudioError.permissionDenied.localizedDescription)
+            if callID == id { finish(WatchAudioError.permissionDenied.localizedDescription) }
             return
         }
-        guard phase == .preparing else { return }
+        guard callID == id, phase == .preparing else { return }
         keepAlive = KeepAlive.current
         // What allows the socket comes first.
+        var activatedHere = false
         switch keepAlive {
         case .callKit:
             let systemCall = WatchSystemCall.shared
             systemCall.onEndedBySystem = { [weak self] in self?.end(reason: "ended from the Watch's call controls") }
-            systemCallActivated = await systemCall.start()
+            let activated = await systemCall.start()
+            guard callID == id else { return }
+            systemCallActivated = activated
         case .audioSession:
             // A CallKit call left from an earlier test would grant the
             // network itself.
             if WatchSystemCall.isCreated { WatchSystemCall.shared.endStaleCalls() }
-            await activateAudioSession()
+            activatedHere = await activateAudioSession()
+            if callID == id { audioSessionActivated = activatedHere }
         }
-        systemCallReadyAt = now
-        // Ended meanwhile: `finish` ended its call too, but the audio
-        // session it activated has no engine to stop.
-        guard phase == .preparing else {
-            if audioSessionActivated == true {
+        // Ended meanwhile: `finish` ended its CallKit call too, but the
+        // audio session activated here has no engine to stop, unless a new
+        // call has it now.
+        guard callID == id, phase == .preparing else {
+            if activatedHere, !isActive {
                 try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
             }
             return
         }
+        systemCallReadyAt = now
         do {
             try audio.start(options: .init(), playbackRate: GeminiLiveProtocol.outputSampleRate)
         } catch {
@@ -298,22 +306,23 @@ final class WatchDirectCallModel: ObservableObject {
     /// socket did (asynchronously), before the engine starts in it. Play
     /// and record with the default route policy, so the built-in speaker
     /// plays; long-form audio would want Bluetooth and can't record.
-    private func activateAudioSession() async {
+    private func activateAudioSession() async -> Bool {
         let session = AVAudioSession.sharedInstance()
         let startedAt = now
         do {
             try session.setCategory(.playAndRecord, mode: .default, policy: .default, options: [])
-            audioSessionActivated = try await session.activate(options: [])
+            let activated = try await session.activate(options: [])
             WatchProbeLog.shared.note("directAudioSession", [
-                "activated": audioSessionActivated as Any,
+                "activated": activated,
                 "ms": Int((now - startedAt) * 1000),
                 "outputs": session.currentRoute.outputs.map { $0.portType.rawValue },
                 "inputs": session.currentRoute.inputs.map { $0.portType.rawValue },
             ])
+            return activated
         } catch {
-            audioSessionActivated = false
             let error = error as NSError
             WatchProbeLog.shared.note("directAudioSession", ["activated": false, "domain": error.domain, "code": error.code])
+            return false
         }
     }
 
@@ -949,6 +958,12 @@ final class WatchDirectCallModel: ObservableObject {
         guard isActive else { return }
         WatchProbeLog.shared.note("directAudioInterruption", ["began": began, "screen": "\(scenePhase)"])
         if began {
+            // Before the iPhone's session came, a tap would have no call
+            // to go back to.
+            guard session != nil else {
+                finish("The microphone was interrupted before the call connected. Try again.")
+                return
+            }
             pendingSamples = []
             activity.reset()
             phase = .needsTap
