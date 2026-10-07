@@ -18,9 +18,9 @@ import CryptoKit
 import Foundation
 
 /// The grant's sealing: HKDF-SHA256 from its 32-byte root to one
-/// ChaCha20-Poly1305 key per direction, with the grant and the call's id
+/// ChaCha20-Poly1305 key per direction, with the grant and the request id
 /// bound in as associated data, so an answer can't be replayed to
-/// another call or sent back the other way.
+/// another request or sent back the other way.
 enum WatchToolSeal {
     enum Direction: String {
         /// What the Watch asks Hermes.
@@ -120,7 +120,7 @@ enum WatchToolSeal {
         try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
     }
 
-    /// A new call's id: 16 random bytes, base64url.
+    /// A new request id: 16 random bytes, base64url.
     static func newRequestID() -> String {
         base64URL(SymmetricKey(size: .bits128).withUnsafeBytes { Data($0) })
     }

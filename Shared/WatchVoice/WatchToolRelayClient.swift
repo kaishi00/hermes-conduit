@@ -20,8 +20,18 @@ final class WatchToolRelayClient {
         /// Hermes took the call but didn't answer within the relay's wait.
         case timedOut
         /// Not answered this way; `grantGone` when the grant can't be used
-        /// again (closed, expired, spent).
-        case unavailable(reason: String, grantGone: Bool)
+        /// again (closed, expired, spent), `sent` when the call went out,
+        /// which spends one of the grant's calls here.
+        case unavailable(reason: String, grantGone: Bool, sent: Bool)
+
+        /// For logs.
+        var label: String {
+            switch self {
+            case .answered: return "answered"
+            case .timedOut: return "timedOut"
+            case .unavailable: return "unavailable"
+            }
+        }
     }
 
     /// The relay holds a call 25 s for Hermes; this waits a little longer.
@@ -75,6 +85,10 @@ final class WatchToolRelayClient {
         !isGone && tools.contains(name) && callsSent < maxCalls && !expiresSoon
     }
 
+    /// Whether the grant was closed or spent. One that expires soon isn't
+    /// gone: it's skipped until the iPhone renews it.
+    private var isSpent: Bool { isGone || callsSent >= maxCalls }
+
     /// Less than `margin` left.
     func expires(within margin: TimeInterval) -> Bool {
         expiresAt.map { $0.timeIntervalSinceNow < margin } ?? false
@@ -83,20 +97,21 @@ final class WatchToolRelayClient {
     private var expiresSoon: Bool { expires(within: Self.expiryMargin) }
 
     func run(name: String, query: String) async -> Outcome {
-        guard tools.contains(name) else { return .unavailable(reason: "notGranted", grantGone: false) }
-        guard canRun(name) else {
+        guard tools.contains(name) else { return .unavailable(reason: "notGranted", grantGone: false, sent: false) }
+        guard !isSpent else {
             isGone = true
-            return .unavailable(reason: "grantEnded", grantGone: true)
+            return .unavailable(reason: "grantEnded", grantGone: true, sent: false)
         }
+        guard !expiresSoon else { return .unavailable(reason: "grantExpiring", grantGone: false, sent: false) }
         let rid = WatchToolSeal.newRequestID()
         let body: Data
         do {
             let plaintext = try WatchToolSeal.json(WatchToolAnswer.request(name: name, query: query))
-            guard plaintext.count <= WatchToolSeal.maxCallBytes else { return .unavailable(reason: "tooLarge", grantGone: false) }
+            guard plaintext.count <= WatchToolSeal.maxCallBytes else { return .unavailable(reason: "tooLarge", grantGone: false, sent: false) }
             let sealed = try WatchToolSeal.seal(plaintext, keys: keys, direction: .call, grantID: grantID, rid: rid)
             body = try WatchToolSeal.json(["rid": rid, "n": sealed.n, "ct": sealed.ct])
         } catch {
-            return .unavailable(reason: "sealFailed", grantGone: false)
+            return .unavailable(reason: "sealFailed", grantGone: false, sent: false)
         }
         var request = URLRequest(url: grantURL.appendingPathComponent("calls"))
         request.httpMethod = "POST"
@@ -118,7 +133,7 @@ final class WatchToolRelayClient {
             status = (response as? HTTPURLResponse)?.statusCode ?? 0
         } catch {
             let code = (error as? URLError)?.code
-            return .unavailable(reason: code == .timedOut ? "requestTimedOut" : "network \(code?.rawValue ?? 0)", grantGone: false)
+            return .unavailable(reason: code == .timedOut ? "requestTimedOut" : "network \(code?.rawValue ?? 0)", grantGone: false, sent: true)
         }
         let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         switch status {
@@ -126,23 +141,26 @@ final class WatchToolRelayClient {
             guard let n = object?["n"] as? String, let ct = object?["ct"] as? String,
                   let plain = try? WatchToolSeal.open(.init(n: n, ct: ct), keys: keys, direction: .result, grantID: grantID, rid: rid),
                   let answer = (try? JSONSerialization.jsonObject(with: plain)) as? [String: Any] else {
-                return .unavailable(reason: "unreadableAnswer", grantGone: false)
+                return .unavailable(reason: "unreadableAnswer", grantGone: false, sent: true)
             }
-            // Hermes' own word that this grant is over: not for the model.
-            if answer["ok"] as? Bool == false, let code = answer["status"] as? Int, [403, 410, 429].contains(code) {
+            // Hermes' own word that this grant is over: not for the model. A
+            // 429 isn't: it's the host's search limit, which the model hears
+            // as the iPhone's path would pass it on. (The host's call budget
+            // also answers 429, but the Watch stops at the same count first.)
+            if answer["ok"] as? Bool == false, let code = answer["status"] as? Int, [403, 410].contains(code) {
                 isGone = true
-                return .unavailable(reason: "host \(code)", grantGone: true)
+                return .unavailable(reason: "host \(code)", grantGone: true, sent: true)
             }
             return .answered(answer)
         case 504:
             return .timedOut
         case 401, 404, 410:
             isGone = true
-            return .unavailable(reason: "relay \(status)", grantGone: true)
+            return .unavailable(reason: "relay \(status)", grantGone: true, sent: true)
         default:
             let error = object?["error"] as? String
             if error == "grant_exhausted" { isGone = true }
-            return .unavailable(reason: "relay \(status)\(error.map { " \($0)" } ?? "")", grantGone: isGone)
+            return .unavailable(reason: "relay \(status)\(error.map { " \($0)" } ?? "")", grantGone: isGone, sent: true)
         }
     }
 

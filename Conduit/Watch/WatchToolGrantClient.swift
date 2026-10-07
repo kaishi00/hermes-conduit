@@ -16,7 +16,9 @@ import Foundation
 final class WatchToolGrantClient {
     static let grantPath = "/api/plugins/conduit_push/watch-tools/grant"
     static let revokePath = "/api/plugins/conduit_push/watch-tools/revoke"
-    static let timeoutMilliseconds = 10_000
+    /// Short: the grant is asked for while the call is set up, and a call
+    /// without one still works through this phone.
+    static let timeoutMilliseconds = 4_000
 
     private let request: GeminiLiveTokenClient.Request
 

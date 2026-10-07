@@ -263,6 +263,9 @@ final class WatchDirectCallModel: ObservableObject {
     private var toolsViaRelay = 0
     private var relayTimeouts = 0
     private var relayFallbacks = 0
+    /// Relay calls that went out (spending one of the grant's calls) and
+    /// came back without an answer.
+    private var relayFailures = 0
     private var relayTimes: [TimeInterval] = []
     private var pollInFlight = false
     private var lastPollAt: TimeInterval = 0
@@ -1033,7 +1036,8 @@ final class WatchDirectCallModel: ObservableObject {
         toolsInFlight.insert(wire.id)
         Task { [weak self] in
             let outcome = await relay.run(name: wire.name, query: query)
-            guard let self, self.callID == id, self.isActive else { return }
+            guard let self else { return Self.relayToolAbandoned(wire, outcome: outcome, callEnded: true) }
+            guard self.callID == id, self.isActive else { return Self.relayToolAbandoned(wire, outcome: outcome, callEnded: !self.isActive) }
             self.toolsInFlight.remove(wire.id)
             let withdrawn = self.withdrawnToolIDs.remove(wire.id) != nil
             let elapsed = self.now - sentAt
@@ -1063,8 +1067,9 @@ final class WatchDirectCallModel: ObservableObject {
                 WatchProbeLog.shared.note("directToolRelay", fields)
                 guard !withdrawn else { return }
                 self.answer(WatchToolAnswer.outgoing(id: wire.id, name: wire.name, result: WatchToolAnswer.tookTooLong), generation: generation)
-            case .unavailable(let reason, let grantGone):
+            case .unavailable(let reason, let grantGone, let sent):
                 self.relayFallbacks += 1
+                if sent { self.relayFailures += 1 }
                 if grantGone, self.toolRelay === relay {
                     relay.close()
                     self.toolRelay = nil
@@ -1072,6 +1077,7 @@ final class WatchDirectCallModel: ObservableObject {
                 fields["outcome"] = "fallback"
                 fields["reason"] = reason
                 fields["grantGone"] = grantGone
+                fields["sent"] = sent
                 WatchProbeLog.shared.note("directToolRelay", fields)
                 guard !withdrawn else { return }
                 if phoneTried {
@@ -1199,6 +1205,23 @@ final class WatchDirectCallModel: ObservableObject {
         WatchProbeLog.shared.note("directToolAfterWristAbandoned", ["name": call.name, "reason": callEnded ? "callEnded" : "replaced"])
     }
 
+    /// A relay lookup whose answer came after its call was over.
+    private static func relayToolAbandoned(_ call: WatchVoiceWire.DirectToolCall, outcome: WatchToolRelayClient.Outcome, callEnded: Bool) {
+        WatchProbeLog.shared.note("directToolRelayAbandoned", ["name": call.name, "outcome": outcome.label, "reason": callEnded ? "callEnded" : "replaced"])
+    }
+
+    /// A grant renewal whose answer came after its call was over. A grant
+    /// it brought is closed on the relay: nothing will use it.
+    private static func grantRenewalAbandoned(_ answer: WatchVoiceWire.Message?, error: String?, callEnded: Bool) {
+        var fields: [String: Any] = ["reason": callEnded ? "callEnded" : "replaced"]
+        if case .directGrantIssued(_, let grant)? = answer, let relay = WatchToolRelayClient(grant) {
+            relay.close()
+            fields["closedGrant"] = true
+        }
+        if let error { fields["error"] = error }
+        WatchProbeLog.shared.note("directGrantRenewalAbandoned", fields)
+    }
+
     /// While the iPhone can be reached, a new tool grant for one that ends
     /// soon or ended early (a host restart, a spent budget). The old one is
     /// closed once nothing waits on it.
@@ -1213,7 +1236,8 @@ final class WatchDirectCallModel: ObservableObject {
         let id = callID
         let sentAt = now
         link.send(.directGrant(callID: id), reply: { [weak self] answer in
-            guard let self, self.callID == id, self.isActive else { return }
+            guard let self else { return Self.grantRenewalAbandoned(answer, error: nil, callEnded: true) }
+            guard self.callID == id, self.isActive else { return Self.grantRenewalAbandoned(answer, error: nil, callEnded: !self.isActive) }
             self.grantRequestInFlight = false
             var fields: [String: Any] = ["ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
             switch answer {
@@ -1238,7 +1262,8 @@ final class WatchDirectCallModel: ObservableObject {
             }
             WatchProbeLog.shared.note("directGrantRenewed", fields)
         }, failure: { [weak self] error in
-            guard let self, self.callID == id else { return }
+            guard let self else { return Self.grantRenewalAbandoned(nil, error: error.localizedDescription, callEnded: true) }
+            guard self.callID == id else { return Self.grantRenewalAbandoned(nil, error: error.localizedDescription, callEnded: false) }
             self.grantRequestInFlight = false
             WatchProbeLog.shared.note("directGrantRenewed", ["ok": false, "error": error.localizedDescription])
         })
@@ -1796,6 +1821,7 @@ final class WatchDirectCallModel: ObservableObject {
         toolsViaRelay = 0
         relayTimeouts = 0
         relayFallbacks = 0
+        relayFailures = 0
         relayTimes = []
         pollInFlight = false
         lastPollAt = 0
@@ -1932,6 +1958,7 @@ final class WatchDirectCallModel: ObservableObject {
             "relayMaxMs": WatchVoiceStats.milliseconds(relayTimes.max()) as Any,
             "relayTimeouts": relayTimeouts,
             "relayFallbacks": relayFallbacks,
+            "relayFailures": relayFailures,
             "grantRequests": grantRequests,
             "grantsRenewed": grantsRenewed,
             "polls": polls,

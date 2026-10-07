@@ -412,6 +412,7 @@ extension HermesVoiceGatewayTimeoutTests {
     @MainActor
     func testWatchToolGrantClientAsksTheProfilesHostAndReadsTheGrant() async throws {
         var asked: [(path: String, method: String, body: [String: Any]?)] = []
+        var timeouts: [Int] = []
         let response: [String: Any] = [
             "ok": true,
             "grant_id": Self.watchToolGrant.grantID,
@@ -422,8 +423,9 @@ extension HermesVoiceGatewayTimeoutTests {
             "tools": ["web_search"],
             "max_calls": 60,
         ]
-        let client = WatchToolGrantClient(request: { path, method, body, _ in
+        let client = WatchToolGrantClient(request: { path, method, body, timeout in
             asked.append((path, method, body))
+            timeouts.append(timeout)
             return path.contains("/grant") ? response : ["ok": true, "revoked": true]
         })
 
@@ -440,6 +442,8 @@ extension HermesVoiceGatewayTimeoutTests {
             "/api/plugins/conduit_push/watch-tools/revoke?profile=work",
         ])
         XCTAssertEqual(asked.map(\.method), ["POST", "POST"])
+        // A hung host holds up the call's setup a few seconds at most.
+        XCTAssertEqual(timeouts, [4_000, 4_000])
         XCTAssertEqual(asked.first?.body?["tools"] as? [String], ["web_search"])
         XCTAssertEqual(asked.last?.body?["grant_id"] as? String, grant.grantID)
 
@@ -494,13 +498,23 @@ extension HermesVoiceGatewayTimeoutTests {
             let other = try WatchToolSeal.seal(WatchToolSeal.json(["ok": true, "results": [] as [Any]]), keys: keys, direction: .result, grantID: grant.grantID, rid: WatchToolSeal.newRequestID())
             return (200, ["n": other.n, "ct": other.ct])
         }
-        guard case .unavailable("unreadableAnswer", false) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected a refusal") }
+        guard case .unavailable("unreadableAnswer", false, true) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected a refusal") }
 
         answerFor = { _ in (504, ["error": "host_timeout"]) }
         guard case .timedOut = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected a timeout") }
 
         answerFor = { _ in (503, ["error": "host_offline"]) }
-        guard case .unavailable(_, false) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected a fallback") }
+        guard case .unavailable(_, false, true) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected a fallback") }
+        XCTAssertTrue(client.canRun("web_search"))
+
+        // The host's search limit is an answer for the model, not the
+        // grant's end.
+        answerFor = { rid in
+            let sealed = try WatchToolSeal.seal(WatchToolSeal.json(["ok": false, "status": 429, "detail": "Too many web searches; try again shortly"]), keys: keys, direction: .result, grantID: grant.grantID, rid: rid)
+            return (200, ["n": sealed.n, "ct": sealed.ct])
+        }
+        guard case .answered(let limited) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected the host's answer") }
+        XCTAssertEqual(WatchToolAnswer.result(name: "web_search", body: limited)["error"], "Too many web searches; try again shortly")
         XCTAssertTrue(client.canRun("web_search"))
 
         // Hermes' own word that the grant is over ends it here too.
@@ -508,9 +522,11 @@ extension HermesVoiceGatewayTimeoutTests {
             let sealed = try WatchToolSeal.seal(WatchToolSeal.json(["ok": false, "status": 410, "detail": "ended"]), keys: keys, direction: .result, grantID: grant.grantID, rid: rid)
             return (200, ["n": sealed.n, "ct": sealed.ct])
         }
-        guard case .unavailable(_, true) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected the grant to end") }
+        guard case .unavailable(_, true, true) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected the grant to end") }
         XCTAssertFalse(client.canRun("web_search"))
-        XCTAssertEqual(client.callsSent, 5)
+        XCTAssertEqual(client.callsSent, 6)
+        guard case .unavailable("grantEnded", true, false) = await client.run(name: "web_search", query: "weather") else { return XCTFail("Expected the grant to stay ended") }
+        XCTAssertEqual(client.callsSent, 6)
 
         let closing = expectation(description: "closed on the relay")
         WatchToolRelayStubProtocol.handler = { request, _ in
@@ -526,9 +542,18 @@ extension HermesVoiceGatewayTimeoutTests {
         var plain = grant
         plain.relayURL = "http://relay.example.test"
         XCTAssertNil(WatchToolRelayClient(plain))
-        var spent = grant
-        spent.expiresAt = Date(timeIntervalSinceNow: 10)
-        XCTAssertFalse(try XCTUnwrap(WatchToolRelayClient(spent)).canRun("web_search"))
+        // A grant about to expire is skipped, not ended: the iPhone renews it.
+        var expiring = grant
+        expiring.expiresAt = Date(timeIntervalSinceNow: 10)
+        let ending = try XCTUnwrap(WatchToolRelayClient(expiring, protocolClasses: [WatchToolRelayStubProtocol.self]))
+        XCTAssertFalse(ending.canRun("web_search"))
+        WatchToolRelayStubProtocol.handler = { _, _ in
+            XCTFail("An expiring grant sends nothing")
+            return (500, [:])
+        }
+        guard case .unavailable("grantExpiring", false, false) = await ending.run(name: "web_search", query: "weather") else { return XCTFail("Expected it skipped") }
+        XCTAssertFalse(ending.isGone)
+        XCTAssertEqual(ending.callsSent, 0)
     }
 }
 
