@@ -168,6 +168,7 @@ struct VoiceSettingsView: View {
     @State private var isApplyingDefaults = false
     @State private var microphonePermission: AVAudioApplication.recordPermission
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
+    @AppStorage(LiveVoiceOrbPower.preferenceKey) private var animateCallOrb = true
     @AppStorage(ReadAloudSpeed.preferenceKey) private var readAloudSpeedRaw = ReadAloudSpeed.normal.rawValue
     let spokenStopPhrases: [String]
     let spokenEndConversationPhrases: [String]
@@ -770,6 +771,11 @@ struct VoiceSettingsView: View {
             }
             Toggle("Keep phone awake during voice conversations", isOn: $keepScreenAwake)
             Text("The screen stays on while a voice conversation is open, including the live voice modes. When off, the phone locks on its usual timer: live voice calls keep going in the background, and a classic voice conversation does too with Keep Listening When Locked on. Applies to this device.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle("Animate the call orb", isOn: $animateCallOrb)
+                .accessibilityIdentifier("voice.animateCallOrb")
+            Text("The orb on the live call screen moves with the call. Turn this off for a still orb that uses less battery. It also holds still while the phone is hot or Reduce Motion is on. Applies to this device.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

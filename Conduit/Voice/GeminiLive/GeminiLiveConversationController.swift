@@ -899,7 +899,10 @@ final class GeminiLiveConversationController: ObservableObject {
             guard !suppressingModelTurn, !audioPaused else { return }
             modelTurnActive = true
             lastModelAudioAt = now()
-            if endRequestedAt == nil { phase = .speaking }
+            // Every chunk lands here: setting the same phase still publishes
+            // and redraws the call sheet, so only the change is assigned.
+            // Skipping phase's didSet then is fine: it is idempotent.
+            if endRequestedAt == nil, phase != .speaking { phase = .speaking }
             do {
                 try output.play(pcm, sampleRate: sampleRate)
             } catch {

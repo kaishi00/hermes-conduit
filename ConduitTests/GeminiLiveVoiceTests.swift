@@ -10,6 +10,7 @@
 //
 
 import AVFAudio
+import Combine
 import UIKit
 import XCTest
 @testable import Conduit
@@ -985,6 +986,21 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(controller.phase, .failed(GeminiLiveAvailability.pluginMissing.userFacingReason!))
         XCTAssertEqual(session.started, 0)
         XCTAssertFalse(input.running)
+    }
+
+    func testGeminiLivePublishesSpeakingOncePerTurnNotOnEveryAudioChunk() async {
+        let (controller, session, _, _, _) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        var published: [GeminiLiveConversationController.Phase] = []
+        let watch = controller.$phase.dropFirst().sink { published.append($0) }
+        for _ in 0..<20 {
+            session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        }
+        session.onEvent?(.turnComplete)
+        XCTAssertEqual(published, [.speaking, .listening], "each chunk would otherwise redraw the call sheet")
+        watch.cancel()
+        controller.stop()
     }
 
     func testGeminiLiveNeverTalksOverTheUser() async {
