@@ -460,6 +460,11 @@ enum ChatScrollSessionIdentityResolver {
         // with no catalog row (a Bot Chat), kept the LEFT conversation's id as
         // canonical — a later preserve-current sync then resumed that other
         // chat under the open one's header (#442).
+        // Reachable only before the new conversation's resume lands: the
+        // reconcile publishes `resolvedSessionId` (part of `reconciliationIDs`)
+        // before it moves the active id, so a rotated runtime never takes this
+        // branch, and any durable id resolved here belongs to the chat being
+        // left, which is why it is not carried over.
         if let activeID, !reconciliationIDs.isEmpty,
            !reconciliationIDs.contains(activeID),
            !reconciliationCatalogIDs.contains(activeID),
