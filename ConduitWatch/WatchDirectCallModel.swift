@@ -97,6 +97,9 @@ final class WatchDirectCallModel: ObservableObject {
         case listening
         case speaking
         case reconnecting
+        /// Gemini's session broke and couldn't be resumed: a fresh one
+        /// starts once the iPhone can be reached (the wrist comes up).
+        case lost
         /// Siri or an alarm took the microphone: a tap brings it back.
         case needsTap
         /// Hermes said goodbye: the call closes once it has played.
@@ -123,6 +126,19 @@ final class WatchDirectCallModel: ObservableObject {
     /// as on the iPhone.
     static let userQuietInterval: TimeInterval = 2
     static let modelQuietInterval: TimeInterval = 1
+    /// After a tool's answer or a text turn goes to the model, job news
+    /// waits this long at most for the model's reply to start (round 6:
+    /// news sent in that gap took the reply's place).
+    static let replyWait: TimeInterval = 8
+    /// A tool call still running holds job news back this long at most.
+    static let toolHoldLimit: TimeInterval = 30
+    /// Gemini's session broke past resuming (round 6: 1011 "Internal error
+    /// encountered", then the same on every resumption): the call starts a
+    /// fresh session and tells it the conversation so far. Its token comes
+    /// from the iPhone, so with the wrist down the call waits this long
+    /// for the wrist, a few times a call at most.
+    static let rejoinWait: TimeInterval = 120
+    static let maxRejoins = 3
     /// A goodbye closes the call once Gemini has made no sound this long,
     /// or after the timeout whatever it's doing (the iPhone's values).
     static let endGrace: TimeInterval = 1
@@ -240,6 +256,18 @@ final class WatchDirectCallModel: ObservableObject {
     private var tokensFromPhone = 0
     private var tokensReused = 0
     private var tokenFailures = 0
+    /// Waiting for the iPhone to start a fresh session after the old one
+    /// broke, and why it broke (the call ends with it if the wait runs out).
+    private var rejoinWaitingSince: TimeInterval?
+    private var rejoinReason: String?
+    /// A fresh session is starting: it's told the conversation once ready.
+    private var rejoinStartedAt: TimeInterval?
+    private var rejoins = 0
+    private var rejoinTimes: [Double] = []
+    /// Added to the session's connection generation. A fresh session
+    /// doesn't count as a new connection there, but calls made on the
+    /// broken one can't be answered on it.
+    private var generationOffset = 0
 
     // Conversation
     private var suppressingModelTurn = false
@@ -248,6 +276,9 @@ final class WatchDirectCallModel: ObservableObject {
     private var lastModelTurnEndedAt: TimeInterval?
     private var lastModelAudioAt: TimeInterval?
     private var awaitingReplySince: TimeInterval?
+    /// A tool's answer or a text turn went to the model and its reply
+    /// hasn't started yet.
+    private var awaitingAnswerSince: TimeInterval?
     private var unansweredTurns = 0
     private var endRequestedAt: TimeInterval?
     private var transcript: [WatchVoiceWire.DirectTurn] = []
@@ -256,6 +287,7 @@ final class WatchDirectCallModel: ObservableObject {
 
     // Tools
     private var toolsInFlight: Set<String> = []
+    private var lastToolCalledAt: TimeInterval?
     private var withdrawnToolIDs: Set<String> = []
     private var quietQueue: [WatchVoiceWire.DirectOutgoing] = []
     private var toolCalls = 0
@@ -730,6 +762,16 @@ final class WatchDirectCallModel: ObservableObject {
             }
             connectionReadyAt = at
             if phase == .connecting || phase == .reconnecting { phase = restingPhase }
+            if let since = rejoinStartedAt {
+                rejoinStartedAt = nil
+                rejoinTimes.append(at - since)
+                WatchProbeLog.shared.note("directRejoined", [
+                    "ms": Int((at - since) * 1000),
+                    "lines": transcript.count,
+                    "screen": "\(scenePhase)",
+                ])
+                sendRejoinContext()
+            }
             sendOpeningIfNeeded()
             flushQuietQueue()
         case .reconnecting:
@@ -767,11 +809,108 @@ final class WatchDirectCallModel: ObservableObject {
                 "reachable": link.isReachable,
             ])
         case .failed(let message):
-            WatchProbeLog.shared.note("directFailed", ["message": message, "screen": "\(scenePhase)"])
-            finish(message)
+            WatchProbeLog.shared.note("directFailed", ["message": message, "screen": "\(scenePhase)", "rejoins": rejoins])
+            // Once the call has been live, a fresh session carries it on.
+            if firstReadyAt != nil, endRequestedAt == nil, rejoins < Self.maxRejoins {
+                waitToRejoin(message)
+            } else {
+                finish(message)
+            }
         case .idle, .connecting, .stopped:
             break
         }
+    }
+
+    /// The connection a tool call is answered on (see generationOffset).
+    private var liveGeneration: Int? {
+        session.map { $0.connectionGeneration + generationOffset }
+    }
+
+    /// The session broke past resuming. A fresh one needs a new token from
+    /// the iPhone: at once if it can be reached, otherwise once the wrist
+    /// comes up, and a chime says so meanwhile.
+    private func waitToRejoin(_ reason: String) {
+        if audio.isPlaying {
+            audio.stopPlayback()
+            lastPlaybackEndedAt = now
+        }
+        suppressingModelTurn = false
+        if modelTurnActive { modelTurnEnded() }
+        // Not a resumption: its time isn't one.
+        reconnectStartedAt = nil
+        rejoinWaitingSince = now
+        rejoinReason = reason
+        pendingSamples = []
+        phase = .lost
+        WatchProbeLog.shared.note("directRejoinWaiting", [
+            "reason": reason,
+            "rejoins": rejoins,
+            "reachable": link.isReachable,
+            "screen": "\(scenePhase)",
+        ])
+        if link.isReachable {
+            rejoin()
+        } else {
+            audio.enqueue(Self.lostChime(), sampleRate: GeminiLiveProtocol.outputSampleRate)
+        }
+    }
+
+    /// From the tick: the wrist came up, or the wait ran out.
+    private func rejoinIfDue() {
+        guard let since = rejoinWaitingSince else { return }
+        if link.isReachable {
+            rejoin()
+        } else if now - since >= Self.rejoinWait {
+            finish(rejoinReason)
+        }
+    }
+
+    private func rejoin() {
+        guard let session else { return }
+        rejoinWaitingSince = nil
+        rejoins += 1
+        rejoinStartedAt = now
+        // Calls made on the broken session can't be answered on the fresh
+        // one: their answers go out as text updates instead.
+        generationOffset += 1
+        phase = .reconnecting
+        WatchProbeLog.shared.note("directRejoin", ["rejoin": rejoins, "screen": "\(scenePhase)"])
+        // Starts over without the resumption handle, on a token from the
+        // iPhone (a fresh session can't reuse the one in hand).
+        session.start()
+    }
+
+    /// A fresh session knows nothing of the call: it's told the
+    /// conversation so far, and says it's back.
+    private func sendRejoinContext() {
+        guard let session else { return }
+        // Whatever the microphone kept while the call was down would
+        // talk over that.
+        pendingSamples = []
+        let text = WatchRejoin.prompt(transcript)
+        awaitingAnswerSince = now
+        textUpdatesSent += 1
+        session.send(.textTurn(text), onSent: nil, onFailure: { [weak self] in
+            self?.quietQueue.insert(.textWhenIdle(text), at: 0)
+        })
+    }
+
+    /// Two falling notes: the call lost Gemini and waits for the wrist.
+    static func lostChime() -> [Int16] {
+        let rate = GeminiLiveProtocol.outputSampleRate
+        let noteLength = Int(rate * 0.18)
+        let fade = Int(rate * 0.01)
+        var samples: [Int16] = []
+        for frequency in [880.0, 660.0] {
+            for index in 0..<noteLength {
+                let edge = min(index, noteLength - 1 - index)
+                let envelope = edge < fade ? Double(edge) / Double(fade) : 1
+                let value = sin(2 * Double.pi * frequency * Double(index) / rate) * 0.3 * envelope
+                samples.append(Int16(value * Double(Int16.max)))
+            }
+            samples.append(contentsOf: [Int16](repeating: 0, count: Int(rate * 0.06)))
+        }
+        return samples
     }
 
     /// A new connection took over: calls opened on the old one can't be
@@ -868,6 +1007,7 @@ final class WatchDirectCallModel: ObservableObject {
     private func sendOpeningIfNeeded() {
         guard !hasSentOpening, let openingPrompt, let session, session.isReady else { return }
         hasSentOpening = true
+        awaitingAnswerSince = now
         session.send(.textTurn(openingPrompt), onSent: nil, onFailure: { [weak self] in self?.hasSentOpening = false })
     }
 
@@ -899,6 +1039,7 @@ final class WatchDirectCallModel: ObservableObject {
             }
             modelTurnActive = true
             awaitingReplySince = nil
+            awaitingAnswerSince = nil
             audio.enqueue(Self.samples(pcm), sampleRate: sampleRate)
             if phase == .listening { phase = .speaking }
         case .inputTranscription(let text):
@@ -909,6 +1050,7 @@ final class WatchDirectCallModel: ObservableObject {
             guard !suppressingModelTurn else { return }
             modelTurnActive = true
             awaitingReplySince = nil
+            awaitingAnswerSince = nil
             appendTranscript(.assistant, text)
             if let line = openAssistantLine { caption = String(transcript[line].text.suffix(160)) }
         case .interrupted:
@@ -1019,7 +1161,8 @@ final class WatchDirectCallModel: ObservableObject {
             requestEnd()
             return
         }
-        let generation = session?.connectionGeneration
+        lastToolCalledAt = now
+        let generation = liveGeneration
         // Sampled as the call arrives: the link can drop later for other
         // reasons, with the wrist still up.
         let wristDown = scenePhase != .active
@@ -1776,11 +1919,13 @@ final class WatchDirectCallModel: ObservableObject {
     /// Answers a call on the connection it was made on; once another took
     /// over, its fallback goes out as a text update, as on the iPhone.
     private func answer(_ item: WatchVoiceWire.DirectOutgoing, generation: Int?) {
-        guard case .toolResponse(_, _, _, _, let fallback) = item, let message = item.clientMessage else { return }
-        guard let session, session.isReady, generation == nil || session.connectionGeneration == generation else {
+        guard case .toolResponse(_, _, _, let scheduling, let fallback) = item, let message = item.clientMessage else { return }
+        guard let session, session.isReady, generation == nil || liveGeneration == generation else {
             if let fallback { quietQueue.append(.textWhenIdle(fallback)) }
             return
         }
+        // The model talks about it next: job news waits for that.
+        if scheduling != GeminiLiveProtocol.Scheduling.silent.rawValue { awaitingAnswerSince = now }
         session.send(message, onSent: nil, onFailure: { [weak self] in
             guard let self, let fallback else { return }
             self.quietQueue.append(.textWhenIdle(fallback))
@@ -1793,12 +1938,20 @@ final class WatchDirectCallModel: ObservableObject {
         let item = quietQueue.removeFirst()
         guard let message = item.clientMessage else { return }
         textUpdatesSent += 1
+        // A text turn is answered; the next update waits for that.
+        if case .textWhenIdle = item { awaitingAnswerSince = now }
         session.send(message, onSent: nil, onFailure: { [weak self] in self?.quietQueue.insert(item, at: 0) })
     }
 
     private var isQuiet: Bool {
         guard endRequestedAt == nil, phase != .needsTap, !modelTurnActive, !audio.isPlaying else { return false }
         let at = now
+        // The model owes an answer: to the user's turn (until it counts as
+        // unanswered), to a tool it called and is waiting on, or to what
+        // just went to it. A text turn sent meanwhile would take its place.
+        if awaitingReplySince != nil { return false }
+        if !toolsInFlight.isEmpty, let called = lastToolCalledAt, at - called < Self.toolHoldLimit { return false }
+        if let sent = awaitingAnswerSince, at - sent < Self.replyWait { return false }
         if let spoke = lastUserSpeechAt, at - spoke < Self.userQuietInterval { return false }
         if let voiced = activity.lastVoicedAt, at - voiced < Self.userQuietInterval { return false }
         if let ended = lastModelTurnEndedAt, at - ended < Self.modelQuietInterval { return false }
@@ -2018,6 +2171,7 @@ final class WatchDirectCallModel: ObservableObject {
                 return
             }
         }
+        rejoinIfDue()
         runWristQueueIfReachable()
         renewGrantIfDue()
         fetchJobNewsIfDue()
@@ -2271,18 +2425,26 @@ final class WatchDirectCallModel: ObservableObject {
         tokensFromPhone = 0
         tokensReused = 0
         tokenFailures = 0
+        rejoinWaitingSince = nil
+        rejoinReason = nil
+        rejoinStartedAt = nil
+        rejoins = 0
+        rejoinTimes = []
+        generationOffset = 0
         suppressingModelTurn = false
         modelTurnActive = false
         lastUserSpeechAt = nil
         lastModelTurnEndedAt = nil
         lastModelAudioAt = nil
         awaitingReplySince = nil
+        awaitingAnswerSince = nil
         unansweredTurns = 0
         endRequestedAt = nil
         transcript = []
         openUserLine = nil
         openAssistantLine = nil
         toolsInFlight = []
+        lastToolCalledAt = nil
         withdrawnToolIDs = []
         quietQueue = []
         toolCalls = 0
@@ -2466,6 +2628,8 @@ final class WatchDirectCallModel: ObservableObject {
             "reconnects": reconnectTimes.count,
             "reconnectP50Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(reconnectTimes, 0.5)) as Any,
             "reconnectMaxMs": WatchVoiceStats.milliseconds(reconnectTimes.max()) as Any,
+            "rejoins": rejoins,
+            "rejoinMaxMs": WatchVoiceStats.milliseconds(rejoinTimes.max()) as Any,
             "connectionLifetimesS": connectionLifetimes.map { Int($0) },
             "goAways": goAways,
             "handoffs": handoffTimes.count,

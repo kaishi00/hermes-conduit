@@ -368,7 +368,7 @@ struct WatchDirectCallView: View {
         switch direct.phase {
         case .speaking: return .purple
         case .listening: return .green
-        case .needsTap: return .orange
+        case .needsTap, .lost: return .orange
         case .ended, .idle: return .secondary
         default: return .blue
         }
@@ -382,6 +382,7 @@ struct WatchDirectCallView: View {
         case .listening: return "Listening"
         case .speaking: return "Speaking"
         case .reconnecting: return "Reconnecting…"
+        case .lost: return "Connection lost. Raise your wrist to reconnect."
         case .needsTap: return "Paused. Tap to continue."
         case .ending: return "Ending…"
         case .ended(let reason): return reason.map { "Ended: \($0)" } ?? "Ended"
