@@ -111,7 +111,7 @@ enum WatchRejoin {
             characters += entry.count + 1
         }
         guard !kept.isEmpty else {
-            return "[The call's connection to you broke and this is a new session. Say in a few words that you're back.]"
+            return "[The call's connection to you broke and this is a new session. \(unheard) Say in a few words that you're back.]"
         }
         // What was said can't close the block early and pass as instructions.
         let conversation = kept.reversed().joined(separator: "\n")
@@ -121,7 +121,46 @@ enum WatchRejoin {
         <conversation>
         \(conversation)
         </conversation>
-        Say in a few words that you're back. If your last answer was cut off, or the user's last question got no answer, give it now.]
+        \(unheard) Say in a few words that you're back. If your last answer was cut off, or the user's last question got no answer, give it now.]
         """
+    }
+
+    /// The microphone's audio from the outage is dropped, so the model
+    /// doesn't answer as if it heard it.
+    static let unheard = "Anything the user said while the connection was down wasn't heard."
+}
+
+/// A fresh single-use Gemini Live token from Hermes through the call's
+/// grant (plugin 0.8+, Eric's choice 2026-10-07), for a session that broke
+/// past resuming while the iPhone can't be reached. The answer is the
+/// /gemini-live/token route's body, sealed with the grant's key, so only
+/// the host could have sent it; the Gemini key itself stays there.
+enum WatchLiveToken {
+    static let tool = "live_token"
+
+    /// Nil unless it's a token with a wss URL (as the iPhone's
+    /// GeminiLiveTokenClient reads the route).
+    static func token(body: [String: Any]) -> GeminiLiveToken? {
+        guard body["ok"] as? Bool == true,
+              let token = body["token"] as? String, !token.isEmpty,
+              let urlString = body["websocket_url"] as? String,
+              let url = URL(string: urlString),
+              url.scheme?.lowercased() == "wss" else { return nil }
+        let model = (body["model"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? GeminiLiveProtocol.model
+        return GeminiLiveToken(
+            token: token,
+            expiresAt: date(body["expires_at"]),
+            newSessionExpiresAt: date(body["new_session_expires_at"]),
+            model: model,
+            webSocketURL: url
+        )
+    }
+
+    /// ISO 8601, with or without fractional seconds.
+    static func date(_ value: Any?) -> Date? {
+        guard let string = value as? String, !string.isEmpty else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: string) ?? ISO8601DateFormatter().date(from: string)
     }
 }

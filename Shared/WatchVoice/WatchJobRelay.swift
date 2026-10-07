@@ -84,6 +84,18 @@ enum WatchJobAnswer {
         return GeminiLiveProtocol.Scheduling.whenIdle.rawValue
     }
 
+    /// The Watch answers a start_job as soon as Hermes takes it, where the
+    /// iPhone holds the call until the job settles. Once the model has
+    /// already said it's starting the job, that answer is taken in
+    /// silently: round 6's answer made it speak again with nothing to add,
+    /// and it said "<no speech>". Its result comes later as news either
+    /// way.
+    static func scheduling(name: String, result: [String: String], acknowledged: Bool) -> String? {
+        if let scheduling = scheduling(name: name, result: result) { return scheduling }
+        guard name == startJob, acknowledged, result["status"] == "started" || result["status"] == "accepted" else { return nil }
+        return GeminiLiveProtocol.Scheduling.silent.rawValue
+    }
+
     /// Said instead when the call's connection is gone: the phone's
     /// fallback for a start_job answer
     /// (GeminiLiveConversationController.fallbackText).

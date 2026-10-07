@@ -97,8 +97,9 @@ final class WatchDirectCallModel: ObservableObject {
         case listening
         case speaking
         case reconnecting
-        /// Gemini's session broke and couldn't be resumed: a fresh one
-        /// starts once the iPhone can be reached (the wrist comes up).
+        /// Gemini's session broke and couldn't be resumed, and a fresh one
+        /// can't start yet: it waits for the iPhone (the wrist comes up)
+        /// when Hermes couldn't send a token through the grant.
         case lost
         /// Siri or an alarm took the microphone: a tap brings it back.
         case needsTap
@@ -130,15 +131,21 @@ final class WatchDirectCallModel: ObservableObject {
     /// waits this long at most for the model's reply to start (round 6:
     /// news sent in that gap took the reply's place).
     static let replyWait: TimeInterval = 8
-    /// A tool call still running holds job news back this long at most.
-    static let toolHoldLimit: TimeInterval = 30
+    /// The oldest tool call still running holds job news back this long at
+    /// most: past the relay client's own wait, so a relayed call is
+    /// answered or given up first.
+    static let toolHoldLimit: TimeInterval = 40
     /// Gemini's session broke past resuming (round 6: 1011 "Internal error
     /// encountered", then the same on every resumption): the call starts a
     /// fresh session and tells it the conversation so far. Its token comes
-    /// from the iPhone, so with the wrist down the call waits this long
+    /// from the iPhone or, with the wrist down, from Hermes through the
+    /// call's grant (live_token). Without either the call waits this long
     /// for the wrist, a few times a call at most.
     static let rejoinWait: TimeInterval = 120
     static let maxRejoins = 3
+    /// A rejoin that hasn't come back by then gives up, as a failed one
+    /// does. Its token can wait on the relay as long as a tool call.
+    static let rejoinHangLimit: TimeInterval = sessionWait + WatchToolRelayClient.requestTimeout
     /// A goodbye closes the call once Gemini has made no sound this long,
     /// or after the timeout whatever it's doing (the iPhone's values).
     static let endGrace: TimeInterval = 1
@@ -255,6 +262,7 @@ final class WatchDirectCallModel: ObservableObject {
     private var firstUnsatisfiedAt: TimeInterval?
     private var tokensFromPhone = 0
     private var tokensReused = 0
+    private var tokensFromRelay = 0
     private var tokenFailures = 0
     /// Waiting for the iPhone to start a fresh session after the old one
     /// broke, and why it broke (the call ends with it if the wait runs out).
@@ -262,8 +270,15 @@ final class WatchDirectCallModel: ObservableObject {
     private var rejoinReason: String?
     /// A fresh session is starting: it's told the conversation once ready.
     private var rejoinStartedAt: TimeInterval?
+    /// It started with the iPhone out of reach, so on a token from the
+    /// relay; once one of those fails, the next waits for the wrist.
+    private var rejoinWristDown = false
+    private var wristDownRejoinFailed = false
     private var rejoins = 0
     private var rejoinTimes: [Double] = []
+    private var rejoinsHung = 0
+    /// Microphone audio dropped while the call had no session.
+    private var samplesDroppedWhileDown = 0
     /// Added to the session's connection generation. A fresh session
     /// doesn't count as a new connection there, but calls made on the
     /// broken one can't be answered on it.
@@ -287,7 +302,12 @@ final class WatchDirectCallModel: ObservableObject {
 
     // Tools
     private var toolsInFlight: Set<String> = []
-    private var lastToolCalledAt: TimeInterval?
+    /// When each call came, for the ones still running.
+    private var toolCalledAt: [String: TimeInterval] = [:]
+    /// Calls the model made after it had started speaking in that turn,
+    /// or spoke after: it has acknowledged them.
+    private var toolCallsSpokenFor: Set<String> = []
+    private var startJobsTakenSilently = 0
     private var withdrawnToolIDs: Set<String> = []
     private var quietQueue: [WatchVoiceWire.DirectOutgoing] = []
     private var toolCalls = 0
@@ -644,6 +664,10 @@ final class WatchDirectCallModel: ObservableObject {
             guard let self else { throw WatchDirectError.ended }
             return try await self.requestToken()
         }
+        tokens.relayFetch = { [weak self] in
+            guard let self else { throw WatchDirectError.ended }
+            return try await self.requestRelayToken()
+        }
         tokens.onIssued = { [weak self] source, error in self?.tokenIssued(source, error: error) }
         let meter = self.meter
         meter.onFirstFrame = { [weak self] api in self?.socketHeard(api) }
@@ -718,10 +742,49 @@ final class WatchDirectCallModel: ObservableObject {
         }
     }
 
+    /// A new single-use token from Hermes through the grant's relay. The
+    /// log has how it went, never the token.
+    private func requestRelayToken() async throws -> GeminiLiveToken {
+        guard let relay = toolRelay, relay.canRun(WatchLiveToken.tool) else { throw WatchDirectError.noRelayToken }
+        let id = callID
+        let sentAt = now
+        let outcome = await relay.run(name: WatchLiveToken.tool, arguments: [:])
+        guard callID == id, isActive else { throw WatchDirectError.ended }
+        var fields: [String: Any] = [
+            "ms": Int((now - sentAt) * 1000),
+            "outcome": outcome.label,
+            "screen": "\(scenePhase)",
+            "reachable": link.isReachable,
+            "grantCalls": relay.callsSent,
+        ]
+        defer { WatchProbeLog.shared.note("directRelayToken", fields) }
+        switch outcome {
+        case .answered(let body):
+            if let token = WatchLiveToken.token(body: body) {
+                fields["expiresInS"] = token.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any
+                return token
+            }
+            let detail = (body["detail"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            fields["status"] = body["status"] as Any
+            throw WatchDirectError.relayToken(detail ?? "Hermes sent no usable Gemini token.")
+        case .timedOut:
+            throw WatchDirectError.relayToken("Hermes didn't answer in time.")
+        case .unavailable(let reason, let grantGone, _):
+            fields["reason"] = reason
+            fields["grantGone"] = grantGone
+            if grantGone, toolRelay === relay {
+                toolRelay = nil
+                closeIfUnused(relay)
+            }
+            throw WatchDirectError.relayToken("The relay couldn't reach Hermes (\(reason)).")
+        }
+    }
+
     private func tokenIssued(_ source: WatchDirectTokens.Source, error: String?) {
         switch source {
         case .phone: tokensFromPhone += 1
         case .reused: tokensReused += 1
+        case .relay: tokensFromRelay += 1
         case .failed: tokenFailures += 1
         case .first: break
         }
@@ -765,13 +828,20 @@ final class WatchDirectCallModel: ObservableObject {
             if let since = rejoinStartedAt {
                 rejoinStartedAt = nil
                 rejoinTimes.append(at - since)
+                wristDownRejoinFailed = false
+                let dropped = samplesDroppedWhileDown + pendingSamples.count
                 WatchProbeLog.shared.note("directRejoined", [
                     "ms": Int((at - since) * 1000),
                     "lines": transcript.count,
+                    "wristDown": rejoinWristDown,
+                    // What the user said meanwhile, never sent: the fresh
+                    // session is told it wasn't heard.
+                    "discardedAudioMs": Int(Double(dropped) / WatchAudio.captureRate * 1000),
                     "screen": "\(scenePhase)",
                 ])
                 sendRejoinContext()
             }
+            samplesDroppedWhileDown = 0
             sendOpeningIfNeeded()
             flushQuietQueue()
         case .reconnecting:
@@ -826,10 +896,13 @@ final class WatchDirectCallModel: ObservableObject {
         session.map { $0.connectionGeneration + generationOffset }
     }
 
-    /// The session broke past resuming. A fresh one needs a new token from
-    /// the iPhone: at once if it can be reached, otherwise once the wrist
-    /// comes up, and a chime says so meanwhile.
+    /// The session broke past resuming. A fresh one needs a new token: at
+    /// once from the iPhone if it can be reached, or from Hermes through
+    /// the grant with the wrist down. Otherwise, or once a wrist-down
+    /// rejoin has failed, it waits for the wrist, and a chime says so.
     private func waitToRejoin(_ reason: String) {
+        if rejoinStartedAt != nil, rejoinWristDown { wristDownRejoinFailed = true }
+        rejoinStartedAt = nil
         if audio.isPlaying {
             audio.stopPlayback()
             lastPlaybackEndedAt = now
@@ -840,18 +913,46 @@ final class WatchDirectCallModel: ObservableObject {
         reconnectStartedAt = nil
         rejoinWaitingSince = now
         rejoinReason = reason
+        samplesDroppedWhileDown += pendingSamples.count
         pendingSamples = []
         phase = .lost
+        let relayToken = !wristDownRejoinFailed && canMintThroughRelay
         WatchProbeLog.shared.note("directRejoinWaiting", [
             "reason": reason,
             "rejoins": rejoins,
             "reachable": link.isReachable,
+            "relayToken": relayToken,
             "screen": "\(scenePhase)",
         ])
-        if link.isReachable {
+        if link.isReachable || relayToken {
             rejoin()
         } else {
             audio.enqueue(Self.lostChime(), sampleRate: GeminiLiveProtocol.outputSampleRate)
+        }
+    }
+
+    /// The grant can bring a fresh Gemini token through the relay.
+    private var canMintThroughRelay: Bool {
+        toolRelay?.canRun(WatchLiveToken.tool) == true
+    }
+
+    /// From the tick: a rejoin that hasn't come back gives up, as a failed
+    /// one does, and counts as one.
+    private func rejoinHungIfDue() {
+        guard let since = rejoinStartedAt, now - since >= Self.rejoinHangLimit, let session else { return }
+        rejoinsHung += 1
+        WatchProbeLog.shared.note("directRejoinHung", [
+            "ms": Int((now - since) * 1000),
+            "rejoin": rejoins,
+            "wristDown": rejoinWristDown,
+            "screen": "\(scenePhase)",
+        ])
+        session.stop()
+        let reason = "Gemini didn't come back after the connection broke."
+        if endRequestedAt == nil, rejoins < Self.maxRejoins {
+            waitToRejoin(reason)
+        } else {
+            finish(reason)
         }
     }
 
@@ -870,13 +971,14 @@ final class WatchDirectCallModel: ObservableObject {
         rejoinWaitingSince = nil
         rejoins += 1
         rejoinStartedAt = now
+        rejoinWristDown = !link.isReachable
         // Calls made on the broken session can't be answered on the fresh
         // one: their answers go out as text updates instead.
         generationOffset += 1
         phase = .reconnecting
-        WatchProbeLog.shared.note("directRejoin", ["rejoin": rejoins, "screen": "\(scenePhase)"])
+        WatchProbeLog.shared.note("directRejoin", ["rejoin": rejoins, "wristDown": rejoinWristDown, "screen": "\(scenePhase)"])
         // Starts over without the resumption handle, on a token from the
-        // iPhone (a fresh session can't reuse the one in hand).
+        // iPhone or the relay (a fresh session can't reuse the one in hand).
         session.start()
     }
 
@@ -1040,6 +1142,7 @@ final class WatchDirectCallModel: ObservableObject {
             modelTurnActive = true
             awaitingReplySince = nil
             awaitingAnswerSince = nil
+            toolCallsSpokenFor.formUnion(toolsInFlight)
             audio.enqueue(Self.samples(pcm), sampleRate: sampleRate)
             if phase == .listening { phase = .speaking }
         case .inputTranscription(let text):
@@ -1161,7 +1264,11 @@ final class WatchDirectCallModel: ObservableObject {
             requestEnd()
             return
         }
-        lastToolCalledAt = now
+        // Only the running calls' times are kept.
+        toolCalledAt = toolCalledAt.filter { toolsInFlight.contains($0.key) }
+        toolCallsSpokenFor.formIntersection(toolsInFlight)
+        toolCalledAt[call.id] = now
+        if modelTurnActive { toolCallsSpokenFor.insert(call.id) }
         let generation = liveGeneration
         // Sampled as the call arrives: the link can drop later for other
         // reasons, with the wrist still up.
@@ -1919,6 +2026,15 @@ final class WatchDirectCallModel: ObservableObject {
     /// Answers a call on the connection it was made on; once another took
     /// over, its fallback goes out as a text update, as on the iPhone.
     private func answer(_ item: WatchVoiceWire.DirectOutgoing, generation: Int?) {
+        // A started job the model already said it's starting goes in
+        // silently (WatchJobAnswer.scheduling(name:result:acknowledged:)).
+        var item = item
+        let silent = GeminiLiveProtocol.Scheduling.silent.rawValue
+        if case .toolResponse(let id, let name, let result, .none, let fallback) = item,
+           WatchJobAnswer.scheduling(name: name, result: result, acknowledged: toolCallsSpokenFor.contains(id)) == silent {
+            startJobsTakenSilently += 1
+            item = .toolResponse(id: id, name: name, result: result, scheduling: silent, fallback: fallback)
+        }
         guard case .toolResponse(_, _, _, let scheduling, let fallback) = item, let message = item.clientMessage else { return }
         guard let session, session.isReady, generation == nil || liveGeneration == generation else {
             if let fallback { quietQueue.append(.textWhenIdle(fallback)) }
@@ -1950,7 +2066,7 @@ final class WatchDirectCallModel: ObservableObject {
         // unanswered), to a tool it called and is waiting on, or to what
         // just went to it. A text turn sent meanwhile would take its place.
         if awaitingReplySince != nil { return false }
-        if !toolsInFlight.isEmpty, let called = lastToolCalledAt, at - called < Self.toolHoldLimit { return false }
+        if let oldest = toolsInFlight.compactMap({ toolCalledAt[$0] }).min(), at - oldest < Self.toolHoldLimit { return false }
         if let sent = awaitingAnswerSince, at - sent < Self.replyWait { return false }
         if let spoke = lastUserSpeechAt, at - spoke < Self.userQuietInterval { return false }
         if let voiced = activity.lastVoicedAt, at - voiced < Self.userQuietInterval { return false }
@@ -2006,6 +2122,7 @@ final class WatchDirectCallModel: ObservableObject {
         // Before the session is ready, keep the newest few seconds only.
         let limit = Int(WatchAudio.captureRate * Self.preRoll)
         if session?.isReady != true, pendingSamples.count > limit {
+            if firstReadyAt != nil { samplesDroppedWhileDown += pendingSamples.count - limit }
             pendingSamples.removeFirst(pendingSamples.count - limit)
         }
     }
@@ -2171,6 +2288,7 @@ final class WatchDirectCallModel: ObservableObject {
                 return
             }
         }
+        rejoinHungIfDue()
         rejoinIfDue()
         runWristQueueIfReachable()
         renewGrantIfDue()
@@ -2424,12 +2542,17 @@ final class WatchDirectCallModel: ObservableObject {
         socketWaitNotes = 0
         tokensFromPhone = 0
         tokensReused = 0
+        tokensFromRelay = 0
         tokenFailures = 0
         rejoinWaitingSince = nil
         rejoinReason = nil
         rejoinStartedAt = nil
+        rejoinWristDown = false
+        wristDownRejoinFailed = false
         rejoins = 0
         rejoinTimes = []
+        rejoinsHung = 0
+        samplesDroppedWhileDown = 0
         generationOffset = 0
         suppressingModelTurn = false
         modelTurnActive = false
@@ -2444,7 +2567,9 @@ final class WatchDirectCallModel: ObservableObject {
         openUserLine = nil
         openAssistantLine = nil
         toolsInFlight = []
-        lastToolCalledAt = nil
+        toolCalledAt = [:]
+        toolCallsSpokenFor = []
+        startJobsTakenSilently = 0
         withdrawnToolIDs = []
         quietQueue = []
         toolCalls = 0
@@ -2630,13 +2755,16 @@ final class WatchDirectCallModel: ObservableObject {
             "reconnectMaxMs": WatchVoiceStats.milliseconds(reconnectTimes.max()) as Any,
             "rejoins": rejoins,
             "rejoinMaxMs": WatchVoiceStats.milliseconds(rejoinTimes.max()) as Any,
+            "rejoinsHung": rejoinsHung,
             "connectionLifetimesS": connectionLifetimes.map { Int($0) },
             "goAways": goAways,
             "handoffs": handoffTimes.count,
             "handoffP50Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(handoffTimes, 0.5)) as Any,
             "tokensFromPhone": tokensFromPhone,
             "tokensReused": tokensReused,
+            "tokensFromRelay": tokensFromRelay,
             "tokenFailures": tokenFailures,
+            "startJobsTakenSilently": startJobsTakenSilently,
             "toolCalls": toolCalls,
             "toolsAnsweredLive": toolsAnsweredLive,
             "toolsUnreachable": toolsUnreachable,
@@ -2698,6 +2826,7 @@ final class WatchDirectTokens: GeminiLiveTokenProviding {
         case first
         case phone
         case reused
+        case relay
         case failed
     }
 
@@ -2705,6 +2834,10 @@ final class WatchDirectTokens: GeminiLiveTokenProviding {
     static let reuseMargin: TimeInterval = 60
 
     var fetch: (@MainActor () async throws -> GeminiLiveToken)?
+    /// Hermes' token through the call's grant, for when the iPhone can't
+    /// answer and the token in hand can't serve: a fresh session, or one
+    /// about to expire. Nil, or throwing, when the grant can't mint one.
+    var relayFetch: (@MainActor () async throws -> GeminiLiveToken)?
     var canResume: @MainActor () -> Bool = { false }
     var onIssued: ((Source, String?) -> Void)?
     private var first: GeminiLiveToken?
@@ -2737,8 +2870,19 @@ final class WatchDirectTokens: GeminiLiveTokenProviding {
                 onIssued?(.reused, error.localizedDescription)
                 return latest
             }
-            onIssued?(.failed, error.localizedDescription)
-            throw error
+            guard let relayFetch else {
+                onIssued?(.failed, error.localizedDescription)
+                throw error
+            }
+            do {
+                let token = try await relayFetch()
+                latest = token
+                onIssued?(.relay, error.localizedDescription)
+                return token
+            } catch let relayError {
+                onIssued?(.failed, "\(error.localizedDescription) Relay: \(relayError.localizedDescription)")
+                throw relayError
+            }
         }
     }
 }
@@ -2748,6 +2892,9 @@ enum WatchDirectError: LocalizedError {
     case unreadable
     case timedOut
     case refused(String)
+    /// The call's grant can't bring a Gemini token through the relay.
+    case noRelayToken
+    case relayToken(String)
 
     var errorDescription: String? {
         switch self {
@@ -2755,6 +2902,8 @@ enum WatchDirectError: LocalizedError {
         case .unreadable: return "Conduit on the iPhone sent something this Watch app can't read."
         case .timedOut: return "Conduit on the iPhone didn't answer in time."
         case .refused(let reason): return reason
+        case .noRelayToken: return "This call can't get a Gemini token through the relay."
+        case .relayToken(let reason): return "No Gemini token through the relay: \(reason)"
         }
     }
 }

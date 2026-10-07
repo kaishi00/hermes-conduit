@@ -4,8 +4,9 @@
 //
 //  A Watch call's web_search and recall_memory through the push relay, over
 //  the Watch's own internet, for while the iPhone can't be reached (wrist
-//  down), and its Hermes jobs when the grant carries them
-//  (WatchJobRelay.swift). The call's grant came from the iPhone with the
+//  down), its Hermes jobs when the grant carries them
+//  (WatchJobRelay.swift), and a fresh Gemini token when it carries
+//  live_token (WatchLiveToken). The call's grant came from the iPhone with the
 //  session; each call is sealed with it (WatchToolRelay.swift), held open
 //  on the relay until Hermes answers, and opened here. Anything that
 //  doesn't get an answer falls back to the iPhone's path.
@@ -68,7 +69,11 @@ final class WatchToolRelayClient {
               let keys = WatchToolSeal.Keys(root: root) else { return nil }
         grantID = grant.grantID
         let jobs = Set(grant.tools).isSuperset(of: WatchJobAnswer.tools.union(WatchJobAnswer.calls))
-        tools = Set(grant.tools).intersection(WatchToolAnswer.tools.union(jobs ? WatchJobAnswer.tools.union(WatchJobAnswer.calls) : []))
+        tools = Set(grant.tools).intersection(
+            WatchToolAnswer.tools
+                .union(jobs ? WatchJobAnswer.tools.union(WatchJobAnswer.calls) : [])
+                .union([WatchLiveToken.tool])
+        )
         expiresAt = grant.expiresAt
         maxJobs = jobs ? max(0, grant.maxJobs ?? 0) : 0
         voiceApprovals = jobs && grant.voiceApprovals == true

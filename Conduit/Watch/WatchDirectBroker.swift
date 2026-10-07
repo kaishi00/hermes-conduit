@@ -68,6 +68,11 @@ final class WatchDirectBroker {
     /// The job tools asked for with them, and the user's job settings as
     /// the call began. Empty once the host refused jobs (an older plugin).
     private var grantJobTools: [String] = []
+    /// Asks for live_token with them: a fresh Gemini token Hermes mints
+    /// for the Watch through the grant when the call's session breaks with
+    /// the iPhone out of reach. False once the host refused it (a plugin
+    /// before 0.8).
+    private var grantLiveToken = false
     private var grantMaxJobs = 0
     private var grantJobOptions: [String: String] = [:]
     private var grantVoiceApprovals = false
@@ -195,7 +200,8 @@ final class WatchDirectBroker {
             grantJobTools = grantMaxJobs > 0 ? declared.filter { WatchJobAnswer.tools.contains($0) } : []
             grantJobOptions = plan.jobOptions
             grantVoiceApprovals = WatchJobSettings.voiceApprovals
-            let grant = grantTools.isEmpty && grantJobTools.isEmpty ? nil : await requestGrant(id, profile: plan.profile)
+            grantLiveToken = true
+            let grant = await requestGrant(id, profile: plan.profile)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             // The model answers approvals only when the user allowed it and
             // the grant carries jobs.
@@ -438,26 +444,48 @@ final class WatchDirectBroker {
 
     // MARK: Tool grant
 
-    /// A grant for the running call's lookups and jobs; nil when the host
-    /// can't give one. A host that refuses jobs (a plugin before 0.7) is
-    /// asked again for the lookups alone. A renewal names the grant whose
-    /// jobs move to the new one. The log has its outcome and limits, never
-    /// its keys.
+    /// A grant for the running call's lookups, jobs and Gemini tokens; nil
+    /// when the host can't give one. A host that refuses jobs (a plugin
+    /// before 0.7) is asked again for the lookups alone. A renewal names
+    /// the grant whose jobs move to the new one. The log has its outcome
+    /// and limits, never its keys.
     private func requestGrant(_ id: UInt32, profile: String, carryJobsFrom: String? = nil) async -> WatchVoiceWire.DirectToolGrant? {
         if !grantJobTools.isEmpty {
-            if let grant = await requestGrant(id, profile: profile, withJobs: true, carryJobsFrom: carryJobsFrom) { return grant }
-            guard callID == id, !grantTools.isEmpty else { return nil }
+            if let grant = await requestGrantWithToken(id, profile: profile, withJobs: true, carryJobsFrom: carryJobsFrom) { return grant }
+            guard callID == id, !grantTools.isEmpty || grantLiveToken else { return nil }
             // Renewals don't ask for jobs again.
             grantJobTools = []
         }
-        return await requestGrant(id, profile: profile, withJobs: false, carryJobsFrom: nil)
+        guard !grantTools.isEmpty || grantLiveToken else { return nil }
+        return await requestGrantWithToken(id, profile: profile, withJobs: false, carryJobsFrom: nil)
     }
 
-    private func requestGrant(_ id: UInt32, profile: String, withJobs: Bool, carryJobsFrom: String?) async -> WatchVoiceWire.DirectToolGrant? {
+    /// Asks with live_token while the host takes it. A plugin before 0.8
+    /// refuses a tool it doesn't know (400): asked again without it, and
+    /// this call's later grants leave it out.
+    private func requestGrantWithToken(_ id: UInt32, profile: String, withJobs: Bool, carryJobsFrom: String?) async -> WatchVoiceWire.DirectToolGrant? {
+        let asked = grantLiveToken
+        switch await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: asked, carryJobsFrom: carryJobsFrom) {
+        case .success(let grant):
+            return grant
+        case .failure(let error):
+            guard asked, callID == id, Self.isRefusedTool(error) else { return nil }
+            grantLiveToken = false
+            guard !grantTools.isEmpty || (withJobs && !grantJobTools.isEmpty) else { return nil }
+            return try? await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: false, carryJobsFrom: carryJobsFrom).get()
+        }
+    }
+
+    static func isRefusedTool(_ error: Error) -> Bool {
+        if case DashboardTicketBridgeError.http(let status, _) = error, status == 400 { return true }
+        return false
+    }
+
+    private func requestGrant(_ id: UInt32, profile: String, withJobs: Bool, liveToken: Bool, carryJobsFrom: String?) async -> Result<WatchVoiceWire.DirectToolGrant, Error> {
         let startedAt = Date()
         do {
             var grant = try await grantClient.grant(
-                tools: grantTools + (withJobs ? grantJobTools : []),
+                tools: grantTools + (withJobs ? grantJobTools : []) + (liveToken ? [WatchLiveToken.tool] : []),
                 profile: profile,
                 maxJobs: withJobs ? grantMaxJobs : nil,
                 jobOptions: withJobs ? grantJobOptions : [:],
@@ -468,7 +496,7 @@ final class WatchDirectBroker {
                 // The call ended while the host answered.
                 let client = grantClient
                 Task { await client.revoke(grantID: grant.grantID, profile: profile) }
-                return nil
+                return .failure(CancellationError())
             }
             grantIDs.append(grant.grantID)
             link.log.note("watchToolGrant", [
@@ -480,28 +508,30 @@ final class WatchDirectBroker {
                 "maxJobs": grant.maxJobs as Any,
                 "voiceApprovals": grant.voiceApprovals == true,
                 "askedJobs": withJobs,
+                "askedToken": liveToken,
                 "askedCarry": carryJobsFrom != nil,
                 // What the host said; the Watch logs whether it moved jobs.
                 "hostCarried": grant.jobsCarriedFrom != nil,
                 "expiresInS": grant.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any,
             ])
-            return grant
+            return .success(grant)
         } catch {
             link.log.note("watchToolGrant", [
                 "callID": Int(id),
                 "ok": false,
                 "ms": Self.milliseconds(since: startedAt),
                 "askedJobs": withJobs,
+                "askedToken": liveToken,
                 "error": error.localizedDescription,
             ])
-            return nil
+            return .failure(error)
         }
     }
 
     /// The Watch's ask for a new grant, before its grant runs out. Only a
     /// grant this phone got for the call can have its jobs carried over.
     private func renewGrant(_ id: UInt32, carryJobsFrom: String?) async -> WatchVoiceWire.Message {
-        guard id == callID, let profile, !grantTools.isEmpty || !grantJobTools.isEmpty else {
+        guard id == callID, let profile, !grantTools.isEmpty || !grantJobTools.isEmpty || grantLiveToken else {
             return .callRefused(callID: id, reason: "This call has no Watch lookups to renew.")
         }
         guard await appState.connectForWatchDirectCall(timeout: Self.connectWait) else {
@@ -520,6 +550,7 @@ final class WatchDirectBroker {
         grantIDs = []
         grantTools = []
         grantJobTools = []
+        grantLiveToken = false
         grantJobOptions = [:]
         guard !ids.isEmpty, let profile else { return }
         let client = grantClient
