@@ -3353,12 +3353,17 @@ final class AppState: ObservableObject {
         guard activeRoomSurface == nil,
               let sessionId = activeSessionId, !sessionId.isEmpty,
               botConversationProfile(for: sessionId) == nil else { return nil }
+        let rows = activeProfileSessions
         let ownIDs = chatOwnSessionIDs(for: sessionId)
-        guard var row = activeProfileSessions.first(where: { candidate in
+        // A row's alternate ids can be shared by another row, and this row
+        // drives rename, archive and delete: an alternate id only counts
+        // when exactly one row lists it.
+        let alternateMatches = rows.filter { $0.alternateIds.contains(sessionId) }
+        guard var row = rows.first(where: { candidate in
             !ownIDs.isDisjoint(with: [candidate.id, candidate.storedSessionId].compactMap {
                 ChatScrollIdentityNormalization.sessionID($0)
-            }) || candidate.alternateIds.contains(sessionId)
-        }) else { return nil }
+            })
+        }) ?? (alternateMatches.count == 1 ? alternateMatches.first : nil) else { return nil }
         if row.id != sessionId, !row.alternateIds.contains(sessionId) {
             row.alternateIds.append(sessionId)
         }
@@ -13441,11 +13446,12 @@ final class AppState: ObservableObject {
         // resume that produced it recorded the stored id it belongs to.
         // Without it, recovery would resume the runtime id, which Hermes
         // stops recognizing once that runtime is reaped.
+        // A Bot Chat's mapping is under the bot's profile; the dashboard's
+        // is tried too, so an earlier mapping there still counts.
         if durableSessionID == nil,
-           let durable = conversationIdentityIndex.durableID(
-            forRuntime: selectedID,
-            profile: scopeProfile ?? activeProfile
-           ) ?? conversationIdentityIndex.durableID(forRuntime: selectedID, profile: activeProfile),
+           let durable = scopeProfile.flatMap({
+               conversationIdentityIndex.durableID(forRuntime: selectedID, profile: $0)
+           }) ?? conversationIdentityIndex.durableID(forRuntime: selectedID, profile: activeProfile),
            durable != selectedID {
             durableSessionID = durable
             accepted.insert(durable)

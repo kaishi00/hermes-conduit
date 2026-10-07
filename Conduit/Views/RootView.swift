@@ -462,6 +462,11 @@ private struct ChatTitleControl: View {
             .buttonStyle(.plain)
             .accessibilityLabel(appState.displayedChatTitle)
             .accessibilityHint(AppLocalization.string("Scroll to top of conversation. Touch and hold for conversation actions."))
+            // VoiceOver may open the menu on activation; the scroll stays
+            // reachable as a named action.
+            .accessibilityAction(named: Text(AppLocalization.string("Scroll to top of conversation"))) {
+                appState.requestChatScrollToTop()
+            }
         } else {
             Button {
                 appState.requestChatScrollToTop()
@@ -470,7 +475,7 @@ private struct ChatTitleControl: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(appState.displayedChatTitle)
-            .accessibilityHint("Scroll to top of conversation")
+            .accessibilityHint(AppLocalization.string("Scroll to top of conversation"))
         }
     }
 

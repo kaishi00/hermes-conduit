@@ -1313,6 +1313,18 @@ final class AppStateChatResumeTests: XCTestCase {
 
         harness.appState.activeSessionId = "unsaved-new-chat"
         XCTAssertNil(harness.appState.activeChatSessionSummary)
+
+        // An alternate id two rows share names neither chat: the menu's
+        // rename, archive and delete must not guess.
+        harness.appState.sessions = [
+            session("stored-c", alternateIDs: ["runtime-shared"]),
+            session("stored-d", alternateIDs: ["runtime-shared"])
+        ]
+        harness.appState.activeSessionId = "runtime-shared"
+        XCTAssertNil(harness.appState.activeChatSessionSummary)
+
+        harness.appState.sessions = [session("stored-c", alternateIDs: ["runtime-shared"])]
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "stored-c")
     }
 
     func testResumeDedupNormalizesPersistedBoundaryBeforeReplayingBufferedDelta() async {

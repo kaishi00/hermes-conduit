@@ -897,8 +897,8 @@ private extension View {
 
 /// A conversation's touch-and-hold actions, shared by the main session list,
 /// a project's conversation list and the open chat's title, so all three
-/// offer the same menu. Rename and
-/// Delete need a host-owned sheet or alert, so the host supplies those two actions.
+/// offer the same menu. Rename and Delete need a host-owned sheet or alert,
+/// so the host supplies those two actions.
 struct SessionActionMenuItems: View {
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
