@@ -62,6 +62,9 @@ final class WatchAudio {
     private var observers: [NSObjectProtocol] = []
 
     var isPlaying: Bool { outstandingBuffers > 0 || startPending }
+    var isEngineRunning: Bool { engine?.isRunning ?? false }
+    /// Audio route changes since launch, counted for the direct call.
+    private(set) var routeChanges = 0
 
     static func requestPermission() async -> Bool {
         await AVAudioApplication.requestRecordPermission()
@@ -312,9 +315,10 @@ final class WatchAudio {
                     if self?.engine?.isRunning == false { self?.onInterruption?(true) }
                 }
             },
-            NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { _ in
+            NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
                 let route = AVAudioSession.sharedInstance().currentRoute
                 MainActor.assumeIsolated {
+                    self?.routeChanges += 1
                     WatchProbeLog.shared.note("audioRouteChange", [
                         "outputs": route.outputs.map { $0.portType.rawValue },
                         "inputs": route.inputs.map { $0.portType.rawValue },

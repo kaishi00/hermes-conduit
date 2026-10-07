@@ -229,6 +229,7 @@ struct WatchDirectCallView: View {
     @EnvironmentObject private var soak: WatchSoakModel
     @AppStorage(WatchDirectCallModel.KeepAlive.key) private var keepAlive = WatchDirectCallModel.KeepAlive.audioSession.rawValue
     @AppStorage(WatchSocketChoice.key) private var socket = WatchSocketChoice.alternate.rawValue
+    @AppStorage(WatchDirectCallModel.Reactivation.key) private var reactivate = WatchDirectCallModel.Reactivation.off.rawValue
 
     var body: some View {
         ScrollView {
@@ -283,6 +284,15 @@ struct WatchDirectCallView: View {
                     }
                     .pickerStyle(.navigationLink)
                     .font(.footnote)
+                    if keepAlive == WatchDirectCallModel.KeepAlive.audioSession.rawValue {
+                        Picker("Reactivate session", selection: $reactivate) {
+                            ForEach(WatchDirectCallModel.Reactivation.allCases) { option in
+                                Text(option.title).tag(option.rawValue)
+                            }
+                        }
+                        .pickerStyle(.navigationLink)
+                        .font(.footnote)
+                    }
                 }
             }
         }

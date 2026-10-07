@@ -62,6 +62,28 @@ final class WatchDirectCallModel: ObservableObject {
         }
     }
 
+    /// Option E only: the audio session activated again on a timer. One
+    /// developer report (FB24377808, open with Apple) has watchOS revoke the
+    /// network path 35 to 39 s after an activation despite live audio, and
+    /// activating again before then moved the deadline. Undocumented, so
+    /// it's a measurement: off is the default, to see whether this Watch
+    /// has the bug at all.
+    enum Reactivation: Int, CaseIterable, Identifiable {
+        case off = 0
+        case every25s = 25
+
+        static let key = "watchDirect.reactivate"
+        static var current: Reactivation {
+            Reactivation(rawValue: UserDefaults.standard.integer(forKey: key)) ?? .off
+        }
+
+        var id: Int { rawValue }
+
+        var title: String {
+            self == .off ? "Off" : "Every \(rawValue) s"
+        }
+    }
+
     enum Phase: Equatable {
         case idle
         /// Starting the Watch's call and asking the iPhone for a session.
@@ -105,6 +127,9 @@ final class WatchDirectCallModel: ObservableObject {
     /// A turn the user spoke that gets no reply within this long counts
     /// as unanswered.
     static let unansweredAfter: TimeInterval = 15
+    /// How often the call checks that a Watch message still reaches (and
+    /// wakes) Conduit on the iPhone, whatever the screen and the phone do.
+    static let linkProbeInterval: TimeInterval = 30
     /// Calls the iPhone answers once nobody speaks (NON_BLOCKING lookups).
     static let whenIdleTools: Set<String> = ["web_search", "recall_memory"]
 
@@ -147,6 +172,20 @@ final class WatchDirectCallModel: ObservableObject {
     private var connectionReadyAt: TimeInterval?
     private var connectionLifetimes: [Double] = []
     private var pathNotes = 0
+    private var reactivation: Reactivation = .off
+    /// Option E: when the session was first activated, and last activated
+    /// again; the revocation report times its deadline from activation.
+    private var audioActivatedAt: TimeInterval?
+    private var lastActivationAt: TimeInterval?
+    private var reactivationStartedAt: TimeInterval?
+    private var reactivating = false
+    private var reactivations = 0
+    private var reactivationFailures = 0
+    private var reactivationTimes: [Double] = []
+    /// The longest microphone gap within 3 s of a reactivation: a glitch.
+    private var maxReactivationCaptureGap: TimeInterval = 0
+    private var routeChangesAtStart = 0
+    private var firstDropAt: TimeInterval?
     private var handoffStartedAt: TimeInterval?
     private var handoffTimes: [Double] = []
     private var drops = 0
@@ -206,6 +245,15 @@ final class WatchDirectCallModel: ObservableObject {
     // Liveness: gaps in the one-second ticker are time the Watch app
     // didn't run.
     private var lastTickAt: TimeInterval?
+
+    // Watch → iPhone messages during the call.
+    private var probeInFlight = false
+    private var lastProbeAt: TimeInterval = 0
+    private var probes = 0
+    private var probesOK = 0
+    private var probesScreenOff = 0
+    private var probesOKScreenOff = 0
+    private var probeTimes: [Double] = []
     private var watchSuspendedMs = 0
     private var watchGaps = 0
 
@@ -260,7 +308,13 @@ final class WatchDirectCallModel: ObservableObject {
             // network itself.
             if WatchSystemCall.isCreated { WatchSystemCall.shared.endStaleCalls() }
             activatedHere = await activateAudioSession()
-            if callID == id { audioSessionActivated = activatedHere }
+            if callID == id {
+                audioSessionActivated = activatedHere
+                if activatedHere {
+                    audioActivatedAt = now
+                    lastActivationAt = now
+                }
+            }
         }
         // Ended meanwhile: `finish` ended its CallKit call too, but the
         // audio session activated here has no engine to stop, unless a new
@@ -282,6 +336,7 @@ final class WatchDirectCallModel: ObservableObject {
             "callID": Int(callID),
             "keepAlive": keepAlive.rawValue,
             "socket": meter.choice.rawValue,
+            "reactivateEveryS": reactivation.rawValue,
             "audioSessionActivated": audioSessionActivated as Any,
             "systemCallActivated": systemCallActivated as Any,
             "keepAliveMs": Int(((systemCallReadyAt ?? now) - callStartedAt) * 1000),
@@ -542,10 +597,15 @@ final class WatchDirectCallModel: ObservableObject {
             connectionReadyAt = nil
             if reconnectStartedAt == nil {
                 reconnectStartedAt = now
-                if firstReadyAt != nil { drops += 1 }
+                if firstReadyAt != nil {
+                    drops += 1
+                    if firstDropAt == nil { firstDropAt = now }
+                }
             }
             WatchProbeLog.shared.note("directReconnecting", [
                 "aliveS": alive.map { Int($0) } as Any,
+                "sinceActivationS": lastActivationAt.map { Int(now - $0) } as Any,
+                "sinceFirstActivationS": audioActivatedAt.map { Int(now - $0) } as Any,
                 "screen": "\(scenePhase)",
                 "systemCall": WatchSystemCall.isHoldingCall,
                 "reachable": link.isReachable,
@@ -580,10 +640,12 @@ final class WatchDirectCallModel: ObservableObject {
             route = "network, " + (uses.isEmpty ? "unknown route" : uses.joined(separator: "+"))
         }
         pathNotes += 1
-        guard pathNotes <= 60 else { return }
+        guard pathNotes <= 150 else { return }
         var fields = fields
         fields["kind"] = kind
         fields["sinceReadyS"] = connectionReadyAt.map { Int(now - $0) } as Any
+        fields["sinceActivationS"] = lastActivationAt.map { Int(now - $0) } as Any
+        fields["sinceFirstActivationS"] = audioActivatedAt.map { Int(now - $0) } as Any
         fields["screen"] = "\(scenePhase)"
         WatchProbeLog.shared.note("directPath", fields)
     }
@@ -893,7 +955,12 @@ final class WatchDirectCallModel: ObservableObject {
 
     private func captured(_ samples: [Int16], at time: TimeInterval) {
         guard isActive else { return }
-        if let last = lastCaptureAt { maxCaptureGap = max(maxCaptureGap, time - last) }
+        if let last = lastCaptureAt {
+            maxCaptureGap = max(maxCaptureGap, time - last)
+            if let reactivated = reactivationStartedAt, time - reactivated < 3 {
+                maxReactivationCaptureGap = max(maxReactivationCaptureGap, time - last)
+            }
+        }
         lastCaptureAt = time
         guard endRequestedAt == nil, !isMuted, phase != .needsTap, !isMicrophoneHeld else { return }
         activity.process(samples, sampleRate: WatchAudio.captureRate, endingAt: time)
@@ -1012,7 +1079,99 @@ final class WatchDirectCallModel: ObservableObject {
             }
         }
         pollIfNeeded()
+        reactivateIfDue()
+        probeLinkIfDue()
         flushQuietQueue()
+    }
+
+    /// Option E with reactivation on: activates the session again, as the
+    /// FB24377808 workaround does, and logs what it cost: how long it
+    /// took, the route either side, whether the engine kept running.
+    private func reactivateIfDue() {
+        guard keepAlive == .audioSession, reactivation != .off, !reactivating,
+              let last = lastActivationAt, now - last >= TimeInterval(reactivation.rawValue) else { return }
+        reactivating = true
+        let id = callID
+        let startedAt = now
+        reactivationStartedAt = startedAt
+        let session = AVAudioSession.sharedInstance()
+        let routeBefore = session.currentRoute.outputs.map { $0.portType.rawValue }
+        let engineBefore = audio.isEngineRunning
+        Task { [weak self] in
+            var activated = false
+            var failure: String?
+            do {
+                activated = try await session.activate(options: [])
+            } catch {
+                let error = error as NSError
+                failure = "\(error.domain) \(error.code)"
+            }
+            guard let self else { return }
+            guard self.callID == id, self.isActive else {
+                // The call ended meanwhile and let the session go: this
+                // activation mustn't keep it.
+                if !self.isActive { try? session.setActive(false, options: [.notifyOthersOnDeactivation]) }
+                return
+            }
+            let at = self.now
+            self.reactivating = false
+            self.lastActivationAt = at
+            self.reactivations += 1
+            if !activated { self.reactivationFailures += 1 }
+            self.reactivationTimes.append(at - startedAt)
+            guard self.reactivations <= 40 || !activated else { return }
+            WatchProbeLog.shared.note("directReactivate", [
+                "activated": activated,
+                "error": failure as Any,
+                "ms": Int((at - startedAt) * 1000),
+                "routeBefore": routeBefore,
+                "routeAfter": session.currentRoute.outputs.map { $0.portType.rawValue },
+                "engineBefore": engineBefore,
+                "engineAfter": self.audio.isEngineRunning,
+                "ready": self.session?.isReady == true,
+                "speaking": self.audio.isPlaying,
+                "screen": "\(self.scenePhase)",
+            ])
+        }
+    }
+
+    /// Whether a Watch message reaches (and wakes) Conduit on the iPhone
+    /// in this state: the screen off, the phone locked.
+    private func probeLinkIfDue() {
+        guard !probeInFlight, now - lastProbeAt >= Self.linkProbeInterval else { return }
+        probeInFlight = true
+        lastProbeAt = now
+        let id = callID
+        let sentAt = now
+        let screenOff = scenePhase != .active
+        let reachable = link.isReachable
+        probes += 1
+        if screenOff { probesScreenOff += 1 }
+        link.send(.ping(callID: nil), reply: { [weak self] _ in
+            self?.probeDone(id, ok: true, sentAt: sentAt, screenOff: screenOff, reachable: reachable, error: nil)
+        }, failure: { [weak self] error in
+            self?.probeDone(id, ok: false, sentAt: sentAt, screenOff: screenOff, reachable: reachable, error: error.localizedDescription)
+        })
+    }
+
+    private func probeDone(_ id: UInt32, ok: Bool, sentAt: TimeInterval, screenOff: Bool, reachable: Bool, error: String?) {
+        guard callID == id, isActive else { return }
+        probeInFlight = false
+        let elapsed = now - sentAt
+        if ok {
+            probesOK += 1
+            if screenOff { probesOKScreenOff += 1 }
+            probeTimes.append(elapsed)
+        }
+        guard probes <= 60 else { return }
+        WatchProbeLog.shared.note("directLinkProbe", [
+            "ok": ok,
+            "ms": Int(elapsed * 1000),
+            "error": error as Any,
+            "screenOff": screenOff,
+            "reachableBefore": reachable,
+            "reachableAfter": link.isReachable,
+        ])
     }
 
     /// Hermes said goodbye (end_conversation): the microphone closes and
@@ -1059,6 +1218,24 @@ final class WatchDirectCallModel: ObservableObject {
         connectionLifetimes = []
         pathNotes = 0
         lastTickAt = nil
+        reactivation = .current
+        audioActivatedAt = nil
+        lastActivationAt = nil
+        reactivationStartedAt = nil
+        reactivating = false
+        reactivations = 0
+        reactivationFailures = 0
+        reactivationTimes = []
+        maxReactivationCaptureGap = 0
+        routeChangesAtStart = audio.routeChanges
+        firstDropAt = nil
+        probeInFlight = false
+        lastProbeAt = 0
+        probes = 0
+        probesOK = 0
+        probesScreenOff = 0
+        probesOKScreenOff = 0
+        probeTimes = []
         watchSuspendedMs = 0
         watchGaps = 0
         handoffStartedAt = nil
@@ -1150,6 +1327,18 @@ final class WatchDirectCallModel: ObservableObject {
             "liveS": Int(liveSeconds),
             "keepAlive": keepAlive.rawValue,
             "socket": meter.choice.rawValue,
+            "reactivateEveryS": reactivation.rawValue,
+            "reactivations": reactivations,
+            "reactivationFailures": reactivationFailures,
+            "reactivationMaxMs": WatchVoiceStats.milliseconds(reactivationTimes.max()) as Any,
+            "maxReactivationCaptureGapMs": Int(maxReactivationCaptureGap * 1000),
+            "firstDropSinceActivationS": firstDropAt.flatMap { drop in audioActivatedAt.map { Int(drop - $0) } } as Any,
+            "routeChanges": audio.routeChanges - routeChangesAtStart,
+            "linkProbes": probes,
+            "linkProbesOK": probesOK,
+            "linkProbesScreenOff": probesScreenOff,
+            "linkProbesOKScreenOff": probesOKScreenOff,
+            "linkProbeP50Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(probeTimes, 0.5)) as Any,
             "audioSessionActivated": audioSessionActivated as Any,
             "systemCallActivated": systemCallActivated as Any,
             "systemCallHolding": systemCallHolding,
