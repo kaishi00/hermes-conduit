@@ -228,6 +228,7 @@ struct WatchDirectCallView: View {
     @EnvironmentObject private var lab: WatchLabModel
     @EnvironmentObject private var soak: WatchSoakModel
     @AppStorage(WatchDirectCallModel.KeepAlive.key) private var keepAlive = WatchDirectCallModel.KeepAlive.audioSession.rawValue
+    @AppStorage(WatchSocketChoice.key) private var socket = WatchSocketChoice.alternate.rawValue
 
     var body: some View {
         ScrollView {
@@ -270,6 +271,13 @@ struct WatchDirectCallView: View {
                 } else {
                     Picker("Keep running with", selection: $keepAlive) {
                         ForEach(WatchDirectCallModel.KeepAlive.allCases) { option in
+                            Text(option.title).tag(option.rawValue)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                    .font(.footnote)
+                    Picker("Socket", selection: $socket) {
+                        ForEach(WatchSocketChoice.allCases) { option in
                             Text(option.title).tag(option.rawValue)
                         }
                     }

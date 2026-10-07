@@ -273,6 +273,7 @@ final class WatchDirectCallModel: ObservableObject {
         WatchProbeLog.shared.note("directCallStart", [
             "callID": Int(callID),
             "keepAlive": keepAlive.rawValue,
+            "socket": meter.choice.rawValue,
             "audioSessionActivated": audioSessionActivated as Any,
             "systemCallActivated": systemCallActivated as Any,
             "keepAliveMs": Int(((systemCallReadyAt ?? now) - callStartedAt) * 1000),
@@ -1021,7 +1022,7 @@ final class WatchDirectCallModel: ObservableObject {
         session?.stop()
         session = nil
         tokens = nil
-        meter = WatchSocketMeter()
+        meter = WatchSocketMeter(choice: .current)
         openingPrompt = nil
         hasSentOpening = false
         caption = nil
@@ -1133,6 +1134,7 @@ final class WatchDirectCallModel: ObservableObject {
             "durationS": Int(now - callStartedAt),
             "liveS": Int(liveSeconds),
             "keepAlive": keepAlive.rawValue,
+            "socket": meter.choice.rawValue,
             "audioSessionActivated": audioSessionActivated as Any,
             "systemCallActivated": systemCallActivated as Any,
             "systemCallHolding": systemCallHolding,

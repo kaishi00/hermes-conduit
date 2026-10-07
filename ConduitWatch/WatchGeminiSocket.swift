@@ -21,6 +21,37 @@ enum WatchSocketAPI: String {
     case urlSession
 }
 
+/// Which socket a call uses, picked on the call screen: both in turn until
+/// one works, or one only, to compare them.
+enum WatchSocketChoice: String, CaseIterable, Identifiable {
+    case alternate
+    case network
+    case urlSession
+
+    static let key = "watchDirect.socket"
+    static var current: WatchSocketChoice {
+        UserDefaults.standard.string(forKey: key).flatMap(Self.init(rawValue:)) ?? .alternate
+    }
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .alternate: return "Both in turn"
+        case .network: return "Network framework"
+        case .urlSession: return "URLSession"
+        }
+    }
+
+    var only: WatchSocketAPI? {
+        switch self {
+        case .alternate: return nil
+        case .network: return .network
+        case .urlSession: return .urlSession
+        }
+    }
+}
+
 /// Picks each connection's socket and counts what went through them.
 @MainActor
 final class WatchSocketMeter {
@@ -30,6 +61,7 @@ final class WatchSocketMeter {
     /// The API whose connection first heard from Gemini; every later
     /// connection uses it.
     private(set) var workingAPI: WatchSocketAPI?
+    let choice: WatchSocketChoice
     var onFirstFrame: ((WatchSocketAPI) -> Void)?
     var onWaiting: ((WatchSocketAPI, String) -> Void)?
     /// A Network framework connection's path: "ready" once it opens, then
@@ -37,8 +69,12 @@ final class WatchSocketMeter {
     /// cycling one watchOS 26 report describes.
     var onPathEvent: ((String, [String: Any]) -> Void)?
 
+    init(choice: WatchSocketChoice = .alternate) {
+        self.choice = choice
+    }
+
     func makeSocket(_ url: URL) -> GeminiLiveSocket {
-        let api = workingAPI ?? (opened % 2 == 0 ? .network : .urlSession)
+        let api = choice.only ?? workingAPI ?? (opened % 2 == 0 ? .network : .urlSession)
         opened += 1
         let inner: GeminiLiveSocket
         switch api {
