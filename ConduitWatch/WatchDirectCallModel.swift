@@ -130,6 +130,8 @@ final class WatchDirectCallModel: ObservableObject {
     /// How often the call checks that a Watch message still reaches (and
     /// wakes) Conduit on the iPhone, whatever the screen and the phone do.
     static let linkProbeInterval: TimeInterval = 30
+    /// A reactivation still running after this long counts as failed.
+    static let reactivationTimeout: TimeInterval = 10
     /// Calls the iPhone answers once nobody speaks (NON_BLOCKING lookups).
     static let whenIdleTools: Set<String> = ["web_search", "recall_memory"]
 
@@ -957,7 +959,8 @@ final class WatchDirectCallModel: ObservableObject {
         guard isActive else { return }
         if let last = lastCaptureAt {
             maxCaptureGap = max(maxCaptureGap, time - last)
-            if let reactivated = reactivationStartedAt, time - reactivated < 3 {
+            // Any gap overlapping the 3 s after a reactivation, however long.
+            if let reactivated = reactivationStartedAt, last < reactivated + 3, time > reactivated {
                 maxReactivationCaptureGap = max(maxReactivationCaptureGap, time - last)
             }
         }
@@ -1043,6 +1046,15 @@ final class WatchDirectCallModel: ObservableObject {
         do {
             try audio.start(options: .init(), playbackRate: GeminiLiveProtocol.outputSampleRate)
             phase = session?.isReady == true ? restingPhase : .reconnecting
+            // The restart activated the session again: the revocation
+            // timing and the reactivation cadence count from here.
+            if keepAlive == .audioSession {
+                WatchProbeLog.shared.note("directAudioRestarted", [
+                    "sinceActivationS": lastActivationAt.map { Int(now - $0) } as Any,
+                    "screen": "\(scenePhase)",
+                ])
+                lastActivationAt = now
+            }
         } catch {
             WatchProbeLog.shared.note("directAudioRestartFailed", ["error": error.localizedDescription])
         }
@@ -1088,6 +1100,12 @@ final class WatchDirectCallModel: ObservableObject {
     /// FB24377808 workaround does, and logs what it cost: how long it
     /// took, the route either side, whether the engine kept running.
     private func reactivateIfDue() {
+        // An activation that never returned would stop the cadence for good.
+        if reactivating, let started = reactivationStartedAt, now - started > Self.reactivationTimeout {
+            reactivating = false
+            reactivationFailures += 1
+            WatchProbeLog.shared.note("directReactivateHung", ["ms": Int((now - started) * 1000)])
+        }
         guard keepAlive == .audioSession, reactivation != .off, !reactivating,
               let last = lastActivationAt, now - last >= TimeInterval(reactivation.rawValue) else { return }
         reactivating = true
@@ -1114,6 +1132,12 @@ final class WatchDirectCallModel: ObservableObject {
                 return
             }
             let at = self.now
+            // Given up on as hung, and maybe followed by another: it only
+            // moves the anchor.
+            guard self.reactivationStartedAt == startedAt else {
+                if activated { self.lastActivationAt = at }
+                return
+            }
             self.reactivating = false
             self.lastActivationAt = at
             self.reactivations += 1
