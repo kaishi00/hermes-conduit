@@ -5,12 +5,12 @@
 //  The sockets the Watch's Gemini Live session runs on (test T2 of
 //  designs/apple-watch-voice-direct.md). watchOS allows them only in
 //  TN3135's cases: an app streaming audio, or a CallKit call. Two
-//  implementations of the shared session's socket: Network framework,
-//  which TN3135 names, and the iPhone's own URLSession socket, which a
-//  developer report says watchOS refuses even then. Each attempt the
-//  session makes takes the other one until one hears from Gemini; the log
-//  shows which, and each Network framework path change (one watchOS 26
-//  report saw the path drop about 35 s in).
+//  implementations of the shared session's socket, compared on the same
+//  audio session: Network framework, which TN3135 names, and URLSession,
+//  set up as AIProxySwift's Watch realtime session is. Each logs every
+//  state change, so a refusal shows how it happened, and the Network
+//  framework one every path change (FB24377808: paths revoked 35 to 39 s
+//  after the audio session activates).
 //
 
 import Foundation
@@ -65,8 +65,13 @@ final class WatchSocketMeter {
     /// connection uses it.
     private(set) var workingAPI: WatchSocketAPI?
     let choice: WatchSocketChoice
+    /// The newest socket's state, as its last event gave it.
+    private(set) var socketState = "none"
     var onFirstFrame: ((WatchSocketAPI) -> Void)?
     var onWaiting: ((WatchSocketAPI, String) -> Void)?
+    /// Every socket's state changes (Network framework) or delegate
+    /// callbacks (URLSession), with the socket's number in the call.
+    var onSocketEvent: ((WatchSocketAPI, Int, String, [String: Any]) -> Void)?
     /// A Network framework connection's path: "ready" once it opens, then
     /// every path, viability or better-path change, for the ~35 s path
     /// cycling one watchOS 26 report describes.
@@ -79,17 +84,34 @@ final class WatchSocketMeter {
     func makeSocket(_ url: URL) -> GeminiLiveSocket {
         let api = choice.only ?? workingAPI ?? (opened % 2 == 0 ? .network : .urlSession)
         opened += 1
+        let number = opened
+        socketState = "opening"
         let inner: GeminiLiveSocket
         switch api {
         case .network:
             let socket = NetworkGeminiLiveSocket(url: url)
             socket.onWaiting = { [weak self] reason in self?.onWaiting?(.network, reason) }
             socket.onPathEvent = { [weak self] kind, fields in self?.onPathEvent?(kind, fields) }
+            socket.onState = { [weak self] state in
+                self?.socketEvent(.network, number, "state", state: state, ["state": state])
+            }
             inner = socket
         case .urlSession:
-            inner = URLSessionGeminiLiveSocket(url: url)
+            let socket = WatchURLSessionGeminiLiveSocket(url: url)
+            socket.onEvent = { [weak self] kind, fields in
+                self?.socketEvent(.urlSession, number, kind, state: WatchURLSessionGeminiLiveSocket.state(after: kind, fields), fields)
+            }
+            inner = socket
         }
+        onSocketEvent?(api, number, "created", ["choice": choice.rawValue])
         return WatchMeteredSocket(api: api, inner: inner, meter: self)
+    }
+
+    private func socketEvent(_ api: WatchSocketAPI, _ number: Int, _ kind: String, state: String?, _ fields: [String: Any]) {
+        // An older connection (a GoAway handoff's) doesn't speak for the
+        // newest.
+        if number == opened, let state { socketState = state }
+        onSocketEvent?(api, number, kind, fields)
     }
 
     fileprivate func sent(_ bytes: Int) {
@@ -152,6 +174,9 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
 
     var onWaiting: ((String) -> Void)?
     var onPathEvent: ((String, [String: Any]) -> Void)?
+    /// Every connection state: preparing, waiting, ready, failed,
+    /// cancelled.
+    var onState: ((String) -> Void)?
 
     private struct Message {
         let data: Data?
@@ -273,6 +298,7 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
 
     private func stateChanged(_ state: NWConnection.State) {
         guard closedError == nil else { return }
+        onState?(String("\(state)".prefix(160)))
         switch state {
         case .ready:
             waitTimer?.invalidate()
@@ -334,13 +360,163 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
     static func describe(_ path: NWPath?) -> [String: Any] {
         guard let path else { return [:] }
         let types: [(NWInterface.InterfaceType, String)] = [(.wifi, "wifi"), (.cellular, "cellular"), (.wiredEthernet, "wired"), (.other, "other"), (.loopback, "loopback")]
-        return [
+        var fields: [String: Any] = [
             "status": "\(path.status)",
             "uses": types.filter { path.usesInterfaceType($0.0) }.map(\.1),
             "interfaces": path.availableInterfaces.map { "\($0.name):\($0.type)" },
             "expensive": path.isExpensive,
             "constrained": path.isConstrained,
         ]
+        if path.status != .satisfied { fields["unsatisfiedReason"] = "\(path.unsatisfiedReason)" }
+        return fields
+    }
+}
+
+// MARK: - URLSession
+
+/// The URLSession socket, set up as AIProxySwift's realtime session is on
+/// the Watch (the one open-source Watch app found that opens a WebSocket
+/// there): an ephemeral session, the request marked as audio streaming.
+/// Otherwise the iPhone's socket (Shared/GeminiLive), with every delegate
+/// callback reported: when it opened, how it closed, the error it failed
+/// with (and the path the system gave as the reason), and the
+/// connection's metrics.
+@MainActor
+final class WatchURLSessionGeminiLiveSocket: GeminiLiveSocket {
+    var onEvent: ((String, [String: Any]) -> Void)?
+
+    private let task: URLSessionWebSocketTask
+    private let session: URLSession
+    private let delegate = WatchURLSessionSocketDelegate()
+
+    init(url: URL) {
+        var request = URLRequest(url: url)
+        request.networkServiceType = .avStreaming
+        session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        task = session.webSocketTask(with: request)
+        // Model audio frames are larger than URLSession's 1 MB default.
+        task.maximumMessageSize = 16 * 1024 * 1024
+        // Set before the task starts, and never again.
+        delegate.onEvent = { [weak self] kind, fields in
+            WatchVoiceMain.async { self?.onEvent?(kind, fields) }
+        }
+        task.resume()
+    }
+
+    deinit {
+        session.invalidateAndCancel()
+    }
+
+    /// The state an event leaves the socket in, for the timeline; nil when
+    /// it doesn't change it (metrics).
+    static func state(after kind: String, _ fields: [String: Any]) -> String? {
+        switch kind {
+        case "open": return "open"
+        case "waiting": return "waiting"
+        case "close": return "closed \(fields["code"] ?? "")"
+        case "complete":
+            guard let code = fields["code"] else { return "completed" }
+            return "failed \(code)"
+        default: return nil
+        }
+    }
+
+    func send(_ text: String) async throws {
+        try await task.send(.string(text))
+    }
+
+    func receive() async throws -> Data {
+        switch try await task.receive() {
+        case .string(let text): return Data(text.utf8)
+        case .data(let data): return data
+        @unknown default: return Data()
+        }
+    }
+
+    func close() {
+        task.cancel(with: .normalClosure, reason: nil)
+        session.finishTasksAndInvalidate()
+    }
+
+    func serverClose(within timeout: Duration) async -> GeminiLiveServerClose? {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while !Task.isCancelled {
+            if let recorded = delegate.serverClose { return recorded }
+            if task.closeCode != .invalid {
+                let text = task.closeReason.flatMap { String(data: $0, encoding: .utf8) }?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return GeminiLiveServerClose(code: task.closeCode.rawValue, reason: text)
+            }
+            if let http = task.response as? HTTPURLResponse, http.statusCode != 101 {
+                return GeminiLiveServerClose(code: http.statusCode, reason: "", isHTTPStatus: true)
+            }
+            guard ContinuousClock.now < deadline else { return nil }
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return nil
+            }
+        }
+        return nil
+    }
+}
+
+private final class WatchURLSessionSocketDelegate: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: GeminiLiveServerClose?
+    var onEvent: ((String, [String: Any]) -> Void)?
+
+    var serverClose: GeminiLiveServerClose? {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol negotiated: String?) {
+        onEvent?("open", [:])
+    }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        let text = reason.flatMap { String(data: $0, encoding: .utf8) }?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        lock.lock()
+        recorded = GeminiLiveServerClose(code: closeCode.rawValue, reason: text)
+        lock.unlock()
+        onEvent?("close", ["code": closeCode.rawValue, "reason": String(text.prefix(160))])
+    }
+
+    func urlSession(_ session: URLSession, taskIsWaitingForConnectivity task: URLSessionTask) {
+        onEvent?("waiting", [:])
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        var fields: [String: Any] = [:]
+        if let error = error as NSError? {
+            fields["domain"] = error.domain
+            fields["code"] = error.code
+            if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+                fields["underlying"] = "\(underlying.domain) \(underlying.code)"
+            }
+            // URLSession puts the refused path in its errors (undocumented
+            // key): "unsatisfied (…)" says why.
+            if let path = error.userInfo["_NSURLErrorNWPathKey"] {
+                fields["path"] = String("\(path)".prefix(240))
+            }
+        }
+        if let http = task.response as? HTTPURLResponse { fields["http"] = http.statusCode }
+        onEvent?("complete", fields)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
+        guard let last = metrics.transactionMetrics.last else { return }
+        onEvent?("metrics", [
+            "protocol": last.networkProtocolName ?? "",
+            "cellular": last.isCellular,
+            "expensive": last.isExpensive,
+            "constrained": last.isConstrained,
+            "reused": last.isReusedConnection,
+            "transactions": metrics.transactionMetrics.count,
+        ])
     }
 }
 

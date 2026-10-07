@@ -34,6 +34,7 @@
 
 import AVFAudio
 import Foundation
+import Network
 import SwiftUI
 import WatchKit
 
@@ -200,6 +201,15 @@ final class WatchDirectCallModel: ObservableObject {
     private var goAways = 0
     private var loggedResumable = false
     private var socketWaitNotes = 0
+    private var socketNotes = 0
+    /// The Watch's network path for the whole call, whichever socket runs:
+    /// a refused WebSocket was reported with the path unsatisfied, and
+    /// FB24377808 revokes it about 35 s after activation.
+    private var pathMonitor: NWPathMonitor?
+    private var monitorFirstStatus: String?
+    private var monitorStatus: String?
+    private var monitorUpdates = 0
+    private var firstUnsatisfiedAt: TimeInterval?
     private var tokensFromPhone = 0
     private var tokensReused = 0
     private var tokenFailures = 0
@@ -304,6 +314,8 @@ final class WatchDirectCallModel: ObservableObject {
         guard !isActive else { return }
         reset()
         phase = .preparing
+        // Before the audio session, to see what activating it changes.
+        startPathMonitor()
         // Each await below can outlast the call: ended, and maybe a new
         // one started, by the time it returns.
         let id = callID
@@ -503,6 +515,7 @@ final class WatchDirectCallModel: ObservableObject {
         meter.onFirstFrame = { [weak self] api in self?.socketHeard(api) }
         meter.onWaiting = { [weak self] api, reason in self?.socketWaiting(api, reason: reason) }
         meter.onPathEvent = { [weak self] kind, fields in self?.pathEvent(kind, fields) }
+        meter.onSocketEvent = { [weak self] api, number, kind, fields in self?.socketEvent(api, number: number, kind: kind, fields) }
         let session = GeminiLiveSession(
             tokens: tokens,
             systemInstruction: setup.systemInstruction,
@@ -651,6 +664,57 @@ final class WatchDirectCallModel: ObservableObject {
         socketWaitNotes += 1
         guard socketWaitNotes <= 5 else { return }
         WatchProbeLog.shared.note("directSocketWaiting", ["api": api.rawValue, "reason": reason, "systemCall": WatchSystemCall.isHoldingCall])
+    }
+
+    /// Each socket's states or callbacks, timed from the audio session's
+    /// activation like the path changes.
+    private func socketEvent(_ api: WatchSocketAPI, number: Int, kind: String, _ fields: [String: Any]) {
+        socketNotes += 1
+        guard socketNotes <= 150 else { return }
+        var fields = fields
+        fields["api"] = api.rawValue
+        fields["socket"] = number
+        fields["kind"] = kind
+        fields["t"] = Int(now - callStartedAt)
+        fields["sinceActivationS"] = lastActivationAt.map { Int(now - $0) } as Any
+        fields["sinceFirstActivationS"] = audioActivatedAt.map { Int(now - $0) } as Any
+        fields["screen"] = "\(scenePhase)"
+        fields["phase"] = "\(phase)"
+        WatchProbeLog.shared.note("directSocket", fields)
+    }
+
+    private func startPathMonitor() {
+        let monitor = NWPathMonitor()
+        let id = callID
+        monitor.pathUpdateHandler = { [weak self] path in
+            WatchVoiceMain.async { self?.pathMonitorUpdate(path, callID: id) }
+        }
+        monitor.start(queue: .global(qos: .utility))
+        pathMonitor = monitor
+    }
+
+    private func stopPathMonitor() {
+        pathMonitor?.cancel()
+        pathMonitor = nil
+    }
+
+    private func pathMonitorUpdate(_ path: NWPath, callID id: UInt32) {
+        guard callID == id, pathMonitor != nil else { return }
+        var fields = NetworkGeminiLiveSocket.describe(path)
+        let status = fields["status"] as? String
+        if monitorFirstStatus == nil { monitorFirstStatus = status }
+        monitorStatus = status
+        monitorUpdates += 1
+        if path.status != .satisfied, firstUnsatisfiedAt == nil, audioActivatedAt != nil {
+            firstUnsatisfiedAt = now
+        }
+        guard monitorUpdates <= 60 else { return }
+        fields["t"] = Int(now - callStartedAt)
+        fields["sinceActivationS"] = lastActivationAt.map { Int(now - $0) } as Any
+        fields["sinceFirstActivationS"] = audioActivatedAt.map { Int(now - $0) } as Any
+        fields["screen"] = "\(scenePhase)"
+        fields["phase"] = "\(phase)"
+        WatchProbeLog.shared.note("directPathMonitor", fields)
     }
 
     private func pathEvent(_ kind: String, _ fields: [String: Any]) {
@@ -1216,9 +1280,11 @@ final class WatchDirectCallModel: ObservableObject {
             "playing": audio.isPlaying,
             "api": meter.workingAPI?.rawValue ?? meter.choice.rawValue,
             "session": state,
+            "socketState": meter.socketState,
             "connectionAgeS": connectionReadyAt.map { Int(at - $0) } as Any,
             "path": pathStatus as Any,
             "pathUses": pathUses,
+            "monitorPath": monitorStatus as Any,
             "capturedMs": (samplesCaptured - mark.captured) * 1000 / Int(WatchAudio.captureRate),
             "maxCaptureGapMs": Int(gap * 1000),
             "chunksSent": chunksSent - mark.chunksSent,
@@ -1293,6 +1359,12 @@ final class WatchDirectCallModel: ObservableObject {
         session = nil
         tokens = nil
         meter = WatchSocketMeter(choice: .current)
+        stopPathMonitor()
+        monitorFirstStatus = nil
+        monitorStatus = nil
+        monitorUpdates = 0
+        firstUnsatisfiedAt = nil
+        socketNotes = 0
         openingPrompt = nil
         hasSentOpening = false
         caption = nil
@@ -1406,6 +1478,7 @@ final class WatchDirectCallModel: ObservableObject {
         session?.stop()
         session = nil
         tokens = nil
+        stopPathMonitor()
         // Asked to end before the audio stops; CallKit finishes later.
         if keepAlive == .callKit { WatchSystemCall.shared.end() }
         audio.stop()
@@ -1437,6 +1510,10 @@ final class WatchDirectCallModel: ObservableObject {
             "reactivationMaxMs": WatchVoiceStats.milliseconds(reactivationTimes.max()) as Any,
             "maxReactivationCaptureGapMs": Int(maxReactivationCaptureGap * 1000),
             "firstDropSinceActivationS": firstDropAt.flatMap { drop in audioActivatedAt.map { Int(drop - $0) } } as Any,
+            "pathMonitorFirst": monitorFirstStatus as Any,
+            "pathMonitorLast": monitorStatus as Any,
+            "pathMonitorUpdates": monitorUpdates,
+            "firstUnsatisfiedSinceActivationS": firstUnsatisfiedAt.flatMap { at in audioActivatedAt.map { Int(at - $0) } } as Any,
             "routeChanges": audio.routeChanges - routeChangesAtStart,
             "linkProbes": probes,
             "linkProbesOK": probesOK,
