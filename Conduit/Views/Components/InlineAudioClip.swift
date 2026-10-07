@@ -283,7 +283,11 @@ struct InlineAudioClipView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
-            Button(action: openFull) {
+            Button {
+                // Quick Look has its own player; don't play underneath it.
+                player.stop(id: id)
+                openFull()
+            } label: {
                 Group {
                     if opening {
                         ProgressView().tint(secondary)
@@ -379,6 +383,10 @@ private struct AudioClipScrubber: View {
     let secondary: Color
     let seek: (TimeInterval) -> Void
 
+    private var timeText: String {
+        "\(ChatAudioClipPlayer.timeLabel(progress.currentTime)) / \(ChatAudioClipPlayer.timeLabel(duration))"
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             Slider(
@@ -388,7 +396,8 @@ private struct AudioClipScrubber: View {
             .tint(tint)
             .controlSize(.mini)
             .accessibilityLabel(Text("Playback position"))
-            Text(verbatim: "\(ChatAudioClipPlayer.timeLabel(progress.currentTime)) / \(ChatAudioClipPlayer.timeLabel(duration))")
+            .accessibilityValue(Text(verbatim: timeText))
+            Text(verbatim: timeText)
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(secondary)
                 .fixedSize()

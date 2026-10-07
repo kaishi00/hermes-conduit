@@ -21,7 +21,8 @@ enum GatewayMediaTags {
     /// One piece of a line that holds at least one tag.
     enum Segment: Equatable {
         case text(String)
-        case media(String)
+        /// A file path, with the label a Markdown image or link gave it.
+        case media(String, alt: String? = nil)
     }
 
     /// Hermes' `MEDIA_DELIVERY_EXTS` plus the Apple formats Conduit already
@@ -69,7 +70,7 @@ enum GatewayMediaTags {
     /// `![alt](MEDIA:/path)` or `[text](MEDIA:/path)`: a model dressing the
     /// tag up as a Markdown image or link. The whole line is the one file.
     private static let markdownImageExpression = try! NSRegularExpression(
-        pattern: #"^!?\[[^\]]*\]\([^\S\n]*MEDIA:[^\S\n]*(.+?)[^\S\n]*\)$"#,
+        pattern: #"^!?\[([^\]]*)\]\([^\S\n]*MEDIA:[^\S\n]*(.+?)(?:[^\S\n]+(?:"[^"\n]*"|'[^'\n]*'))?[^\S\n]*\)$"#,
         options: [.caseInsensitive]
     )
 
@@ -95,8 +96,9 @@ enum GatewayMediaTags {
 
         let nsLine = trimmed as NSString
         if let image = markdownImageExpression.firstMatch(in: trimmed, range: NSRange(location: 0, length: nsLine.length)),
-           let path = normalizedPath(nsLine.substring(with: image.range(at: 1))) {
-            return [.media(path)]
+           let path = normalizedPath(nsLine.substring(with: image.range(at: 2))) {
+            let alt = nsLine.substring(with: image.range(at: 1)).trimmingCharacters(in: .whitespaces)
+            return [.media(path, alt: alt.isEmpty ? nil : alt)]
         }
         let codeSpans = inlineCodeSpans(in: trimmed)
         var result: [Segment] = []
@@ -127,7 +129,7 @@ enum GatewayMediaTags {
     /// The path when `line` is exactly one tag and nothing else.
     static func soleMediaPath(_ line: String) -> String? {
         guard let segments = segments(in: line.trimmingCharacters(in: .whitespaces)),
-              segments.count == 1, case .media(let path) = segments[0] else { return nil }
+              segments.count == 1, case .media(let path, _) = segments[0] else { return nil }
         return path
     }
 

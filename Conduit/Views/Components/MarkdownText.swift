@@ -2598,8 +2598,8 @@ enum MarkdownParser {
             if recognizesGatewayMedia, !isTableHeader(lines, at: index), let segments = GatewayMediaTags.segments(in: trimmed) {
                 for segment in segments {
                     switch segment {
-                    case .media(let mediaPath):
-                        blocks.append(.image(url: "MEDIA: \(mediaPath)", alt: mediaName(mediaPath)))
+                    case .media(let mediaPath, let alt):
+                        blocks.append(.image(url: "MEDIA: \(mediaPath)", alt: alt ?? mediaName(mediaPath)))
                     case .text(let text):
                         // The text carries no tags any more, so this cannot
                         // recurse back into this branch.
