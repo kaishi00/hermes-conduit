@@ -25658,6 +25658,22 @@
         }
       }
     },
+    "Scroll to top of conversation. Touch and hold for conversation actions." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会話の先頭までスクロールします。長押しでチャットの操作を表示できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "滚动到对话顶部。长按可使用对话操作。"
+          }
+        }
+      }
+    },
     "Scroll to top of conversation" : {
       "localizations" : {
         "ja" : {

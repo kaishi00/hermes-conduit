@@ -895,10 +895,11 @@ private extension View {
     }
 }
 
-/// A conversation's touch-and-hold actions, shared by the main session list
-/// and a project's conversation list so both offer the same menu. Rename and
-/// Delete need a host-owned sheet or alert, so the host supplies those two actions.
-private struct SessionActionMenuItems: View {
+/// A conversation's touch-and-hold actions, shared by the main session list,
+/// a project's conversation list and the open chat's title, so all three
+/// offer the same menu. Rename and Delete need a host-owned sheet or alert,
+/// so the host supplies those two actions.
+struct SessionActionMenuItems: View {
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     var excludingProjectID: String? = nil
@@ -950,7 +951,7 @@ private struct SessionActionMenuItems: View {
 
 /// The session row's "Move to Project" submenu. Hidden when the gateway has
 /// no projects capability or no project with a folder to move into.
-private struct MoveToProjectMenu: View {
+struct MoveToProjectMenu: View {
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     var excludingProjectID: String? = nil
@@ -1693,7 +1694,7 @@ enum SidebarOfflineLayout {
 /// hang the app (TestFlight 0.1.16 build 174). The draft is this sheet's own
 /// state, so each keystroke redraws only the sheet, never the session list
 /// behind it.
-private struct RenameSheet: View {
+struct RenameSheet: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
     let placeholder: String

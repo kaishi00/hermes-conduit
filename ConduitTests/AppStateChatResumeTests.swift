@@ -1210,6 +1210,138 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
     }
 
+    /// #446: the open id is a runtime id Hermes can reap. Refresh resumes
+    /// the chat's stored id, which Hermes always accepts, instead of the
+    /// runtime id it no longer knows ("session not found").
+    func testRefreshResumesStoredIDInsteadOfOpenRuntimeID() async {
+        var requests: [String] = []
+        let row = session("runtime-old", storedID: "stored-a")
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [row] },
+                openSession: { _, sessionID, _ in
+                    requests.append(sessionID)
+                    if sessionID == "runtime-old" {
+                        throw RpcError(code: 4007, message: "session not found")
+                    }
+                    return SessionResumeResult(
+                        sessionId: "runtime-new",
+                        storedSessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.appState.sessions = [row]
+        harness.appState.activeSessionId = "runtime-old"
+
+        await harness.appState.refreshActiveSession()
+
+        XCTAssertEqual(requests, ["stored-a"])
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-new")
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertNil(harness.appState.errorMessage)
+    }
+
+    /// A reopened chat's runtime id may be in neither the list nor the
+    /// scroll identity; the stored id its resume recorded still routes the
+    /// refresh.
+    func testRefreshResumesRecordedStoredIDForUnlistedRuntime() async {
+        var requests: [String] = []
+        let index = ConversationIdentityIndex()
+        _ = index.recordAuthoritative(
+            runtimeID: "runtime-old",
+            durableID: "stored-a",
+            profile: "default",
+            source: .resume
+        )
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [] },
+                openSession: { _, sessionID, _ in
+                    requests.append(sessionID)
+                    if sessionID == "runtime-old" {
+                        throw RpcError(code: 4007, message: "session not found")
+                    }
+                    return SessionResumeResult(
+                        sessionId: "runtime-new",
+                        storedSessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            ),
+            conversationIdentityIndex: index
+        )
+        installComposerClient(in: harness)
+        harness.appState.activeSessionId = "runtime-old"
+
+        await harness.appState.refreshActiveSession()
+
+        XCTAssertEqual(requests, ["stored-a"])
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-new")
+        XCTAssertEqual(harness.appState.turnState, .idle)
+        XCTAssertNil(harness.appState.errorMessage)
+    }
+
+    /// #446: the chat title's touch-and-hold menu acts on the open chat's
+    /// row even after a reopen gave the chat a runtime id the row doesn't
+    /// name, and carries that id so rename and delete reach the open chat.
+    func testActiveChatSessionSummaryFindsRowForReopenedRuntime() {
+        let index = ConversationIdentityIndex()
+        _ = index.recordAuthoritative(
+            runtimeID: "runtime-new",
+            durableID: "stored-a",
+            profile: "default",
+            source: .resume
+        )
+        let harness = makeHarness(conversationIdentityIndex: index)
+        harness.appState.sessions = [session("stored-a"), session("stored-b")]
+
+        harness.appState.activeSessionId = "runtime-new"
+        let summary = harness.appState.activeChatSessionSummary
+        XCTAssertEqual(summary?.id, "stored-a")
+        XCTAssertEqual(summary?.alternateIds, ["runtime-new"])
+
+        harness.appState.activeSessionId = "stored-b"
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "stored-b")
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.alternateIds, [])
+
+        harness.appState.activeSessionId = "unsaved-new-chat"
+        XCTAssertNil(harness.appState.activeChatSessionSummary)
+
+        // An alternate id two rows share names neither chat: the menu's
+        // rename, archive and delete must not guess.
+        harness.appState.sessions = [
+            session("stored-c", alternateIDs: ["runtime-shared"]),
+            session("stored-d", alternateIDs: ["runtime-shared"])
+        ]
+        harness.appState.activeSessionId = "runtime-shared"
+        XCTAssertNil(harness.appState.activeChatSessionSummary)
+
+        harness.appState.sessions = [session("stored-c", alternateIDs: ["runtime-shared"])]
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "stored-c")
+
+        // Two rows match the chat's own ids (one by the open id, one by its
+        // recorded stored id): the recorded stored id decides, never order.
+        harness.appState.sessions = [session("runtime-new"), session("stored-a")]
+        harness.appState.activeSessionId = "runtime-new"
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "stored-a")
+
+        // With no recorded stored id, two own-id matches name neither chat
+        // (a row without a stored id must not win by nil matching nil).
+        harness.appState.sessions = [
+            session("runtime-r", storedID: "stored-s"),
+            session("stored-s")
+        ]
+        harness.appState.activeSessionId = "runtime-r"
+        XCTAssertNil(harness.appState.activeChatSessionSummary)
+    }
+
     func testResumeDedupNormalizesPersistedBoundaryBeforeReplayingBufferedDelta() async {
         let openGate = ControlledSuspension()
         let active = session("stored-a")
