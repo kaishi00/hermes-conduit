@@ -30,13 +30,15 @@ final class WatchToolGrantClient {
     /// Throws when the host can't grant one: an older plugin or relay, no
     /// notification pairing, no network. The call's lookups then go
     /// through this phone only, as before.
-    /// `maxJobs` and `jobOptions` (the voice-job model, provider and
-    /// reasoning effort) go with job tools only.
-    func grant(tools: [String], profile: String, maxJobs: Int? = nil, jobOptions: [String: String] = [:]) async throws -> WatchVoiceWire.DirectToolGrant {
+    /// `maxJobs`, `jobOptions` (the voice-job model, provider and
+    /// reasoning effort) and `carryJobsFrom` (a renewal's previous grant,
+    /// whose jobs move to the new one) go with job tools only.
+    func grant(tools: [String], profile: String, maxJobs: Int? = nil, jobOptions: [String: String] = [:], carryJobsFrom: String? = nil) async throws -> WatchVoiceWire.DirectToolGrant {
         var body: [String: Any] = ["tools": tools]
         if !WatchJobAnswer.tools.isDisjoint(with: tools) {
             if let maxJobs { body["max_jobs"] = maxJobs }
             if !jobOptions.isEmpty { body["job_options"] = jobOptions }
+            if let carryJobsFrom { body["carry_jobs_from"] = carryJobsFrom }
         }
         let response = try await request(
             DashboardPath.withProfile(Self.grantPath, profile: profile),
@@ -74,7 +76,8 @@ final class WatchToolGrantClient {
             expiresAt: GeminiLiveTokenClient.date(response["expires_at"]),
             tools: tools,
             maxCalls: maxCalls,
-            maxJobs: response["max_jobs"] as? Int
+            maxJobs: response["max_jobs"] as? Int,
+            jobsCarriedFrom: response["jobs_carried_from"] as? String
         )
     }
 }

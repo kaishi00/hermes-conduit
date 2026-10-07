@@ -177,6 +177,7 @@ extension HermesVoiceGatewayTimeoutTests {
             .directSession(callID: 7, session: .init(token: token, setup: Data([1, 2, 3]), setupBytes: 900, googleSearch: false, voice: "Kore", openingPrompt: nil, toolGrant: Self.watchToolGrant)),
             .directTokenIssued(callID: 7, token: token),
             .directGrant(callID: 7),
+            .directGrant(callID: 7, carryJobsFrom: "AAAAAAAAAAAAAAAAAAAAAA"),
             .directGrantIssued(callID: 7, grant: Self.watchToolGrant),
             .directToolResult(callID: 7, result: .init(outgoing: [
                 .toolResponse(id: "c1", name: "start_job", result: ["status": "running"], scheduling: nil, fallback: "Hermes started it."),
@@ -560,8 +561,8 @@ extension HermesVoiceGatewayTimeoutTests {
         spent.maxCalls = 0
         let empty = try XCTUnwrap(WatchToolRelayClient(spent, protocolClasses: [WatchToolRelayStubProtocol.self]))
         // Spent before any call fails, so the Watch renews it in time.
-        XCTAssertTrue(empty.isSpent)
-        XCTAssertFalse(ending.isSpent)
+        XCTAssertEqual(empty.callsLeft, 0)
+        XCTAssertEqual(ending.callsLeft, grant.maxCalls)
         guard case .unavailable("grantSpent", true, false) = await empty.run(name: "web_search", query: "weather") else { return XCTFail("Expected it spent") }
         XCTAssertTrue(empty.isGone)
         guard case .unavailable("grantEnded", true, false) = await empty.run(name: "web_search", query: "weather") else { return XCTFail("Expected it ended") }
@@ -697,7 +698,7 @@ extension HermesVoiceGatewayTimeoutTests {
         var bodies: [[String: Any]] = []
         let client = WatchToolGrantClient(request: { _, _, body, _ in
             bodies.append(body ?? [:])
-            return [
+            var response: [String: Any] = [
                 "ok": true,
                 "grant_id": Self.watchJobGrant.grantID,
                 "relay_url": "https://relay.example.test",
@@ -707,6 +708,8 @@ extension HermesVoiceGatewayTimeoutTests {
                 "max_calls": 120,
                 "max_jobs": 3,
             ]
+            if let carried = body?["carry_jobs_from"] { response["jobs_carried_from"] = carried }
+            return response
         })
         let grant = try await client.grant(tools: ["web_search", "start_job"], profile: "work", maxJobs: 3,
                                            jobOptions: ["model": "gpt-5.5", "reasoning_effort": "low"])
@@ -719,6 +722,16 @@ extension HermesVoiceGatewayTimeoutTests {
         // Without job tools, no job settings travel.
         XCTAssertNil(bodies[1]["max_jobs"])
         XCTAssertNil(bodies[1]["job_options"])
+        XCTAssertNil(grant.jobsCarriedFrom)
+
+        // A renewal asks Hermes to move the last grant's jobs, and reads
+        // whether it did.
+        let previous = Self.watchToolGrant.grantID
+        let renewed = try await client.grant(tools: ["start_job"], profile: "work", maxJobs: 3, carryJobsFrom: previous)
+        XCTAssertEqual(bodies[2]["carry_jobs_from"] as? String, previous)
+        XCTAssertEqual(renewed.jobsCarriedFrom, previous)
+        _ = try await client.grant(tools: ["web_search"], profile: "work", carryJobsFrom: previous)
+        XCTAssertNil(bodies[3]["carry_jobs_from"])
 
         // A grant from before jobs reads as it did.
         let old = try JSONDecoder().decode(WatchVoiceWire.DirectToolGrant.self, from: JSONEncoder().encode(Self.watchToolGrant))

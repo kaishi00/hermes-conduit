@@ -91,8 +91,9 @@ final class WatchToolRelayClient {
     /// Whether the grant carries Hermes jobs.
     var hasJobs: Bool { maxJobs > 0 }
 
-    /// Every call the grant allows has gone out: time for a new one.
-    var isSpent: Bool { callsSent >= maxCalls }
+    /// Calls the grant still allows; the Watch renews it before they run
+    /// out.
+    var callsLeft: Int { max(0, maxCalls - callsSent) }
 
     /// Whether `name` can go this way now.
     func canRun(_ name: String) -> Bool {

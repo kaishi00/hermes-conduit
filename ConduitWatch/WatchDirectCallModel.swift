@@ -148,6 +148,9 @@ final class WatchDirectCallModel: ObservableObject {
     /// A tool grant this close to its end is renewed while the iPhone can
     /// be reached.
     static let grantRenewMargin: TimeInterval = 10 * 60
+    /// A grant with this few calls left is renewed too, before job news
+    /// spends it.
+    static let grantRenewCallHeadroom = 10
     /// Between asks for a new grant, and how many a call makes at most.
     static let grantRequestInterval: TimeInterval = 60
     static let maxGrantRequests = 6
@@ -294,8 +297,17 @@ final class WatchDirectCallModel: ObservableObject {
     private var pollsFailed = 0
     private var textUpdatesSent = 0
     /// Grants whose jobs may still run, asked for job news in turn. A
-    /// renewed grant's old one stays here, open, while its jobs run.
+    /// renewal moves the call's jobs to the new grant; an old grant whose
+    /// jobs Hermes kept stays here, open, while they run.
     private var jobRelays: [WatchToolRelayClient] = []
+    /// The newest grant with jobs: a renewal asks Hermes to move its jobs
+    /// to the new grant. Kept while gone (a spent budget) until a renewal
+    /// answers, so its jobs aren't dropped meanwhile.
+    private var jobsGrant: WatchToolRelayClient?
+    /// Grants whose jobs moved, by id, to the grant they moved to: an
+    /// answer still on its way from the old one counts for the new one.
+    private var jobsMovedTo: [String: WatchToolRelayClient] = [:]
+    private var jobsCarried = 0
     /// Running jobs per grant, as its last news said.
     private var relayRunning: [String: Int] = [:]
     /// Approval requests on screen, oldest first.
@@ -624,6 +636,7 @@ final class WatchDirectCallModel: ObservableObject {
         if let grant = direct.toolGrant {
             hadToolGrant = true
             toolRelay = WatchToolRelayClient(grant)
+            if toolRelay?.hasJobs == true { jobsGrant = toolRelay }
         }
         WatchProbeLog.shared.note("directSession", [
             "afterTapMs": Int((now - callStartedAt) * 1000),
@@ -1130,8 +1143,8 @@ final class WatchDirectCallModel: ObservableObject {
                 self.relayFallbacks += 1
                 if sent { self.relayFailures += 1 }
                 if grantGone, self.toolRelay === relay {
-                    relay.close()
                     self.toolRelay = nil
+                    self.closeIfUnused(relay)
                 }
                 fields["outcome"] = "fallback"
                 fields["reason"] = reason
@@ -1267,7 +1280,7 @@ final class WatchDirectCallModel: ObservableObject {
                 // comes as news.
                 if isStart, result["status"] == "started" || result["status"] == "accepted" {
                     self.relayJobsStarted += 1
-                    self.followJobs(on: relay)
+                    self.followJobs(on: self.jobsHolder(relay))
                 } else if wire.name == WatchJobAnswer.cancelJob {
                     // The running count changed: ask for it now.
                     self.nextNewsAt = self.now
@@ -1278,7 +1291,7 @@ final class WatchDirectCallModel: ObservableObject {
                 fields["outcome"] = "timedOut"
                 if isStart {
                     self.relayJobsStarted += 1
-                    self.followJobs(on: relay)
+                    self.followJobs(on: self.jobsHolder(relay))
                     result = WatchJobAnswer.accepted
                 } else {
                     result = WatchToolAnswer.tookTooLong
@@ -1288,7 +1301,7 @@ final class WatchDirectCallModel: ObservableObject {
                 if sent { self.relayFailures += 1 }
                 if grantGone, self.toolRelay === relay {
                     self.toolRelay = nil
-                    if !self.jobRelays.contains(where: { $0 === relay }) { relay.close() }
+                    self.closeIfUnused(relay)
                 }
                 fields["outcome"] = "fallback"
                 fields["reason"] = reason
@@ -1298,7 +1311,7 @@ final class WatchDirectCallModel: ObservableObject {
                 if isStart, sent {
                     // It may have reached Hermes.
                     self.relayJobsStarted += 1
-                    if !grantGone { self.followJobs(on: relay) }
+                    if !grantGone || self.mayBeCarried(relay) { self.followJobs(on: self.jobsHolder(relay)) }
                     guard !withdrawn else { return }
                     self.answer(.toolResponse(id: wire.id, name: wire.name, result: [
                         "status": "unknown",
@@ -1338,7 +1351,49 @@ final class WatchDirectCallModel: ObservableObject {
         relayJobsRunning = relayRunning.values.reduce(0, +)
         approvals.removeAll { $0.grantID == relay.grantID }
         pendingApproval = approvals.first
-        if relay !== toolRelay { relay.close() }
+        closeIfUnused(relay)
+    }
+
+    /// Ends a grant on the relay once nothing needs it: not the call's
+    /// grant, not followed for job news, and not the one whose jobs the
+    /// next renewal moves (closing it would end them on Hermes).
+    private func closeIfUnused(_ relay: WatchToolRelayClient) {
+        guard relay !== toolRelay, relay !== jobsGrant, !jobRelays.contains(where: { $0 === relay }) else { return }
+        relay.close()
+    }
+
+    /// Where `relay`'s jobs are now: the grant a renewal moved them to.
+    private func jobsHolder(_ relay: WatchToolRelayClient) -> WatchToolRelayClient {
+        var holder = relay
+        var hops = 0
+        while let next = jobsMovedTo[holder.grantID], hops < Self.maxGrantRequests {
+            holder = next
+            hops += 1
+        }
+        return holder
+    }
+
+    /// A gone grant (a spent budget) whose jobs a renewal can still move:
+    /// followed but not asked until a renewal answers.
+    private func mayBeCarried(_ relay: WatchToolRelayClient) -> Bool {
+        relay === jobsGrant && endRequestedAt == nil && grantRequests < Self.maxGrantRequests
+            && !relay.expires(within: WatchToolRelayClient.expiryMargin)
+    }
+
+    /// Hermes moved `old`'s jobs to the renewal `new`: their news, list,
+    /// cancel and approvals go through it from now on.
+    private func moveJobs(from old: WatchToolRelayClient, to new: WatchToolRelayClient) {
+        jobsMovedTo[old.grantID] = new
+        jobsCarried += 1
+        if let index = jobRelays.firstIndex(where: { $0 === old }) {
+            jobRelays[index] = new
+            nextNewsAt = now
+        }
+        if let running = relayRunning.removeValue(forKey: old.grantID) { relayRunning[new.grantID] = running }
+        for index in approvals.indices where approvals[index].grantID == old.grantID {
+            approvals[index].grantID = new.grantID
+        }
+        pendingApproval = approvals.first
     }
 
     /// While jobs started through the relay may run, asks Hermes for their
@@ -1347,11 +1402,12 @@ final class WatchDirectCallModel: ObservableObject {
         guard !newsInFlight, endRequestedAt == nil, now >= nextNewsAt, !jobRelays.isEmpty else { return }
         // A grant that ended or is about to can't be asked any more: what
         // its jobs do next reaches the user as Conduit notifications.
-        for relay in jobRelays where relay.isGone || relay.expires(within: WatchToolRelayClient.expiryMargin) {
+        // One a renewal may still move waits for it.
+        for relay in jobRelays where (relay.isGone || relay.expires(within: WatchToolRelayClient.expiryMargin)) && !mayBeCarried(relay) {
             WatchProbeLog.shared.note("directJobNewsStopped", ["gone": relay.isGone, "running": relayRunning[relay.grantID] as Any])
             stopFollowing(relay)
         }
-        guard let relay = jobRelays.first else { return }
+        guard let relay = jobRelays.first(where: { !$0.isGone }) else { return }
         newsInFlight = true
         jobNewsAsks += 1
         let id = callID
@@ -1366,20 +1422,22 @@ final class WatchDirectCallModel: ObservableObject {
             }
             switch outcome {
             case .answered(let body):
-                guard let news = WatchJobAnswer.news(from: body, grantID: relay.grantID) else {
+                // Asked before a renewal moved the jobs: news of them now.
+                let holder = self.jobsHolder(relay)
+                guard let news = WatchJobAnswer.news(from: body, grantID: holder.grantID) else {
                     self.jobNewsFailed += 1
                     WatchProbeLog.shared.note("directJobNewsFailed", ["reason": "unreadable", "ms": Int((self.now - sentAt) * 1000)])
                     self.nextNewsAt = self.now + Self.jobNewsPause
                     return
                 }
-                self.jobNews(news, from: relay, ms: Int((self.now - sentAt) * 1000))
+                self.jobNews(news, from: holder, ms: Int((self.now - sentAt) * 1000))
                 self.nextNewsAt = self.now + (news.items.isEmpty && !news.more ? Self.jobNewsPause : Self.jobNewsRetry)
             case .timedOut:
                 self.nextNewsAt = self.now + Self.jobNewsRetry
             case .unavailable(let reason, let grantGone, _):
                 self.jobNewsFailed += 1
                 WatchProbeLog.shared.note("directJobNewsFailed", ["reason": reason, "grantGone": grantGone, "screen": "\(self.scenePhase)"])
-                if grantGone { self.stopFollowing(relay) }
+                if grantGone, !self.mayBeCarried(relay) { self.stopFollowing(relay) }
                 self.nextNewsAt = self.now + Self.jobNewsPause
             }
         }
@@ -1484,7 +1542,10 @@ final class WatchDirectCallModel: ObservableObject {
                 "request_id": approval.requestID,
                 "choice": choice,
             ])
-            guard let self, self.callID == id, self.isActive else { return }
+            guard let self else { return Self.approvalAbandoned(choice: choice, byVoice: byVoice, outcome: outcome, callEnded: true) }
+            guard self.callID == id, self.isActive else {
+                return Self.approvalAbandoned(choice: choice, byVoice: byVoice, outcome: outcome, callEnded: !self.isActive)
+            }
             var fields: [String: Any] = ["choice": choice, "byVoice": byVoice, "ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
             let result: [String: String]
             var taken = false
@@ -1500,14 +1561,18 @@ final class WatchDirectCallModel: ObservableObject {
                 fields["status"] = "unavailable"
                 fields["reason"] = reason
                 result = ["error": "The answer didn't reach Hermes. Tell the user to try again on their Watch screen or in Conduit."]
-                if grantGone { self.stopFollowing(relay) }
+                if grantGone, !self.mayBeCarried(relay) { self.stopFollowing(relay) }
             }
             if taken {
                 if byVoice { self.approvalsByVoice += 1 } else { self.approvalsTapped += 1 }
             } else {
                 self.approvalFailures += 1
-                if self.jobRelays.contains(where: { $0 === relay }), !self.approvals.contains(approval) {
-                    self.approvals.insert(approval, at: 0)
+                // Back on screen, through the grant its job is on now.
+                let holder = self.jobsHolder(relay)
+                var again = approval
+                again.grantID = holder.grantID
+                if self.jobRelays.contains(where: { $0 === holder }), !self.approvals.contains(again) {
+                    self.approvals.insert(again, at: 0)
                     self.pendingApproval = self.approvals.first
                 }
             }
@@ -1590,6 +1655,22 @@ final class WatchDirectCallModel: ObservableObject {
         WatchProbeLog.shared.note("directToolRelayAbandoned", fields)
     }
 
+    /// An approval's answer that came after its call was over: Hermes may
+    /// have taken it, and the log says how it went.
+    private static func approvalAbandoned(choice: String, byVoice: Bool, outcome: WatchToolRelayClient.Outcome, callEnded: Bool) {
+        var fields: [String: Any] = ["choice": choice, "byVoice": byVoice, "outcome": outcome.label, "reason": callEnded ? "callEnded" : "replaced"]
+        if case .answered(let body) = outcome {
+            let result = WatchJobAnswer.result(body: body)
+            fields["status"] = result["status"] ?? (result["error"] == nil ? "" : "error")
+        }
+        if case .unavailable(let why, let grantGone, let sent) = outcome {
+            fields["why"] = why
+            fields["grantGone"] = grantGone
+            fields["sent"] = sent
+        }
+        WatchProbeLog.shared.note("directApprovalAbandoned", fields)
+    }
+
     /// A grant renewal whose answer came after its call was over. A grant
     /// it brought is closed on the relay: nothing will use it.
     private static func grantRenewalAbandoned(_ answer: WatchVoiceWire.Message?, error: String?, callEnded: Bool) {
@@ -1609,17 +1690,20 @@ final class WatchDirectCallModel: ObservableObject {
         guard hadToolGrant, endRequestedAt == nil, !grantRequestInFlight, link.isReachable,
               grantRequests < Self.maxGrantRequests,
               now - lastGrantRequestAt >= Self.grantRequestInterval else { return }
-        if let relay = toolRelay, !relay.isGone, !relay.isSpent, !relay.expires(within: Self.grantRenewMargin) { return }
+        if let relay = toolRelay, !relay.isGone, relay.callsLeft > Self.grantRenewCallHeadroom,
+           !relay.expires(within: Self.grantRenewMargin) { return }
         grantRequestInFlight = true
         grantRequests += 1
         lastGrantRequestAt = now
         let id = callID
         let sentAt = now
-        link.send(.directGrant(callID: id), reply: { [weak self] answer in
+        // Its jobs move to the new grant, if Hermes still has it open.
+        let carry = jobsGrant
+        link.send(.directGrant(callID: id, carryJobsFrom: carry?.grantID), reply: { [weak self] answer in
             guard let self else { return Self.grantRenewalAbandoned(answer, error: nil, callEnded: true) }
             guard self.callID == id, self.isActive else { return Self.grantRenewalAbandoned(answer, error: nil, callEnded: !self.isActive) }
             self.grantRequestInFlight = false
-            var fields: [String: Any] = ["ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
+            var fields: [String: Any] = ["ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)", "askedCarry": carry != nil]
             switch answer {
             case .directGrantIssued(_, let grant)?:
                 guard let relay = WatchToolRelayClient(grant) else {
@@ -1628,11 +1712,17 @@ final class WatchDirectCallModel: ObservableObject {
                     WatchProbeLog.shared.note("directGrantRenewed", fields)
                     return
                 }
-                // The old grant stays open while its jobs run, for their news.
-                if let old = self.toolRelay, !self.jobRelays.contains(where: { $0 === old }) { old.close() }
+                let carried = relay.hasJobs && carry != nil && grant.jobsCarriedFrom == carry?.grantID
+                if carried, let carry { self.moveJobs(from: carry, to: relay) }
+                let previous = self.toolRelay
                 self.toolRelay = relay
+                self.jobsGrant = relay.hasJobs ? relay : nil
+                // An old grant whose jobs Hermes kept stays open while they
+                // run, for their news; one with nothing left is ended.
+                for old in [previous, carry].compactMap({ $0 }) { self.closeIfUnused(old) }
                 self.grantsRenewed += 1
                 fields["ok"] = true
+                fields["carried"] = carried
                 fields["expiresInS"] = relay.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any
             case .callRefused(_, let reason)?:
                 fields["ok"] = false
@@ -2216,6 +2306,10 @@ final class WatchDirectCallModel: ObservableObject {
         textUpdatesSent = 0
         jobRelays.forEach { $0.close() }
         jobRelays = []
+        jobsGrant?.close()
+        jobsGrant = nil
+        jobsMovedTo = [:]
+        jobsCarried = 0
         relayRunning = [:]
         relayJobsRunning = 0
         approvals = []
@@ -2271,6 +2365,9 @@ final class WatchDirectCallModel: ObservableObject {
         let relayJobsLeft = relayJobsRunning
         jobRelays.forEach { $0.close() }
         jobRelays = []
+        jobsGrant?.close()
+        jobsGrant = nil
+        jobsMovedTo = [:]
         approvals = []
         pendingApproval = nil
         stopPathMonitor()
@@ -2392,6 +2489,7 @@ final class WatchDirectCallModel: ObservableObject {
             "pollsFailed": pollsFailed,
             "jobCallsViaRelay": jobCallsViaRelay,
             "jobsViaRelay": relayJobsStarted,
+            "jobsCarried": jobsCarried,
             "relayJobsStillRunning": relayJobsLeft,
             "jobNewsAsks": jobNewsAsks,
             "jobNewsFailed": jobNewsFailed,

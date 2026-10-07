@@ -130,6 +130,9 @@ enum WatchVoiceWire {
         /// The user lets the model answer job approvals by voice; set by
         /// the iPhone from its setting, not by the host.
         var voiceApprovals: Bool?
+        /// A renewal: the previous grant whose jobs Hermes moved to this
+        /// one, so the Watch follows them here.
+        var jobsCarriedFrom: String?
     }
 
     /// The setup's long part. Function declarations travel as their JSON:
@@ -221,8 +224,9 @@ enum WatchVoiceWire {
         /// The call ended; queued, so it arrives even if the iPhone is
         /// asleep right now.
         case directEnd(callID: UInt32, transcript: DirectTranscript)
-        /// A new tool grant, before the call's runs out.
-        case directGrant(callID: UInt32)
+        /// A new tool grant, before the call's runs out; Hermes moves the
+        /// jobs of `carryJobsFrom` (the call's grant with jobs) to it.
+        case directGrant(callID: UInt32, carryJobsFrom: String? = nil)
         // iPhone → Watch
         case callAccepted(callID: UInt32, mode: String)
         case callRefused(callID: UInt32, reason: String)

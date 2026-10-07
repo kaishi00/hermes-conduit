@@ -148,12 +148,12 @@ final class WatchDirectBroker {
         case .directEnd(let id, let transcript):
             reply?([:])
             ended(id, transcript: transcript)
-        case .directGrant(let id):
+        case .directGrant(let id, let carryJobsFrom):
             heard(id)
             let end = Self.beginBackgroundTask("conduit.watchDirect.grant")
             Task {
                 defer { end() }
-                answer(await self.renewGrant(id))
+                answer(await self.renewGrant(id, carryJobsFrom: carryJobsFrom))
             }
         default:
             reply?([:])
@@ -440,26 +440,28 @@ final class WatchDirectBroker {
 
     /// A grant for the running call's lookups and jobs; nil when the host
     /// can't give one. A host that refuses jobs (a plugin before 0.7) is
-    /// asked again for the lookups alone. The log has its outcome and
-    /// limits, never its keys.
-    private func requestGrant(_ id: UInt32, profile: String) async -> WatchVoiceWire.DirectToolGrant? {
+    /// asked again for the lookups alone. A renewal names the grant whose
+    /// jobs move to the new one. The log has its outcome and limits, never
+    /// its keys.
+    private func requestGrant(_ id: UInt32, profile: String, carryJobsFrom: String? = nil) async -> WatchVoiceWire.DirectToolGrant? {
         if !grantJobTools.isEmpty {
-            if let grant = await requestGrant(id, profile: profile, withJobs: true) { return grant }
+            if let grant = await requestGrant(id, profile: profile, withJobs: true, carryJobsFrom: carryJobsFrom) { return grant }
             guard callID == id, !grantTools.isEmpty else { return nil }
             // Renewals don't ask for jobs again.
             grantJobTools = []
         }
-        return await requestGrant(id, profile: profile, withJobs: false)
+        return await requestGrant(id, profile: profile, withJobs: false, carryJobsFrom: nil)
     }
 
-    private func requestGrant(_ id: UInt32, profile: String, withJobs: Bool) async -> WatchVoiceWire.DirectToolGrant? {
+    private func requestGrant(_ id: UInt32, profile: String, withJobs: Bool, carryJobsFrom: String?) async -> WatchVoiceWire.DirectToolGrant? {
         let startedAt = Date()
         do {
             var grant = try await grantClient.grant(
                 tools: grantTools + (withJobs ? grantJobTools : []),
                 profile: profile,
                 maxJobs: withJobs ? grantMaxJobs : nil,
-                jobOptions: withJobs ? grantJobOptions : [:]
+                jobOptions: withJobs ? grantJobOptions : [:],
+                carryJobsFrom: withJobs ? carryJobsFrom : nil
             )
             grant.voiceApprovals = grantVoiceApprovals && grant.tools.contains(WatchJobAnswer.answerApproval)
             guard callID == id else {
@@ -478,6 +480,8 @@ final class WatchDirectBroker {
                 "maxJobs": grant.maxJobs as Any,
                 "voiceApprovals": grant.voiceApprovals == true,
                 "askedJobs": withJobs,
+                "askedCarry": carryJobsFrom != nil,
+                "carried": grant.jobsCarriedFrom != nil,
                 "expiresInS": grant.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any,
             ])
             return grant
@@ -493,15 +497,17 @@ final class WatchDirectBroker {
         }
     }
 
-    /// The Watch's ask for a new grant, before its grant runs out.
-    private func renewGrant(_ id: UInt32) async -> WatchVoiceWire.Message {
+    /// The Watch's ask for a new grant, before its grant runs out. Only a
+    /// grant this phone got for the call can have its jobs carried over.
+    private func renewGrant(_ id: UInt32, carryJobsFrom: String?) async -> WatchVoiceWire.Message {
         guard id == callID, let profile, !grantTools.isEmpty || !grantJobTools.isEmpty else {
             return .callRefused(callID: id, reason: "This call has no Watch lookups to renew.")
         }
         guard await appState.connectForWatchDirectCall(timeout: Self.connectWait) else {
             return .callRefused(callID: id, reason: WatchVoiceStartFailure.hermesUnreachable)
         }
-        guard let grant = await requestGrant(id, profile: profile) else {
+        let carry = carryJobsFrom.flatMap { grantIDs.contains($0) ? $0 : nil }
+        guard let grant = await requestGrant(id, profile: profile, carryJobsFrom: carry) else {
             return .callRefused(callID: id, reason: "Hermes couldn't renew the Watch lookups.")
         }
         return .directGrantIssued(callID: id, grant: grant)
