@@ -457,18 +457,33 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertFalse(animates(requested: false), "the small accessory orb stays still")
     }
 
-    func testDevicePowerStateIgnoresNotificationsThatChangeNothing() {
+    func testDevicePowerStatePublishesOnlyRealChangesFromItsOwnProcessInfo() {
+        final class FakeProcessInfo: ProcessInfo {
+            var fakeThermalState: ProcessInfo.ThermalState = .nominal
+            var fakeLowPowerMode = false
+            override var thermalState: ProcessInfo.ThermalState { fakeThermalState }
+            override var isLowPowerModeEnabled: Bool { fakeLowPowerMode }
+        }
         let center = NotificationCenter()
-        let power = DevicePowerState(processInfo: .processInfo, notificationCenter: center)
-        XCTAssertEqual(power.thermalState, ProcessInfo.processInfo.thermalState)
-        XCTAssertEqual(power.isLowPowerModeEnabled, ProcessInfo.processInfo.isLowPowerModeEnabled)
+        let info = FakeProcessInfo()
+        let power = DevicePowerState(processInfo: info, notificationCenter: center)
+        var published = 0
+        let watch = power.objectWillChange.sink { published += 1 }
 
-        let republished = expectation(description: "an unchanged value redraws the orb")
-        republished.isInverted = true
-        let watch = power.objectWillChange.sink { republished.fulfill() }
-        center.post(name: ProcessInfo.thermalStateDidChangeNotification, object: ProcessInfo.processInfo)
-        center.post(name: .NSProcessInfoPowerStateDidChange, object: ProcessInfo.processInfo)
-        wait(for: [republished], timeout: 0.3)
+        // Unchanged values, or another ProcessInfo's notices, publish nothing.
+        center.post(name: ProcessInfo.thermalStateDidChangeNotification, object: info)
+        center.post(name: .NSProcessInfoPowerStateDidChange, object: info)
+        info.fakeThermalState = .serious
+        center.post(name: ProcessInfo.thermalStateDidChangeNotification, object: NSObject())
+        XCTAssertEqual(published, 0)
+        XCTAssertEqual(power.thermalState, .nominal)
+
+        center.post(name: ProcessInfo.thermalStateDidChangeNotification, object: info)
+        XCTAssertEqual(power.thermalState, .serious)
+        info.fakeLowPowerMode = true
+        center.post(name: .NSProcessInfoPowerStateDidChange, object: info)
+        XCTAssertTrue(power.isLowPowerModeEnabled)
+        XCTAssertEqual(published, 2)
         watch.cancel()
     }
 

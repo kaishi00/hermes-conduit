@@ -779,6 +779,8 @@ struct VoiceSettingsView: View {
             Text("The orb on the live call screen moves with the call. Turn this off for a still orb that uses less battery. It also holds still while the phone is hot or Reduce Motion is on. Applies to this device.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                // The switch's hint already reads this.
+                .accessibilityHidden(true)
         }
     }
 
