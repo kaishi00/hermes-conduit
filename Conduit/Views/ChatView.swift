@@ -707,7 +707,11 @@ struct MessageBubble: View {
             if message.isSteer {
                 SteerBubble(message: message)
             } else {
-                UserBubble(message: message, gatewayResolver: gatewayResolver)
+                UserBubble(
+                    message: message,
+                    gatewayResolver: gatewayResolver,
+                    agentName: message.reactions.isEmpty ? "" : appState.profileDisplayName(appState.activeProfile)
+                )
             }
         case .assistant:
             AssistantBubble(
@@ -769,6 +773,9 @@ struct MessageBubble: View {
 struct UserBubble: View {
     let message: ChatMessage
     let gatewayResolver: GatewayMediaDataURLResolver?
+    /// Names the agent for the reaction chips' VoiceOver labels. Passed in
+    /// so the bubble doesn't observe AppState.
+    var agentName = ""
     @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.chatTextSize) private var chatTextSize
 
@@ -783,6 +790,14 @@ struct UserBubble: View {
                     chatTextSize: chatTextSize
                 )
                     .equatable()
+
+                // The agent can react to the user's messages.
+                if !message.reactions.isEmpty {
+                    MessageReactionChips(
+                        reactions: message.reactions,
+                        agentName: agentName
+                    )
+                }
 
                 MessageTimestampLabel(timestamp: message.timestamp)
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -1448,6 +1463,7 @@ struct AssistantBubble: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.chatTextSize) private var chatTextSize
+    @State private var showsTapback = false
 
     var body: some View {
         // Mirrors MessageBubble's settled-bubble counter so the dormancy
@@ -1467,8 +1483,20 @@ struct AssistantBubble: View {
             )
             .equatable()
 
+            if !message.reactions.isEmpty {
+                MessageReactionChips(
+                    reactions: message.reactions,
+                    agentName: appState.profileDisplayName(appState.activeProfile),
+                    onTap: appState.canReact(to: message) ? { showsTapback = true } : nil
+                )
+            }
+
             HStack(spacing: 4) {
                 Spacer(minLength: 0)
+                if message.role == .assistant {
+                    MessageReactButton(message: message, isPresented: $showsTapback)
+                }
+
                 AssistantMessageActions(message: message)
 
                 if message.role == .assistant {
@@ -1476,6 +1504,16 @@ struct AssistantBubble: View {
                 }
             }
             .padding(.top, 2)
+            // Double-tap the row under a reply for the Tapback bar. The
+            // reply's text keeps double-tap and long-press for selecting.
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                TapGesture(count: 2).onEnded {
+                    guard message.role == .assistant, appState.canReact(to: message) else { return }
+                    Haptics.light()
+                    showsTapback = true
+                }
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

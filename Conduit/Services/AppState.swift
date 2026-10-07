@@ -14954,6 +14954,93 @@ final class AppState: ObservableObject {
         await loadSessions()
     }
 
+    // MARK: - Reactions
+
+    /// Injectable `message.react` transport; nil uses the live client.
+    var messageReactionSender: (@MainActor (_ sessionId: String, _ target: MessageReactionTarget, _ emoji: String?) async throws -> MessageReactionResult)?
+    /// Latest tapback per message id, so an older reply to a quick re-tap
+    /// can't overwrite the newer one.
+    private var reactionRequestGenerations: [String: Int] = [:]
+
+    /// Which row a reaction on `message` addresses, or nil when it can't be
+    /// addressed yet. A row with a durable id is always addressable. A live
+    /// reply that hasn't been reloaded can only be named as "the newest
+    /// assistant row", which is right only for the latest reply while no
+    /// turn is writing newer rows.
+    func reactionTarget(for message: ChatMessage) -> MessageReactionTarget? {
+        guard message.role == .assistant else { return nil }
+        if let rowId = message.rowId { return .row(rowId) }
+        guard !isBusy,
+              messages.last(where: { $0.role == .assistant })?.id == message.id else { return nil }
+        return .newest(role: "assistant")
+    }
+
+    func canReact(to message: ChatMessage) -> Bool {
+        offlineChatPresentation == nil
+            && activeSessionId != nil
+            && (client != nil || messageReactionSender != nil)
+            && message.content.contains(where: { !$0.isWhitespace })
+            && reactionTarget(for: message) != nil
+    }
+
+    /// Tapback on an agent reply: paints at once, then saves with
+    /// `message.react` and adopts the server's list. Picking the reaction
+    /// the user already has retracts it. A failed save puts the old list
+    /// back and says why. Hermes passes the reaction to the agent with the
+    /// next message, so nothing is sent now.
+    func react(to messageId: String, with emoji: String) async {
+        guard let sessionId = activeSessionId,
+              let index = messages.firstIndex(where: { $0.id == messageId }),
+              canReact(to: messages[index]),
+              let target = reactionTarget(for: messages[index]) else { return }
+        let previous = messages[index].reactions
+        messages[index].reactions = MessageReaction.applying(
+            emoji,
+            author: MessageReaction.userAuthor,
+            to: previous
+        )
+        let generation = (reactionRequestGenerations[messageId] ?? 0) + 1
+        reactionRequestGenerations[messageId] = generation
+        Haptics.light()
+
+        do {
+            let result: MessageReactionResult
+            if let sender = messageReactionSender {
+                result = try await sender(sessionId, target, emoji)
+            } else if let client {
+                result = try await client.reactToMessage(sessionId: sessionId, target: target, emoji: emoji)
+            } else {
+                throw HermesError.notConnected
+            }
+            guard activeSessionId == sessionId,
+                  reactionRequestGenerations[messageId] == generation,
+                  let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            messages[current].rowId = result.rowId
+            messages[current].reactions = result.reactions
+        } catch {
+            guard activeSessionId == sessionId,
+                  reactionRequestGenerations[messageId] == generation,
+                  let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            messages[current].reactions = previous
+            errorMessage = AppLocalization.string("Your reaction wasn't saved. \(UserFacingError.message(for: error))")
+        }
+    }
+
+    /// The agent's `message.reaction` event. The row is matched by its
+    /// durable id; a live row with no id yet is the newest row of the
+    /// reacted role, which is the agent tool's default target. The row
+    /// learns its id so a later tapback addresses it directly.
+    private func applyAgentReaction(rowId: Int, reactions: [MessageReaction], role: String) {
+        if let index = messages.firstIndex(where: { $0.rowId == rowId }) {
+            messages[index].reactions = reactions
+            return
+        }
+        let messageRole: MessageRole = role == "assistant" ? .assistant : .user
+        guard let index = messages.lastIndex(where: { $0.role == messageRole && $0.rowId == nil }) else { return }
+        messages[index].rowId = rowId
+        messages[index].reactions = reactions
+    }
+
     /// Forks only the history through the selected assistant response. The
     /// original conversation remains untouched; the new session becomes active
     /// and is resumed through the normal authoritative recovery path.
@@ -21417,6 +21504,7 @@ final class AppState: ObservableObject {
         case .messageStart(let sessionId), .messageDelta(let sessionId, _),
                 .reasoningDelta(let sessionId, _),
                 .messageComplete(let sessionId, _, _, _), .messageError(let sessionId, _),
+                .messageReaction(let sessionId, _, _, _),
                 .messageInterrupted(let sessionId), .sessionBusy(let sessionId, _),
                 .sessionInfo(let sessionId, _), .sessionTitle(let sessionId, _, _),
                 .toolStart(let sessionId, _, _, _),
@@ -21501,6 +21589,9 @@ final class AppState: ObservableObject {
                 reasoning: reasoning
             )
             notifyVoiceAssistant(.completed(sessionID: streamSessionId, content: content))
+
+        case .messageReaction(_, let rowId, let reactions, let role):
+            applyAgentReaction(rowId: rowId, reactions: reactions, role: role)
 
         case .messageError(_, let message):
             settleReasoningSegmentIntoTranscript()

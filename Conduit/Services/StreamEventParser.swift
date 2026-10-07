@@ -52,6 +52,15 @@ enum StreamEventParser {
             let reasoning = payload?["reasoning"]?.stringValue
             return .messageComplete(sessionId: sessionId, messageId: messageId, content: content, reasoning: reasoning)
 
+        case "message.reaction":
+            guard let rowId = HermesClient.exactIntValue(payload?["row_id"]), rowId > 0 else { return nil }
+            return .messageReaction(
+                sessionId: sessionId,
+                rowId: rowId,
+                reactions: MessageNormalizer.messageReactions(from: payload?["reactions"]),
+                role: payload?["role"]?.stringValue ?? "user"
+            )
+
         case "error":
             return .messageError(sessionId: sessionId, message: payload?["message"]?.stringValue ?? AppLocalization.string("Hermes reported an error."))
 
