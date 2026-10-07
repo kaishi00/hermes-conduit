@@ -23538,10 +23538,9 @@ final class AppState: ObservableObject {
     }
 
     /// Builds a Watch call's setup as `geminiLiveController` builds the
-    /// phone's: the same memory and persona lookups, instructions,
-    /// functions and voice, with lookups on Google Search. The call has no
-    /// attached chat and no phone screen, so it gets no chat tools and no
-    /// resume context.
+    /// phone's: the same search, memory and persona lookups, instructions,
+    /// functions and voice. The call has no attached chat and no phone
+    /// screen, so it gets no chat tools and no resume context.
     func prepareWatchDirectCall() async throws -> WatchDirectPlan {
         // Woken (or launched) by the Watch with no phone screen up.
         if isSceneActive, !PhoneScenePresence.isInForeground {
@@ -23556,16 +23555,14 @@ final class AppState: ObservableObject {
         let tokens = geminiLiveTokenClient
         let wantsMemory = geminiLiveMemoryEnabled
         let wantsPersonality = geminiLivePersonalityEnabled
-        // Lookups use Gemini's own Google Search: Hermes' web search runs
-        // on this phone, which the Watch reaches only with the wrist raised
-        // (Eric's choice for Watch tools, 2026-10-07). Off stays off.
-        let search: GeminiLiveSearchSource = geminiLiveSearchMode == .off ? .none : .google
+        async let searchLookup = resolveGeminiLiveSearchSource()
         async let memoryLookup = wantsMemory ? tokens.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? tokens.personality() : nil
         let status = try await tokens.availability()
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
         }
+        let search = await searchLookup
         let memory = await memoryLookup
         let personality = await personalityLookup
         let token = try await tokens.freshToken()
