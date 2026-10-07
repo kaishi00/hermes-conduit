@@ -94,6 +94,12 @@ struct WatchCallView: View {
                         .font(.footnote)
                         .multilineTextAlignment(.center)
                 }
+                if let notice = call.notice {
+                    Text(notice)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
                 if let caption = call.caption {
                     Text(caption)
                         .font(.footnote)
@@ -272,12 +278,16 @@ struct WatchLabView: View {
                 Text("Encoders").font(.headline)
                 ForEach(lab.encoders, id: \.self) { Text($0).font(.caption2) }
                 Text("Echo").font(.headline)
-                Button("Test, processing off") { Task { await lab.runEchoTest(voiceProcessing: false) } }
+                Button("Test, processing off") { Task { await lab.runEchoTest(options: .init()) } }
                     .disabled(blocked)
-                Button("Test, processing on") { Task { await lab.runEchoTest(voiceProcessing: true) } }
+                Button("Test, processing on") { Task { await lab.runEchoTest(options: .init(voiceProcessing: true)) } }
                     .disabled(blocked)
-                ForEach(lab.echoResults, id: \.voiceProcessing) { result in
-                    Text(String(format: "%@: echo %.0f dB over the room (room %.0f dBFS)", result.voiceProcessing ? "On" : "Off", result.echoOverNoiseDB, result.noiseDBFS))
+                // The session's voice chat mode, without the engine's
+                // processing: whether watchOS cancels any echo itself.
+                Button("Test, voice chat mode") { Task { await lab.runEchoTest(options: .init(voiceChatMode: true)) } }
+                    .disabled(blocked)
+                ForEach(lab.echoResults, id: \.options) { result in
+                    Text(String(format: "%@: echo %.0f dB over the room (room %.0f dBFS)", WatchLabModel.label(result.options), result.echoOverNoiseDB, result.noiseDBFS))
                         .font(.caption2)
                 }
                 // Beside the buttons: at the top it scrolled out of view,

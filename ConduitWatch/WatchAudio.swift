@@ -14,7 +14,7 @@ import Foundation
 
 @MainActor
 final class WatchAudio {
-    struct Options: Equatable {
+    struct Options: Hashable {
         /// The engine's echo cancellation and noise suppression.
         var voiceProcessing = false
         /// The voice chat session mode instead of the default one.
@@ -55,6 +55,8 @@ final class WatchAudio {
     /// capture service guards it.
     private var hasInputTap = false
     private var hasRenderResources = false
+    /// The start step running, for the log when one fails.
+    private var startStep = "session"
     private var startPending = false
     private var queuedDuration: TimeInterval = 0
     private var observers: [NSObjectProtocol] = []
@@ -71,11 +73,18 @@ final class WatchAudio {
         stop()
         self.options = options
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: options.voiceChatMode ? .voiceChat : .default, policy: .default, options: [])
-        try session.setActive(true)
+        startStep = "session"
+        do {
+            try session.setCategory(.playAndRecord, mode: options.voiceChatMode ? .voiceChat : .default, policy: .default, options: [])
+            try session.setActive(true)
+        } catch {
+            logStartFailure(error)
+            throw error
+        }
         do {
             try startEngine(session: session, options: options, playbackRate: playbackRate)
         } catch {
+            logStartFailure(error)
             // Nothing half started stays behind: the tap, the engine, the
             // active session.
             captureGeneration += 1
@@ -97,8 +106,10 @@ final class WatchAudio {
         hasInputTap = false
         hasRenderResources = false
         if options.voiceProcessing {
+            startStep = "voiceProcessing"
             try engine.inputNode.setVoiceProcessingEnabled(true)
         }
+        startStep = "microphone"
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
@@ -131,6 +142,7 @@ final class WatchAudio {
         engine.connect(player, to: engine.mainMixerNode, format: playerFormat)
         engine.prepare()
         hasRenderResources = true
+        startStep = "engine"
         try engine.start()
 
         self.engine = engine
@@ -147,6 +159,19 @@ final class WatchAudio {
             "inputs": session.currentRoute.inputs.map { $0.portType.rawValue },
             "outputLatencyMs": Int(session.outputLatency * 1000),
             "inputLatencyMs": Int(session.inputLatency * 1000),
+        ])
+    }
+
+    /// Which step failed, with the raw error: a device log had only
+    /// "avfaudio error -308" with voice processing on.
+    private func logStartFailure(_ error: Error) {
+        let error = error as NSError
+        WatchProbeLog.shared.note("audioStartFailed", [
+            "step": startStep,
+            "domain": error.domain,
+            "code": error.code,
+            "voiceProcessing": options.voiceProcessing,
+            "voiceChatMode": options.voiceChatMode,
         ])
     }
 

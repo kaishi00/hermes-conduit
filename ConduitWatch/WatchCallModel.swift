@@ -36,6 +36,10 @@ final class WatchCallModel: ObservableObject {
     static let maxInFlight = 3
     static let echoTail: TimeInterval = 0.35
     static let pingInterval: TimeInterval = 2
+    /// How long a start waits for the iPhone's answer before asking
+    /// again. A device log had neither the answer nor an error arrive in
+    /// 30 s.
+    static let startAnswerTimeout: TimeInterval = 5
     static let downlinkRate: Double = 24_000
 
     @Published private(set) var phase: Phase = .idle
@@ -44,6 +48,8 @@ final class WatchCallModel: ObservableObject {
     @Published private(set) var isMuted = false
     @Published private(set) var jobs = 0
     @Published private(set) var lastTurnSummary: String?
+    /// Something the call changed on its own, shown until the next call.
+    @Published private(set) var notice: String?
     @Published var fullDuplex = false
     @Published var keepStreamingWristDown = false
     /// The dimmed-screen experiment: a CallKit call on the Watch for the
@@ -60,6 +66,9 @@ final class WatchCallModel: ObservableObject {
     private var callStartedAt: TimeInterval = 0
     private var acceptedAt: TimeInterval?
     private var startInFlight = false
+    private var startSentAt: TimeInterval = 0
+    /// Starts that got neither an answer nor an error in time.
+    private var startsUnanswered = 0
     /// The call's phase as the iPhone last reported it.
     private var phonePhase: WatchVoiceWire.CallState.Phase?
     private var listeningAt: TimeInterval?
@@ -142,7 +151,7 @@ final class WatchCallModel: ObservableObject {
             guard phase == .starting else { return }
         }
         do {
-            try audio.start(options: .init(voiceProcessing: fullDuplex), playbackRate: Self.downlinkRate)
+            try startAudio()
         } catch {
             systemCall?.end()
             WKInterfaceDevice.current().isBatteryMonitoringEnabled = false
@@ -192,7 +201,7 @@ final class WatchCallModel: ObservableObject {
     func continueAfterInterruption() {
         guard phase == .needsTap else { return }
         do {
-            try audio.start(options: .init(voiceProcessing: fullDuplex), playbackRate: Self.downlinkRate)
+            try startAudio()
             micPaused = false
             if acceptedAt == nil {
                 // Interrupted before the iPhone took the call: ask again.
@@ -374,6 +383,7 @@ final class WatchCallModel: ObservableObject {
     private func sendStart() {
         guard acceptedAt == nil, !startInFlight, phase == .starting || phase == .unreachable else { return }
         startInFlight = true
+        startSentAt = now
         let id = callID
         link.send(.callStart(callID: id, fullDuplex: fullDuplex, version: WatchVoiceWire.version), reply: { [weak self] answer in
             guard let self, self.callID == id else { return }
@@ -450,6 +460,13 @@ final class WatchCallModel: ObservableObject {
         guard isActive else { return }
         // The iPhone hasn't taken the call yet: ask again instead.
         guard acceptedAt != nil else {
+            if startInFlight, now - startSentAt >= Self.startAnswerTimeout {
+                // Lost on the way, with no error: a late answer still
+                // counts, and the same call ID makes the repeat harmless.
+                startsUnanswered += 1
+                WatchProbeLog.shared.note("callStartNoAnswer", ["count": startsUnanswered, "reachable": link.isReachable])
+                startInFlight = false
+            }
             sendStart()
             return
         }
@@ -539,6 +556,20 @@ final class WatchCallModel: ObservableObject {
 
     // MARK: Lifecycle
 
+    /// Voice processing didn't start on a device (avfaudio error -308,
+    /// every try), so full duplex falls back to half duplex instead of
+    /// ending the call.
+    private func startAudio() throws {
+        do {
+            try audio.start(options: .init(voiceProcessing: fullDuplex), playbackRate: Self.downlinkRate)
+        } catch let error where fullDuplex {
+            WatchProbeLog.shared.note("fullDuplexUnavailable", ["error": error.localizedDescription])
+            fullDuplex = false
+            notice = "Voice processing didn't start, so this call is half duplex."
+            try audio.start(options: .init(), playbackRate: Self.downlinkRate)
+        }
+    }
+
     private func makeSystemCall() -> WatchSystemCall {
         let systemCall = WatchSystemCall()
         systemCall.onEndedBySystem = { [weak self] in
@@ -554,6 +585,8 @@ final class WatchCallModel: ObservableObject {
         callStartedAt = now
         acceptedAt = nil
         startInFlight = false
+        startsUnanswered = 0
+        notice = nil
         phonePhase = nil
         listeningAt = nil
         WKInterfaceDevice.current().isBatteryMonitoringEnabled = true
@@ -624,6 +657,7 @@ final class WatchCallModel: ObservableObject {
             "systemCallHolding": systemCallHolding,
             "durationS": Int(now - callStartedAt),
             "acceptedMs": WatchVoiceStats.milliseconds(acceptedAt.map { $0 - callStartedAt }) as Any,
+            "startsUnanswered": startsUnanswered,
             "listeningMs": WatchVoiceStats.milliseconds(listeningAt.map { $0 - callStartedAt }) as Any,
             "turns": endToEnd.count,
             "endToEndP50Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(endToEnd, 0.5)) as Any,

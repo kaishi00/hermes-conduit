@@ -6,10 +6,10 @@
 //  iPhone for the length of a Watch call, so iOS keeps Conduit running
 //  while the phone is locked. A device log showed Conduit
 //  suspended about 30 s after the phone went to the background, which
-//  ended the call. Opt-in from Voice settings > Apple Watch test, to
-//  repeat the locked-phone test with it. Set up the standard way for a
-//  CallKit app: `voip` beside `audio` in UIBackgroundModes, and the
-//  session CallKit activates configured for a voice call.
+//  ended the call. One of the WatchPhoneKeepAlive choices in Voice
+//  settings > Apple Watch test. Set up the standard way for a CallKit
+//  app: `voip` beside `audio` in UIBackgroundModes, and the session
+//  CallKit activates configured for a voice call.
 //
 
 import AVFAudio
@@ -18,9 +18,6 @@ import Foundation
 
 @MainActor
 final class WatchPhoneCall: NSObject {
-    static let enabledKey = "watchProbe.phoneCallKeepAlive"
-    static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
-
     /// The call was ended from the iPhone's call controls.
     var onEndedOnPhone: (() -> Void)?
 

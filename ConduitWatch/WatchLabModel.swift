@@ -4,8 +4,9 @@
 //
 //  The audio lab (designs/apple-watch-voice.md, P1), on the Watch alone:
 //  which compressed encoders watchOS offers, how much of the speaker's
-//  sound the microphone picks up with and without voice processing, and
-//  what interruptions and wrist moves do to a running microphone.
+//  sound the microphone picks up with and without voice processing (or
+//  the voice chat session mode), and what interruptions and wrist moves
+//  do to a running microphone.
 //
 
 import AVFAudio
@@ -15,7 +16,7 @@ import SwiftUI
 @MainActor
 final class WatchLabModel: ObservableObject {
     struct EchoResult: Equatable {
-        let voiceProcessing: Bool
+        let options: WatchAudio.Options
         let noiseDBFS: Double
         let echoDBFS: Double
         var echoOverNoiseDB: Double { echoDBFS - noiseDBFS }
@@ -73,12 +74,12 @@ final class WatchLabModel: ObservableObject {
 
     /// Plays a speech-like sound through the speaker and measures what the
     /// microphone hears: first silence (the room), then during playback.
-    func runEchoTest(voiceProcessing: Bool) async {
+    func runEchoTest(options: WatchAudio.Options) async {
         guard !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
         stopWatching()
-        status = voiceProcessing ? "Echo test, voice processing on…" : "Echo test, voice processing off…"
+        status = "Echo test, \(Self.label(options).lowercased())…"
         guard await WatchAudio.requestPermission() else {
             status = WatchAudioError.permissionDenied.localizedDescription
             return
@@ -90,7 +91,7 @@ final class WatchLabModel: ObservableObject {
             self?.recordingTimes.append(at)
         }
         do {
-            try audio.start(options: .init(voiceProcessing: voiceProcessing), playbackRate: Self.playRate)
+            try audio.start(options: options, playbackRate: Self.playRate)
         } catch {
             audio.onCapture = nil
             status = "Audio didn't start: \(error.localizedDescription)"
@@ -114,25 +115,31 @@ final class WatchLabModel: ObservableObject {
         audio.onCapture = nil
         guard noiseEnd > noiseStart, echoEnd > echoStart else {
             status = "The microphone sent nothing."
-            WatchProbeLog.shared.report("labEcho", ["voiceProcessing": voiceProcessing, "error": "no microphone audio"])
+            WatchProbeLog.shared.report("labEcho", ["voiceProcessing": options.voiceProcessing, "voiceChatMode": options.voiceChatMode, "error": "no microphone audio"])
             return
         }
         let result = EchoResult(
-            voiceProcessing: voiceProcessing,
+            options: options,
             noiseDBFS: Self.dbfs(recording[noiseStart..<noiseEnd]),
             echoDBFS: Self.dbfs(recording[echoStart..<echoEnd])
         )
-        echoResults.removeAll { $0.voiceProcessing == voiceProcessing }
+        echoResults.removeAll { $0.options == options }
         echoResults.append(result)
         hasRecording = true
         status = String(format: "Echo %.0f dB over the room", result.echoOverNoiseDB)
         WatchProbeLog.shared.report("labEcho", [
-            "voiceProcessing": voiceProcessing,
+            "voiceProcessing": options.voiceProcessing,
+            "voiceChatMode": options.voiceChatMode,
             "noiseDBFS": (result.noiseDBFS * 10).rounded() / 10,
             "echoDBFS": (result.echoDBFS * 10).rounded() / 10,
             "echoOverNoiseDB": (result.echoOverNoiseDB * 10).rounded() / 10,
             "outputs": AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType.rawValue },
         ])
+    }
+
+    static func label(_ options: WatchAudio.Options) -> String {
+        if options.voiceProcessing { return "Processing on" }
+        return options.voiceChatMode ? "Voice chat mode" : "Processing off"
     }
 
     /// Plays back what the microphone heard in the last echo test.

@@ -184,9 +184,9 @@ final class WatchCallHost {
     private var downlinkSent = 0
     private var downlinkFailed = 0
     private var downlinkRoundTrips: [Double] = []
-    /// The P3 fallback's CallKit call, made the first time Voice settings
-    /// turn it on.
+    /// The P3 fallbacks, made the first time Voice settings pick one.
     private var phoneCall: WatchPhoneCall?
+    private var silentAudio: WatchPhoneSilentAudio?
 
     init(link: WatchVoiceLink) {
         self.link = link
@@ -244,11 +244,17 @@ final class WatchCallHost {
         output = WatchLiveVoiceOutput(host: self)
         suspendedAtStart = link.liveness.suspendedMs
         link.liveness.begin("call")
-        if WatchPhoneCall.isEnabled {
+        let keepAlive = WatchPhoneKeepAlive.current
+        if keepAlive == .call {
             startPhoneCall()
         } else {
-            // A call whose end failed goes even with the switch off.
+            // A call whose end failed goes even with the choice changed.
             phoneCall?.endStaleCalls()
+        }
+        if keepAlive == .silentAudio {
+            let silentAudio = self.silentAudio ?? WatchPhoneSilentAudio(log: link.log)
+            self.silentAudio = silentAudio
+            silentAudio.start()
         }
         appState.setWatchVoiceCallActive(true)
         watchdog = WatchVoiceMain.timer(every: 5, repeats: true) { [weak self] _ in
@@ -261,7 +267,7 @@ final class WatchCallHost {
             "appState": WatchProbeLiveness.appStateName,
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
-            "phoneCall": WatchPhoneCall.isEnabled,
+            "phoneKeepAlive": keepAlive.rawValue,
         ])
         let previous = establishing
         establishing = Task { [weak self] in
@@ -480,6 +486,7 @@ final class WatchCallHost {
         input = nil
         output = nil
         phoneCall?.end()
+        silentAudio?.stop()
         link.liveness.end("call")
         link.log.summary("watchCallSummary", [
             "callID": Int(callID),
