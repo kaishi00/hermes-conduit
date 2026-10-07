@@ -648,6 +648,11 @@ struct SettingsView: View {
                             appState.setVoiceJobModel(provider: provider, model: model, reasoningEffort: reasoning)
                         }
                     ),
+                    voiceReplies: VoiceReplyModelSettingsModel(
+                        load: { await appState.loadVoiceReplyModel() },
+                        loadProviders: { await appState.loadVoiceJobModelProviders() },
+                        save: { await appState.setVoiceReplyModel($0) }
+                    ),
                     wake: wakeSettings(profile: snapshot.profile),
                     lockedListening: VoiceLockedListeningSettingsModel(
                         enabled: appState.keepVoiceListeningWhenLocked,

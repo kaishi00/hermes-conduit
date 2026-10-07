@@ -69,6 +69,9 @@ struct VoiceConfigurationSnapshot: Equatable {
     /// Values are explicit strings, never credential values.
     var values: [String: String]
     var credentials: [VoiceCredentialStatus]
+    /// `stt.streaming`: Hermes recognizes speech while the user talks
+    /// (providers with a live wire), so Voice shows the words as they come.
+    var liveTranscription = false
 
     static func unavailable(profile: String, reason: String) -> Self {
         .init(
@@ -294,6 +297,30 @@ final class HermesVoiceConfigurationService: ObservableObject {
         }
     }
 
+    /// Turns Hermes' live speech-to-text (`stt.streaming`) on or off for
+    /// this profile. It is a Hermes setting, so it also applies to Hermes'
+    /// own CLI and Desktop voice input.
+    func saveLiveTranscription(_ enabled: Bool) async -> Bool {
+        guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
+            errorMessage = AppLocalization.string("Could not load voice settings to save this change.")
+            return false
+        }
+        var stt = config["stt"] as? [String: Any] ?? [:]
+        stt["streaming"] = enabled
+        config["stt"] = stt
+        do {
+            _ = try await requester.requestJSON(
+                path: profilePath("/api/config"), method: "PUT",
+                body: ["config": config]
+            )
+            snapshot.liveTranscription = enabled
+            return true
+        } catch {
+            errorMessage = AppLocalization.string("Could not save live transcription: \(UserFacingError.message(for: error))")
+            return false
+        }
+    }
+
     /// This deliberately never requests `/api/env/reveal`; the only read
     /// state in Conduit is whether a credential is configured.
     func saveCredential(_ value: String, key: String) async -> Bool {
@@ -428,7 +455,8 @@ enum VoiceConfigurationParser {
         return .init(
             profile: profile, capability: capability, sttProviders: stt, ttsProviders: tts,
             selectedSTTProvider: selectedSTT, selectedTTSProvider: selectedTTS,
-            values: values, credentials: credentials
+            values: values, credentials: credentials,
+            liveTranscription: nestedBool(config, "stt.streaming") ?? false
         )
     }
 
@@ -455,23 +483,27 @@ enum VoiceConfigurationParser {
         })
     }
 
-    /// Display catalog matching Hermes' current STT picker. Providers outside
+    /// Display catalog matching Hermes' current STT picker (STT model lists
+    /// mirror upstream `STT_MODEL_CATALOG` in tools/transcription_common.py,
+    /// first entry = Hermes' default). Providers outside
     /// this table (plugin rows such as StepFun/Xiaomi MiMo, or future
     /// gateways) fall back to a generated descriptor and still work.
     static func catalogDescriptor(id: String, kind: VoiceProviderDescriptor.Kind) -> VoiceProviderDescriptor? {
         switch (id, kind) {
         case ("local", .stt):
-            return .init(id: id, displayName: "Local", kind: kind, models: ["tiny", "base", "small", "medium", "large-v3"], supportsStreaming: false)
+            return .init(id: id, displayName: "Local", kind: kind, models: ["base", "tiny", "small", "medium", "large-v3", "turbo"], supportsStreaming: false)
         case ("nous", .stt), ("openai", .stt):
             // The managed Nous route resolves models from the same
             // OpenAI-compatible catalog as the direct key.
             return .init(id: id, displayName: id == "nous" ? AppLocalization.string("Nous Subscription") : "OpenAI", kind: kind, models: ["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe", "gpt-transcribe"], supportsStreaming: false)
         case ("groq", .stt):
-            return .init(id: id, displayName: "Groq", kind: kind, models: ["whisper-large-v3-turbo", "whisper-large-v3", "distil-whisper-large-v3-en"], supportsStreaming: false)
+            return .init(id: id, displayName: "Groq", kind: kind, models: ["whisper-large-v3-turbo", "whisper-large-v3"], supportsStreaming: false)
+        case ("mistral", .stt):
+            return .init(id: id, displayName: "Mistral", kind: kind, models: ["voxtral-mini-latest", "voxtral-mini-2602"], supportsStreaming: false)
         case ("xai", .stt):
-            return .init(id: id, displayName: "xAI", kind: kind, supportsStreaming: false)
+            return .init(id: id, displayName: "xAI", kind: kind, models: ["grok-voice-transcribe-2.0", "grok-voice-transcribe-1.0"], supportsStreaming: false)
         case ("elevenlabs", .stt):
-            return .init(id: id, displayName: "ElevenLabs Scribe", kind: kind, supportsStreaming: false)
+            return .init(id: id, displayName: "ElevenLabs Scribe", kind: kind, models: ["scribe_v2", "scribe_v1"], supportsStreaming: false)
         case ("deepinfra", .stt):
             return .init(id: id, displayName: "DeepInfra", kind: kind, supportsStreaming: false)
         case ("nous", .tts):

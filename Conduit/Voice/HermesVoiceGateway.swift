@@ -130,6 +130,48 @@ final class HermesVoiceGateway: VoiceGatewayService {
     }
 }
 
+extension HermesVoiceGateway: VoiceLiveTranscriptionGateway {
+    func openLiveTranscription(
+        sampleRate: Double,
+        onPartial: @escaping @MainActor (String) -> Void,
+        onUnavailable: @escaping @MainActor () -> Void
+    ) async -> VoiceLiveTranscription? {
+        // A ticket or URL failure is not a verdict on the profile: this
+        // utterance just uses the upload, and the next one tries again.
+        guard let ticket = try? await bridge.mintTicket(),
+              let request = try? Self.liveTranscriptionRequest(
+                baseURL: baseURL,
+                ticket: ticket,
+                profile: profile,
+                cloudflareAccess: bridge.cloudflareAccess
+              ) else { return nil }
+        let task = URLSession.shared.webSocketTask(with: request)
+        task.resume()
+        return HermesLiveTranscription(
+            socket: task,
+            sampleRate: sampleRate,
+            onPartial: onPartial,
+            onUnavailable: onUnavailable
+        )
+    }
+
+    /// The transcribe-stream upgrade request, authenticated like the
+    /// speak-stream one (ticket query, Cloudflare Access headers).
+    static func liveTranscriptionRequest(
+        baseURL: String,
+        ticket: String,
+        profile: String,
+        cloudflareAccess: CloudflareAccessCredentials?
+    ) throws -> URLRequest {
+        let url = try ConnectionURLPolicy.webSocketURL(
+            baseURL: baseURL,
+            path: "/api/audio/transcribe-stream",
+            queryItems: [URLQueryItem(name: "ticket", value: ticket), URLQueryItem(name: "profile", value: profile)]
+        )
+        return URLRequest(url: url).applyingProxyHeaders(cloudflare: cloudflareAccess)
+    }
+}
+
 /// The slice of `URLSessionWebSocketTask` the speech stream uses, so tests
 /// can inject a socket whose handshake is refused.
 protocol HermesSpeechSocket: AnyObject {

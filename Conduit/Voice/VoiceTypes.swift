@@ -703,6 +703,36 @@ protocol AudioCaptureService: AnyObject {
     func resume() throws
     func finishUtterance() throws -> VoiceCapturedAudio
     func stop()
+    /// PCM16 recorded so far in the open utterance (pre-roll included), at
+    /// `VoiceAudioSessionConfiguration.capture.outputSampleRate`. Live
+    /// transcription reads it as it grows; empty when none is open.
+    var recordedPCM16: Data { get }
+}
+
+extension AudioCaptureService {
+    /// Captures that can't expose the open utterance just never stream it.
+    var recordedPCM16: Data { Data() }
+}
+
+/// Words recognized while the user is still speaking: microphone PCM goes
+/// in as it is recorded, partial text comes out, and `finish()` returns the
+/// final transcript, or nil when the recording's upload must be used.
+@MainActor
+protocol VoiceLiveTranscription: AnyObject {
+    func push(_ pcm16: Data)
+    func finish() async -> String?
+    func cancel()
+}
+
+/// A gateway that can transcribe while the user speaks. Nil when this
+/// Hermes has no live speech-to-text for the profile.
+@MainActor
+protocol VoiceLiveTranscriptionGateway: AnyObject {
+    func openLiveTranscription(
+        sampleRate: Double,
+        onPartial: @escaping @MainActor (String) -> Void,
+        onUnavailable: @escaping @MainActor () -> Void
+    ) async -> VoiceLiveTranscription?
 }
 
 @MainActor

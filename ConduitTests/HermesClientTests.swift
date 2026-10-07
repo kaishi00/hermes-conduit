@@ -868,6 +868,73 @@ final class HermesClientTests: XCTestCase {
         }
     }
 
+    func testSpokenTurnMarksVoiceTurnAndDropsItWhenTheGatewayRefusesTheKey() async throws {
+        // Hermes routes `voice_turn: true` to `auxiliary.voice_chat`. A
+        // gateway from before that slot rejects unknown keys with 4000
+        // before running anything: the turn is resent once without the key,
+        // and later spoken turns stop sending it.
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete")
+
+        func nextRequest(_ phase: String, after send: () -> Void) async throws -> [String: Any] {
+            let sent = Gate()
+            socket.onSend = { sent.signal() }
+            send()
+            try await sent.wait(phase)
+            return try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+            )
+        }
+        func deliver(_ response: [String: Any]) throws {
+            socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+        }
+
+        var submitTask: Task<PromptSubmissionOutcome, Error>?
+        let first = try await nextRequest("the voice prompt.submit") {
+            submitTask = Task { try await client.sendPrompt("sess-1", text: "Hi", surface: "voice-live", voiceTurn: true) }
+        }
+        var params = try XCTUnwrap(first["params"] as? [String: Any])
+        XCTAssertEqual(params["voice_turn"] as? Bool, true)
+        XCTAssertEqual(params["surface"] as? String, "voice-live")
+
+        let firstID = try XCTUnwrap(first["id"] as? Int)
+        let retry = try await nextRequest("the resend without voice_turn") {
+            try? deliver([
+                "jsonrpc": "2.0", "id": firstID,
+                "error": [
+                    "code": 4000,
+                    "message": "invalid params for prompt.submit: voice_turn: Extra inputs are not permitted — the client and the Hermes backend are out of sync (different versions); run `hermes update` and restart both"
+                ]
+            ])
+        }
+        params = try XCTUnwrap(retry["params"] as? [String: Any])
+        XCTAssertNil(params["voice_turn"])
+        XCTAssertEqual(params["surface"] as? String, "voice-live")
+        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(retry["id"] as? Int), "result": ["status": "streaming"]])
+        let outcome = try await awaitResult(of: try XCTUnwrap(submitTask), "the resent prompt.submit response")
+        XCTAssertEqual(outcome, .accepted)
+
+        let later = try await nextRequest("a later voice prompt.submit") {
+            submitTask = Task { try await client.sendPrompt("sess-1", text: "Again", surface: "voice-live", voiceTurn: true) }
+        }
+        params = try XCTUnwrap(later["params"] as? [String: Any])
+        XCTAssertNil(params["voice_turn"])
+        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(later["id"] as? Int), "result": ["status": "streaming"]])
+        _ = try await awaitResult(of: try XCTUnwrap(submitTask), "the later prompt.submit response")
+        client.disconnect()
+    }
+
+    func testUnknownParamRefusalMatchesOnlyTheNamedKey() {
+        XCTAssertTrue(RpcError(code: 4000, message: "invalid params for prompt.submit: voice_turn: Extra inputs are not permitted").refusesUnknownParam("voice_turn"))
+        XCTAssertFalse(RpcError(code: 4000, message: "invalid params for prompt.submit: surface: Extra inputs are not permitted").refusesUnknownParam("voice_turn"))
+        XCTAssertFalse(RpcError(code: 4090, message: "voice_turn busy").refusesUnknownParam("voice_turn"))
+    }
+
     func testActiveSessionsParsesRuntimeRegistryWithoutMutatingParams() async throws {
         let transport = FakeTransport()
         let socket = FakeSocket()

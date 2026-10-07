@@ -43,6 +43,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     /// PCM16 chunk as it is produced. Nil for the classic Voice path, which
     /// only reads whole utterances.
     var onPCM16Chunk: (@MainActor (Data) -> Void)?
+    var recordedPCM16: Data { activelyRecording ? capturedPCM : Data() }
     var preRollPCM = Data()
     private let maximumPreRollBytes = Int(AVAudioCaptureService.outputSampleRate * AVAudioCaptureService.preRollDuration) * AVAudioCaptureService.outputBytesPerFrame
     var activelyRecording = false

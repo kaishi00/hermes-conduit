@@ -31,6 +31,7 @@ struct VoiceSettingsRoute: View {
     let grokLive: GrokLiveSettingsModel?
     let liveStyle: LiveVoiceStyleSettingsModel?
     let voiceJobs: VoiceJobModelSettingsModel?
+    let voiceReplies: VoiceReplyModelSettingsModel?
     let wake: WakePhraseSettingsModel?
     let lockedListening: VoiceLockedListeningSettingsModel?
     let speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
@@ -58,6 +59,7 @@ struct VoiceSettingsRoute: View {
         grokLive: GrokLiveSettingsModel? = nil,
         liveStyle: LiveVoiceStyleSettingsModel? = nil,
         voiceJobs: VoiceJobModelSettingsModel? = nil,
+        voiceReplies: VoiceReplyModelSettingsModel? = nil,
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
@@ -68,6 +70,7 @@ struct VoiceSettingsRoute: View {
         self.grokLive = grokLive
         self.liveStyle = liveStyle
         self.voiceJobs = voiceJobs
+        self.voiceReplies = voiceReplies
         self.wake = wake
         self.lockedListening = lockedListening
         self.speakerTalkOver = speakerTalkOver
@@ -111,6 +114,7 @@ struct VoiceSettingsRoute: View {
             grokLive: grokLive,
             liveStyle: liveStyle,
             voiceJobs: voiceJobs,
+            voiceReplies: voiceReplies,
             wake: wake,
             lockedListening: lockedListening,
             speakerTalkOver: speakerTalkOver,
@@ -179,6 +183,7 @@ struct VoiceSettingsView: View {
     var grokLive: GrokLiveSettingsModel?
     var liveStyle: LiveVoiceStyleSettingsModel?
     var voiceJobs: VoiceJobModelSettingsModel?
+    var voiceReplies: VoiceReplyModelSettingsModel?
     var wake: WakePhraseSettingsModel?
     var lockedListening: VoiceLockedListeningSettingsModel?
     var speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
@@ -207,6 +212,7 @@ struct VoiceSettingsView: View {
         grokLive: GrokLiveSettingsModel? = nil,
         liveStyle: LiveVoiceStyleSettingsModel? = nil,
         voiceJobs: VoiceJobModelSettingsModel? = nil,
+        voiceReplies: VoiceReplyModelSettingsModel? = nil,
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
@@ -217,6 +223,7 @@ struct VoiceSettingsView: View {
         self.grokLive = grokLive
         self.liveStyle = liveStyle
         self.voiceJobs = voiceJobs
+        self.voiceReplies = voiceReplies
         self.wake = wake
         self.lockedListening = lockedListening
         self.speakerTalkOver = speakerTalkOver
@@ -273,6 +280,9 @@ struct VoiceSettingsView: View {
                             providerSection(title: AppLocalization.string("Assistant speech"), symbol: "speaker.wave.3", kind: .tts, providers: service.snapshot.ttsProviders)
                             credentialsSection
                         }
+                    }
+                    if voiceMode == .classic, let voiceReplies {
+                        VoiceReplyModelSettingsSection(settings: voiceReplies)
                     }
                     if let voiceJobs {
                         VoiceJobModelSettingsSection(settings: voiceJobs)
@@ -841,7 +851,24 @@ struct VoiceSettingsView: View {
                 } else if let fallback = providers.first {
                     providerDetail(fallback)
                 }
+                if kind == .stt, transcriptionMode != .appleOnDevice {
+                    liveTranscriptionToggle
+                }
             }
+        }
+    }
+
+    /// Hermes' `stt.streaming`: words appear while the user speaks.
+    private var liveTranscriptionToggle: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Show words while you speak", isOn: Binding(
+                get: { service.snapshot.liveTranscription },
+                set: { enabled in Task { _ = await service.saveLiveTranscription(enabled) } }
+            ))
+            .disabled(service.isLoading)
+            Text("Hermes transcribes while you talk, so your words show up as you say them and are ready as soon as you stop. Works with OpenAI, xAI and ElevenLabs speech to text. This is a Hermes setting, so Hermes Desktop and the terminal use it too.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

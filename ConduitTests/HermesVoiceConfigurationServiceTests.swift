@@ -946,6 +946,70 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertEqual(VoiceConfigurationParser.catalogDescriptor(id: "elevenlabs", kind: .stt)?.supportsStreaming, false)
     }
 
+    /// `stt.streaming` is Hermes' live speech-to-text switch; off unless set.
+    func testLiveTranscriptionReadsSTTStreaming() {
+        func snapshot(_ stt: [String: Any]) -> VoiceConfigurationSnapshot {
+            VoiceConfigurationParser.parse(
+                profile: "default", schema: nil,
+                config: ["stt": stt, "tts": [String: Any]()],
+                sttReadiness: nil, ttsReadiness: nil, environment: nil,
+                ttsToolsetConfigAvailable: false
+            )
+        }
+        XCTAssertFalse(snapshot([:]).liveTranscription)
+        XCTAssertTrue(snapshot(["streaming": true]).liveTranscription)
+        XCTAssertFalse(snapshot(["streaming": false]).liveTranscription)
+    }
+
+    /// The voice reply model is Hermes' `auxiliary.voice_chat` row; a Hermes
+    /// without it hides the setting.
+    func testVoiceReplyModelReadsAndWritesTheVoiceChatSlot() {
+        let response: [String: Any] = ["tasks": [
+            ["task": "vision", "provider": "auto", "model": ""],
+            ["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"]
+        ]]
+        XCTAssertEqual(
+            VoiceReplyModelSetting(auxiliaryResponse: response),
+            VoiceReplyModelSetting(provider: "openrouter", model: "fast/model", reasoningEffort: "none")
+        )
+        XCTAssertNil(VoiceReplyModelSetting(auxiliaryResponse: ["tasks": [["task": "vision"]]]))
+        let inherited = VoiceReplyModelSetting(auxiliaryResponse: ["tasks": [
+            ["task": "voice_chat", "provider": "auto", "model": "", "reasoning_effort": NSNull()]
+        ]])
+        XCTAssertNotNil(inherited)
+        XCTAssertNil(inherited?.reasoningEffort)
+
+        let body = VoiceReplyModelSetting(provider: "auto", model: "", reasoningEffort: nil).assignmentBody(profile: "work")
+        XCTAssertEqual(body["scope"] as? String, "auxiliary")
+        XCTAssertEqual(body["task"] as? String, "voice_chat")
+        XCTAssertEqual(body["provider"] as? String, "auto")
+        XCTAssertEqual(body["model"] as? String, "")
+        XCTAssertTrue(body["reasoning_effort"] is NSNull)
+        XCTAssertEqual(body["profile"] as? String, "work")
+        XCTAssertEqual(
+            VoiceReplyModelSetting(provider: "openrouter", model: "fast/model", reasoningEffort: "low")
+                .assignmentBody(profile: "default")["reasoning_effort"] as? String,
+            "low"
+        )
+    }
+
+    /// STT suggestions mirror upstream `STT_MODEL_CATALOG`: local `turbo`
+    /// is offered, Groq's retired distil model is gone, and Mistral, xAI
+    /// and ElevenLabs list their models.
+    func testSTTModelSuggestionsMatchHermesCatalog() {
+        let expected: [String: [String]] = [
+            "local": ["base", "tiny", "small", "medium", "large-v3", "turbo"],
+            "groq": ["whisper-large-v3-turbo", "whisper-large-v3"],
+            "openai": ["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe", "gpt-transcribe"],
+            "mistral": ["voxtral-mini-latest", "voxtral-mini-2602"],
+            "xai": ["grok-voice-transcribe-2.0", "grok-voice-transcribe-1.0"],
+            "elevenlabs": ["scribe_v2", "scribe_v1"]
+        ]
+        for (id, models) in expected {
+            XCTAssertEqual(VoiceConfigurationParser.catalogDescriptor(id: id, kind: .stt)?.models, models, id)
+        }
+    }
+
     /// Profiles configured before the ElevenLabs key fix may still carry the
     /// legacy `voice`/`model`/`language` values. They stay visible in the
     /// parsed values (so nothing is silently dropped), but no editor is
