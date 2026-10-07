@@ -68,10 +68,20 @@ struct MessageReactionChips: View {
         )
 
         if let onTap {
-            Button(action: onTap) { label }
+            // The capsule stays small inside a 44 pt touch area of its own,
+            // so it never takes taps from the reply text or the action row.
+            Button(action: onTap) {
+                label
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
                 .buttonStyle(.plain)
                 .accessibilityLabel(accessibilityLabel(for: group))
-                .accessibilityHint(AppLocalization.string("Change your reaction"))
+                .accessibilityHint(
+                    group.includesUser
+                        ? AppLocalization.string("Change your reaction")
+                        : AppLocalization.string("React to this response")
+                )
         } else {
             label
                 .accessibilityElement(children: .ignore)
@@ -154,7 +164,17 @@ struct MessageReactButton: View {
         .foregroundStyle(mine == nil ? Color.secondary : Color.conduitAccent)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.45)
-        .accessibilityLabel(AppLocalization.string("React to this response"))
+        .accessibilityLabel(
+            mine == nil
+                ? AppLocalization.string("React to this response")
+                : AppLocalization.string("Change your reaction")
+        )
+        .accessibilityAddTraits(mine == nil ? [] : .isSelected)
+        // A turn starting while the bar is open makes a live reply
+        // unaddressable; close the bar rather than let a pick do nothing.
+        .onChange(of: enabled) { _, isEnabled in
+            if !isEnabled { isPresented = false }
+        }
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             TapbackPicker(selected: mine) { emoji in
                 isPresented = false

@@ -14998,11 +14998,13 @@ final class AppState: ObservableObject {
               canReact(to: messages[index]),
               let target = reactionTarget(for: messages[index]) else { return }
         let previous = messages[index].reactions
-        messages[index].reactions = MessageReaction.applying(
+        // A replaced reaction keeps its chip's place while it saves.
+        let picked = MessageReaction.applying(
             emoji,
             author: MessageReaction.userAuthor,
             to: previous
-        )
+        ).first(where: \.isFromUser)
+        messages[index].reactions = Self.reactions(previous, withUserReaction: picked)
         lastReactionRequestGeneration += 1
         let generation = lastReactionRequestGeneration
         reactionRequestGenerations[messageId] = generation
@@ -15026,11 +15028,22 @@ final class AppState: ObservableObject {
                   reactionRequestGenerations[messageId] == generation,
                   let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
             // "Newest assistant row" is resolved when Hermes handles the
-            // call. If a newer reply landed meanwhile, the returned row is
-            // that one, not this; keep the paint and let the next reload
-            // bring the real id.
-            if case .newest = target, reactionTarget(for: messages[current]) != target {
-                return
+            // call. The result belongs to this reply when the reply has
+            // since learned that same row id, or is still the newest reply
+            // with no turn writing newer rows. Otherwise the save may have
+            // landed on a newer row, so this reply drops the pick it can't
+            // confirm and the next reload paints the truth.
+            if case .newest = target {
+                let message = messages[current]
+                let confirmed = message.rowId.map { $0 == result.rowId }
+                    ?? (!isBusy && messages.last(where: { $0.role == .assistant })?.id == message.id)
+                if !confirmed {
+                    messages[current].reactions = Self.reactions(
+                        message.reactions,
+                        withUserReaction: previous.first(where: \.isFromUser)
+                    )
+                    return
+                }
             }
             messages[current].rowId = result.rowId
             messages[current].reactions = result.reactions
@@ -15040,12 +15053,27 @@ final class AppState: ObservableObject {
                   let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
             // Put back only the user's own reaction: an agent reaction that
             // arrived during the call stays.
-            let previousMine = previous.first(where: \.isFromUser)
-            var restored = messages[current].reactions.filter { !$0.isFromUser }
-            if let previousMine { restored.append(previousMine) }
-            messages[current].reactions = restored
+            messages[current].reactions = Self.reactions(
+                messages[current].reactions,
+                withUserReaction: previous.first(where: \.isFromUser)
+            )
             errorMessage = AppLocalization.string("Your reaction wasn't saved. \(UserFacingError.message(for: error))")
         }
+    }
+
+    /// `reactions` with the user's entry replaced by `userReaction` (or
+    /// removed when nil), keeping it where it sat in `reactions` if it did.
+    static func reactions(
+        _ reactions: [MessageReaction],
+        withUserReaction userReaction: MessageReaction?
+    ) -> [MessageReaction] {
+        var result = reactions
+        let index = result.firstIndex(where: \.isFromUser)
+        result.removeAll(where: \.isFromUser)
+        if let userReaction {
+            result.insert(userReaction, at: min(index ?? result.count, result.count))
+        }
+        return result
     }
 
     /// The agent's `message.reaction` event, carrying the row's full
@@ -15055,7 +15083,7 @@ final class AppState: ObservableObject {
     /// addresses it directly. An unknown role only matches by id.
     private func applyAgentReaction(rowId: Int, reactions: [MessageReaction], role: String) {
         if let index = messages.firstIndex(where: { $0.rowId == rowId }) {
-            messages[index].reactions = reactions
+            paintAgentReactions(reactions, at: index)
             return
         }
         let messageRole: MessageRole
@@ -15066,7 +15094,16 @@ final class AppState: ObservableObject {
         }
         guard let index = messages.lastIndex(where: { $0.role == messageRole && $0.rowId == nil }) else { return }
         messages[index].rowId = rowId
-        messages[index].reactions = reactions
+        paintAgentReactions(reactions, at: index)
+    }
+
+    /// While the user's own tapback is still saving, the event's list can
+    /// predate it: keep the user's pick until the save answers.
+    private func paintAgentReactions(_ reactions: [MessageReaction], at index: Int) {
+        let message = messages[index]
+        messages[index].reactions = reactionRequestGenerations[message.id] == nil
+            ? reactions
+            : Self.reactions(reactions, withUserReaction: message.reactions.first(where: \.isFromUser))
     }
 
     /// Forks only the history through the selected assistant response. The
