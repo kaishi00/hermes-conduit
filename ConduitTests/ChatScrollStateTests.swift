@@ -678,6 +678,44 @@ final class ChatScrollStateTests: XCTestCase {
         XCTAssertFalse(reconciling.contains("network-chat"))
     }
 
+    /// The same open window for an ordinary chat: the opened row's catalog
+    /// identity wins, and the left chat's ids are not carried.
+    func testResolverStartsOverFromTheOpenedCatalogRowAheadOfTheBoundary() {
+        let catalog = [
+            ChatScrollSessionCatalogIdentity(
+                profile: "alpha",
+                canonicalSessionID: "catalog-a",
+                alternateSessionIDs: ["runtime-a"]
+            ),
+            ChatScrollSessionCatalogIdentity(
+                profile: "alpha",
+                canonicalSessionID: "catalog-b",
+                alternateSessionIDs: ["runtime-b"]
+            )
+        ]
+        let left = ChatScrollSessionIdentityResolver.resolve(
+            profile: "alpha",
+            activeSessionID: "runtime-a",
+            catalog: catalog,
+            previousIdentity: .none,
+            isReconciling: false
+        )
+
+        let opened = ChatScrollSessionIdentityResolver.resolve(
+            profile: "alpha",
+            activeSessionID: "catalog-b",
+            catalog: catalog,
+            requestedSessionID: "runtime-a",
+            previousIdentity: left,
+            isReconciling: true
+        )
+
+        XCTAssertEqual(opened.canonicalSessionID, "catalog-b")
+        XCTAssertTrue(opened.contains("runtime-b"))
+        XCTAssertFalse(opened.contains("runtime-a"))
+        XCTAssertFalse(opened.contains("catalog-a"))
+    }
+
     func testResolverDoesNotCarryIdentityAcrossProfilesWithEqualRawIDs() {
         let previous = ChatScrollSessionIdentityResolver.resolve(
             profile: "alpha",

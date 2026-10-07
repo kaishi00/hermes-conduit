@@ -1590,6 +1590,7 @@ final class BotModeTests: XCTestCase {
             automaticWorkToken: nil
         )
 
+        XCTAssertEqual(resumes.count, 4, "three opens and one sync, nothing else")
         XCTAssertEqual(resumes.last?.id, "atlas-chat", "the sync resumes the chat on screen")
         XCTAssertEqual(resumes.last?.profile, "atlas")
         XCTAssertEqual(harness.appState.activeSessionId, "atlas-runtime-4")
