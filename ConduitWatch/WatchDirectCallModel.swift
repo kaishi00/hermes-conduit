@@ -1607,7 +1607,7 @@ final class WatchDirectCallModel: ObservableObject {
         guard hadToolGrant, endRequestedAt == nil, !grantRequestInFlight, link.isReachable,
               grantRequests < Self.maxGrantRequests,
               now - lastGrantRequestAt >= Self.grantRequestInterval else { return }
-        if let relay = toolRelay, !relay.isGone, !relay.expires(within: Self.grantRenewMargin) { return }
+        if let relay = toolRelay, !relay.isGone, !relay.isSpent, !relay.expires(within: Self.grantRenewMargin) { return }
         grantRequestInFlight = true
         grantRequests += 1
         lastGrantRequestAt = now

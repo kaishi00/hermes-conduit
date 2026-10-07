@@ -559,6 +559,9 @@ extension HermesVoiceGatewayTimeoutTests {
         var spent = grant
         spent.maxCalls = 0
         let empty = try XCTUnwrap(WatchToolRelayClient(spent, protocolClasses: [WatchToolRelayStubProtocol.self]))
+        // Spent before any call fails, so the Watch renews it in time.
+        XCTAssertTrue(empty.isSpent)
+        XCTAssertFalse(ending.isSpent)
         guard case .unavailable("grantSpent", true, false) = await empty.run(name: "web_search", query: "weather") else { return XCTFail("Expected it spent") }
         XCTAssertTrue(empty.isGone)
         guard case .unavailable("grantEnded", true, false) = await empty.run(name: "web_search", query: "weather") else { return XCTFail("Expected it ended") }
