@@ -951,7 +951,7 @@ struct SessionActionMenuItems: View {
 
 /// The session row's "Move to Project" submenu. Hidden when the gateway has
 /// no projects capability or no project with a folder to move into.
-private struct MoveToProjectMenu: View {
+struct MoveToProjectMenu: View {
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     var excludingProjectID: String? = nil
