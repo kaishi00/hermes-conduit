@@ -481,7 +481,8 @@ final class WatchDirectBroker {
                 "voiceApprovals": grant.voiceApprovals == true,
                 "askedJobs": withJobs,
                 "askedCarry": carryJobsFrom != nil,
-                "carried": grant.jobsCarriedFrom != nil,
+                // What the host said; the Watch logs whether it moved jobs.
+                "hostCarried": grant.jobsCarriedFrom != nil,
                 "expiresInS": grant.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any,
             ])
             return grant

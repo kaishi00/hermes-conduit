@@ -1356,7 +1356,9 @@ final class WatchDirectCallModel: ObservableObject {
 
     /// Ends a grant on the relay once nothing needs it: not the call's
     /// grant, not followed for job news, and not the one whose jobs the
-    /// next renewal moves (closing it would end them on Hermes).
+    /// next renewal moves. Closing a grant leaves its jobs running in
+    /// Hermes, but Hermes then stops following them for the Watch, so a
+    /// renewal could no longer move them.
     private func closeIfUnused(_ relay: WatchToolRelayClient) {
         guard relay !== toolRelay, relay !== jobsGrant, !jobRelays.contains(where: { $0 === relay }) else { return }
         relay.close()
@@ -1388,6 +1390,10 @@ final class WatchDirectCallModel: ObservableObject {
         if let index = jobRelays.firstIndex(where: { $0 === old }) {
             jobRelays[index] = new
             nextNewsAt = now
+        } else if relayJobsStarted > 0 {
+            // Dropped while it waited (its last seconds): followed again
+            // on the new grant, which stops at once if nothing runs.
+            followJobs(on: new)
         }
         if let running = relayRunning.removeValue(forKey: old.grantID) { relayRunning[new.grantID] = running }
         for index in approvals.indices where approvals[index].grantID == old.grantID {
