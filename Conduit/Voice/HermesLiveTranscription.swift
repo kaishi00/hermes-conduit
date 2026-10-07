@@ -11,15 +11,18 @@ import Foundation
 /// recognizes speech and one `final`, or an `error`, after which the
 /// recording is uploaded as before.
 ///
-/// A failure before any partial and before the end of speech means this
-/// profile has no live STT (stt.streaming off, a provider without a live
-/// wire, a Hermes without the socket), so `onUnavailable` tells the
-/// conversation to stop opening it.
+/// An `error` frame before any partial and before the end of speech means
+/// this profile has no live STT (stt.streaming off, a provider without a
+/// live wire), so `onUnavailable` tells the conversation to stop opening it.
+/// A transport failure (a network blip, a Hermes without the socket) only
+/// sends this utterance to the upload; the next one tries again.
 @MainActor
 final class HermesLiveTranscription: VoiceLiveTranscription {
     private enum Outcome {
         case final(String)
         case failed
+        /// Hermes answered `error`: no live STT here.
+        case refused
     }
 
     private let socket: any HermesSpeechSocket
@@ -64,6 +67,8 @@ final class HermesLiveTranscription: VoiceLiveTranscription {
     /// (an error, an empty result, or no answer within the timeout).
     func finish() async -> String? {
         if let outcome { return Self.transcript(outcome) }
+        // One caller per session; a second waits for nothing.
+        guard !ended else { return nil }
         ended = true
         enqueue(.string("{\"eos\":true}"))
         let timeout = Task { [weak self, finishTimeout] in
@@ -118,7 +123,7 @@ final class HermesLiveTranscription: VoiceLiveTranscription {
             case "final":
                 resolve(.final(frame["transcript"] as? String ?? ""))
             case "error":
-                resolve(.failed)
+                resolve(.refused)
             default:
                 continue
             }
@@ -128,7 +133,7 @@ final class HermesLiveTranscription: VoiceLiveTranscription {
     private func resolve(_ result: Outcome) {
         guard outcome == nil else { return }
         outcome = result
-        if case .failed = result, !sawPartial, !ended { onUnavailable() }
+        if case .refused = result, !sawPartial, !ended { onUnavailable() }
         waiter?.resume(returning: Self.transcript(result))
         waiter = nil
         receiveTask?.cancel()

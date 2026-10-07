@@ -164,6 +164,9 @@ final class VoiceConversationController: ObservableObject {
     /// Bumped per listening window, so a session that opens late, or a
     /// partial from an earlier window, can't land in this one.
     private var liveTranscriptionWindow: UInt64 = 0
+    /// The window that already tried to open a session: one attempt per
+    /// window, so a failed open isn't retried on every level event.
+    private var liveTranscriptionAttemptedWindow: UInt64?
     private var liveTranscriptionSentBytes = 0
     /// This profile has no live speech-to-text (stt.streaming off, an old
     /// Hermes): stop asking until the conversation ends or the gateway changes.
@@ -1006,7 +1009,13 @@ final class VoiceConversationController: ObservableObject {
         guard state == .listening, let gateway else { return }
         do {
             let live = detachLiveTranscription()
-            let audio = try capture.finishUtterance()
+            let audio: VoiceCapturedAudio
+            do {
+                audio = try capture.finishUtterance()
+            } catch {
+                live?.cancel()
+                throw error
+            }
             state = .transcribing
             // Utterance complete: the meter follows the now-inactive capture
             // and the detector must not carry this turn's noise/speech state
@@ -1153,9 +1162,13 @@ final class VoiceConversationController: ObservableObject {
             guard isCurrent(generation) else { return }
         } catch is CancellationError {
             isSteeringTurn = false
-            if isCurrent(generation) { state = .idle }
+            if isCurrent(generation) {
+                liveTranscript = ""
+                state = .idle
+            }
         } catch {
             guard isCurrent(generation) else { return }
+            liveTranscript = ""
             // A steer that couldn't be heard is dropped; the turn it was
             // meant for carries on.
             if isSteeringTurn {
@@ -1211,11 +1224,12 @@ final class VoiceConversationController: ObservableObject {
     /// Opens Hermes' live speech-to-text when speech starts in a window, so
     /// a silent window never opens a socket. Hermes transcription only.
     private func openLiveTranscriptionIfNeeded() {
-        guard liveTranscription == nil, liveTranscriptionOpening == nil,
+        guard liveTranscriptionAttemptedWindow != liveTranscriptionWindow,
               !liveTranscriptionUnavailable, !isProviderTestRunning,
               preferences.resolvedTranscriptionMode == .hermes,
               let liveGateway = gateway as? VoiceLiveTranscriptionGateway else { return }
         let window = liveTranscriptionWindow
+        liveTranscriptionAttemptedWindow = window
         liveTranscriptionOpening = Task { [weak self] in
             let session = await liveGateway.openLiveTranscription(
                 sampleRate: VoiceAudioSessionConfiguration.capture.outputSampleRate,

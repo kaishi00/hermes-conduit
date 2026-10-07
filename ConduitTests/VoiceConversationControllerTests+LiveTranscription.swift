@@ -67,6 +67,33 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(gateway.base.transcriptionCount, 1)
     }
 
+    func testFailedOpenIsNotRetriedWithinTheSameWindow() async {
+        let capture = MockCapture(permissionGranted: true)
+        capture.recordedPCM16 = Data([1, 0])
+        let gateway = LiveTranscriptionGatewayStub(finalText: nil, transcript: "Uploaded words")
+        gateway.opensSession = false
+        let submitted = SubmitSpy()
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { await submitted.submit($0) },
+            interrupt: { true }
+        )
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        let start = Date()
+        controller.ingestAudioLevel(0.1, at: start)
+        await gateway.opens.waitUntil(1, timeout: 10)
+        controller.ingestAudioLevel(0.1, at: start.addingTimeInterval(0.1))
+        controller.ingestAudioLevel(0.1, at: start.addingTimeInterval(0.2))
+        controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.5))
+        await submitted.waitUntilSubmitted(1)
+
+        XCTAssertEqual(gateway.openCount, 1)
+        XCTAssertEqual(submitted.texts, ["Uploaded words"])
+    }
+
     func testOnDeviceTranscriptionNeverOpensLiveTranscription() async {
         let capture = MockCapture(permissionGranted: true)
         capture.recordedPCM16 = Data([1, 0])
@@ -99,7 +126,10 @@ extension VoiceConversationControllerTests {
 private final class LiveTranscriptionGatewayStub: VoiceGatewayService, VoiceLiveTranscriptionGateway {
     let base: MockGateway
     let finalText: String?
+    /// False mimics a failed open (no ticket): nil, and nothing to stream.
+    var opensSession = true
     let pushes = AwaitableCounter()
+    let opens = AwaitableCounter()
     private(set) var openCount = 0
     private(set) var session: MockLiveTranscription?
     private(set) var onPartial: (@MainActor (String) -> Void)?
@@ -129,6 +159,8 @@ private final class LiveTranscriptionGatewayStub: VoiceGatewayService, VoiceLive
         onUnavailable: @escaping @MainActor () -> Void
     ) async -> VoiceLiveTranscription? {
         openCount += 1
+        opens.increment()
+        guard opensSession else { return nil }
         self.onPartial = onPartial
         let session = MockLiveTranscription(finalText: finalText, pushes: pushes)
         self.session = session
