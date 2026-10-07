@@ -15,6 +15,8 @@ struct WatchProbeSettingsSection: View {
     @ObservedObject private var link = WatchVoiceLink.shared
     @ObservedObject private var log = WatchProbePhoneLog.shared
     @AppStorage(WatchPhoneKeepAlive.key) private var keepAlive: WatchPhoneKeepAlive = .off
+    @AppStorage(WatchJobSettings.jobsPerCallKey) private var jobsPerCall = WatchJobSettings.defaultJobsPerCall
+    @AppStorage(WatchJobSettings.voiceApprovalsKey) private var voiceApprovals = false
 
     var body: some View {
         ConduitSettingsSection(title: "Apple Watch test", symbol: "applewatch", tint: .conduitAura) {
@@ -32,6 +34,24 @@ struct WatchProbeSettingsSection: View {
                 Text(verbatim: "Keep the iPhone running")
             }
             Text(verbatim: keepAlive.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Stepper(value: $jobsPerCall, in: 0...WatchJobSettings.maximumJobsPerCall) {
+                Text(verbatim: "Jobs per Watch call: \(WatchJobSettings.jobsPerCallTitle(jobsPerCall))")
+            }
+            Text(verbatim: "Jobs a Gemini call on the Watch can start on Hermes through the push relay, wrist up or down. Each runs as a normal Hermes chat under Voice Jobs, and Hermes' own approval settings apply.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker(selection: $voiceApprovals) {
+                Text(verbatim: "Tap").tag(false)
+                Text(verbatim: "Tap or voice").tag(true)
+            } label: {
+                Text(verbatim: "Approve from the Watch")
+            }
+            .disabled(jobsPerCall == 0)
+            Text(verbatim: voiceApprovals
+                ? "A job's approval request shows on the Watch, and you can also answer it by voice. Voice only ever approves once. Text in a web page or a job's output could try to talk Gemini into approving."
+                : "A job's approval request shows on the Watch with Approve and Deny buttons; Gemini can't answer it.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ForEach(Array(log.summaries.suffix(6).reversed().enumerated()), id: \.offset) { _, line in

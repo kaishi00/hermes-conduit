@@ -23535,6 +23535,9 @@ final class AppState: ObservableObject {
         let dashboard: String
         let memoryIncluded: Bool
         let personalityIncluded: Bool
+        /// The voice-job model settings for jobs the Watch starts through
+        /// the push relay, as `createSession` sends them for a phone job.
+        let jobOptions: [String: String]
     }
 
     /// Builds a Watch call's setup as `geminiLiveController` builds the
@@ -23567,6 +23570,16 @@ final class AppState: ObservableObject {
         let personality = await personalityLookup
         let token = try await tokens.freshToken()
         let style = liveVoiceStyle
+        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+            runtimeModel: runtime.model,
+            runtimeProvider: runtime.provider
+        )
+        var jobOptions: [String: String] = [:]
+        if let model = jobSession.model {
+            jobOptions["model"] = model
+            if let provider = jobSession.provider { jobOptions["provider"] = provider }
+        }
+        if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
         return WatchDirectPlan(
             systemInstruction: GeminiLiveConversationController.instructions(
                 search: search,
@@ -23586,7 +23599,8 @@ final class AppState: ObservableObject {
             profile: activeProfile,
             dashboard: activeDashboardID?.uuidString ?? "-",
             memoryIncluded: memory != nil,
-            personalityIncluded: personality != nil
+            personalityIncluded: personality != nil,
+            jobOptions: jobOptions
         )
     }
 

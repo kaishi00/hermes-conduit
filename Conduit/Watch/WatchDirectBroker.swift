@@ -16,7 +16,8 @@
 //    events, so the jobs' own news would only point at the chat);
 //  - asks Hermes for the call's tool grant, so its lookups reach Hermes
 //    through the push relay while the Watch can't reach this phone, and
-//    ends it with the call;
+//    its jobs run there wrist up or down (within the user's job
+//    settings), and ends it with the call;
 //  - saves the finished call in voice history.
 //  Each is a short answer to a Watch message, which wakes Conduit in the
 //  background; nothing here runs between them.
@@ -64,6 +65,12 @@ final class WatchDirectBroker {
     /// all revoked when it ends.
     private var grantTools: [String] = []
     private var grantIDs: [String] = []
+    /// The job tools asked for with them, and the user's job settings as
+    /// the call began. Empty once the host refused jobs (an older plugin).
+    private var grantJobTools: [String] = []
+    private var grantMaxJobs = 0
+    private var grantJobOptions: [String: String] = [:]
+    private var grantVoiceApprovals = false
     /// The running call's start_job calls by id. The Watch sends one again
     /// when the link dropped before its answer came; it gets the first
     /// one's answer instead of a second job.
@@ -179,15 +186,25 @@ final class WatchDirectBroker {
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             profile = plan.profile
             dashboard = plan.dashboard
-            let setup = WatchVoiceWire.DirectSetup(systemInstruction: plan.systemInstruction, functions: plan.functions)
-            guard setup.functions.count == plan.functions.count, let packed = setup.compressed() else {
+            // Only the lookups and job tools the call declares, jobs only
+            // as the user allows; the call goes on without a grant when the
+            // host can't give one.
+            let declared = plan.functions.map(\.name)
+            grantTools = declared.filter { WatchToolAnswer.tools.contains($0) }
+            grantMaxJobs = WatchJobSettings.jobsPerCall
+            grantJobTools = grantMaxJobs > 0 ? declared.filter { WatchJobAnswer.tools.contains($0) } : []
+            grantJobOptions = plan.jobOptions
+            grantVoiceApprovals = WatchJobSettings.voiceApprovals
+            let grant = grantTools.isEmpty && grantJobTools.isEmpty ? nil : await requestGrant(id, profile: plan.profile)
+            guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            // The model answers approvals only when the user allowed it and
+            // the grant carries jobs.
+            var functions = plan.functions
+            if grant?.voiceApprovals == true { functions.append(WatchJobAnswer.answerApprovalDeclaration) }
+            let setup = WatchVoiceWire.DirectSetup(systemInstruction: plan.systemInstruction, functions: functions)
+            guard setup.functions.count == functions.count, let packed = setup.compressed() else {
                 throw WatchDirectPrepareError("The call's setup couldn't be packed for the Watch.")
             }
-            // Only the lookups the call declares; the call goes on without
-            // a grant when the host can't give one.
-            grantTools = plan.functions.map(\.name).filter { WatchToolAnswer.tools.contains($0) }
-            let grant = grantTools.isEmpty ? nil : await requestGrant(id, profile: plan.profile)
-            guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             let session = WatchVoiceWire.DirectSession(
                 token: .init(plan.token),
                 setup: packed.data,
@@ -202,7 +219,7 @@ final class WatchDirectBroker {
                 "ms": Self.milliseconds(since: startedAt),
                 "setupBytes": packed.bytes,
                 "compressedBytes": packed.data.count,
-                "functions": plan.functions.map(\.name),
+                "functions": functions.map(\.name),
                 "googleSearch": plan.googleSearch,
                 "memory": plan.memoryIncluded,
                 "personality": plan.personalityIncluded,
@@ -421,12 +438,30 @@ final class WatchDirectBroker {
 
     // MARK: Tool grant
 
-    /// A grant for the running call's lookups; nil when the host can't
-    /// give one. The log has its outcome and limits, never its keys.
+    /// A grant for the running call's lookups and jobs; nil when the host
+    /// can't give one. A host that refuses jobs (a plugin before 0.7) is
+    /// asked again for the lookups alone. The log has its outcome and
+    /// limits, never its keys.
     private func requestGrant(_ id: UInt32, profile: String) async -> WatchVoiceWire.DirectToolGrant? {
+        if !grantJobTools.isEmpty {
+            if let grant = await requestGrant(id, profile: profile, withJobs: true) { return grant }
+            guard callID == id, !grantTools.isEmpty else { return nil }
+            // Renewals don't ask for jobs again.
+            grantJobTools = []
+        }
+        return await requestGrant(id, profile: profile, withJobs: false)
+    }
+
+    private func requestGrant(_ id: UInt32, profile: String, withJobs: Bool) async -> WatchVoiceWire.DirectToolGrant? {
         let startedAt = Date()
         do {
-            let grant = try await grantClient.grant(tools: grantTools, profile: profile)
+            var grant = try await grantClient.grant(
+                tools: grantTools + (withJobs ? grantJobTools : []),
+                profile: profile,
+                maxJobs: withJobs ? grantMaxJobs : nil,
+                jobOptions: withJobs ? grantJobOptions : [:]
+            )
+            grant.voiceApprovals = grantVoiceApprovals && grant.tools.contains(WatchJobAnswer.answerApproval)
             guard callID == id else {
                 // The call ended while the host answered.
                 let client = grantClient
@@ -440,6 +475,9 @@ final class WatchDirectBroker {
                 "ms": Self.milliseconds(since: startedAt),
                 "tools": grant.tools,
                 "maxCalls": grant.maxCalls,
+                "maxJobs": grant.maxJobs as Any,
+                "voiceApprovals": grant.voiceApprovals == true,
+                "askedJobs": withJobs,
                 "expiresInS": grant.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any,
             ])
             return grant
@@ -448,6 +486,7 @@ final class WatchDirectBroker {
                 "callID": Int(id),
                 "ok": false,
                 "ms": Self.milliseconds(since: startedAt),
+                "askedJobs": withJobs,
                 "error": error.localizedDescription,
             ])
             return nil
@@ -456,7 +495,7 @@ final class WatchDirectBroker {
 
     /// The Watch's ask for a new grant, before its grant runs out.
     private func renewGrant(_ id: UInt32) async -> WatchVoiceWire.Message {
-        guard id == callID, let profile, !grantTools.isEmpty else {
+        guard id == callID, let profile, !grantTools.isEmpty || !grantJobTools.isEmpty else {
             return .callRefused(callID: id, reason: "This call has no Watch lookups to renew.")
         }
         guard await appState.connectForWatchDirectCall(timeout: Self.connectWait) else {
@@ -473,6 +512,8 @@ final class WatchDirectBroker {
         let ids = grantIDs
         grantIDs = []
         grantTools = []
+        grantJobTools = []
+        grantJobOptions = [:]
         guard !ids.isEmpty, let profile else { return }
         let client = grantClient
         let end = Self.beginBackgroundTask("conduit.watchDirect.revoke")

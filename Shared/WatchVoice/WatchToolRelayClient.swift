@@ -4,10 +4,11 @@
 //
 //  A Watch call's web_search and recall_memory through the push relay, over
 //  the Watch's own internet, for while the iPhone can't be reached (wrist
-//  down). The call's grant came from the iPhone with the session; each
-//  lookup is sealed with it (WatchToolRelay.swift), held open on the relay
-//  until Hermes answers, and opened here. Anything that doesn't get an
-//  answer falls back to the iPhone's path.
+//  down), and its Hermes jobs when the grant carries them
+//  (WatchJobRelay.swift). The call's grant came from the iPhone with the
+//  session; each call is sealed with it (WatchToolRelay.swift), held open
+//  on the relay until Hermes answers, and opened here. Anything that
+//  doesn't get an answer falls back to the iPhone's path.
 //
 
 import Foundation
@@ -42,6 +43,10 @@ final class WatchToolRelayClient {
     let grantID: String
     let tools: Set<String>
     let expiresAt: Date?
+    /// Jobs one call may start this way; 0 without jobs.
+    let maxJobs: Int
+    /// The model may answer approvals (the user's setting on the iPhone).
+    let voiceApprovals: Bool
     private let grantURL: URL
     private let watchKey: String
     private let keys: WatchToolSeal.Keys
@@ -62,8 +67,11 @@ final class WatchToolRelayClient {
               let root = WatchToolSeal.data(base64URL: grant.key),
               let keys = WatchToolSeal.Keys(root: root) else { return nil }
         grantID = grant.grantID
-        tools = Set(grant.tools).intersection(WatchToolAnswer.tools)
+        let jobs = Set(grant.tools).isSuperset(of: WatchJobAnswer.tools.union(WatchJobAnswer.calls))
+        tools = Set(grant.tools).intersection(WatchToolAnswer.tools.union(jobs ? WatchJobAnswer.tools.union(WatchJobAnswer.calls) : []))
         expiresAt = grant.expiresAt
+        maxJobs = jobs ? max(0, grant.maxJobs ?? 0) : 0
+        voiceApprovals = jobs && grant.voiceApprovals == true
         grantURL = base.appendingPathComponent("v1/watch-tools/grants/\(grant.grantID)")
         watchKey = grant.watchKey
         self.keys = keys
@@ -80,6 +88,9 @@ final class WatchToolRelayClient {
         session = URLSession(configuration: configuration, delegate: WatchToolRelayNoRedirects(), delegateQueue: nil)
     }
 
+    /// Whether the grant carries Hermes jobs.
+    var hasJobs: Bool { maxJobs > 0 }
+
     /// Whether `name` can go this way now.
     func canRun(_ name: String) -> Bool {
         !isGone && tools.contains(name) && callsSent < maxCalls && !expiresSoon
@@ -92,7 +103,17 @@ final class WatchToolRelayClient {
 
     private var expiresSoon: Bool { expires(within: Self.expiryMargin) }
 
+    /// A lookup, asked as the iPhone's client would ask its route.
     func run(name: String, query: String) async -> Outcome {
+        await run(WatchToolAnswer.request(name: name, query: query), name: name)
+    }
+
+    /// A job call: `arguments` as the host's job call takes them.
+    func run(name: String, arguments: [String: Any]) async -> Outcome {
+        await run(["tool": name, "args": arguments], name: name)
+    }
+
+    private func run(_ call: [String: Any], name: String) async -> Outcome {
         guard tools.contains(name) else { return .unavailable(reason: "notGranted", grantGone: false, sent: false) }
         // Closed or spent ends it; one that expires soon isn't gone, it's
         // skipped until the iPhone renews it.
@@ -105,7 +126,7 @@ final class WatchToolRelayClient {
         let rid = WatchToolSeal.newRequestID()
         let body: Data
         do {
-            let plaintext = try WatchToolSeal.json(WatchToolAnswer.request(name: name, query: query))
+            let plaintext = try WatchToolSeal.json(call)
             guard plaintext.count <= WatchToolSeal.maxCallBytes else { return .unavailable(reason: "tooLarge", grantGone: false, sent: false) }
             let sealed = try WatchToolSeal.seal(plaintext, keys: keys, direction: .call, grantID: grantID, rid: rid)
             body = try WatchToolSeal.json(["rid": rid, "n": sealed.n, "ct": sealed.ct])

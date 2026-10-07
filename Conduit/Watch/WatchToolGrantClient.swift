@@ -5,9 +5,10 @@
 //  Asks the Hermes host's conduit_push plugin for a Watch call's tool grant
 //  and ends it again (designs/apple-watch-voice-direct.md, "Wrist-down
 //  tools through the relay"). The grant lets the Watch run web_search and
-//  recall_memory through the push relay while it can't reach this phone:
-//  one call, one profile, those tools, half an hour, a call budget. It
-//  goes to the Watch only; nothing here logs or keeps its keys.
+//  recall_memory through the push relay while it can't reach this phone,
+//  and with the user's job setting Hermes jobs: one call, one profile,
+//  those tools, half an hour, a call and job budget. It goes to the Watch
+//  only; nothing here logs or keeps its keys.
 //
 
 import Foundation
@@ -29,11 +30,18 @@ final class WatchToolGrantClient {
     /// Throws when the host can't grant one: an older plugin or relay, no
     /// notification pairing, no network. The call's lookups then go
     /// through this phone only, as before.
-    func grant(tools: [String], profile: String) async throws -> WatchVoiceWire.DirectToolGrant {
+    /// `maxJobs` and `jobOptions` (the voice-job model, provider and
+    /// reasoning effort) go with job tools only.
+    func grant(tools: [String], profile: String, maxJobs: Int? = nil, jobOptions: [String: String] = [:]) async throws -> WatchVoiceWire.DirectToolGrant {
+        var body: [String: Any] = ["tools": tools]
+        if !WatchJobAnswer.tools.isDisjoint(with: tools) {
+            if let maxJobs { body["max_jobs"] = maxJobs }
+            if !jobOptions.isEmpty { body["job_options"] = jobOptions }
+        }
         let response = try await request(
             DashboardPath.withProfile(Self.grantPath, profile: profile),
             "POST",
-            ["tools": tools],
+            body,
             Self.timeoutMilliseconds
         )
         guard let grant = Self.grant(from: response) else { throw WatchDirectPrepareError("The Watch tool grant couldn't be read.") }
@@ -65,7 +73,8 @@ final class WatchToolGrantClient {
             watchKey: watchKey,
             expiresAt: GeminiLiveTokenClient.date(response["expires_at"]),
             tools: tools,
-            maxCalls: maxCalls
+            maxCalls: maxCalls,
+            maxJobs: response["max_jobs"] as? Int
         )
     }
 }

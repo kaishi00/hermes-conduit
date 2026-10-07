@@ -234,6 +234,9 @@ struct WatchDirectCallView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 8) {
+                if let approval = direct.pendingApproval {
+                    approvalCard(approval)
+                }
                 orb
                 Text(phaseText)
                     .font(.headline)
@@ -265,8 +268,9 @@ struct WatchDirectCallView: View {
                         Button(direct.isMuted ? "Unmute" : "Mute") { direct.toggleMute() }
                         Button("End", role: .destructive) { direct.end() }
                     }
-                    if direct.runningJobs > 0 {
-                        Text("\(direct.runningJobs) job\(direct.runningJobs == 1 ? "" : "s") running")
+                    let jobs = direct.runningJobs + direct.relayJobsRunning
+                    if jobs > 0 {
+                        Text("\(jobs) job\(jobs == 1 ? "" : "s") running")
                             .font(.caption2)
                     }
                 } else {
@@ -297,6 +301,35 @@ struct WatchDirectCallView: View {
             }
         }
         .navigationTitle("Gemini")
+    }
+
+    /// A job's request to run a command (Hermes' approval settings decide
+    /// which need one). Approve allows this one command only.
+    private func approvalCard(_ approval: WatchJobAnswer.Approval) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Approve this command?")
+                .font(.headline)
+            Text(approval.title)
+                .font(.footnote)
+                .lineLimit(2)
+            if !approval.description.isEmpty {
+                Text(approval.description)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+            Text(approval.command)
+                .font(.caption2.monospaced())
+                .lineLimit(8)
+            HStack {
+                Button("Deny", role: .destructive) { direct.answerApproval(approve: false) }
+                Button("Approve") { direct.answerApproval(approve: true) }
+                    .tint(.green)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.2)))
     }
 
     /// Why a call can't start now, if it can't.

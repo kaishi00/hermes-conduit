@@ -10,6 +10,10 @@
 //  persona, memory, functions, voice) and hands over a single-use token;
 //  after that it only runs the tools: each function call goes to it as a
 //  Watch message, and while jobs run the Watch asks it for their news.
+//  With the call's grant, lookups go through the push relay while the
+//  iPhone can't be reached, and jobs always do (WatchJobRelay.swift): the
+//  Watch asks Hermes for their news itself and shows a job's approval
+//  request with Approve and Deny.
 //  The audio goes straight between the Watch and Google, through the
 //  iPhone's Bluetooth link or over Wi-Fi.
 //
@@ -147,6 +151,13 @@ final class WatchDirectCallModel: ObservableObject {
     /// Between asks for a new grant, and how many a call makes at most.
     static let grantRequestInterval: TimeInterval = 60
     static let maxGrantRequests = 6
+    /// Job news through the relay: Hermes holds each ask up to this long
+    /// for news, and the next ask waits this long after one with none,
+    /// so a running job costs about two of the grant's calls a minute.
+    static let jobNewsWait = 15
+    static let jobNewsPause: TimeInterval = 15
+    /// After news, or an ask that failed.
+    static let jobNewsRetry: TimeInterval = 2
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var caption: String?
@@ -155,6 +166,10 @@ final class WatchDirectCallModel: ObservableObject {
     /// Which way the traffic goes and which socket API worked.
     @Published private(set) var route: String?
     @Published private(set) var runningJobs = 0
+    /// Jobs started through the relay that Hermes reports running.
+    @Published private(set) var relayJobsRunning = 0
+    /// A job's approval request, for the Approve and Deny card.
+    @Published private(set) var pendingApproval: WatchJobAnswer.Approval?
 
     private let link = WatchLink.shared
     private let audio = WatchAudio()
@@ -278,6 +293,25 @@ final class WatchDirectCallModel: ObservableObject {
     private var polls = 0
     private var pollsFailed = 0
     private var textUpdatesSent = 0
+    /// Grants whose jobs may still run, asked for job news in turn. A
+    /// renewed grant's old one stays here, open, while its jobs run.
+    private var jobRelays: [WatchToolRelayClient] = []
+    /// Running jobs per grant, as its last news said.
+    private var relayRunning: [String: Int] = [:]
+    /// Approval requests on screen, oldest first.
+    private var approvals: [WatchJobAnswer.Approval] = []
+    private var newsInFlight = false
+    private var nextNewsAt: TimeInterval = 0
+    /// Jobs this call started through the relay, for the user's cap.
+    private var relayJobsStarted = 0
+    private var jobCallsViaRelay = 0
+    private var jobNewsAsks = 0
+    private var jobNewsFailed = 0
+    private var jobNewsItems = 0
+    private var approvalsShown = 0
+    private var approvalsTapped = 0
+    private var approvalsByVoice = 0
+    private var approvalFailures = 0
 
     // Audio
     private var pendingSamples: [Int16] = []
@@ -977,7 +1011,22 @@ final class WatchDirectCallModel: ObservableObject {
         // reasons, with the wrist still up.
         let wristDown = scenePhase != .active
         let wire = WatchVoiceWire.DirectToolCall(id: call.id, name: call.name, arguments: call.arguments)
-        if let relay = toolRelay, relay.canRun(call.name), wristDown || !link.isReachable {
+        if call.name == WatchJobAnswer.jobNews {
+            // The Watch app's own call, never the model's.
+            answer(.toolResponse(id: call.id, name: call.name, result: ["error": "unknown function"], scheduling: GeminiLiveProtocol.Scheduling.whenIdle.rawValue, fallback: nil), generation: generation)
+            return
+        }
+        if call.name == WatchJobAnswer.answerApproval {
+            answerApprovalByVoice(call, generation: generation)
+            return
+        }
+        // Jobs go to Hermes through the relay wrist up or down: their news
+        // and approvals come that way too.
+        if WatchJobAnswer.tools.contains(call.name), let relay = jobRelay(for: call) {
+            runJobThroughRelay(wire, relay: relay, generation: generation, wristDown: wristDown)
+            return
+        }
+        if let relay = toolRelay, relay.canRun(call.name), WatchToolAnswer.tools.contains(call.name), wristDown || !link.isReachable {
             runThroughRelay(wire, relay: relay, generation: generation, wristDown: wristDown, phoneTried: false)
             return
         }
@@ -1018,7 +1067,7 @@ final class WatchDirectCallModel: ObservableObject {
     }
 
     private func phoneFailed(_ wire: WatchVoiceWire.DirectToolCall, generation: Int?, error: String, withdrawn: Bool, wristDown: Bool, relayTried: Bool) {
-        if !withdrawn, !relayTried, let relay = toolRelay, relay.canRun(wire.name) {
+        if !withdrawn, !relayTried, WatchToolAnswer.tools.contains(wire.name), let relay = toolRelay, relay.canRun(wire.name) {
             WatchProbeLog.shared.note("directTool", ["name": wire.name, "live": false, "error": error, "next": "relay", "screen": "\(scenePhase)"])
             runThroughRelay(wire, relay: relay, generation: generation, wristDown: wristDown, phoneTried: true)
             return
@@ -1119,7 +1168,7 @@ final class WatchDirectCallModel: ObservableObject {
             duplicate = wristQueue.contains { $0.call.name == call.name && $0.call.arguments == call.arguments }
             if !duplicate { wristQueue.append((call, now, Date())) }
             result = ["status": "waiting_for_wrist", "message": Self.wristJobMessage]
-        } else if call.name == "start_job" {
+        } else if call.name == "start_job", !withdrawn {
             queued = link.queue(.directTool(callID: callID, call: call))
             if queued {
                 jobsQueued += 1
@@ -1159,6 +1208,312 @@ final class WatchDirectCallModel: ObservableObject {
         guard !withdrawn else { return }
         let scheduling = Self.whenIdleTools.contains(call.name) ? GeminiLiveProtocol.Scheduling.whenIdle.rawValue : nil
         answer(.toolResponse(id: call.id, name: call.name, result: result, scheduling: scheduling, fallback: nil), generation: generation)
+    }
+
+    // MARK: Jobs through the relay
+
+    /// The grant to run a job tool through: the call's own, when it
+    /// carries jobs. A job on another profile starts from the iPhone.
+    private func jobRelay(for call: GeminiLiveProtocol.FunctionCall) -> WatchToolRelayClient? {
+        guard let relay = toolRelay, relay.hasJobs, relay.canRun(call.name) else { return nil }
+        let profile = call.arguments["profile"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return profile.isEmpty ? relay : nil
+    }
+
+    /// A job call through the push relay, answered as the iPhone's bridge
+    /// answers it. A start_job that may have reached Hermes never goes the
+    /// iPhone's way as well: that could start it twice. The log carries
+    /// the tool, the time and how it went: never the task or the answer.
+    private func runJobThroughRelay(_ wire: WatchVoiceWire.DirectToolCall, relay: WatchToolRelayClient, generation: Int?, wristDown: Bool) {
+        let isStart = wire.name == WatchJobAnswer.startJob
+        let whenIdle = GeminiLiveProtocol.Scheduling.whenIdle.rawValue
+        guard let arguments = WatchJobAnswer.arguments(name: wire.name, wire.arguments) else {
+            answer(.toolResponse(id: wire.id, name: wire.name, result: WatchJobAnswer.missingInstructions, scheduling: whenIdle, fallback: nil), generation: generation)
+            return
+        }
+        if isStart, relayJobsStarted >= relay.maxJobs {
+            WatchProbeLog.shared.note("directJobRelay", ["name": wire.name, "outcome": "capped", "maxJobs": relay.maxJobs])
+            answer(.toolResponse(id: wire.id, name: wire.name, result: [
+                "status": "not_started",
+                "message": "This call has started \(relay.maxJobs) jobs, the most the user allows per call. Tell them; they can raise it in Conduit's Watch settings or start more from their iPhone.",
+            ], scheduling: whenIdle, fallback: nil), generation: generation)
+            return
+        }
+        let id = callID
+        let sentAt = now
+        toolsInFlight.insert(wire.id)
+        jobCallsViaRelay += 1
+        Task { [weak self] in
+            let outcome = await relay.run(name: wire.name, arguments: arguments)
+            guard let self else { return Self.relayToolAbandoned(wire, outcome: outcome, callEnded: true) }
+            guard self.callID == id, self.isActive else { return Self.relayToolAbandoned(wire, outcome: outcome, callEnded: !self.isActive) }
+            self.toolsInFlight.remove(wire.id)
+            let withdrawn = self.withdrawnToolIDs.remove(wire.id) != nil
+            var fields: [String: Any] = [
+                "name": wire.name,
+                "ms": Int((self.now - sentAt) * 1000),
+                "withdrawn": withdrawn,
+                "screen": "\(self.scenePhase)",
+                "reachable": self.link.isReachable,
+                "grantCalls": relay.callsSent,
+            ]
+            let result: [String: String]
+            switch outcome {
+            case .answered(let body):
+                result = WatchJobAnswer.result(body: body)
+                fields["outcome"] = "answered"
+                fields["status"] = result["status"] ?? (result["error"] == nil ? "" : "error")
+                if isStart, result["status"] == "started" {
+                    self.relayJobsStarted += 1
+                    self.followJobs(on: relay)
+                } else if wire.name == WatchJobAnswer.cancelJob {
+                    // The running count changed: ask for it now.
+                    self.nextNewsAt = self.now
+                }
+            case .timedOut:
+                // Hermes has the call: a start may be running there.
+                self.relayTimeouts += 1
+                fields["outcome"] = "timedOut"
+                if isStart {
+                    self.relayJobsStarted += 1
+                    self.followJobs(on: relay)
+                    result = WatchJobAnswer.accepted
+                } else {
+                    result = WatchToolAnswer.tookTooLong
+                }
+            case .unavailable(let reason, let grantGone, let sent):
+                self.relayFallbacks += 1
+                if sent { self.relayFailures += 1 }
+                if grantGone, self.toolRelay === relay {
+                    self.toolRelay = nil
+                    if !self.jobRelays.contains(where: { $0 === relay }) { relay.close() }
+                }
+                fields["outcome"] = "fallback"
+                fields["reason"] = reason
+                fields["grantGone"] = grantGone
+                fields["sent"] = sent
+                WatchProbeLog.shared.note("directJobRelay", fields)
+                if isStart, sent {
+                    // It may have reached Hermes.
+                    self.relayJobsStarted += 1
+                    if !grantGone { self.followJobs(on: relay) }
+                    guard !withdrawn else { return }
+                    self.answer(.toolResponse(id: wire.id, name: wire.name, result: [
+                        "status": "unknown",
+                        "message": "Hermes didn't confirm the job. Tell the user it may or may not have started; they can ask you to list their jobs.",
+                    ], scheduling: whenIdle, fallback: nil), generation: generation)
+                    return
+                }
+                guard !withdrawn else { return }
+                // Not sent, or a list or cancel: the iPhone's way, as
+                // without jobs in the grant.
+                self.sendToPhone(wire, generation: generation, wristDown: wristDown, relayTried: true)
+                return
+            }
+            WatchProbeLog.shared.note("directJobRelay", fields)
+            guard !withdrawn else { return }
+            self.answer(.toolResponse(
+                id: wire.id,
+                name: wire.name,
+                result: result,
+                scheduling: WatchJobAnswer.scheduling(name: wire.name, result: result),
+                fallback: WatchJobAnswer.fallbackText(name: wire.name, result: result)
+            ), generation: generation)
+        }
+    }
+
+    /// Asks this grant for job news from now on.
+    private func followJobs(on relay: WatchToolRelayClient) {
+        if !jobRelays.contains(where: { $0 === relay }) { jobRelays.append(relay) }
+        nextNewsAt = now
+    }
+
+    /// Done with a grant's jobs: its news, its approvals, and, for a
+    /// renewed grant's old one, the grant itself.
+    private func stopFollowing(_ relay: WatchToolRelayClient) {
+        jobRelays.removeAll { $0 === relay }
+        relayRunning[relay.grantID] = nil
+        relayJobsRunning = relayRunning.values.reduce(0, +)
+        approvals.removeAll { $0.grantID == relay.grantID }
+        pendingApproval = approvals.first
+        if relay !== toolRelay { relay.close() }
+    }
+
+    /// While jobs started through the relay may run, asks Hermes for their
+    /// news, wrist up or down: one ask at a time, each grant in turn.
+    private func fetchJobNewsIfDue() {
+        guard !newsInFlight, endRequestedAt == nil, now >= nextNewsAt, !jobRelays.isEmpty else { return }
+        // A grant that ended or is about to can't be asked any more: what
+        // its jobs do next reaches the user as Conduit notifications.
+        for relay in jobRelays where relay.isGone || relay.expires(within: WatchToolRelayClient.expiryMargin) {
+            WatchProbeLog.shared.note("directJobNewsStopped", ["gone": relay.isGone, "running": relayRunning[relay.grantID] as Any])
+            stopFollowing(relay)
+        }
+        guard let relay = jobRelays.first else { return }
+        newsInFlight = true
+        jobNewsAsks += 1
+        let id = callID
+        let sentAt = now
+        Task { [weak self] in
+            let outcome = await relay.run(name: WatchJobAnswer.jobNews, arguments: ["wait_s": Self.jobNewsWait])
+            guard let self, self.callID == id, self.isActive else { return }
+            self.newsInFlight = false
+            // The next ask goes to the next grant.
+            if let index = self.jobRelays.firstIndex(where: { $0 === relay }) {
+                self.jobRelays.append(self.jobRelays.remove(at: index))
+            }
+            switch outcome {
+            case .answered(let body):
+                guard let news = WatchJobAnswer.news(from: body, grantID: relay.grantID) else {
+                    self.jobNewsFailed += 1
+                    WatchProbeLog.shared.note("directJobNewsFailed", ["reason": "unreadable", "ms": Int((self.now - sentAt) * 1000)])
+                    self.nextNewsAt = self.now + Self.jobNewsPause
+                    return
+                }
+                self.jobNews(news, from: relay, ms: Int((self.now - sentAt) * 1000))
+                self.nextNewsAt = self.now + (news.items.isEmpty && !news.more ? Self.jobNewsPause : Self.jobNewsRetry)
+            case .timedOut:
+                self.nextNewsAt = self.now + Self.jobNewsRetry
+            case .unavailable(let reason, let grantGone, _):
+                self.jobNewsFailed += 1
+                WatchProbeLog.shared.note("directJobNewsFailed", ["reason": reason, "grantGone": grantGone, "screen": "\(self.scenePhase)"])
+                if grantGone { self.stopFollowing(relay) }
+                self.nextNewsAt = self.now + Self.jobNewsPause
+            }
+        }
+    }
+
+    /// A grant's job news: results and failures for the model at the next
+    /// quiet moment, approval requests on screen with a tap on the wrist.
+    private func jobNews(_ news: WatchJobAnswer.News, from relay: WatchToolRelayClient, ms: Int) {
+        relayRunning[relay.grantID] = news.running
+        relayJobsRunning = relayRunning.values.reduce(0, +)
+        jobNewsItems += news.items.count
+        // Requests no longer open (answered elsewhere, timed out) leave the
+        // screen.
+        let open = Set(news.openApprovals.map { "\($0.jobID)\n\($0.requestID)" })
+        approvals.removeAll { $0.grantID == relay.grantID && !open.contains("\($0.jobID)\n\($0.requestID)") }
+        var shown = 0
+        for item in news.items {
+            approvals.removeAll { $0.grantID == relay.grantID && $0.jobID == item.jobID }
+            if let approval = item.approval {
+                approvals.append(approval)
+                approvalsShown += 1
+                shown += 1
+            }
+            if let text = WatchJobAnswer.notice(for: item, voiceApprovals: relay.voiceApprovals) {
+                quietQueue.append(.textWhenIdle(text))
+            }
+        }
+        pendingApproval = approvals.first
+        if shown > 0 { WKInterfaceDevice.current().play(.notification) }
+        if !news.items.isEmpty {
+            WatchProbeLog.shared.note("directJobNews", [
+                "ms": ms,
+                "statuses": news.items.map(\.status),
+                "resultChars": news.items.map { $0.result?.count ?? 0 },
+                "running": news.running,
+                "more": news.more,
+                "approvalsOnScreen": approvals.count,
+                "screen": "\(scenePhase)",
+            ])
+        }
+        if news.running == 0, !news.more, !approvals.contains(where: { $0.grantID == relay.grantID }) {
+            stopFollowing(relay)
+        }
+        flushQuietQueue()
+    }
+
+    /// The Watch's Approve or Deny for the request on screen.
+    func answerApproval(approve: Bool) {
+        guard let approval = pendingApproval else { return }
+        let choice = approve ? WatchJobAnswer.approve : WatchJobAnswer.deny
+        resolveApproval(approval, choice: choice, byVoice: false) { [weak self] result in
+            guard let self, result["error"] == nil, result["status"] != "failed" else { return }
+            // The model hears it without replying, so it doesn't ask again.
+            let what = approve ? "approved" : "denied"
+            self.quietQueue.append(.contextWhenIdle("[On their Watch, the user \(what) the command background job \"\(approval.title)\" asked to run.]"))
+            self.flushQuietQueue()
+        }
+    }
+
+    /// The model's answer to an approval request, when the user allowed
+    /// voice approvals for this call; only ever once or deny.
+    private func answerApprovalByVoice(_ call: GeminiLiveProtocol.FunctionCall, generation: Int?) {
+        let jobID = call.arguments["job_id"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let choice = call.arguments["choice"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let candidates = approvals.filter { jobID.isEmpty || $0.jobID == jobID }
+        var refusal: String?
+        if candidates.count != 1 {
+            refusal = "No job is waiting for that approval."
+        } else if jobRelays.first(where: { $0.grantID == candidates[0].grantID })?.voiceApprovals != true {
+            refusal = "The user answers approvals on their Watch screen. Ask them to tap Approve or Deny."
+        } else if choice != WatchJobAnswer.approve, choice != WatchJobAnswer.deny {
+            refusal = "choice must be once or deny"
+        }
+        if let refusal {
+            WatchProbeLog.shared.note("directApproval", ["byVoice": true, "refused": refusal])
+            answer(.toolResponse(id: call.id, name: call.name, result: ["error": refusal], scheduling: nil, fallback: nil), generation: generation)
+            return
+        }
+        toolsInFlight.insert(call.id)
+        resolveApproval(candidates[0], choice: choice, byVoice: true) { [weak self] result in
+            guard let self else { return }
+            self.toolsInFlight.remove(call.id)
+            guard self.withdrawnToolIDs.remove(call.id) == nil else { return }
+            self.answer(.toolResponse(id: call.id, name: call.name, result: result, scheduling: nil, fallback: nil), generation: generation)
+        }
+    }
+
+    /// Sends an approval's answer to Hermes. The card leaves the screen at
+    /// once and comes back if Hermes didn't take the answer.
+    private func resolveApproval(_ approval: WatchJobAnswer.Approval, choice: String, byVoice: Bool, done: @escaping ([String: String]) -> Void) {
+        approvals.removeAll { $0 == approval }
+        pendingApproval = approvals.first
+        guard let relay = jobRelays.first(where: { $0.grantID == approval.grantID }) else {
+            done(["status": "not_pending", "message": "That job isn't waiting for an approval any more."])
+            return
+        }
+        let id = callID
+        let sentAt = now
+        Task { [weak self] in
+            let outcome = await relay.run(name: WatchJobAnswer.answerApproval, arguments: [
+                "job_id": approval.jobID,
+                "request_id": approval.requestID,
+                "choice": choice,
+            ])
+            guard let self, self.callID == id, self.isActive else { return }
+            var fields: [String: Any] = ["choice": choice, "byVoice": byVoice, "ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
+            let result: [String: String]
+            var taken = false
+            switch outcome {
+            case .answered(let body):
+                result = WatchJobAnswer.result(body: body)
+                fields["status"] = result["status"] ?? (result["error"] == nil ? "" : "error")
+                taken = result["error"] == nil && result["status"] != "failed"
+            case .timedOut:
+                fields["status"] = "timedOut"
+                result = WatchToolAnswer.tookTooLong
+            case .unavailable(let reason, let grantGone, _):
+                fields["status"] = "unavailable"
+                fields["reason"] = reason
+                result = ["error": "The answer didn't reach Hermes. Tell the user to try again on their Watch screen or in Conduit."]
+                if grantGone { self.stopFollowing(relay) }
+            }
+            if taken {
+                if byVoice { self.approvalsByVoice += 1 } else { self.approvalsTapped += 1 }
+            } else {
+                self.approvalFailures += 1
+                if self.jobRelays.contains(where: { $0 === relay }), !self.approvals.contains(approval) {
+                    self.approvals.insert(approval, at: 0)
+                    self.pendingApproval = self.approvals.first
+                }
+            }
+            WatchProbeLog.shared.note("directApproval", fields)
+            // The job moves on: its news is worth asking for now.
+            self.nextNewsAt = self.now
+            done(result)
+        }
     }
 
     /// Written for the model, not shown.
@@ -1271,7 +1626,8 @@ final class WatchDirectCallModel: ObservableObject {
                     WatchProbeLog.shared.note("directGrantRenewed", fields)
                     return
                 }
-                self.toolRelay?.close()
+                // The old grant stays open while its jobs run, for their news.
+                if let old = self.toolRelay, !self.jobRelays.contains(where: { $0 === old }) { old.close() }
                 self.toolRelay = relay
                 self.grantsRenewed += 1
                 fields["ok"] = true
@@ -1566,6 +1922,7 @@ final class WatchDirectCallModel: ObservableObject {
         }
         runWristQueueIfReachable()
         renewGrantIfDue()
+        fetchJobNewsIfDue()
         pollIfNeeded()
         reactivateIfDue()
         probeLinkIfDue()
@@ -1855,6 +2212,23 @@ final class WatchDirectCallModel: ObservableObject {
         polls = 0
         pollsFailed = 0
         textUpdatesSent = 0
+        jobRelays.forEach { $0.close() }
+        jobRelays = []
+        relayRunning = [:]
+        relayJobsRunning = 0
+        approvals = []
+        pendingApproval = nil
+        newsInFlight = false
+        nextNewsAt = 0
+        relayJobsStarted = 0
+        jobCallsViaRelay = 0
+        jobNewsAsks = 0
+        jobNewsFailed = 0
+        jobNewsItems = 0
+        approvalsShown = 0
+        approvalsTapped = 0
+        approvalsByVoice = 0
+        approvalFailures = 0
         pendingSamples = []
         sendsInFlight = 0
         lastPlaybackEndedAt = nil
@@ -1887,10 +2261,16 @@ final class WatchDirectCallModel: ObservableObject {
         session?.stop()
         session = nil
         tokens = nil
-        // Ends the grant on the relay and so on Hermes; the iPhone revokes
-        // it too once the call's end reaches it.
+        // Ends the grants on the relay and so on Hermes; the iPhone revokes
+        // them too once the call's end reaches it. Jobs still running keep
+        // running in Hermes, and their results come as notifications.
         toolRelay?.close()
         toolRelay = nil
+        let relayJobsLeft = relayJobsRunning
+        jobRelays.forEach { $0.close() }
+        jobRelays = []
+        approvals = []
+        pendingApproval = nil
         stopPathMonitor()
         // Asked to end before the audio stops; CallKit finishes later.
         if keepAlive == .callKit { WatchSystemCall.shared.end() }
@@ -1909,8 +2289,16 @@ final class WatchDirectCallModel: ObservableObject {
         // Jobs still waiting for the wrist start once the iPhone takes
         // them, after the call; queued ahead of its end.
         let jobsLeft = wristQueue.filter { $0.call.name == "start_job" }
-        for job in jobsLeft where link.queue(.directTool(callID: callID, call: job.call)) {
-            jobsQueued += 1
+        var jobsNotQueued = 0
+        for job in jobsLeft {
+            if link.queue(.directTool(callID: callID, call: job.call)) {
+                jobsQueued += 1
+            } else {
+                jobsNotQueued += 1
+            }
+        }
+        if jobsNotQueued > 0 {
+            WatchProbeLog.shared.note("directJobQueueFailed", ["count": jobsNotQueued])
         }
         // Queued, not sent: the iPhone saves the call whenever Conduit next
         // runs there, asleep or not right now.
@@ -1921,6 +2309,9 @@ final class WatchDirectCallModel: ObservableObject {
             endedAt: Date(),
             turns: saved
         )))
+        if !queued {
+            WatchProbeLog.shared.note("directEndQueueFailed", ["lines": saved.count])
+        }
         let battery = WKInterfaceDevice.current().batteryLevel
         WKInterfaceDevice.current().isBatteryMonitoringEnabled = false
         let liveForRate = max(1, liveSeconds)
@@ -1997,6 +2388,16 @@ final class WatchDirectCallModel: ObservableObject {
             "grantsRenewed": grantsRenewed,
             "polls": polls,
             "pollsFailed": pollsFailed,
+            "jobCallsViaRelay": jobCallsViaRelay,
+            "jobsViaRelay": relayJobsStarted,
+            "relayJobsStillRunning": relayJobsLeft,
+            "jobNewsAsks": jobNewsAsks,
+            "jobNewsFailed": jobNewsFailed,
+            "jobNewsItems": jobNewsItems,
+            "approvalsShown": approvalsShown,
+            "approvalsTapped": approvalsTapped,
+            "approvalsByVoice": approvalsByVoice,
+            "approvalFailures": approvalFailures,
             "textUpdatesSent": textUpdatesSent,
             "kbpsUp": Int(Double(meter.bytesUp) * 8 / liveForRate / 1000),
             "kbpsDown": Int(Double(meter.bytesDown) * 8 / liveForRate / 1000),

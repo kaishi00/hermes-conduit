@@ -106,10 +106,11 @@ enum WatchVoiceWire {
         var toolGrant: DirectToolGrant?
     }
 
-    /// One call's grant to run web_search and recall_memory through the
-    /// push relay, without the iPhone (designs/apple-watch-voice-direct.md,
-    /// "Wrist-down tools through the relay"). It works for this call's
-    /// Hermes profile, those tools, half an hour and a call budget. The
+    /// One call's grant to run web_search and recall_memory, and with the
+    /// user's job setting Hermes jobs, through the push relay, without the
+    /// iPhone (designs/apple-watch-voice-direct.md, "Wrist-down tools
+    /// through the relay"). It works for this call's Hermes profile, those
+    /// tools, half an hour and a call budget. The
     /// key seals what the Watch asks and what Hermes answers; the relay
     /// never gets it, and keeps only a hash of `watchKey`.
     struct DirectToolGrant: Codable, Equatable {
@@ -123,6 +124,12 @@ enum WatchVoiceWire {
         var expiresAt: Date?
         var tools: [String]
         var maxCalls: Int
+        /// The jobs one call may start through the relay, when the grant
+        /// carries jobs ("Wrist-down jobs through the relay").
+        var maxJobs: Int?
+        /// The user lets the model answer job approvals by voice; set by
+        /// the iPhone from its setting, not by the host.
+        var voiceApprovals: Bool?
     }
 
     /// The setup's long part. Function declarations travel as their JSON:
