@@ -77,6 +77,10 @@ final class ChatAudioClipPlayer: NSObject, ObservableObject {
         )
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     /// Play, pause or resume `id`, stopping any other clip first. `load`
     /// returns the file's bytes; it runs only when the clip is not loaded.
     func toggle(id: String, filename: String, load: @escaping () async -> Data?) {

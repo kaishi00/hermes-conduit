@@ -74,6 +74,11 @@ enum GatewayMediaTags {
         options: [.caseInsensitive]
     )
 
+    /// The `[label](` or `![label](` just before a mid-line tag, and the
+    /// optional quoted title and `)` just after it.
+    private static let linkOpenerExpression = try! NSRegularExpression(pattern: #"!?\[([^\]]*)\]\([^\S\n]*$"#)
+    private static let linkCloserExpression = try! NSRegularExpression(pattern: #"(?:[^\S\n]+(?:"[^"\n]*"|'[^'\n]*'))?[^\S\n]*\)"#)
+
     /// Splits `line` into text and media, or returns nil when it holds no
     /// tag (and no directive) so the caller renders it unchanged. An empty
     /// array means the line held only directives and should be dropped.
@@ -109,9 +114,23 @@ enum GatewayMediaTags {
                 continue
             }
             guard let path = normalizedPath(nsLine.substring(with: match.range(at: 1))) else { continue }
-            appendText(nsLine.substring(with: NSRange(location: cursor, length: match.range.location - cursor)), to: &result)
-            result.append(.media(path))
-            cursor = NSMaxRange(match.range)
+            var before = nsLine.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            var end = NSMaxRange(match.range)
+            var alt: String?
+            // A Markdown link or image around a mid-sentence tag
+            // ("see [the report](MEDIA:/r.pdf) here"): its label names the
+            // card and its brackets don't stay behind as text.
+            let beforeLength = (before as NSString).length
+            if let opener = linkOpenerExpression.firstMatch(in: before, range: NSRange(location: 0, length: beforeLength)),
+               let closer = linkCloserExpression.firstMatch(in: trimmed, options: .anchored, range: NSRange(location: end, length: nsLine.length - end)) {
+                let label = (before as NSString).substring(with: opener.range(at: 1)).trimmingCharacters(in: .whitespaces)
+                alt = label.isEmpty ? nil : label
+                before = (before as NSString).substring(to: opener.range.location)
+                end = NSMaxRange(closer.range)
+            }
+            appendText(before, to: &result)
+            result.append(.media(path, alt: alt))
+            cursor = end
         }
         if result.contains(where: { if case .media = $0 { return true } else { return false } }) {
             appendText(nsLine.substring(from: cursor), to: &result)
