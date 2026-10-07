@@ -771,6 +771,58 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(WatchDirectBroker.isRefusedTool(DashboardTicketBridgeError.http(status: 502, detail: "Couldn't reach the push relay")))
     }
 
+    /// The phone keeps each Watch call's connection, its end and the
+    /// start_job calls it sent across a restart: a transcript arriving
+    /// late is saved where the call happened, and a replayed start_job
+    /// doesn't reach Hermes twice.
+    @MainActor
+    func testWatchDirectCallLedgerKeepsEachCallsConnectionAcrossARestart() throws {
+        let suite = "WatchDirectCallLedger.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let home = WatchDirectConnection(profile: "default", dashboard: "A")
+        let work = WatchDirectConnection(profile: "work", dashboard: "B")
+
+        var ledger = WatchDirectCallLedger(defaults: defaults)
+        ledger.begin(1, connection: home, saveCalls: true)
+        ledger.begin(2, connection: work, saveCalls: false)
+        ledger.recordJob("fc-1", in: 1)
+        ledger.recordJob("fc-1", in: 1)
+        ledger.end(1)
+        // A call this phone never began isn't kept.
+        ledger.end(3)
+        ledger.recordJob("fc-9", in: 3)
+
+        let restarted = WatchDirectCallLedger(defaults: defaults)
+        XCTAssertEqual(restarted.call(1)?.connection, home)
+        XCTAssertEqual(restarted.call(1)?.saveCalls, true)
+        XCTAssertEqual(restarted.call(1)?.ended, true)
+        XCTAssertEqual(restarted.call(1)?.jobs, ["fc-1"])
+        XCTAssertEqual(restarted.call(2)?.connection, work)
+        XCTAssertEqual(restarted.call(2)?.saveCalls, false)
+        XCTAssertEqual(restarted.call(2)?.ended, false)
+        XCTAssertNil(restarted.call(3))
+        XCTAssertTrue(restarted.hasSentJob("fc-1", in: 1))
+        XCTAssertFalse(restarted.hasSentJob("fc-1", in: 2))
+        XCTAssertFalse(restarted.hasSentJob("fc-9", in: 3))
+        XCTAssertNotEqual(home, WatchDirectConnection(profile: "default", dashboard: "B"))
+        XCTAssertNotEqual(WatchDirectCallLedger.jobKey("fc-1", in: 1), WatchDirectCallLedger.jobKey("fc-1", in: 2))
+
+        // Only the newest calls and each call's newest job starts are kept.
+        for id in UInt32(10)..<UInt32(30) { ledger.begin(id, connection: home, saveCalls: true) }
+        for index in 0..<40 { ledger.recordJob("job-\(index)", in: 29) }
+        let trimmed = WatchDirectCallLedger(defaults: defaults)
+        XCTAssertEqual(trimmed.calls.map(\.id), Array(UInt32(14)..<UInt32(30)))
+        XCTAssertEqual(trimmed.call(29)?.jobs.count, WatchDirectCallLedger.jobLimit)
+        XCTAssertEqual(trimmed.call(29)?.jobs.last, "job-39")
+        XCTAssertFalse(trimmed.hasSentJob("job-0", in: 29))
+
+        // A replayed start is answered, not sent: the model hears it, and
+        // the Watch doesn't take it in silently as a started job.
+        XCTAssertEqual(WatchDirectBroker.jobAlreadySent["status"], "already_sent")
+        XCTAssertNil(WatchJobAnswer.scheduling(name: "start_job", result: WatchDirectBroker.jobAlreadySent, acknowledged: true))
+    }
+
     @MainActor
     func testWatchToolGrantClientAsksForJobsWithTheUsersCapAndModel() async throws {
         var bodies: [[String: Any]] = []

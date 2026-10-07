@@ -3577,6 +3577,9 @@ final class AppState: ObservableObject {
     /// Stops following Voice background jobs at a server, profile, or
     /// sign-out boundary. The jobs keep running on the server as chats.
     private func retireVoiceBackgroundJobs() {
+        // A Watch call to Gemini belongs to the outgoing connection too: it
+        // ends here, before its jobs' news goes back to the supervisor.
+        WatchVoiceLink.shared.direct.connectionRetiring(in: self)
         voiceBackgroundJobSupervisor.reset()
         voiceJobSessionListRefreshTask?.cancel()
         voiceJobSessionListRefreshTask = nil
@@ -23531,8 +23534,10 @@ final class AppState: ObservableObject {
         let voice: String?
         let openingPrompt: String?
         let token: GeminiLiveToken
-        let profile: String
-        let dashboard: String
+        /// The connection the setup, token and tools came from.
+        let connection: WatchDirectConnection
+        /// The profile's "Save voice calls" setting as the call began.
+        let saveCalls: Bool
         let memoryIncluded: Bool
         let personalityIncluded: Bool
         /// The voice-job model settings for jobs the Watch starts through
@@ -23555,6 +23560,8 @@ final class AppState: ObservableObject {
         }
         // The phone's microphone and the Watch's would both feed Hermes.
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
+        // Every lookup below goes to the connection active now.
+        let connection = watchDirectConnection
         let tokens = geminiLiveTokenClient
         let wantsMemory = geminiLiveMemoryEnabled
         let wantsPersonality = geminiLivePersonalityEnabled
@@ -23580,6 +23587,10 @@ final class AppState: ObservableObject {
             if let provider = jobSession.provider { jobOptions["provider"] = provider }
         }
         if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
+        // A switch while the lookups ran would mix two connections' setup.
+        guard watchDirectConnection == connection else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+        }
         return WatchDirectPlan(
             systemInstruction: GeminiLiveConversationController.instructions(
                 search: search,
@@ -23596,12 +23607,17 @@ final class AppState: ObservableObject {
             voice: geminiLiveVoice,
             openingPrompt: style.openingPrompt,
             token: token,
-            profile: activeProfile,
-            dashboard: activeDashboardID?.uuidString ?? "-",
+            connection: connection,
+            saveCalls: voiceCallSavingEnabled,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions
         )
+    }
+
+    /// The connection a Watch call started now would belong to.
+    var watchDirectConnection: WatchDirectConnection {
+        WatchDirectConnection(profile: activeProfile, dashboard: activeDashboardID?.uuidString ?? "-")
     }
 
     /// A single-use token for the Watch call's next connection.
@@ -23626,11 +23642,12 @@ final class AppState: ObservableObject {
     /// outbox as the phone's calls: queued first, so a save Hermes can't
     /// take now is retried later. The Watch sends the transcript once the
     /// call ends, by a transfer that arrives whenever the phone next runs;
-    /// one that arrives twice is saved once.
-    func saveWatchVoiceCall(_ transcript: WatchVoiceWire.DirectTranscript, profile: String?, dashboard: String?) async {
-        let profile = profile ?? activeProfile
-        let dashboard = dashboard ?? activeDashboardID?.uuidString ?? "-"
-        guard voiceCallSavingEnabled, !transcript.turns.isEmpty else { return }
+    /// one that arrives twice is saved once. It goes to the connection the
+    /// call began on, whichever is active when it arrives.
+    func saveWatchVoiceCall(_ transcript: WatchVoiceWire.DirectTranscript, connection: WatchDirectConnection, saveCalls: Bool) async {
+        let profile = connection.profile
+        let dashboard = connection.dashboard
+        guard saveCalls, !transcript.turns.isEmpty else { return }
         var saved = defaults.stringArray(forKey: Self.watchDirectSavedCallsKey) ?? []
         guard !saved.contains(transcript.callUUID) else { return }
         saved.append(transcript.callUUID)

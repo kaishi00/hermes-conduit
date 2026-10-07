@@ -14,4 +14,5 @@ enum WatchVoiceStartFailure {
     static let ended = "The call ended before it connected."
     static let callRunning = "A voice call is already running on your iPhone."
     static let unsupportedMode = "This test build talks through Gemini Live or Grok Live. Turn one on in Conduit's Voice settings on your iPhone."
+    static let connectionChanged = "Conduit on your iPhone switched to another Hermes profile or server, so this call ended."
 }
