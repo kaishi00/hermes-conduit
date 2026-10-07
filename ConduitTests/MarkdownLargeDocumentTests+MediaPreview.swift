@@ -71,6 +71,12 @@ extension MarkdownLargeDocumentTests {
             GatewayMediaTags.segments(in: "Here: [the report](MEDIA:/tmp/r.pdf \"Q3\") for you"),
             [.text("Here:"), .media("/tmp/r.pdf", alt: "the report"), .text("for you")]
         )
+        // A tag inside a consumed link title must not rewind the cursor.
+        XCTAssertEqual(
+            GatewayMediaTags.segments(in: "[a](MEDIA:/r.pdf \"see MEDIA:/x.png\") done"),
+            [.media("/r.pdf", alt: "a"), .text("done")]
+        )
+        XCTAssertEqual(GatewayMediaTags.removingTags(from: "Here: [the report](MEDIA:/r.pdf) for you"), "Here: the report for you")
         XCTAssertNil(GatewayMediaTags.segments(in: "No tags here"))
         XCTAssertNil(GatewayMediaTags.segments(in: "> MEDIA:/tmp/quoted.png"))
         XCTAssertNil(GatewayMediaTags.segments(in: "Write `MEDIA:/path/file.png` to send a file"))

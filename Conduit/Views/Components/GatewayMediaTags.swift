@@ -109,6 +109,9 @@ enum GatewayMediaTags {
         var result: [Segment] = []
         var cursor = 0
         for match in tagExpression.matches(in: trimmed, range: NSRange(location: 0, length: nsLine.length)) {
+            // A link title consumed with an earlier tag can hold another
+            // tag; it is part of that link, not a file of its own.
+            guard match.range.location >= cursor else { continue }
             let keyword = nsLine.range(of: "MEDIA:", options: .caseInsensitive, range: match.range)
             if keyword.location != NSNotFound, codeSpans.contains(where: { $0.location < keyword.location && keyword.location < NSMaxRange($0) }) {
                 continue
@@ -159,9 +162,12 @@ enum GatewayMediaTags {
                 || directives.contains(where: { text.contains($0) }) else { return text }
         return text.components(separatedBy: "\n").compactMap { line -> String? in
             guard let segments = segments(in: line) else { return line }
+            // A link's label is words the reader wrote; the path is not.
             let kept = segments.compactMap { segment -> String? in
-                if case .text(let value) = segment { return value }
-                return nil
+                switch segment {
+                case .text(let value): return value
+                case .media(_, let alt): return alt
+                }
             }
             return kept.isEmpty ? nil : kept.joined(separator: " ")
         }.joined(separator: "\n")
