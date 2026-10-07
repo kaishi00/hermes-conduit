@@ -1184,6 +1184,7 @@ private struct UserDocumentAttachmentChip: View {
     let attachment: Attachment
     let gatewayResolver: GatewayMediaDataURLResolver?
     @State private var loading = false
+    @State private var failed = false
     @State private var openTask: Task<Void, Never>?
 
     private var localFileURL: URL? {
@@ -1208,6 +1209,7 @@ private struct UserDocumentAttachmentChip: View {
                     filename: AttachmentPreviewFilename.make(name: attachment.name, uri: attachment.uri),
                     style: .bubble,
                     opening: loading,
+                    openFailed: failed,
                     load: loadAudio,
                     openFull: open
                 )
@@ -1257,22 +1259,25 @@ private struct UserDocumentAttachmentChip: View {
 
     private func open() {
         if let localFileURL {
-            MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: attachment.name)
+            failed = !MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: attachment.name)
             return
         }
         guard !loading, attachment.uri.hasPrefix("/"), let gatewayResolver else { return }
         loading = true
+        failed = false
         // Cancelled on disappear, so a slow fetch can't pop a preview over
         // whatever screen the user moved on to.
         openTask = Task {
+            var presented = false
             if let dataURL = await gatewayResolver.dataURL(for: attachment.uri), !Task.isCancelled {
-                await MediaPreviewPresenter.shared.present(
+                presented = await MediaPreviewPresenter.shared.present(
                     dataURL: dataURL,
                     filename: AttachmentPreviewFilename.make(name: attachment.name, uri: attachment.uri)
                 )
             }
             guard !Task.isCancelled else { return }
             loading = false
+            failed = !presented
         }
     }
 }
