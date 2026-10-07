@@ -3,8 +3,9 @@
 //  Conduit Watch
 //
 //  Proof of concept for Apple Watch voice (designs/apple-watch-voice.md):
-//  a live call through the iPhone, the link test and the audio lab, each
-//  writing its numbers to a log that also lands on the iPhone.
+//  a live call through the iPhone, a Gemini call the Watch makes itself
+//  (designs/apple-watch-voice-direct.md), the link test and the audio lab,
+//  each writing its numbers to a log that also lands on the iPhone.
 //
 
 import SwiftUI
@@ -13,6 +14,7 @@ import SwiftUI
 struct ConduitWatchApp: App {
     @StateObject private var link = WatchLink.shared
     @StateObject private var call = WatchCallModel()
+    @StateObject private var direct = WatchDirectCallModel()
     @StateObject private var soak = WatchSoakModel()
     @StateObject private var lab = WatchLabModel()
     @Environment(\.scenePhase) private var scenePhase
@@ -28,11 +30,13 @@ struct ConduitWatchApp: App {
             }
             .environmentObject(link)
             .environmentObject(call)
+            .environmentObject(direct)
             .environmentObject(soak)
             .environmentObject(lab)
         }
         .onChange(of: scenePhase) { _, phase in
             call.scenePhaseChanged(phase)
+            direct.scenePhaseChanged(phase)
             soak.scenePhaseChanged(phase)
             lab.scenePhaseChanged(phase)
             WatchProbeLog.shared.note("scenePhase", ["phase": "\(phase)", "reachable": WatchLink.shared.isReachable])
@@ -45,6 +49,11 @@ struct WatchHomeView: View {
 
     var body: some View {
         List {
+            NavigationLink {
+                WatchDirectCallView()
+            } label: {
+                Label("Talk to Gemini (direct)", systemImage: "waveform.badge.mic")
+            }
             NavigationLink {
                 WatchCallView()
             } label: {
@@ -81,6 +90,7 @@ struct WatchCallView: View {
     /// channel to the iPhone: neither runs during a call.
     @EnvironmentObject private var lab: WatchLabModel
     @EnvironmentObject private var soak: WatchSoakModel
+    @EnvironmentObject private var direct: WatchDirectCallModel
 
     var body: some View {
         ScrollView {
@@ -140,6 +150,7 @@ struct WatchCallView: View {
     /// Why a call can't start now, if it can't.
     private var startBlocked: String? {
         guard !call.isActive else { return nil }
+        if direct.isActive { return "End the Gemini call first." }
         if lab.isBusy || lab.isWatching { return "End the lab test first." }
         if soak.isRunning { return "Stop the link test first." }
         return nil
@@ -208,15 +219,135 @@ struct WatchCallView: View {
     }
 }
 
+/// The Watch's own Gemini Live call (test T2,
+/// designs/apple-watch-voice-direct.md): the orb starts it and, while
+/// Gemini speaks, stops it.
+struct WatchDirectCallView: View {
+    @EnvironmentObject private var direct: WatchDirectCallModel
+    @EnvironmentObject private var call: WatchCallModel
+    @EnvironmentObject private var lab: WatchLabModel
+    @EnvironmentObject private var soak: WatchSoakModel
+    @AppStorage(WatchDirectCallModel.KeepAlive.key) private var keepAlive = WatchDirectCallModel.KeepAlive.audioSession.rawValue
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 8) {
+                orb
+                Text(phaseText)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                if let startBlocked {
+                    Text(startBlocked)
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                }
+                if let caption = direct.caption {
+                    Text(caption)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.center)
+                }
+                if let summary = direct.lastTurnSummary {
+                    Text(summary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if let route = direct.route {
+                    Text(route)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if direct.isActive {
+                    HStack {
+                        Button(direct.isMuted ? "Unmute" : "Mute") { direct.toggleMute() }
+                        Button("End", role: .destructive) { direct.end() }
+                    }
+                    if direct.runningJobs > 0 {
+                        Text("\(direct.runningJobs) job\(direct.runningJobs == 1 ? "" : "s") running")
+                            .font(.caption2)
+                    }
+                } else {
+                    Picker("Keep running with", selection: $keepAlive) {
+                        ForEach(WatchDirectCallModel.KeepAlive.allCases) { option in
+                            Text(option.title).tag(option.rawValue)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                    .font(.footnote)
+                }
+            }
+        }
+        .navigationTitle("Gemini")
+    }
+
+    /// Why a call can't start now, if it can't.
+    private var startBlocked: String? {
+        guard !direct.isActive else { return nil }
+        if call.isActive { return "End the Hermes call first." }
+        if lab.isBusy || lab.isWatching { return "End the lab test first." }
+        if soak.isRunning { return "Stop the link test first." }
+        return nil
+    }
+
+    @ViewBuilder
+    private var orb: some View {
+        let button = Button {
+            if direct.isActive {
+                direct.tapOrb()
+            } else {
+                Task { await direct.start() }
+            }
+        } label: {
+            Image(systemName: direct.isActive ? "waveform.circle.fill" : "mic.circle.fill")
+                .font(.system(size: 54))
+                .foregroundStyle(orbColor)
+        }
+        .buttonStyle(.plain)
+        .disabled(startBlocked != nil)
+        .accessibilityLabel(direct.isActive ? (direct.phase == .speaking ? "Interrupt" : phaseText) : "Start a call")
+        if #available(watchOS 11, *) {
+            button.handGestureShortcut(.primaryAction)
+        } else {
+            button
+        }
+    }
+
+    private var orbColor: Color {
+        switch direct.phase {
+        case .speaking: return .purple
+        case .listening: return .green
+        case .needsTap: return .orange
+        case .ended, .idle: return .secondary
+        default: return .blue
+        }
+    }
+
+    private var phaseText: String {
+        switch direct.phase {
+        case .idle: return "Tap to talk"
+        case .preparing: return "Asking your iPhone…"
+        case .connecting: return "Connecting…"
+        case .listening: return "Listening"
+        case .speaking: return "Speaking"
+        case .reconnecting: return "Reconnecting…"
+        case .needsTap: return "Paused. Tap to continue."
+        case .ending: return "Ending…"
+        case .ended(let reason): return reason.map { "Ended: \($0)" } ?? "Ended"
+        }
+    }
+}
+
 struct WatchSoakView: View {
     @EnvironmentObject private var soak: WatchSoakModel
     /// The link test would share the call's channel to the iPhone.
     @EnvironmentObject private var call: WatchCallModel
+    @EnvironmentObject private var direct: WatchDirectCallModel
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                if !soak.isRunning, call.isActive {
+                if !soak.isRunning, call.isActive || direct.isActive {
                     Text("End the call to run the link test.").font(.footnote)
                 }
                 if !soak.isRunning {
@@ -231,7 +362,7 @@ struct WatchSoakView: View {
                         }
                     }
                     Button("Start") { soak.start() }
-                        .disabled(call.isActive)
+                        .disabled(call.isActive || direct.isActive)
                 } else {
                     Button("Stop", role: .destructive) { soak.stop() }
                 }
@@ -266,13 +397,14 @@ struct WatchLabView: View {
     @EnvironmentObject private var lab: WatchLabModel
     /// The lab and a call can't share the audio session.
     @EnvironmentObject private var call: WatchCallModel
+    @EnvironmentObject private var direct: WatchDirectCallModel
 
-    private var blocked: Bool { lab.isBusy || call.isActive }
+    private var blocked: Bool { lab.isBusy || call.isActive || direct.isActive }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                if call.isActive {
+                if call.isActive || direct.isActive {
                     Text("End the call to use the lab.").font(.footnote)
                 }
                 Text("Encoders").font(.headline)

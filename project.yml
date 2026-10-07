@@ -38,7 +38,9 @@ targets:
       # End-to-end encrypted notifications (#431), shared with the
       # Notification Service Extension. Also the Apple Watch proof of
       # concept's link format and audio codec (Shared/WatchVoice,
-      # designs/apple-watch-voice.md), shared with the Watch app.
+      # designs/apple-watch-voice.md) and Gemini Live's protocol and
+      # session (Shared/GeminiLive, designs/apple-watch-voice-direct.md),
+      # shared with the Watch app.
       - path: Shared
     settings:
       base:
@@ -79,6 +81,9 @@ targets:
     sources:
       - path: ConduitWatch
       - path: Shared/WatchVoice
+      # The iPhone's own Gemini Live code: the Watch runs the same session
+      # (designs/apple-watch-voice-direct.md).
+      - path: Shared/GeminiLive
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.watchkitapp
@@ -101,9 +106,11 @@ targets:
     sources:
       - path: ConduitNotificationService
       - path: Shared
-        # The Watch proof of concept's code, which the extension never uses.
+        # The Watch proof of concept's code and Gemini Live, which the
+        # extension never uses.
         excludes:
           - "WatchVoice/**"
+          - "GeminiLive/**"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.NotificationService

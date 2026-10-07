@@ -23519,6 +23519,131 @@ final class AppState: ObservableObject {
         isWatchVoiceCallActive = false
     }
 
+    // MARK: Apple Watch voice, Gemini on the Watch (test build)
+
+    /// What a Watch call to Gemini Live starts with: the setup this
+    /// profile's Gemini Live call gets on the phone, and the session's
+    /// first single-use token (designs/apple-watch-voice-direct.md).
+    struct WatchDirectPlan {
+        let systemInstruction: String
+        let functions: [GeminiLiveProtocol.FunctionDeclaration]
+        let googleSearch: Bool
+        let voice: String?
+        let openingPrompt: String?
+        let token: GeminiLiveToken
+        let profile: String
+        let dashboard: String
+        let memoryIncluded: Bool
+        let personalityIncluded: Bool
+    }
+
+    /// Builds a Watch call's setup as `geminiLiveController` builds the
+    /// phone's: the same search, memory and persona lookups, instructions,
+    /// functions and voice. The call has no attached chat and no phone
+    /// screen, so it gets no chat tools and no resume context.
+    func prepareWatchDirectCall() async throws -> WatchDirectPlan {
+        // Woken (or launched) by the Watch with no phone screen up.
+        if isSceneActive, !PhoneScenePresence.isInForeground {
+            isSceneActive = false
+            publishVoiceRuntimeGates()
+        }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        // The phone's microphone and the Watch's would both feed Hermes.
+        guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
+        let tokens = geminiLiveTokenClient
+        let wantsMemory = geminiLiveMemoryEnabled
+        let wantsPersonality = geminiLivePersonalityEnabled
+        async let searchLookup = resolveGeminiLiveSearchSource()
+        async let memoryLookup = wantsMemory ? tokens.memoryContext() : nil
+        async let personalityLookup = wantsPersonality ? tokens.personality() : nil
+        let status = try await tokens.availability()
+        guard status.isAvailable else {
+            throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
+        }
+        let search = await searchLookup
+        let memory = await memoryLookup
+        let personality = await personalityLookup
+        let token = try await tokens.freshToken()
+        let style = liveVoiceStyle
+        return WatchDirectPlan(
+            systemInstruction: GeminiLiveConversationController.instructions(
+                search: search,
+                memory: memory,
+                personality: personality,
+                answerLength: style.answerLength
+            ) + style.instructions,
+            functions: GeminiLiveToolBridge.declarations(
+                webSearch: search == .hermes,
+                memoryRecall: memory?.canRecall == true,
+                thread: false
+            ),
+            googleSearch: search == .google,
+            voice: geminiLiveVoice,
+            openingPrompt: style.openingPrompt,
+            token: token,
+            profile: activeProfile,
+            dashboard: activeDashboardID?.uuidString ?? "-",
+            memoryIncluded: memory != nil,
+            personalityIncluded: personality != nil
+        )
+    }
+
+    /// A single-use token for the Watch call's next connection.
+    func watchDirectToken() async throws -> GeminiLiveToken {
+        guard await connectForWatchDirectCall(timeout: WatchDirectBroker.connectWait) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        return try await geminiLiveTokenClient.freshToken()
+    }
+
+    /// Reconnects to Hermes if the phone's suspension dropped the
+    /// connection, as a CarPlay call does. True once connected.
+    func connectForWatchDirectCall(timeout: Duration) async -> Bool {
+        if isConnected { return true }
+        recoverTransportForCarPlayIfNeeded(immediately: true)
+        return await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: timeout)
+    }
+
+    private static let watchDirectSavedCallsKey = "watchDirect.savedCalls"
+
+    /// Saves a finished Watch call in voice history through the same
+    /// outbox as the phone's calls: queued first, so a save Hermes can't
+    /// take now is retried later. The Watch sends the transcript once the
+    /// call ends, by a transfer that arrives whenever the phone next runs;
+    /// one that arrives twice is saved once.
+    func saveWatchVoiceCall(_ transcript: WatchVoiceWire.DirectTranscript, profile: String?, dashboard: String?) async {
+        let profile = profile ?? activeProfile
+        let dashboard = dashboard ?? activeDashboardID?.uuidString ?? "-"
+        guard voiceCallSavingEnabled, !transcript.turns.isEmpty else { return }
+        var saved = defaults.stringArray(forKey: Self.watchDirectSavedCallsKey) ?? []
+        guard !saved.contains(transcript.callUUID) else { return }
+        saved.append(transcript.callUUID)
+        defaults.set(Array(saved.suffix(50)), forKey: Self.watchDirectSavedCallsKey)
+        let turns = transcript.turns.enumerated().map { offset, turn in
+            VoiceTranscriptTurn(index: offset, role: turn.role == .user ? .user : .assistant, text: turn.text, at: turn.at)
+        }
+        queueVoiceTranscript(
+            VoiceTranscriptSaveRequest(
+                callID: transcript.callUUID,
+                engine: .geminiLive,
+                sessionID: nil,
+                title: Self.fallbackVoiceCallTitle(at: transcript.startedAt),
+                turns: turns
+            ),
+            dashboard: dashboard,
+            profile: profile
+        )
+        // Only the active dashboard's outbox drains; another's waits until
+        // it's active again, as the phone's own calls do.
+        guard dashboard == activeDashboardID?.uuidString ?? "-" else { return }
+        let end = beginVoiceTranscriptBackgroundTask()
+        defer { end() }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else { return }
+        await drainVoiceTranscriptOutbox(profile: profile, key: voiceHistoryKey(profile: profile))
+    }
+
     /// Called by the CarPlay coordinator when the CarPlay Voice surface goes
     /// away. While the phone scene is active, the phone still presents Voice
     /// and nothing is touched. With no active Voice surface left, this is

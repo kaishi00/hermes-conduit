@@ -17,10 +17,21 @@ import Foundation
 
 @MainActor
 final class WatchSystemCall: NSObject {
+    /// One provider for the app, as CallKit expects: the call through the
+    /// iPhone and the direct Gemini call take turns with it.
+    static let shared = WatchSystemCall()
+    /// Whether this run made the provider. A direct call on the audio
+    /// session alone (option E) never does, so no part of CallKit is there
+    /// to grant its network.
+    private(set) static var isCreated = false
+    /// Holding a call, asked without making the provider.
+    static var isHoldingCall: Bool { isCreated && shared.isHolding }
+
     /// How long a start waits for CallKit to hand over the audio session.
     static let activationTimeout: TimeInterval = 3
 
-    /// The call was ended from the Watch's own call controls.
+    /// The call was ended from the Watch's own call controls. Set by
+    /// whichever call starts it.
     var onEndedBySystem: (() -> Void)?
     /// CallKit has the call.
     private(set) var isHolding = false
@@ -37,13 +48,14 @@ final class WatchSystemCall: NSObject {
     private var endingUUIDs: Set<UUID> = []
     private var activation: CheckedContinuation<Bool, Never>?
 
-    override init() {
+    private override init() {
         let configuration = CXProviderConfiguration()
         configuration.maximumCallGroups = 1
         configuration.maximumCallsPerCallGroup = 1
         configuration.supportedHandleTypes = [.generic]
         provider = CXProvider(configuration: configuration)
         super.init()
+        Self.isCreated = true
         // Nil queue: the delegate runs on the main queue.
         provider.setDelegate(self, queue: nil)
     }

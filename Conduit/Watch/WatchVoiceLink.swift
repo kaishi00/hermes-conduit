@@ -31,6 +31,8 @@ final class WatchVoiceLink: ObservableObject {
     let log = WatchProbePhoneLog.shared
     let liveness = WatchProbeLiveness()
     private(set) lazy var call = WatchCallHost(link: self)
+    /// A call whose Gemini session runs on the Watch (test T2).
+    private(set) lazy var direct = WatchDirectBroker(link: self)
     private lazy var soak = WatchSoakResponder(link: self)
     private let proxy = PhoneWatchSessionProxy()
 
@@ -126,6 +128,11 @@ final class WatchVoiceLink: ObservableObject {
         case .note(let line):
             log.watchNote(line)
             reply?([:])
+        case .directStart:
+            soak.endUnfinished()
+            direct.handle(message, reply: reply)
+        case .directToken, .directTool, .directToolCancel, .directPoll, .directEnd:
+            direct.handle(message, reply: reply)
         default:
             call.handle(message)
             reply?([:])

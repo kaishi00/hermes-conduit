@@ -149,4 +149,101 @@ extension HermesVoiceGatewayTimeoutTests {
         activity.reset()
         XCTAssertNil(activity.lastVoicedAt)
     }
+
+    // MARK: Gemini on the Watch (designs/apple-watch-voice-direct.md)
+
+    func testWatchDirectMessagesRoundTripThroughTheMessageDictionary() {
+        let token = WatchVoiceWire.DirectToken(
+            token: "auth_tokens/one-use",
+            expiresAt: Date(timeIntervalSince1970: 1_800_000_000),
+            newSessionExpiresAt: nil,
+            model: "gemini-3.8-live",
+            webSocketURL: "wss://example.test/ws"
+        )
+        let messages: [WatchVoiceWire.Message] = [
+            .directStart(callID: 7, version: WatchVoiceWire.version),
+            .directToken(callID: 7),
+            .directTool(callID: 7, call: .init(id: "c1", name: "start_job", arguments: ["instructions": "Check the build"])),
+            .directToolCancel(callID: 7, ids: ["c1", "c2"]),
+            .directPoll(callID: 7),
+            .directEnd(callID: 7, transcript: .init(
+                callUUID: "3F2504E0-4F89-11D3-9A0C-0305E82C3301",
+                startedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                endedAt: Date(timeIntervalSince1970: 1_700_000_600),
+                turns: [.init(role: .user, text: "Hi", at: Date(timeIntervalSince1970: 1_700_000_001))]
+            )),
+            .directSession(callID: 7, session: .init(token: token, setup: Data([1, 2, 3]), setupBytes: 900, googleSearch: false, voice: "Kore", openingPrompt: nil)),
+            .directTokenIssued(callID: 7, token: token),
+            .directToolResult(callID: 7, result: .init(outgoing: [
+                .toolResponse(id: "c1", name: "start_job", result: ["status": "running"], scheduling: nil, fallback: "Hermes started it."),
+                .textWhenIdle("The build passed."),
+                .contextWhenIdle("Typed in the chat."),
+                .endConversation,
+            ], runningJobs: 1)),
+        ]
+        for message in messages {
+            XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(message)), message)
+        }
+    }
+
+    /// The Watch's session must send Gemini exactly the setup the iPhone's
+    /// would: the declarations survive the trip byte for byte.
+    @MainActor
+    func testWatchDirectSetupGivesTheWatchTheIPhonesSetup() throws {
+        let functions = GeminiLiveToolBridge.declarations(webSearch: true, memoryRecall: true, thread: false)
+        let instructions = GeminiLiveConversationController.instructions(search: .hermes, answerLength: .detailed)
+        let packed = try XCTUnwrap(WatchVoiceWire.DirectSetup(systemInstruction: instructions, functions: functions).compressed())
+        XCTAssertLessThan(packed.data.count, packed.bytes)
+
+        let unpacked = try XCTUnwrap(WatchVoiceWire.DirectSetup(compressed: packed.data))
+        let declarations = try XCTUnwrap(unpacked.declarations)
+        XCTAssertEqual(declarations.map(\.name), functions.map(\.name))
+        XCTAssertEqual(declarations.map(\.behavior), functions.map(\.behavior))
+
+        func setup(_ instructions: String, _ functions: [GeminiLiveProtocol.FunctionDeclaration]) throws -> Data {
+            let message = GeminiLiveProtocol.setupMessage(systemInstruction: instructions, functions: functions, googleSearch: false, voice: "Kore", resumptionHandle: "h1")
+            return try JSONSerialization.data(withJSONObject: message, options: [.sortedKeys])
+        }
+        XCTAssertEqual(try setup(unpacked.systemInstruction, declarations), try setup(instructions, functions))
+
+        XCTAssertNil(WatchVoiceWire.DirectSetup(compressed: Data("not zlib".utf8)))
+        XCTAssertNil(WatchVoiceWire.DirectSetup(systemInstruction: "x", functions: [Data("{}".utf8)]).declarations)
+    }
+
+    func testWatchDirectTokenKeepsEveryField() throws {
+        let token = GeminiLiveToken(
+            token: "auth_tokens/one-use",
+            expiresAt: Date(timeIntervalSince1970: 1_800_000_000),
+            newSessionExpiresAt: Date(timeIntervalSince1970: 1_800_000_060),
+            model: "gemini-3.8-live",
+            webSocketURL: try XCTUnwrap(URL(string: "wss://example.test/ws?key=value"))
+        )
+        let wire = WatchVoiceWire.DirectToken(token)
+        XCTAssertEqual(wire.geminiToken, token)
+        XCTAssertEqual(wire.geminiToken?.connectURL, token.connectURL)
+    }
+
+    func testWatchDirectOutgoingBecomesWhatTheIPhonesCallSends() {
+        XCTAssertEqual(
+            WatchVoiceWire.DirectOutgoing.toolResponse(id: "c1", name: "web_search", result: ["answer": "Sunny"], scheduling: "WHEN_IDLE", fallback: "Sunny.").clientMessage,
+            .toolResponse(id: "c1", name: "web_search", result: ["answer": "Sunny"], scheduling: .whenIdle)
+        )
+        XCTAssertEqual(
+            WatchVoiceWire.DirectOutgoing.toolResponse(id: "c2", name: "start_job", result: [:], scheduling: nil, fallback: nil).clientMessage,
+            .toolResponse(id: "c2", name: "start_job", result: [:], scheduling: nil)
+        )
+        XCTAssertEqual(WatchVoiceWire.DirectOutgoing.textWhenIdle("Done.").clientMessage, .textTurn("Done."))
+        XCTAssertEqual(WatchVoiceWire.DirectOutgoing.contextWhenIdle("Typed.").clientMessage, .contextNote("Typed."))
+        XCTAssertNil(WatchVoiceWire.DirectOutgoing.endConversation.clientMessage)
+        XCTAssertTrue(WatchVoiceWire.DirectOutgoing.textWhenIdle("Done.").waitsForQuiet)
+        XCTAssertFalse(WatchVoiceWire.DirectOutgoing.endConversation.waitsForQuiet)
+    }
+
+    @MainActor
+    func testWatchDirectBrokerPassesTheBridgesOutgoingOn() {
+        XCTAssertEqual(WatchDirectBroker.wire(.textWhenIdle("News.")), .textWhenIdle("News."))
+        XCTAssertEqual(WatchDirectBroker.wire(.endConversation), .endConversation)
+        let silent = WatchDirectBroker.wire(.toolResponse(id: "c1", name: "recall_memory", result: ["status": "ok"], scheduling: .silent))
+        XCTAssertEqual(silent, .toolResponse(id: "c1", name: "recall_memory", result: ["status": "ok"], scheduling: "SILENT", fallback: nil))
+    }
 }

@@ -145,7 +145,7 @@ final class WatchCallModel: ObservableObject {
         if !holdWithWatchCall {
             systemCall?.endStaleCalls()
         } else {
-            let systemCall = self.systemCall ?? makeSystemCall()
+            let systemCall = makeSystemCall()
             systemCallActivated = await systemCall.start()
             // Ended while CallKit started: `finish` ended its call too.
             guard phase == .starting else { return }
@@ -570,8 +570,9 @@ final class WatchCallModel: ObservableObject {
         }
     }
 
+    /// The app's one CallKit provider, ending this call from its controls.
     private func makeSystemCall() -> WatchSystemCall {
-        let systemCall = WatchSystemCall()
+        let systemCall = WatchSystemCall.shared
         systemCall.onEndedBySystem = { [weak self] in
             self?.end(reason: "ended from the Watch's call controls")
         }

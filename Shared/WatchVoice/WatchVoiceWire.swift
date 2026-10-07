@@ -14,7 +14,7 @@ import Foundation
 enum WatchVoiceWire {
     /// Bumped when either side changes what a message means; a mismatch
     /// refuses the call instead of misreading it.
-    static let version = 1
+    static let version = 2
     /// The message dictionary's only key.
     static let messageKey = "wv"
 
@@ -74,6 +74,92 @@ enum WatchVoiceWire {
         var errors: [String]
     }
 
+    /// A single-use Gemini Live token the iPhone got from the Hermes host
+    /// (designs/apple-watch-voice-direct.md). The only credential the
+    /// Watch ever holds: it works for one session and expires within the
+    /// half hour.
+    struct DirectToken: Codable, Equatable {
+        var token: String
+        var expiresAt: Date?
+        var newSessionExpiresAt: Date?
+        var model: String
+        var webSocketURL: String
+    }
+
+    /// Everything a Watch call needs to run Gemini Live the way a call on
+    /// the iPhone does, built there: the same instructions, functions and
+    /// voice, and a token for the first connection.
+    struct DirectSession: Codable, Equatable {
+        var token: DirectToken
+        /// `DirectSetup` as zlib-compressed JSON: the instructions carry
+        /// the persona and memory, which can be long.
+        var setup: Data
+        /// The setup's uncompressed size, for the log.
+        var setupBytes: Int
+        var googleSearch: Bool
+        var voice: String?
+        /// The call's greeting turn, when the user asked for one.
+        var openingPrompt: String?
+    }
+
+    /// The setup's long part. Function declarations travel as their JSON:
+    /// their parameter schemas aren't Codable.
+    struct DirectSetup: Codable, Equatable {
+        var systemInstruction: String
+        var functions: [Data]
+    }
+
+    /// A function call from Gemini, for the iPhone's tool bridge to run.
+    struct DirectToolCall: Codable, Equatable {
+        var id: String
+        var name: String
+        var arguments: [String: String]
+    }
+
+    /// What the tool bridge asks the call to send Gemini, as on the iPhone.
+    enum DirectOutgoing: Codable, Equatable {
+        /// `fallback` is said instead, as a text turn, when the call can't
+        /// be answered any more (a new connection took over meanwhile), as
+        /// the iPhone's call does.
+        case toolResponse(id: String, name: String, result: [String: String], scheduling: String?, fallback: String?)
+        /// Sent as a text turn once nobody is speaking.
+        case textWhenIdle(String)
+        /// Kept by the model without a reply, sent once nobody is speaking.
+        case contextWhenIdle(String)
+        /// The model said goodbye: end once it has played.
+        case endConversation
+    }
+
+    /// The iPhone's answer to a tool call or a job poll.
+    struct DirectToolResult: Codable, Equatable {
+        var outgoing: [DirectOutgoing]
+        /// Voice jobs still running on Hermes (the phone's count, so jobs
+        /// started elsewhere count too): the Watch asks again while there
+        /// are any.
+        var runningJobs: Int
+    }
+
+    /// One settled line of a Watch call's transcript.
+    struct DirectTurn: Codable, Equatable {
+        enum Role: String, Codable {
+            case user
+            case assistant
+        }
+        var role: Role
+        var text: String
+        var at: Date
+    }
+
+    /// A finished Watch call, queued to the iPhone to save in voice
+    /// history whenever Conduit next runs there.
+    struct DirectTranscript: Codable, Equatable {
+        /// Names the saved call, so a transcript delivered twice is saved once.
+        var callUUID: String
+        var startedAt: Date
+        var endedAt: Date
+        var turns: [DirectTurn]
+    }
+
     /// Control messages, both directions.
     enum Message: Codable, Equatable {
         // Watch → iPhone
@@ -93,6 +179,18 @@ enum WatchVoiceWire {
         case report(String)
         /// Any other Watch event, as one JSON line for the iPhone's log.
         case note(String)
+        /// A Watch call to Gemini Live wants its session.
+        case directStart(callID: UInt32, version: Int)
+        /// A new single-use token for the call's next connection.
+        case directToken(callID: UInt32)
+        case directTool(callID: UInt32, call: DirectToolCall)
+        /// Gemini withdrew these calls (the user interrupted).
+        case directToolCancel(callID: UInt32, ids: [String])
+        /// While the call's jobs run: anything to tell the user?
+        case directPoll(callID: UInt32)
+        /// The call ended; queued, so it arrives even if the iPhone is
+        /// asleep right now.
+        case directEnd(callID: UInt32, transcript: DirectTranscript)
         // iPhone → Watch
         case callAccepted(callID: UInt32, mode: String)
         case callRefused(callID: UInt32, reason: String)
@@ -105,6 +203,12 @@ enum WatchVoiceWire {
         case turnMetrics(callID: UInt32, turn: UInt32, modelLatencyMs: Int)
         case soakResult(SoakResult)
         case pong(phase: String?)
+        /// The answer to `directStart`; a refusal comes as `callRefused`.
+        case directSession(callID: UInt32, session: DirectSession)
+        /// The answer to `directToken`; a refusal comes as `callRefused`.
+        case directTokenIssued(callID: UInt32, token: DirectToken)
+        /// The answer to `directTool` and `directPoll`.
+        case directToolResult(callID: UInt32, result: DirectToolResult)
     }
 
     static func encode(_ message: Message) -> [String: Any] {
