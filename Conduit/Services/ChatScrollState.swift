@@ -450,6 +450,35 @@ enum ChatScrollSessionIdentityResolver {
             || !reconciliationCatalogIDs.isDisjoint(with: previous.equivalentSessionIDs)
             || activeID.map(reconciliationCatalogIDs.contains) == true
 
+        // An explicit open moves the active id to the NEW conversation while
+        // the reconciliation boundary still names the one being left (the
+        // boundary is taken before the new id lands). That active id belongs
+        // to neither the previous identity nor the reconciliation's
+        // conversation: it is navigation, so the identity starts over from it,
+        // exactly as it does with no reconciliation in flight. Carrying it as
+        // a continuation merged the two conversations' ids and, for a chat
+        // with no catalog row (a Bot Chat), kept the LEFT conversation's id as
+        // canonical — a later preserve-current sync then resumed that other
+        // chat under the open one's header (#442).
+        if let activeID, !reconciliationIDs.isEmpty,
+           !reconciliationIDs.contains(activeID),
+           !reconciliationCatalogIDs.contains(activeID),
+           !previous.contains(activeID) {
+            let activeSession = matchingSession(for: [activeID])
+            let activeSessionIDs = activeSession?.identifiers ?? []
+            if activeSessionIDs.isDisjoint(with: previous.equivalentSessionIDs) {
+                return ChatScrollSessionIdentity(
+                    profile: normalizedProfile,
+                    canonicalSessionID: activeSession?.canonicalSessionID ?? activeID,
+                    equivalentSessionIDs: activeSessionIDs.union([activeID]),
+                    isReconciling: isReconciling,
+                    settledRevision: advanceSettledRevision
+                        ? current.settledRevision &+ 1
+                        : current.settledRevision
+                )
+            }
+        }
+
         var candidates = reconciliationIDs
         if reconciliationIDs.isEmpty || reconciliationContinuesPrevious,
            let activeID {

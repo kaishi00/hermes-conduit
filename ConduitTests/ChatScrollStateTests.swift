@@ -635,6 +635,49 @@ final class ChatScrollStateTests: XCTestCase {
         XCTAssertFalse(unrelated.contains("runtime-a"))
     }
 
+    /// #442: an open moves the active id before the new conversation's
+    /// reconcile replaces the boundary, so for one refresh the reconciliation
+    /// still names the chat being left. With no catalog rows (Bot Chats), that
+    /// refresh used to keep the left chat as canonical and merge both chats'
+    /// ids into one identity.
+    func testResolverStartsOverWhenAnOpenMovesTheActiveIDAheadOfTheBoundary() {
+        let left = ChatScrollSessionIdentityResolver.resolve(
+            profile: "alpha",
+            activeSessionID: "network-runtime",
+            catalog: [],
+            resolvedDurableSessionID: "network-chat",
+            previousIdentity: .none,
+            isReconciling: false
+        )
+        XCTAssertEqual(left.canonicalSessionID, "network-chat")
+
+        let opened = ChatScrollSessionIdentityResolver.resolve(
+            profile: "alpha",
+            activeSessionID: "assistant-chat",
+            catalog: [],
+            requestedSessionID: "network-runtime",
+            previousIdentity: left,
+            isReconciling: true
+        )
+
+        XCTAssertEqual(opened.canonicalSessionID, "assistant-chat")
+        XCTAssertTrue(opened.contains("assistant-chat"))
+        XCTAssertFalse(opened.contains("network-runtime"))
+        XCTAssertFalse(opened.contains("network-chat"))
+
+        let reconciling = ChatScrollSessionIdentityResolver.resolve(
+            profile: "alpha",
+            activeSessionID: "assistant-chat",
+            catalog: [],
+            requestedSessionID: "assistant-chat",
+            previousIdentity: opened,
+            isReconciling: true
+        )
+
+        XCTAssertEqual(reconciling.canonicalSessionID, "assistant-chat")
+        XCTAssertFalse(reconciling.contains("network-chat"))
+    }
+
     func testResolverDoesNotCarryIdentityAcrossProfilesWithEqualRawIDs() {
         let previous = ChatScrollSessionIdentityResolver.resolve(
             profile: "alpha",
