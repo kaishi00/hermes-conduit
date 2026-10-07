@@ -234,11 +234,27 @@ enum AnyCodable: Codable, Equatable {
 
 // MARK: - Stream Events
 
+/// Which row a `message.react` call addresses.
+enum MessageReactionTarget: Equatable {
+    case row(Int)
+    /// The newest persisted row of this role (`"assistant"` or `"user"`).
+    case newest(role: String)
+}
+
+struct MessageReactionResult: Equatable {
+    let rowId: Int
+    let reactions: [MessageReaction]
+}
+
 enum StreamEvent {
     case messageStart(sessionId: String)
     case messageDelta(sessionId: String, text: String)
     case reasoningDelta(sessionId: String, text: String)
     case messageComplete(sessionId: String, messageId: String?, content: String?, reasoning: String?)
+    /// The agent reacted to a message (its `react_to_message` tool). The
+    /// reaction is already persisted; this only paints it now. `role` names
+    /// the reacted row's role so a live row with no `rowId` yet can match.
+    case messageReaction(sessionId: String, rowId: Int, reactions: [MessageReaction], role: String)
     case messageError(sessionId: String, message: String)
     case messageInterrupted(sessionId: String)
     case sessionBusy(sessionId: String, busy: Bool)
@@ -2030,6 +2046,39 @@ final class HermesClient: ObservableObject {
         return .accepted(remaining: remaining)
     }
 
+    /// `message.react`: sets, replaces or (same emoji, or nil) retracts the
+    /// user's reaction. The row is named by its durable `row_id`; a live row
+    /// that hasn't been reloaded yet names `newest_role` instead and Hermes
+    /// resolves the newest row of that role. The reaction needs no turn of
+    /// its own: Hermes tells the agent about it with the next message.
+    func reactToMessage(
+        sessionId: String,
+        target: MessageReactionTarget,
+        emoji: String?
+    ) async throws -> MessageReactionResult {
+        var params: [String: Any] = [
+            "session_id": sessionId,
+            "author": MessageReaction.userAuthor
+        ]
+        // An explicit null clears the reaction.
+        params["emoji"] = emoji.map { $0 as Any } ?? NSNull()
+        switch target {
+        case .row(let rowId):
+            params["row_id"] = rowId
+        case .newest(let role):
+            params["newest_role"] = role
+        }
+        let result = try await rpc("message.react", params: params)
+        let object = result.objectValue ?? [:]
+        guard let rowId = Self.exactIntValue(object["row_id"]), rowId > 0 else {
+            throw HermesError.invalidResponse
+        }
+        return MessageReactionResult(
+            rowId: rowId,
+            reactions: MessageNormalizer.messageReactions(from: object["reactions"])
+        )
+    }
+
     /// Answers a sudo / secret / vault-unlock server request. `value` is
     /// sent once and never retained; an empty string tells Hermes the user
     /// skipped (the tool then proceeds without the value).
@@ -3198,7 +3247,9 @@ enum MessageNormalizer {
                 review: review,
                 attachments: userContent.attachments,
                 displayKind: displayKind?.rawValue
-                    ?? (isSteerRow && role == .user ? ChatMessage.steerDisplayKind : nil)
+                    ?? (isSteerRow && role == .user ? ChatMessage.steerDisplayKind : nil),
+                rowId: durableRowId(in: obj),
+                reactions: messageReactions(fromMetadata: obj["display_metadata"])
             )
 
             // External session history occasionally includes a role-less
@@ -3251,6 +3302,38 @@ enum MessageNormalizer {
             return nil
         }
         return object.mapValues { AnyCodable.from($0) }
+    }
+
+    /// The durable `messages.id` a reaction addresses. A gateway resume row
+    /// names it `row_id`; a REST transcript row carries it as its numeric
+    /// `id` (a string `id` is some other identity, never a row address).
+    static func durableRowId(in obj: [String: AnyCodable]) -> Int? {
+        let rowId = HermesClient.exactIntValue(obj["row_id"])
+            ?? HermesClient.exactIntValue(obj["id"])
+        guard let rowId, rowId > 0 else { return nil }
+        return rowId
+    }
+
+    /// Reactions persisted under `display_metadata.reactions`. Entries
+    /// without an emoji or an author are skipped; anything malformed reads
+    /// as none.
+    static func messageReactions(fromMetadata metadata: AnyCodable?) -> [MessageReaction] {
+        messageReactions(from: displayMetadataObject(metadata)?["reactions"])
+    }
+
+    /// A `MessageReaction` list as Hermes sends it (`message.react` result,
+    /// `message.reaction` event, stored metadata).
+    static func messageReactions(from value: AnyCodable?) -> [MessageReaction] {
+        (value?.arrayValue ?? []).compactMap { entry in
+            guard let object = entry.objectValue,
+                  let emoji = object["emoji"]?.stringValue?
+                      .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !emoji.isEmpty else { return nil }
+            guard let author = object["author"]?.stringValue?
+                      .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !author.isEmpty else { return nil }
+            return MessageReaction(emoji: emoji, author: author, at: object["at"]?.doubleValue)
+        }
     }
 
     /// The one-line title Hermes stamps on a background completion's

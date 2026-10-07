@@ -524,6 +524,13 @@ struct ChatMessage: Identifiable, Equatable {
     /// final display role/content; this only lets the timeline UI style the
     /// notice without re-deriving it from text.
     var displayKind: String?
+    /// Hermes' durable `messages.id` for this row (`row_id` on a resume row,
+    /// the numeric `id` on a REST transcript row). It is how a reaction
+    /// addresses the message. Nil for a live row that hasn't been reloaded
+    /// yet and for rows Conduit split off (reasoning, tool calls).
+    var rowId: Int?
+    /// Tapback reactions persisted on the row, at most one per author.
+    var reactions: [MessageReaction]
 
     // Non-codable because it contains closures in some uses; serialization
     // is handled by the gateway, not by us. We construct these from RPC results.
@@ -543,7 +550,9 @@ struct ChatMessage: Identifiable, Equatable {
         inputPrompt: InputPromptActivity? = nil,
         attachments: [Attachment]? = nil,
         code: String? = nil,
-        displayKind: String? = nil
+        displayKind: String? = nil,
+        rowId: Int? = nil,
+        reactions: [MessageReaction] = []
     ) {
         self.id = id
         self.role = role
@@ -560,6 +569,8 @@ struct ChatMessage: Identifiable, Equatable {
         self.attachments = attachments
         self.code = code
         self.displayKind = displayKind
+        self.rowId = rowId
+        self.reactions = reactions
     }
 
     /// Hermes' `display_kind` for a mid-turn steer row, also used for the
@@ -569,6 +580,42 @@ struct ChatMessage: Identifiable, Equatable {
     /// A user message delivered into a running turn with Steer.
     var isSteer: Bool {
         role == .user && displayKind == Self.steerDisplayKind
+    }
+}
+
+// MARK: - Reactions
+
+/// One emoji reaction on a message (Hermes `MessageReaction`, persisted in
+/// the row's `display_metadata.reactions`). Tapback rules: one reaction per
+/// author, the same emoji again retracts it, a different one replaces it.
+struct MessageReaction: Equatable, Hashable {
+    static let userAuthor = "user"
+    static let agentAuthor = "agent"
+
+    /// The six reactions the picker offers, in order.
+    static let tapbacks = ["👍", "👎", "❤️", "😂", "😮", "😢"]
+
+    let emoji: String
+    let author: String
+    var at: Double?
+
+    var isFromUser: Bool { author == Self.userAuthor }
+
+    /// The reaction list after `author` picks `emoji` (nil clears), applying
+    /// the same Tapback rules as Hermes' `set_message_reaction`, so the
+    /// optimistic paint matches what the server will return.
+    static func applying(
+        _ emoji: String?,
+        author: String,
+        to reactions: [MessageReaction],
+        at time: Double = Date().timeIntervalSince1970
+    ) -> [MessageReaction] {
+        let previous = reactions.first { $0.author == author }
+        var result = reactions.filter { $0.author != author }
+        if let emoji, !emoji.isEmpty, previous?.emoji != emoji {
+            result.append(MessageReaction(emoji: emoji, author: author, at: time))
+        }
+        return result
     }
 }
 
