@@ -655,7 +655,18 @@ final class WatchDirectCallModel: ObservableObject {
                     if firstDropAt == nil { firstDropAt = now }
                 }
             }
+            // As on the iPhone: the answer the drop cut off stops playing
+            // and its turn is over, so job news and the unanswered check
+            // don't wait for a turnComplete that never comes.
+            let cutAnswer = modelTurnActive || audio.isPlaying
+            if audio.isPlaying {
+                audio.stopPlayback()
+                lastPlaybackEndedAt = now
+            }
+            suppressingModelTurn = false
+            if modelTurnActive { modelTurnEnded() }
             WatchProbeLog.shared.note("directReconnecting", [
+                "cutAnswer": cutAnswer,
                 "aliveS": alive.map { Int($0) } as Any,
                 "sinceActivationS": lastActivationAt.map { Int(now - $0) } as Any,
                 "sinceFirstActivationS": audioActivatedAt.map { Int(now - $0) } as Any,

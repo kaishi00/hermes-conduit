@@ -230,13 +230,15 @@ final class WatchDirectBroker {
             // comes after the call's own answer waits for the next poll.
             let late = await handled.value
             if callID == id { lateOutgoing += late.filter { !$0.answers(call.id) } }
-            link.log.note("watchDirectTool", [
+            var fields: [String: Any] = [
                 "name": call.name,
                 "ms": Self.milliseconds(since: startedAt),
                 "connected": connected,
                 "queued": true,
                 "appState": WatchProbeLiveness.appStateName,
-            ])
+            ]
+            fields.merge(Self.answerSummary(late, answering: call.id)) { first, _ in first }
+            link.log.note("watchDirectTool", fields)
             return WatchVoiceWire.DirectToolResult(outgoing: [], runningJobs: appState.voiceBackgroundJobSupervisor.activeJobCount)
         }
         let outgoing: [GeminiLiveToolBridge.Outgoing]
@@ -255,15 +257,32 @@ final class WatchDirectBroker {
                 : ["error": "That took too long. Tell the user in a few words."]
             outgoing = [.toolResponse(id: call.id, name: call.name, result: result, scheduling: isJob ? nil : .whenIdle)]
         }
-        link.log.note("watchDirectTool", [
+        var fields: [String: Any] = [
             "name": call.name,
             "ms": Self.milliseconds(since: startedAt),
             "connected": connected,
             "queued": false,
             "outgoing": outgoing.count,
             "appState": WatchProbeLiveness.appStateName,
-        ])
+        ]
+        fields.merge(Self.answerSummary(outgoing, answering: call.id)) { first, _ in first }
+        link.log.note("watchDirectTool", fields)
         return result(outgoing, bridge: bridge)
+    }
+
+    /// What the answer to `id` said, for the test log: its keys, its size
+    /// and its error, never the results themselves.
+    private static func answerSummary(_ outgoing: [GeminiLiveToolBridge.Outgoing], answering id: String) -> [String: Any] {
+        for case .toolResponse(let responseID, _, let result, _) in outgoing where responseID == id {
+            var fields: [String: Any] = [
+                "resultKeys": result.keys.sorted(),
+                "resultChars": result.values.reduce(0) { $0 + $1.count },
+            ]
+            if let error = result["error"] { fields["resultError"] = String(error.prefix(160)) }
+            if let status = result["status"] { fields["resultStatus"] = status }
+            return fields
+        }
+        return ["answered": false]
     }
 
     private func poll(_ id: UInt32) async -> WatchVoiceWire.DirectToolResult {
