@@ -203,6 +203,7 @@ final class WatchDirectCallModel: ObservableObject {
     private var socketWaitNotes = 0
     private var socketNotes = 0
     private var restartingAudio = false
+    private var restartAttempts = 0
     /// The Watch's network path for the whole call, whichever socket runs:
     /// a refused WebSocket was reported with the path unsatisfied, and
     /// FB24377808 revokes it about 35 s after activation.
@@ -1158,17 +1159,41 @@ final class WatchDirectCallModel: ObservableObject {
         }
         guard !restartingAudio else { return }
         restartingAudio = true
+        restartAttempts += 1
+        let attempt = restartAttempts
         let id = callID
+        let startedAt = now
+        // An activation that never returns would swallow every later tap.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.reactivationTimeout) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.restartingAudio, self.restartAttempts == attempt else { return }
+                self.restartingAudio = false
+                WatchProbeLog.shared.note("directAudioRestartHung", ["ms": Int((self.now - startedAt) * 1000)])
+            }
+        }
         Task { [weak self] in
             guard let self else { return }
             let activated = await self.activateAudioSession()
-            self.restartingAudio = false
             guard self.callID == id, self.isActive else {
                 if activated, !self.isActive {
                     try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
                 }
                 return
             }
+            // The revocation timing and the reactivation cadence count from
+            // the activation, whether or not the engine then starts.
+            if activated {
+                WatchProbeLog.shared.note("directAudioRestarted", [
+                    "sinceActivationS": self.lastActivationAt.map { Int(self.now - $0) } as Any,
+                    "ms": Int((self.now - startedAt) * 1000),
+                    "screen": "\(self.scenePhase)",
+                ])
+                self.lastActivationAt = self.now
+            }
+            // Given up on as hung, and maybe tapped again since: the newer
+            // attempt carries on.
+            guard self.restartAttempts == attempt, self.restartingAudio else { return }
+            self.restartingAudio = false
             guard activated else {
                 // Still waiting for a tap, which tries again.
                 WatchProbeLog.shared.note("directAudioRestartFailed", ["error": "activation failed"])
@@ -1182,15 +1207,6 @@ final class WatchDirectCallModel: ObservableObject {
         do {
             try audio.start(options: audioOptions, playbackRate: GeminiLiveProtocol.outputSampleRate)
             phase = session?.isReady == true ? restingPhase : .reconnecting
-            // The restart activated the session again: the revocation
-            // timing and the reactivation cadence count from here.
-            if keepAlive == .audioSession {
-                WatchProbeLog.shared.note("directAudioRestarted", [
-                    "sinceActivationS": lastActivationAt.map { Int(now - $0) } as Any,
-                    "screen": "\(scenePhase)",
-                ])
-                lastActivationAt = now
-            }
         } catch {
             WatchProbeLog.shared.note("directAudioRestartFailed", ["error": error.localizedDescription])
         }
@@ -1535,6 +1551,11 @@ final class WatchDirectCallModel: ObservableObject {
         // Asked to end before the audio stops; CallKit finishes later.
         if keepAlive == .callKit { WatchSystemCall.shared.end() }
         audio.stop()
+        // Option E's session is the call's own: ended here even when the
+        // engine wasn't running (a start or restart that failed).
+        if keepAlive == .audioSession, audioSessionActivated == true {
+            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        }
         if let since = screenOffSince { screenOffSeconds += now - since }
         let liveSeconds = liveSince.map { now - $0 } ?? 0
         phase = .ended(reason)

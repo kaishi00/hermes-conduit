@@ -105,7 +105,10 @@ final class WatchAudio {
             hasRenderResources = false
             engine = nil
             player = nil
-            try? session.setActive(false, options: [.notifyOthersOnDeactivation])
+            // A session the caller activated is the caller's to end.
+            if options.activatesSession {
+                try? session.setActive(false, options: [.notifyOthersOnDeactivation])
+            }
             throw error
         }
     }
