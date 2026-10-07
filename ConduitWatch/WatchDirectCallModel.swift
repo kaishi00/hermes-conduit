@@ -1263,7 +1263,9 @@ final class WatchDirectCallModel: ObservableObject {
                 result = WatchJobAnswer.result(body: body)
                 fields["outcome"] = "answered"
                 fields["status"] = result["status"] ?? (result["error"] == nil ? "" : "error")
-                if isStart, result["status"] == "started" {
+                // "accepted": Hermes is still taking it, and its outcome
+                // comes as news.
+                if isStart, result["status"] == "started" || result["status"] == "accepted" {
                     self.relayJobsStarted += 1
                     self.followJobs(on: relay)
                 } else if wire.name == WatchJobAnswer.cancelJob {
