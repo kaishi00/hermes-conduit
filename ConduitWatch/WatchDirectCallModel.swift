@@ -1182,18 +1182,19 @@ final class WatchDirectCallModel: ObservableObject {
             }
             // The revocation timing and the reactivation cadence count from
             // the activation, whether or not the engine then starts.
-            if activated {
-                WatchProbeLog.shared.note("directAudioRestarted", [
-                    "sinceActivationS": self.lastActivationAt.map { Int(self.now - $0) } as Any,
-                    "ms": Int((self.now - startedAt) * 1000),
-                    "screen": "\(self.scenePhase)",
-                ])
-                self.lastActivationAt = self.now
-            }
+            let sinceActivation = self.lastActivationAt.map { Int(self.now - $0) }
+            if activated { self.lastActivationAt = self.now }
             // Given up on as hung, and maybe tapped again since: the newer
             // attempt carries on.
             guard self.restartAttempts == attempt, self.restartingAudio else { return }
             self.restartingAudio = false
+            if activated {
+                WatchProbeLog.shared.note("directAudioRestarted", [
+                    "sinceActivationS": sinceActivation as Any,
+                    "ms": Int((self.now - startedAt) * 1000),
+                    "screen": "\(self.scenePhase)",
+                ])
+            }
             guard activated else {
                 // Still waiting for a tap, which tries again.
                 WatchProbeLog.shared.note("directAudioRestartFailed", ["error": "activation failed"])
@@ -1550,9 +1551,12 @@ final class WatchDirectCallModel: ObservableObject {
         stopPathMonitor()
         // Asked to end before the audio stops; CallKit finishes later.
         if keepAlive == .callKit { WatchSystemCall.shared.end() }
-        audio.stop()
-        // Option E's session is the call's own: ended here even when the
-        // engine wasn't running (a start or restart that failed).
+        // A restart still waiting on its activation is over too.
+        restartingAudio = false
+        // Option E's session is the call's own, ended below even when the
+        // engine wasn't running (a start or restart that failed): `stop`
+        // only deactivates a session whose engine ran.
+        audio.stop(deactivating: keepAlive != .audioSession)
         if keepAlive == .audioSession, audioSessionActivated == true {
             try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
         }

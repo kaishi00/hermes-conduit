@@ -26,6 +26,10 @@ enum WatchSocketAPI: String {
 enum WatchSocketChoice: String, CaseIterable, Identifiable {
     case alternate
     case network
+    /// Network framework kept off the iPhone's Bluetooth link: the first
+    /// device run saw it refused there (ECONNABORTED) while URLSession
+    /// connected through it.
+    case networkWiFi
     case urlSession
 
     static let key = "watchDirect.socket"
@@ -39,6 +43,7 @@ enum WatchSocketChoice: String, CaseIterable, Identifiable {
         switch self {
         case .alternate: return "Both in turn"
         case .network: return "Network framework"
+        case .networkWiFi: return "Network framework, Wi-Fi only"
         case .urlSession: return "URLSession"
         }
     }
@@ -46,7 +51,7 @@ enum WatchSocketChoice: String, CaseIterable, Identifiable {
     var only: WatchSocketAPI? {
         switch self {
         case .alternate: return nil
-        case .network: return .network
+        case .network, .networkWiFi: return .network
         case .urlSession: return .urlSession
         }
     }
@@ -89,11 +94,13 @@ final class WatchSocketMeter {
         let inner: GeminiLiveSocket
         switch api {
         case .network:
-            let socket = NetworkGeminiLiveSocket(url: url)
+            let socket = NetworkGeminiLiveSocket(url: url, wifiOnly: choice == .networkWiFi)
             socket.onWaiting = { [weak self] reason in self?.onWaiting?(.network, reason) }
             socket.onPathEvent = { [weak self] kind, fields in self?.onPathEvent?(kind, fields) }
-            socket.onState = { [weak self] state in
-                self?.socketEvent(.network, number, "state", state: state, ["state": state])
+            socket.onState = { [weak self] state, path in
+                var fields = path
+                fields["state"] = state
+                self?.socketEvent(.network, number, "state", state: state, fields)
             }
             inner = socket
         case .urlSession:
@@ -174,9 +181,10 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
 
     var onWaiting: ((String) -> Void)?
     var onPathEvent: ((String, [String: Any]) -> Void)?
-    /// Every connection state: preparing, waiting, ready, failed,
-    /// cancelled.
-    var onState: ((String) -> Void)?
+    /// Every connection state (preparing, waiting, ready, failed,
+    /// cancelled), with the connection's own path at the time: why it
+    /// waits, and over which interface.
+    var onState: ((String, [String: Any]) -> Void)?
 
     private struct Message {
         let data: Data?
@@ -192,12 +200,13 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
     private var recordedClose: GeminiLiveServerClose?
     private var waitTimer: Timer?
 
-    init(url: URL) {
+    init(url: URL, wifiOnly: Bool = false) {
         let options = NWProtocolWebSocket.Options()
         options.autoReplyPing = true
         // Model audio frames are larger than the default limit.
         options.maximumMessageSize = 16 * 1024 * 1024
         let parameters = NWParameters.tls
+        if wifiOnly { parameters.requiredInterfaceType = .wifi }
         parameters.defaultProtocolStack.applicationProtocols.insert(options, at: 0)
         connection = NWConnection(to: .url(url), using: parameters)
         connection.stateUpdateHandler = { [weak self] state in
@@ -244,7 +253,7 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
                 let reason = message.data.flatMap { String(data: $0, encoding: .utf8) }?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 recordedClose = GeminiLiveServerClose(code: message.metadata.map { Self.number($0.closeCode) } ?? 0, reason: reason)
-                if closedError == nil { onState?("closed by server \(recordedClose?.code ?? 0)") }
+                if closedError == nil { onState?("closed by server \(recordedClose?.code ?? 0)", [:]) }
                 fail(NetworkGeminiLiveSocketError.closed)
                 throw NetworkGeminiLiveSocketError.closed
             }
@@ -252,7 +261,7 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
             if let data = message.data, !data.isEmpty { return data }
             // Nothing more will come.
             if opcode == nil, message.isComplete {
-                if closedError == nil { onState?("ended by server") }
+                if closedError == nil { onState?("ended by server", [:]) }
                 fail(NetworkGeminiLiveSocketError.closed)
                 throw NetworkGeminiLiveSocketError.closed
             }
@@ -260,7 +269,7 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
     }
 
     func close() {
-        if closedError == nil { onState?("closed by app") }
+        if closedError == nil { onState?("closed by app", [:]) }
         fail(NetworkGeminiLiveSocketError.closed)
     }
 
@@ -301,7 +310,7 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
 
     private func stateChanged(_ state: NWConnection.State) {
         guard closedError == nil else { return }
-        onState?(String("\(state)".prefix(160)))
+        onState?(String("\(state)".prefix(160)), Self.describe(connection.currentPath))
         switch state {
         case .ready:
             waitTimer?.invalidate()
@@ -317,7 +326,7 @@ final class NetworkGeminiLiveSocket: GeminiLiveSocket {
             waitTimer = WatchVoiceMain.timer(every: Self.waitLimit, repeats: false) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self, self.closedError == nil else { return }
-                    self.onState?("gave up waiting after \(Int(Self.waitLimit)) s")
+                    self.onState?("gave up waiting after \(Int(Self.waitLimit)) s", Self.describe(self.connection.currentPath))
                     self.fail(error)
                 }
             }
