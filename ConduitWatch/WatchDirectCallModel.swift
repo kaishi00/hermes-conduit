@@ -1126,6 +1126,8 @@ final class WatchDirectCallModel: ObservableObject {
         // An activation that never returned would stop the cadence for good.
         if reactivating, let started = reactivationStartedAt, now - started > Self.reactivationTimeout {
             reactivating = false
+            // Counted here: if it returns after all, it only moves the anchor.
+            reactivationStartedAt = nil
             reactivationFailures += 1
             WatchProbeLog.shared.note("directReactivateHung", ["ms": Int((now - started) * 1000)])
         }
@@ -1155,8 +1157,8 @@ final class WatchDirectCallModel: ObservableObject {
                 return
             }
             let at = self.now
-            // Given up on as hung, and maybe followed by another: it only
-            // moves the anchor.
+            // Given up on as hung (and maybe followed by another): already
+            // counted, so it only moves the anchor.
             guard self.reactivationStartedAt == startedAt else {
                 if activated { self.lastActivationAt = at }
                 return

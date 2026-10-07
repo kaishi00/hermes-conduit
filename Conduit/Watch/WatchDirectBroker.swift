@@ -44,6 +44,9 @@ final class WatchDirectBroker {
     private var profile: String?
     private var dashboard: String?
     private var lastHeardAt = Date.distantPast
+    /// Calls that ended here: a late message from one must not make it the
+    /// running call again.
+    private var endedCallIDs: [UInt32] = []
     /// What the bridge gave after its call's answer had gone (a slow
     /// start_job, or a call queued while the Watch couldn't wait): sent
     /// with the next poll.
@@ -189,7 +192,7 @@ final class WatchDirectBroker {
     /// arriving late) gets one of its own, so the running call is left
     /// alone.
     private func bridge(for id: UInt32) -> GeminiLiveToolBridge {
-        if callID == nil {
+        if callID == nil, !endedCallIDs.contains(id) {
             callID = id
             lateOutgoing = []
             lastHeardAt = Date()
@@ -265,7 +268,7 @@ final class WatchDirectBroker {
 
     private func poll(_ id: UInt32) async -> WatchVoiceWire.DirectToolResult {
         // An ended call's poll would take the running call's news.
-        if let callID, callID != id {
+        if callID != id {
             return WatchVoiceWire.DirectToolResult(outgoing: [], runningJobs: appState.voiceBackgroundJobSupervisor.activeJobCount)
         }
         let bridge = bridge(for: id)
@@ -320,6 +323,7 @@ final class WatchDirectBroker {
 
     private func ended(_ id: UInt32, transcript: WatchVoiceWire.DirectTranscript) {
         let isCurrent = id == callID
+        markEnded(id)
         let profile = isCurrent ? self.profile : nil
         let dashboard = isCurrent ? self.dashboard : nil
         link.log.note("watchDirectEnd", [
@@ -337,8 +341,15 @@ final class WatchDirectBroker {
         }
     }
 
+    private func markEnded(_ id: UInt32) {
+        guard !endedCallIDs.contains(id) else { return }
+        endedCallIDs.append(id)
+        if endedCallIDs.count > 16 { endedCallIDs.removeFirst() }
+    }
+
     /// Unspoken job news goes back to the jobs, which report it as usual.
     private func endCall(keepRecovery: Bool = false) {
+        if let callID { markEnded(callID) }
         if let bridge {
             bridge.returnUnsent(lateOutgoing.compactMap { item in
                 if case .textWhenIdle(let text) = item { return text }
