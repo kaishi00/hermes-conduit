@@ -3345,7 +3345,8 @@ final class AppState: ObservableObject {
 
     /// The open chat's row in the session list, for the chat title's
     /// touch-and-hold menu. Nil for a room, a Bot Chat (no row of its own),
-    /// or a new chat Hermes hasn't listed yet. A reopened chat runs under a
+    /// a cron run (the menu's actions are for ordinary chats), or a new chat
+    /// Hermes hasn't listed yet. A reopened chat runs under a
     /// runtime id its row may not name yet, so the row is found through the
     /// chat's own ids and handed back carrying the open id too: rename,
     /// archive and delete then reach the open chat as well.
@@ -3355,15 +3356,28 @@ final class AppState: ObservableObject {
               botConversationProfile(for: sessionId) == nil else { return nil }
         let rows = activeProfileSessions
         let ownIDs = chatOwnSessionIDs(for: sessionId)
-        // A row's alternate ids can be shared by another row, and this row
-        // drives rename, archive and delete: an alternate id only counts
-        // when exactly one row lists it.
-        let alternateMatches = rows.filter { $0.alternateIds.contains(sessionId) }
-        guard var row = rows.first(where: { candidate in
+        // This row drives rename, archive and delete, so it is never picked
+        // by list order: two rows matching the chat's own ids are settled
+        // by the stored id its resume recorded, else neither is used. An
+        // alternate id, which rows can share, only counts when exactly one
+        // row lists it.
+        let ownMatches = rows.filter { candidate in
             !ownIDs.isDisjoint(with: [candidate.id, candidate.storedSessionId].compactMap {
                 ChatScrollIdentityNormalization.sessionID($0)
             })
-        }) ?? (alternateMatches.count == 1 ? alternateMatches.first : nil) else { return nil }
+        }
+        let alternateMatches = rows.filter { $0.alternateIds.contains(sessionId) }
+        let match: SessionSummary?
+        if ownMatches.count == 1 {
+            match = ownMatches.first
+        } else if ownMatches.count > 1 {
+            let durable = conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+            let durableMatches = ownMatches.filter { $0.id == durable || $0.storedSessionId == durable }
+            match = durableMatches.count == 1 ? durableMatches.first : nil
+        } else {
+            match = alternateMatches.count == 1 ? alternateMatches.first : nil
+        }
+        guard var row = match else { return nil }
         if row.id != sessionId, !row.alternateIds.contains(sessionId) {
             row.alternateIds.append(sessionId)
         }
@@ -15015,19 +15029,19 @@ final class AppState: ObservableObject {
         // and only resumes by the stored id, so refresh addresses the stored
         // id whenever it is known; resuming the runtime id failed with
         // "session not found" and left the chat synchronizing (#446).
-        let identity = captureConversationIdentity(
-            for: sessionId,
-            scopeProfile: botConversationProfile(for: sessionId)
-        )
-        let target = identity?.resumeTargetID ?? sessionId
+        // A Bot Chat's scope is read from the open id here and passed on,
+        // so it doesn't depend on the stored id being registered too.
+        let botProfile = botConversationProfile(for: sessionId)
+        let identity = captureConversationIdentity(for: sessionId, scopeProfile: botProfile)
         let token = beginReconciliation()
         let succeeded = await reconcile(
-            sessionId: target,
+            sessionId: identity?.resumeTargetID ?? sessionId,
             using: client,
             token: token,
-            acceptedSessionIDs: identity?.acceptedSessionIDs ?? knownSessionIDs(for: sessionId),
+            acceptedSessionIDs: identity?.acceptedSessionIDs ?? [sessionId],
             conversationIdentity: identity,
-            requiredViewportTransitionGeneration: transitionGeneration
+            requiredViewportTransitionGeneration: transitionGeneration,
+            conversationProfile: botProfile
         )
         if !succeeded || messages == previousMessages {
             finishChatViewportTransition(generation: transitionGeneration)

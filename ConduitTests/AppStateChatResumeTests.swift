@@ -1325,6 +1325,12 @@ final class AppStateChatResumeTests: XCTestCase {
 
         harness.appState.sessions = [session("stored-c", alternateIDs: ["runtime-shared"])]
         XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "stored-c")
+
+        // Two rows match the chat's own ids (one by the open id, one by its
+        // recorded stored id): the recorded stored id decides, never order.
+        harness.appState.sessions = [session("runtime-new"), session("stored-a")]
+        harness.appState.activeSessionId = "runtime-new"
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "stored-a")
     }
 
     func testResumeDedupNormalizesPersistedBoundaryBeforeReplayingBufferedDelta() async {
