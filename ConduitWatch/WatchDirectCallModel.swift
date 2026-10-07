@@ -238,6 +238,13 @@ final class WatchDirectCallModel: ObservableObject {
     private var toolsAnsweredLive = 0
     private var toolsUnreachable = 0
     private var jobsQueued = 0
+    /// Tools asked for with the wrist down (Eric's choice for Watch tools,
+    /// 2026-10-07): each was answered at once with a request to raise the
+    /// wrist, and runs on the iPhone once the link is back. A job goes by
+    /// `transferUserInfo` instead, which also outlives the call.
+    private var wristQueue: [(call: WatchVoiceWire.DirectToolCall, at: TimeInterval)] = []
+    private var toolsWaitedForWrist = 0
+    private var wristWaits: [TimeInterval] = []
     private var pollInFlight = false
     private var lastPollAt: TimeInterval = 0
     private var polls = 0
@@ -655,9 +662,12 @@ final class WatchDirectCallModel: ObservableObject {
                     if firstDropAt == nil { firstDropAt = now }
                 }
             }
-            // As on the iPhone: the answer the drop cut off stops playing
-            // and its turn is over, so job news and the unanswered check
-            // don't wait for a turnComplete that never comes.
+            // The answer the drop cut off stops playing and its turn is
+            // over, as on the iPhone, so job news and the unanswered check
+            // don't wait for a turnComplete that never comes. Unlike the
+            // iPhone, the turn's transcript lines close and it counts as a
+            // turn: an answer the resumption finishes counts twice, which
+            // `cutAnswer` in the log marks.
             let cutAnswer = modelTurnActive || audio.isPlaying
             if audio.isPlaying {
                 audio.stopPlayback()
@@ -832,6 +842,7 @@ final class WatchDirectCallModel: ObservableObject {
         case .toolCallCancellation(let ids):
             // Answers still coming for these are dropped.
             withdrawnToolIDs.formUnion(toolsInFlight.intersection(ids))
+            wristQueue.removeAll { ids.contains($0.call.id) }
             link.send(.directToolCancel(callID: callID, ids: ids))
         case .goAway(let timeLeft):
             goAways += 1
@@ -850,6 +861,9 @@ final class WatchDirectCallModel: ObservableObject {
         openUserLine = nil
         openAssistantLine = nil
         speechEndAtTurnStart = nil
+        // A reply cut off before it played leaves no timing behind for
+        // the next one to skip.
+        awaitingFirstAudio = false
         lastAudioChunkAt = nil
         activity.reset()
         flushQuietQueue()
@@ -955,13 +969,17 @@ final class WatchDirectCallModel: ObservableObject {
         })
     }
 
-    /// The iPhone didn't take the call: a job is queued for whenever it
-    /// can, and anything else is answered with why it can't be done.
-    /// Function results are written for the model, not shown.
+    /// The iPhone didn't take the call. With the wrist down (the link is
+    /// down whenever the Watch app isn't active), a job is queued and
+    /// anything else waits for the wrist; either way Hermes asks for it.
+    /// Otherwise the call is answered with why it can't be done. Function
+    /// results are written for the model, not shown.
     private func toolUnreachable(_ call: WatchVoiceWire.DirectToolCall, generation: Int?, error: String, withdrawn: Bool) {
         toolsUnreachable += 1
         var result: [String: String]
         var queued = false
+        var waiting = false
+        let wristDown = !link.isReachable
         if call.name == "start_job" {
             queued = link.queue(.directTool(callID: callID, call: call))
             if queued {
@@ -969,7 +987,9 @@ final class WatchDirectCallModel: ObservableObject {
                 runningJobs = max(runningJobs, 1)
                 result = [
                     "status": "queued",
-                    "message": "Conduit on the user's iPhone can't be reached right now. The job is queued and starts on Hermes once the iPhone takes it; its result comes as a Conduit notification. Tell the user in a sentence.",
+                    "message": wristDown
+                        ? Self.wristQueuedMessage
+                        : "Conduit on the user's iPhone can't be reached right now. The job is queued and starts on Hermes once the iPhone takes it; its result comes as a Conduit notification. Tell the user in a sentence.",
                 ]
             } else {
                 result = [
@@ -977,6 +997,11 @@ final class WatchDirectCallModel: ObservableObject {
                     "message": "Conduit on the user's iPhone can't be reached right now, so the job didn't start. Tell the user in a sentence.",
                 ]
             }
+        } else if wristDown, !withdrawn {
+            waiting = true
+            toolsWaitedForWrist += 1
+            wristQueue.append((call, now))
+            result = ["status": "waiting_for_wrist", "message": Self.wristWaitMessage]
         } else {
             result = ["error": "Conduit on the user's iPhone can't be reached right now, so this isn't available. Tell the user in a few words."]
         }
@@ -984,6 +1009,7 @@ final class WatchDirectCallModel: ObservableObject {
             "name": call.name,
             "live": false,
             "queued": queued,
+            "waitingForWrist": waiting,
             "error": error,
             "withdrawn": withdrawn,
             "screen": "\(scenePhase)",
@@ -992,6 +1018,56 @@ final class WatchDirectCallModel: ObservableObject {
         guard !withdrawn else { return }
         let scheduling = Self.whenIdleTools.contains(call.name) ? GeminiLiveProtocol.Scheduling.whenIdle.rawValue : nil
         answer(.toolResponse(id: call.id, name: call.name, result: result, scheduling: scheduling, fallback: nil), generation: generation)
+    }
+
+    /// Written for the model, not shown.
+    static let wristQueuedMessage = "The user's iPhone can only be reached while their wrist is raised. The job is queued and starts on Hermes as soon as they raise it; its result comes later. Ask them, in a few words, to raise their wrist."
+    static let wristWaitMessage = "The user's iPhone can only be reached while their wrist is raised. Ask them, in a few words, to raise their wrist; this runs as soon as they do, and its result follows as a message. Don't call it again."
+
+    /// Runs the tools that waited for the wrist, now that the iPhone can be
+    /// reached. Their calls were answered already, so each result goes to
+    /// the model as a text update at the next quiet moment.
+    private func runWristQueueIfReachable() {
+        guard !wristQueue.isEmpty, link.isReachable else { return }
+        let waiting = wristQueue
+        wristQueue = []
+        let id = callID
+        for (call, parkedAt) in waiting {
+            link.send(.directTool(callID: id, call: call), reply: { [weak self] answer in
+                guard let self, self.callID == id, self.isActive else { return }
+                guard case .directToolResult(_, let result)? = answer else {
+                    WatchProbeLog.shared.note("directToolAfterWristFailed", ["name": call.name, "error": "unreadable answer"])
+                    return
+                }
+                let waited = self.now - parkedAt
+                self.wristWaits.append(waited)
+                WatchProbeLog.shared.note("directToolAfterWrist", [
+                    "name": call.name,
+                    "waitedMs": Int(waited * 1000),
+                    "outgoing": result.outgoing.count,
+                    "screen": "\(self.scenePhase)",
+                ])
+                // The call's own answer becomes a text update; anything
+                // else is handled as a poll's would be.
+                let outgoing: [WatchVoiceWire.DirectOutgoing] = result.outgoing.map { item in
+                    guard case .toolResponse(let responseID, let name, let response, _, let fallback) = item, responseID == call.id else { return item }
+                    return .textWhenIdle(fallback ?? Self.wristResultText(name: name, result: response))
+                }
+                self.apply(WatchVoiceWire.DirectToolResult(outgoing: outgoing, runningJobs: result.runningJobs), answering: nil, generation: nil, withdrawn: false)
+            }, failure: { [weak self] error in
+                guard let self, self.callID == id, self.isActive else { return }
+                // The link went again: wait for the next raise.
+                self.wristQueue.append((call, parkedAt))
+                WatchProbeLog.shared.note("directToolAfterWristFailed", ["name": call.name, "error": error.localizedDescription])
+            })
+        }
+    }
+
+    /// A tool's answer as a text update, for a call already answered with
+    /// "raise your wrist". Not UI copy.
+    static func wristResultText(name: String, result: [String: String]) -> String {
+        let lines = result.keys.sorted().map { "\($0): \(result[$0] ?? "")" }.joined(separator: "\n")
+        return "[The \(name) the user asked for earlier has run now that their wrist is raised. Its result:\n\(lines)\nTell them in a sentence or two.]"
     }
 
     private func apply(_ result: WatchVoiceWire.DirectToolResult, answering callID: String?, generation: Int?, withdrawn: Bool) {
@@ -1046,7 +1122,9 @@ final class WatchDirectCallModel: ObservableObject {
     /// While this call's jobs run, asks the iPhone for their news. Each ask
     /// wakes Conduit there briefly; none is made while no job runs.
     private func pollIfNeeded() {
-        guard runningJobs > 0, !pollInFlight, now - lastPollAt >= Self.pollInterval else { return }
+        // With the wrist down the link is down: a poll would only fail.
+        // The first tick after the wrist comes up asks at once.
+        guard runningJobs > 0, !pollInFlight, link.isReachable, now - lastPollAt >= Self.pollInterval else { return }
         pollInFlight = true
         lastPollAt = now
         polls += 1
@@ -1254,6 +1332,7 @@ final class WatchDirectCallModel: ObservableObject {
                 return
             }
         }
+        runWristQueueIfReachable()
         pollIfNeeded()
         reactivateIfDue()
         probeLinkIfDue()
@@ -1522,6 +1601,9 @@ final class WatchDirectCallModel: ObservableObject {
         toolsAnsweredLive = 0
         toolsUnreachable = 0
         jobsQueued = 0
+        wristQueue = []
+        toolsWaitedForWrist = 0
+        wristWaits = []
         pollInFlight = false
         lastPollAt = 0
         polls = 0
@@ -1643,6 +1725,10 @@ final class WatchDirectCallModel: ObservableObject {
             "toolsAnsweredLive": toolsAnsweredLive,
             "toolsUnreachable": toolsUnreachable,
             "jobsQueued": jobsQueued,
+            "toolsWaitedForWrist": toolsWaitedForWrist,
+            "toolsStillWaiting": wristQueue.count,
+            "wristWaitP50Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(wristWaits, 0.5)) as Any,
+            "wristWaitMaxMs": WatchVoiceStats.milliseconds(wristWaits.max()) as Any,
             "polls": polls,
             "pollsFailed": pollsFailed,
             "textUpdatesSent": textUpdatesSent,
