@@ -1504,16 +1504,6 @@ struct AssistantBubble: View {
                 }
             }
             .padding(.top, 2)
-            // Double-tap the row under a reply for the Tapback bar. The
-            // reply's text keeps double-tap and long-press for selecting.
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                TapGesture(count: 2).onEnded {
-                    guard message.role == .assistant, appState.canReact(to: message) else { return }
-                    Haptics.light()
-                    showsTapback = true
-                }
-            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

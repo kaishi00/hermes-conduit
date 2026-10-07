@@ -14956,7 +14956,8 @@ final class AppState: ObservableObject {
 
     // MARK: - Reactions
 
-    /// Injectable `message.react` transport; nil uses the live client.
+    /// Test seam for the `message.react` transport; production leaves it
+    /// nil and uses the live client.
     var messageReactionSender: (@MainActor (_ sessionId: String, _ target: MessageReactionTarget, _ emoji: String?) async throws -> MessageReactionResult)?
     /// Latest tapback per message id, so an older reply to a quick re-tap
     /// can't overwrite the newer one.
@@ -15015,27 +15016,47 @@ final class AppState: ObservableObject {
             guard activeSessionId == sessionId,
                   reactionRequestGenerations[messageId] == generation,
                   let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
+            reactionRequestGenerations[messageId] = nil
+            // "Newest assistant row" is resolved when Hermes handles the
+            // call. If a newer reply landed meanwhile, the returned row is
+            // that one, not this; keep the paint and let the next reload
+            // bring the real id.
+            if case .newest = target, reactionTarget(for: messages[current]) != target {
+                return
+            }
             messages[current].rowId = result.rowId
             messages[current].reactions = result.reactions
         } catch {
             guard activeSessionId == sessionId,
                   reactionRequestGenerations[messageId] == generation,
                   let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
-            messages[current].reactions = previous
+            reactionRequestGenerations[messageId] = nil
+            // Put back only the user's own reaction: an agent reaction that
+            // arrived during the call stays.
+            let previousMine = previous.first(where: \.isFromUser)
+            var restored = messages[current].reactions.filter { !$0.isFromUser }
+            if let previousMine { restored.append(previousMine) }
+            messages[current].reactions = restored
             errorMessage = AppLocalization.string("Your reaction wasn't saved. \(UserFacingError.message(for: error))")
         }
     }
 
-    /// The agent's `message.reaction` event. The row is matched by its
-    /// durable id; a live row with no id yet is the newest row of the
-    /// reacted role, which is the agent tool's default target. The row
-    /// learns its id so a later tapback addresses it directly.
+    /// The agent's `message.reaction` event, carrying the row's full
+    /// reaction list. The row is matched by its durable id; a live row with
+    /// no id yet is the newest row of the reacted role, which is the agent
+    /// tool's default target, and learns its id so a later tapback
+    /// addresses it directly. An unknown role only matches by id.
     private func applyAgentReaction(rowId: Int, reactions: [MessageReaction], role: String) {
         if let index = messages.firstIndex(where: { $0.rowId == rowId }) {
             messages[index].reactions = reactions
             return
         }
-        let messageRole: MessageRole = role == "assistant" ? .assistant : .user
+        let messageRole: MessageRole
+        switch role {
+        case "assistant": messageRole = .assistant
+        case "user": messageRole = .user
+        default: return
+        }
         guard let index = messages.lastIndex(where: { $0.role == messageRole && $0.rowId == nil }) else { return }
         messages[index].rowId = rowId
         messages[index].reactions = reactions

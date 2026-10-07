@@ -58,7 +58,7 @@ enum StreamEventParser {
                 sessionId: sessionId,
                 rowId: rowId,
                 reactions: MessageNormalizer.messageReactions(from: payload?["reactions"]),
-                role: payload?["role"]?.stringValue ?? "user"
+                role: payload?["role"]?.stringValue ?? ""
             )
 
         case "error":

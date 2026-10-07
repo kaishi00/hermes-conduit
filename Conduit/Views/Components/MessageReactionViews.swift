@@ -4,6 +4,7 @@ import SwiftUI
 /// same emoji share a chip with a count). The user's own reaction is
 /// outlined in the accent colour, like Messages' Tapback.
 struct MessageReactionChips: View {
+    /// Re-renders the labels when the app language changes.
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let reactions: [MessageReaction]
     /// The agent's display name, for VoiceOver.
@@ -93,6 +94,7 @@ struct MessageReactionChips: View {
 /// The Tapback bar: six reactions in a row. Picking the one already chosen
 /// takes it back.
 struct TapbackPicker: View {
+    /// Re-renders the labels when the app language changes.
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let selected: String?
     let onPick: (String) -> Void
@@ -105,7 +107,7 @@ struct TapbackPicker: View {
                 } label: {
                     Text(emoji)
                         .font(.title2)
-                        .frame(width: 44, height: 44)
+                        .frame(minWidth: 44, minHeight: 44)
                         .background(
                             Circle().fill(emoji == selected ? Color.conduitAccent.opacity(0.22) : Color.clear)
                         )
@@ -125,9 +127,10 @@ struct TapbackPicker: View {
 }
 
 /// The React control in a reply's action row; it hosts the Tapback bar.
-/// `isPresented` is owned by the bubble so a double-tap on the reply's row
-/// can open the same bar.
+/// `isPresented` is owned by the bubble so tapping a reaction chip opens
+/// the same bar.
 struct MessageReactButton: View {
+    /// Re-renders the label when the app language changes.
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Binding var isPresented: Bool

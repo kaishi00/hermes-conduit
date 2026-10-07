@@ -148,6 +148,32 @@ extension MessageNormalizerTests {
 
         appState.handleStreamEvent(.messageReaction(sessionId: "other-session", rowId: 6, reactions: thumbs, role: "assistant"))
         XCTAssertEqual(appState.messages[1].reactions, [], "Another conversation's event is ignored")
+
+        appState.messages.append(ChatMessage(id: "local-u3", role: .user, content: "Third", timestamp: "4"))
+        appState.handleStreamEvent(.messageReaction(sessionId: "sess-react", rowId: 11, reactions: thumbs, role: ""))
+        XCTAssertNil(appState.messages[3].rowId, "An unknown role never guesses a live row")
+        XCTAssertEqual(appState.messages[3].reactions, [])
+    }
+
+    func testFailedReactionKeepsAnAgentReactionThatArrivedMeanwhile() async {
+        let appState = makeReactionAppState()
+        appState.messages = [
+            ChatMessage(id: "a1", role: .assistant, content: "Hello", timestamp: "2", rowId: 2)
+        ]
+        let agent = MessageReaction(emoji: "👍", author: "agent", at: 1)
+        appState.messageReactionSender = { _, _, _ in
+            appState.handleStreamEvent(.messageReaction(
+                sessionId: "sess-react",
+                rowId: 2,
+                reactions: [agent, MessageReaction(emoji: "❤️", author: "user", at: 2)],
+                role: "assistant"
+            ))
+            throw HermesError.notConnected
+        }
+
+        await appState.react(to: "a1", with: "❤️")
+
+        XCTAssertEqual(appState.messages[0].reactions, [agent])
     }
 
     // MARK: - Reacting
