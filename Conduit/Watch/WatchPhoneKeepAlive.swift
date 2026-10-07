@@ -7,7 +7,10 @@
 //  settings > Apple Watch test. A device log had the CallKit call break
 //  the link: every message from the iPhone to the Watch failed from the
 //  moment the call's audio started, in both calls tried. Silent audio is
-//  the other way an app with background audio keeps running.
+//  the other way an app with background audio keeps running. It is a
+//  measurement only: the design rules it out for a release (App Review
+//  2.5.4), so a pass shows whether staying awake is all a locked phone
+//  needs, not a way to ship.
 //
 
 import AVFAudio
@@ -39,7 +42,7 @@ enum WatchPhoneKeepAlive: String, CaseIterable {
         case .off:
             return "Nothing keeps Conduit running while the phone is locked."
         case .silentAudio:
-            return "Each Watch call plays silence on this iPhone, mixed with anything else playing, so iOS keeps Conduit running while the phone is locked."
+            return "Each Watch call plays silence on this iPhone, mixed with anything else playing, so iOS keeps Conduit running while the phone is locked. A measurement only: App Review doesn't allow it in a release."
         case .call:
             return "Each Watch call also starts a call on this iPhone. In the last test this stopped every message from the iPhone reaching the Watch."
         }
