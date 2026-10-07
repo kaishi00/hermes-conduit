@@ -130,6 +130,12 @@ final class WatchDirectCallModel: ObservableObject {
     /// How often the call checks that a Watch message still reaches (and
     /// wakes) Conduit on the iPhone, whatever the screen and the phone do.
     static let linkProbeInterval: TimeInterval = 30
+    /// The call's timeline: this often for the first 2 minutes after the
+    /// audio session's activation (the reported revocation comes at 35 to
+    /// 39 s), then every 30 s.
+    static let earlyTimelineInterval: TimeInterval = 5
+    static let lateTimelineInterval: TimeInterval = 30
+    static let earlyTimelineSpan: TimeInterval = 120
     /// A reactivation still running after this long counts as failed.
     static let reactivationTimeout: TimeInterval = 10
     /// Calls the iPhone answers once nobody speaks (NON_BLOCKING lookups).
@@ -247,6 +253,17 @@ final class WatchDirectCallModel: ObservableObject {
     // Liveness: gaps in the one-second ticker are time the Watch app
     // didn't run.
     private var lastTickAt: TimeInterval?
+
+    // The timeline: totals at the last entry, for each entry's deltas.
+    private var lastTimelineAt: TimeInterval?
+    private var timelineEntries = 0
+    private var samplesCaptured = 0
+    private var chunksSent = 0
+    private var timelineMark = (captured: 0, chunksSent: 0, sendFailures: 0, bytesUp: 0, bytesDown: 0, framesDown: 0)
+    private var windowMaxCaptureGap: TimeInterval = 0
+    /// The Network framework path as last reported.
+    private var pathStatus: String?
+    private var pathUses: [String] = []
 
     // Watch → iPhone messages during the call.
     private var probeInFlight = false
@@ -637,6 +654,8 @@ final class WatchDirectCallModel: ObservableObject {
     }
 
     private func pathEvent(_ kind: String, _ fields: [String: Any]) {
+        if let status = fields["status"] as? String { pathStatus = status }
+        if let uses = fields["uses"] as? [String] { pathUses = uses }
         if kind == "ready" {
             let uses = (fields["uses"] as? [String]) ?? []
             route = "network, " + (uses.isEmpty ? "unknown route" : uses.joined(separator: "+"))
@@ -957,8 +976,10 @@ final class WatchDirectCallModel: ObservableObject {
 
     private func captured(_ samples: [Int16], at time: TimeInterval) {
         guard isActive else { return }
+        samplesCaptured += samples.count
         if let last = lastCaptureAt {
             maxCaptureGap = max(maxCaptureGap, time - last)
+            windowMaxCaptureGap = max(windowMaxCaptureGap, time - last)
             // Any gap overlapping the 3 s after a reactivation, however long.
             if let reactivated = reactivationStartedAt, last < reactivated + 3, time > reactivated {
                 maxReactivationCaptureGap = max(maxReactivationCaptureGap, time - last)
@@ -996,6 +1017,7 @@ final class WatchDirectCallModel: ObservableObject {
         sendsInFlight += 1
         session.send(.audio(pcm), onSent: { [weak self] in
             self?.sendsInFlight -= 1
+            self?.chunksSent += 1
         }, onFailure: { [weak self] in
             guard let self else { return }
             self.sendsInFlight = max(0, self.sendsInFlight - 1)
@@ -1093,6 +1115,7 @@ final class WatchDirectCallModel: ObservableObject {
         pollIfNeeded()
         reactivateIfDue()
         probeLinkIfDue()
+        timelineIfDue()
         flushQuietQueue()
     }
 
@@ -1153,10 +1176,57 @@ final class WatchDirectCallModel: ObservableObject {
                 "engineBefore": engineBefore,
                 "engineAfter": self.audio.isEngineRunning,
                 "ready": self.session?.isReady == true,
+                "phase": "\(self.phase)",
                 "speaking": self.audio.isPlaying,
                 "screen": "\(self.scenePhase)",
             ])
         }
+    }
+
+    /// One timeline entry: the audio session, the screen, the socket and
+    /// its path, and whether PCM kept flowing both ways since the last.
+    private func timelineIfDue() {
+        let at = now
+        let anchor = audioActivatedAt ?? callStartedAt
+        let interval = at - anchor < Self.earlyTimelineSpan ? Self.earlyTimelineInterval : Self.lateTimelineInterval
+        guard at - (lastTimelineAt ?? anchor) >= interval else { return }
+        let window = lastTimelineAt.map { at - $0 } ?? (at - anchor)
+        lastTimelineAt = at
+        timelineEntries += 1
+        let audioSession = AVAudioSession.sharedInstance()
+        let mark = timelineMark
+        timelineMark = (samplesCaptured, chunksSent, sendFailures, meter.bytesUp, meter.bytesDown, meter.framesDown)
+        let gap = windowMaxCaptureGap
+        windowMaxCaptureGap = 0
+        guard timelineEntries <= 80 else { return }
+        let state = String((session.map { "\($0.state)" } ?? "none").prefix(40))
+        WatchProbeLog.shared.note("directTimeline", [
+            "t": Int(at - callStartedAt),
+            "sinceActivationS": lastActivationAt.map { Int(at - $0) } as Any,
+            "sinceFirstActivationS": audioActivatedAt.map { Int(at - $0) } as Any,
+            "windowS": Int(window.rounded()),
+            "screen": "\(scenePhase)",
+            "phase": "\(phase)",
+            "category": audioSession.category.rawValue,
+            "outputs": audioSession.currentRoute.outputs.map { $0.portType.rawValue },
+            "otherAudio": audioSession.isOtherAudioPlaying,
+            "engine": audio.isEngineRunning,
+            "playing": audio.isPlaying,
+            "api": meter.workingAPI?.rawValue ?? meter.choice.rawValue,
+            "session": state,
+            "connectionAgeS": connectionReadyAt.map { Int(at - $0) } as Any,
+            "path": pathStatus as Any,
+            "pathUses": pathUses,
+            "capturedMs": (samplesCaptured - mark.captured) * 1000 / Int(WatchAudio.captureRate),
+            "maxCaptureGapMs": Int(gap * 1000),
+            "chunksSent": chunksSent - mark.chunksSent,
+            "sendFailures": sendFailures - mark.sendFailures,
+            "bytesUp": meter.bytesUp - mark.bytesUp,
+            "bytesDown": meter.bytesDown - mark.bytesDown,
+            "framesDown": meter.framesDown - mark.framesDown,
+            "lastFrameAgeMs": meter.lastFrameAt.map { Int((at - $0) * 1000) } as Any,
+            "reachable": link.isReachable,
+        ])
     }
 
     /// Whether a Watch message reaches (and wakes) Conduit on the iPhone
@@ -1253,6 +1323,14 @@ final class WatchDirectCallModel: ObservableObject {
         maxReactivationCaptureGap = 0
         routeChangesAtStart = audio.routeChanges
         firstDropAt = nil
+        lastTimelineAt = nil
+        timelineEntries = 0
+        samplesCaptured = 0
+        chunksSent = 0
+        timelineMark = (0, 0, 0, 0, 0, 0)
+        windowMaxCaptureGap = 0
+        pathStatus = nil
+        pathUses = []
         probeInFlight = false
         lastProbeAt = 0
         probes = 0

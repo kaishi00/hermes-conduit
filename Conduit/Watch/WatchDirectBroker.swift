@@ -184,27 +184,34 @@ final class WatchDirectBroker {
 
     // MARK: Tools
 
-    /// The bridge for the Watch's call. Made again if Conduit restarted
-    /// since the call began.
+    /// The bridge for the Watch's call, made again if Conduit restarted
+    /// since the call began. A call that has ended (a job it queued
+    /// arriving late) gets one of its own, so the running call is left
+    /// alone.
     private func bridge(for id: UInt32) -> GeminiLiveToolBridge {
-        if callID != id {
+        if callID == nil {
             callID = id
-            bridge = nil
             lateOutgoing = []
+            lastHeardAt = Date()
             appState.setWatchVoiceCallActive(true)
         }
+        guard callID == id else { return makeBridge() }
         if let bridge { return bridge }
+        let bridge = makeBridge()
+        self.bridge = bridge
+        return bridge
+    }
+
+    private func makeBridge() -> GeminiLiveToolBridge {
         let tokens = appState.geminiLiveTokenClient
         // Answered once each job runs, its outcome later as a text update:
         // a Watch message's answer can't stay open for a job.
-        let bridge = GeminiLiveToolBridge(
+        return GeminiLiveToolBridge(
             supervisor: WatchCallJobSupervisor(appState.voiceBackgroundJobSupervisor),
             webSearch: tokens,
             memory: tokens,
             holdsJobCalls: false
         )
-        self.bridge = bridge
-        return bridge
     }
 
     private func runTool(_ call: WatchVoiceWire.DirectToolCall, callID id: UInt32, waiting: Bool) async -> WatchVoiceWire.DirectToolResult {
@@ -257,6 +264,10 @@ final class WatchDirectBroker {
     }
 
     private func poll(_ id: UInt32) async -> WatchVoiceWire.DirectToolResult {
+        // An ended call's poll would take the running call's news.
+        if let callID, callID != id {
+            return WatchVoiceWire.DirectToolResult(outgoing: [], runningJobs: appState.voiceBackgroundJobSupervisor.activeJobCount)
+        }
         let bridge = bridge(for: id)
         let supervisor = appState.voiceBackgroundJobSupervisor
         if await appState.connectForWatchDirectCall(timeout: Self.connectWait) {
@@ -270,8 +281,10 @@ final class WatchDirectBroker {
     /// What goes back to the Watch, with any late answers first. Handing
     /// them over counts as delivered, as a socket send does on the phone.
     private func result(_ outgoing: [GeminiLiveToolBridge.Outgoing], bridge: GeminiLiveToolBridge) -> WatchVoiceWire.DirectToolResult {
-        let items = lateOutgoing + outgoing
-        lateOutgoing = []
+        // The late answers belong to the running call's bridge.
+        let late = bridge === self.bridge ? lateOutgoing : []
+        if bridge === self.bridge { lateOutgoing = [] }
+        let items = late + outgoing
         for item in items {
             switch item {
             case .toolResponse(_, _, let result, _):
@@ -342,12 +355,18 @@ final class WatchDirectBroker {
     }
 
     private func heard(_ id: UInt32) {
-        // A call silent this long ended without its end arriving.
-        if let callID, callID != id || Date().timeIntervalSince(lastHeardAt) > Self.silenceLimit {
+        guard let callID else { return }
+        if callID == id {
+            lastHeardAt = Date()
+            return
+        }
+        // Another call's message: a straggler from one that ended, unless
+        // the running call has been silent so long that it ended without
+        // its end arriving.
+        if Date().timeIntervalSince(lastHeardAt) > Self.silenceLimit {
             link.log.note("watchDirectStale", ["callID": Int(callID)])
             endCall()
         }
-        lastHeardAt = Date()
     }
 
     // MARK: Helpers

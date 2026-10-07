@@ -143,7 +143,8 @@ final class WatchCallModel: ObservableObject {
             return
         }
         if !holdWithWatchCall {
-            systemCall?.endStaleCalls()
+            // The app's one provider, whichever call made it.
+            if WatchSystemCall.isCreated { WatchSystemCall.shared.endStaleCalls() }
         } else {
             let systemCall = makeSystemCall()
             systemCallActivated = await systemCall.start()

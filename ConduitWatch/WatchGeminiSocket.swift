@@ -58,6 +58,9 @@ final class WatchSocketMeter {
     private(set) var bytesUp = 0
     private(set) var bytesDown = 0
     private(set) var opened = 0
+    /// Frames received, and when the last one came (system uptime).
+    private(set) var framesDown = 0
+    private(set) var lastFrameAt: TimeInterval?
     /// The API whose connection first heard from Gemini; every later
     /// connection uses it.
     private(set) var workingAPI: WatchSocketAPI?
@@ -95,6 +98,8 @@ final class WatchSocketMeter {
 
     fileprivate func received(_ bytes: Int, api: WatchSocketAPI, first: Bool) {
         bytesDown += bytes
+        framesDown += 1
+        lastFrameAt = ProcessInfo.processInfo.systemUptime
         guard first else { return }
         if workingAPI == nil { workingAPI = api }
         onFirstFrame?(api)
