@@ -64,6 +64,8 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(GatewayMediaTags.segments(in: "- MEDIA:/tmp/x.pdf"), [.media("/tmp/x.pdf")])
         XCTAssertEqual(GatewayMediaTags.segments(in: "MEDIA:/tmp/a.png 🎉"), [.media("/tmp/a.png"), .text("🎉")])
         XCTAssertEqual(GatewayMediaTags.segments(in: "![Screenshot](MEDIA:/tmp/My Shot.png)"), [.media("/tmp/My Shot.png")])
+        XCTAssertEqual(GatewayMediaTags.segments(in: "[Download](MEDIA:/tmp/report.pdf)"), [.media("/tmp/report.pdf")])
+        XCTAssertEqual(GatewayMediaTags.segments(in: "> [[audio_as_voice]]"), [])
         XCTAssertNil(GatewayMediaTags.segments(in: "No tags here"))
         XCTAssertNil(GatewayMediaTags.segments(in: "> MEDIA:/tmp/quoted.png"))
         XCTAssertNil(GatewayMediaTags.segments(in: "Write `MEDIA:/path/file.png` to send a file"))

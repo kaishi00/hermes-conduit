@@ -1803,6 +1803,7 @@ private struct GatewayMediaFileCard: View {
                     filename: path,
                     style: .card,
                     opening: loading,
+                    openFailed: failed,
                     load: loadAudio,
                     openFull: open
                 )

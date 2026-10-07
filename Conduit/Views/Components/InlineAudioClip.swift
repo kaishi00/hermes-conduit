@@ -253,6 +253,8 @@ struct InlineAudioClipView: View {
     let style: Style
     /// True while the full-screen preview is being fetched.
     let opening: Bool
+    /// True when the last full-screen open failed.
+    var openFailed = false
     let load: () async -> Data?
     let openFull: () -> Void
     @ScaledMetric(relativeTo: .body) private var playSize: CGFloat = 40
@@ -280,6 +282,7 @@ struct InlineAudioClipView: View {
                 detail
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
             Button(action: openFull) {
                 Group {
                     if opening {
@@ -362,7 +365,7 @@ struct InlineAudioClipView: View {
         switch problem {
         case .unavailable: return AppLocalization.string("Couldn't open this file")
         case .unsupported: return AppLocalization.string("Can't play this format here. Open it full screen instead.")
-        case nil: return AppLocalization.string("Audio")
+        case nil: return openFailed ? AppLocalization.string("Couldn't open this file") : AppLocalization.string("Audio")
         }
     }
 }

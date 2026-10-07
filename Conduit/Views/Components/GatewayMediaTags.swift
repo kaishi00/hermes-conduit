@@ -66,10 +66,10 @@ enum GatewayMediaTags {
         options: [.caseInsensitive]
     )
 
-    /// `![alt](MEDIA:/path)`: a model dressing the tag up as a Markdown
-    /// image. The whole line is the one file.
+    /// `![alt](MEDIA:/path)` or `[text](MEDIA:/path)`: a model dressing the
+    /// tag up as a Markdown image or link. The whole line is the one file.
     private static let markdownImageExpression = try! NSRegularExpression(
-        pattern: #"^!\[[^\]]*\]\([^\S\n]*MEDIA:[^\S\n]*(.+?)[^\S\n]*\)$"#,
+        pattern: #"^!?\[[^\]]*\]\([^\S\n]*MEDIA:[^\S\n]*(.+?)[^\S\n]*\)$"#,
         options: [.caseInsensitive]
     )
 
@@ -87,7 +87,11 @@ enum GatewayMediaTags {
         }
         let trimmed = source.trimmingCharacters(in: .whitespaces)
         // Hermes masks blockquotes: a quoted tag is an example, not a file.
-        if trimmed.hasPrefix(">") { return removedDirective ? [.text(trimmed)] : nil }
+        if trimmed.hasPrefix(">") {
+            guard removedDirective else { return nil }
+            let quoted = trimmed.drop(while: { $0 == ">" || $0.isWhitespace })
+            return quoted.isEmpty ? [] : [.text(trimmed)]
+        }
 
         let nsLine = trimmed as NSString
         if let image = markdownImageExpression.firstMatch(in: trimmed, range: NSRange(location: 0, length: nsLine.length)),
