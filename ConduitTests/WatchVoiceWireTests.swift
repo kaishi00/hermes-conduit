@@ -554,6 +554,14 @@ extension HermesVoiceGatewayTimeoutTests {
         guard case .unavailable("grantExpiring", false, false) = await ending.run(name: "web_search", query: "weather") else { return XCTFail("Expected it skipped") }
         XCTAssertFalse(ending.isGone)
         XCTAssertEqual(ending.callsSent, 0)
+
+        // A grant with no calls left is spent, and says so.
+        var spent = grant
+        spent.maxCalls = 0
+        let empty = try XCTUnwrap(WatchToolRelayClient(spent, protocolClasses: [WatchToolRelayStubProtocol.self]))
+        guard case .unavailable("grantSpent", true, false) = await empty.run(name: "web_search", query: "weather") else { return XCTFail("Expected it spent") }
+        XCTAssertTrue(empty.isGone)
+        guard case .unavailable("grantEnded", true, false) = await empty.run(name: "web_search", query: "weather") else { return XCTFail("Expected it ended") }
     }
 }
 

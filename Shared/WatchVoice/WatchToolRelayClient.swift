@@ -85,10 +85,6 @@ final class WatchToolRelayClient {
         !isGone && tools.contains(name) && callsSent < maxCalls && !expiresSoon
     }
 
-    /// Whether the grant was closed or spent. One that expires soon isn't
-    /// gone: it's skipped until the iPhone renews it.
-    private var isSpent: Bool { isGone || callsSent >= maxCalls }
-
     /// Less than `margin` left.
     func expires(within margin: TimeInterval) -> Bool {
         expiresAt.map { $0.timeIntervalSinceNow < margin } ?? false
@@ -98,9 +94,12 @@ final class WatchToolRelayClient {
 
     func run(name: String, query: String) async -> Outcome {
         guard tools.contains(name) else { return .unavailable(reason: "notGranted", grantGone: false, sent: false) }
-        guard !isSpent else {
+        // Closed or spent ends it; one that expires soon isn't gone, it's
+        // skipped until the iPhone renews it.
+        guard !isGone else { return .unavailable(reason: "grantEnded", grantGone: true, sent: false) }
+        guard callsSent < maxCalls else {
             isGone = true
-            return .unavailable(reason: "grantEnded", grantGone: true, sent: false)
+            return .unavailable(reason: "grantSpent", grantGone: true, sent: false)
         }
         guard !expiresSoon else { return .unavailable(reason: "grantExpiring", grantGone: false, sent: false) }
         let rid = WatchToolSeal.newRequestID()

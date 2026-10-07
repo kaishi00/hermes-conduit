@@ -11,7 +11,9 @@
 //  - runs the Watch's function calls through the phone's own tool bridge,
 //    answering start_job as soon as Hermes takes the job (Grok Live's way),
 //    never holding the answer for the job's lifetime;
-//  - answers the Watch's polls while jobs run;
+//  - answers the Watch's polls while jobs run, with each finished job's
+//    reply read from its chat (the phone sleeps through the completion
+//    events, so the jobs' own news would only point at the chat);
 //  - asks Hermes for the call's tool grant, so its lookups reach Hermes
 //    through the push relay while the Watch can't reach this phone, and
 //    ends it with the call;
@@ -35,6 +37,9 @@ final class WatchDirectBroker {
     static let jobStartWait: Duration = .seconds(8)
     /// Any other function call is answered within this long.
     static let toolWait: Duration = .seconds(20)
+    /// A start_job's answer while Hermes is still taking the job. Written
+    /// for the model, not shown.
+    static let jobAccepted = ["status": "accepted", "message": "Hermes is starting the job. Its result will arrive later as a message; don't wait for it."]
     /// How long a token, tool or poll waits for a Hermes connection the
     /// phone's suspension dropped.
     static let connectWait: Duration = .seconds(8)
@@ -59,6 +64,10 @@ final class WatchDirectBroker {
     /// all revoked when it ends.
     private var grantTools: [String] = []
     private var grantIDs: [String] = []
+    /// The running call's start_job calls by id. The Watch sends one again
+    /// when the link dropped before its answer came; it gets the first
+    /// one's answer instead of a second job.
+    private var jobCalls: [String: Task<[GeminiLiveToolBridge.Outgoing], Never>] = [:]
 
     private lazy var grantClient = WatchToolGrantClient(request: { path, method, body, timeout in
         guard let bridge = AppStateRuntimeRegistry.shared.appState.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
@@ -152,10 +161,12 @@ final class WatchDirectBroker {
         callID = id
         bridge = nil
         lateOutgoing = []
+        jobCalls = [:]
         lastHeardAt = Date()
         // Lets transport recovery run with the phone locked, as for a
         // CarPlay call.
         appState.setWatchVoiceCallActive(true)
+        appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = true
         let startedAt = Date()
         link.log.note("watchDirectStart", [
             "callID": Int(id),
@@ -224,6 +235,7 @@ final class WatchDirectBroker {
             lateOutgoing = []
             lastHeardAt = Date()
             appState.setWatchVoiceCallActive(true)
+            appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = true
         }
         guard callID == id else { return makeBridge() }
         if let bridge { return bridge }
@@ -250,7 +262,12 @@ final class WatchDirectBroker {
         let connected = await appState.connectForWatchDirectCall(timeout: Self.connectWait)
         let functionCall = GeminiLiveProtocol.FunctionCall(id: call.id, name: call.name, arguments: call.arguments)
         let isJob = call.name == GeminiLiveToolBridge.Tool.startJob.rawValue
+        let ownCall = bridge === self.bridge
+        if isJob, ownCall, let earlier = jobCalls[call.id] {
+            return await repeatedJobCall(call, earlier: earlier, waiting: waiting, startedAt: startedAt)
+        }
         let handled = Task { await bridge.handle(functionCall) }
+        if isJob, ownCall { jobCalls[call.id] = handled }
         guard waiting else {
             // Queued while the Watch couldn't reach this phone: the Watch
             // answered the call itself, and nothing reads this answer. What
@@ -279,9 +296,7 @@ final class WatchDirectBroker {
                 guard self.callID == id else { return }
                 self.lateOutgoing += late.filter { !$0.answers(call.id) }
             }
-            let result: [String: String] = isJob
-                ? ["status": "accepted", "message": "Hermes is starting the job. Its result will arrive later as a message; don't wait for it."]
-                : WatchToolAnswer.tookTooLong
+            let result: [String: String] = isJob ? Self.jobAccepted : WatchToolAnswer.tookTooLong
             outgoing = [.toolResponse(id: call.id, name: call.name, result: result, scheduling: isJob ? nil : .whenIdle)]
         }
         var fields: [String: Any] = [
@@ -295,6 +310,35 @@ final class WatchDirectBroker {
         fields.merge(Self.answerSummary(outgoing, answering: call.id)) { first, _ in first }
         link.log.note("watchDirectTool", fields)
         return result(outgoing, bridge: bridge)
+    }
+
+    /// A start_job sent again: the first one's answer, nothing started.
+    /// What came after that answer went with the first call already.
+    private func repeatedJobCall(
+        _ call: WatchVoiceWire.DirectToolCall,
+        earlier: Task<[GeminiLiveToolBridge.Outgoing], Never>,
+        waiting: Bool,
+        startedAt: Date
+    ) async -> WatchVoiceWire.DirectToolResult {
+        let runningJobs = appState.voiceBackgroundJobSupervisor.activeJobCount
+        guard waiting else {
+            link.log.note("watchDirectTool", ["name": call.name, "repeat": true, "queued": true, "appState": WatchProbeLiveness.appStateName])
+            return WatchVoiceWire.DirectToolResult(outgoing: [], runningJobs: runningJobs)
+        }
+        let answer = (await Self.value(of: earlier, within: Self.jobStartWait) ?? []).filter { $0.answers(call.id) }
+        let outgoing: [GeminiLiveToolBridge.Outgoing] = answer.isEmpty
+            ? [.toolResponse(id: call.id, name: call.name, result: Self.jobAccepted, scheduling: nil)]
+            : answer
+        var fields: [String: Any] = [
+            "name": call.name,
+            "repeat": true,
+            "ms": Self.milliseconds(since: startedAt),
+            "queued": false,
+            "appState": WatchProbeLiveness.appStateName,
+        ]
+        fields.merge(Self.answerSummary(outgoing, answering: call.id)) { first, _ in first }
+        link.log.note("watchDirectTool", fields)
+        return WatchVoiceWire.DirectToolResult(outgoing: outgoing.map { Self.wire($0) }, runningJobs: runningJobs)
     }
 
     /// What the answer to `id` said, for the test log: its keys, its size
@@ -324,7 +368,17 @@ final class WatchDirectBroker {
             // was suspended.
             await supervisor.pollOnce()
         }
-        return result(bridge.pendingUpdates(), bridge: bridge)
+        let updates = bridge.pendingUpdates()
+        // Job news sizes only, for the test log: a pointer to the chat is
+        // a sentence, a result is its reply.
+        let news = updates.compactMap { item -> Int? in
+            if case .textWhenIdle(let text) = item { return text.count }
+            return nil
+        }
+        if !news.isEmpty {
+            link.log.note("watchDirectPoll", ["news": news.count, "newsChars": news, "appState": WatchProbeLiveness.appStateName])
+        }
+        return result(updates, bridge: bridge)
     }
 
     /// What goes back to the Watch, with any late answers first. Handing
@@ -468,7 +522,9 @@ final class WatchDirectBroker {
         }
         bridge = nil
         lateOutgoing = []
+        jobCalls = [:]
         revokeGrants()
+        appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = false
         callID = nil
         profile = nil
         dashboard = nil

@@ -246,8 +246,9 @@ final class WatchDirectCallModel: ObservableObject {
     private var jobsQueued = 0
     /// Tools asked for with the wrist down (Eric's choice for Watch tools,
     /// 2026-10-07): each was answered at once with a request to raise the
-    /// wrist, and runs on the iPhone once the link is back. A job goes by
-    /// `transferUserInfo` instead, which also outlives the call.
+    /// wrist, and runs on the iPhone once the link is back, so the model
+    /// hears how it went. A job still waiting when the call ends goes by
+    /// `transferUserInfo`, which outlives the call.
     private var wristQueue: [(call: WatchVoiceWire.DirectToolCall, at: TimeInterval, date: Date)] = []
     private var toolsWaitedForWrist = 0
     private var wristWaits: [TimeInterval] = []
@@ -260,11 +261,16 @@ final class WatchDirectCallModel: ObservableObject {
     private var lastGrantRequestAt: TimeInterval = 0
     private var grantRequests = 0
     private var grantsRenewed = 0
+    /// Relay lookups Hermes answered with results; its error answers (a
+    /// search limit, a failed lookup) are counted apart, and neither kind
+    /// of answer counts as a failure.
     private var toolsViaRelay = 0
+    private var relayErrorAnswers = 0
     private var relayTimeouts = 0
     private var relayFallbacks = 0
     /// Relay calls that went out (spending one of the grant's calls) and
-    /// came back without an answer.
+    /// came back without an answer. Timeouts have their own count, so the
+    /// calls sent = answers + error answers + timeouts + failures.
     private var relayFailures = 0
     private var relayTimes: [TimeInterval] = []
     private var pollInFlight = false
@@ -1051,11 +1057,15 @@ final class WatchDirectCallModel: ObservableObject {
             ]
             switch outcome {
             case .answered(let body):
-                self.toolsViaRelay += 1
-                self.relayTimes.append(elapsed)
                 let result = WatchToolAnswer.result(name: wire.name, body: body)
                 fields["outcome"] = "answered"
-                if result["error"] != nil { fields["resultError"] = true }
+                if result["error"] != nil {
+                    self.relayErrorAnswers += 1
+                    fields["resultError"] = true
+                } else {
+                    self.toolsViaRelay += 1
+                    self.relayTimes.append(elapsed)
+                }
                 WatchProbeLog.shared.note("directToolRelay", fields)
                 guard !withdrawn else { return }
                 self.answer(WatchToolAnswer.outgoing(id: wire.id, name: wire.name, result: result), generation: generation)
@@ -1100,16 +1110,23 @@ final class WatchDirectCallModel: ObservableObject {
         var queued = false
         var waiting = false
         var duplicate = false
-        if call.name == "start_job" {
+        if call.name == "start_job", wristDown, !withdrawn {
+            // Sent as the wrist comes up, so the model hears that the job
+            // started (a queued job's start is never heard) and doesn't
+            // start it again meanwhile.
+            waiting = true
+            toolsWaitedForWrist += 1
+            duplicate = wristQueue.contains { $0.call.name == call.name && $0.call.arguments == call.arguments }
+            if !duplicate { wristQueue.append((call, now, Date())) }
+            result = ["status": "waiting_for_wrist", "message": Self.wristJobMessage]
+        } else if call.name == "start_job" {
             queued = link.queue(.directTool(callID: callID, call: call))
             if queued {
                 jobsQueued += 1
                 runningJobs = max(runningJobs, 1)
                 result = [
                     "status": "queued",
-                    "message": wristDown
-                        ? Self.wristQueuedMessage
-                        : "Conduit on the user's iPhone can't be reached right now. The job is queued and starts on Hermes once the iPhone takes it; its result comes as a Conduit notification. Tell the user in a sentence.",
+                    "message": "Conduit on the user's iPhone can't be reached right now. The job is queued and starts on Hermes once the iPhone takes it; its result comes as a Conduit notification. Tell the user in a sentence.",
                 ]
             } else {
                 result = [
@@ -1145,7 +1162,7 @@ final class WatchDirectCallModel: ObservableObject {
     }
 
     /// Written for the model, not shown.
-    static let wristQueuedMessage = "The user's iPhone can only be reached while their wrist is raised. The job is queued and starts on Hermes as soon as they raise it; its result comes later. Ask them, in a few words, to raise their wrist."
+    static let wristJobMessage = "The user's iPhone can only be reached while their wrist is raised. The job starts on Hermes as soon as they raise it, and you'll get a message once it has started. Ask them, in a few words, to raise their wrist. Don't call start_job again for this request."
     static let wristWaitMessage = "The user's iPhone can only be reached while their wrist is raised. Ask them, in a few words, to raise their wrist; this runs as soon as they do, and its result follows as a message. Don't call it again."
 
     /// Runs the tools that waited for the wrist, now that the iPhone can be
@@ -1207,7 +1224,13 @@ final class WatchDirectCallModel: ObservableObject {
 
     /// A relay lookup whose answer came after its call was over.
     private static func relayToolAbandoned(_ call: WatchVoiceWire.DirectToolCall, outcome: WatchToolRelayClient.Outcome, callEnded: Bool) {
-        WatchProbeLog.shared.note("directToolRelayAbandoned", ["name": call.name, "outcome": outcome.label, "reason": callEnded ? "callEnded" : "replaced"])
+        var fields: [String: Any] = ["name": call.name, "outcome": outcome.label, "reason": callEnded ? "callEnded" : "replaced"]
+        if case .unavailable(let why, let grantGone, let sent) = outcome {
+            fields["why"] = why
+            fields["grantGone"] = grantGone
+            fields["sent"] = sent
+        }
+        WatchProbeLog.shared.note("directToolRelayAbandoned", fields)
     }
 
     /// A grant renewal whose answer came after its call was over. A grant
@@ -1263,7 +1286,7 @@ final class WatchDirectCallModel: ObservableObject {
             WatchProbeLog.shared.note("directGrantRenewed", fields)
         }, failure: { [weak self] error in
             guard let self else { return Self.grantRenewalAbandoned(nil, error: error.localizedDescription, callEnded: true) }
-            guard self.callID == id else { return Self.grantRenewalAbandoned(nil, error: error.localizedDescription, callEnded: false) }
+            guard self.callID == id, self.isActive else { return Self.grantRenewalAbandoned(nil, error: error.localizedDescription, callEnded: !self.isActive) }
             self.grantRequestInFlight = false
             WatchProbeLog.shared.note("directGrantRenewed", ["ok": false, "error": error.localizedDescription])
         })
@@ -1273,6 +1296,9 @@ final class WatchDirectCallModel: ObservableObject {
     /// "raise your wrist". Not UI copy.
     static func wristResultText(name: String, result: [String: String]) -> String {
         let lines = result.keys.sorted().map { "\($0): \(result[$0] ?? "")" }.joined(separator: "\n")
+        if name == "start_job" {
+            return "[The job the user asked for earlier reached Hermes now that their wrist is raised. Hermes' answer:\n\(lines)\nTell them in a few words whether it started. Its result comes later as a message.]"
+        }
         return "[The \(name) the user asked for earlier has run now that their wrist is raised. Its result:\n\(lines)\nTell them in a sentence or two.]"
     }
 
@@ -1819,6 +1845,7 @@ final class WatchDirectCallModel: ObservableObject {
         grantRequests = 0
         grantsRenewed = 0
         toolsViaRelay = 0
+        relayErrorAnswers = 0
         relayTimeouts = 0
         relayFallbacks = 0
         relayFailures = 0
@@ -1879,6 +1906,12 @@ final class WatchDirectCallModel: ObservableObject {
         if let since = screenOffSince { screenOffSeconds += now - since }
         let liveSeconds = liveSince.map { now - $0 } ?? 0
         phase = .ended(reason)
+        // Jobs still waiting for the wrist start once the iPhone takes
+        // them, after the call; queued ahead of its end.
+        let jobsLeft = wristQueue.filter { $0.call.name == "start_job" }
+        for job in jobsLeft where link.queue(.directTool(callID: callID, call: job.call)) {
+            jobsQueued += 1
+        }
         // Queued, not sent: the iPhone saves the call whenever Conduit next
         // runs there, asleep or not right now.
         let saved = transcript.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -1954,6 +1987,7 @@ final class WatchDirectCallModel: ObservableObject {
             "wristWaitMaxMs": WatchVoiceStats.milliseconds(wristWaits.max()) as Any,
             "toolGrant": hadToolGrant,
             "toolsViaRelay": toolsViaRelay,
+            "relayErrorAnswers": relayErrorAnswers,
             "relayP50Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(relayTimes, 0.5)) as Any,
             "relayMaxMs": WatchVoiceStats.milliseconds(relayTimes.max()) as Any,
             "relayTimeouts": relayTimeouts,
