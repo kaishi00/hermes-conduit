@@ -1646,6 +1646,9 @@ final class WatchDirectCallModel: ObservableObject {
     /// Asks this grant for job news from now on.
     private func followJobs(on relay: WatchToolRelayClient) {
         if !jobRelays.contains(where: { $0 === relay }) { jobRelays.append(relay) }
+        // Renewals carry the grant with running jobs; a kept old one with
+        // none left hands that over.
+        if relay.hasJobs, relay !== jobsGrant, !jobRelays.contains(where: { $0 === jobsGrant }) { jobsGrant = relay }
         nextNewsAt = now
     }
 
@@ -1653,6 +1656,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// renewed grant's old one, the grant itself.
     private func stopFollowing(_ relay: WatchToolRelayClient) {
         jobRelays.removeAll { $0 === relay }
+        if relay === jobsGrant, relay !== toolRelay { jobsGrant = toolRelay?.hasJobs == true ? toolRelay : nil }
         relayRunning[relay.grantID] = nil
         relayJobsRunning = relayRunning.values.reduce(0, +)
         approvals.removeAll { $0.grantID == relay.grantID }
@@ -2035,7 +2039,10 @@ final class WatchDirectCallModel: ObservableObject {
                 if carried, let carry { self.moveJobs(from: carry, to: relay) }
                 let previous = self.toolRelay
                 self.toolRelay = relay
-                self.jobsGrant = relay.hasJobs ? relay : nil
+                // Hermes kept the old grant's jobs: later renewals name it
+                // again until they're done or move.
+                let keptOld = !carried && carry.map { old in self.jobRelays.contains { $0 === old } } == true
+                self.jobsGrant = keptOld ? carry : (relay.hasJobs ? relay : nil)
                 // An old grant whose jobs Hermes kept stays open while they
                 // run, for their news; one with nothing left is ended.
                 for old in [previous, carry].compactMap({ $0 }) { self.closeIfUnused(old) }

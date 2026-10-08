@@ -194,6 +194,9 @@ final class WatchBridgeCallModel: ObservableObject {
     /// Lines passed on with a delegation already.
     private var handledLines = 0
     private var userLine = ""
+    /// A delegation already took the user's words still being heard: their
+    /// line counts as handled when it lands, so it isn't sent again.
+    private var openLineDelegated = false
     private var assistantLine = ""
     /// When GPT-Live's transcript of the user's last turn came.
     private var heardAt: TimeInterval?
@@ -745,6 +748,10 @@ final class WatchBridgeCallModel: ObservableObject {
                 transcript.append(.init(role: role == "user" ? .user : .assistant, text: text, at: Date()))
                 caption = String(text.suffix(120))
             }
+            if role == "user", openLineDelegated {
+                openLineDelegated = false
+                if !text.isEmpty { handledLines = transcript.count }
+            }
         case .delegation(let id, let text):
             delegated(id: id, itemText: text)
         case .error(let code, let message):
@@ -971,6 +978,7 @@ final class WatchBridgeCallModel: ObservableObject {
         let open = userLine.trimmingCharacters(in: .whitespacesAndNewlines)
         if !open.isEmpty { lines.append(.init(role: .user, text: open, handled: false)) }
         handledLines = transcript.count
+        openLineDelegated = !open.isEmpty
         let request = WatchBridgeDelegation.request(itemText: itemText, lines: lines)
         let ownWords = itemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
@@ -1416,6 +1424,7 @@ final class WatchBridgeCallModel: ObservableObject {
         transcript = []
         handledLines = 0
         userLine = ""
+        openLineDelegated = false
         assistantLine = ""
         heardAt = nil
         lastModelTurnEndedAt = nil
