@@ -54,8 +54,8 @@ protocol GeminiLiveJobSupervising: AnyObject {
     /// Whether `instructions` open with another profile ("for Fam, …").
     func namesOtherProfile(_ instructions: String) -> Bool
     func lastThreadReply() async -> String?
-    /// What a read-back reads (#451): the attached chat's latest reply, or
-    /// the newest job result in a call without a chat.
+    /// What a read-back reads (#451): the newest result the call reported,
+    /// a background job's or the attached chat's latest reply.
     func readBackText() async -> String?
     @discardableResult
     func showOnScreen(title: String, markdown: String) -> VoiceScreenCard?
@@ -285,7 +285,7 @@ final class GeminiLiveToolBridge {
         ),
         .init(
             name: Tool.readLastReply.rawValue,
-            description: "Get the reply the user wants to hear again or in full, without asking Hermes anything new: Hermes' latest reply in the chat this call is attached to, or otherwise the newest job result in this call. Use it whenever the user asks to hear a reply again, word for word or in full, instead of answering from memory; read what it returns to them word for word, all of it, once.",
+            description: "Get the reply the user wants to hear again or in full, without asking Hermes anything new: the newest result reported in this call, a background job's result or Hermes' latest reply in the chat this call is attached to. Use it whenever the user asks to hear a reply again, word for word or in full, instead of answering from memory; read what it returns to them word for word, all of it, once.",
             parameters: ["type": "OBJECT", "properties": [String: Any]()],
             behavior: .nonBlocking
         ),

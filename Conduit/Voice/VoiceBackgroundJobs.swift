@@ -880,25 +880,34 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         pruneSettledJobs()
     }
 
-    /// What a read-back reads (#451): the attached chat's latest reply, or in
-    /// a call without a chat, the newest job result the call reported.
+    /// What a read-back reads (#451): the newest result the call reported,
+    /// a background job's or, in a call attached to a chat, the chat's
+    /// latest reply.
     func readBackText() async -> String? {
-        if liveThread != nil { return await lastThreadReply() }
-        guard let lastCallResult, lastCallResult.callID == liveCallID else { return nil }
-        return lastCallResult.text
+        if let lastCallResult, lastCallResult.callID == liveCallID { return lastCallResult.text }
+        return liveThread != nil ? await lastThreadReply() : nil
     }
 
-    /// The newest job result handed to the running call, for a read-back.
+    /// The newest background job result handed to the running call, while
+    /// no chat reply came after it.
     private var lastCallResult: (callID: UUID, text: String)?
 
     /// A job's outcome reached the running call: a finished job's result is
-    /// what "read that again" means in a call without a chat. Only once it
-    /// went out, so a result handed back unsent is never read as heard.
+    /// what "read that again" means until the chat replies after it. Only
+    /// once it went out, so a result handed back unsent is never read as
+    /// heard. Kept to a few times what a read-back can say, before the
+    /// Markdown is flattened.
     private func noteResultReported(_ job: VoiceBackgroundJob) {
-        guard let callID = liveCallID, !job.isThreadTurn, job.outcomeDelivered, job.status == .finished,
+        guard let callID = liveCallID, job.outcomeDelivered else { return }
+        if job.isThreadTurn {
+            // The chat replied since: a read-back reads the chat again.
+            if job.status == .finished { lastCallResult = nil }
+            return
+        }
+        guard job.status == .finished,
               let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
               !result.isEmpty else { return }
-        lastCallResult = (callID, result)
+        lastCallResult = (callID, String(result.prefix(Self.maximumResultCharacters * 4)))
     }
 
     /// The attached chat's latest reply, read without starting a turn.

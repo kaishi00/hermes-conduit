@@ -2208,6 +2208,31 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 1)
     }
 
+    func testAnAttachedReadBackReadsTheResultTheCallHeardLast() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        fake.threadReply = "Summary."
+
+        // A background job's result went out last: that's what is read again.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "check the server in the background"]))
+        XCTAssertEqual(fake.created, 1)
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Server is fine.", reasoning: nil))
+        _ = bridge.pendingUpdates()
+        bridge.outcomeSent(jobID: supervisor.jobs.first { !$0.isThreadTurn }?.id)
+        let heard = await supervisor.readBackText()
+        XCTAssertEqual(heard, "Server is fine.")
+
+        // The chat replies after it: a read-back reads the chat again.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "ask_thread", arguments: ["request": "summarize"]))
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Summary.", reasoning: nil))
+        _ = bridge.pendingUpdates()
+        bridge.outcomeSent(jobID: supervisor.jobs.first { $0.isThreadTurn }?.id)
+        let chat = await supervisor.readBackText()
+        XCTAssertEqual(chat, "Summary.")
+    }
+
     func testReadBackMarkerAndRules() {
         XCTAssertTrue(GPTLiveDelegationBridge.isReadBackMarker("Read back: the last reply"))
         XCTAssertTrue(GPTLiveDelegationBridge.isReadBackMarker(" read-back:"))
