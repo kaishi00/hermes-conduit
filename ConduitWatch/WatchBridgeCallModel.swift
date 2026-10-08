@@ -1022,9 +1022,13 @@ final class WatchBridgeCallModel: ObservableObject {
             case .timedOut:
                 text = WatchBridgeDelegation.relay("The lookup took too long.")
             case .unavailable(let reason, let grantGone, let sent):
-                text = !sent && Self.grantRanOut(reason: reason, grantGone: grantGone)
-                    ? WatchBridgeDelegation.notStarted(WatchBridgeDelegation.grantRanOut)
-                    : WatchBridgeDelegation.relay("Hermes couldn't be reached from the Watch for the lookup.")
+                if sent {
+                    text = WatchBridgeDelegation.relay("The lookup got no answer from Hermes.")
+                } else if Self.grantRanOut(reason: reason, grantGone: grantGone) {
+                    text = WatchBridgeDelegation.notStarted(WatchBridgeDelegation.grantRanOut)
+                } else {
+                    text = WatchBridgeDelegation.relay("Hermes couldn't be reached from the Watch for the lookup.")
+                }
             }
             self.note("bridgeLookup", ["outcome": outcome.label, "ms": Int((self.now - sentAt) * 1000)])
             self.answer(delegationID, text, channel: .speakable)

@@ -62,8 +62,9 @@ final class WatchDirectBroker {
     static let connectWait: Duration = .seconds(8)
     /// A call not heard from this long is over, whatever its end said.
     static let silenceLimit: TimeInterval = 30 * 60
-    /// Compressed bytes of a bridge call's briefing the start reply carries.
-    static let bridgeBriefingLimit = 48 * 1024
+    /// Bytes of a bridge call's start reply as sent, under the Watch
+    /// message limit of about 65 KB.
+    static let bridgeReplyLimit = 60 * 1024
 
     private unowned let link: WatchVoiceLink
     private var callID: UInt32?
@@ -266,6 +267,7 @@ final class WatchDirectBroker {
             grantJobOptions = plan.jobOptions
             grantVoiceApprovals = WatchJobSettings.voiceApprovals
             grantLiveToken = true
+            grantAudio = false
             let grant = await requestGrant(id, profile: plan.connection.profile)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             ledger.setGrant(grantScope, for: id)
@@ -378,24 +380,7 @@ final class WatchDirectBroker {
             guard let packed = WatchVoiceWire.BridgeSession.pack(plan.briefing) else {
                 throw WatchDirectPrepareError("The call's briefing couldn't be packed for the Watch.")
             }
-            // The reply travels in one Watch message, which carries about
-            // 65 KB; the grant and the rest take a few.
-            guard packed.data.count <= Self.bridgeBriefingLimit else {
-                throw WatchDirectPrepareError("The call's briefing (memory and persona) is too large to send to the Watch.")
-            }
-            link.log.note("watchBridgePrepared", [
-                "callID": Int(id),
-                "ms": Self.milliseconds(since: startedAt),
-                "briefingBytes": packed.bytes,
-                "compressedBytes": packed.data.count,
-                "tools": grant.tools,
-                "engines": audio.engines,
-                "memory": plan.memoryIncluded,
-                "personality": plan.personalityIncluded,
-                "appState": WatchProbeLiveness.appStateName,
-            ])
-            endWhenGrantDoes(id, expiresAt: grant.expiresAt)
-            return .bridgeSession(callID: id, session: .init(
+            let reply = WatchVoiceWire.Message.bridgeSession(callID: id, session: .init(
                 engine: engine,
                 grant: grant,
                 briefing: packed.data,
@@ -403,6 +388,26 @@ final class WatchDirectBroker {
                 greeting: plan.greeting,
                 voice: plan.voice
             ))
+            // The reply travels in one Watch message, which carries about
+            // 65 KB as sent (the briefing as base64 in JSON).
+            let replyBytes = (WatchVoiceWire.encode(reply)[WatchVoiceWire.messageKey] as? Data)?.count ?? .max
+            guard replyBytes <= Self.bridgeReplyLimit else {
+                throw WatchDirectPrepareError("The call's briefing (memory and persona) is too large to send to the Watch.")
+            }
+            link.log.note("watchBridgePrepared", [
+                "callID": Int(id),
+                "ms": Self.milliseconds(since: startedAt),
+                "briefingBytes": packed.bytes,
+                "compressedBytes": packed.data.count,
+                "replyBytes": replyBytes,
+                "tools": grant.tools,
+                "engines": audio.engines,
+                "memory": plan.memoryIncluded,
+                "personality": plan.personalityIncluded,
+                "appState": WatchProbeLiveness.appStateName,
+            ])
+            endWhenGrantDoes(id, expiresAt: grant.expiresAt)
+            return reply
         } catch {
             let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
             link.log.note("watchBridgePrepareFailed", [
