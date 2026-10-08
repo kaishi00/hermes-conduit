@@ -5098,6 +5098,11 @@ final class AppState: ObservableObject {
             : nil
         if sessionMatchesActiveSession(session) {
             if registry == .needsInput { return .needsInput }
+            // Once the open chat's own turn state is known it is fresher
+            // than a poll; while it is still syncing or stale, the registry
+            // decides.
+            let localStateKnown = !turnStateIsStale && (turnState == .idle || turnState == .running)
+            guard localStateKnown else { return registry }
             return isBusy ? .working : nil
         }
         return registry
@@ -5105,7 +5110,10 @@ final class AppState: ObservableObject {
 
     /// Re-reads the live registry while the chat list is on screen. Cheap: an
     /// in-memory snapshot that resumes and changes nothing. Gateways without
-    /// `session.active_list` just leave the filters empty.
+    /// `session.active_list` just leave the filters empty. The rows also go
+    /// through the identity index on purpose: each snapshot is the same
+    /// authoritative evidence the foreground probe records, and re-recording
+    /// an unchanged binding is a no-op.
     func refreshLiveSessionStatuses() async {
         guard isSceneActive, let client, isConnected,
               client !== activeListUnsupportedClient else { return }
@@ -6225,6 +6233,8 @@ final class AppState: ObservableObject {
         // Hermes servers whose strings collide. Same boundary that clears
         // the resume store, titles, pins, and review cache.
         conversationIdentityIndex.removeAll()
+        liveSessionStatusIndex = SessionLiveStatusIndex()
+        liveSessionStatusProfile = nil
         sessionYoloStore.clearAllOverrides()
         // Bot Mode state is per-server: the roster, the capability phase, and
         // the in-memory bot-chat profile registry all describe the outgoing

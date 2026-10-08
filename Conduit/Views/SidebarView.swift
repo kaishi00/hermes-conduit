@@ -345,7 +345,9 @@ struct SessionList: View {
                         statusFilter?.emptyTitle
                             ?? (selectedSource == nil ? AppLocalization.string("No Sessions") : AppLocalization.string("No \(selectedSource!.label) Sessions")),
                         systemImage: statusFilter?.emptySystemImage ?? "tray",
-                        description: Text(searchText.isEmpty ? AppLocalization.string("Sessions will appear here once created.") : AppLocalization.string("Try a different search."))
+                        description: Text(searchText.isEmpty
+                            ? statusFilter?.emptyDescription ?? AppLocalization.string("Sessions will appear here once created.")
+                            : AppLocalization.string("Try a different search."))
                     )
                 }
 
@@ -1115,6 +1117,14 @@ enum SessionStatusFilter: String, CaseIterable, Identifiable {
         case .needsInput: return AppLocalization.string("Nothing Needs You")
         case .working: return AppLocalization.string("Nothing Running")
         case .unread: return AppLocalization.string("No Unread Chats")
+        }
+    }
+
+    var emptyDescription: String {
+        switch self {
+        case .needsInput: return AppLocalization.string("No chat is waiting on your answer.")
+        case .working: return AppLocalization.string("No chat has a reply in progress.")
+        case .unread: return AppLocalization.string("You're all caught up.")
         }
     }
 

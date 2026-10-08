@@ -36855,6 +36855,54 @@
           }
         }
       }
+    },
+    "No chat is waiting on your answer." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答を待っているチャットはありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有等待你回复的聊天。"
+          }
+        }
+      }
+    },
+    "No chat has a reply in progress." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返信を生成中のチャットはありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有正在生成回复的聊天。"
+          }
+        }
+      }
+    },
+    "You're all caught up." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべて確認済みです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你已全部看完。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
