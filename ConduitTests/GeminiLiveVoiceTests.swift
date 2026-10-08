@@ -221,7 +221,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let behaviors = Dictionary(uniqueKeysWithValues: declarations.map { ($0["name"] as! String, $0["behavior"] as! String) })
         // Quick web lookups (weather, news) go to Gemini's own Search, not a Hermes job.
         XCTAssertTrue((body["tools"] as? [[String: Any]])?.contains { $0["googleSearch"] != nil } == true)
-        XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING", "show_on_screen": "BLOCKING", "end_conversation": "BLOCKING"])
+        XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING", "interrupt_job": "NON_BLOCKING", "show_on_screen": "BLOCKING", "end_conversation": "BLOCKING"])
 
         // A first connection opts in to resumption without a handle.
         let fresh = GeminiLiveProtocol.setupMessage(systemInstruction: "", functions: [], resumptionHandle: nil)["setup"] as? [String: Any]

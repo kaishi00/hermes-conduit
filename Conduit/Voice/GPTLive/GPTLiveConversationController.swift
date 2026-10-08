@@ -74,7 +74,7 @@ final class GPTLiveConversationController: ObservableObject {
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
         Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.
-        Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you. If the user wants to cancel jobs, tell them to say "cancel background jobs".
+        Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number. When the user corrects, changes, pauses or calls off a background job that is still running ("wait, make it Alex", "hold that", "never mind"), delegate their words right away, starting with "Job" and its number, like "Job 2: make it Alex": Conduit puts them into that job at once, Hermes decides what they mean, and the job's result still arrives on its earlier delegation. A delegation without that start is new work.
         Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
         When the user says goodbye, say a short goodbye.]
         """
@@ -521,10 +521,10 @@ final class GPTLiveConversationController: ObservableObject {
             if delegationUserEntries[id] == nil {
                 delegationUserEntries[id] = Set(transcript.filter { $0.speaker == .user }.map(\.id))
             }
-            let request = delegationRequest(itemText: text)
+            let parts = delegationRequest(itemText: text)
             Task { [weak self] in
                 guard let self else { return }
-                let outgoing = await self.bridge.handleDelegation(id: id, request: request)
+                let outgoing = await self.bridge.handleDelegation(id: id, request: parts.request, userWords: parts.userWords)
                 // Answered even while paused: the model asked and is
                 // waiting, and the reply stays readable in the transcript.
                 self.dispatch(outgoing)
@@ -585,8 +585,10 @@ final class GPTLiveConversationController: ObservableObject {
     /// otherwise the user's words since the last delegation, with the
     /// recent conversation for context. Earlier requests in that context
     /// are marked, so a second job doesn't redo the first one's work.
+    /// `userWords` are the user's own words since the last delegation, as
+    /// they said them: a follow-up hands Hermes those (#451).
     /// Not UI copy.
-    func delegationRequest(itemText: String) -> String {
+    func delegationRequest(itemText: String) -> (request: String, userWords: String) {
         let handled = delegatedEntries
         let recent = transcript.filter { !handled.contains($0.id) }
         delegatedEntries.formUnion(transcript.map(\.id))
@@ -595,7 +597,7 @@ final class GPTLiveConversationController: ObservableObject {
         let request = own.isEmpty ? userWords : own
         // Nothing new since the last delegation: no request, so Hermes asks
         // the user rather than redoing the one already passed on.
-        guard !request.isEmpty else { return "" }
+        guard !request.isEmpty else { return ("", userWords) }
         var context = ""
         for entry in transcript.suffix(8).reversed() {
             let speaker = entry.speaker == .user
@@ -605,8 +607,8 @@ final class GPTLiveConversationController: ObservableObject {
             guard context.count + line.count <= Self.delegationContextCharacters else { break }
             context = line + context
         }
-        guard !context.isEmpty else { return request }
-        return request + Self.delegationContextMarker + context
+        guard !context.isEmpty else { return (request, userWords) }
+        return (request + Self.delegationContextMarker + context, userWords)
     }
 
     private func sendJobStatus() {

@@ -100,7 +100,9 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
 
     let id: UUID
     let title: String
-    let instructions: String
+    /// The request as it goes to Hermes. A follow-up said before it went
+    /// out is added to it (#451).
+    var instructions: String
     /// The Hermes profile (or bot) the job runs in; nil is the active one.
     var profile: String? = nil
     /// The profile as the user named it, for spoken confirmations.
@@ -140,10 +142,64 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// The live call that started this job and where in its transcript,
     /// so the call screen can show the job there. Nil outside a live call.
     var callAnchor: VoiceJobCallAnchor?
+    /// The job's number in spoken job lists ("Job 2"), so a live model
+    /// without job ids (GPT-Live) can name it (#451). Never reused while the
+    /// ledger lasts; thread turns have none.
+    var number = 0
+    /// Whether a background job's first prompt went to Hermes. Until then a
+    /// follow-up joins its instructions instead of interrupting it.
+    var requestSent = false
+    /// A follow-up being put into the running turn (#451). While it is on
+    /// its way, or waits to run as the next turn, a completion isn't taken
+    /// as the request's end.
+    var followUp: VoiceFollowUpState?
+    /// What a completion carried while a follow-up was settling: the
+    /// result, if it turns out to have been the turn's last.
+    var heldCompletion: String?
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
         return sessionID == runtimeSessionID || sessionID == storedSessionID
+    }
+}
+
+/// Where a follow-up put into a running request stands (#451).
+enum VoiceFollowUpState: Equatable {
+    /// The interrupt is on its way to Hermes.
+    case sending
+    /// Hermes took it into the running turn.
+    case accepted
+    /// Hermes runs it as the next turn, after the current reply (it came
+    /// while the turn was being built or the chat compacted), so that
+    /// reply's completion isn't the last.
+    case queued
+}
+
+/// What Hermes did with a follow-up (`VoiceBackgroundJobBackend.redirect`).
+enum VoiceRedirectResult: Equatable {
+    /// Taken into the running turn, keeping its work so far.
+    case redirected
+    /// Hermes runs it as the next turn, right after the current one.
+    case queued
+    /// Nothing was running to take it.
+    case notRunning
+}
+
+/// What became of a follow-up to a running request, for the live model.
+enum VoiceFollowUpOutcome: Equatable {
+    /// Hermes took it into the request it is working on.
+    case interrupted(title: String)
+    /// The request hadn't gone out yet: the follow-up joined it.
+    case joined(title: String)
+    /// The request had already finished, so Hermes didn't get it.
+    case finished(title: String)
+    /// Hermes couldn't be reached.
+    case failed(String)
+
+    /// The request was over before the follow-up reached it.
+    var foundRequestFinished: Bool {
+        if case .finished = self { return true }
+        return false
     }
 }
 
@@ -205,6 +261,10 @@ struct VoiceBackgroundJobBackend {
     var submitThreadTurn: @MainActor (_ thread: VoiceThreadTarget, _ runtimeID: String, _ text: String) async throws -> String = { _, _, _ in
         throw VoiceAudioError.unavailable(AppLocalization.string("Hermes could not send this to the chat."))
     }
+    /// Puts a follow-up into the turn running on `sessionID` as an
+    /// interrupt: Hermes keeps the turn's work so far and takes the new
+    /// direction at once (#451).
+    var redirect: @MainActor (_ sessionID: String, _ text: String) async throws -> VoiceRedirectResult = { _, _ in .notRunning }
     /// The chat's latest assistant reply, read without starting a turn.
     var latestThreadReply: @MainActor (_ thread: VoiceThreadTarget) async -> String? = { _ in nil }
     /// Whether `sessionID` is one of the attached chat's ids, including a
@@ -345,15 +405,22 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Bumped by `reset()` so work started for a retired server or profile
     /// can never write into the new ledger.
     private var generation: UInt64 = 0
+    /// The last number a background job was given (#451).
+    private var lastJobNumber = 0
+    /// How long a follow-up waits before trying again on a request Hermes
+    /// was sent but hadn't started running yet.
+    private let followUpRetryInterval: Duration
 
     init(
         backend: VoiceBackgroundJobBackend,
         pollInterval: Duration = .seconds(20),
-        threadWaitInterval: Duration = .seconds(1)
+        threadWaitInterval: Duration = .seconds(1),
+        followUpRetryInterval: Duration = .seconds(1)
     ) {
         self.backend = backend
         self.pollInterval = pollInterval
         self.threadWaitInterval = threadWaitInterval
+        self.followUpRetryInterval = followUpRetryInterval
     }
 
     deinit {
@@ -506,6 +573,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         )
         var anchored = job
         anchored.callAnchor = currentCallAnchor
+        lastJobNumber += 1
+        anchored.number = lastJobNumber
         jobs.append(anchored)
         onJobCreated?(job.id)
         let generation = generation
@@ -528,7 +597,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: runtimeID, generation: generation)
             }
-            try await backend.submit(runtimeID, Self.jobPrompt(for: instructions))
+            // A follow-up said while the session was being made joined the
+            // request (#451); from here on one interrupts it instead.
+            let request = self.job(job.id)?.instructions ?? instructions
+            update(job.id) { $0.requestSent = true }
+            try await backend.submit(runtimeID, Self.jobPrompt(for: request))
             // Events may legitimately move the job past .starting while
             // submit awaits; only a cancel or a reset retires it here. A
             // cancel that landed mid-submit reached Hermes before the turn
@@ -566,6 +639,103 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             return failedStartReply(job.id)
         }
+    }
+
+    // MARK: Follow-ups (#451)
+
+    /// The call's own request in its attached chat that a follow-up goes
+    /// into: the one still running there, or one still waiting to be sent.
+    /// Nil when there is none; the follow-up is then the chat's next turn.
+    func threadFollowUpTarget() -> UUID? {
+        guard let thread = liveThread else { return nil }
+        return jobs.last { job in
+            job.isThreadTurn && !job.isDetachedThreadTurn && job.status.isActive
+                && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
+        }?.id
+    }
+
+    /// The background job with `number` in spoken job lists.
+    func backgroundJob(numbered number: Int) -> VoiceBackgroundJob? {
+        guard number > 0 else { return nil }
+        return jobs.first { !$0.isThreadTurn && $0.number == number }
+    }
+
+    /// Puts the user's follow-up into the request `jobID` (a background job,
+    /// or the call's turn in its chat) while Hermes works on it. In a voice
+    /// call that is always an interrupt, whatever the composer's busy
+    /// setting: Hermes keeps the work so far and takes the new direction
+    /// at once (its redirect). Hermes reads the words and decides what they
+    /// mean ("never mind", "hold that", "make it Alex"). A request that
+    /// hasn't gone out yet takes them into its own text instead.
+    func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome {
+        let words = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let job = job(jobID) else { return .finished(title: "") }
+        guard job.status.isActive else { return .finished(title: job.title) }
+        // For the live model, not UI copy, so not localized.
+        guard !words.isEmpty else { return .failed("There were no words to pass on.") }
+        let sent = job.isThreadTurn ? job.threadTurnSubmitted : job.requestSent
+        guard sent else {
+            update(jobID) { $0.instructions += "\n\n" + words }
+            return .joined(title: job.title)
+        }
+        let generation = generation
+        let text = Self.threadTurnText(for: words)
+        var retried = false
+        while true {
+            guard let current = self.job(jobID), current.status.isActive,
+                  let sessionID = current.runtimeSessionID, !sessionID.isEmpty else {
+                return .finished(title: job.title)
+            }
+            update(jobID) { $0.followUp = .sending }
+            let result: VoiceRedirectResult
+            do {
+                result = try await backend.redirect(sessionID, text)
+            } catch {
+                if generation == self.generation { endFollowUp(jobID) }
+                return .failed(UserFacingError.message(for: error))
+            }
+            guard generation == self.generation else { return .finished(title: job.title) }
+            switch result {
+            case .redirected:
+                update(jobID) { $0.followUp = .accepted }
+                return .interrupted(title: job.title)
+            case .queued:
+                update(jobID) { $0.followUp = .queued }
+                return .interrupted(title: job.title)
+            case .notRunning:
+                endFollowUp(jobID)
+                // Sent but not running yet: Hermes may still be starting the
+                // turn, so it gets one more try.
+                guard !retried, self.job(jobID)?.status == .starting else { return .finished(title: job.title) }
+                retried = true
+                try? await Task.sleep(for: followUpRetryInterval)
+                guard generation == self.generation else { return .finished(title: job.title) }
+            }
+        }
+    }
+
+    /// The follow-up didn't take: a completion held back meanwhile was the
+    /// turn's last after all.
+    private func endFollowUp(_ jobID: UUID) {
+        guard let job = job(jobID) else { return }
+        let held = job.heldCompletion
+        update(jobID) {
+            $0.followUp = nil
+            $0.heldCompletion = nil
+        }
+        guard let held, job.status.isActive else { return }
+        update(jobID) {
+            $0.status = .finished
+            $0.result = held
+        }
+        noticeMayBePending()
+        if job.isThreadTurn { pumpThreadTurns() }
+    }
+
+    /// Whether `content` is Hermes' marker for a reply a correction cut
+    /// off, never a result of its own.
+    static func isInterruptionNotice(_ content: String?) -> Bool {
+        content.map(MessageNormalizer.isUserCorrectionInterruptionNotice) ?? false
     }
 
     // MARK: Thread turns
@@ -716,9 +886,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     continue
                 }
                 guard generation == self.generation, job(next.id)?.status == .starting else { continue }
-                // Only now does the turn own the chat's events.
+                // Only now does the turn own the chat's events. A follow-up
+                // said while it waited joined the request (#451).
+                let request = job(next.id)?.instructions ?? next.instructions
                 update(next.id) { $0.threadTurnSubmitted = true }
-                let runtimeID = try await backend.submitThreadTurn(thread, target, Self.threadTurnText(for: next.instructions))
+                let runtimeID = try await backend.submitThreadTurn(thread, target, Self.threadTurnText(for: request))
                 guard generation == self.generation else { return }
                 update(next.id) {
                     // A resumed chat can run on a new runtime id.
@@ -966,6 +1138,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         threadTask?.cancel()
         threadTask = nil
         jobs.removeAll()
+        lastJobNumber = 0
         noticesInFlight.removeAll()
         liveThread = nil
         liveCallID = nil
@@ -993,6 +1166,37 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard !before.isThreadTurn || before.threadTurnSubmitted else { return }
         // Any event for the job is proof of life for the liveness poll.
         jobs[index].consecutiveMissedPolls = 0
+        // A follow-up is going into the turn (#451). Hermes takes it into
+        // the running turn, which still ends with a single completion: once
+        // it has, that completion is the request's end. Until then (still
+        // sending), or when Hermes runs the words as the next turn, a
+        // completion may not be the last: it is held, and the turn carrying
+        // on (any progress once Hermes took it) drops it.
+        if let followUp = before.followUp {
+            switch event {
+            case .messageInterrupted:
+                return
+            case .messageComplete(_, _, let content, _):
+                if Self.isInterruptionNotice(content) { return }
+                guard followUp == .accepted else {
+                    jobs[index].heldCompletion = content
+                    if followUp == .queued { jobs[index].followUp = .accepted }
+                    return
+                }
+                jobs[index].followUp = nil
+                jobs[index].heldCompletion = nil
+            case .messageStart, .messageDelta, .reasoningDelta, .toolStart, .toolComplete:
+                if followUp == .accepted {
+                    jobs[index].followUp = nil
+                    jobs[index].heldCompletion = nil
+                }
+            default:
+                break
+            }
+        } else if case .messageComplete(_, _, let content, _) = event, Self.isInterruptionNotice(content) {
+            // A notice for a reply cut off by a correction is never a result.
+            return
+        }
         switch event {
         case .messageStart, .messageDelta, .reasoningDelta, .toolStart, .toolComplete:
             if before.status == .needsInput || before.status == .starting {
@@ -1367,6 +1571,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             jobs[index].status = .finished
             if job.isThreadTurn { jobs[index].settledByPoll = true }
+            // A completion held for a follow-up that never carried on.
+            if jobs[index].result == nil { jobs[index].result = job.heldCompletion }
+            jobs[index].followUp = nil
+            jobs[index].heldCompletion = nil
             changed = true
         }
         for id in settledJobs {
@@ -1405,6 +1613,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.status = .finished
                 $0.settledByPoll = true
                 if let reply, !reply.isEmpty { $0.result = reply }
+                if $0.result == nil { $0.result = $0.heldCompletion }
+                $0.followUp = nil
+                $0.heldCompletion = nil
             }
             changed = true
         }

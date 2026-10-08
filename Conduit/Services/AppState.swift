@@ -2304,6 +2304,10 @@ final class AppState: ObservableObject {
                 guard let self else { throw HermesError.notConnected }
                 return try await self.submitLiveVoiceThreadTurn(thread, runtimeID: runtimeID, text: text)
             },
+            redirect: { [weak self] sessionID, text in
+                guard let self else { throw HermesError.notConnected }
+                return try await self.redirectLiveVoiceFollowUp(sessionID: sessionID, text: text)
+            },
             latestThreadReply: { [weak self] thread in
                 await self?.latestLiveVoiceThreadReply(thread)
             },
@@ -4674,6 +4678,48 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Puts a live call's follow-up into the turn running on `sessionID`
+    /// (#451). In a call that is always an interrupt, whatever the
+    /// composer's busy setting: Hermes' redirect, which keeps the turn's
+    /// work so far. A gateway without redirect gets a steer instead, which
+    /// lands at the turn's next step. The open chat shows the words the way
+    /// it shows a typed correction.
+    private func redirectLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
+        guard let client else { throw HermesError.notConnected }
+        let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
+        do {
+            let outcome: SessionRedirectOutcome
+            if let redirect = chatResumeLifecycleOperations.redirect {
+                outcome = try await redirect(client, sessionID, text)
+            } else {
+                outcome = try await client.redirect(sessionID, text: text)
+            }
+            switch outcome {
+            case .redirected:
+                if isOpenChat(target) { appendLocalUserMessage(text) }
+                return .redirected
+            case .queued:
+                if isOpenChat(target) { appendLocalUserMessage(text) }
+                return .queued
+            case .rejected:
+                return .notRunning
+            }
+        } catch let error as RpcError where isUnsupportedRedirect(error) {
+            let persistedTwinsBefore = persistedSteerIDs(matching: text)
+            do {
+                if let steer = chatResumeLifecycleOperations.steer {
+                    try await steer(client, sessionID, text)
+                } else {
+                    try await client.steer(sessionID, text: text)
+                }
+            } catch HermesError.steerRejected {
+                return .notRunning
+            }
+            if isOpenChat(target) { appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore) }
+            return .redirected
+        }
+    }
+
     /// The chat's latest assistant reply, without starting a turn: from the
     /// transcript when the chat is open, otherwise from its saved history.
     private func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> String? {
@@ -4783,9 +4829,9 @@ final class AppState: ObservableObject {
             .prefix(80)
         var block = "\n\nThis call is attached to the user's Hermes chat \"\(title)\". "
         if delegation {
-            block += "Delegate work that needs Hermes: it is sent to that chat as its next message and Hermes' reply comes back on the delegation. When the user asks for work to run in the background or in a separate chat, say \"in the background\" in the delegation. When the user starts a request with \"quick\", start the delegation with \"Quick:\": it runs as a fast separate job instead of in the chat. When the user asks to hear Hermes' last reply or to hear it again (\"repeat that\", \"say that again\", \"read the last message\"), don't answer from memory: delegate \"read the last reply\" and read what comes back word for word, once."
+            block += "Delegate work that needs Hermes: it is sent to that chat as its next message and Hermes' reply comes back on the delegation. When the user asks for work to run in the background or in a separate chat, say \"in the background\" in the delegation. When the user starts a request with \"quick\", start the delegation with \"Quick:\": it runs as a fast separate job instead of in the chat. When the user asks to hear Hermes' last reply or to hear it again (\"repeat that\", \"say that again\", \"read the last message\"), don't answer from memory: delegate \"read the last reply\" and read what comes back word for word, once. When the user corrects, changes, pauses or calls off something Hermes is still working on in the chat (\"wait, make it Alex\", \"hold that\", \"never mind\"), delegate their words right away: Conduit puts them into Hermes' running reply at once, and that reply still comes back on the earlier delegation."
         } else {
-            block += "Quick facts from the web (weather, news, prices) are not work for the chat: answer them as your instructions above say. Send other work that needs Hermes to that chat with ask_thread: it becomes the chat's next message and Hermes' reply comes back to you. Use start_job instead when the user asks for work to run in the background or in a separate chat, or starts a request with \"quick\": answer a quick fact with a lookup, and send quick work that needs Hermes' tools to start_job, which runs it fast in its own chat. When the user asks to hear Hermes' last reply, call read_last_reply and read it word for word."
+            block += "Quick facts from the web (weather, news, prices) are not work for the chat: answer them as your instructions above say. Send other work that needs Hermes to that chat with ask_thread: it becomes the chat's next message and Hermes' reply comes back to you. Use start_job instead when the user asks for work to run in the background or in a separate chat, or starts a request with \"quick\": answer a quick fact with a lookup, and send quick work that needs Hermes' tools to start_job, which runs it fast in its own chat. When the user asks to hear Hermes' last reply, call read_last_reply and read it word for word. When the user corrects, changes, pauses or calls off something Hermes is still working on in the chat (\"wait, make it Alex\", \"hold that\", \"never mind\"), send their words with ask_thread right away: Conduit puts them into Hermes' running reply at once, and that reply still comes back on the earlier call."
         }
         block += " Otherwise don't read Hermes' replies word for word: tell the user what they say, with the details that matter, and skip what doesn't work by ear, like code, long tables or links; the full replies stay in the chat."
         // #363: typed turns in the chat reach the call as quiet notes.

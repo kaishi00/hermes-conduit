@@ -10,6 +10,10 @@
 //  outcome back on it as "speakable" context once it settles. Hermes stays
 //  the worker; approvals are never given by voice.
 //
+//  A correction to work Hermes is still doing goes into it (#451): a
+//  delegation starting "Job 2:" into background job 2, and in a call
+//  attached to a chat, any delegation while the call's request runs there.
+//
 //  Job updates with no delegation left to answer (a job started before a
 //  reconnect, a job waiting for input) go out as session context, only
 //  while the conversation is idle.
@@ -57,14 +61,26 @@ final class GPTLiveDelegationBridge {
     // MARK: Delegations
 
     /// Starts the Hermes job for a delegation. `request` is the work, from
-    /// the delegation itself or the user's recent words.
-    func handleDelegation(id: String, request: String) async -> [Outgoing] {
+    /// the delegation itself or the user's recent words. `userWords` are the
+    /// user's own words since the last delegation: a follow-up to work
+    /// Hermes is still doing hands it those (#451).
+    func handleDelegation(id: String, request: String, userWords: String = "") async -> [Outgoing] {
         guard seenDelegations.insert(id).inserted, !isEnding else { return [] }
-        let instructions = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        var instructions = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        let call = callGeneration
+        // "Job 2: make it Alex" puts the user's words into background job 2
+        // while it runs (#451). A number with no job is just new work.
+        if let marker = Self.jobMarker(in: instructions) {
+            if let job = supervisor.backgroundJob(numbered: marker.number) {
+                let outcome = await supervisor.followUp(jobID: job.id, words: Self.followUpWords(userWords: userWords, delegated: marker.rest))
+                guard callGeneration == call, !isEnding else { return [] }
+                return [Self.followUpReply(delegationID: id, outcome)]
+            }
+            instructions = marker.rest
+        }
         guard !instructions.isEmpty else {
             return [.delegationReply(delegationID: id, text: Self.relay("Hermes didn't get a request to work on. Ask the user what they want done."), channel: .speakable)]
         }
-        let call = callGeneration
         // The "Quick:" marker routes; it isn't part of the task.
         let task = VoiceThreadRouting.removingQuickMarker(instructions)
         // Attached to a chat: hearing the last reply reads it, quick or
@@ -87,6 +103,15 @@ final class GPTLiveDelegationBridge {
             return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
         }
         if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(routingWords) {
+            // The call's request still runs in the chat: this goes into it.
+            if let target = supervisor.threadFollowUpTarget() {
+                let outcome = await supervisor.followUp(jobID: target, words: Self.followUpWords(userWords: userWords, delegated: ownWords))
+                guard callGeneration == call, !isEnding else { return [] }
+                // Finished meanwhile: it is the chat's next turn after all.
+                if !outcome.foundRequestFinished {
+                    return [Self.followUpReply(delegationID: id, outcome)] + settleOpenDelegations()
+                }
+            }
             let sent = supervisor.startThreadTurn(request: instructions)
             guard let jobID = sent.jobID else {
                 return [.delegationReply(delegationID: id, text: Self.relay(sent.refusal ?? ""), channel: .speakable)]
@@ -126,7 +151,7 @@ final class GPTLiveDelegationBridge {
         if let job = supervisor.jobs.first(where: { $0.id == jobID }), job.status.isActive {
             outgoing.append(.delegationReply(
                 delegationID: id,
-                text: "Hermes is working on this as a background job (\"\(job.title)\"). Its result will follow on this delegation; don't guess it.",
+                text: "Hermes is working on this as background job \(job.number) (\"\(job.title)\"). Its result will follow on this delegation; don't guess it. If the user corrects or changes it while it runs, delegate their words starting with \"Job \(job.number):\".",
                 channel: .commentary
             ))
         }
@@ -286,8 +311,51 @@ final class GPTLiveDelegationBridge {
     func statusContext() -> String {
         let visible = supervisor.jobs.filter { !$0.isThreadTurn && ($0.status.isActive || !$0.outcomeDelivered) }
         guard !visible.isEmpty else { return "[Background jobs: none running.]" }
-        let lines = visible.map { "\($0.title): \(GeminiLiveToolBridge.statusName($0.status))" }
+        let lines = visible.map { "Job \($0.number) (\($0.title)): \(GeminiLiveToolBridge.statusName($0.status))" }
         return "[Background jobs on Hermes: " + lines.joined(separator: "; ") + ".]"
+    }
+
+    // MARK: Follow-ups (#451)
+
+    /// "Job 2: make it Alex" → (2, "make it Alex"): the marker GPT-Live puts
+    /// on a follow-up to a running background job, from the job numbers in
+    /// `statusContext`. Only at the very start of the delegation.
+    static func jobMarker(in request: String) -> (number: Int, rest: String)? {
+        guard let range = request.range(of: #"^\s*job\s*#?\s*[0-9]{1,4}\s*[:,.\-–—]"#, options: [.regularExpression, .caseInsensitive]),
+              let number = Int(String(request[range].filter { $0.isASCII && $0.isNumber })) else { return nil }
+        let rest = request[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return (number, rest)
+    }
+
+    /// What a follow-up hands Hermes: the user's own words when the call
+    /// heard any since the last delegation, otherwise the delegation's,
+    /// without the conversation added for context.
+    static func followUpWords(userWords: String, delegated: String) -> String {
+        let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard spoken.isEmpty else { return spoken }
+        let own = delegated.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? delegated
+        return own.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The answer on a follow-up's own delegation. Taken: quiet, since the
+    /// model already acknowledged it and the result follows on the earlier
+    /// delegation. Not taken: said aloud, so the user knows. Not UI copy.
+    static func followUpReply(delegationID: String, _ outcome: VoiceFollowUpOutcome) -> Outgoing {
+        switch outcome {
+        case .interrupted(let title):
+            return .delegationReply(delegationID: delegationID, text: "Conduit put the user's words into \(quoted(title)) at once; Hermes keeps its work so far and changes course now. Its result still follows on the earlier delegation; don't guess it.", channel: .commentary)
+        case .joined(let title):
+            return .delegationReply(delegationID: delegationID, text: "Conduit added the user's words to \(quoted(title)) before Hermes started on it. Its result still follows on the earlier delegation; don't guess it.", channel: .commentary)
+        case .finished(let title):
+            return .delegationReply(delegationID: delegationID, text: relay("\(quoted(title)) had already finished, so Hermes didn't get this. Ask the user what they want instead."), channel: .speakable)
+        case .failed(let message):
+            return .delegationReply(delegationID: delegationID, text: relay("Hermes didn't get that (\(message))."), channel: .speakable)
+        }
+    }
+
+    /// A request's title for the model, or a stand-in without one.
+    private static func quoted(_ title: String) -> String {
+        title.isEmpty ? "that request" : "\"\(title)\""
     }
 
     /// The chat's last reply, to be read as it is. Not UI copy.
