@@ -607,6 +607,11 @@ final class AppState: ObservableObject {
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
     private weak var activeListUnsupportedClient: HermesClient?
+    /// The dashboard the Desktop views below came from, when each profile
+    /// was last asked, and the newest settled time it reported.
+    private weak var desktopViewsBridge: DashboardTicketBridge?
+    private var desktopViewsFetchedAt: [String: Date] = [:]
+    private var desktopViewsCursor: [String: TimeInterval] = [:]
     @Published private(set) var sessionMutationID: String?
     @Published private(set) var isRefreshingSessionCatalog = false
     @Published var activeSessionId: String? {
@@ -5155,6 +5160,8 @@ final class AppState: ObservableObject {
     /// authoritative evidence the foreground probe records, and re-recording
     /// an unchanged binding is a no-op.
     func refreshLiveSessionStatuses() async {
+        // Its own task: a slow plugin read must not hold up live status.
+        Task { [weak self] in await self?.refreshDesktopViewsIfDue() }
         guard isSceneActive, let client, isConnected,
               client !== activeListUnsupportedClient else { return }
         let profile = activeProfile
@@ -5167,6 +5174,58 @@ final class AppState: ObservableObject {
             // connection probes again.
             if isMethodUnavailable(error) { activeListUnsupportedClient = client }
         }
+    }
+
+    /// Whether the chat Desktop has selected stays seen for as long as it
+    /// stays selected there, or counts only at the moment it was opened.
+    static let desktopSelectionCountsAsSeen = true
+    static let desktopViewsInterval: TimeInterval = 15
+
+    /// Reads which chats Hermes Desktop (or the web dashboard) had on the
+    /// host (notifier plugin 0.12+), so reading a chat there reads it here.
+    /// Hermes' own read flag stays untouched: writing it would put Desktop's
+    /// unread dot on the chat it has open.
+    func refreshDesktopViewsIfDue() async {
+        guard isSceneActive, let bridge = dashboardTicketBridge,
+              case .reported(_, let capabilities) = notifierPlugin.state,
+              capabilities.contains("desktop-views") else { return }
+        if bridge !== desktopViewsBridge {
+            desktopViewsBridge = bridge
+            desktopViewsFetchedAt = [:]
+            desktopViewsCursor = [:]
+            updateChatReadState { $0.forgetDesktopViews() }
+        }
+        let profile = activeProfile
+        let now = Date()
+        if let last = desktopViewsFetchedAt[profile], now.timeIntervalSince(last) < Self.desktopViewsInterval { return }
+        desktopViewsFetchedAt[profile] = now
+        var path = "/api/plugins/conduit_push/sessions/desktop-views"
+        if let cursor = desktopViewsCursor[profile] { path += "?since=\(cursor)" }
+        let response: [String: Any]
+        do {
+            response = try await bridge.requestJSON(path: dashboardPath(path, profile: profile))
+        } catch {
+            return
+        }
+        guard bridge === dashboardTicketBridge, profile == activeProfile,
+              response["ok"] as? Bool == true, let views = response["views"] as? [String: Any] else { return }
+        let field = Self.desktopSelectionCountsAsSeen ? "seen_through" : "opened_at"
+        var seen: [String: TimeInterval] = [:]
+        var cursor = desktopViewsCursor[profile] ?? 0
+        for (id, value) in views {
+            guard let entry = value as? [String: Any],
+                  let time = (entry[field] as? NSNumber)?.doubleValue, time.isFinite else { continue }
+            seen[id] = time
+            // A chat still selected reports the moment of this read; only
+            // settled times move the "newer than" cursor.
+            if entry["open"] as? Bool != true, let settled = (entry["seen_through"] as? NSNumber)?.doubleValue {
+                cursor = max(cursor, settled)
+            }
+        }
+        desktopViewsCursor[profile] = cursor
+        guard !seen.isEmpty else { return }
+        updateChatReadState { $0.recordDesktopViews(seen, profile: profile) }
+        observeChatReadState()
     }
 
     func markSessionRead(_ session: SessionSummary) {

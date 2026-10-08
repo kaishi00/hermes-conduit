@@ -865,6 +865,8 @@ final class HermesClient: ObservableObject {
 
         var request = URLRequest(url: url)
         request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
+        // Lets the notifier plugin tell Conduit's opens from Desktop's (#454).
+        request.setValue("conduit", forHTTPHeaderField: "X-Conduit-Client")
         let socket = transport.makeSocket(
             request: request,
             onOpen: { [weak self] socket in Task { @MainActor in self?.didOpen(socket) } },
