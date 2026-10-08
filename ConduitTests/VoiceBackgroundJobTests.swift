@@ -1855,6 +1855,19 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(names.contains("send_request"))
         XCTAssertTrue(names.contains("interrupt_job"))
         XCTAssertTrue(names.contains("web_search"))
+
+        // Nor do the instructions teach it, on either Watch engine.
+        let gemini = GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false)
+        XCTAssertFalse(gemini.contains("set_ask_first"))
+        XCTAssertFalse(gemini.contains("send_request"))
+        XCTAssertTrue(gemini.contains("interrupt_job"), "corrections still reach the job on a Watch Gemini call")
+        XCTAssertTrue(GeminiLiveConversationController.instructions(search: .hermes).contains("set_ask_first"))
+        let gpt = GPTLiveConversationController.briefing(onWatch: true)
+        XCTAssertFalse(gpt.contains("Mode: ask first"))
+        XCTAssertFalse(gpt.contains("\"Send:\""))
+        XCTAssertFalse(gpt.contains("Job 2: make it Alex"), "the relay doesn't route job corrections")
+        XCTAssertTrue(GPTLiveConversationController.briefing().contains("Mode: ask first"))
+        XCTAssertTrue(GPTLiveConversationController.briefing().contains("Job 2: make it Alex"))
     }
 
     private func makeFollowUpRetrySupervisor() -> (VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {

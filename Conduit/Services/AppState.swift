@@ -23821,7 +23821,8 @@ final class AppState: ObservableObject {
                 search: search,
                 memory: memory,
                 personality: personality,
-                answerLength: style.answerLength
+                answerLength: style.answerLength,
+                asksFirst: false
             ) + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
@@ -23896,7 +23897,8 @@ final class AppState: ObservableObject {
             briefing: GPTLiveConversationController.briefing(
                 memory: memory,
                 personality: personality,
-                answerLength: style.answerLength
+                answerLength: style.answerLength,
+                onWatch: true
             ) + style.instructions,
             greeting: style.greeting,
             voice: gptLiveVoice,
