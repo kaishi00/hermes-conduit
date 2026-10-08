@@ -1846,7 +1846,7 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse("call_2", "interrupt_job", let result, _)? = sent.first else { return XCTFail("\(sent)") }
         XCTAssertEqual(result["status"], "sent", "a Watch call's correction reaches the job, not a no-op default")
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex")
+        XCTAssertEqual(fake.redirects.first?.1, "wait, make it Alex", "a background job's words carry no chat mark")
     }
 
     func testWatchCallsAreNotOfferedAskingFirst() {
