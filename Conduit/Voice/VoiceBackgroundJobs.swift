@@ -558,7 +558,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// `profile` is the profile or bot the user named for the job. Without
     /// one, a leading "for <profile>, …" in the instructions names it.
     func startJob(
-        instructions: String,
+        instructions requested: String,
         profile spokenProfile: String? = nil,
         onJobCreated: (@MainActor (UUID) -> Void)? = nil
     ) async -> String {
@@ -566,7 +566,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard activeCount < Self.maximumActiveJobs else {
             return AppLocalization.string("You already have \(activeCount) background jobs running. Cancel them before starting another.")
         }
-        let routed = VoiceJobProfiles.route(instructions: instructions, spokenProfile: spokenProfile, resolve: { self.backend.resolveProfile($0) })
+        let routed = VoiceJobProfiles.route(instructions: requested, spokenProfile: spokenProfile, resolve: { self.backend.resolveProfile($0) })
         let instructions: String
         let profile: String?
         let profileLabel: String?
