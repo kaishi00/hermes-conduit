@@ -709,29 +709,27 @@ final class WatchDirectBroker {
     /// and limits, never its keys.
     private func requestGrant(_ id: UInt32, profile: String, carryJobsFrom: String? = nil) async -> WatchVoiceWire.DirectToolGrant? {
         if !grantJobTools.isEmpty {
-            if let grant = await requestGrantWithToken(id, profile: profile, withJobs: true, carryJobsFrom: carryJobsFrom) { return grant }
+            let withJobs = await requestGrantWithToken(id, profile: profile, withJobs: true, carryJobsFrom: carryJobsFrom)
+            if case .success(let grant) = withJobs { return grant }
             guard callID == id, !grantTools.isEmpty || grantLiveToken else { return nil }
-            // Renewals don't ask for jobs again.
-            grantJobTools = []
+            // A plugin before 0.7 refuses job tools (400): renewals stop
+            // asking. A timeout or a 5xx only costs this grant its jobs.
+            if case .failure(let error) = withJobs, Self.isRefusedTool(error) { grantJobTools = [] }
         }
         guard !grantTools.isEmpty || grantLiveToken else { return nil }
-        return await requestGrantWithToken(id, profile: profile, withJobs: false, carryJobsFrom: nil)
+        return try? await requestGrantWithToken(id, profile: profile, withJobs: false, carryJobsFrom: nil).get()
     }
 
     /// Asks with live_token while the host takes it. A plugin before 0.8
     /// refuses a tool it doesn't know (400): asked again without it, and
     /// this call's later grants leave it out.
-    private func requestGrantWithToken(_ id: UInt32, profile: String, withJobs: Bool, carryJobsFrom: String?) async -> WatchVoiceWire.DirectToolGrant? {
+    private func requestGrantWithToken(_ id: UInt32, profile: String, withJobs: Bool, carryJobsFrom: String?) async -> Result<WatchVoiceWire.DirectToolGrant, Error> {
         let asked = grantLiveToken
-        switch await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: asked, carryJobsFrom: carryJobsFrom) {
-        case .success(let grant):
-            return grant
-        case .failure(let error):
-            guard asked, callID == id, Self.isRefusedTool(error) else { return nil }
-            grantLiveToken = false
-            guard !grantTools.isEmpty || (withJobs && !grantJobTools.isEmpty) else { return nil }
-            return try? await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: false, carryJobsFrom: carryJobsFrom).get()
-        }
+        let first = await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: asked, carryJobsFrom: carryJobsFrom)
+        guard case .failure(let error) = first, asked, callID == id, Self.isRefusedTool(error) else { return first }
+        grantLiveToken = false
+        guard !grantTools.isEmpty || (withJobs && !grantJobTools.isEmpty) else { return first }
+        return await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: false, carryJobsFrom: carryJobsFrom)
     }
 
     static func isRefusedTool(_ error: Error) -> Bool {
