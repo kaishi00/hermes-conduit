@@ -18,7 +18,7 @@ final class AppleOnDeviceSpeechTranscriber: DeviceSpeechTranscriptionService {
     private var continuation: CheckedContinuation<String, Error>?
     private var temporaryAudioURL: URL?
 
-    static func currentAvailability(locale: Locale = SpeechRecognitionLocale.preferred()) -> AppleSpeechRecognitionAvailability {
+    static func currentAvailability(locale: Locale = SpeechRecognitionLocale.preferred(accepts: SpeechRecognitionLocale.recognizesOnDevice)) -> AppleSpeechRecognitionAvailability {
         let identifier = locale.identifier
         guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.supportsOnDeviceRecognition else {
             return .unsupported(localeIdentifier: identifier)
@@ -37,7 +37,7 @@ final class AppleOnDeviceSpeechTranscriber: DeviceSpeechTranscriptionService {
 
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
         cancel()
-        let locale = SpeechRecognitionLocale.preferred()
+        let locale = SpeechRecognitionLocale.preferred(accepts: SpeechRecognitionLocale.recognizesOnDevice)
         guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.supportsOnDeviceRecognition else {
             throw VoiceAudioError.unavailable(AppLocalization.string("On-device Apple speech recognition is unavailable for \(locale.identifier)."))
         }

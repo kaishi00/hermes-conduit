@@ -12,32 +12,55 @@ import Speech
 /// the development region's English and a recognizer built from it
 /// transcribes Russian (or French, …) speech as English (#463).
 enum SpeechRecognitionLocale {
+    /// The recognizer's languages only change with an OS update.
+    static let recognizerLocales = SFSpeechRecognizer.supportedLocales()
+
     /// The first of the person's preferred languages Apple's recognizer
-    /// supports, falling back to `current` when none is.
+    /// supports (and `accepts`, say on-device recognition), then the app's
+    /// own language, falling back to `current` itself when neither is.
     static func preferred(
         preferredLanguages: [String] = Locale.preferredLanguages,
         current: Locale = .current,
-        supported: Set<Locale> = SFSpeechRecognizer.supportedLocales()
+        supported: Set<Locale> = recognizerLocales,
+        accepts: (Locale) -> Bool = { _ in true }
     ) -> Locale {
-        for identifier in preferredLanguages {
-            if let match = bestMatch(for: Locale(identifier: identifier), current: current, supported: supported) {
+        let languages = preferredLanguages.map { Locale(identifier: $0) } + [current]
+        for wanted in languages {
+            if let match = bestMatch(for: wanted, current: current, supported: supported, accepts: accepts) {
                 return match
             }
         }
         return current
     }
 
-    private static func bestMatch(for wanted: Locale, current: Locale, supported: Set<Locale>) -> Locale? {
+    /// A locale whose language has an on-device model, so audio stays on
+    /// the iPhone.
+    static func recognizesOnDevice(_ locale: Locale) -> Bool {
+        SFSpeechRecognizer(locale: locale)?.supportsOnDeviceRecognition == true
+    }
+
+    private static func bestMatch(
+        for wanted: Locale,
+        current: Locale,
+        supported: Set<Locale>,
+        accepts: (Locale) -> Bool
+    ) -> Locale? {
         guard let language = wanted.language.languageCode else { return nil }
         let script = maximal(wanted).script
-        // Same language and writing system: zh-Hans never picks zh-TW.
+        // Same language and writing system: zh-Hans never picks zh-TW. An
+        // unknown script matches any.
         let candidates = supported
-            .filter { $0.language.languageCode == language && maximal($0).script == script }
+            .filter { candidate in
+                candidate.language.languageCode == language
+                    && (script == nil || maximal(candidate).script == nil || maximal(candidate).script == script)
+            }
+            .filter(accepts)
             .sorted { $0.identifier < $1.identifier }
         guard !candidates.isEmpty else { return nil }
         // The person's own region first, then the device region, then the
         // language's home region (ru → ru-RU, en → en-US).
-        let regions = [wanted.region, current.region, maximal(wanted).region].compactMap { $0 }
+        let home = Locale(identifier: script.map { "\(language.identifier)-\($0.identifier)" } ?? language.identifier)
+        let regions = [wanted.region, current.region, maximal(home).region].compactMap { $0 }
         for region in regions {
             if let match = candidates.first(where: { $0.region == region }) {
                 return match
