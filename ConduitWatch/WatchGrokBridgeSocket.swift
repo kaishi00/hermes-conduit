@@ -112,9 +112,22 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
         // The microphone goes as audio, which the host appends to xAI's
         // input itself: a quarter fewer bytes through the relay.
         if let pcm = Self.appendedAudio(text) {
-            try await seal(pcm, kind: .audio)
+            // The pre-roll held while connecting is bigger than one message.
+            for chunk in Self.audioChunks(pcm) {
+                try await seal(chunk, kind: .audio)
+            }
         } else {
             try await seal(Data(text.utf8), kind: .event)
+        }
+    }
+
+    /// PCM16 in pieces that each fit one sealed bridge message, cut on
+    /// whole samples.
+    static func audioChunks(_ pcm: Data, limit: Int = WatchAudioBridgeWire.maxPlainBytes) -> [Data] {
+        let size = max(2, limit - limit % 2)
+        guard pcm.count > size else { return [pcm] }
+        return stride(from: 0, to: pcm.count, by: size).map { start in
+            pcm.subdata(in: (pcm.startIndex + start)..<(pcm.startIndex + min(start + size, pcm.count)))
         }
     }
 
