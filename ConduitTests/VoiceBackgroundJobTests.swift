@@ -2247,11 +2247,14 @@ extension VoiceConversationControllerTests {
             "Mail sam@example.com, see note.\nHi and Vec<String>\nThe source.",
             "HTML tags and footnote marks aren't read; an email address and a generic type are"
         )
+        XCTAssertEqual(VoiceReadBack.plainSpeech("<a title=\"a > b\">Docs</a> here"), "Docs here", "a \">\" in a quoted attribute stays inside the tag")
         let long = String(repeating: "word ", count: VoiceBackgroundJobSupervisor.maximumResultCharacters)
         let clip = GeminiLiveToolBridge.clippedForReading(long)
         XCTAssertTrue(clip.isCut)
         XCTAssertLessThanOrEqual(clip.text.count, VoiceBackgroundJobSupervisor.maximumResultCharacters)
         XCTAssertTrue(clip.text.hasSuffix("word"), "cut at a word, with no marker to read out")
+        let unbroken = GeminiLiveToolBridge.clippedForReading("a " + String(repeating: "x", count: VoiceBackgroundJobSupervisor.maximumResultCharacters))
+        XCTAssertEqual(unbroken.text.count, VoiceBackgroundJobSupervisor.maximumResultCharacters, "a long run with no break is cut where it is, not back at an early space")
         let gptText = GPTLiveDelegationBridge.lastReplyText(long)
         XCTAssertFalse(gptText.contains("[…]"))
         XCTAssertTrue(gptText.contains(GeminiLiveToolBridge.readBackCutNote))
@@ -2409,11 +2412,33 @@ extension VoiceConversationControllerTests {
 
         _ = await supervisor.startJob(instructions: "check the disk")
         supervisor.observe(.messageError(sessionId: "rt-2", message: "Provider error"))
-        XCTAssertNotNil(supervisor.takePendingNotice())
         let title = supervisor.jobs.first { $0.runtimeSessionID == "rt-2" }?.title ?? ""
+        let told = supervisor.takePendingNoticeForJob()
+        XCTAssertEqual(told?.notice, .speak(VoiceBackgroundJobSupervisor.failedNotice(title, reason: "Provider error")), "a live model is told why, to put in its own words")
+        if let told { supervisor.noticeSent(jobID: told.jobID) }
         let failed = await supervisor.readBackText()
         XCTAssertEqual(failed, VoiceBackgroundJobSupervisor.failedNotice(title, reason: "Provider error"), "the newest notice the call heard, with its reason")
         XCTAssertTrue(failed?.hasSuffix("(Provider error)") == true)
+
+        // Classic voice speaks a notice as is: no raw reason read out.
+        _ = await supervisor.startJob(instructions: "check the logs")
+        supervisor.observe(.messageError(sessionId: "rt-3", message: "HTTP 500"))
+        let logs = supervisor.jobs.first { $0.runtimeSessionID == "rt-3" }?.title ?? ""
+        XCTAssertEqual(supervisor.takePendingNotice(), .speak(VoiceBackgroundJobSupervisor.failedNotice(logs, reason: "")))
+    }
+
+    func testAJobNoticeHeardWhileTheChatIsReadWinsTheReadBack() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall()
+        fake.threadReply = "Older chat reply."
+        _ = await supervisor.startJob(instructions: "check the server")
+        // The job's result goes out while the chat's reply is being read.
+        fake.onLatestReply = {
+            supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Server is fine.", reasoning: nil))
+            _ = supervisor.takePendingNotice()
+        }
+        let text = await supervisor.readBackText()
+        XCTAssertEqual(text, "Server is fine.", "the newer notice wins over the chat's older reply")
     }
 
     func testReadBackMarkerAndRules() {

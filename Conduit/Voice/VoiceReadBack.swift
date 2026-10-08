@@ -99,8 +99,9 @@ enum VoiceReadBack {
             (#"<(https?://[^>\s]+)>"#, "$1"),
             (#"<(?:mailto:)?([^\s<>@]+@[^\s<>]+)>"#, "$1"),
             (#"<br\s*/?>"#, " "),
-            // Only HTML's own tags: "Vec<String>" in prose is not one.
-            (#"</?(?:a|abbr|b|blockquote|center|code|del|details|div|em|font|h[1-6]|hr|i|img|ins|kbd|li|mark|ol|p|pre|s|small|span|strong|sub|summary|sup|table|tbody|td|th|thead|tr|u|ul)(?:\s[^<>]*)?/?>"#, ""),
+            // Only HTML's own tags: "Vec<String>" in prose is not one. A
+            // quoted attribute can hold a ">".
+            (#"</?(?:a|abbr|b|blockquote|center|code|del|details|div|em|font|h[1-6]|hr|i|img|ins|kbd|li|mark|ol|p|pre|s|small|span|strong|sub|summary|sup|table|tbody|td|th|thead|tr|u|ul)(?:\s(?:[^<>"']|"[^"]*"|'[^']*')*)?/?>"#, ""),
             // A footnote's mark, and its definition's label.
             (#"\[\^[^\]\s]+\]:?"#, ""),
             // A pipe between words is a separator, not something to say.

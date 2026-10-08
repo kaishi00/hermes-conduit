@@ -1532,7 +1532,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     func takePendingNotice() -> VoiceBackgroundJobNotice? {
         defer { pruneSettledJobs() }
-        guard let item = takeNotice() else { return nil }
+        guard let item = takeNotice(withReason: false) else { return nil }
         // Spoken at once: no confirmation follows.
         if let job = job(item.jobID) { noteResultReported(job) }
         return item.notice
@@ -1541,10 +1541,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// `takePendingNotice` plus the job it came from, for a channel that
     /// queues the notice before speaking it. The job is kept (never pruned)
     /// until the channel reports the notice sent with `noticeSent(jobID:)`
-    /// or hands it back with `returnUndeliveredNotice(jobID:)`.
+    /// or hands it back with `returnUndeliveredNotice(jobID:)`. A live
+    /// model puts the notice in its own words, so a failure keeps Hermes'
+    /// reason.
     func takePendingNoticeForJob() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
         defer { pruneSettledJobs() }
-        guard let item = takeNotice() else { return nil }
+        guard let item = takeNotice(withReason: true) else { return nil }
         claimInFlight(item.jobID)
         return item
     }
@@ -1582,7 +1584,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         pruneSettledJobs()
     }
 
-    private func takeNotice() -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
+    /// `withReason` adds Hermes' reason to a failure's notice: not for one
+    /// spoken as is, where a raw provider error would be read out.
+    private func takeNotice(withReason: Bool) -> (notice: VoiceBackgroundJobNotice, jobID: UUID)? {
         for index in jobs.indices {
             let job = jobs[index]
             // A thread turn its call let go of is never announced.
@@ -1604,7 +1608,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             case .failed(let message):
                 // A chat turn's reason says what Hermes did with the request.
                 if job.isThreadTurn, !message.isEmpty { return (.speak(message), job.id) }
-                return (.speak(Self.failedNotice(job.title)), job.id)
+                return (.speak(Self.failedNotice(job.title, reason: withReason ? message : "")), job.id)
             case .cancelled:
                 return (.speak(Self.cancelledNotice(job.title)), job.id)
             case .starting, .running, .needsInput:
@@ -1623,7 +1627,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     /// With Hermes' reason, when there is one, as the call is told it.
-    static func failedNotice(_ title: String, reason: String = "") -> String {
+    static func failedNotice(_ title: String, reason: String) -> String {
         let notice = AppLocalization.string("\(title) failed. Open it in Conduit for details.")
         let reason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         return reason.isEmpty ? notice : notice + " (\(reason))"
