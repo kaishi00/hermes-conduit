@@ -51,7 +51,7 @@ final class WatchToolGrantClient {
             if let maxJobs { body["max_jobs"] = maxJobs }
             if !jobOptions.isEmpty { body["job_options"] = jobOptions }
             if let carryJobsFrom { body["carry_jobs_from"] = carryJobsFrom }
-            body["job_profiles"] = jobProfiles
+            if !jobProfiles.isEmpty { body["job_profiles"] = jobProfiles }
         }
         let response = try await request(
             DashboardPath.withProfile(Self.grantPath, profile: profile),
