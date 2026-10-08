@@ -3656,6 +3656,32 @@ final class AppState: ObservableObject {
         return profilesMatch(match, activeProfile) ? .active : .other(match)
     }
 
+    /// The names a Watch call's job may give the user's profiles, in the
+    /// order `voiceJobProfileTarget` tries them: the Watch resolves "for
+    /// Fam, …" from these as this phone would. Other profiles beyond the
+    /// host's cap are left out.
+    func watchJobProfileNames() -> [WatchVoiceWire.JobProfileName] {
+        func entry(_ profile: String, _ names: [String]) -> WatchVoiceWire.JobProfileName {
+            .init(profile: profilesMatch(profile, activeProfile) ? nil : profile, names: names.filter { !$0.isEmpty })
+        }
+        let entries = profiles.map { entry($0, [$0]) }
+            + [entry("default", [defaultProfileName])]
+            + botRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
+        var others: [String] = []
+        return entries.filter { candidate in
+            guard !candidate.names.isEmpty else { return false }
+            guard let profile = candidate.profile else { return true }
+            if others.contains(where: { profilesMatch($0, profile) }) { return true }
+            guard others.count < Self.watchJobProfileLimit else { return false }
+            others.append(profile)
+            return true
+        }
+    }
+
+    /// The other profiles one Watch grant may name (the plugin's
+    /// WATCH_JOB_MAX_PROFILES).
+    static let watchJobProfileLimit = 32
+
     /// Stops following Voice background jobs at a server, profile, or
     /// sign-out boundary. The jobs keep running on the server as chats.
     private func retireVoiceBackgroundJobs() {
@@ -23802,6 +23828,8 @@ final class AppState: ObservableObject {
         let jobOptions: [String: String]
         /// The profile's spoken end phrases, as the phone's call uses them.
         let endPhrases: [String]
+        /// The names the call's jobs may give the user's profiles.
+        let jobProfiles: [WatchVoiceWire.JobProfileName]
     }
 
     /// Builds a Watch call's setup as `geminiLiveController` builds the
@@ -23873,7 +23901,8 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases
+            endPhrases: preferences.spokenEndConversationPhrases,
+            jobProfiles: watchJobProfileNames()
         )
     }
 
@@ -23890,6 +23919,7 @@ final class AppState: ObservableObject {
         let personalityIncluded: Bool
         let jobOptions: [String: String]
         let endPhrases: [String]
+        let jobProfiles: [WatchVoiceWire.JobProfileName]
     }
 
     /// Builds a Watch GPT-Live call's briefing as `gptLiveController`
@@ -23946,7 +23976,8 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases
+            endPhrases: preferences.spokenEndConversationPhrases,
+            jobProfiles: watchJobProfileNames()
         )
     }
 
@@ -23965,6 +23996,7 @@ final class AppState: ObservableObject {
         let personalityIncluded: Bool
         let jobOptions: [String: String]
         let endPhrases: [String]
+        let jobProfiles: [WatchVoiceWire.JobProfileName]
     }
 
     /// Builds a Watch Grok call's setup as `grokLiveController` builds the
@@ -24029,7 +24061,8 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases
+            endPhrases: preferences.spokenEndConversationPhrases,
+            jobProfiles: watchJobProfileNames()
         )
     }
 

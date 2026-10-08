@@ -82,6 +82,17 @@ enum WatchVoiceWire {
         /// The call's audio bridge for GPT-Live (and Grok) through the
         /// Hermes host, when asked for (designs/apple-watch-gpt-live.md).
         var audio: AudioBridge?
+        /// The names a job may give the user's profiles ("for Fam, …"),
+        /// where the host runs jobs on the others (plugin 0.11). Nil: a
+        /// job for another profile goes through the iPhone.
+        var jobProfiles: [JobProfileName]? = nil
+    }
+
+    /// One of the user's profiles as a job may name it: the profile
+    /// (nil: the call's own) and every name it goes by, a bot's included.
+    struct JobProfileName: Codable, Equatable {
+        var profile: String?
+        var names: [String]
     }
 
     /// Where the Watch dials the host's audio bridge: the relay's

@@ -1672,7 +1672,8 @@ final class WatchDirectCallModel: ObservableObject {
     // MARK: Jobs through the relay
 
     /// The grant to run a job tool through: the call's own, when it
-    /// carries jobs. A job on another profile starts from the iPhone.
+    /// carries jobs. A job on another profile starts from the iPhone
+    /// unless the host runs jobs on the user's other profiles.
     private func jobRelay(for call: GeminiLiveProtocol.FunctionCall) -> WatchToolRelayClient? {
         // A correction can still reach its job through another grant this
         // call follows while the current one renews: it answers until it closes.
@@ -1682,7 +1683,7 @@ final class WatchDirectCallModel: ObservableObject {
             : toolRelay
         guard let relay = candidate, relay.hasJobs, relay.canRun(call.name) else { return nil }
         let profile = call.arguments["profile"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return profile.isEmpty ? relay : nil
+        return profile.isEmpty || relay.jobProfiles != nil ? relay : nil
     }
 
     /// A job call through the push relay, answered as the iPhone's bridge
@@ -1693,9 +1694,24 @@ final class WatchDirectCallModel: ObservableObject {
         let isStart = wire.name == WatchJobAnswer.startJob
         let whenIdle = GeminiLiveProtocol.Scheduling.whenIdle.rawValue
         let isFollowUp = wire.name == WatchJobAnswer.interruptJob
-        guard let arguments = WatchJobAnswer.arguments(name: wire.name, wire.arguments) else {
+        guard var arguments = WatchJobAnswer.arguments(name: wire.name, wire.arguments) else {
             answer(.toolResponse(id: wire.id, name: wire.name, result: WatchJobAnswer.missingArguments(name: wire.name, wire.arguments), scheduling: whenIdle, fallback: nil), generation: generation)
             return
+        }
+        if isStart, let names = relay.jobProfiles, let task = arguments["instructions"] as? String {
+            // "for Fam, …" runs on Fam, as the iPhone's jobs do.
+            switch VoiceJobProfiles.route(instructions: task, spokenProfile: wire.arguments["profile"], resolve: { VoiceJobProfiles.target(named: $0, in: names) }) {
+            case .run(let instructions, let profile, _):
+                arguments["instructions"] = instructions
+                if let profile { arguments["profile"] = profile }
+            case .unknown(let name):
+                WatchCallLog.shared.note("directJobRelay", ["name": wire.name, "outcome": "unknownProfile"])
+                answer(.toolResponse(id: wire.id, name: wire.name, result: [
+                    "status": "not_started",
+                    "message": VoiceJobProfiles.unknownProfileReply(name),
+                ], scheduling: whenIdle, fallback: nil), generation: generation)
+                return
+            }
         }
         if isStart, relayJobsStarted >= relay.maxJobs {
             WatchCallLog.shared.note("directJobRelay", ["name": wire.name, "outcome": "capped", "maxJobs": relay.maxJobs])

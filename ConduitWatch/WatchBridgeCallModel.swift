@@ -1104,11 +1104,23 @@ final class WatchBridgeCallModel: ObservableObject {
         }
     }
 
+    /// A delegation's start_job: "for Fam, …" runs on Fam where the host
+    /// runs jobs on the user's other profiles, as the iPhone's jobs do.
+    static func startArguments(_ request: String, relay: WatchToolRelayClient) -> [String: Any] {
+        let task = WatchBridgeDelegation.removingQuickMarker(request)
+        guard let names = relay.jobProfiles,
+              case .run(let instructions, let profile, _) = VoiceJobProfiles.route(
+                instructions: task, spokenProfile: nil, resolve: { VoiceJobProfiles.target(named: $0, in: names) }) else {
+            return ["instructions": task]
+        }
+        return profile.map { ["instructions": instructions, "profile": $0] } ?? ["instructions": instructions]
+    }
+
     private func startJob(for delegationID: String, request: String, relay: WatchToolRelayClient) {
         let id = callID
         let sentAt = now
         Task { [weak self] in
-            let outcome = await relay.run(name: WatchJobAnswer.startJob, arguments: ["instructions": WatchBridgeDelegation.removingQuickMarker(request)])
+            let outcome = await relay.run(name: WatchJobAnswer.startJob, arguments: Self.startArguments(request, relay: relay))
             guard let self, self.callID == id, self.isActive else { return }
             var fields: [String: Any] = ["outcome": outcome.label, "ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
             switch outcome {

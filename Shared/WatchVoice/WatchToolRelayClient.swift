@@ -48,6 +48,9 @@ final class WatchToolRelayClient {
     let maxJobs: Int
     /// The model may answer approvals (the user's setting on the iPhone).
     let voiceApprovals: Bool
+    /// The user's profiles a job may name, where the host runs jobs on
+    /// them; nil otherwise.
+    let jobProfiles: [WatchVoiceWire.JobProfileName]?
     private let grantURL: URL
     private let watchKey: String
     private let keys: WatchToolSeal.Keys
@@ -77,6 +80,7 @@ final class WatchToolRelayClient {
         expiresAt = grant.expiresAt
         maxJobs = jobs ? max(0, grant.maxJobs ?? 0) : 0
         voiceApprovals = jobs && grant.voiceApprovals == true
+        jobProfiles = jobs ? grant.jobProfiles : nil
         grantURL = base.appendingPathComponent("v1/watch-tools/grants/\(grant.grantID)")
         watchKey = grant.watchKey
         self.keys = keys

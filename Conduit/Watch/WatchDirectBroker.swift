@@ -103,6 +103,8 @@ final class WatchDirectBroker {
     private var grantLiveToken = false
     private var grantMaxJobs = 0
     private var grantJobOptions: [String: String] = [:]
+    /// The names the call's jobs may give the user's profiles.
+    private var grantJobProfiles: [WatchVoiceWire.JobProfileName] = []
     private var grantVoiceApprovals = false
     /// The call's grants open the host's audio bridge (a GPT-Live call).
     private var grantAudio = false
@@ -288,6 +290,7 @@ final class WatchDirectBroker {
             grantMaxJobs = WatchJobSettings.jobsPerCall
             grantJobTools = grantMaxJobs > 0 ? declared.filter { WatchJobAnswer.tools.contains($0) } : []
             grantJobOptions = plan.jobOptions
+            grantJobProfiles = plan.jobProfiles
             grantVoiceApprovals = WatchJobSettings.voiceApprovals
             grantLiveToken = true
             grantAudio = false
@@ -382,6 +385,7 @@ final class WatchDirectBroker {
             grantMaxJobs = WatchJobSettings.jobsPerCall
             grantJobTools = grantMaxJobs > 0 ? WatchJobAnswer.tools.sorted() : []
             grantJobOptions = plan.jobOptions
+            grantJobProfiles = plan.jobProfiles
             // GPT-Live never answers a job's approval: the user taps it.
             grantVoiceApprovals = false
             grantLiveToken = false
@@ -484,6 +488,7 @@ final class WatchDirectBroker {
             grantMaxJobs = WatchJobSettings.jobsPerCall
             grantJobTools = grantMaxJobs > 0 ? declared.filter { WatchJobAnswer.tools.contains($0) } : []
             grantJobOptions = plan.jobOptions
+            grantJobProfiles = plan.jobProfiles
             grantVoiceApprovals = WatchJobSettings.voiceApprovals
             grantLiveToken = false
             grantAudio = true
@@ -859,6 +864,13 @@ final class WatchDirectBroker {
         return await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: false, carryJobsFrom: carryJobsFrom)
     }
 
+    /// The names the iPhone knows for the call's own profile and for the
+    /// others the host took: a job for any other goes through the iPhone.
+    static func jobProfileNames(_ names: [WatchVoiceWire.JobProfileName], hostedBy hosted: [WatchVoiceWire.JobProfileName]) -> [WatchVoiceWire.JobProfileName] {
+        let taken = Set(hosted.compactMap { $0.profile?.lowercased() })
+        return names.filter { entry in entry.profile.map { taken.contains($0.lowercased()) } ?? true }
+    }
+
     static func isRefusedTool(_ error: Error) -> Bool {
         if case DashboardTicketBridgeError.http(let status, _) = error, status == 400 { return true }
         return false
@@ -874,9 +886,11 @@ final class WatchDirectBroker {
                 maxJobs: withJobs ? grantMaxJobs : nil,
                 jobOptions: withJobs ? grantJobOptions : [:],
                 carryJobsFrom: withJobs ? carryJobsFrom : nil,
+                jobProfiles: withJobs ? grantJobProfiles.compactMap(\.profile) : [],
                 audio: grantAudio
             )
             grant.voiceApprovals = grantVoiceApprovals && grant.tools.contains(WatchJobAnswer.answerApproval)
+            grant.jobProfiles = grant.jobProfiles.map { Self.jobProfileNames(grantJobProfiles, hostedBy: $0) }
             guard callID == id else {
                 // The call ended while the host answered. Revoked through
                 // the dashboard that gave it; another runs it out.
@@ -958,6 +972,7 @@ final class WatchDirectBroker {
             grantLiveToken = scope.liveToken
             grantMaxJobs = scope.maxJobs
             grantJobOptions = scope.jobOptions
+            grantJobProfiles = scope.jobProfiles ?? []
             grantVoiceApprovals = scope.voiceApprovals
             grantIDs = scope.grantIDs
             grantAudio = scope.audio ?? false
@@ -975,6 +990,7 @@ final class WatchDirectBroker {
             liveToken: grantLiveToken,
             maxJobs: grantMaxJobs,
             jobOptions: grantJobOptions,
+            jobProfiles: grantJobProfiles,
             voiceApprovals: grantVoiceApprovals,
             grantIDs: grantIDs,
             audio: grantAudio
@@ -991,6 +1007,7 @@ final class WatchDirectBroker {
         grantJobTools = []
         grantLiveToken = false
         grantJobOptions = [:]
+        grantJobProfiles = []
         grantAudio = false
         guard !ids.isEmpty, let connection else { return }
         guard connection.dashboard == appState.watchDirectConnection.dashboard else {
@@ -1167,6 +1184,8 @@ struct WatchDirectCallLedger {
         var liveToken: Bool
         var maxJobs: Int
         var jobOptions: [String: String]
+        /// Missing in calls stored before jobs ran on other profiles.
+        var jobProfiles: [WatchVoiceWire.JobProfileName]? = nil
         var voiceApprovals: Bool
         var grantIDs: [String]
         /// The grant carries the host's audio bridge. Missing in calls
