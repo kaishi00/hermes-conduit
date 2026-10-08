@@ -36632,18 +36632,18 @@
         }
       }
     },
-    "Open Conduit on your Watch and tap the microphone to talk to Hermes. Gemini Live runs on the Watch; GPT-Live and Grok run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history." : {
+    "Open Conduit on your Watch to talk to Hermes: the call starts right away, or with a tap if you turn off Call on open in the Watch's settings. Gemini Live runs on the Watch; GPT-Live and Grok run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Watch で Conduit を開き、マイクをタップすると Hermes と話せます。Gemini Live は Watch 上で、GPT-Live と Grok は Hermes ホスト上で動作します。通話は手首を下ろしても iPhone がロックされても続き、音声履歴に保存されます。"
+            "value" : "Watch で Conduit を開くと Hermes と話せます。通話はすぐに始まります。Watch の設定で「開いたら通話」をオフにすると、タップで始めます。Gemini Live は Watch 上で、GPT-Live と Grok は Hermes ホスト上で動作します。通話は手首を下ろしても iPhone がロックされても続き、音声履歴に保存されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Watch 上打开 Conduit 并轻点麦克风即可与 Hermes 交谈。Gemini Live 在 Watch 上运行；GPT-Live 和 Grok 在你的 Hermes 主机上运行。即使放下手腕、iPhone 锁定，通话也会继续，并会保存到语音记录中。"
+            "value" : "在 Watch 上打开 Conduit 即可与 Hermes 交谈：通话会立刻开始；若在 Watch 的设置中关闭“打开即通话”，则需轻点开始。Gemini Live 在 Watch 上运行；GPT-Live 和 Grok 在你的 Hermes 主机上运行。即使放下手腕、iPhone 锁定，通话也会继续，并会保存到语音记录中。"
           }
         }
       }
