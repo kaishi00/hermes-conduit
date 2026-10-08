@@ -1267,6 +1267,9 @@ final class AppState: ObservableObject {
     /// tell whether Settings owns the surface across a background/foreground cycle.
     @Published var isSettingsSheetPresented = false
     @Published var errorMessage: String?
+    /// A reasoning write is in flight, from the composer chip or the Model
+    /// sheet; both wait for it so picks land in order.
+    @Published private(set) var isWritingReasoningEffort = false
     /// A classified sign-in failure awaiting presentation on the login card.
     /// Typed (not a string) so LoginView renders the full presentation —
     /// title, actions, help routing — and delivered as a publisher so the
@@ -17407,9 +17410,12 @@ final class AppState: ObservableObject {
     /// applies it at once, so the composer chip and the Model sheet send it
     /// on tap.
     func setReasoningEffort(_ effort: String) async -> ReasoningWriteResult {
+        guard !isWritingReasoningEffort else { return .abandoned }
         guard let client, let sessionId = activeSessionId else {
             return .failed(AppLocalization.string("Not connected to a conversation."))
         }
+        isWritingReasoningEffort = true
+        defer { isWritingReasoningEffort = false }
         do {
             try await client.setReasoning(sessionId, effort: effort)
         } catch {

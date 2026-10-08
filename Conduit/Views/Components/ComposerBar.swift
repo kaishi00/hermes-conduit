@@ -29,7 +29,6 @@ struct ComposerBar: View {
     @State private var isFocused = false
     @State private var isShowingSlashSuggestions = false
     @State private var composerErrorMessage: String?
-    @State private var isWritingReasoning = false
     /// NOT view state: the store is owned by AppState because it must
     /// outlive this view's unmount (the room surface swap destroys the
     /// subtree — a `@State` store here would die with the draft it holds).
@@ -1032,11 +1031,9 @@ struct ComposerBar: View {
                 selection: Binding<ReasoningEffortLevel?>(
                     get: { current },
                     set: { level in
-                        guard let level, level != current, !isWritingReasoning else { return }
+                        guard let level, level != current, !appState.isWritingReasoningEffort else { return }
                         Haptics.selection()
-                        isWritingReasoning = true
                         Task { @MainActor in
-                            defer { isWritingReasoning = false }
                             // The state notice only shows while the composer
                             // is disabled, so report it in the composer's own
                             // notice.
@@ -1057,7 +1054,7 @@ struct ComposerBar: View {
             }
         } label: {
             HStack(spacing: 3) {
-                Text(current?.title ?? formatEffort(appState.runtime.reasoningEffort))
+                Text(ReasoningEffortLevel.displayTitle(for: appState.runtime.reasoningEffort))
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .bold))
@@ -1069,9 +1066,9 @@ struct ComposerBar: View {
         }
         .menuOrder(.fixed)
         // Picks land in order: the next waits for this write.
-        .disabled(isWritingReasoning)
+        .disabled(appState.isWritingReasoningEffort)
         .accessibilityLabel(Text("Reasoning"))
-        .accessibilityValue(Text(current?.title ?? formatEffort(appState.runtime.reasoningEffort)))
+        .accessibilityValue(Text(ReasoningEffortLevel.displayTitle(for: appState.runtime.reasoningEffort)))
     }
 
     /// Return-shortcut entry point. Invokes the exact same submission path
@@ -1801,15 +1798,6 @@ struct ComposerBar: View {
             record(outcome, in: &tally)
             finishImport(tally, limitMegabytes: limitMegabytes)
         }
-    }
-
-    private func formatEffort(_ value: String) -> String {
-        let lower = value.lowercased()
-        if lower == "none" || lower == "off" { return AppLocalization.string("Off") }
-        if lower == "xhigh" { return AppLocalization.string("Extra High") }
-        return lower.capitalized
-            .replacingOccurrences(of: "-", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
     }
 
     private var accessibilityLabel: String {

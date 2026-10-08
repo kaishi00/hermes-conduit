@@ -50,6 +50,16 @@ enum ReasoningEffortLevel: String, CaseIterable, Identifiable {
         self.init(rawValue: word.isEmpty || word == "off" ? "none" : word)
     }
 
+    /// What to show for a runtime effort word: the level's title, or the
+    /// raw gateway word made readable when Conduit doesn't list it.
+    static func displayTitle(for runtimeEffort: String) -> String {
+        if let level = ReasoningEffortLevel(runtimeEffort: runtimeEffort) { return level.title }
+        return runtimeEffort.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
+    }
+
     var title: String {
         switch self {
         case .off: return AppLocalization.string("Off")
@@ -450,7 +460,7 @@ struct ModelPickerView: View {
                     // A level Hermes reports that Conduit doesn't offer still
                     // shows, selected, so the row never looks unset.
                     if ReasoningEffortLevel(runtimeEffort: reasoningEffort) == nil {
-                        reasoningPillLabel(reasoningEffort.capitalized, isSelected: true)
+                        reasoningPillLabel(ReasoningEffortLevel.displayTitle(for: reasoningEffort), isSelected: true)
                             .accessibilityAddTraits(.isSelected)
                     }
                     ForEach(ReasoningEffortLevel.allCases) { level in
@@ -479,7 +489,7 @@ struct ModelPickerView: View {
         }
         .buttonStyle(.plain)
         // One write at a time: Apply may switch the model under this level.
-        .disabled(isApplyingReasoning || isApplying)
+        .disabled(isApplyingReasoning || isApplying || appState.isWritingReasoningEffort)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -790,13 +800,13 @@ struct ModelPickerView: View {
 
     private func applyModel(confirmedModelSwitch: Bool = false) async {
         guard !isApplying, !isApplyingReasoning else { return }
+        reasoningError = nil
         guard let client = appState.client, let sessionId = appState.activeSessionId else {
             applyError = AppLocalization.string("Not connected to a conversation.")
             return
         }
         isApplying = true
         applyError = nil
-        reasoningError = nil
         defer { isApplying = false }
 
         let selection = ModelPickerSelection(model: selectedModel, provider: selectedProvider)

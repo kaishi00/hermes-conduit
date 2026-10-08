@@ -286,6 +286,13 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertNil(ReasoningEffortLevel(runtimeEffort: "turbo"))
     }
 
+    func testReasoningDisplayTitleReadsUnlistedWords() {
+        XCTAssertEqual(ReasoningEffortLevel.displayTitle(for: "high"), ReasoningEffortLevel.high.title)
+        XCTAssertEqual(ReasoningEffortLevel.displayTitle(for: ""), ReasoningEffortLevel.off.title)
+        XCTAssertEqual(ReasoningEffortLevel.displayTitle(for: "extra-high"), "Extra High")
+        XCTAssertEqual(ReasoningEffortLevel.displayTitle(for: "deep_think"), "Deep Think")
+    }
+
     func testReasoningLevelsRunFromOffToUltra() {
         XCTAssertEqual(ReasoningEffortLevel.allCases.map(\.rawValue),
                        ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
