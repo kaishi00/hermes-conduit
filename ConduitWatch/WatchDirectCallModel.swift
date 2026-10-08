@@ -214,6 +214,8 @@ final class WatchDirectCallModel: ObservableObject {
     /// broke, and why it broke (the call ends with it if the wait runs out).
     private var rejoinWaitingSince: TimeInterval?
     private var rejoinReason: String?
+    /// A frozen session's replacement carries on without saying it's back.
+    private var rejoinCause = WatchRejoin.Cause.broke
     /// A fresh session is starting: it's told the conversation once ready.
     private var rejoinStartedAt: TimeInterval?
     /// It started with the iPhone out of reach, so on a token from the
@@ -848,7 +850,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// once from the iPhone if it can be reached, or from Hermes through
     /// the grant with the wrist down. Otherwise, or once a wrist-down
     /// rejoin has failed, it waits for the wrist, and a chime says so.
-    private func waitToRejoin(_ reason: String) {
+    private func waitToRejoin(_ reason: String, cause: WatchRejoin.Cause = .broke) {
         if rejoinStartedAt != nil, rejoinWristDown { wristDownRejoinFailed = true }
         rejoinStartedAt = nil
         if audio.isPlaying {
@@ -862,11 +864,13 @@ final class WatchDirectCallModel: ObservableObject {
         // what went unanswered.
         stallPromptedAt = nil
         replyOwedSince = nil
+        awaitingReplySince = nil
         silentTurnSinceUser = false
         // Not a resumption: its time isn't one.
         reconnectStartedAt = nil
         rejoinWaitingSince = now
         rejoinReason = reason
+        rejoinCause = cause
         samplesDroppedWhileDown += pendingSamples.count
         pendingSamples = []
         phase = .lost
@@ -881,6 +885,9 @@ final class WatchDirectCallModel: ObservableObject {
         if link.isReachable || relayToken {
             rejoin()
         } else {
+            // The chime tells the user the call went, so the new session
+            // says it's back.
+            rejoinCause = .broke
             audio.enqueue(Self.lostChime(), sampleRate: GeminiLiveProtocol.outputSampleRate)
         }
     }
@@ -945,13 +952,14 @@ final class WatchDirectCallModel: ObservableObject {
     }
 
     /// A fresh session knows nothing of the call: it's told the
-    /// conversation so far, and says it's back.
+    /// conversation so far, and says it's back (or, after a freeze, just
+    /// answers).
     private func sendRejoinContext() {
         guard let session else { return }
         // Whatever the microphone kept while the call was down would
         // talk over that.
         pendingSamples = []
-        let text = WatchRejoin.prompt(transcript)
+        let text = WatchRejoin.prompt(transcript, after: rejoinCause)
         awaitingAnswerSince = now
         textUpdatesSent += 1
         noteTextSent("rejoin", text)
@@ -2103,6 +2111,7 @@ final class WatchDirectCallModel: ObservableObject {
             "reachable": link.isReachable,
             "screen": "\(scenePhase)",
         ])
+        let owed = replyOwedSince
         replyOwedSince = nil
         stallPromptedAt = at
         stallPrompts += 1
@@ -2111,6 +2120,9 @@ final class WatchDirectCallModel: ObservableObject {
         session.send(.textTurn(text), onSent: nil, onFailure: { [weak self] in
             guard let self, self.stallPromptedAt == at else { return }
             self.stallPromptedAt = nil
+            // Never sent: the user's words still wait for a reply.
+            if self.replyOwedSince == nil { self.replyOwedSince = owed }
+            WatchProbeLog.shared.note("directStallPromptFailed", ["screen": "\(self.scenePhase)"])
         })
     }
 
@@ -2143,7 +2155,7 @@ final class WatchDirectCallModel: ObservableObject {
         session.stop()
         let reason = String(localized: "Gemini stopped answering.")
         if rejoins < Self.maxRejoins {
-            waitToRejoin(reason)
+            waitToRejoin(reason, cause: .froze)
         } else {
             finish(reason)
         }
@@ -2615,6 +2627,7 @@ final class WatchDirectCallModel: ObservableObject {
         tokenFailures = 0
         rejoinWaitingSince = nil
         rejoinReason = nil
+        rejoinCause = .broke
         rejoinStartedAt = nil
         rejoinWristDown = false
         wristDownRejoinFailed = false
