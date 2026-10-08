@@ -721,7 +721,10 @@ final class AppState: ObservableObject {
     /// state. A stale idle state must not route the next input as a new-turn
     /// `prompt.submit` — Hermes would apply its busy policy to it and the
     /// message would silently join a turn the user never saw start.
-    private(set) var turnStateIsStale = false
+    /// Publishes its flips: the chat list's Working marker reads it.
+    private(set) var turnStateIsStale = false {
+        willSet { if newValue != turnStateIsStale { objectWillChange.send() } }
+    }
     /// Newest AUTHORITATIVE live turn-lifecycle evidence. Every `setRunning`
     /// edge (sessionBusy, message start/delta, completion, interruption,
     /// error, registry-probe corrections, buffered-event replay), the
