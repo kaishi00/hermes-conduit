@@ -104,11 +104,15 @@ enum ConduitBackdropMotionPolicy {
 /// Tracks only active monotonic time so a paused backdrop freezes in place and
 /// resumes at the same phase. Reduce Motion from launch keeps the original
 /// static composition until the user enables motion.
+///
+/// The view renders before `onChange` reports a pause or resume, so the phase
+/// is derived from the clock's own state rather than the caller's current
+/// `shouldAnimate`: it stays live until the pause is recorded and stays frozen
+/// until the resume is recorded, which avoids a one-frame jump either way.
 struct ConduitBackdropMotionClock {
     private var motionOrigin: TimeInterval
     private var pauseStartedAt: TimeInterval?
     private var hasAnimated = false
-    private(set) var pausedProgress: CGFloat = 0
 
     init(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         motionOrigin = now
@@ -123,22 +127,19 @@ struct ConduitBackdropMotionClock {
                     motionOrigin = now
                 }
                 self.pauseStartedAt = nil
-            } else {
+            } else if !hasAnimated {
                 motionOrigin = now
             }
             hasAnimated = true
         } else {
             guard pauseStartedAt == nil else { return }
-            pausedProgress = hasAnimated
-                ? ConduitBackdropMotionPolicy.progress(at: now - motionOrigin)
-                : 0
             pauseStartedAt = now
         }
     }
 
-    func progress(at now: TimeInterval, isAnimating: Bool) -> CGFloat {
-        guard isAnimating, hasAnimated else { return pausedProgress }
-        return ConduitBackdropMotionPolicy.progress(at: now - motionOrigin)
+    func progress(at now: TimeInterval) -> CGFloat {
+        guard hasAnimated else { return 0 }
+        return ConduitBackdropMotionPolicy.progress(at: (pauseStartedAt ?? now) - motionOrigin)
     }
 }
 
@@ -159,46 +160,47 @@ struct ConduitBackdrop: View {
     }
 
     var body: some View {
-        TimelineView(
-            .animation(
-                minimumInterval: 1.0 / Double(ConduitBackdropMotionPolicy.framesPerSecond),
-                paused: !shouldAnimate
-            )
-        ) { _ in
-            GeometryReader { proxy in
-                let drift = motionClock.progress(
-                    at: ProcessInfo.processInfo.systemUptime,
-                    isAnimating: shouldAnimate
+        // Only the two drifting circles live inside the timeline; the base
+        // colour and bottom shade never change between ticks.
+        ZStack {
+            base
+
+            TimelineView(
+                .animation(
+                    minimumInterval: 1.0 / Double(ConduitBackdropMotionPolicy.framesPerSecond),
+                    paused: !shouldAnimate
                 )
-                ZStack {
-                    base
+            ) { _ in
+                GeometryReader { proxy in
+                    let drift = motionClock.progress(at: ProcessInfo.processInfo.systemUptime)
+                    ZStack {
+                        Circle()
+                            .fill(Color.conduitAccent.opacity(colorScheme == .dark ? 0.20 : 0.055))
+                            .frame(width: proxy.size.width * 0.92)
+                            .blur(radius: 72)
+                            .offset(
+                                x: (-0.18 + 0.48 * drift) * proxy.size.width,
+                                y: (-0.24 - 0.10 * drift) * proxy.size.height
+                            )
 
-                    Circle()
-                        .fill(Color.conduitAccent.opacity(colorScheme == .dark ? 0.20 : 0.055))
-                        .frame(width: proxy.size.width * 0.92)
-                        .blur(radius: 72)
-                        .offset(
-                            x: (-0.18 + 0.48 * drift) * proxy.size.width,
-                            y: (-0.24 - 0.10 * drift) * proxy.size.height
-                        )
-
-                    Circle()
-                        .fill(Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.055))
-                        .frame(width: proxy.size.width * 0.84)
-                        .blur(radius: 84)
-                        .offset(
-                            x: (0.26 - 0.58 * drift) * proxy.size.width,
-                            y: (0.28 + 0.08 * drift) * proxy.size.height
-                        )
-
-                    LinearGradient(
-                        colors: [Color.black.opacity(colorScheme == .dark ? 0.18 : 0), .clear],
-                        startPoint: .bottom,
-                        endPoint: .center
-                    )
+                        Circle()
+                            .fill(Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.055))
+                            .frame(width: proxy.size.width * 0.84)
+                            .blur(radius: 84)
+                            .offset(
+                                x: (0.26 - 0.58 * drift) * proxy.size.width,
+                                y: (0.28 + 0.08 * drift) * proxy.size.height
+                            )
+                    }
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
             }
+
+            LinearGradient(
+                colors: [Color.black.opacity(colorScheme == .dark ? 0.18 : 0), .clear],
+                startPoint: .bottom,
+                endPoint: .center
+            )
         }
         .onChange(of: shouldAnimate, initial: true) { _, isAnimating in
             motionClock.setAnimating(isAnimating, at: ProcessInfo.processInfo.systemUptime)

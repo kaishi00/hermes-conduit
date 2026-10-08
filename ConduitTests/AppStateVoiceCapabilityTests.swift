@@ -487,20 +487,46 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
     func testBackdropMotionClockKeepsStaticStartAndResumesWithoutJump() {
         var clock = ConduitBackdropMotionClock(now: 0)
         clock.setAnimating(false, at: 0)
-        XCTAssertEqual(clock.progress(at: 100, isAnimating: false), 0, accuracy: 0.000_001)
+        XCTAssertEqual(clock.progress(at: 100), 0, accuracy: 0.000_001)
 
         clock.setAnimating(true, at: 10)
-        let phaseBeforePause = clock.progress(at: 17, isAnimating: true)
+        let phaseBeforePause = clock.progress(at: 17)
         clock.setAnimating(false, at: 17)
-        XCTAssertEqual(clock.progress(at: 90, isAnimating: false), phaseBeforePause, accuracy: 0.000_001)
+        XCTAssertEqual(clock.progress(at: 90), phaseBeforePause, accuracy: 0.000_001)
 
         clock.setAnimating(true, at: 90)
-        XCTAssertEqual(clock.progress(at: 90, isAnimating: true), phaseBeforePause, accuracy: 0.000_001)
+        XCTAssertEqual(clock.progress(at: 90), phaseBeforePause, accuracy: 0.000_001)
         XCTAssertEqual(
-            clock.progress(at: 91, isAnimating: true),
+            clock.progress(at: 91),
             ConduitBackdropMotionPolicy.progress(at: 8),
             accuracy: 0.000_001
         )
+    }
+
+    func testBackdropMotionClockHoldsPhaseWhileOnChangeLagsTheRender() {
+        // SwiftUI renders the new `shouldAnimate` before `onChange` reports it,
+        // so the clock must not jump in that gap in either direction.
+        var clock = ConduitBackdropMotionClock(now: 0)
+        XCTAssertEqual(clock.progress(at: 5), 0, accuracy: 0.000_001)
+
+        clock.setAnimating(true, at: 0)
+        let livePhase = clock.progress(at: 7)
+        XCTAssertGreaterThan(livePhase, 0)
+
+        // Pause rendered, not yet recorded: still the live phase, no snap to 0.
+        XCTAssertEqual(clock.progress(at: 7), livePhase, accuracy: 0.000_001)
+        clock.setAnimating(false, at: 7)
+
+        // Resume rendered, not yet recorded: still the frozen phase.
+        XCTAssertEqual(clock.progress(at: 40), livePhase, accuracy: 0.000_001)
+        clock.setAnimating(true, at: 40)
+        XCTAssertEqual(clock.progress(at: 40), livePhase, accuracy: 0.000_001)
+
+        // A second pause freezes at its own phase, not the first one.
+        let secondPhase = clock.progress(at: 44)
+        clock.setAnimating(false, at: 44)
+        XCTAssertEqual(clock.progress(at: 60), secondPhase, accuracy: 0.000_001)
+        XCTAssertNotEqual(secondPhase, livePhase, accuracy: 0.01)
     }
 
     func testTheCallOrbSpendsSixtyFramesOnlyWhileSpeakingAndHoldsStillWhenHot() {
