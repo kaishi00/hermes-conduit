@@ -2213,6 +2213,17 @@ extension VoiceConversationControllerTests {
         // A no with a negation after it is still just a no, not a change.
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, don't bother"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, I don't want that"), .no(change: nil))
+        // A cancel after a yes is a no, in any of its words.
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, forget about it"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, forget about it"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yes, scrap it"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sure, skip it"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, leave it"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, drop the dessert"), .no(change: "No, drop the dessert"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yes, actually let's forget it"), .other("Yes, actually let's forget it"))
+        // Words that only add to a yes still send it.
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yes, remind me when it's done"), .yes(addition: "Yes, remind me when it's done"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yes, before noon"), .yes(addition: "Yes, before noon"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("for Sam"), .other("for Sam"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Nothing else"), .other("Nothing else"), "a no is a word of its own")
         XCTAssertTrue(VoiceThreadRouting.heldRequestAnswer("Okay").isBare)

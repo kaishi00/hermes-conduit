@@ -2005,7 +2005,7 @@ enum VoiceThreadRouting {
 
     static let answerNoLeads = [
         "no", "nope", "nah", "don't", "dont", "do not", "never mind", "nevermind",
-        "cancel", "forget it", "forget that", "drop it", "scrap that", "stop",
+        "cancel", "forget", "drop", "scrap", "skip", "ditch", "abort", "stop", "leave it", "leave that",
     ]
     static let answerNotYetLeads = [
         "wait", "hold on", "hang on", "not yet", "not now", "one sec", "one second", "one moment",
@@ -2020,15 +2020,21 @@ enum VoiceThreadRouting {
     /// Words between a yes and what decides it ("okay, but wait").
     static let answerJoiners = ["but", "actually", "oh", "well"]
     /// Words after a yes that turn it around or question it ("yeah, I don't
-    /// think so", "sure, but why?", "okay, let me think"): asked again.
-    static let answerTurnWords: Set<String> = sendVetoes.union(["wait", "hold", "cancel", "nope", "nah", "think", "later", "maybe"])
+    /// think so", "sure, but why?", "okay, let me think", "yes, actually
+    /// let's forget it"): asked again. Words that only add to it ("yes,
+    /// remind me when it's done") don't.
+    static let answerTurnWords: Set<String> = [
+        "not", "never", "no", "dont", "without", "cannot", "whether", "if", "unless", "what", "why", "how", "where", "who",
+        "should", "shall", "wait", "hold", "think", "later", "maybe", "nope", "nah",
+        "cancel", "stop", "forget", "drop", "scrap", "skip", "ditch", "abort",
+    ]
     /// Words that add nothing to an answer ("no thanks", "yes, send it to
     /// Hermes now").
     static let answerFillerWords: Set<String> = [
         "thanks", "thank", "you", "please", "yet", "now", "anymore", "it", "that", "this", "send",
         "sending", "to", "hermes", "do", "don't", "dont", "not", "no", "yes", "just", "right", "a",
         "the", "moment", "second", "sec", "one", "wait", "hold", "on", "i", "said", "go", "ahead",
-        "and", "ok", "okay", "sure", "that's", "all",
+        "and", "ok", "okay", "sure", "that's", "all", "about",
     ]
 
     /// Whether these words negate ("don't", "not", "never", "can't").
@@ -2059,9 +2065,15 @@ enum VoiceThreadRouting {
         }
         // "No, I don't want that": a negation in what follows is still the no.
         func change(_ rest: [String]) -> String? { negates(rest) ? nil : more(rest) }
+        // "No, forget about it", "Yes, scrap it": another no after it too.
+        func refusal() -> HeldRequestAnswer {
+            let rest = words
+            while dropLead(answerNoLeads) {}
+            return .no(change: negates(rest) ? nil : more(words))
+        }
         // "Oh yes", "Well, no", "Actually, go ahead".
         while dropLead(answerJoiners) {}
-        if dropLead(answerNoLeads) { return .no(change: change(words)) }
+        if dropLead(answerNoLeads) { return refusal() }
         if dropLead(answerNotYetLeads) { return .notYet(change: change(words)) }
         guard dropLead(answerYesLeads) else {
             // "Send to Hermes", or just "Send": a yes with nothing more.
@@ -2071,7 +2083,7 @@ enum VoiceThreadRouting {
         // "Okay, wait", "Yeah, but actually no", "Please don't": what
         // follows decides.
         while dropLead(answerYesLeads) || dropLead(answerJoiners) {}
-        if dropLead(answerNoLeads) { return .no(change: change(words)) }
+        if dropLead(answerNoLeads) { return refusal() }
         if dropLead(answerNotYetLeads) { return .notYet(change: change(words)) }
         // A negation or a question anywhere after it: not a yes after all.
         let turned = words.contains { word in
