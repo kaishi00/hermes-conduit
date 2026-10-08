@@ -1568,6 +1568,38 @@
           }
         }
       }
+    },
+    "Call on open" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開いたら通話"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开即通话"
+          }
+        }
+      }
+    },
+    "Opening Conduit starts a call right away. Turn this off to start each call with a tap." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitを開くとすぐに通話が始まります。オフにすると、通話はタップで始めます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Conduit 即立刻开始通话。关闭后，每次通话需轻点开始。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -101,6 +101,10 @@ enum WatchJobAnswer {
             case "finished": self = .finished(title: title)
             case "unknown_job": self = .unknownJob
             default:
+                // The plugin answers only the outcomes above or failed (a
+                // Watch job's session exists before it can be followed up,
+                // so the phone's "joined" can't happen): anything else is
+                // reported as not taken rather than claimed.
                 let reason = body["error"] as? String ?? ""
                 self = .failed(reason.isEmpty ? "Hermes didn't take the words." : reason)
             }

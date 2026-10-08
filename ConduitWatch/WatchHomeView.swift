@@ -116,9 +116,15 @@ struct WatchEnginePicker: View {
 /// Settings and the call log.
 struct WatchSettingsView: View {
     @EnvironmentObject private var link: WatchLink
+    @EnvironmentObject private var call: WatchVoiceCall
 
     var body: some View {
         List {
+            Section {
+                Toggle("Call on open", isOn: $call.startsOnOpen)
+            } footer: {
+                Text("Opening Conduit starts a call right away. Turn this off to start each call with a tap.")
+            }
             Section {
                 NavigationLink {
                     WatchEnginePicker()

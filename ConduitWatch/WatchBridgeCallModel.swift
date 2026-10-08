@@ -78,6 +78,8 @@ final class WatchBridgeCallModel: ObservableObject {
     static let speechPeak = 600
     /// This much quiet ends a stretch of GPT-Live's speech.
     static let speechGap: TimeInterval = 0.6
+    /// No loud audio for this long ends a stretch, chunks arriving or not.
+    static let silentStretch: TimeInterval = 2
     /// Quiet audio kept before speech starts, so its first sound isn't cut.
     static let leadIn: TimeInterval = 0.1
     /// Results wait for this much quiet after the user and GPT-Live, as on
@@ -177,6 +179,8 @@ final class WatchBridgeCallModel: ObservableObject {
     private var modelSpeaking = false
     private var suppressingTurn = false
     private var lastLoudAt: TimeInterval?
+    /// The audio's dropped-playback count when this call started.
+    private var playbackStallsAtStart = 0
     private var leadInSamples: [Int16] = []
     private var audioChunksDown = 0
     private var speechStretches = 0
@@ -821,6 +825,18 @@ final class WatchBridgeCallModel: ObservableObject {
         note("bridgeTurn", fields)
     }
 
+    /// A stretch of speech whose audio stopped coming: only a quiet chunk
+    /// ends one in handleAudio, so with no chunks at all it would read as
+    /// speaking, with the microphone held, until GPT-Live spoke again.
+    private func endSilentStretchIfDue(at: TimeInterval) {
+        // Speech still playing keeps its stretch; a playback that stopped
+        // moving is dropped by the audio's stall check first.
+        guard modelSpeaking, !audio.isPlaying, let lastLoudAt, at - lastLoudAt >= Self.silentStretch else { return }
+        modelSpeaking = false
+        note("bridgeSpeechStopped", ["quietMs": Int((at - lastLoudAt) * 1000)])
+        playbackDrained()
+    }
+
     private func playbackDrained() {
         lastPlaybackEndedAt = now
         guard isActive, phase == .speaking, !modelSpeaking else { return }
@@ -1117,10 +1133,14 @@ final class WatchBridgeCallModel: ObservableObject {
             answer(delegationID, WatchBridgeDelegation.relay("Hermes didn't get that (\(WatchBridgeDelegation.grantRanOutClause))"), channel: .speakable)
             return
         }
+        guard let arguments = WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": jobID, "message": words]) else {
+            answer(delegationID, WatchBridgeDelegation.noRequest, channel: .speakable)
+            return
+        }
         let id = callID
         let sentAt = now
         Task { [weak self] in
-            let outcome = await relay.run(name: WatchJobAnswer.interruptJob, arguments: WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": jobID, "message": words]) ?? [:])
+            let outcome = await relay.run(name: WatchJobAnswer.interruptJob, arguments: arguments)
             guard let self, self.callID == id, self.isActive else { return }
             let result: WatchJobAnswer.FollowUp
             switch outcome {
@@ -1341,6 +1361,8 @@ final class WatchBridgeCallModel: ObservableObject {
             return
         }
         reactivateIfDue()
+        audio.checkPlayback()
+        endSilentStretchIfDue(at: at)
         pingIfDue()
         fetchJobNewsIfDue()
         flushPending()
@@ -1444,6 +1466,7 @@ final class WatchBridgeCallModel: ObservableObject {
         callUUID = UUID()
         callStartedDate = Date()
         callStartedAt = now
+        playbackStallsAtStart = audio.playbackStalls
         closeSocket()
         stream = nil
         relay = nil
@@ -1580,6 +1603,7 @@ final class WatchBridgeCallModel: ObservableObject {
             "sessionMs": sessionAt.map { Int(($0 - callStartedAt) * 1000) } as Any,
             "firstStartedMs": firstStartedAt.map { Int(($0 - callStartedAt) * 1000) } as Any,
             "sessionRequests": sessionRequests,
+            "playbackStalls": audio.playbackStalls - playbackStallsAtStart,
             "streamsOpened": streamsOpened,
             "openFailures": openFailures,
             "drops": drops,
