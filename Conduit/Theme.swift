@@ -75,51 +75,91 @@ enum ConduitMotion {
 
 // MARK: - Living canvas
 
-/// A deliberately quiet background field. It gives native glass something
-/// meaningful to refract without competing with conversation content.
+/// The slow background drift is subtle, but the two full-screen blurred
+/// circles are expensive to composite continuously. Keep their motion bounded
+/// and stop scheduling frames when the app or device should conserve work.
+enum ConduitBackdropMotionPolicy {
+    static let framesPerSecond = 30
+    static let cycleDuration: TimeInterval = 26
+
+    static func shouldAnimate(
+        sceneIsActive: Bool,
+        reduceMotion: Bool,
+        lowPowerMode: Bool,
+        thermalState: ProcessInfo.ThermalState
+    ) -> Bool {
+        sceneIsActive
+            && !reduceMotion
+            && !lowPowerMode
+            && thermalState.rawValue < ProcessInfo.ThermalState.serious.rawValue
+    }
+
+    /// One smooth out-and-back drift over 26 seconds, matching the previous
+    /// 13-second ease-in/ease-out animation with autoreverse.
+    static func progress(at time: TimeInterval) -> CGFloat {
+        let remainder = time.truncatingRemainder(dividingBy: cycleDuration)
+        let normalized = (remainder < 0 ? remainder + cycleDuration : remainder) / cycleDuration
+        return CGFloat((1 - cos(2 * .pi * normalized)) / 2)
+    }
+}
+
 struct ConduitBackdrop: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var hasDrifted = false
+    @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var devicePower = DevicePowerState.shared
+
+    private var shouldAnimate: Bool {
+        ConduitBackdropMotionPolicy.shouldAnimate(
+            sceneIsActive: scenePhase == .active,
+            reduceMotion: reduceMotion,
+            lowPowerMode: devicePower.isLowPowerModeEnabled,
+            thermalState: devicePower.thermalState
+        )
+    }
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                base
-
-                Circle()
-                    .fill(Color.conduitAccent.opacity(colorScheme == .dark ? 0.20 : 0.055))
-                    .frame(width: proxy.size.width * 0.92)
-                    .blur(radius: 72)
-                    .offset(
-                        x: hasDrifted ? proxy.size.width * 0.30 : -proxy.size.width * 0.18,
-                        y: hasDrifted ? -proxy.size.height * 0.34 : -proxy.size.height * 0.24
-                    )
-
-                Circle()
-                    .fill(Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.055))
-                    .frame(width: proxy.size.width * 0.84)
-                    .blur(radius: 84)
-                    .offset(
-                        x: hasDrifted ? -proxy.size.width * 0.32 : proxy.size.width * 0.26,
-                        y: hasDrifted ? proxy.size.height * 0.36 : proxy.size.height * 0.28
-                    )
-
-                LinearGradient(
-                    colors: [Color.black.opacity(colorScheme == .dark ? 0.18 : 0), .clear],
-                    startPoint: .bottom,
-                    endPoint: .center
+        TimelineView(
+            .animation(
+                minimumInterval: 1.0 / Double(ConduitBackdropMotionPolicy.framesPerSecond),
+                paused: !shouldAnimate
+            )
+        ) { timeline in
+            GeometryReader { proxy in
+                let drift = ConduitBackdropMotionPolicy.progress(
+                    at: timeline.date.timeIntervalSinceReferenceDate
                 )
+                ZStack {
+                    base
+
+                    Circle()
+                        .fill(Color.conduitAccent.opacity(colorScheme == .dark ? 0.20 : 0.055))
+                        .frame(width: proxy.size.width * 0.92)
+                        .blur(radius: 72)
+                        .offset(
+                            x: (-0.18 + 0.48 * drift) * proxy.size.width,
+                            y: (-0.24 - 0.10 * drift) * proxy.size.height
+                        )
+
+                    Circle()
+                        .fill(Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.055))
+                        .frame(width: proxy.size.width * 0.84)
+                        .blur(radius: 84)
+                        .offset(
+                            x: (0.26 - 0.58 * drift) * proxy.size.width,
+                            y: (0.28 + 0.08 * drift) * proxy.size.height
+                        )
+
+                    LinearGradient(
+                        colors: [Color.black.opacity(colorScheme == .dark ? 0.18 : 0), .clear],
+                        startPoint: .bottom,
+                        endPoint: .center
+                    )
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .ignoresSafeArea()
-        .task {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 13).repeatForever(autoreverses: true)) {
-                hasDrifted = true
-            }
-        }
     }
 
     private var base: Color {

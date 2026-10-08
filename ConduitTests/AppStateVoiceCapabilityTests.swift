@@ -437,6 +437,54 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         }
     }
 
+    func testBackdropMotionIsCappedAndPausesForPowerOrLifecycle() {
+        XCTAssertEqual(ConduitBackdropMotionPolicy.framesPerSecond, 30)
+        XCTAssertTrue(ConduitBackdropMotionPolicy.shouldAnimate(
+            sceneIsActive: true,
+            reduceMotion: false,
+            lowPowerMode: false,
+            thermalState: .nominal
+        ))
+        XCTAssertTrue(ConduitBackdropMotionPolicy.shouldAnimate(
+            sceneIsActive: true,
+            reduceMotion: false,
+            lowPowerMode: false,
+            thermalState: .fair
+        ))
+
+        let pausedConditions: [(Bool, Bool, Bool, ProcessInfo.ThermalState)] = [
+            (false, false, false, .nominal), // app inactive/background
+            (true, true, false, .nominal),  // Reduce Motion
+            (true, false, true, .nominal),  // Low Power Mode
+            (true, false, false, .serious),  // serious thermal pressure
+            (true, false, false, .critical)
+        ]
+        for (sceneIsActive, reduceMotion, lowPowerMode, thermalState) in pausedConditions {
+            XCTAssertFalse(ConduitBackdropMotionPolicy.shouldAnimate(
+                sceneIsActive: sceneIsActive,
+                reduceMotion: reduceMotion,
+                lowPowerMode: lowPowerMode,
+                thermalState: thermalState
+            ))
+        }
+    }
+
+    func testBackdropDriftIsBoundedAndRepeatsAfterOneOutAndBackCycle() {
+        XCTAssertEqual(ConduitBackdropMotionPolicy.progress(at: 0), 0, accuracy: 0.000_001)
+        XCTAssertEqual(ConduitBackdropMotionPolicy.progress(at: 13), 1, accuracy: 0.000_001)
+        XCTAssertEqual(ConduitBackdropMotionPolicy.progress(at: 26), 0, accuracy: 0.000_001)
+        XCTAssertEqual(
+            ConduitBackdropMotionPolicy.progress(at: 2),
+            ConduitBackdropMotionPolicy.progress(at: 28),
+            accuracy: 0.000_001
+        )
+        for sample in stride(from: 0.0, through: 52.0, by: 0.25) {
+            let progress = ConduitBackdropMotionPolicy.progress(at: sample)
+            XCTAssertGreaterThanOrEqual(progress, 0)
+            XCTAssertLessThanOrEqual(progress, 1)
+        }
+    }
+
     func testTheCallOrbSpendsSixtyFramesOnlyWhileSpeakingAndHoldsStillWhenHot() {
         XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(speaking: true, lowPowerMode: false), 60)
         XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(speaking: false, lowPowerMode: false), 30,
