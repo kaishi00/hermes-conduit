@@ -1099,6 +1099,8 @@ final class WatchBridgeCallModel: ObservableObject {
         guard !relay.isGone, !relay.expires(within: WatchToolRelayClient.expiryMargin),
               relay.callsLeft > Self.callsKeptForApprovals else {
             followingJobs = false
+            // No longer known: the jobs' results come as notifications.
+            relayJobsRunning = 0
             note("bridgeJobNewsStopped", ["gone": relay.isGone, "callsLeft": relay.callsLeft])
             return
         }
@@ -1111,19 +1113,29 @@ final class WatchBridgeCallModel: ObservableObject {
             switch outcome {
             case .answered(let body):
                 guard let news = WatchJobAnswer.news(from: body, grantID: relay.grantID) else {
-                    self.nextNewsAt = self.now + Self.jobNewsPause
+                    self.nextNewsAt = self.now + self.newsPause(Self.jobNewsPause, relay: relay)
                     return
                 }
                 self.jobNews(news)
-                self.nextNewsAt = self.now + (news.items.isEmpty && !news.more ? Self.jobNewsPause : Self.jobNewsRetry)
+                // More waiting comes at once; a quiet poll waits its turn.
+                self.nextNewsAt = self.now + (news.items.isEmpty && !news.more ? self.newsPause(Self.jobNewsPause, relay: relay) : Self.jobNewsRetry)
             case .timedOut:
-                self.nextNewsAt = self.now + Self.jobNewsRetry
+                self.nextNewsAt = self.now + self.newsPause(Self.jobNewsRetry, relay: relay)
             case .unavailable(let reason, let grantGone, _):
                 self.note("bridgeJobNewsFailed", ["reason": reason, "grantGone": grantGone])
                 if grantGone { self.followingJobs = false }
-                self.nextNewsAt = self.now + Self.jobNewsPause
+                self.nextNewsAt = self.now + self.newsPause(Self.jobNewsPause, relay: relay)
             }
         }
+    }
+
+    /// At least `base`, and spread so the grant's calls last as long as the
+    /// grant does (its end ends the call): a job keeps getting news to
+    /// the end of the call, later when calls run low.
+    private func newsPause(_ base: TimeInterval, relay: WatchToolRelayClient) -> TimeInterval {
+        let spare = relay.callsLeft - Self.callsKeptForApprovals
+        guard let expiresAt = relay.expiresAt, spare > 0 else { return base }
+        return max(base, expiresAt.timeIntervalSinceNow / Double(spare))
     }
 
     private func jobNews(_ news: WatchJobAnswer.News) {
