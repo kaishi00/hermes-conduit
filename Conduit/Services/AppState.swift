@@ -23823,7 +23823,7 @@ final class AppState: ObservableObject {
                 personality: personality,
                 answerLength: style.answerLength,
                 asksFirst: false,
-                readsBack: false
+                onWatch: true
             ) + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
@@ -23974,7 +23974,8 @@ final class AppState: ObservableObject {
                 memory: memory,
                 personality: personality,
                 answerLength: style.answerLength,
-                asksFirst: false
+                asksFirst: false,
+                onWatch: true
             ) + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,

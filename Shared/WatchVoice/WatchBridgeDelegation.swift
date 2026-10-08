@@ -32,6 +32,29 @@ enum WatchBridgeDelegation {
         sent ? refused(reason) : grantGone || reason == "grantExpiring"
     }
 
+    /// VoiceThreadRouting.removingQuickMarker for the marked form the models
+    /// write ("Quick: …", "quickly, …"): routing, not part of the task.
+    static func removingQuickMarker(_ request: String) -> String {
+        let trimmed = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let marker = trimmed.range(of: #"^(quickly|quick)\s*[:,，：]\s*|^(快速|快)\s*[:,，：]\s*"#,
+                                         options: [.regularExpression, .caseInsensitive]) else { return trimmed }
+        let rest = trimmed[marker.upperBound...]
+        return rest.isEmpty ? trimmed : String(rest)
+    }
+
+    /// GPTLiveDelegationBridge.statusContext for the Watch's relay jobs:
+    /// each running job by its number, as the phone tells GPT-Live.
+    static func statusContext(_ jobs: [(number: Int, title: String, status: String)]) -> String {
+        guard !jobs.isEmpty else { return "[Background jobs: none running.]" }
+        let lines = jobs.map { "Job \($0.number) (\($0.title)): \(statusName($0.status))" }
+        return "[Background jobs on Hermes: " + lines.joined(separator: "; ") + ".]"
+    }
+
+    /// The host's job status, in GeminiLiveToolBridge.statusName's words.
+    static func statusName(_ status: String) -> String {
+        status == "needs_approval" ? "needs_approval_on_the_watch" : status
+    }
+
     /// `grantRanOut` without its closing period, to sit inside a sentence.
     static var grantRanOutClause: String {
         grantRanOut.trimmingCharacters(in: CharacterSet(charactersIn: "."))

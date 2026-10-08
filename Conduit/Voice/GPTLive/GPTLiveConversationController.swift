@@ -72,6 +72,10 @@ final class GPTLiveConversationController: ObservableObject {
 
     /// Job corrections ("Job 2: …", #455): the phone's delegation bridge
     /// and the Watch's (through the relay's interrupt_job) both route them.
+    /// The Watch shows a job's approval request with Approve and Deny, and
+    /// tells the model what the user tapped.
+    static let watchApprovals = "Never approve, deny, or answer anything on a job's behalf. When a job asks for approval, it's on the user's Watch screen with Approve and Deny: tell them in a sentence, and Conduit tells you what they tapped. If a job needs any other input, tell the user to open it in Conduit on their iPhone."
+
     static let jobFollowUps = "When the user corrects, changes, pauses or calls off a background job that is still running (\"wait, make it Alex\", \"hold that\", \"never mind\"), delegate their words right away, starting with \"Job\" and its number, like \"Job 2: make it Alex\": Conduit puts them into that job at once, Hermes decides what they mean, and the job's result still arrives on its earlier delegation. A delegation without that start is new work."
 
     /// Asking first (#451): only the phone's delegation bridge can hold a
@@ -84,11 +88,11 @@ final class GPTLiveConversationController: ObservableObject {
     /// starts. Written for the model, not shown as UI copy, so not localized.
     static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard, onWatch: Bool = false) -> String {
         var text = """
-        [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. This is speech, not text: talk naturally, in full spoken sentences.
+        [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions(readsBack: !onWatch)) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
         Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? "" : "\n" + phoneReadBack)
         Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number. \(onWatch ? jobFollowUps : phoneFollowUps)
-        Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
+        \(onWatch ? watchApprovals : "Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.")
         When the user says goodbye, say a short goodbye.]
         """
         if let personality, !personality.isEmpty {

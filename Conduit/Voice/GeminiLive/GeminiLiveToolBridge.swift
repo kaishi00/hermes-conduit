@@ -136,7 +136,8 @@ final class GeminiLiveToolBridge {
     /// needs the user's speech timing on the phone that runs the bridge, and
     /// no read-back, whose results the phone's own call keeps (#451).
     static func watchDeclarations(webSearch: Bool, memoryRecall: Bool) -> [GeminiLiveProtocol.FunctionDeclaration] {
-        let phoneOnly: Set<String> = [Tool.sendRequest.rawValue, Tool.setAskFirst.rawValue, Tool.readLastReply.rawValue]
+        // No screen on the Watch: show_on_screen would only ever fail.
+        let phoneOnly: Set<String> = [Tool.sendRequest.rawValue, Tool.setAskFirst.rawValue, Tool.readLastReply.rawValue, Tool.showOnScreen.rawValue]
         return declarations(webSearch: webSearch, memoryRecall: memoryRecall, thread: false)
             .filter { !phoneOnly.contains($0.name) }
     }

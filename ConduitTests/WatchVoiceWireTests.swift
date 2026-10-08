@@ -609,7 +609,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WatchJobAnswer.notice(for: news.items[0], voiceApprovals: false),
                        WatchJobAnswer.completionPrompt(title: "Build", result: "All green."))
         XCTAssertEqual(WatchJobAnswer.notice(for: news.items[1], voiceApprovals: false),
-                       WatchJobAnswer.updatePrompt("Deploy failed: provider overloaded"))
+                       WatchJobAnswer.updatePrompt("Deploy failed. Open it in Conduit on your iPhone for details. (provider overloaded)"))
+        // The phone's wording: the reason's first line, kept short.
+        XCTAssertEqual(WatchJobAnswer.failedNotice("Deploy", reason: "\nquota exceeded\nTraceback …"),
+                       VoiceBackgroundJobSupervisor.failedNotice("Deploy", reason: "\nquota exceeded\nTraceback …").replacingOccurrences(of: "in Conduit for", with: "in Conduit on your iPhone for"))
+        XCTAssertLessThan(WatchJobAnswer.failedNotice("Deploy", reason: String(repeating: "word ", count: 100)).count, 260)
         let tap = try XCTUnwrap(WatchJobAnswer.notice(for: news.items[2], voiceApprovals: false))
         let voice = try XCTUnwrap(WatchJobAnswer.notice(for: news.items[2], voiceApprovals: true))
         // Only voice approval tells the model it may answer, and how.

@@ -144,8 +144,12 @@ final class GeminiLiveConversationController: ObservableObject {
         personality: String? = nil,
         answerLength: LiveVoiceAnswerLength = .standard,
         asksFirst: Bool = true,
-        readsBack: Bool = true
+        readsBack: Bool = true,
+        onWatch: Bool = false
     ) -> String {
+        // A Watch call has no read-backs (#451) and no screen to show
+        // things on; its approvals come as requests that say how to answer.
+        let readsBack = readsBack && !onWatch
         let lookups: String
         switch search {
         case .google:
@@ -159,18 +163,23 @@ final class GeminiLiveConversationController: ObservableObject {
             lookups = "You have no web search. A question that needs current information from the web (weather, news, prices) is work for Hermes: offer to start a job for it."
         }
         return """
-    You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. This is speech, not text: talk naturally, in full spoken sentences.
+    You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.
     \(answerLength.instructions(readsBack: readsBack))
     Never speak while the user is speaking. If they interrupt you, stop and listen. If you have nothing useful to add, stay silent rather than filling the pause.
     Answer quick questions yourself. \(lookups)
     Call start_job only for work that needs the user's Hermes agent: their files, code, systems, accounts, or longer multi-step research. Pass the complete task. Every time you call start_job, first say a very short acknowledgement out loud, like "On it, I'll have Hermes look into that." Then carry on with the conversation; the job runs on Hermes in the background.
     Do not comment on how a job is progressing unless the user asks; use list_jobs when they do. When a job's result arrives, tell the user the outcome once, when the conversation is quiet: what Hermes found or did, with the details that matter.
-    \(readsBack ? readBackParagraph + "\n" : "")Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user.
-    Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
+    \(readsBack ? readBackParagraph + "\n" : "")\(onWatch ? "" : showOnScreenParagraph + "\n")\(onWatch ? watchApprovalParagraph : "Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.")
     When the user corrects, changes, pauses or calls off a job Hermes is still working on ("wait, make it Alex", "hold that", "never mind"), call interrupt_job with their words right away (job_id from list_jobs): Hermes takes them in at once and decides what they mean. Use cancel_job only when the user asks to cancel.
     \(asksFirst ? askFirstParagraph + "\n" : "")When the user says goodbye or asks to end the conversation, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
     """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality)
     }
+
+    static let showOnScreenParagraph = "Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user."
+
+    /// The Watch shows a job's approval request and, with voice approvals
+    /// on, passes it to the model with how to answer it.
+    static let watchApprovalParagraph = "Never approve, deny, or answer anything on a job's behalf on your own. A job's approval request tells you how to answer it, and only when the user clearly says so; it's on their Watch screen too. If a job needs any other input, tell the user to open it in Conduit on their iPhone."
 
     /// Read-backs (#451) run on the phone's own call, so a Watch call
     /// leaves this out.

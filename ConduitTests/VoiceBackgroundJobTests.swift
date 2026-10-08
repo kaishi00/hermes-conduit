@@ -1888,6 +1888,23 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, readsBack: false).contains("read-back"))
         XCTAssertTrue(names.contains("interrupt_job"))
         XCTAssertTrue(names.contains("web_search"))
+        XCTAssertFalse(names.contains("show_on_screen"), "the Watch has no screen to show things on")
+        let watch = GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, onWatch: true)
+        XCTAssertFalse(watch.contains("show_on_screen"))
+        XCTAssertFalse(watch.contains("read_last_reply"), "a Watch call never reads back, whatever readsBack says")
+        XCTAssertTrue(watch.contains("Conduit on their Apple Watch"))
+        XCTAssertFalse(watch.contains("iPhone app"))
+        XCTAssertTrue(watch.contains("A job's approval request tells you how to answer it"), "no blanket \"never approve\" next to voice approvals")
+        XCTAssertTrue(GPTLiveConversationController.briefing(onWatch: true).contains("on the user's Watch screen with Approve and Deny"))
+        XCTAssertTrue(GPTLiveConversationController.briefing(onWatch: false).contains("open it in Conduit."))
+        XCTAssertEqual(WatchBridgeDelegation.statusContext([(number: 1, title: "Book a table", status: "running"),
+                                                            (number: 3, title: "Clean", status: "needs_approval")]),
+                       "[Background jobs on Hermes: Job 1 (Book a table): running; Job 3 (Clean): needs_approval_on_the_watch.]")
+        XCTAssertEqual(WatchBridgeDelegation.statusContext([]), "[Background jobs: none running.]")
+        for request in ["Quick: what's on my calendar", "quickly, check the build", "Quick question, what time is it?", "quick"] {
+            XCTAssertEqual(WatchBridgeDelegation.removingQuickMarker(request), VoiceThreadRouting.removingQuickMarker(request), request)
+        }
+        XCTAssertEqual(WatchJobAnswer.arguments(name: WatchJobAnswer.startJob, ["instructions": "Quick: check the build"])?["instructions"] as? String, "check the build")
 
         // Nor do the instructions teach it, on either Watch engine.
         let gemini = GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false)

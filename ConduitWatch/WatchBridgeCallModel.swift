@@ -221,6 +221,9 @@ final class WatchBridgeCallModel: ObservableObject {
     private var delegationConnection: [String: Int] = [:]
     /// Jobs answering a delegation, by job id.
     private var jobDelegations: [String: String] = [:]
+    /// Jobs this call started that still run, with their titles: the job
+    /// status GPT-Live is told, as on the phone.
+    private var runningJobs: [String: (title: String, status: String)] = [:]
     /// The host's job ids by their number in this call, as GPT-Live names
     /// them in a correction ("Job 2: …", #455).
     private var jobNumbers: [Int: String] = [:]
@@ -1075,7 +1078,7 @@ final class WatchBridgeCallModel: ObservableObject {
         let id = callID
         let sentAt = now
         Task { [weak self] in
-            let outcome = await relay.run(name: WatchJobAnswer.startJob, arguments: ["instructions": request])
+            let outcome = await relay.run(name: WatchJobAnswer.startJob, arguments: ["instructions": WatchBridgeDelegation.removingQuickMarker(request)])
             guard let self, self.callID == id, self.isActive else { return }
             var fields: [String: Any] = ["outcome": outcome.label, "ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
             switch outcome {
@@ -1094,8 +1097,10 @@ final class WatchBridgeCallModel: ObservableObject {
                         let next = self.jobNumbers.count + 1
                         self.jobNumbers[next] = jobID
                         number = next
+                        self.runningJobs[jobID] = (result["title"] ?? "Hermes job", "running")
                     }
                     self.answer(delegationID, WatchBridgeDelegation.working(title: result["title"] ?? "Hermes job", number: number), channel: .commentary)
+                    if number != nil { self.sendJobStatus() }
                     self.followJobs()
                 } else {
                     let reason = result["message"] ?? result["error"] ?? "Hermes didn't take the job."
@@ -1275,6 +1280,15 @@ final class WatchBridgeCallModel: ObservableObject {
         }
     }
 
+    /// The phone's job status context: GPT-Live answers "how's my job
+    /// going?" from it instead of delegating or guessing.
+    private func sendJobStatus() {
+        let jobs = jobNumbers.sorted { $0.key < $1.key }.compactMap { entry in
+            runningJobs[entry.value].map { (number: entry.key, title: $0.title, status: $0.status) }
+        }
+        answer(nil, WatchBridgeDelegation.statusContext(jobs), channel: .commentary)
+    }
+
     /// Job news ends for this call; the jobs' results still come as
     /// notifications, so their count is no longer known.
     private func stopFollowingJobs(_ reason: String) {
@@ -1299,7 +1313,14 @@ final class WatchBridgeCallModel: ObservableObject {
         let open = Set(news.openApprovals.map { "\($0.jobID)\n\($0.requestID)" })
         approvals.removeAll { !open.contains("\($0.jobID)\n\($0.requestID)") }
         var shown = 0
+        var statusChanged = false
         for item in news.items {
+            if ["finished", "failed", "cancelled"].contains(item.status) {
+                statusChanged = runningJobs.removeValue(forKey: item.jobID) != nil || statusChanged
+            } else if let known = runningJobs[item.jobID], known.status != item.status {
+                runningJobs[item.jobID] = (known.title, item.status)
+                statusChanged = true
+            }
             // A new request replaces the job's last one; news without one
             // leaves the card to the open-requests list above.
             if let approval = item.approval {
@@ -1315,6 +1336,7 @@ final class WatchBridgeCallModel: ObservableObject {
             pendingSends.append(Pending(text: text, channel: .speakable, delegationID: delegationID))
         }
         pendingApproval = approvals.first
+        if statusChanged { sendJobStatus() }
         if shown > 0 { WKInterfaceDevice.current().play(.notification) }
         if !news.items.isEmpty {
             note("bridgeJobNews", [
@@ -1542,6 +1564,7 @@ final class WatchBridgeCallModel: ObservableObject {
         seenDelegations = []
         delegationConnection = [:]
         jobDelegations = [:]
+        runningJobs = [:]
         jobNumbers = [:]
         delegations = 0
         delegationsAnswered = 0

@@ -48,7 +48,7 @@ enum WatchJobAnswer {
     static func arguments(name: String, _ arguments: [String: String]) -> [String: Any]? {
         switch name {
         case startJob:
-            let instructions = arguments["instructions"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let instructions = WatchBridgeDelegation.removingQuickMarker(arguments["instructions"] ?? "")
             return instructions.isEmpty ? nil : ["instructions": instructions]
         case cancelJob:
             let jobID = arguments["job_id"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -261,12 +261,11 @@ enum WatchJobAnswer {
         case "finished":
             let result = item.result?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !result.isEmpty else {
-                return updatePrompt("\(item.title) has finished, but Hermes' reply had no text to read out.")
+                return updatePrompt("\(item.title) has finished. Open it in Conduit on your iPhone to read the result.")
             }
             return completionPrompt(title: item.title, result: result)
         case "failed":
-            let detail = item.error.flatMap { $0.isEmpty ? nil : ": \($0)" } ?? "."
-            return updatePrompt("\(item.title) failed\(detail)")
+            return updatePrompt(failedNotice(item.title, reason: item.error ?? ""))
         case "cancelled":
             return updatePrompt("\(item.title) was cancelled.")
         case "needs_approval":
@@ -275,6 +274,23 @@ enum WatchJobAnswer {
             return nil
         }
     }
+
+    /// VoiceBackgroundJobSupervisor.failedNotice: Hermes' reason, its first
+    /// line kept short, since a provider's raw error can run on.
+    static func failedNotice(_ title: String, reason: String) -> String {
+        let notice = "\(title) failed. Open it in Conduit on your iPhone for details."
+        let line = reason.split(whereSeparator: \.isNewline).lazy
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty } ?? ""
+        guard !line.isEmpty else { return notice }
+        guard line.count > maximumReasonCharacters else { return notice + " (\(line))" }
+        let prefix = line.prefix(maximumReasonCharacters)
+        let end = prefix.suffix(40).lastIndex(where: \.isWhitespace) ?? prefix.endIndex
+        return notice + " (\(prefix[..<end].trimmingCharacters(in: .whitespaces))…)"
+    }
+
+    /// VoiceBackgroundJobSupervisor.maximumReasonCharacters.
+    static let maximumReasonCharacters = 160
 
     /// VoiceBackgroundJobSupervisor.maximumResultCharacters.
     static let maximumResultCharacters = 6_000
