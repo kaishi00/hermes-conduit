@@ -1015,7 +1015,7 @@ extension HermesVoiceGatewayTimeoutTests {
     func testWatchGrokMessagesRoundTripThroughTheMessageDictionary() throws {
         var grant = Self.watchToolGrant
         grant.audio = .init(url: "wss://relay.example.test/v1/watch-audio/grant/watch", version: 1, engines: [WatchAudioBridgeWire.grok])
-        let setup = WatchVoiceWire.DirectSetup(systemInstruction: "Be brief.", functions: [])
+        let setup = WatchVoiceWire.DirectSetup(systemInstruction: "Be brief.", functions: [GeminiLiveProtocol.FunctionDeclaration]())
         let packed = try XCTUnwrap(setup.compressed())
         let messages: [WatchVoiceWire.Message] = [
             .grokStart(callID: 9, version: WatchVoiceWire.version),
