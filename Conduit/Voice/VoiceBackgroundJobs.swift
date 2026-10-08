@@ -396,6 +396,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     @Published private(set) var liveCallID: UUID?
     /// What live calls put on screen, newest last.
     @Published private(set) var screenCards: [VoiceScreenCard] = []
+    /// Whether the running call holds each new request for the user's OK
+    /// before it goes to Hermes (#451): the profile's setting when the call
+    /// began, then the call screen's button or the user asking.
+    @Published private(set) var asksBeforeSending = false
     /// Screen cards kept for the call.
     static let maximumScreenCards = 20
     static let maximumScreenCardCharacters = 20_000
@@ -434,11 +438,27 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     /// A new live call begins: jobs started from now on are its own.
-    func beginLiveCall() {
+    func beginLiveCall(asksBeforeSending: Bool = false) {
         liveCallID = UUID()
+        self.asksBeforeSending = asksBeforeSending
         // Only the running call's cards are ever shown.
         screenCards.removeAll()
     }
+
+    /// Switches asking first for the running call. `byModel`: the live model
+    /// switched it because the user asked, so it knows; a switch on the call
+    /// screen reaches it as a quiet note.
+    func setAsksBeforeSending(_ on: Bool, byModel: Bool = false) {
+        guard asksBeforeSending != on else { return }
+        asksBeforeSending = on
+        guard !byModel else { return }
+        // Only the latest switch matters to the model.
+        chatNotes.removeAll { $0.text == Self.askFirstOnPrompt || $0.text == Self.askFirstOffPrompt }
+        queueChatNote(ChatNote(text: on ? Self.askFirstOnPrompt : Self.askFirstOffPrompt))
+    }
+
+    static let askFirstOnPrompt = "[Background only. The user turned on asking first for this call: from now on, Hermes gets a new request only once the user OKs it. Don't respond to this note now.]"
+    static let askFirstOffPrompt = "[Background only. The user turned off asking first for this call: new requests go to Hermes straight away again. Don't respond to this note now.]"
 
     /// The jobs and chat requests the live call `callID` started, in order.
     func callJobs(_ callID: UUID?) -> [VoiceBackgroundJob] {
@@ -1172,6 +1192,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         threadTask = nil
         jobs.removeAll()
         lastJobNumber = 0
+        asksBeforeSending = false
         followUpsInFlight.removeAll()
         noticesInFlight.removeAll()
         liveThread = nil
@@ -1808,6 +1829,15 @@ enum VoiceThreadRouting {
     /// A request led by "quick" ("quick, what's on my calendar") runs as a
     /// fast job on the Voice Jobs model instead of in the chat.
     static let quickWords = ["quick", "quickly"]
+
+    /// "Send it to Hermes" (#451): the user already said where it goes, so
+    /// asking first doesn't ask again.
+    static func saysSendToHermes(_ words: String) -> Bool {
+        fold(words).range(
+            of: #"\bsend (it |this |that |this one |that one )?(straight |right |over |directly )?to hermes\b"#,
+            options: .regularExpression
+        ) != nil
+    }
 
     static func wantsBackgroundJob(_ request: String) -> Bool {
         let folded = fold(request)

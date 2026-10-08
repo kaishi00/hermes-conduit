@@ -1875,6 +1875,181 @@ extension VoiceConversationControllerTests {
     }
 }
 
+// MARK: - Asking first (#451)
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testAskingFirstIsPerCallAndAScreenSwitchIsToldQuietly() {
+        let (supervisor, _) = makeSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        XCTAssertTrue(supervisor.asksBeforeSending)
+
+        supervisor.setAsksBeforeSending(false, byModel: true)
+        XCTAssertFalse(supervisor.asksBeforeSending)
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "the model switched it, so it knows")
+
+        supervisor.setAsksBeforeSending(true)
+        supervisor.setAsksBeforeSending(false)
+        XCTAssertEqual(supervisor.pendingChatContext, [VoiceBackgroundJobSupervisor.askFirstOffPrompt], "only the latest switch")
+
+        supervisor.beginLiveCall()
+        XCTAssertFalse(supervisor.asksBeforeSending, "a new call starts from the setting")
+    }
+
+    func testSendItToHermesIsHeardOnlyAsTheUsersOwnInstruction() {
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("Send it to Hermes"))
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("ok, just send that straight to Hermes."))
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("send to hermes: find flights to Rome"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("what did you send to the team"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("hermes, send it"))
+    }
+
+    func testGeminiAskingFirstHoldsANewJobUntilTheUserSaysYes() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
+        var spokeAt: Date? = requestSpokenAt
+        bridge.lastUserSpeechAt = { spokeAt }
+
+        let held = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "book a table for Sam"]))
+        guard case .toolResponse("call_1", "start_job", let heldResult, let heldScheduling)? = held.first, held.count == 1 else {
+            return XCTFail("\(held)")
+        }
+        XCTAssertEqual(heldResult["status"], "waiting_for_ok")
+        XCTAssertNil(heldResult["job_id"], "nothing ran, so it is no job's outcome")
+        XCTAssertEqual(heldScheduling, .whenIdle, "the model asks the user")
+        XCTAssertEqual(fake.created, 0)
+
+        // A newer request replaces the one waiting.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "start_job", arguments: ["instructions": "book a table for Alex"]))
+        XCTAssertEqual(fake.created, 0)
+
+        // Not before the user answered: the request's own words trailing in
+        // don't count.
+        spokeAt = requestSpokenAt.addingTimeInterval(0.5)
+        let early = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "send_request", arguments: [:]))
+        guard case .toolResponse("call_3", "send_request", let earlyResult, let earlyScheduling)? = early.first else {
+            return XCTFail("\(early)")
+        }
+        XCTAssertEqual(earlyResult["status"], "waiting_for_ok")
+        XCTAssertEqual(earlyScheduling, .silent)
+        XCTAssertEqual(fake.created, 0)
+
+        spokeAt = requestSpokenAt.addingTimeInterval(5)
+        let sent = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_4", name: "send_request", arguments: [:]))
+        XCTAssertTrue(sent.isEmpty, "the call stays open for the job's result")
+        XCTAssertEqual(fake.created, 1)
+        let prompt = try XCTUnwrap(fake.submissions.first?.1)
+        XCTAssertTrue(prompt.hasSuffix("book a table for Alex"), prompt)
+
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Alex.", reasoning: nil))
+        guard case .toolResponse("call_4", "send_request", let outcome, _)? = bridge.pendingUpdates().first else {
+            return XCTFail("the job's result answers send_request")
+        }
+        XCTAssertEqual(outcome["result"], "Booked for Alex.")
+
+        let nothing = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_5", name: "send_request", arguments: [:]))
+        guard case .toolResponse("call_5", _, let nothingResult, _)? = nothing.first else { return XCTFail("\(nothing)") }
+        XCTAssertNotNil(nothingResult["error"], "the draft went with the send")
+        XCTAssertEqual(fake.created, 1)
+    }
+
+    func testGeminiAskingFirstHoldsTheChatsNextTurnButNeverAFollowUp() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        var spokeAt: Date?
+        bridge.lastUserSpeechAt = { spokeAt }
+
+        let held = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "find flights to Paris"]))
+        guard case .toolResponse("call_1", "ask_thread", let result, _)? = held.first else { return XCTFail("\(held)") }
+        XCTAssertEqual(result["status"], "waiting_for_ok")
+        XCTAssertTrue(fake.threadSubmissions.isEmpty)
+
+        spokeAt = Date()
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        XCTAssertEqual(fake.threadSubmissions.map(\.1), ["(voice) find flights to Paris"])
+
+        // A correction to the running request goes in at once.
+        let followUp = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "ask_thread", arguments: ["request": "make it Rome"]))
+        guard case .toolResponse("call_3", _, let followUpResult, _)? = followUp.first else { return XCTFail("\(followUp)") }
+        XCTAssertEqual(followUpResult["status"], "sent")
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it Rome"])
+
+        supervisor.observe(.messageDelta(sessionId: "rt-chat", text: "Rome"))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Three flights to Rome.", reasoning: nil))
+        guard case .toolResponse("call_2", "send_request", let reply, _)? = bridge.pendingUpdates().first else {
+            return XCTFail("the chat's reply answers send_request")
+        }
+        XCTAssertEqual(reply["result"], "Three flights to Rome.")
+    }
+
+    func testGeminiSendItToHermesSkipsTheQuestionOnce() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+
+        bridge.noteSendToHermes()
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "check the server"]))
+        XCTAssertEqual(fake.created, 1)
+
+        let next = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "start_job", arguments: ["instructions": "check the router"]))
+        guard case .toolResponse("call_2", _, let result, _)? = next.first else { return XCTFail("\(next)") }
+        XCTAssertEqual(result["status"], "waiting_for_ok", "only the request it was said for")
+        XCTAssertEqual(fake.created, 1)
+    }
+
+    func testGeminiSetAskFirstSwitchesTheCallWithoutANote() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+
+        let on = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "set_ask_first", arguments: ["mode": "On"]))
+        guard case .toolResponse("call_1", "set_ask_first", let result, let scheduling)? = on.first else { return XCTFail("\(on)") }
+        XCTAssertNil(scheduling, "a blocking call's answer")
+        XCTAssertEqual(result["status"], "on")
+        XCTAssertTrue(supervisor.asksBeforeSending)
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty)
+
+        let bad = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "set_ask_first", arguments: ["mode": "maybe"]))
+        guard case .toolResponse("call_2", _, let badResult, _)? = bad.first else { return XCTFail("\(bad)") }
+        XCTAssertNotNil(badResult["error"])
+        XCTAssertTrue(supervisor.asksBeforeSending)
+
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "set_ask_first", arguments: ["mode": "off"]))
+        XCTAssertFalse(supervisor.asksBeforeSending)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_4", name: "start_job", arguments: ["instructions": "check the server"]))
+        XCTAssertEqual(fake.created, 1, "off sends straight away")
+    }
+
+    func testGeminiDraftOutlivesAHandoffButNotANewServerSession() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        var spokeAt: Date?
+        bridge.lastUserSpeechAt = { spokeAt }
+
+        // A handoff keeps the conversation, and the question with it.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "check the server"]))
+        spokeAt = Date()
+        bridge.connectionReplaced()
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+        XCTAssertEqual(fake.created, 1)
+
+        // A new server session never asked.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "check the router"]))
+        spokeAt = Date().addingTimeInterval(5)
+        bridge.connectionReplaced()
+        bridge.serverSessionStarted()
+        let sent = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_4", name: "send_request", arguments: [:]))
+        guard case .toolResponse("call_4", _, let result, _)? = sent.first else { return XCTFail("\(sent)") }
+        XCTAssertNotNil(result["error"])
+        XCTAssertEqual(fake.created, 1)
+    }
+}
+
 // MARK: - Voice controller integration
 
 @MainActor

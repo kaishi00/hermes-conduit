@@ -14,6 +14,11 @@
 //  delegation starting "Job 2:" into background job 2, and in a call
 //  attached to a chat, any delegation while the call's request runs there.
 //
+//  With asking first on (#451), a new request waits as the call's draft and
+//  the model asks the user; a "Send:" delegation sends it once the user
+//  spoke after the ask. "Mode: ask first" / "Mode: send directly" switch
+//  it, and "send it to Hermes" in the user's words sends at once.
+//
 //  Job updates with no delegation left to answer (a job started before a
 //  reconnect, a job waiting for input) go out as session context, only
 //  while the conversation is idle.
@@ -47,6 +52,9 @@ final class GPTLiveDelegationBridge {
     /// doesn't hold back a retry.
     private var readBackDelegationID: String?
     private let now: () -> Date
+    /// A new request held for the user's OK while asking first is on
+    /// (#451), with the user's words for it. The latest replaces it.
+    private var draft: (request: String, userWords: String)?
 
     /// A second request for the last reply within this long is the same one.
     static let readBackWindow: TimeInterval = 10
@@ -67,6 +75,7 @@ final class GPTLiveDelegationBridge {
     func handleDelegation(id: String, request: String, userWords: String = "") async -> [Outgoing] {
         guard seenDelegations.insert(id).inserted, !isEnding else { return [] }
         var instructions = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        var userWords = userWords
         let call = callGeneration
         // "Job 2: make it Alex" puts the user's words into background job 2
         // while it runs (#451). A number with no job is just new work.
@@ -80,6 +89,28 @@ final class GPTLiveDelegationBridge {
         }
         guard !instructions.isEmpty else {
             return [.delegationReply(delegationID: id, text: Self.relay("Hermes didn't get a request to work on. Ask the user what they want done."), channel: .speakable)]
+        }
+        // Asking first (#451): "Mode:" switches it for this call, and "Send:"
+        // sends the request waiting for the user's OK, once they answered.
+        if let asks = Self.modeMarker(in: instructions) {
+            supervisor.setAsksBeforeSending(asks, byModel: true)
+            let text = asks
+                ? "Asking first is on for this call: each new request waits for the user's OK."
+                : "Asking first is off for this call: new requests go to Hermes straight away."
+            return [.delegationReply(delegationID: id, text: text, channel: .commentary)]
+        }
+        var confirmed = false
+        if Self.isSendMarker(instructions) {
+            guard let waiting = draft else {
+                return [.delegationReply(delegationID: id, text: Self.relay("Nothing is waiting to be sent to Hermes. Ask the user what they want done."), channel: .speakable)]
+            }
+            guard !userWords.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return [.delegationReply(delegationID: id, text: Self.notAnsweredYet, channel: .commentary)]
+            }
+            draft = nil
+            instructions = waiting.request
+            userWords = waiting.userWords
+            confirmed = true
         }
         // The "Quick:" marker routes; it isn't part of the task.
         let task = VoiceThreadRouting.removingQuickMarker(instructions)
@@ -112,6 +143,7 @@ final class GPTLiveDelegationBridge {
                     return [Self.followUpReply(delegationID: id, outcome)] + settleOpenDelegations()
                 }
             }
+            if !confirmed, let held = heldForOK(id: id, request: instructions, userWords: userWords) { return held }
             let sent = supervisor.startThreadTurn(request: instructions)
             guard let jobID = sent.jobID else {
                 return [.delegationReply(delegationID: id, text: Self.relay(sent.refusal ?? ""), channel: .speakable)]
@@ -123,6 +155,7 @@ final class GPTLiveDelegationBridge {
                 channel: .commentary
             )] + settleOpenDelegations()
         }
+        if !confirmed, let held = heldForOK(id: id, request: instructions, userWords: userWords) { return held }
         var createdJobID: UUID?
         // A call that ends while Hermes creates the job must not leave this
         // delegation in the next call's table.
@@ -197,6 +230,8 @@ final class GPTLiveDelegationBridge {
         seenDelegations.removeAll()
         lastReadBackAt = nil
         readBackDelegationID = nil
+        // A new conversation never asked about it.
+        draft = nil
         isEnding = false
     }
 
@@ -205,7 +240,38 @@ final class GPTLiveDelegationBridge {
     func beginEnding() {
         openDelegations.removeAll()
         readBackDelegationID = nil
+        draft = nil
         isEnding = true
+    }
+
+    // MARK: Asking first (#451)
+
+    /// Holds a new request as the call's draft while asking first is on,
+    /// answered aloud so the model asks the user. Nil sends it now: asking
+    /// first is off, or the user said to send it to Hermes.
+    private func heldForOK(id: String, request: String, userWords: String) -> [Outgoing]? {
+        guard supervisor.asksBeforeSending, !VoiceThreadRouting.saysSendToHermes(userWords) else {
+            draft = nil
+            return nil
+        }
+        draft = (request, userWords)
+        return [.delegationReply(delegationID: id, text: Self.heldForOKText, channel: .speakable)]
+    }
+
+    /// Not UI copy.
+    static let heldForOKText = "[Not sent to Hermes yet: the user OKs each new request first. Tell them in a few words what you'll send and ask whether to send it. When they say yes, delegate \"Send:\"; when they change it, delegate the new request.]"
+    static let notAnsweredYet = "Not sent: the user hasn't answered yet. Wait for their OK, then delegate \"Send:\" again."
+
+    /// "Mode: ask first" → true, "Mode: send directly" → false, at the very
+    /// start of a delegation.
+    static func modeMarker(in request: String) -> Bool? {
+        guard let range = request.range(of: #"^\s*mode\s*:\s*(ask first|send directly)\b"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        return request[range].lowercased().contains("ask first")
+    }
+
+    /// "Send:" at the very start of a delegation: the user OK'd the draft.
+    static func isSendMarker(_ request: String) -> Bool {
+        request.range(of: #"^\s*send\s*:"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     // MARK: Job updates

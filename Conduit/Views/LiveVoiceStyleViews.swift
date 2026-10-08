@@ -38,6 +38,7 @@ struct LiveVoiceStyleSettingsSection: View {
     @State private var tone: String
     @State private var answerLength: LiveVoiceAnswerLength
     @State private var backchannels: Bool
+    @State private var asksBeforeSending: Bool
     @State private var preview: LiveVoiceInstructionsPreviewContent?
     @State private var showsPreview = false
     @State private var greetingSave: Task<Void, Never>?
@@ -54,6 +55,7 @@ struct LiveVoiceStyleSettingsSection: View {
         _tone = State(initialValue: model.style.tone?.rawValue ?? "")
         _answerLength = State(initialValue: model.style.answerLength)
         _backchannels = State(initialValue: model.style.backchannels)
+        _asksBeforeSending = State(initialValue: model.style.asksBeforeSending)
     }
 
     private var style: LiveVoiceStyle {
@@ -61,7 +63,8 @@ struct LiveVoiceStyleSettingsSection: View {
             tone: LiveVoiceTone(rawValue: tone),
             backchannels: backchannels,
             greeting: greets ? LiveVoiceStyle.cleanedGreeting(greeting) : nil,
-            answerLength: answerLength
+            answerLength: answerLength,
+            asksBeforeSending: asksBeforeSending
         )
     }
 
@@ -167,6 +170,16 @@ struct LiveVoiceStyleSettingsSection: View {
             Text("Short sounds like “mm-hmm” while you talk. Turn them off for a quieter listener. Applies to the next call.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Toggle("Ask before sending to Hermes", isOn: Binding(
+                get: { asksBeforeSending },
+                set: { requested in
+                    asksBeforeSending = requested
+                    save()
+                }
+            ))
+            Text("The voice model tells you what it will send and waits for your OK before Hermes starts on it. Say “send it to Hermes” to skip the question. Change it during a call with the call screen's button or by asking. Applies to the next call.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Button {
                 preview = model.preview()
                 showsPreview = true
@@ -193,6 +206,7 @@ struct LiveVoiceStyleSettingsSection: View {
             tone = newValue.tone?.rawValue ?? ""
             answerLength = newValue.answerLength
             backchannels = newValue.backchannels
+            asksBeforeSending = newValue.asksBeforeSending
             // Now in sync: coming back to an earlier profile resyncs again.
             lastSaved = newValue
         }
@@ -206,6 +220,7 @@ struct LiveVoiceStyleSettingsSection: View {
             tone = style.tone?.rawValue ?? ""
             answerLength = style.answerLength
             backchannels = style.backchannels
+            asksBeforeSending = style.asksBeforeSending
             lastSaved = style
         }
         .sheet(isPresented: $showsPreview) {

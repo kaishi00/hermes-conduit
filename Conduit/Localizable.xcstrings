@@ -1,6 +1,54 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Ask before sending to Hermes" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesに送る前に確認"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送给 Hermes 前先确认"
+          }
+        }
+      }
+    },
+    "The voice model tells you what it will send and waits for your OK before Hermes starts on it. Say “send it to Hermes” to skip the question. Change it during a call with the call screen's button or by asking. Applies to the next call." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声モデルが送る内容を伝え、あなたのOKを待ってからHermesが作業を始めます。「send it to Hermes」と言えば確認を省けます。通話中は通話画面のボタンか、声で頼んで切り替えられます。次の通話から適用されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音模型会先告诉你要发送的内容，等你确认后 Hermes 才开始处理。说“send it to Hermes”可跳过确认。通话中可用通话界面的按钮或直接说出来切换。下次通话生效。"
+          }
+        }
+      }
+    },
+    "On" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启"
+          }
+        }
+      }
+    },
     "Copy connection timeline" : {
       "localizations" : {
         "ja" : {
