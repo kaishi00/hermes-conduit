@@ -600,6 +600,10 @@ final class AppState: ObservableObject {
     @Published private(set) var pinnedSessionIDs: [String] = []
     /// What the user has and hasn't seen, per conversation (#454).
     @Published private(set) var chatReadState = ChatReadState()
+    /// The latest `session.active_list` snapshot and the profile it belongs
+    /// to (#454).
+    @Published private(set) var liveSessionStatusIndex = SessionLiveStatusIndex()
+    private var liveSessionStatusProfile: String?
     @Published private(set) var sessionMutationID: String?
     @Published private(set) var isRefreshingSessionCatalog = false
     @Published var activeSessionId: String? {
@@ -5079,6 +5083,31 @@ final class AppState: ObservableObject {
 
     func isSessionUnread(_ session: SessionSummary) -> Bool {
         chatReadState.isUnread(session, profile: activeProfile)
+    }
+
+    /// Whether a turn is running in the conversation or it waits on the user.
+    /// The open chat's own turn state is authoritative for "working"; the
+    /// registry snapshot can lag it by a poll.
+    func sessionLiveStatus(_ session: SessionSummary) -> SessionLiveStatus? {
+        let registry = liveSessionStatusProfile == activeProfile
+            ? liveSessionStatusIndex.status(for: session)
+            : nil
+        if sessionMatchesActiveSession(session) {
+            if registry == .needsInput { return .needsInput }
+            return isBusy ? .working : nil
+        }
+        return registry
+    }
+
+    /// Re-reads the live registry while the chat list is on screen. Cheap: an
+    /// in-memory snapshot that resumes and changes nothing. Gateways without
+    /// `session.active_list` just leave the filters empty.
+    func refreshLiveSessionStatuses() async {
+        guard isSceneActive, let client, isConnected else { return }
+        let profile = activeProfile
+        guard let rows = try? await client.activeSessions(),
+              profile == activeProfile, self.client === client else { return }
+        recordActiveListEvidence(rows, profile: profile)
     }
 
     func markSessionRead(_ session: SessionSummary) {
@@ -12552,6 +12581,16 @@ final class AppState: ObservableObject {
     /// conversation, and the healthy-foreground rule (observe the registry,
     /// never resume without cause) is untouched.
     func recordActiveListEvidence(_ rows: [LiveSessionStatus], profile: String) {
+        // Every active_list read is a full snapshot of the profile's live
+        // registry, so it also drives the chat list's Working / Needs input
+        // state (#454).
+        if profile == activeProfile {
+            let index = SessionLiveStatusIndex(rows: rows)
+            if index != liveSessionStatusIndex || liveSessionStatusProfile != profile {
+                liveSessionStatusIndex = index
+                liveSessionStatusProfile = profile
+            }
+        }
         for row in rows {
             conversationIdentityIndex.recordAuthoritative(
                 runtimeID: row.runtimeSessionId,
