@@ -74,6 +74,7 @@ final class GPTLiveConversationController: ObservableObject {
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
         Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.
+        When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory or in your own words: delegate "Read back:". Conduit gives you the reply, then tells you to read it: read it word for word, all of it, once.
         Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number. When the user corrects, changes, pauses or calls off a background job that is still running ("wait, make it Alex", "hold that", "never mind"), delegate their words right away, starting with "Job" and its number, like "Job 2: make it Alex": Conduit puts them into that job at once, Hermes decides what they mean, and the job's result still arrives on its earlier delegation. A delegation without that start is new work.
         Asking first: when it is on for this call, a new delegation waits for the user's OK, and Conduit answers that it is waiting. Then tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, delegate "Send:". When they change it, delegate the new request; it replaces the waiting one. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Corrections ("Job 2: …") never wait. When the user asks you to check with them before sending things to Hermes, delegate "Mode: ask first"; to stop checking, delegate "Mode: send directly".
         Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
@@ -664,7 +665,7 @@ final class GPTLiveConversationController: ObservableObject {
         while !pendingContext.isEmpty, endRequestedAt == nil, isConversationIdle, let session {
             let item = pendingContext.removeFirst()
             var text = item.text
-            if let delegationID = item.delegationID, userSpokeAfterAsking(delegationID) {
+            if let delegationID = item.delegationID, userSpokeAfterAsking(delegationID), !bridge.answersReadBack(delegationID) {
                 text = Self.resultAfterUserNote + text
             }
             guard session.appendContext(text, channel: item.channel, delegationID: item.delegationID) else {

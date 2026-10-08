@@ -1042,7 +1042,11 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.turnDone(role: "user", transcript: "Say that again, please."))
         await settle(40)
         XCTAssertEqual(session.speakable.count, 1)
-        XCTAssertTrue(session.speakable[0].text.contains("The full reply."))
+        XCTAssertEqual(session.speakable.first?.text, GPTLiveDelegationBridge.readBackCue, "one cue starts the reading (#451)")
+        let reply = session.appended.firstIndex { $0.channel == .commentary && $0.text.contains("The full reply.") }
+        let cue = session.appended.firstIndex { $0.channel == .speakable }
+        XCTAssertNotNil(reply, "the whole reply goes in quietly")
+        XCTAssertLessThan(reply ?? .max, cue ?? .min, "before the cue")
         XCTAssertEqual(fake.threadSubmissions.count, 0, "reading asks Hermes nothing")
         controller.stop()
     }

@@ -877,6 +877,26 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         pruneSettledJobs()
     }
 
+    /// What a read-back reads (#451): the attached chat's latest reply, or in
+    /// a call without a chat, the newest job result the call reported.
+    func readBackText() async -> String? {
+        if liveThread != nil { return await lastThreadReply() }
+        guard let lastCallResult, lastCallResult.callID == liveCallID else { return nil }
+        return lastCallResult.text
+    }
+
+    /// The newest job result handed to the running call, for a read-back.
+    private var lastCallResult: (callID: UUID, text: String)?
+
+    /// A job's outcome went to the running call: a finished job's result is
+    /// what "read that again" means in a call without a chat.
+    private func noteResultReported(_ job: VoiceBackgroundJob) {
+        guard let callID = liveCallID, !job.isThreadTurn, job.status == .finished,
+              let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !result.isEmpty else { return }
+        lastCallResult = (callID, result)
+    }
+
     /// The attached chat's latest reply, read without starting a turn.
     func lastThreadReply() async -> String? {
         guard let asked = liveThread else { return nil }
@@ -1173,6 +1193,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// never announces it a second time.
     func markOutcomeDelivered(jobID: UUID) {
         update(jobID) { $0.outcomeDelivered = true }
+        if let job = job(jobID) { noteResultReported(job) }
         pruneSettledJobs()
     }
 
@@ -1199,6 +1220,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         jobs.removeAll()
         lastJobNumber = 0
         asksBeforeSending = false
+        lastCallResult = nil
         // Their generation no longer matches: cancelled, they stop at once.
         for task in followUpsInFlight.values { task.cancel() }
         followUpsInFlight.removeAll()
@@ -1524,6 +1546,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                       !result.isEmpty else {
                     return (.speak(openChat), job.id)
                 }
+                noteResultReported(job)
                 return (.submit(prompt: Self.outcomePrompt(for: job, result: result), fallback: openChat), job.id)
             case .failed(let message):
                 // A chat turn's reason says what Hermes did with the request.
