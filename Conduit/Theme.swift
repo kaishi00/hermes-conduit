@@ -75,51 +75,135 @@ enum ConduitMotion {
 
 // MARK: - Living canvas
 
-/// A deliberately quiet background field. It gives native glass something
-/// meaningful to refract without competing with conversation content.
+/// The slow background drift is subtle, but the two full-screen blurred
+/// circles are expensive to composite continuously. Keep their motion bounded
+/// and stop scheduling frames when the app or device should conserve work.
+enum ConduitBackdropMotionPolicy {
+    static let framesPerSecond = 30
+    static let cycleDuration: TimeInterval = 26
+
+    static func shouldAnimate(
+        sceneIsActive: Bool,
+        reduceMotion: Bool,
+        lowPowerMode: Bool,
+        thermalState: ProcessInfo.ThermalState
+    ) -> Bool {
+        let thermalStateAllowsMotion = thermalState == .nominal || thermalState == .fair
+        return sceneIsActive && !reduceMotion && !lowPowerMode && thermalStateAllowsMotion
+    }
+
+    /// One smooth out-and-back drift over 26 seconds, matching the previous
+    /// 13-second ease-in/ease-out animation with autoreverse.
+    static func progress(at activeTime: TimeInterval) -> CGFloat {
+        let remainder = activeTime.truncatingRemainder(dividingBy: cycleDuration)
+        let normalized = (remainder < 0 ? remainder + cycleDuration : remainder) / cycleDuration
+        return CGFloat((1 - cos(2 * .pi * normalized)) / 2)
+    }
+}
+
+/// Tracks only active monotonic time so a paused backdrop freezes in place and
+/// resumes at the same phase. Reduce Motion from launch keeps the original
+/// static composition until the user enables motion.
+struct ConduitBackdropMotionClock {
+    private var motionOrigin: TimeInterval
+    private var pauseStartedAt: TimeInterval?
+    private var hasAnimated = false
+    private(set) var pausedProgress: CGFloat = 0
+
+    init(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        motionOrigin = now
+    }
+
+    mutating func setAnimating(_ isAnimating: Bool, at now: TimeInterval) {
+        if isAnimating {
+            if let pauseStartedAt {
+                if hasAnimated {
+                    motionOrigin += now - pauseStartedAt
+                } else {
+                    motionOrigin = now
+                }
+                self.pauseStartedAt = nil
+            } else {
+                motionOrigin = now
+            }
+            hasAnimated = true
+        } else {
+            guard pauseStartedAt == nil else { return }
+            pausedProgress = hasAnimated
+                ? ConduitBackdropMotionPolicy.progress(at: now - motionOrigin)
+                : 0
+            pauseStartedAt = now
+        }
+    }
+
+    func progress(at now: TimeInterval, isAnimating: Bool) -> CGFloat {
+        guard isAnimating, hasAnimated else { return pausedProgress }
+        return ConduitBackdropMotionPolicy.progress(at: now - motionOrigin)
+    }
+}
+
 struct ConduitBackdrop: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var hasDrifted = false
+    @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var devicePower = DevicePowerState.shared
+    @State private var motionClock = ConduitBackdropMotionClock()
+
+    private var shouldAnimate: Bool {
+        ConduitBackdropMotionPolicy.shouldAnimate(
+            sceneIsActive: scenePhase == .active,
+            reduceMotion: reduceMotion,
+            lowPowerMode: devicePower.isLowPowerModeEnabled,
+            thermalState: devicePower.thermalState
+        )
+    }
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                base
-
-                Circle()
-                    .fill(Color.conduitAccent.opacity(colorScheme == .dark ? 0.20 : 0.055))
-                    .frame(width: proxy.size.width * 0.92)
-                    .blur(radius: 72)
-                    .offset(
-                        x: hasDrifted ? proxy.size.width * 0.30 : -proxy.size.width * 0.18,
-                        y: hasDrifted ? -proxy.size.height * 0.34 : -proxy.size.height * 0.24
-                    )
-
-                Circle()
-                    .fill(Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.055))
-                    .frame(width: proxy.size.width * 0.84)
-                    .blur(radius: 84)
-                    .offset(
-                        x: hasDrifted ? -proxy.size.width * 0.32 : proxy.size.width * 0.26,
-                        y: hasDrifted ? proxy.size.height * 0.36 : proxy.size.height * 0.28
-                    )
-
-                LinearGradient(
-                    colors: [Color.black.opacity(colorScheme == .dark ? 0.18 : 0), .clear],
-                    startPoint: .bottom,
-                    endPoint: .center
+        TimelineView(
+            .animation(
+                minimumInterval: 1.0 / Double(ConduitBackdropMotionPolicy.framesPerSecond),
+                paused: !shouldAnimate
+            )
+        ) { _ in
+            GeometryReader { proxy in
+                let drift = motionClock.progress(
+                    at: ProcessInfo.processInfo.systemUptime,
+                    isAnimating: shouldAnimate
                 )
+                ZStack {
+                    base
+
+                    Circle()
+                        .fill(Color.conduitAccent.opacity(colorScheme == .dark ? 0.20 : 0.055))
+                        .frame(width: proxy.size.width * 0.92)
+                        .blur(radius: 72)
+                        .offset(
+                            x: (-0.18 + 0.48 * drift) * proxy.size.width,
+                            y: (-0.24 - 0.10 * drift) * proxy.size.height
+                        )
+
+                    Circle()
+                        .fill(Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.055))
+                        .frame(width: proxy.size.width * 0.84)
+                        .blur(radius: 84)
+                        .offset(
+                            x: (0.26 - 0.58 * drift) * proxy.size.width,
+                            y: (0.28 + 0.08 * drift) * proxy.size.height
+                        )
+
+                    LinearGradient(
+                        colors: [Color.black.opacity(colorScheme == .dark ? 0.18 : 0), .clear],
+                        startPoint: .bottom,
+                        endPoint: .center
+                    )
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .onChange(of: shouldAnimate, initial: true) { _, isAnimating in
+            motionClock.setAnimating(isAnimating, at: ProcessInfo.processInfo.systemUptime)
         }
         .ignoresSafeArea()
-        .task {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 13).repeatForever(autoreverses: true)) {
-                hasDrifted = true
-            }
-        }
     }
 
     private var base: Color {
