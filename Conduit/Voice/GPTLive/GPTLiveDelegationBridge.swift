@@ -71,6 +71,9 @@ final class GPTLiveDelegationBridge {
     private var lastSentAt: Date?
     /// What that held request went as, with anything the user added.
     private var lastSentRequest: String?
+    /// When a no beside a read-back dropped the held request with no
+    /// delegation told, so the read-back's cue tells the model.
+    private var droppedBesideReadBackAt: Date?
 
     /// A second request for the last reply within this long is the same one.
     static let readBackWindow: TimeInterval = 10
@@ -367,7 +370,7 @@ final class GPTLiveDelegationBridge {
         // without the reply.
         return [
             .sessionContext(text: Self.lastReplyText(reply), channel: .commentary, whenIdle: true, jobID: nil),
-            .delegationReply(delegationID: id, text: readBackCueText, channel: .speakable),
+            .delegationReply(delegationID: id, text: readBackCueText(), channel: .speakable),
         ]
     }
 
@@ -387,7 +390,7 @@ final class GPTLiveDelegationBridge {
         }
         return [
             .sessionContext(text: Self.lastReplyText(reply), channel: .commentary, whenIdle: false, jobID: nil),
-            .sessionContext(text: readBackCueText, channel: .speakable, whenIdle: false, jobID: nil),
+            .sessionContext(text: readBackCueText(), channel: .speakable, whenIdle: false, jobID: nil),
         ]
     }
 
@@ -429,14 +432,22 @@ final class GPTLiveDelegationBridge {
             return []
         }
         draft = nil
-        guard let pending = waiting.pendingDelegationID else { return [] }
+        guard let pending = waiting.pendingDelegationID else {
+            droppedBesideReadBackAt = now()
+            return []
+        }
         return [.delegationReply(delegationID: pending, text: Self.dropped, channel: .commentary)]
     }
 
-    /// The read-back cue, asking about a request still waiting for an OK
-    /// once the reply is read.
-    private var readBackCueText: String {
-        draft == nil ? Self.readBackCue : Self.readBackCueThenAskAgain
+    /// The read-back cue: once the reply is read, the model asks about a
+    /// request still waiting for an OK, or hears that the user's no beside
+    /// the read-back dropped it.
+    private func readBackCueText() -> String {
+        defer { droppedBesideReadBackAt = nil }
+        if draft == nil, let dropped = droppedBesideReadBackAt, now().timeIntervalSince(dropped) < Self.readBackWindow {
+            return Self.readBackCueAfterDrop
+        }
+        return draft == nil ? Self.readBackCue : Self.readBackCueThenAskAgain
     }
 
     /// Whether `delegationID` is answered by a read-back, which is read as
@@ -472,6 +483,8 @@ final class GPTLiveDelegationBridge {
     static let readBackCue = "[Read the reply Conduit just gave you, between <read_back> tags, to the user now: word for word from start to end, all of it, once, whatever your answer length. Don't summarize, shorten or add to it.]"
     /// Not UI copy.
     static let readBackCueThenAskAgain = String(readBackCue.dropLast()) + " Then ask the user again whether to send the request that's still waiting for their OK.]"
+    /// Not UI copy.
+    static let readBackCueAfterDrop = String(readBackCue.dropLast()) + " The request that was waiting for their OK wasn't sent: they said no, so Conduit dropped it and nothing is waiting now.]"
     /// A read-back in a call without a chat, before any job result came
     /// back. Not UI copy.
     static var nothingToReadBack: String { "[\(GeminiLiveToolBridge.nothingToReadBack)]" }
@@ -527,8 +540,9 @@ final class GPTLiveDelegationBridge {
     static let draftLifetime: TimeInterval = 300
 
     private func dropStaleDraft() {
-        // An answer on its way is never stale.
-        guard let waiting = draft, waiting.pendingDelegationID == nil else { return }
+        // An answer on its way restarts its time (`waitForAnswer`), so one
+        // whose words never came doesn't keep it forever.
+        guard let waiting = draft else { return }
         if now().timeIntervalSince(waiting.heldAt) >= Self.draftLifetime { draft = nil }
     }
 
@@ -600,6 +614,8 @@ final class GPTLiveDelegationBridge {
         let earlierSend = draft?.pendingDelegationID != nil && draft?.pendingIsSend == true
         draft?.pendingDelegationID = id
         draft?.pendingIsSend = isSend || earlierSend
+        // An answer on its way: its five minutes start again.
+        draft?.heldAt = now()
         return outgoing + [.delegationReply(delegationID: id, text: Self.waitingForAnswer, channel: .commentary)]
     }
 

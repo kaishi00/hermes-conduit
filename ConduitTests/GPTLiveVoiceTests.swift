@@ -2357,7 +2357,7 @@ extension VoiceConversationControllerTests {
         controller.flushPendingContextIfIdle()
         XCTAssertEqual(controller.pendingContextCountForTesting, 0)
         XCTAssertTrue(session.appended.contains { $0.channel == .commentary && $0.text.contains("Here is the edited image.") }, "\(session.appended)")
-        XCTAssertTrue(session.appended.contains { $0.text == GPTLiveDelegationBridge.readBackCue }, "nothing waits, so nothing to ask again")
+        XCTAssertTrue(session.appended.contains { $0.text == GPTLiveDelegationBridge.readBackCueAfterDrop }, "the model hears the booking was dropped")
         XCTAssertTrue(fake.threadSubmissions.isEmpty, "a read-back asks Hermes nothing")
 
         // Their no was for the booking: a "Send:" later has nothing to send.
@@ -2407,6 +2407,17 @@ extension VoiceConversationControllerTests {
             return XCTFail("\(send)")
         }
         XCTAssertTrue(droppedFake.threadSubmissions.isEmpty, "\(droppedFake.threadSubmissions)")
+
+        // With no delegation waiting for those words, the reading's cue
+        // tells the model it was dropped.
+        let (quietFake, quiet) = makeAskingFirstChatBridge()
+        _ = await quiet.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        quiet.modelFinishedTurn()
+        let noRead = await quiet.handleDelegation(id: "del_2", request: "Read back: the last reply", userWords: "No, read me the last reply")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.readBackCueAfterDrop, .speakable)? = noRead.last else {
+            return XCTFail("\(noRead)")
+        }
+        XCTAssertTrue(quietFake.threadSubmissions.isEmpty, "\(quietFake.threadSubmissions)")
     }
 
     /// Neal's request (#451): GPT-Live often drops "Job N:", so with one
@@ -2607,6 +2618,14 @@ extension VoiceConversationControllerTests {
         let prompt = fake.submissions.last?.1 ?? ""
         XCTAssertTrue(prompt.hasSuffix("what's the weather in Rome"), prompt)
         XCTAssertFalse(prompt.contains("book a flight"), prompt)
+
+        // An answer on its way whose words never came doesn't keep it held.
+        let (_, pendingFake, pending) = makeAskingFirstBridge(clock: { clock })
+        _ = await pending.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        _ = await pending.handleDelegation(id: "del_2", request: "")
+        clock += GPTLiveDelegationBridge.draftLifetime + 1
+        XCTAssertNil(pending.userFinishedSpeaking("yes"))
+        XCTAssertEqual(pendingFake.created, 0)
     }
 
     /// The user's plain no drops a held request whatever the model wrote,
