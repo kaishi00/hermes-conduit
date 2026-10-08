@@ -1463,7 +1463,7 @@ final class WatchDirectCallModel: ObservableObject {
             runJobThroughRelay(wire, relay: relay, generation: generation, wristDown: wristDown)
             return
         }
-        if call.name == WatchJobAnswer.interruptJob, let relay = toolRelay ?? jobRelays.last(where: { $0.hasJobs }), relay.hasJobs {
+        if call.name == WatchJobAnswer.interruptJob, let relay = toolRelay?.hasJobs == true ? toolRelay : jobRelays.last(where: { $0.hasJobs }), relay.hasJobs {
             // The jobs run on the host, which can't take the words just
             // now: the iPhone doesn't know them.
             let reason = !relay.tools.contains(WatchJobAnswer.interruptJob) ? WatchJobAnswer.followUpsNeedNewerPlugin
