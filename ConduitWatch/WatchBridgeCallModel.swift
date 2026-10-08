@@ -405,7 +405,7 @@ final class WatchBridgeCallModel: ObservableObject {
     private func approvalsRanOut() {
         approvals = []
         pendingApproval = nil
-        followingJobs = false
+        stopFollowingJobs("approvalsRanOut")
         caption = "This call's access to Hermes ran out, so it can't answer the job's request."
     }
 
@@ -1100,10 +1100,7 @@ final class WatchBridgeCallModel: ObservableObject {
         // needs; job results still come as notifications.
         guard !relay.isGone, !relay.expires(within: WatchToolRelayClient.expiryMargin),
               relay.callsLeft > Self.callsKeptForApprovals else {
-            followingJobs = false
-            // No longer known: the jobs' results come as notifications.
-            relayJobsRunning = 0
-            note("bridgeJobNewsStopped", ["gone": relay.isGone, "callsLeft": relay.callsLeft])
+            stopFollowingJobs(relay.isGone ? "grantGone" : "callsOrTimeLow")
             return
         }
         newsInFlight = true
@@ -1125,10 +1122,19 @@ final class WatchBridgeCallModel: ObservableObject {
                 self.nextNewsAt = self.now + self.newsPause(Self.jobNewsRetry, relay: relay)
             case .unavailable(let reason, let grantGone, _):
                 self.note("bridgeJobNewsFailed", ["reason": reason, "grantGone": grantGone])
-                if grantGone { self.followingJobs = false }
+                if grantGone { self.stopFollowingJobs("grantGone") }
                 self.nextNewsAt = self.now + self.newsPause(Self.jobNewsPause, relay: relay)
             }
         }
+    }
+
+    /// Job news ends for this call; the jobs' results still come as
+    /// notifications, so their count is no longer known.
+    private func stopFollowingJobs(_ reason: String) {
+        guard followingJobs else { return }
+        followingJobs = false
+        relayJobsRunning = 0
+        note("bridgeJobNewsStopped", ["reason": reason, "callsLeft": relay?.callsLeft as Any])
     }
 
     /// At least `base`, and spread so the grant's calls last as long as the
