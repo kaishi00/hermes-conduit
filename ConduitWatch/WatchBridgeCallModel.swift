@@ -499,6 +499,8 @@ final class WatchBridgeCallModel: ObservableObject {
         streamsOpened += 1
         connection += 1
         let number = connection
+        // A host error explains only its own connection's failure.
+        hostError = nil
         self.stream = stream
         live = false
         started = nil
