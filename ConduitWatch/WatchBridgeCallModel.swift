@@ -413,13 +413,13 @@ final class WatchBridgeCallModel: ObservableObject {
     /// The grant is spent, closed or about to expire. It isn't renewed (the
     /// bridge belongs to it), so for this call it ran out.
     private static func grantRanOut(reason: String, grantGone: Bool) -> Bool {
-        grantGone || reason == "grantExpiring"
+        WatchBridgeDelegation.grantRanOut(reason: reason, grantGone: grantGone, sent: false)
     }
 
     /// As above, for a call that may have gone out: only the relay or
     /// Hermes turning it away for the grant says it didn't run.
     private static func grantRanOut(reason: String, grantGone: Bool, sent: Bool) -> Bool {
-        sent ? WatchBridgeDelegation.refused(reason) : grantRanOut(reason: reason, grantGone: grantGone)
+        WatchBridgeDelegation.grantRanOut(reason: reason, grantGone: grantGone, sent: sent)
     }
 
     private func approvalsRanOut() {
@@ -1114,21 +1114,21 @@ final class WatchBridgeCallModel: ObservableObject {
             return
         }
         guard relay.canRun(WatchJobAnswer.interruptJob) else {
-            answer(delegationID, WatchBridgeDelegation.relay("Hermes didn't get that (\(WatchBridgeDelegation.grantRanOut.trimmingCharacters(in: CharacterSet(charactersIn: "."))))"), channel: .speakable)
+            answer(delegationID, WatchBridgeDelegation.relay("Hermes didn't get that (\(WatchBridgeDelegation.grantRanOutClause))"), channel: .speakable)
             return
         }
         let id = callID
         let sentAt = now
         Task { [weak self] in
-            let outcome = await relay.run(name: WatchJobAnswer.interruptJob, arguments: ["job_id": jobID, "message": WatchBridgeDelegation.clipped(words, bytes: WatchBridgeDelegation.maxRequestBytes)])
+            let outcome = await relay.run(name: WatchJobAnswer.interruptJob, arguments: ["job_id": jobID, "message": words])
             guard let self, self.callID == id, self.isActive else { return }
             let result: WatchJobAnswer.FollowUp
             switch outcome {
             case .answered(let body): result = WatchJobAnswer.FollowUp(body: body)
-            case .timedOut: result = .failed("Hermes took too long to answer")
+            case .timedOut: result = .failed("it took too long to answer")
             case .unavailable(let reason, let grantGone, let sent):
                 result = .failed(Self.grantRanOut(reason: reason, grantGone: grantGone, sent: sent)
-                    ? WatchBridgeDelegation.grantRanOut.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+                    ? WatchBridgeDelegation.grantRanOutClause
                     : sent ? "Hermes didn't confirm it got the words" : "Hermes couldn't be reached from the Watch")
             }
             let reply = WatchBridgeDelegation.followUpReply(result)

@@ -26,6 +26,17 @@ enum WatchBridgeDelegation {
     /// The relay or Hermes turned away a call that went out because its
     /// grant is over, so it didn't run: `WatchToolRelayClient`'s reasons
     /// for those answers, pinned by a test against the client.
+    /// The call's grant ran out, for a relay call that failed: one that may
+    /// have gone out counts only when the relay or Hermes turned it away.
+    static func grantRanOut(reason: String, grantGone: Bool, sent: Bool) -> Bool {
+        sent ? refused(reason) : grantGone || reason == "grantExpiring"
+    }
+
+    /// `grantRanOut` without its closing period, to sit inside a sentence.
+    static var grantRanOutClause: String {
+        grantRanOut.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+    }
+
     static func refused(_ reason: String) -> Bool {
         ["relay 401", "relay 404", "relay 410", "host 403", "host 410"].contains(reason)
             || reason.hasSuffix(" grant_exhausted")

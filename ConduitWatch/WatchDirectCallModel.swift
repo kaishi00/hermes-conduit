@@ -1463,12 +1463,12 @@ final class WatchDirectCallModel: ObservableObject {
             runJobThroughRelay(wire, relay: relay, generation: generation, wristDown: wristDown)
             return
         }
-        if call.name == WatchJobAnswer.interruptJob, let relay = toolRelay ?? jobRelays.last, relay.hasJobs {
+        if call.name == WatchJobAnswer.interruptJob, let relay = toolRelay ?? jobRelays.last(where: { $0.hasJobs }), relay.hasJobs {
             // The jobs run on the host, which can't take the words just
             // now: the iPhone doesn't know them.
-            let reason = relay.tools.contains(WatchJobAnswer.interruptJob)
-                ? "this call's access to Hermes is renewing or has run out. Try again in a moment."
-                : WatchJobAnswer.followUpsNeedNewerPlugin
+            let reason = !relay.tools.contains(WatchJobAnswer.interruptJob) ? WatchJobAnswer.followUpsNeedNewerPlugin
+                : relay.isGone ? WatchBridgeDelegation.grantRanOut
+                : "this call's access to Hermes is renewing or has run out. Try again in a moment."
             answer(.toolResponse(id: call.id, name: call.name, result: WatchJobAnswer.followUpResult(.failed(reason)), scheduling: GeminiLiveProtocol.Scheduling.whenIdle.rawValue, fallback: nil), generation: generation)
             return
         }
@@ -1661,8 +1661,8 @@ final class WatchDirectCallModel: ObservableObject {
     /// The grant to run a job tool through: the call's own, when it
     /// carries jobs. A job on another profile starts from the iPhone.
     private func jobRelay(for call: GeminiLiveProtocol.FunctionCall) -> WatchToolRelayClient? {
-        // A correction can still reach its job through the previous grant
-        // while the current one renews: that grant answers until it closes.
+        // A correction can still reach its job through another grant this
+        // call follows while the current one renews: it answers until it closes.
         let candidate = call.name == WatchJobAnswer.interruptJob
             && !(toolRelay.map { $0.hasJobs && $0.canRun(call.name) } ?? false)
             ? jobRelays.last(where: { $0.hasJobs && $0.canRun(call.name) })
@@ -1768,8 +1768,10 @@ final class WatchDirectCallModel: ObservableObject {
                 guard !withdrawn else { return }
                 if isFollowUp {
                     // The job runs on the host: the iPhone doesn't know it.
-                    let reason = sent ? "Hermes didn't confirm it got the words." : "Hermes couldn't be reached from the Watch."
-                    self.answer(.toolResponse(id: wire.id, name: wire.name, result: WatchJobAnswer.followUpResult(.failed(reason)), scheduling: whenIdle, fallback: nil), generation: generation)
+                    let message = WatchBridgeDelegation.grantRanOut(reason: reason, grantGone: grantGone, sent: sent)
+                        ? WatchBridgeDelegation.grantRanOut
+                        : sent ? "Hermes didn't confirm it got the words." : "Hermes couldn't be reached from the Watch."
+                    self.answer(.toolResponse(id: wire.id, name: wire.name, result: WatchJobAnswer.followUpResult(.failed(message)), scheduling: whenIdle, fallback: nil), generation: generation)
                     return
                 }
                 // Not sent, or a list or cancel: the iPhone's way, as
