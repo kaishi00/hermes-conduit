@@ -109,6 +109,7 @@ enum ConduitBackdropMotionPolicy {
 /// is derived from the clock's own state rather than the caller's current
 /// `shouldAnimate`: it stays live until the pause is recorded and stays frozen
 /// until the resume is recorded, which avoids a one-frame jump either way.
+/// A repeated resume while already live is a no-op, so it never resets the phase.
 struct ConduitBackdropMotionClock {
     private var motionOrigin: TimeInterval
     private var pauseStartedAt: TimeInterval?
@@ -206,6 +207,7 @@ struct ConduitBackdrop: View {
             motionClock.setAnimating(isAnimating, at: ProcessInfo.processInfo.systemUptime)
         }
         .ignoresSafeArea()
+        .accessibilityHidden(true)
     }
 
     private var base: Color {

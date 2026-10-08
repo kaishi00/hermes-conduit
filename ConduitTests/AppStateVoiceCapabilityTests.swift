@@ -513,20 +513,23 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         let livePhase = clock.progress(at: 7)
         XCTAssertGreaterThan(livePhase, 0)
 
-        // Pause rendered, not yet recorded: still the live phase, no snap to 0.
-        XCTAssertEqual(clock.progress(at: 7), livePhase, accuracy: 0.000_001)
-        clock.setAnimating(false, at: 7)
+        // Pause rendered, not yet recorded: the phase keeps following time
+        // rather than snapping to a stored value.
+        let pausePendingPhase = clock.progress(at: 8)
+        XCTAssertEqual(pausePendingPhase, ConduitBackdropMotionPolicy.progress(at: 8), accuracy: 0.000_001)
+        clock.setAnimating(false, at: 8)
 
-        // Resume rendered, not yet recorded: still the frozen phase.
-        XCTAssertEqual(clock.progress(at: 40), livePhase, accuracy: 0.000_001)
-        clock.setAnimating(true, at: 40)
-        XCTAssertEqual(clock.progress(at: 40), livePhase, accuracy: 0.000_001)
+        // Resume rendered, not yet recorded: still frozen, even as time moves.
+        XCTAssertEqual(clock.progress(at: 40), pausePendingPhase, accuracy: 0.000_001)
+        XCTAssertEqual(clock.progress(at: 45), pausePendingPhase, accuracy: 0.000_001)
+        clock.setAnimating(true, at: 45)
+        XCTAssertEqual(clock.progress(at: 45), pausePendingPhase, accuracy: 0.000_001)
 
         // A second pause freezes at its own phase, not the first one.
-        let secondPhase = clock.progress(at: 44)
-        clock.setAnimating(false, at: 44)
+        let secondPhase = clock.progress(at: 49)
+        clock.setAnimating(false, at: 49)
         XCTAssertEqual(clock.progress(at: 60), secondPhase, accuracy: 0.000_001)
-        XCTAssertNotEqual(secondPhase, livePhase, accuracy: 0.01)
+        XCTAssertNotEqual(secondPhase, pausePendingPhase, accuracy: 0.01)
     }
 
     func testTheCallOrbSpendsSixtyFramesOnlyWhileSpeakingAndHoldsStillWhenHot() {
