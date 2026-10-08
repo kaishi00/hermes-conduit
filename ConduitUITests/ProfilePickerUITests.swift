@@ -193,12 +193,14 @@ final class ProfilePickerUITests: XCTestCase {
         return control
     }
 
-    /// The row's own selection button: the one whose label starts with the
-    /// profile's display name (the photo control above starts with "Choose").
-    /// It is disabled exactly while a switch is in flight.
+    /// The row's own selection button: the one labelled with the profile's
+    /// display name, alone or followed by its subtitle ("Work, Hermes profile";
+    /// the photo control above starts with "Choose"). The name must end at the
+    /// comma: a bare prefix match also hit the chat list's "Working" filter
+    /// chip behind the sheet. It is disabled exactly while a switch is in flight.
     private func selectButton(for displayName: String, in app: XCUIApplication) -> XCUIElement {
         let button = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", displayName)
+            NSPredicate(format: "label == %@ OR label BEGINSWITH %@", displayName, displayName + ",")
         ).firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 5), "Select button for \(displayName) missing. Tree:\n\(app.debugDescription)")
         return button
