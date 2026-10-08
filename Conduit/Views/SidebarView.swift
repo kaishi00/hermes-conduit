@@ -161,7 +161,8 @@ struct SessionList: View {
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
     /// Quick status filter (#454), layered on top of the source filter.
-    @State private var statusFilter: SessionStatusFilter?
+    @AppStorage("conduit.sessionStatusFilter") private var statusFilterRaw = ""
+    private var statusFilter: SessionStatusFilter? { SessionStatusFilter(rawValue: statusFilterRaw) }
 
     private enum SessionPresentation: String {
         case sessions
@@ -250,7 +251,7 @@ struct SessionList: View {
                     } label: {
                         Label("Mark all as read", systemImage: "envelope.open")
                     }
-                    .disabled(unreadCount == 0)
+                    .disabled(!appState.activeProfileSessions.contains { !$0.isArchived && appState.isSessionUnread($0) })
 
                     Button {
                         Haptics.selection()
@@ -449,8 +450,13 @@ struct SessionList: View {
         return listed
     }
 
+    /// Counted within the selected source, matching what the chip shows.
     private var unreadCount: Int {
-        appState.activeProfileSessions.filter { !$0.isArchived && appState.isSessionUnread($0) }.count
+        appState.activeProfileSessions.filter {
+            !$0.isArchived
+                && (selectedSource == nil || appState.sessionCategory(for: $0) == selectedSource)
+                && appState.isSessionUnread($0)
+        }.count
     }
 
     private var displayedSessions: [SessionSummary] {
@@ -603,7 +609,7 @@ struct SessionList: View {
         return Button {
             withAnimation(ConduitMotion.response) {
                 Haptics.selection()
-                statusFilter = isOn ? nil : filter
+                statusFilterRaw = isOn ? "" : filter.rawValue
             }
         } label: {
             HStack(spacing: 5) {
@@ -1035,7 +1041,7 @@ struct ReadStateToggleButton: View {
             }
         } label: {
             Label(
-                isUnread ? AppLocalization.string("Mark as Read") : AppLocalization.string("Mark as Unread"),
+                isUnread ? AppLocalization.string("Mark as read") : AppLocalization.string("Mark as unread"),
                 systemImage: isUnread ? "envelope.open" : "envelope.badge"
             )
         }

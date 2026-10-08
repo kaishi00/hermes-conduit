@@ -36680,7 +36680,7 @@
         }
       }
     },
-    "Mark as Read" : {
+    "Mark as read" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
@@ -36696,7 +36696,7 @@
         }
       }
     },
-    "Mark as Unread" : {
+    "Mark as unread" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {

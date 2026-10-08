@@ -35,6 +35,9 @@ struct ChatReadState: Equatable {
     struct PendingServerValue: Equatable {
         var unread: Bool
         var writtenAt: Date
+        /// Orders writes for one conversation: only the latest one's
+        /// completion may change state.
+        var generation: UInt64
     }
 
     /// How long a written value outranks listings that disagree with it.
@@ -48,6 +51,11 @@ struct ChatReadState: Equatable {
     /// in). A later listing adopts its count as seen unless the row's activity
     /// is newer than that moment.
     private(set) var seenPendingRefresh: [String: Date] = [:]
+
+    private var writeGeneration: UInt64 = 0
+
+    /// How long a "seen while on screen" moment waits for a listing.
+    static let seenPendingRefreshLifetime: TimeInterval = 10 * 60
 
     /// Slack for clock skew between this device and the Hermes host when
     /// comparing a row's activity with the moment the user looked at it.
@@ -89,6 +97,19 @@ struct ChatReadState: Equatable {
         ledger.markedUnread[profile]?.contains(Self.durableID(for: session)) == true
     }
 
+    /// Unread because someone chose it: marked on this device, a mark Conduit
+    /// just wrote, or Hermes' explicit mark (`last_read_at` = 0, which is what
+    /// "Mark as unread" stores). Organic unread, activity newer than a real
+    /// watermark, is not a mark: looking at the chat clears it.
+    func isExplicitlyUnread(_ session: SessionSummary, profile: String, now: Date = Date()) -> Bool {
+        if isMarkedUnread(session, profile: profile) { return true }
+        if let pending = pendingServerValues[Self.key(profile, Self.durableID(for: session))],
+           now.timeIntervalSince(pending.writtenAt) < Self.pendingServerValueLifetime {
+            return pending.unread
+        }
+        return session.isUnread == true && session.readWatermark == 0
+    }
+
     func locallyUnread(_ session: SessionSummary, profile: String) -> Bool {
         let id = Self.durableID(for: session)
         if ledger.markedUnread[profile]?.contains(id) == true { return true }
@@ -122,11 +143,19 @@ struct ChatReadState: Equatable {
                     seenPendingRefresh[key] = nil
                 }
             }
-            if let pending = pendingServerValues[key],
-               session.isUnread == pending.unread
-                || now.timeIntervalSince(pending.writtenAt) >= Self.pendingServerValueLifetime {
+            if let pending = pendingServerValues[key], session.isUnread == pending.unread {
+                // Hermes holds the value now. A confirmed mark no longer
+                // needs its local stand-in, so reading the chat on Desktop
+                // clears it here too.
+                if pending.unread { clearMark(session, profile: profile) }
                 pendingServerValues[key] = nil
             }
+        }
+        pendingServerValues = pendingServerValues.filter {
+            now.timeIntervalSince($0.value.writtenAt) < Self.pendingServerValueLifetime
+        }
+        seenPendingRefresh = seenPendingRefresh.filter {
+            now.timeIntervalSince($0.value) < Self.seenPendingRefreshLifetime
         }
         if counts.count > ChatReadLedger.maxSeenCountsPerProfile {
             counts = counts.filter { listed.contains($0.key) }
@@ -166,13 +195,24 @@ struct ChatReadState: Equatable {
         }
     }
 
-    mutating func recordServerWrite(_ session: SessionSummary, profile: String, unread: Bool, at date: Date = Date()) {
-        pendingServerValues[Self.key(profile, Self.durableID(for: session))] = PendingServerValue(unread: unread, writtenAt: date)
+    /// Records a write about to be sent and returns its generation.
+    @discardableResult
+    mutating func recordServerWrite(_ session: SessionSummary, profile: String, unread: Bool, at date: Date = Date()) -> UInt64 {
+        writeGeneration &+= 1
+        pendingServerValues[Self.key(profile, Self.durableID(for: session))] = PendingServerValue(
+            unread: unread,
+            writtenAt: date,
+            generation: writeGeneration
+        )
+        return writeGeneration
     }
 
-    /// A write that failed no longer speaks for the row.
-    mutating func discardServerWrite(_ session: SessionSummary, profile: String) {
-        pendingServerValues[Self.key(profile, Self.durableID(for: session))] = nil
+    /// A write that failed no longer speaks for the row, unless a newer
+    /// write has replaced it since.
+    mutating func discardServerWrite(_ session: SessionSummary, profile: String, generation: UInt64) {
+        let key = Self.key(profile, Self.durableID(for: session))
+        guard pendingServerValues[key]?.generation == generation else { return }
+        pendingServerValues[key] = nil
     }
 
     /// Forget a deleted conversation.

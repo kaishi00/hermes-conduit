@@ -10,6 +10,7 @@ final class ChatReadStateTests: XCTestCase {
         count: Int?,
         unread: Bool? = nil,
         lastActivityAt: TimeInterval? = nil,
+        watermark: Double? = nil,
         lineageRoot: String? = nil
     ) -> SessionSummary {
         SessionSummary(
@@ -25,6 +26,7 @@ final class ChatReadStateTests: XCTestCase {
             isArchived: false,
             messageCount: count,
             isUnread: unread,
+            readWatermark: watermark,
             lineageRootId: lineageRoot
         )
     }
@@ -108,6 +110,54 @@ final class ChatReadStateTests: XCTestCase {
         let laterReply = row("a", count: 8, lastActivityAt: t0.timeIntervalSince1970 + 60)
         state.observe([laterReply], profile: profile, now: t0.addingTimeInterval(70))
         XCTAssertTrue(state.isUnread(laterReply, profile: profile, now: t0.addingTimeInterval(70)))
+    }
+
+    func testOnlyAZeroWatermarkIsAnExplicitHermesMark() {
+        let state = ChatReadState()
+        let marked = row("a", count: 3, unread: true, watermark: 0)
+        let organic = row("b", count: 3, unread: true, watermark: 1_799_999_000)
+        XCTAssertTrue(state.isExplicitlyUnread(marked, profile: profile, now: t0))
+        XCTAssertFalse(state.isExplicitlyUnread(organic, profile: profile, now: t0))
+        XCTAssertTrue(state.isUnread(organic, profile: profile, now: t0))
+    }
+
+    func testLocalMarkSurvivesUntilAListingConfirmsHermesHoldsIt() {
+        var state = ChatReadState()
+        let session = row("a", count: 3)
+        state.observe([session], profile: profile, now: t0)
+        state.markUnread(session, profile: profile)
+        state.recordServerWrite(session, profile: profile, unread: true, at: t0)
+
+        // A gateway that accepts the write but never reports the flag.
+        let later = t0.addingTimeInterval(ChatReadState.pendingServerValueLifetime + 5)
+        state.observe([row("a", count: 3, unread: false)], profile: profile, now: later)
+        XCTAssertTrue(state.isUnread(session, profile: profile, now: later))
+
+        // A listing that confirms it retires the local stand-in.
+        state.recordServerWrite(session, profile: profile, unread: true, at: later)
+        let confirmed = row("a", count: 3, unread: true, watermark: 0)
+        state.observe([confirmed], profile: profile, now: later.addingTimeInterval(1))
+        XCTAssertFalse(state.isMarkedUnread(session, profile: profile))
+        XCTAssertTrue(state.isUnread(confirmed, profile: profile, now: later.addingTimeInterval(1)))
+    }
+
+    func testAFailedOlderWriteDoesNotDiscardANewerOne() {
+        var state = ChatReadState()
+        let session = row("a", count: 3, unread: true)
+        let first = state.recordServerWrite(session, profile: profile, unread: true, at: t0)
+        state.recordServerWrite(session, profile: profile, unread: false, at: t0)
+        state.discardServerWrite(session, profile: profile, generation: first)
+        XCTAssertFalse(state.serverUnread(session, profile: profile, now: t0))
+    }
+
+    func testStalePendingEntriesArePruned() {
+        var state = ChatReadState()
+        let gone = row("gone", count: 3)
+        state.markSeen(gone, profile: profile, at: t0)
+        state.recordServerWrite(gone, profile: profile, unread: true, at: t0)
+        state.observe([], profile: profile, now: t0.addingTimeInterval(ChatReadState.seenPendingRefreshLifetime + 1))
+        XCTAssertTrue(state.pendingServerValues.isEmpty)
+        XCTAssertTrue(state.seenPendingRefresh.isEmpty)
     }
 
     func testCompressionKeepsReadStateThroughTheLineageRoot() {

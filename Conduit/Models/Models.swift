@@ -709,6 +709,9 @@ struct SessionSummary: Identifiable, Equatable {
     /// postdates the `last_read_at` watermark. Nil when the listing didn't
     /// carry it (the `session.list` RPC, older gateways).
     var isUnread: Bool? = nil
+    /// Hermes' `last_read_at` watermark (epoch seconds). 0 means someone
+    /// explicitly marked the chat unread; nil means never tracked.
+    var readWatermark: Double? = nil
     var lineageRootId: String?
 }
 

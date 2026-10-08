@@ -5097,8 +5097,16 @@ final class AppState: ObservableObject {
     }
 
     func markAllSessionsRead() {
-        for session in activeProfileSessions where !session.isArchived && isSessionUnread(session) {
-            markSessionRead(session)
+        let profile = activeProfile
+        let unread = activeProfileSessions.filter { !$0.isArchived && isSessionUnread($0) }
+        guard !unread.isEmpty else { return }
+        let flagged = unread.filter { chatReadState.serverUnread($0, profile: profile) }
+        // One ledger update (and one persisted encode) for the whole batch.
+        updateChatReadState { state in
+            for session in unread { state.markSeen(session, profile: profile) }
+        }
+        for session in flagged {
+            writeSessionUnreadFlag(session, unread: false, profile: profile)
         }
     }
 
@@ -5123,19 +5131,16 @@ final class AppState: ObservableObject {
     }
 
     /// The open chat counts as seen while it is actually on screen: the app is
-    /// in front and the sessions drawer isn't covering it. Opening a chat
-    /// reads it outright. Anything else (a listing refresh, closing the
-    /// drawer, returning to the app) catches up on new replies but leaves a
-    /// chat the user, or Desktop, explicitly marked unread alone, the way
-    /// Desktop keeps a marked chat unread until you open it again.
+    /// in front and the sessions drawer isn't covering it. Seeing it also
+    /// clears Hermes' flag when activity set it. Opening a chat reads it
+    /// outright. Anything else (a listing refresh, closing the drawer,
+    /// returning to the app) leaves a chat the user, or Desktop, explicitly
+    /// marked unread alone, the way Desktop keeps a marked chat unread until
+    /// you open it again.
     private func noteActiveChatSeen(respectingMarks: Bool = false) {
         guard isSceneActive, !showSidebar,
               let session = activeProfileSessions.first(where: sessionMatchesActiveSession) else { return }
-        let profile = activeProfile
-        if respectingMarks {
-            guard !chatReadState.serverUnread(session, profile: profile),
-                  !chatReadState.isMarkedUnread(session, profile: profile) else { return }
-            updateChatReadState { $0.markSeen(session, profile: profile) }
+        if respectingMarks, chatReadState.isExplicitlyUnread(session, profile: activeProfile) {
             return
         }
         markSessionRead(session)
@@ -5148,7 +5153,7 @@ final class AppState: ObservableObject {
         guard isSceneActive,
               let sessionID,
               let session = activeProfileSessions.first(where: { ([$0.id] + $0.alternateIds).contains(sessionID) }),
-              !chatReadState.isMarkedUnread(session, profile: activeProfile) else { return }
+              !chatReadState.isExplicitlyUnread(session, profile: activeProfile) else { return }
         let profile = activeProfile
         updateChatReadState { $0.markSeen(session, profile: profile) }
     }
@@ -5158,7 +5163,9 @@ final class AppState: ObservableObject {
     /// Conduit's own read state working on its own.
     private func writeSessionUnreadFlag(_ session: SessionSummary, unread: Bool, profile: String) {
         guard let dashboardTicketBridge else { return }
-        updateChatReadState { $0.recordServerWrite(session, profile: profile, unread: unread) }
+        var generation: UInt64 = 0
+        updateChatReadState { generation = $0.recordServerWrite(session, profile: profile, unread: unread) }
+        let writtenGeneration = generation
         let path = dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile)
         Task { [weak self] in
             do {
@@ -5167,14 +5174,10 @@ final class AppState: ObservableObject {
                     method: "PATCH",
                     body: DashboardPath.bodyWithProfile(["unread": unread], profile: profile)
                 )
-                // Hermes carries the mark now, so reading the chat on Desktop
-                // clears it here too. The local mark only stands in for a
-                // gateway that can't hold it.
-                if unread {
-                    self?.updateChatReadState { $0.clearMark(session, profile: profile) }
-                }
             } catch {
-                self?.updateChatReadState { $0.discardServerWrite(session, profile: profile) }
+                self?.updateChatReadState {
+                    $0.discardServerWrite(session, profile: profile, generation: writtenGeneration)
+                }
             }
         }
     }
