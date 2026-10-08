@@ -465,6 +465,9 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertEqual(KanbanRunPresentation.durationText(start: 100, end: 130), "30s")
         XCTAssertEqual(KanbanRunPresentation.durationText(start: 100, end: 220), "2m")
         XCTAssertEqual(KanbanRunPresentation.durationText(start: 100, end: 5000), "1h")
+        XCTAssertEqual(KanbanRunPresentation.durationText(start: 100, end: 100 + 7_199), "1h", "whole units: 1h 59m reads 1h")
+        XCTAssertEqual(KanbanRunPresentation.durationText(start: 100, end: 100 + 90_000), "1d")
+        XCTAssertEqual(KanbanCompactDuration.text(seconds: 0, locale: Locale(identifier: "en_US")), "0s")
         XCTAssertNil(KanbanRunPresentation.durationText(start: nil, end: 200))
         XCTAssertNil(KanbanRunPresentation.durationText(start: 300, end: 100), "end before start is not a duration")
     }

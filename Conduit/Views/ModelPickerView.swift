@@ -583,7 +583,7 @@ struct ModelPickerView: View {
                             .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(provider.name).font(.subheadline.weight(.semibold))
-                            Text("\(visibleModelCount(in: provider)) of \(provider.models.count) models shown")
+                            Text("\(String(visibleModelCount(in: provider))) of \(provider.models.count) models shown")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()

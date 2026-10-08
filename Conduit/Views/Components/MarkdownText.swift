@@ -1582,7 +1582,7 @@ struct LargeMarkdownTable: View {
                 Button {
                     renderedRowCount = min(renderedRowCount + Self.rowBatch, rows.count)
                 } label: {
-                    Label("Show \(min(Self.rowBatch, rows.count - renderedRowCount)) more rows (\(rows.count - renderedRowCount) of \(rows.count) left)", systemImage: "chevron.down")
+                    Label("Show \(min(Self.rowBatch, rows.count - renderedRowCount)) more rows (\(String(rows.count - renderedRowCount)) of \(String(rows.count)) left)", systemImage: "chevron.down")
                         .font(.caption.weight(.semibold))
                 }
                 .tint(usesAccentSurface ? .white : .conduitAccent)

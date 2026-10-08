@@ -1517,7 +1517,8 @@ struct CronList: View {
                     if appState.cronJobs.isEmpty {
                         Text("\(appState.cronJobs.count) configured").font(.caption).foregroundStyle(.secondary)
                     } else {
-                        Text("\(activeJobCount) active · \(inactiveJobCount) inactive")
+                        // Two counts, so two plurals: each agrees with its own number.
+                        Text(verbatim: AppLocalization.string("\(activeJobCount) active") + " · " + AppLocalization.string("\(inactiveJobCount) inactive"))
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }

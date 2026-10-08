@@ -3390,7 +3390,7 @@ enum MessageNormalizer {
         guard let taskCount = delegationTaskCount(metadata: metadata) else {
             return AppLocalization.string("Background agent work finished")
         }
-        return taskCount == 1 ? AppLocalization.string("1 background agent finished") : AppLocalization.string("\(String(taskCount)) background agents finished")
+        return AppLocalization.string("\(taskCount) background agents finished")
     }
 
     /// Final visible text for a row Hermes tags with a known synthetic

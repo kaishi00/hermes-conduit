@@ -39,6 +39,53 @@ change is needed.
 To preview a draft in the simulator, remove it from `ConduitDraftLanguages`
 in your working copy only.
 
+## Translating with worksheets
+
+The catalogs are large JSON files, so translate through
+`scripts/l10n.py` rather than editing them by hand:
+
+```sh
+python3 scripts/l10n.py export de -o de.json   # what German still lacks
+# fill in each entry's "translation", then:
+python3 scripts/l10n.py import de.json
+python3 scripts/check-l10n-coverage.py --repo-root .
+```
+
+Each worksheet entry carries the English `source`, the plural `forms` the
+language needs when the source varies by plural, and `where` the app uses
+the string. A plural translation is an object with one value per form
+(`{"one": "%lld Datei", "other": "%lld Dateien"}`). `export --all`
+includes what is already translated, which is the easy way to hand a
+whole language to a reviewer. `rename` and `remove` keep translations in
+step when a call site's wording or placeholder types change.
+
+## Counts and plurals
+
+A number the text counts goes into the key as an `Int` (`%lld`) and the
+English source varies it by plural, even when both English forms read
+the same: other languages need their own forms (Russian and Polish have
+four). One plural drives a whole string, so a key holds at most one
+count. Everything else stays out of plural rules:
+
+- A number that isn't counted (an HTTP status, a process id, a
+  position) goes in as `String(x)`, a `%@`.
+- In a string with two numbers, the one that isn't counted goes in as
+  `String(x)` ("Show %lld more rows (%@ of %@ left)"), or the string is
+  split into two keys, each with its own plural ("%lld active",
+  "%lld inactive").
+- A number shown as a label needs no plural forms: alone in parentheses
+  ("Runs (%lld)") or ending the string after a colon ("Jobs: %lld").
+
+Never build the singular in code (`count == 1 ? "1 task" : "…tasks"`):
+put both forms in the catalog. The checker reads an interpolation as an
+`Int` from its shape (`.count`, a name ending in `Count`, `Int(…)`), so
+write counts that way; a plain `\(remaining)` is read as `%@` and never
+finds its key at runtime.
+
+Durations and lists Conduit formats itself use
+`AppLocalization.formattingLocale`, so they follow the UI language
+(`DateComponentsFormatter`, `.formatted(.list(…))`).
+
 ## What CI checks
 
 `check-l10n-coverage.py` runs in the `Plan & validate` job:
@@ -47,6 +94,9 @@ in your working copy only.
   types (`%@` vs `%lld`) match what the code passes;
 - every shipped language translates every key in every catalog, with
   state `translated` and a non-empty value;
+- every integer placeholder is a count with English plural forms, one per
+  key (labels excepted, see above), and no count is passed as
+  `String(count)` in front of a plural noun;
 - where the English source varies a key by plural, every shipped language
   provides each plural form its own rules use (French: one, many, other;
   Japanese: other). The table is `PLURAL_CATEGORIES` in the checker,

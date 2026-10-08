@@ -45,6 +45,10 @@ InfoPlist):
   * every stringUnit leaf of a shipped language (source included) - direct
     or inside plural/device variations - must have state == "translated"
     and a non-empty value;
+  * an integer placeholder is a count: the source varies it by plural,
+    a key holds at most one, and label numbers ("Runs (%lld)", "Jobs:
+    %lld") are exempt; a count interpolated as String(...) in front of a
+    plural noun is reported at its call site;
   * the printf placeholders of every value in ANY language, drafts
     included, must match the key's placeholder TYPE FAMILIES (object vs
     integer vs float) in count, order, and positional index validity -
@@ -179,9 +183,9 @@ _PLACEHOLDER_RE = re.compile(
     r"(@|l{1,2}[diu]|lf|(?:t?[diu]|f)" + _GLUED_LETTER + r"|%)")
 
 # Interpolation expressions that request an INTEGER runtime placeholder
-# (%lld) rather than an object (%@). String-hint wins: the documented
-# Conduit convention is to String()-wrap integers (avoids locale digit
-# grouping), so an explicit String(...) means %@.
+# (%lld) rather than an object (%@). String-hint wins: a number that isn't
+# a count is String()-wrapped (it stays out of plural rules), so an
+# explicit String(...) means %@. Counts are Ints with plural forms.
 _STRING_HINT_RE = re.compile(
     r"\bString\s*\(|localizedDescription|\.description\b|\.name\b|\.id\b"
     r"|\.title\b|\.text\b|\.message\b|\.displayName\b|\.key\b")
@@ -318,9 +322,8 @@ def strip_comment_lines(source: str) -> str:
     """
     kept = []
     for line in source.split("\n"):
-        if line.lstrip().startswith("//"):
-            continue
-        kept.append(line)
+        # Blank, not dropped, so reported line numbers stay the file's.
+        kept.append("" if line.lstrip().startswith("//") else line)
     return "\n".join(kept)
 
 
@@ -330,6 +333,37 @@ def extract_sites(source: str):
     Skeletons are runtime-accurate: each interpolation contributes %@ or
     %lld according to the argument's type family.
     """
+    for skeleton, _expressions, offset in _localized_literals(source):
+        yield skeleton, offset
+
+
+# String(x) around something that reads as a count: `String(items.count)`,
+# `String(failedCount)`, `String(total)`.
+_STRING_WRAPPED_COUNT_RE = re.compile(
+    r"^\s*String\s*\((.*(?:\.\s*count\b|[Cc]ount\b|[Tt]otal\b).*)\)\s*$", re.S)
+# What follows a counted number in English: up to two words, then a plural
+# noun ("%@ tasks", "%@ background agents"). Label numbers don't match
+# ("%@ of %@ left", "%@/%@"), and neither do verbs ("%@ is").
+_COUNTED_NOUN_RE = re.compile(
+    r"\s+(?:[A-Za-z]+\s+){0,2}(?!(?:is|was|has|does)\b)[A-Za-z]+s\b")
+
+
+def string_wrapped_counts(source: str):
+    """Yield (expression, offset) for each count a localized literal
+    interpolates as String(...) in front of a plural noun. A %@ argument
+    never selects a plural form, so "\\(String(count)) tasks" reads
+    "1 tasks" in English and is wrong in most other languages: interpolate
+    the Int and give the key plural forms."""
+    for skeleton, expressions, offset in _localized_literals(source):
+        after = skeleton.replace("%lld", "%@").split("%@")[1:]
+        for expression, text in zip(expressions, after):
+            if _STRING_WRAPPED_COUNT_RE.match(expression) and _COUNTED_NOUN_RE.match(text):
+                yield expression.strip(), offset
+
+
+def _localized_literals(source: str):
+    """Yield (key_skeleton, interpolated_expressions, offset) for every
+    checkable call site."""
     source = strip_comment_lines(source)
     for regex in (CALL_RE, SWIFTUI_RE, MODIFIER_RE):
         for match in regex.finditer(source):
@@ -340,7 +374,7 @@ def extract_sites(source: str):
                 parsed = parse_swift_literal_parts(source, i)
                 if parsed is not None and parsed[0]:
                     skeleton = typed_skeleton(parsed[0], parsed[2])
-                    yield skeleton, match.start()
+                    yield skeleton, parsed[2], match.start()
     for match in RAW_STRING_ASSIGNMENT_RE.finditer(source):
         i = match.end() - 1  # position of the opening quote
         if source[i] != '"':
@@ -348,7 +382,7 @@ def extract_sites(source: str):
         parsed = parse_swift_literal_parts(source, i)
         if parsed is not None and parsed[0]:
             skeleton = typed_skeleton(parsed[0], parsed[2])
-            yield skeleton, match.start()
+            yield skeleton, parsed[2], match.start()
 
 
 def catalog_has(catalog_keys: set, skeleton: str) -> bool:
@@ -529,6 +563,41 @@ def value_problem(language: str, value: str, key_specs):
     return None
 
 
+# A number shown as a label rather than counted in a sentence: alone in
+# parentheses ("Runs (%lld)") or ending the string after a colon
+# ("Jobs: %lld"). No word agrees with it, so it needs no plural forms.
+_NUMERAL_LABEL_RE = re.compile(
+    r"\(%(?:\d+\$)?ll?[diu]\)|:\s%(?:\d+\$)?ll?[diu]$")
+
+
+def count_problems(key: str, entry: dict, source: str) -> list:
+    """Problems with how a key counts. An integer placeholder is a count:
+    the source varies it by plural (one/other in English) so every
+    language can make the words around it agree ("1 task", "2 tasks";
+    Russian has four forms). One plural drives a whole string, so a key
+    holds at most one count; numbers that aren't counted (an HTTP
+    status, a process id, a position) go in as String(x), a %@."""
+    integers = [spec for spec in placeholder_specs(key) if spec[1] == "int"]
+    localizations = entry.get("localizations", {})
+    problems = []
+    if any("substitutions" in localization for localization in localizations.values()):
+        problems.append(
+            "uses plural substitutions, which this checker can't verify: "
+            "split the string so it holds one count, and vary that by plural")
+    if len(integers) > 1:
+        problems.append(
+            f"holds {len(integers)} integer placeholders, but one plural "
+            f"drives a whole string: keep the counted number as an Int and "
+            f"pass the others as String(x), or split the string")
+    elif (integers and not _NUMERAL_LABEL_RE.search(key)
+          and not plural_variations(localization_for(localizations, source))):
+        problems.append(
+            f"counts with {key!r} but {source} has no plural forms: vary it "
+            f"by plural (one/other) so other languages can agree with the "
+            f"number; a number that isn't a count goes in as String(x)")
+    return problems
+
+
 def catalog_problems(catalog: dict, required_languages=(),
                      draft_languages=()) -> dict:
     """Return {key: [problems]} for every localization violation.
@@ -561,6 +630,8 @@ def catalog_problems(catalog: dict, required_languages=(),
                 problems.setdefault(key, []).append(
                     f"{language} plural{variation_label(path)} lacks "
                     f"{', '.join(missing)} (its plural rules use {', '.join(rules)})")
+        for problem in count_problems(key, entry, source):
+            problems.setdefault(key, []).append(problem)
         key_specs = placeholder_specs(key)
         for language, localization in localizations.items():
             draft = normalized_language(language) in drafts
@@ -905,6 +976,14 @@ def scan_sites(root: str, catalog_keys, repo_root: str, missing: dict, key_probl
                 key_problems.setdefault(os.path.relpath(path, repo_root), []).append(
                     f"can't be read as UTF-8 Swift source: {error}")
                 continue
+            # Line numbers come from the comment-blanked text the sites
+            # are read from.
+            source = strip_comment_lines(source)
+            for expression, offset in string_wrapped_counts(source):
+                line = source.count("\n", 0, offset) + 1
+                key_problems.setdefault(f"{os.path.relpath(path, repo_root)}:{line}", []).append(
+                    f"interpolates {expression} as text, so no plural form "
+                    f"applies: interpolate the Int and give the key plural forms")
             for skeleton, offset in extract_sites(source):
                 checked += 1
                 if skeleton in EXEMPT_KEYS:
