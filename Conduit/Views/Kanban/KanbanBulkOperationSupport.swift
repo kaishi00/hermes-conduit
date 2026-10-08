@@ -154,26 +154,24 @@ enum KanbanBulkResultPolicy {
         return KanbanBulkOperationOutcome(succeededIDs: succeeded, failures: failures)
     }
 
-    static func summary(outcome: KanbanBulkOperationOutcome) -> String {
-        let updated = outcome.succeededIDs.count
+    static func summary(outcome: KanbanBulkOperationOutcome, locale: Locale = AppLocalization.formattingLocale) -> String {
+        let updatedCount = outcome.succeededIDs.count
         let failedCount = outcome.failures.count
-        switch (updated, failedCount) {
+        switch (updatedCount, failedCount) {
         case (0, 0):
             return AppLocalization.string("No tasks updated")
-        case (1, 0):
-            return AppLocalization.string("1 task updated")
-        case (0, 1):
-            return AppLocalization.string("1 task failed")
         case (0, _):
-            return AppLocalization.string("\(String(failedCount)) tasks failed")
-        case (1, 1):
-            return AppLocalization.string("1 updated, 1 failed")
-        case (1, _):
-            return AppLocalization.string("1 updated, \(String(failedCount)) failed")
+            return AppLocalization.string("\(failedCount) tasks failed")
         case (_, 0):
-            return AppLocalization.string("\(String(updated)) tasks updated")
+            return AppLocalization.string("\(updatedCount) tasks updated")
         default:
-            return AppLocalization.string("\(String(updated)) updated, \(String(failedCount)) failed")
+            // Each count agrees with its own words, so the two halves are
+            // separate plurals joined the way the language lists things
+            // ("2 updated, 1 failed").
+            return [
+                AppLocalization.string("\(updatedCount) updated"),
+                AppLocalization.string("\(failedCount) failed"),
+            ].formatted(.list(type: .and, width: .narrow).locale(locale))
         }
     }
 

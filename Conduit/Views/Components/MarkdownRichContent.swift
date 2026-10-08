@@ -545,7 +545,7 @@ struct RichBudgetedMarkdownBody: View {
             advanceReveal()
         } label: {
             Label(
-                "Continue reading (\(remainingBlocks) sections left)",
+                "Continue reading (\(Int(remainingBlocks)) sections left)",
                 systemImage: "chevron.down"
             )
             .font(.footnote.weight(.semibold))
