@@ -375,6 +375,7 @@ final class GPTLiveDelegationBridge {
     /// read-back, not an answer or a new request: it reads the reply, and
     /// the held request is never sent by it.
     func userAskedToHearAReply(_ words: String) -> SpokenAnswer? {
+        dropStaleDraft()
         guard var waiting = draft, !isEnding else { return nil }
         if let pending = waiting.pendingDelegationID {
             waiting.pendingDelegationID = nil
@@ -645,7 +646,32 @@ final class GPTLiveDelegationBridge {
             draft = waiting
             return .reply([])
         }
+        // Held from the user's words while they were still coming in ("Book
+        // a table for"): the finished ones ("… for four") are the request
+        // they OK.
+        if let finished = Self.finishing(waiting.request, heldFrom: waiting.userWords, with: words),
+           now().timeIntervalSince(waiting.heldAt) < Self.lateWordsWindow {
+            waiting.request = finished
+            waiting.userWords = words
+            draft = waiting
+            return .reply([])
+        }
         return nil
+    }
+
+    /// The user's words for a request still arrive this long after it was
+    /// held.
+    static let lateWordsWindow: TimeInterval = 10
+
+    /// The request with the user's finished words in place of the start of
+    /// them it was held from, or nil when it wasn't held from their words or
+    /// these words don't carry on from them.
+    static func finishing(_ request: String, heldFrom partial: String, with words: String) -> String? {
+        let parts = request.components(separatedBy: GPTLiveConversationController.delegationContextMarker)
+        let held = normalizedRequest(partial)
+        guard !held.isEmpty, normalizedRequest(parts[0]) == held,
+              normalizedRequest(words).hasPrefix(held + " ") else { return nil }
+        return ([words] + parts.dropFirst()).joined(separator: GPTLiveConversationController.delegationContextMarker)
     }
 
     /// Sends what `userFinishedSpeaking` decided.

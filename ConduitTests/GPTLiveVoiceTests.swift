@@ -2220,6 +2220,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sure, skip it"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, leave it"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, drop the dessert"), .no(change: "No, drop the dessert"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, I'm good"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, thanks, I'm good"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yes, leave it as is"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yes, actually let's forget it"), .other("Yes, actually let's forget it"))
         // Words that only add to a yes still send it.
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yes, remind me when it's done"), .yes(addition: "Yes, remind me when it's done"))
@@ -2246,6 +2249,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("嗯，让我想想"), .other("嗯，让我想想"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("可以吗？"), .other("可以吗？"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("好像不对"), .other("好像不对"), "a one-character yes is a clause of its own")
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("可以，改成四个人"), .yes(addition: "可以，改成四个人"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("可以帮我改一下"), .other("可以帮我改一下"), "a request, not a yes")
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("发送邮件给Alex"), .other("发送邮件给Alex"), "a request, not a yes")
 
         XCTAssertTrue(VoiceThreadRouting.wantsNewWork("In the meantime, what's in the news?"))
         XCTAssertTrue(VoiceThreadRouting.wantsNewWork("start another job to check the weather"))
@@ -2556,6 +2562,8 @@ extension VoiceConversationControllerTests {
 
         _ = await bridge.handleDelegation(id: "del_1b", request: "book a flight to Rome", userWords: "book a flight to Rome")
         clock += GPTLiveDelegationBridge.draftLifetime + 1
+        // Left that long, a read-back doesn't bring it back.
+        XCTAssertNil(bridge.userAskedToHearAReply("Read me the last reply"))
 
         let held = await bridge.handleDelegation(id: "del_2", request: "what's the weather in Rome", userWords: "what's the weather in Rome")
         guard case .delegationReply("del_2", GPTLiveDelegationBridge.heldForOKText, .speakable)? = held.first else { return XCTFail("\(held)") }
@@ -2564,6 +2572,18 @@ extension VoiceConversationControllerTests {
         let prompt = fake.submissions.last?.1 ?? ""
         XCTAssertTrue(prompt.hasSuffix("what's the weather in Rome"), prompt)
         XCTAssertFalse(prompt.contains("book a flight"), prompt)
+    }
+
+    /// GPT-Live delegated while the user's words were still coming in: the
+    /// request they OK is their finished words, not the start of them.
+    func testGPTLiveAskingFirstHeldFromUnfinishedWordsSendsTheFinishedOnes() async {
+        let (_, fake, bridge) = makeAskingFirstBridge()
+        _ = await bridge.handleDelegation(id: "del_1", request: "Book a table for", userWords: "Book a table for")
+        bridge.modelFinishedTurn()
+        XCTAssertEqual(bridge.userFinishedSpeaking("Book a table for four."), .reply([]), "these words are the request's")
+        _ = await bridge.handleDelegation(id: "del_2", request: "Send:", userWords: "Yes")
+        XCTAssertEqual(fake.created, 1)
+        XCTAssertTrue(fake.submissions.first?.1.hasSuffix("Book a table for four.") == true, fake.submissions.first?.1 ?? "")
     }
 
     /// An OK'd request Hermes refused (too many jobs) never went: a yes

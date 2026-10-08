@@ -2017,6 +2017,12 @@ enum VoiceThreadRouting {
         "exactly", "absolutely", "definitely", "of course", "sounds good", "perfect", "great", "fine",
         "good", "that's right", "that's it", "go", "uh huh", "mhm", "why not",
     ]
+    /// After a no, words that only decline politely ("no, I'm good", "yes,
+    /// leave it as is").
+    static let answerRefusalTails = [
+        "i'm good", "i'm fine", "i'm ok", "i'm okay", "we're good", "all good", "all set", "as is",
+        "it's fine", "it's ok", "it's okay", "that's fine", "that's ok", "that's okay",
+    ]
     /// Words between a yes and what decides it ("okay, but wait").
     static let answerJoiners = ["but", "actually", "oh", "well"]
     /// Words after a yes that turn it around or question it ("yeah, I don't
@@ -2065,10 +2071,16 @@ enum VoiceThreadRouting {
         }
         // "No, I don't want that": a negation in what follows is still the no.
         func change(_ rest: [String]) -> String? { negates(rest) ? nil : more(rest) }
-        // "No, forget about it", "Yes, scrap it": another no after it too.
+        func dropFiller() -> Bool {
+            guard let first = words.first, answerFillerWords.contains(first) else { return false }
+            words.removeFirst()
+            return true
+        }
+        // "No, forget about it", "Yes, scrap it", "No, thanks, I'm good":
+        // another no or a polite tail after it is still just the no.
         func refusal() -> HeldRequestAnswer {
             let rest = words
-            while dropLead(answerNoLeads) {}
+            while dropLead(answerNoLeads) || dropLead(answerRefusalTails) || dropFiller() {}
             return .no(change: negates(rest) ? nil : more(words))
         }
         // "Oh yes", "Well, no", "Actually, go ahead".
@@ -2106,13 +2118,14 @@ enum VoiceThreadRouting {
         "ちょっと待って", "待って", "まだ", "ちょっと", "等等", "等一下", "稍等", "先等", "先别", "先不", "还没", "暂时不",
     ]
     static let cjkAnswerYesLeads = [
-        "はい", "うん", "ええ", "お願いします", "お願い", "オッケー", "オーケー", "どうぞ", "送って", "送信して", "そうして",
-        "好的", "好啊", "好呀", "好吧", "行吧", "行啊", "可以", "是的", "对的", "当然", "没问题", "发吧", "发送",
+        "はい", "うん", "ええ", "お願いします", "オッケー", "オーケー", "どうぞ", "送って", "送信して", "そうして",
+        "好的", "好啊", "好呀", "好吧", "行吧", "行啊", "是的", "对的", "当然", "没问题", "发吧", "发送吧",
     ]
-    /// One-character answers count only as a clause of their own: "好，
-    /// 改成四个人" is a yes, "好像不对" isn't.
-    static let cjkAnswerShortYes: Set<Character> = ["好", "对", "嗯", "行", "是"]
-    static let cjkAnswerShortNo: Set<Character> = ["不", "别"]
+    /// Answers that count only as a clause of their own, since requests
+    /// start with them too: "好，改成四个人" and "可以，发吧" are a yes,
+    /// "好像不对" and "可以帮我改一下" aren't.
+    static let cjkAnswerClauseYes: Set<String> = ["好", "对", "嗯", "行", "是", "可以", "お願い"]
+    static let cjkAnswerClauseNo: Set<String> = ["不", "别"]
     /// Words that add nothing to an answer ("好的，谢谢", "はい、お願いします").
     static let cjkAnswerFillers = [
         "ありがとうございます", "ありがとう", "お願いします", "お願い", "ください", "どうも", "です", "ます", "ね", "よ",
@@ -2132,9 +2145,11 @@ enum VoiceThreadRouting {
             rest = rest.dropFirst(lead.count)
             return true
         }
-        func dropShort(_ answers: Set<Character>) -> Bool {
-            guard rest == all, let first = clauses.first, let character = first.first,
-                  answers.contains(character), first.allSatisfy({ $0 == character }) else { return false }
+        func dropClause(_ answers: Set<String>) -> Bool {
+            guard rest == all, let first = clauses.first, let character = first.first else { return false }
+            // A one-character answer may come repeated ("对对对").
+            let repeated = answers.contains(String(character)) && first.allSatisfy { $0 == character }
+            guard answers.contains(first) || repeated else { return false }
             rest = rest.dropFirst(first.count)
             return true
         }
@@ -2148,12 +2163,12 @@ enum VoiceThreadRouting {
             let words = left()
             return words.isEmpty || turned(words) ? nil : spoken
         }
-        if dropShort(cjkAnswerShortNo) || dropLead(cjkAnswerNoLeads) {
+        if dropClause(cjkAnswerClauseNo) || dropLead(cjkAnswerNoLeads) {
             while dropLead(cjkAnswerNoLeads) {}
             return .no(change: change())
         }
         if dropLead(cjkAnswerNotYetLeads) { return .notYet(change: change()) }
-        guard dropShort(cjkAnswerShortYes) || dropLead(cjkAnswerYesLeads) else { return nil }
+        guard dropClause(cjkAnswerClauseYes) || dropLead(cjkAnswerYesLeads) else { return nil }
         while dropLead(cjkAnswerYesLeads) {}
         if dropLead(cjkAnswerNoLeads) { return .no(change: change()) }
         if dropLead(cjkAnswerNotYetLeads) { return .notYet(change: change()) }
