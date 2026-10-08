@@ -159,6 +159,7 @@ final class WatchBridgeCallModel: ObservableObject {
     private var reactivationFailures = 0
     private var reactivationTimes: [Double] = []
     private var restartingAudio = false
+    private var restartAttempts = 0
     /// Siri or an alarm stopped the microphone, and nothing has started it
     /// again: the call needs a tap, whatever a reconnect did to the phase.
     private var microphoneStopped = false
@@ -886,10 +887,24 @@ final class WatchBridgeCallModel: ObservableObject {
     private func restartAudio() {
         guard !restartingAudio, endRequestedAt == nil else { return }
         restartingAudio = true
+        restartAttempts += 1
+        let attempt = restartAttempts
         let id = callID
+        let startedAt = now
+        // An activation that never returns would swallow every later tap.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.reactivationTimeout) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.restartingAudio, self.restartAttempts == attempt else { return }
+                self.restartingAudio = false
+                self.note("bridgeAudioRestartHung", ["ms": Int((self.now - startedAt) * 1000)])
+            }
+        }
         Task { [weak self] in
             guard let self else { return }
             let activated = await self.activateAudioSession()
+            // Given up on as hung, and maybe tapped again since: the newer
+            // attempt carries on.
+            guard self.restartAttempts == attempt, self.restartingAudio else { return }
             self.restartingAudio = false
             guard self.callID == id, self.isActive, self.endRequestedAt == nil else {
                 if activated, !self.isActive {

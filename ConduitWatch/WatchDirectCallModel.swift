@@ -2068,7 +2068,7 @@ final class WatchDirectCallModel: ObservableObject {
         return "[The \(name) the user asked for earlier has run now that their wrist is raised. Its result:\n\(lines)\nTell them in a sentence or two.]"
     }
 
-    private func apply(_ result: WatchVoiceWire.DirectToolResult, answering callID: String?, generation: Int?, withdrawn: Bool) {
+    private func apply(_ result: WatchVoiceWire.DirectToolResult, answering toolCallID: String?, generation: Int?, withdrawn: Bool) {
         runningJobs = result.runningJobs
         for item in result.outgoing {
             switch item {
@@ -2076,7 +2076,7 @@ final class WatchDirectCallModel: ObservableObject {
                 requestEnd()
             case .toolResponse(let id, _, _, _, _):
                 // The model withdrew the call while it ran: no answer.
-                if withdrawn, id == callID { continue }
+                if withdrawn, id == toolCallID { continue }
                 answer(item, generation: generation)
             case .textWhenIdle, .contextWhenIdle:
                 quietQueue.append(item)
