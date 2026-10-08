@@ -5157,7 +5157,8 @@ final class AppState: ObservableObject {
 
     private func observeChatReadState() {
         let profile = activeProfile
-        let listed = sessions.filter { sessionBelongsToProfile($0, profile: profile) && $0.source != .cron }
+        // The same rows every read-state query sees.
+        let listed = activeProfileSessions.filter { $0.source != .cron }
         updateChatReadState { $0.observe(listed, profile: profile) }
         noteActiveChatSeen(respectingMarks: true)
     }
