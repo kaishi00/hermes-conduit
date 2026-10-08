@@ -1034,8 +1034,13 @@ struct ComposerBar: View {
                         guard let level, level != current else { return }
                         Haptics.selection()
                         Task { @MainActor in
-                            if let message = await appState.setReasoningEffortReportingFailure(level.rawValue) {
-                                appState.errorMessage = message
+                            // The state notice only shows while the composer
+                            // is disabled, so report it in the composer's own
+                            // notice.
+                            if case .failed(let message) = await appState.setReasoningEffort(level.rawValue) {
+                                composerErrorMessage = message
+                                Haptics.error()
+                                UIAccessibility.post(notification: .announcement, argument: message)
                             }
                         }
                     }
@@ -1049,7 +1054,7 @@ struct ComposerBar: View {
             }
         } label: {
             HStack(spacing: 3) {
-                Text(formatEffort(appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort))
+                Text(current?.title ?? formatEffort(appState.runtime.reasoningEffort))
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .bold))

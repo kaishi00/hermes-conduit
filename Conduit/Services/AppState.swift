@@ -17200,22 +17200,30 @@ final class AppState: ObservableObject {
         return failure == nil
     }
 
+    enum ReasoningWriteResult: Equatable {
+        case applied
+        /// The chat changed while the write was in flight; the current
+        /// chat's level is untouched.
+        case abandoned
+        case failed(String)
+    }
+
     /// Sets the live agent's reasoning effort ("none" turns it off). Hermes
     /// applies it at once, so the composer chip and the Model sheet send it
-    /// on tap. Returns why it failed, or nil once applied.
-    func setReasoningEffortReportingFailure(_ effort: String) async -> String? {
+    /// on tap.
+    func setReasoningEffort(_ effort: String) async -> ReasoningWriteResult {
         guard let client, let sessionId = activeSessionId else {
-            return AppLocalization.string("Not connected to a conversation.")
+            return .failed(AppLocalization.string("Not connected to a conversation."))
         }
         do {
             try await client.setReasoning(sessionId, effort: effort)
         } catch {
-            return UserFacingError.message(for: error)
+            return .failed(UserFacingError.message(for: error))
         }
         // Another chat's chip must not take this one's level.
-        guard activeSessionId == sessionId else { return nil }
+        guard activeSessionId == sessionId else { return .abandoned }
         runtime.reasoningEffort = effort == "none" ? "" : effort
-        return nil
+        return .applied
     }
 
     /// Why a session YOLO write did not apply. `message` is nil when the

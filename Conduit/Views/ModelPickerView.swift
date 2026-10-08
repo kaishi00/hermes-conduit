@@ -765,9 +765,12 @@ struct ModelPickerView: View {
         reasoningError = nil
         isApplyingReasoning = true
         defer { isApplyingReasoning = false }
-        if let message = await appState.setReasoningEffortReportingFailure(level.rawValue) {
+        let result = await appState.setReasoningEffort(level.rawValue)
+        if result != .applied {
             // Back to the live level, which may have moved meanwhile.
             reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+        }
+        if case .failed(let message) = result {
             reasoningError = message
             UIAccessibility.post(notification: .announcement, argument: message)
         }
