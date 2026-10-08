@@ -89,8 +89,10 @@ final class WatchAudio {
         AVAudioApplication.shared.recordPermission == .granted
     }
 
-    /// Starts the microphone and the player. Must run from a tap while the
-    /// app is in front: watchOS only starts recording then.
+    /// Starts the microphone and the player. Must run while the app is in
+    /// front: watchOS only starts recording then. A tap starts it, or
+    /// opening Conduit with "Call on open" on and recording already
+    /// allowed (logged as callStartedOnOpen; a device check for #462).
     func start(options: Options, playbackRate: Double) throws {
         // A session the caller activated stays active.
         stop(deactivating: options.activatesSession)
@@ -279,12 +281,20 @@ final class WatchAudio {
             stallNudged = true
             nudgedAt = now
             WatchCallLog.shared.note("playbackStalled", fields)
-            if let engine, !engine.isRunning { try? engine.start() }
+            if let engine, !engine.isRunning {
+                do {
+                    try engine.start()
+                } catch {
+                    let failure = error as NSError
+                    WatchCallLog.shared.note("playbackNudgeFailed", ["domain": failure.domain, "code": failure.code])
+                }
+            }
             player.play()
             return
         }
-        // A nudge gets one more stall window to show movement.
-        guard now - nudgedAt >= Self.stallAfter else { return }
+        // A nudge gets one more stall window, a buffer long, to show
+        // movement.
+        guard now - nudgedAt >= Self.stallAfter + longestBuffer else { return }
         playbackStalls += 1
         var dropFields = fields
         dropFields["sinceNudgeMs"] = Int((now - nudgedAt) * 1000)

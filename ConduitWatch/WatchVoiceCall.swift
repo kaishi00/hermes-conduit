@@ -87,10 +87,13 @@ final class WatchVoiceCall: ObservableObject {
         didSet { UserDefaults.standard.set(startsOnOpen, forKey: Self.startsOnOpenKey) }
     }
     static let startsOnOpenKey = "watchStartsCallOnOpen"
-    /// The app's scene phase before this one: nil until the first.
-    private var lastScenePhase: ScenePhase?
     /// The app has been in front since launch.
     private var hasBeenActive = false
+    /// The app went to the background since it was last in front.
+    private var wasBackgrounded = false
+    /// A call on open was skipped for the microphone permission: logged
+    /// once a launch.
+    private var loggedOpenSkip = false
     /// The engine of the call on screen, which a change of `engine` during
     /// the call doesn't move.
     @Published private(set) var callEngine: WatchVoiceEngine
@@ -206,25 +209,33 @@ final class WatchVoiceCall: ObservableObject {
     func scenePhaseChanged(_ newPhase: ScenePhase) {
         direct.scenePhaseChanged(newPhase)
         bridge.scenePhaseChanged(newPhase)
-        let previous = lastScenePhase
-        lastScenePhase = newPhase
-        // Opened: the first active since launch (launch can pass through
-        // inactive first), or back from the background. A wrist raise
-        // comes from inactive and starts nothing.
-        if newPhase == .active, !hasBeenActive || previous == .background {
-            startOnOpenIfWanted()
+        // Opened: the first active since launch, or the first since the
+        // app went to the background (either can pass through inactive on
+        // the way). A wrist raise never left inactive and starts nothing.
+        if newPhase == .background { wasBackgrounded = true }
+        if newPhase == .active {
+            if !hasBeenActive || wasBackgrounded { startOnOpenIfWanted() }
+            hasBeenActive = true
+            wasBackgrounded = false
         }
-        if newPhase == .active { hasBeenActive = true }
         // Call diagnostics only: an idle wrist raise isn't worth a line.
         guard isActive else { return }
         WatchCallLog.shared.note("scenePhase", ["phase": "\(newPhase)", "reachable": WatchLink.shared.isReachable])
     }
 
+    static let openAfterEndPause: TimeInterval = 120
+
     private func startOnOpenIfWanted() {
         guard startsOnOpen, !isActive else { return }
+        // Back in front soon after a call ended (the wrist went down on
+        // its summary): the user is reading it, not calling again.
+        if let endedAt, Date().timeIntervalSince(endedAt) < Self.openAfterEndPause { return }
         // The microphone prompt is left to a tap on Start.
         guard WatchAudio.hasPermission else {
-            WatchCallLog.shared.note("callOnOpenSkipped", ["reason": "noMicrophonePermission"])
+            if !loggedOpenSkip {
+                loggedOpenSkip = true
+                WatchCallLog.shared.note("callOnOpenSkipped", ["reason": "noMicrophonePermission"])
+            }
             return
         }
         WatchCallLog.shared.note("callStartedOnOpen", ["engine": engine.rawValue])

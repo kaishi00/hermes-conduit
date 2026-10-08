@@ -829,10 +829,12 @@ final class WatchBridgeCallModel: ObservableObject {
     /// ends one in handleAudio, so with no chunks at all it would read as
     /// speaking, with the microphone held, until GPT-Live spoke again.
     private func endSilentStretchIfDue(at: TimeInterval) {
-        guard modelSpeaking, let lastLoudAt, at - lastLoudAt >= Self.silentStretch else { return }
+        // Speech still playing keeps its stretch; a playback that stopped
+        // moving is dropped by the audio's stall check first.
+        guard modelSpeaking, !audio.isPlaying, let lastLoudAt, at - lastLoudAt >= Self.silentStretch else { return }
         modelSpeaking = false
-        note("bridgeSpeechStopped", ["quietMs": Int((at - lastLoudAt) * 1000), "playing": audio.isPlaying])
-        if !audio.isPlaying { playbackDrained() }
+        note("bridgeSpeechStopped", ["quietMs": Int((at - lastLoudAt) * 1000)])
+        playbackDrained()
     }
 
     private func playbackDrained() {
