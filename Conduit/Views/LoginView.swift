@@ -65,7 +65,7 @@ struct LoginView: View {
             // Purely decorative: the scroll content fills the screen, so
             // keyboard dismissal is owned by scroll-dismiss, the keyboard
             // Done button, and moving focus between fields.
-            ConduitBackdrop()
+            ConduitBackdrop(drifts: true)
 
             // The login form is a responsive scroll view inside a fixed
             // decorative layer: at compact iPhone heights with the keyboard
