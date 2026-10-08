@@ -261,5 +261,6 @@ struct ChatReadState: Equatable {
         clearMark(session, profile: profile)
         pendingServerValues[key] = nil
         seenPendingRefresh[key] = nil
+        lastWriteAttempts[key] = nil
     }
 }
