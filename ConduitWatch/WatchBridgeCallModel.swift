@@ -72,6 +72,8 @@ final class WatchBridgeCallModel: ObservableObject {
     static let maxRejoins = 3
     /// The relay closes a socket silent for a minute.
     static let pingInterval: TimeInterval = 20
+    /// Pings failed or unanswered in a row before the socket counts as lost.
+    static let pingMissLimit = 2
     /// Model audio louder than this (PCM16 peak) is speech.
     static let speechPeak = 600
     /// This much quiet ends a stretch of GPT-Live's speech.
@@ -137,6 +139,9 @@ final class WatchBridgeCallModel: ObservableObject {
     private var drops = 0
     private var lastPingAt: TimeInterval = 0
     private var pingFailures = 0
+    /// This socket's pings failed or unanswered in a row.
+    private var pingMisses = 0
+    private var pingOutstanding = false
     private var openFailures = 0
     private var hostError: String?
     private var bytesUpBefore = 0
@@ -356,6 +361,13 @@ final class WatchBridgeCallModel: ObservableObject {
                 "choice": choice,
             ])
             guard let self, self.callID == id, self.isActive else { return }
+            // The grant ran out (it isn't renewed: the bridge belongs to it),
+            // so no card can be answered from the Watch any more.
+            if case .unavailable(let reason, let grantGone, _) = outcome, grantGone || reason == "grantExpiring" {
+                self.note("bridgeApproval", ["choice": choice, "taken": false, "outcome": outcome.label, "reason": reason])
+                self.approvalsRanOut()
+                return
+            }
             var taken = false
             if case .answered(let body) = outcome {
                 let result = WatchJobAnswer.result(body: body)
@@ -377,6 +389,13 @@ final class WatchBridgeCallModel: ObservableObject {
             self.nextNewsAt = self.now
             self.flushPending()
         }
+    }
+
+    private func approvalsRanOut() {
+        approvals = []
+        pendingApproval = nil
+        followingJobs = false
+        caption = "This call's access to Hermes ran out, so it can't answer the job's request."
     }
 
     // MARK: The call from the iPhone
@@ -534,6 +553,8 @@ final class WatchBridgeCallModel: ObservableObject {
         socket.close()
         self.socket = nil
         startSentAt = nil
+        pingMisses = 0
+        pingOutstanding = false
     }
 
     private func connectionLost(code: Int?, opened: Bool) {
@@ -1179,9 +1200,32 @@ final class WatchBridgeCallModel: ObservableObject {
     private func pingIfDue() {
         guard let socket, now - lastPingAt >= Self.pingInterval else { return }
         lastPingAt = now
-        socket.ping { [weak self] ok in
-            if !ok { self?.pingFailures += 1 }
+        // Unanswered for a whole interval counts as failed: a socket that
+        // died without closing (after a suspension) never fails its receive.
+        if pingOutstanding {
+            missedPing()
+            guard self.socket === socket else { return }
         }
+        pingOutstanding = true
+        socket.ping { [weak self, weak socket] ok in
+            guard let self, let socket, self.socket === socket else { return }
+            self.pingOutstanding = false
+            if ok {
+                self.pingMisses = 0
+            } else {
+                self.missedPing()
+            }
+        }
+    }
+
+    private func missedPing() {
+        pingFailures += 1
+        pingMisses += 1
+        // One miss can be a late pong after a suspension; two in a row is a
+        // dead socket. Before the start, the start's own timeout covers it.
+        guard pingMisses >= Self.pingMissLimit, live else { return }
+        note("bridgeSocketSilent", ["misses": pingMisses, "connection": connection])
+        connectionLost(code: nil, opened: true)
     }
 
     private func timelineIfDue() {
