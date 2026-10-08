@@ -2555,6 +2555,30 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(restatedFake.created, 0)
     }
 
+    /// A delegation that carries the user's answer while an earlier one
+    /// still waits for those words: the earlier one hears the answer went
+    /// on the later one, whatever the answer does.
+    func testGPTLiveAskingFirstAnswerOnALaterDelegationTellsTheEarlierOne() async {
+        let laterOne = GPTLiveDelegationBridge.Outgoing.delegationReply(delegationID: "del_2", text: GPTLiveDelegationBridge.answerOnLaterDelegation, channel: .commentary)
+        let (_, fake, bridge) = makeAskingFirstBridge()
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        _ = await bridge.handleDelegation(id: "del_2", request: "")
+        let sent = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "yes")
+        XCTAssertEqual(sent.first, laterOne)
+        XCTAssertEqual(fake.created, 1)
+        XCTAssertNil(bridge.userFinishedSpeaking("yes"))
+
+        // "Wait" keeps it held, and the earlier one isn't answered twice.
+        let (_, keptFake, kept) = makeAskingFirstBridge()
+        _ = await kept.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        _ = await kept.handleDelegation(id: "del_2", request: "")
+        let wait = await kept.handleDelegation(id: "del_3", request: "Wait", userWords: "Wait")
+        XCTAssertEqual(wait, [laterOne, .delegationReply(delegationID: "del_3", text: GPTLiveDelegationBridge.notReadyYet, channel: .commentary)])
+        XCTAssertNil(kept.userFinishedSpeaking("Wait"))
+        _ = await kept.handleDelegation(id: "del_4", request: "Send:", userWords: "yes")
+        XCTAssertEqual(keptFake.created, 1)
+    }
+
     /// A request held for minutes was left: the user's next words are new,
     /// not a change to it.
     func testGPTLiveAskingFirstLetsAStaleHeldRequestGo() async {

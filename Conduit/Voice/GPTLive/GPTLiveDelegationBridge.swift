@@ -172,23 +172,32 @@ final class GPTLiveDelegationBridge {
             // Text led by a yes or a no ("Yes, and make it for four") is the
             // user's answer echoed too: their own words decide.
             let ownAnswer = isSend || answerShape.isAnswer ? "" : ownText
+            // An earlier delegation still waiting for these words hears the
+            // answer goes on this one (a wait tells it in `waitForAnswer`).
+            var older: [Outgoing] = []
+            if let pending = waiting.pendingDelegationID, pending != id {
+                older = [.delegationReply(delegationID: pending, text: Self.answerOnLaterDelegation, channel: .commentary)]
+            }
             switch decide(waiting, ownText: ownAnswer, isSend: isSend, instructions: instructions, answer: spoken) {
             case .send(let request):
                 draft = nil
-                return await release(request, intoJob: intoJob, delegationID: id, call: call)
+                let sent = await release(request, intoJob: intoJob, delegationID: id, call: call)
+                return sent.isEmpty ? [] : older + sent
             case .wait:
                 return waitForAnswer(id, isSend: isSend)
             case .drop:
                 draft = nil
-                return [.delegationReply(delegationID: id, text: Self.dropped, channel: .commentary)]
+                return older + [.delegationReply(delegationID: id, text: Self.dropped, channel: .commentary)]
             case .keep:
                 // Their word on it: its five minutes start again.
                 draft?.heldAt = now()
-                return [.delegationReply(delegationID: id, text: Self.notReadyYet, channel: .commentary)]
+                draft?.pendingDelegationID = nil
+                return older + [.delegationReply(delegationID: id, text: Self.notReadyYet, channel: .commentary)]
             case .change(let request):
-                if let held = heldForOK(id: id, request: request, userWords: spoken, intoJob: intoJob) { return held }
+                if let held = heldForOK(id: id, request: request, userWords: spoken, intoJob: intoJob) { return older + held }
                 // Changed and sent in one go ("…and send it to Hermes").
-                return await release(request, intoJob: intoJob, delegationID: id, call: call)
+                let sent = await release(request, intoJob: intoJob, delegationID: id, call: call)
+                return sent.isEmpty ? [] : older + sent
             }
         }
         if isSend {
