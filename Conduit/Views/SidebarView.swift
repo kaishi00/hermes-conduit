@@ -26,7 +26,9 @@ struct SidebarView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ConduitBackdrop()
+                // The drawer is a sheet over the drifting chat; only the
+                // persistent column is a main surface of its own.
+                ConduitBackdrop(drifts: presentation == .persistent)
 
                 VStack(spacing: 16) {
                     ConduitGlassGroup(spacing: 12) {
@@ -1517,7 +1519,8 @@ struct CronList: View {
                     if appState.cronJobs.isEmpty {
                         Text("\(appState.cronJobs.count) configured").font(.caption).foregroundStyle(.secondary)
                     } else {
-                        Text("\(activeJobCount) active · \(inactiveJobCount) inactive")
+                        // Two counts, so two plurals: each agrees with its own number.
+                        Text(verbatim: AppLocalization.string("\(activeJobCount) active") + " · " + AppLocalization.string("\(inactiveJobCount) inactive"))
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }

@@ -171,6 +171,14 @@ class ExtractSiteTests(unittest.TestCase):
         self.assertEqual(list(extract(source)), [])
 
 
+class SiteLineTests(unittest.TestCase):
+    def test_comment_lines_keep_line_numbers(self):
+        source = '// one\n// two\nlet a = 1\nText("Hello")\n'
+        stripped = check_l10n_coverage.strip_comment_lines(source)
+        offsets = [offset for _key, offset in extract(source)]
+        self.assertEqual([stripped.count("\n", 0, offset) + 1 for offset in offsets], [4])
+
+
 class CatalogHasTests(unittest.TestCase):
     def test_static_key_requires_exact_match(self):
         keys = {"Hello"}
@@ -391,6 +399,8 @@ class CatalogProblemTests(unittest.TestCase):
 
     def test_variation_only_translation_passes(self):
         catalog = {"strings": {"%lld conversations": {"localizations": {
+            "en": {"variations": {"plural": {
+                "one": unit("%lld conversation"), "other": unit("%lld conversations")}}},
             "zh-Hans": {"variations": {"plural": {"other": {
                 "stringUnit": {"state": "translated", "value": "%lld 个会话"}}}}}}}}}
         self.assertEqual(problems_for(catalog, ["zh-Hans"]), {})
@@ -532,8 +542,97 @@ class PluralCategoryTests(unittest.TestCase):
 
     def test_keys_the_source_does_not_vary_need_no_plural(self):
         catalog = {"sourceLanguage": "en", "strings": {
-            "%lld files": {"localizations": {"fr": unit("%lld fichiers")}}}}
+            "Files (%lld)": {"localizations": {"fr": unit("Fichiers (%lld)")}}}}
         self.assertEqual(problems_for(catalog, ["fr"]), {})
+
+
+class CountRuleTests(unittest.TestCase):
+    """An integer placeholder is a count: the source varies it by plural,
+    and one count drives a whole string."""
+
+    def count_problems(self, key, **localizations):
+        entry = {"localizations": localizations}
+        return check_l10n_coverage.count_problems(key, entry, "en")
+
+    def test_a_count_without_source_plural_forms_is_reported(self):
+        problems = self.count_problems("%lld files", ja=unit("%lld 件"))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("en has no plural forms", problems[0])
+
+    def test_a_count_with_source_plural_forms_passes(self):
+        self.assertEqual(self.count_problems("%lld files", en={"variations": {"plural": {
+            "one": unit("%lld file"), "other": unit("%lld files")}}}), [])
+
+    def test_label_numbers_need_no_plural(self):
+        for key in ("Runs (%lld)", "Jobs waiting: %lld", "Jobs:  %lld", "Runs (%1$lld)"):
+            self.assertEqual(self.count_problems(key), [], key)
+
+    def test_a_label_inside_a_sentence_still_counts(self):
+        self.assertTrue(self.count_problems("Jobs: %lld waiting"))
+
+    def test_text_placeholders_are_not_counts(self):
+        self.assertEqual(self.count_problems("HTTP %@ failed"), [])
+
+    def test_two_counts_in_one_key_are_reported(self):
+        problems = self.count_problems(
+            "%lld active · %lld inactive", en=plural("one", "other", value="%lld active · %lld inactive"))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("2 integer placeholders", problems[0])
+
+    def test_an_english_one_form_that_stays_plural_is_reported(self):
+        problems = self.count_problems(
+            "Show all %lld lines", en=plural("one", "other", value="Show all %lld lines"))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("make it singular", problems[0])
+        for key in ("%lld selected", "Delete %lld", "%lld more in the transcript"):
+            self.assertEqual(self.count_problems(
+                key, en=plural("one", "other", value=key)), [], key)
+
+    def test_a_plural_key_holds_only_its_count(self):
+        problems = self.count_problems("%@, %lld tasks", en={"variations": {"plural": {
+            "one": unit("%@, %lld task"), "other": unit("%@, %lld tasks")}}})
+        self.assertEqual(len(problems), 1)
+        self.assertIn("more than one placeholder", problems[0])
+
+    def test_substitutions_are_reported(self):
+        problems = self.count_problems("%lld of %lld", en={
+            "stringUnit": {"state": "translated", "value": "%1$lld of %2$#@total@"},
+            "substitutions": {"total": {"argNum": 2, "formatSpecifier": "lld"}}})
+        self.assertTrue(any("substitutions" in problem for problem in problems))
+
+    def test_catalog_problems_include_the_count_rule(self):
+        catalog = {"sourceLanguage": "en", "strings": {
+            "%lld files": {"localizations": {"ja": unit("%lld 件")}}}}
+        self.assertIn("%lld files", problems_for(catalog, ["ja"]))
+
+
+class StringWrappedCountTests(unittest.TestCase):
+    """A count interpolated as String(...) in front of a plural noun
+    can't select a plural form."""
+
+    def wrapped(self, source):
+        return [expression for expression, _offset
+                in check_l10n_coverage.string_wrapped_counts(source)]
+
+    def test_a_wrapped_count_before_a_noun_is_reported(self):
+        self.assertEqual(self.wrapped(
+            'AppLocalization.string("\\(String(failedCount)) tasks failed")'),
+            ["String(failedCount)"])
+        self.assertEqual(self.wrapped(
+            'Text("\\(String(items.count)) background agents")'),
+            ["String(items.count)"])
+
+    def test_label_numbers_and_ints_are_not_reported(self):
+        for source in (
+            'Text("(\\(String(left.count)) of \\(String(rows.count)) left)")',
+            'Text("\\(String(done.count))/\\(String(total))")',
+            'Text("\\(count) tasks")',
+            'Text("HTTP \\(String(status)) errors")',
+            'Text("\\(String(count)) is ready")',
+            'Text("\\(String(account.name)) settings")',
+            'Text("\\(String(subtotal)) dollars")',
+        ):
+            self.assertEqual(self.wrapped(source), [], source)
 
     def test_the_table_follows_current_cldr(self):
         # Spot checks against unicode-org/cldr plurals.xml, including rules

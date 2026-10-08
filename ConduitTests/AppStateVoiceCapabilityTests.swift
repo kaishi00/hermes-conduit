@@ -437,6 +437,113 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         }
     }
 
+    func testBackdropMotionPolicyGatesPowerAndLifecycle() {
+        XCTAssertTrue(ConduitBackdropMotionPolicy.shouldAnimate(
+            drifts: true,
+            sceneIsActive: true,
+            reduceMotion: false,
+            lowPowerMode: false,
+            thermalState: .nominal
+        ))
+        XCTAssertTrue(ConduitBackdropMotionPolicy.shouldAnimate(
+            drifts: true,
+            sceneIsActive: true,
+            reduceMotion: false,
+            lowPowerMode: false,
+            thermalState: .fair
+        ))
+
+        // Sheets and pushed screens never drift, even when everything else allows it.
+        XCTAssertFalse(ConduitBackdropMotionPolicy.shouldAnimate(
+            drifts: false,
+            sceneIsActive: true,
+            reduceMotion: false,
+            lowPowerMode: false,
+            thermalState: .nominal
+        ))
+
+        let pausedConditions: [(Bool, Bool, Bool, ProcessInfo.ThermalState)] = [
+            (false, false, false, .nominal), // app inactive/background
+            (true, true, false, .nominal),  // Reduce Motion
+            (true, false, true, .nominal),  // Low Power Mode
+            (true, false, false, .serious),  // serious thermal pressure
+            (true, false, false, .critical)
+        ]
+        for (sceneIsActive, reduceMotion, lowPowerMode, thermalState) in pausedConditions {
+            XCTAssertFalse(ConduitBackdropMotionPolicy.shouldAnimate(
+                drifts: true,
+                sceneIsActive: sceneIsActive,
+                reduceMotion: reduceMotion,
+                lowPowerMode: lowPowerMode,
+                thermalState: thermalState
+            ))
+        }
+    }
+
+    func testBackdropDriftIsBoundedAndRepeatsAfterOneOutAndBackCycle() {
+        XCTAssertEqual(ConduitBackdropMotionPolicy.progress(at: 0), 0, accuracy: 0.000_001)
+        XCTAssertEqual(ConduitBackdropMotionPolicy.progress(at: 13), 1, accuracy: 0.000_001)
+        XCTAssertEqual(ConduitBackdropMotionPolicy.progress(at: 26), 0, accuracy: 0.000_001)
+        XCTAssertEqual(
+            ConduitBackdropMotionPolicy.progress(at: 2),
+            ConduitBackdropMotionPolicy.progress(at: 28),
+            accuracy: 0.000_001
+        )
+        for sample in stride(from: 0.0, through: 52.0, by: 0.25) {
+            let progress = ConduitBackdropMotionPolicy.progress(at: sample)
+            XCTAssertGreaterThanOrEqual(progress, 0)
+            XCTAssertLessThanOrEqual(progress, 1)
+        }
+    }
+
+    func testBackdropMotionClockKeepsStaticStartAndResumesWithoutJump() {
+        var clock = ConduitBackdropMotionClock(now: 0)
+        clock.setAnimating(false, at: 0)
+        XCTAssertEqual(clock.progress(at: 100), 0, accuracy: 0.000_001)
+
+        clock.setAnimating(true, at: 10)
+        let phaseBeforePause = clock.progress(at: 17)
+        clock.setAnimating(false, at: 17)
+        XCTAssertEqual(clock.progress(at: 90), phaseBeforePause, accuracy: 0.000_001)
+
+        clock.setAnimating(true, at: 90)
+        XCTAssertEqual(clock.progress(at: 90), phaseBeforePause, accuracy: 0.000_001)
+        XCTAssertEqual(
+            clock.progress(at: 91),
+            ConduitBackdropMotionPolicy.progress(at: 8),
+            accuracy: 0.000_001
+        )
+    }
+
+    func testBackdropMotionClockHoldsPhaseWhileOnChangeLagsTheRender() {
+        // SwiftUI renders the new `shouldAnimate` before `onChange` reports it,
+        // so the clock must not jump in that gap in either direction.
+        var clock = ConduitBackdropMotionClock(now: 0)
+        XCTAssertEqual(clock.progress(at: 5), 0, accuracy: 0.000_001)
+
+        clock.setAnimating(true, at: 0)
+        let livePhase = clock.progress(at: 7)
+        XCTAssertGreaterThan(livePhase, 0)
+
+        // Pause rendered, not yet recorded: the phase keeps following time
+        // rather than snapping to a stored value.
+        let pausePendingPhase = clock.progress(at: 8)
+        XCTAssertEqual(pausePendingPhase, ConduitBackdropMotionPolicy.progress(at: 8), accuracy: 0.000_001)
+        clock.setAnimating(false, at: 8)
+
+        // Resume rendered, not yet recorded: still frozen, even as time moves.
+        XCTAssertEqual(clock.progress(at: 40), pausePendingPhase, accuracy: 0.000_001)
+        XCTAssertEqual(clock.progress(at: 45), pausePendingPhase, accuracy: 0.000_001)
+        clock.setAnimating(true, at: 45)
+        XCTAssertEqual(clock.progress(at: 45), pausePendingPhase, accuracy: 0.000_001)
+
+        // A second pause freezes at its own phase, not the first one.
+        let secondPhase = clock.progress(at: 49)
+        clock.setAnimating(false, at: 49)
+        XCTAssertEqual(clock.progress(at: 60), secondPhase, accuracy: 0.000_001)
+        XCTAssertNotEqual(secondPhase, pausePendingPhase, accuracy: 0.01)
+    }
+
     func testTheCallOrbSpendsSixtyFramesOnlyWhileSpeakingAndHoldsStillWhenHot() {
         XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(speaking: true, lowPowerMode: false), 60)
         XCTAssertEqual(LiveVoiceOrbPower.framesPerSecond(speaking: false, lowPowerMode: false), 30,

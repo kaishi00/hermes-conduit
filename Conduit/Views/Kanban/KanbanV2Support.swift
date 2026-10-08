@@ -497,19 +497,9 @@ enum KanbanRunPresentation {
         failedOutcomes.contains(run.outcome ?? run.status)
     }
 
-    static func durationText(start: Int?, end: Int?) -> String? {
+    static func durationText(start: Int?, end: Int?, locale: Locale = AppLocalization.formattingLocale) -> String? {
         guard let start, let end, end >= start, start > 0 else { return nil }
-        let seconds = end - start
-        if seconds >= 86_400 {
-            return "\(seconds / 86_400)d"
-        }
-        if seconds >= 3_600 {
-            return "\(seconds / 3_600)h"
-        }
-        if seconds >= 60 {
-            return "\(seconds / 60)m"
-        }
-        return "\(seconds)s"
+        return KanbanCompactDuration.text(seconds: end - start, locale: locale)
     }
 
     static func outcomeLabel(_ run: KanbanRun) -> String {
@@ -549,10 +539,37 @@ enum KanbanCardLiveness {
 
     static func elapsedText(startedAt: Int?, now: Date = Date()) -> String? {
         guard let startedAt, startedAt > 0 else { return nil }
-        let seconds = max(0, Int(now.timeIntervalSince1970) - startedAt)
-        if seconds >= 86_400 { return "\(seconds / 86_400)d" }
-        if seconds >= 3_600 { return "\(seconds / 3_600)h" }
-        if seconds >= 60 { return "\(seconds / 60)m" }
-        return "\(seconds)s"
+        return KanbanCompactDuration.text(seconds: max(0, Int(now.timeIntervalSince1970) - startedAt))
+    }
+}
+
+/// A run or worker age in its largest whole unit ("30s", "2m", "1h", "3d"
+/// in English), abbreviated the way the UI's language writes units.
+enum KanbanCompactDuration {
+    static func text(seconds: Int, locale: Locale = AppLocalization.formattingLocale) -> String {
+        let steps: [(size: Int, unit: NSCalendar.Unit)] = [
+            (86_400, .day), (3_600, .hour), (60, .minute), (1, .second),
+        ]
+        let step = steps.first { seconds >= $0.size } ?? steps[steps.count - 1]
+        // Whole units only: the formatter would round 1h 59m up to "2h".
+        let whole = seconds / step.size * step.size
+        return formatter(locale: locale, unit: step.unit).string(from: TimeInterval(whole)) ?? "\(whole / step.size)"
+    }
+
+    /// Card and run rows ask on every render, so each locale and unit
+    /// keeps its formatter. NSCache is safe from any thread.
+    private static let formatters = NSCache<NSString, DateComponentsFormatter>()
+
+    private static func formatter(locale: Locale, unit: NSCalendar.Unit) -> DateComponentsFormatter {
+        let key = "\(locale.identifier)|\(unit.rawValue)" as NSString
+        if let cached = formatters.object(forKey: key) { return cached }
+        let formatter = DateComponentsFormatter()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = locale
+        formatter.calendar = calendar
+        formatter.unitsStyle = .abbreviated
+        formatter.allowedUnits = unit
+        formatters.setObject(formatter, forKey: key)
+        return formatter
     }
 }

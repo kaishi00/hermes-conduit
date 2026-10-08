@@ -453,7 +453,7 @@ struct LargeMarkdownExpandedView: View {
                     chunkView(prepared, chunk: prepared.chunks[index], index: index)
                 }
                 if renderedChunkCount < prepared.chunks.count {
-                    progressFooter(remaining: prepared.chunks.count - renderedChunkCount)
+                    progressFooter(remainingCount: prepared.chunks.count - renderedChunkCount)
                 }
             } else {
                 LargeDocumentPreparingView()
@@ -596,7 +596,7 @@ struct LargeMarkdownExpandedView: View {
     }
 
     @ViewBuilder
-    private func progressFooter(remaining: Int) -> some View {
+    private func progressFooter(remainingCount: Int) -> some View {
         Button {
             // Clamped to the real total: chunkView indexes prepared.chunks
             // directly, and the remaining chunks can be fewer than a batch.
@@ -606,7 +606,7 @@ struct LargeMarkdownExpandedView: View {
             )
         } label: {
             Label(
-                "Continue reading (\(remaining) sections left)",
+                "Continue reading (\(remainingCount) sections left)",
                 systemImage: "chevron.down"
             )
             .font(.footnote.weight(.semibold))

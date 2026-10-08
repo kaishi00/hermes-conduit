@@ -343,8 +343,8 @@ struct DelegateAgentsSheet: View {
     }
 
     private var activeSummary: String {
-        let active = appState.delegateAgents.filter(\.status.isActive).count
-        return active == 0 ? AppLocalization.string("Latest delegation activity") : AppLocalization.string("\(String(active)) working now")
+        let activeCount = appState.delegateAgents.filter(\.status.isActive).count
+        return activeCount == 0 ? AppLocalization.string("Latest delegation activity") : AppLocalization.string("\(activeCount) working now")
     }
 }
 

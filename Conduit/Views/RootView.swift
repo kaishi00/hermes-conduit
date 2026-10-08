@@ -277,7 +277,7 @@ struct MainView: View {
     private var chatNavigationContent: some View {
         NavigationStack {
             ZStack {
-                ConduitBackdrop()
+                ConduitBackdrop(drifts: true)
                 if appState.activeRoomSurface != nil {
                     // Keyed by room: another room starts with its own draft.
                     GroupChatView()
