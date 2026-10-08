@@ -28,6 +28,10 @@ enum WatchJobAnswer {
     static let jobNews = "job_news"
     static let answerApproval = "answer_approval"
     static let calls: Set<String> = [jobNews, answerApproval]
+    /// The user's words into a running job (#455), with plugin 0.10: the
+    /// host grants it with jobs, never asked for by name, since an older
+    /// plugin refuses a grant naming a tool it doesn't know.
+    static let interruptJob = "interrupt_job"
     /// The answers the Watch may give an approval: never for the session
     /// or always.
     static let approve = "once"
@@ -51,8 +55,76 @@ enum WatchJobAnswer {
             return jobID.isEmpty ? [:] : ["job_id": jobID]
         case listJobs:
             return [:]
+        case interruptJob:
+            let jobID = arguments["job_id"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let message = arguments["message"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return jobID.isEmpty || message.isEmpty ? nil : ["job_id": jobID, "message": message]
         default:
             return nil
+        }
+    }
+
+    /// GeminiLiveToolBridge's answers to an interrupt_job it can't send.
+    static func missingArguments(name: String, _ arguments: [String: String]) -> [String: String] {
+        guard name == interruptJob else { return missingInstructions }
+        let jobID = arguments["job_id"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return jobID.isEmpty ? unknownJob : ["error": "message is required"]
+    }
+
+    /// A grant from a plugin before 0.10 runs jobs but can't change one.
+    static let followUpsNeedNewerPlugin = "the Conduit plugin on the user's Hermes host is too old to change a running job from the Watch; updating it fixes that"
+
+    static let unknownJob: [String: String] = ["error": "Unknown job_id. Call list_jobs for the jobs' ids."]
+
+    // MARK: Follow-ups (#455)
+
+    /// What became of a follow-up, from the host's answer.
+    enum FollowUp: Equatable {
+        case interrupted(title: String)
+        case queued(title: String)
+        case finished(title: String)
+        case failed(String)
+        case unknownJob
+
+        init(body: [String: Any]) {
+            guard body["ok"] as? Bool == true else {
+                let reason = body["detail"] as? String ?? body["error"] as? String
+                self = .failed(reason.flatMap { $0.isEmpty ? nil : $0 } ?? "Hermes couldn't take that from the Watch.")
+                return
+            }
+            let title = body["title"] as? String ?? ""
+            switch body["outcome"] as? String {
+            case "interrupted": self = .interrupted(title: title)
+            case "queued": self = .queued(title: title)
+            case "finished": self = .finished(title: title)
+            case "unknown_job": self = .unknownJob
+            default:
+                let reason = body["error"] as? String ?? ""
+                self = .failed(reason.isEmpty ? "Hermes didn't take the words." : reason)
+            }
+        }
+    }
+
+    /// VoiceFollowUpOutcome.quoted.
+    static func quoted(_ title: String) -> String {
+        title.isEmpty ? "that request" : "\"\(title)\""
+    }
+
+    /// GeminiLiveToolBridge.followUpResult, for interrupt_job on a Gemini
+    /// or Grok call. Never carries `job_id`: that key marks a job's own
+    /// outcome.
+    static func followUpResult(_ outcome: FollowUp) -> [String: String] {
+        switch outcome {
+        case .interrupted(let title):
+            return ["status": "sent", "message": "Hermes took the user's words into \(quoted(title)) at once and changes course now. Tell the user in a few words; the result still comes back on the earlier request, so don't guess it."]
+        case .queued(let title):
+            return ["status": "sent", "message": "Hermes takes the user's words into \(quoted(title)) right after the step it is finishing. Tell the user in a few words; the result still comes back on the earlier request, so don't guess it."]
+        case .finished(let title):
+            return ["status": "not_sent", "message": "\(quoted(title)) had already finished, so Hermes didn't get this. Tell the user, and ask what they want instead."]
+        case .failed(let message):
+            return ["status": "not_sent", "error": message]
+        case .unknownJob:
+            return unknownJob
         }
     }
 
@@ -80,6 +152,8 @@ enum WatchJobAnswer {
     /// As the bridge schedules it: a job that didn't start is told once the
     /// model is quiet, everything else answers the call at once.
     static func scheduling(name: String, result: [String: String]) -> String? {
+        // As the phone's bridge answers a follow-up.
+        if name == interruptJob { return GeminiLiveProtocol.Scheduling.whenIdle.rawValue }
         guard name == startJob, result["status"] == "not_started" || result["error"] != nil else { return nil }
         return GeminiLiveProtocol.Scheduling.whenIdle.rawValue
     }

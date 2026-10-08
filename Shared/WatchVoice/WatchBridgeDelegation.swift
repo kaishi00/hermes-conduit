@@ -75,10 +75,52 @@ enum WatchBridgeDelegation {
         return result
     }
 
-    /// GPTLiveDelegationBridge's quiet note once Hermes took the job.
-    static func working(title: String) -> String {
-        "Hermes is working on this as a background job (\"\(title)\"). Its result will follow on this delegation; don't guess it."
+    /// GPTLiveDelegationBridge's quiet note once Hermes took the job; with
+    /// the job's number in this call when it can take corrections.
+    static func working(title: String, number: Int? = nil) -> String {
+        guard let number else {
+            return "Hermes is working on this as a background job (\"\(title)\"). Its result will follow on this delegation; don't guess it."
+        }
+        return "Hermes is working on this as background job \(number) (\"\(title)\"). Its result will follow on this delegation; don't guess it. If the user corrects or changes it while it runs, delegate their words starting with \"Job \(number):\"."
     }
+
+    // MARK: Follow-ups (#455)
+
+    /// GPTLiveDelegationBridge.jobMarker: "Job 2: make it Alex" → (2,
+    /// "make it Alex"), only at the very start, never a time or a decimal.
+    static func jobMarker(in request: String) -> (number: Int, rest: String)? {
+        guard let range = request.range(of: #"^\s*job\s*#?\s*[0-9]{1,4}\s*[:,.\-–—](?![0-9])"#, options: [.regularExpression, .caseInsensitive]),
+              let number = Int(String(request[range].filter { $0.isASCII && $0.isNumber })) else { return nil }
+        let rest = request[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return (number, rest)
+    }
+
+    /// GPTLiveDelegationBridge.followUpWords: the user's own words since
+    /// the last delegation, else the delegation's.
+    static func followUpWords(userWords: String, delegated: String) -> String {
+        let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
+        return spoken.isEmpty ? delegated.trimmingCharacters(in: .whitespacesAndNewlines) : spoken
+    }
+
+    /// GPTLiveDelegationBridge.followUpReply: taken, quiet, since the model
+    /// already acknowledged it; not taken, said aloud.
+    static func followUpReply(_ outcome: WatchJobAnswer.FollowUp) -> (text: String, speakable: Bool) {
+        switch outcome {
+        case .interrupted(let title):
+            return ("Conduit put the user's words into \(WatchJobAnswer.quoted(title)) at once; Hermes keeps its work so far and changes course now. Its result still follows on the earlier delegation; don't guess it.", false)
+        case .queued(let title):
+            return ("Conduit passed the user's words to \(WatchJobAnswer.quoted(title)); Hermes takes them right after the step it is finishing. Its result still follows on the earlier delegation; don't guess it.", false)
+        case .finished(let title):
+            return (relay("\(WatchJobAnswer.quoted(title)) had already finished, so Hermes didn't get this. Ask the user what they want instead."), true)
+        case .failed(let message):
+            return (relay("Hermes didn't get that (\(message))."), true)
+        case .unknownJob:
+            return (relay("Hermes didn't get that (that job isn't one this call started)."), true)
+        }
+    }
+
+    /// The host's plugin predates follow-ups from the Watch.
+    static let followUpsUnavailable = relay("Hermes didn't get that (\(WatchJobAnswer.followUpsNeedNewerPlugin)).")
 
     /// GeminiLiveToolBridge.relayPrompt, as GPTLiveDelegationBridge.relay.
     static func relay(_ notice: String) -> String {
