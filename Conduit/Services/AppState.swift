@@ -1533,6 +1533,7 @@ final class AppState: ObservableObject {
                         answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
+                        + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
                     functions: GeminiLiveToolBridge.declarations(
                         webSearch: search == .hermes,
@@ -1816,6 +1817,7 @@ final class AppState: ObservableObject {
                     )
                         + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
+                        + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
                     greeting: self?.liveVoiceStyle.greeting
                 )
@@ -1836,6 +1838,7 @@ final class AppState: ObservableObject {
                 )
                     + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                     + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
+                    + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                     + (self?.liveVoiceStyle.instructions ?? "")
             },
             openingPrompt: { [weak self] in self?.liveVoiceStyle.openingPrompt },
@@ -2068,6 +2071,7 @@ final class AppState: ObservableObject {
                         answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
+                        + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
                     functions: GeminiLiveToolBridge.declarations(
                         webSearch: search == .hermes,
@@ -3787,15 +3791,18 @@ final class AppState: ObservableObject {
         let greeting = style.greeting.map(LiveVoiceStyle.cleanedGreeting)
         let backchannels: Bool? = style.backchannels ? nil : false
         let answerLength: LiveVoiceAnswerLength? = style.answerLength == .standard ? nil : style.answerLength
+        let asksBeforeSending: Bool? = style.asksBeforeSending ? true : nil
         guard preferences.liveVoiceTone != style.tone
             || preferences.liveVoiceBackchannels != backchannels
             || preferences.liveVoiceGreeting != greeting
-            || preferences.liveVoiceAnswerLength != answerLength else { return }
+            || preferences.liveVoiceAnswerLength != answerLength
+            || preferences.liveVoiceAskBeforeSending != asksBeforeSending else { return }
         objectWillChange.send()
         preferences.liveVoiceTone = style.tone
         preferences.liveVoiceBackchannels = backchannels
         preferences.liveVoiceGreeting = greeting
         preferences.liveVoiceAnswerLength = answerLength
+        preferences.liveVoiceAskBeforeSending = asksBeforeSending
         saveVoiceProfilePreferences(preferences, profile: profile)
     }
 
@@ -3836,7 +3843,7 @@ final class AppState: ObservableObject {
         } else {
             return nil
         }
-        text += thread + style.instructions
+        text += thread + LiveVoiceStyle.askFirstInstructions(on: style.asksBeforeSending) + style.instructions
         // Gemini and Grok get the greeting as the call's first turn; GPT-Live's
         // goes to the host as the call's opening policy (an older plugin
         // gets this ask as the first turn).
@@ -3982,7 +3989,7 @@ final class AppState: ObservableObject {
     private func beginVoiceCallRecording(engine: VoiceCallEngine) {
         finishVoiceCallRecording()
         // The call screen shows the jobs this call starts, saved or not.
-        voiceBackgroundJobSupervisor.beginLiveCall()
+        voiceBackgroundJobSupervisor.beginLiveCall(asksBeforeSending: liveVoiceStyle.asksBeforeSending)
         let resume = pendingVoiceResume
         pendingVoiceResume = nil
         liveVoiceResumeContext = resume?.context
@@ -23816,10 +23823,9 @@ final class AppState: ObservableObject {
                 personality: personality,
                 answerLength: style.answerLength
             ) + style.instructions,
-            functions: GeminiLiveToolBridge.declarations(
+            functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
-                memoryRecall: memory?.canRecall == true,
-                thread: false
+                memoryRecall: memory?.canRecall == true
             ),
             googleSearch: search == .google,
             voice: geminiLiveVoice,

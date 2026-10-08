@@ -74,6 +74,9 @@ struct LiveVoiceStyle: Equatable {
     /// Goes into the instructions' rules, not `instructions` below: one
     /// answer-length rule per call.
     var answerLength: LiveVoiceAnswerLength = .standard
+    /// Whether a call starts holding each request for the user's OK before
+    /// it goes to Hermes (#451). The call's own switch can change it.
+    var asksBeforeSending = false
 
     static let maxGreetingCharacters = 200
 
@@ -107,6 +110,15 @@ struct LiveVoiceStyle: Equatable {
         guard !lines.isEmpty else { return "" }
         return "\n\n[Voice style the user chose in Conduit. It replaces any tone, pace or backchannel guidance above.]\n"
             + lines.joined(separator: "\n")
+    }
+
+    /// Whether the call starts asking first (#451), after the rules that
+    /// say how it works. Per call, not per style: the call's own switch can
+    /// change it. Not UI copy.
+    static func askFirstInstructions(on: Bool) -> String {
+        on
+            ? "\n\nAsking first is on for this call: a new request goes to Hermes only once the user OKs it."
+            : "\n\nAsking first is off for this call: new requests go to Hermes straight away."
     }
 
     /// The turn that makes the model greet the user when the call connects.
