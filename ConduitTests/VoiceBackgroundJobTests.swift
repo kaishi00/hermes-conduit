@@ -1207,7 +1207,7 @@ extension VoiceConversationControllerTests {
 
         clock += GPTLiveDelegationBridge.readBackWindow + 1
         let again = await bridge.handleDelegation(id: "del_2", request: "say that again")
-        guard case .sessionContext(let againText, .commentary, false, nil)? = again.first,
+        guard case .sessionContext(let againText, .commentary, true, nil)? = again.first,
               case .delegationReply("del_2", _, .speakable)? = again.last else {
             return XCTFail("\(again)")
         }
@@ -1223,7 +1223,7 @@ extension VoiceConversationControllerTests {
             id: "del_ctx",
             request: "read the last reply" + GPTLiveConversationController.delegationContextMarker + "User: what's the weather\nAssistant: Sunny.\n"
         )
-        guard case .sessionContext(let contextText, .commentary, false, nil)? = withContext.first,
+        guard case .sessionContext(let contextText, .commentary, true, nil)? = withContext.first,
               case .delegationReply("del_ctx", _, .speakable)? = withContext.last else {
             return XCTFail("\(withContext)")
         }
