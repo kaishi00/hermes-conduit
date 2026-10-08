@@ -1918,6 +1918,11 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("never send that to hermes"))
         XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("no wait, send it to Hermes"))
         XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("don't ask, just send it to Hermes"))
+        // Asking or wondering about it isn't saying to.
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("did you send it to Hermes?"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("when did you send that to Hermes"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("remind me to send it to Hermes tomorrow"))
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("can you send it to Hermes"))
     }
 
     func testGeminiAskingFirstHoldsANewJobUntilTheUserSaysYes() async throws {
