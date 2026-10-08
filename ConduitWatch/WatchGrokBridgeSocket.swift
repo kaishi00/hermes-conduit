@@ -10,8 +10,8 @@
 //  stream per connection, opened with the hello and a sealed start, and
 //  ready once the host says the engine started. Then xAI's events go both
 //  ways as sealed engine events. The host strips xAI's audio deltas to
-//  pace them, so its audio comes back as one again here; the session's
-//  input_audio_buffer.append events go through as they are.
+//  pace them, so its audio comes back as one again here, and the session's
+//  input_audio_buffer.append events go as audio, which the host appends.
 //
 
 import Foundation
@@ -107,7 +107,22 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
 
     func send(_ text: String) async throws {
         try await waitForStart()
-        try await seal(Data(text.utf8), kind: .event)
+        // The microphone goes as audio, which the host appends to xAI's
+        // input itself: a quarter fewer bytes through the relay.
+        if let pcm = Self.appendedAudio(text) {
+            try await seal(pcm, kind: .audio)
+        } else {
+            try await seal(Data(text.utf8), kind: .event)
+        }
+    }
+
+    /// The PCM of an input_audio_buffer.append event, else nil.
+    static func appendedAudio(_ text: String) -> Data? {
+        guard text.contains("input_audio_buffer.append"),
+              let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
+              object["type"] as? String == "input_audio_buffer.append",
+              let audio = object["audio"] as? String else { return nil }
+        return Data(base64Encoded: audio)
     }
 
     func receive() async throws -> Data {
