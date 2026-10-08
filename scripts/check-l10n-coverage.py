@@ -564,10 +564,10 @@ def value_problem(language: str, value: str, key_specs):
 
 
 # A number shown as a label rather than counted in a sentence: alone in
-# parentheses ("Runs (%lld)") or ending the string after a colon
-# ("Jobs: %lld"). No word agrees with it, so it needs no plural forms.
+# parentheses at the end ("Runs (%lld)") or ending the string after a
+# colon ("Jobs: %lld"). No word agrees with it, so it needs no plural forms.
 _NUMERAL_LABEL_RE = re.compile(
-    r"\(%(?:\d+\$)?ll?[diu]\)|:\s+%(?:\d+\$)?ll?[diu]$")
+    r"(?:\(%(?:\d+\$)?ll?[diu]\)|:\s+%(?:\d+\$)?ll?[diu])$")
 
 
 def count_problems(key: str, entry: dict, source: str) -> list:
