@@ -102,6 +102,10 @@ final class AppleSpeechWakeWordService: WakeWordService {
                 AppLocalization.string("Wake phrases need microphone and speech recognition access.")
             )
         }
+        // The app's locale, not the spoken language dictation uses
+        // (SpeechRecognitionLocale): wake phrases are agent names, and a
+        // Russian recognizer would write "Hey Hermes" in Cyrillic, which
+        // never matches the phrase.
         let locale = Locale.current
         guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.supportsOnDeviceRecognition else {
             throw WakeWordServiceError.unavailable(
