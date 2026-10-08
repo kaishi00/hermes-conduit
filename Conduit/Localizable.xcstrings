@@ -26698,7 +26698,7 @@
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "Show all %lld lines"
+                  "value" : "Show all %lld line"
                 }
               },
               "other" : {

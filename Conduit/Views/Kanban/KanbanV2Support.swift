@@ -551,14 +551,25 @@ enum KanbanCompactDuration {
             (86_400, .day), (3_600, .hour), (60, .minute), (1, .second),
         ]
         let step = steps.first { seconds >= $0.size } ?? steps[steps.count - 1]
+        // Whole units only: the formatter would round 1h 59m up to "2h".
+        let whole = seconds / step.size * step.size
+        return formatter(locale: locale, unit: step.unit).string(from: TimeInterval(whole)) ?? "\(whole / step.size)"
+    }
+
+    /// Card and run rows ask on every render, so each locale and unit
+    /// keeps its formatter. NSCache is safe from any thread.
+    private static let formatters = NSCache<NSString, DateComponentsFormatter>()
+
+    private static func formatter(locale: Locale, unit: NSCalendar.Unit) -> DateComponentsFormatter {
+        let key = "\(locale.identifier)|\(unit.rawValue)" as NSString
+        if let cached = formatters.object(forKey: key) { return cached }
         let formatter = DateComponentsFormatter()
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = locale
         formatter.calendar = calendar
         formatter.unitsStyle = .abbreviated
-        formatter.allowedUnits = step.unit
-        // Whole units only: the formatter would round 1h 59m up to "2h".
-        let whole = seconds / step.size * step.size
-        return formatter.string(from: TimeInterval(whole)) ?? "\(whole / step.size)"
+        formatter.allowedUnits = unit
+        formatters.setObject(formatter, forKey: key)
+        return formatter
     }
 }

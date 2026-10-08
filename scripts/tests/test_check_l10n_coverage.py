@@ -399,7 +399,8 @@ class CatalogProblemTests(unittest.TestCase):
 
     def test_variation_only_translation_passes(self):
         catalog = {"strings": {"%lld conversations": {"localizations": {
-            "en": plural("one", "other", value="%lld conversations"),
+            "en": {"variations": {"plural": {
+                "one": unit("%lld conversation"), "other": unit("%lld conversations")}}},
             "zh-Hans": {"variations": {"plural": {"other": {
                 "stringUnit": {"state": "translated", "value": "%lld 个会话"}}}}}}}}}
         self.assertEqual(problems_for(catalog, ["zh-Hans"]), {})
@@ -559,11 +560,11 @@ class CountRuleTests(unittest.TestCase):
         self.assertIn("en has no plural forms", problems[0])
 
     def test_a_count_with_source_plural_forms_passes(self):
-        self.assertEqual(self.count_problems(
-            "%lld files", en=plural("one", "other", value="%lld files")), [])
+        self.assertEqual(self.count_problems("%lld files", en={"variations": {"plural": {
+            "one": unit("%lld file"), "other": unit("%lld files")}}}), [])
 
     def test_label_numbers_need_no_plural(self):
-        for key in ("Runs (%lld)", "Jobs waiting: %lld", "Runs (%1$lld)"):
+        for key in ("Runs (%lld)", "Jobs waiting: %lld", "Jobs:  %lld", "Runs (%1$lld)"):
             self.assertEqual(self.count_problems(key), [], key)
 
     def test_a_label_inside_a_sentence_still_counts(self):
@@ -577,6 +578,15 @@ class CountRuleTests(unittest.TestCase):
             "%lld active · %lld inactive", en=plural("one", "other", value="%lld active · %lld inactive"))
         self.assertEqual(len(problems), 1)
         self.assertIn("2 integer placeholders", problems[0])
+
+    def test_an_english_one_form_that_stays_plural_is_reported(self):
+        problems = self.count_problems(
+            "Show all %lld lines", en=plural("one", "other", value="Show all %lld lines"))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("make it singular", problems[0])
+        for key in ("%lld selected", "Delete %lld", "%lld more in the transcript"):
+            self.assertEqual(self.count_problems(
+                key, en=plural("one", "other", value=key)), [], key)
 
     def test_substitutions_are_reported(self):
         problems = self.count_problems("%lld of %lld", en={

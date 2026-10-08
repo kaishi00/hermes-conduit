@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import tempfile
 import unittest
 
@@ -17,8 +18,8 @@ def unit(value):
 class WorksheetTests(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
-        self.addCleanup(lambda: setattr(l10n, "REPO_ROOT", self.saved_root))
-        self.saved_root = l10n.REPO_ROOT
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.addCleanup(setattr, l10n, "REPO_ROOT", l10n.REPO_ROOT)
         l10n.REPO_ROOT = self.root
         os.makedirs(os.path.join(self.root, "Conduit"))
         self.catalog_path = os.path.join(self.root, "Conduit", "Localizable.xcstrings")
@@ -55,6 +56,13 @@ class WorksheetTests(unittest.TestCase):
         self.assertEqual(entries["%lld files"]["forms"], ["one", "few", "many", "other"])
         self.assertEqual(entries["Hello"]["source"], "Hello")
         self.assertIsNone(entries["Hello"]["translation"])
+
+    def test_call_sites_report_the_file_line(self):
+        os.makedirs(os.path.join(self.root, "Shared"))
+        with open(os.path.join(self.root, "Conduit", "View.swift"), "w", encoding="utf-8") as handle:
+            handle.write('// one\n// two\nlet a = 1\nText("Hello")\n')
+        sites = l10n.call_sites("Conduit/Localizable.xcstrings")
+        self.assertEqual(sites["Hello"], ["Conduit/View.swift:4"])
 
     def test_export_all_includes_current_translations(self):
         entries = self.entries(l10n.export("ja", include_all=True))

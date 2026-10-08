@@ -141,7 +141,9 @@ def call_sites(catalog_path: str) -> dict:
                     continue
                 path = os.path.join(dirpath, name)
                 with open(path, encoding="utf-8") as handle:
-                    source = handle.read()
+                    # Offsets index the comment-blanked text, which keeps
+                    # the file's line breaks.
+                    source = CHECKER.strip_comment_lines(handle.read())
                 for skeleton, offset in CHECKER.extract_sites(source):
                     line = source.count("\n", 0, offset) + 1
                     sites.setdefault(skeleton, []).append(

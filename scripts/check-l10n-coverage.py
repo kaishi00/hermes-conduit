@@ -567,7 +567,7 @@ def value_problem(language: str, value: str, key_specs):
 # parentheses ("Runs (%lld)") or ending the string after a colon
 # ("Jobs: %lld"). No word agrees with it, so it needs no plural forms.
 _NUMERAL_LABEL_RE = re.compile(
-    r"\(%(?:\d+\$)?ll?[diu]\)|:\s%(?:\d+\$)?ll?[diu]$")
+    r"\(%(?:\d+\$)?ll?[diu]\)|:\s+%(?:\d+\$)?ll?[diu]$")
 
 
 def count_problems(key: str, entry: dict, source: str) -> list:
@@ -595,6 +595,24 @@ def count_problems(key: str, entry: dict, source: str) -> list:
             f"counts with {key!r} but {source} has no plural forms: vary it "
             f"by plural (one/other) so other languages can agree with the "
             f"number; a number that isn't a count goes in as String(x)")
+    elif integers and normalized_language(source).split("-")[0] == "en":
+        problems.extend(_english_one_form_problems(
+            localization_for(localizations, source)))
+    return problems
+
+
+def _english_one_form_problems(localization: dict) -> list:
+    """An English "one" form that repeats a plural noun after the count
+    ("Show all %lld lines" for 1) reads "1 lines"."""
+    problems = []
+    for path, plural in plural_variations(localization):
+        one = plural.get("one", {}).get("stringUnit", {}).get("value") or ""
+        other = plural.get("other", {}).get("stringUnit", {}).get("value") or ""
+        after = re.split(r"%(?:\d+\$)?ll?[diu]", one, maxsplit=1)
+        if one and one == other and len(after) == 2 and _COUNTED_NOUN_RE.match(after[1]):
+            problems.append(
+                f"en 'one' form{variation_label(path)} repeats the plural "
+                f"({one!r} reads \"1 …s\"): make it singular")
     return problems
 
 
