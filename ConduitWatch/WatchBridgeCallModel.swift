@@ -692,7 +692,7 @@ final class WatchBridgeCallModel: ObservableObject {
             }
         case .error(let code, let message):
             note("bridgeHostError", ["code": code as Any, "message": String(message.prefix(200)), "live": live])
-            let text = message.isEmpty ? "GPT-Live failed on Hermes." : message
+            let text = message.isEmpty ? String(localized: "GPT-Live failed on Hermes.") : message
             switch code ?? "" {
             case "unreachable", "failed":
                 // Worth another try once it was working; "ended" follows.

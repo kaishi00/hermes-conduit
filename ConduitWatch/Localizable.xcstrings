@@ -177,6 +177,38 @@
         }
       }
     },
+    "Conduit on the iPhone didn't answer in time." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone の Conduit が時間内に応答しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 上的 Conduit 未及时响应。"
+          }
+        }
+      }
+    },
+    "Conduit on the iPhone sent something this Watch app can't read." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone の Conduit から、この Watch アプリが読み取れないデータが届きました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 上的 Conduit 发送了此 Watch App 无法读取的内容。"
+          }
+        }
+      }
+    },
     "Conduit on the iPhone sent something this Watch app can't read. Update both." : {
       "localizations" : {
         "ja" : {
@@ -413,6 +445,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GPT-Live"
+          }
+        }
+      }
+    },
+    "GPT-Live failed on Hermes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 上で GPT-Live が失敗しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 在 Hermes 上运行失败。"
           }
         }
       }
@@ -673,6 +721,22 @@
         }
       }
     },
+    "No Gemini token through the relay: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リレー経由で Gemini トークンを取得できません：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法通过中继获取 Gemini 令牌：%@"
+          }
+        }
+      }
+    },
     "Paused" : {
       "localizations" : {
         "ja" : {
@@ -897,6 +961,22 @@
         }
       }
     },
+    "The call ended." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話が終了しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话已结束。"
+          }
+        }
+      }
+    },
     "The call's access to Hermes ended." : {
       "localizations" : {
         "ja" : {
@@ -1005,6 +1085,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通话连接前麦克风被中断。请重试。"
+          }
+        }
+      }
+    },
+    "This call can't get a Gemini token through the relay." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この通話はリレー経由で Gemini トークンを取得できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此通话无法通过中继获取 Gemini 令牌。"
           }
         }
       }

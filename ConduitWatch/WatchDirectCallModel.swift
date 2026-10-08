@@ -2121,7 +2121,7 @@ final class WatchDirectCallModel: ObservableObject {
             self.stallPromptedAt = nil
             // Never sent: the user's words still wait for a reply.
             if self.replyOwedSince == nil { self.replyOwedSince = owed }
-            WatchProbeLog.shared.note("directStallPromptFailed", ["screen": "\(self.scenePhase)"])
+            WatchCallLog.shared.note("directStallPromptFailed", ["screen": "\(self.scenePhase)"])
         })
     }
 
@@ -3006,12 +3006,12 @@ enum WatchDirectError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .ended: return "The call ended."
-        case .unreadable: return "Conduit on the iPhone sent something this Watch app can't read."
-        case .timedOut: return "Conduit on the iPhone didn't answer in time."
+        case .ended: return String(localized: "The call ended.")
+        case .unreadable: return String(localized: "Conduit on the iPhone sent something this Watch app can't read.")
+        case .timedOut: return String(localized: "Conduit on the iPhone didn't answer in time.")
         case .refused(let reason): return reason
-        case .noRelayToken: return "This call can't get a Gemini token through the relay."
-        case .relayToken(let reason): return "No Gemini token through the relay: \(reason)"
+        case .noRelayToken: return String(localized: "This call can't get a Gemini token through the relay.")
+        case .relayToken(let reason): return String(localized: "No Gemini token through the relay: \(reason)")
         }
     }
 }
