@@ -1176,4 +1176,12 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
     func showOnScreen(title: String, markdown: String) -> VoiceScreenCard? { nil }
 
     func takePendingChatContext() -> String? { nil }
+
+    // No attached chat, so no chat request to follow up; background jobs
+    // still take the user's corrections (#451).
+    func threadFollowUpTarget() -> UUID? { nil }
+    func backgroundJob(numbered number: Int) -> VoiceBackgroundJob? { base.backgroundJob(numbered: number) }
+    func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome {
+        await base.followUp(jobID: jobID, words: words)
+    }
 }

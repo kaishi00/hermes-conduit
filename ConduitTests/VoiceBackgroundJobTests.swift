@@ -1818,6 +1818,19 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(lateResult["status"], "not_sent", "a finished job takes no more words")
         XCTAssertEqual(fake.redirects.count, 1)
     }
+
+    func testWatchCallInterruptJobReachesTheRunningJob() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        let bridge = GeminiLiveToolBridge(supervisor: WatchCallJobSupervisor(supervisor))
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "book a table for Sam"]))
+        let job = try XCTUnwrap(supervisor.jobs.first)
+
+        let sent = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "interrupt_job", arguments: ["job_id": job.id.uuidString, "message": "wait, make it Alex"]))
+        guard case .toolResponse("call_2", "interrupt_job", let result, _)? = sent.first else { return XCTFail("\(sent)") }
+        XCTAssertEqual(result["status"], "sent", "a Watch call's correction reaches the job, not a no-op default")
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex")
+    }
 }
 
 // MARK: - Voice controller integration
