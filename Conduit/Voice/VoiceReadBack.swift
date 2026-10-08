@@ -12,9 +12,9 @@
 import Foundation
 
 enum VoiceReadBack {
-    /// Said in place of a code block. Not UI copy: the live model reads it
-    /// in the language of the conversation.
-    static let codeBlockNote = "(There's code here; it's in the chat.)"
+    /// Said in place of a code block. Read word for word like the rest of
+    /// the reply, so it's in the app's language.
+    static var codeBlockNote: String { AppLocalization.string("(There's code here; it's in the chat.)") }
 
     /// `markdown` as plain speech, paragraphs kept.
     static func plainSpeech(_ markdown: String) -> String {
@@ -81,8 +81,9 @@ enum VoiceReadBack {
     private static func inline(_ text: String) -> String {
         var text = text
         let rules: [(String, String)] = [
-            (#"!\[([^\]]*)\]\([^)]*\)"#, "$1"),
-            (#"\[([^\]]+)\]\([^)]*\)"#, "$1"),
+            // A link's address can hold parentheses ("Foo_(bar)").
+            (#"!\[([^\]]*)\]\((?:[^()]|\([^()]*\))*\)"#, "$1"),
+            (#"\[([^\]]+)\]\((?:[^()]|\([^()]*\))*\)"#, "$1"),
             (#"<(https?://[^>\s]+)>"#, "$1"),
             (#"<br\s*/?>"#, " "),
         ]
@@ -105,9 +106,11 @@ enum VoiceReadBack {
     }
 
     /// "https://www.example.com/a/b" → "example.com": a URL read out is
-    /// noise, the site says where it goes.
+    /// noise, the site says where it goes. Balanced parentheses belong to
+    /// the URL; a closing one that wraps it doesn't.
     private static func replacingBareLinks(_ text: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: #"https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?'"]"#) else { return text }
+        let pattern = #"https?://(?:[^\s<>()\[\]]|\([^\s<>()\[\]]*\))*(?:[^\s<>()\[\].,;:!?'"]|\([^\s<>()\[\]]*\))"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
         var result = text as NSString
         for match in regex.matches(in: text, range: NSRange(location: 0, length: result.length)).reversed() {
             let link = result.substring(with: match.range)

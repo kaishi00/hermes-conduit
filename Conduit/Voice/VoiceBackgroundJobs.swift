@@ -446,6 +446,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         chatNotes.removeAll { $0.text == Self.askFirstOnPrompt || $0.text == Self.askFirstOffPrompt }
         // Only the running call's cards are ever shown.
         screenCards.removeAll()
+        // A read-back reads only this call's results.
+        lastCallResult = nil
     }
 
     /// Switches asking first for the running call. `byModel`: the live model
