@@ -2260,6 +2260,16 @@ extension VoiceConversationControllerTests {
             "back-to-back code blocks get one note"
         )
         XCTAssertEqual(
+            VoiceReadBack.plainSpeech("````md\n```swift\nlet x = 1\n```\n````\nDone."),
+            VoiceReadBack.codeBlockNote + "\nDone.",
+            "a longer fence can show a shorter one"
+        )
+        XCTAssertEqual(
+            VoiceReadBack.plainSpeech("```\na\n```swift\nb\n```\nDone."),
+            VoiceReadBack.codeBlockNote + "\nDone.",
+            "a fence with text after it doesn't close a block"
+        )
+        XCTAssertEqual(
             VoiceReadBack.plainSpeech("See https://en.wikipedia.org/wiki/Foo_(bar) and [Foo](https://en.wikipedia.org/wiki/Foo_(bar))."),
             "See en.wikipedia.org and Foo.",
             "parentheses inside a link's address"

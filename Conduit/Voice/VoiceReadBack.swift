@@ -20,18 +20,25 @@ enum VoiceReadBack {
     static func plainSpeech(_ markdown: String) -> String {
         let note = codeBlockNote
         var lines: [String] = []
-        var fence: String?
+        var fence: (mark: Character, length: Int)?
         for rawLine in markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if let open = fence {
-                if line.hasPrefix(open) { fence = nil }
+                // Closed only by the same mark, at least as long, alone on
+                // its line: a "````" block can show a "```" one.
+                let run = line.prefix { $0 == open.mark }
+                if run.count >= open.length, line.dropFirst(run.count).allSatisfy(\.isWhitespace) { fence = nil }
                 continue
             }
-            if line.hasPrefix("```") || line.hasPrefix("~~~") {
-                fence = String(line.prefix(3))
-                // Back-to-back code blocks get one note.
-                if lines.last(where: { !$0.isEmpty }) != note { lines.append(note) }
-                continue
+            if let mark = line.first, mark == "`" || mark == "~" {
+                let run = line.prefix { $0 == mark }
+                // "```x```" is inline code: a fence's info has no backticks.
+                if run.count >= 3, !(mark == "`" && line.dropFirst(run.count).contains("`")) {
+                    fence = (mark, run.count)
+                    // Back-to-back code blocks get one note.
+                    if lines.last(where: { !$0.isEmpty }) != note { lines.append(note) }
+                    continue
+                }
             }
             if let spoken = spokenLine(line) { lines.append(spoken) }
         }
