@@ -104,6 +104,10 @@ final class WatchDirectBroker {
 
     init(link: WatchVoiceLink) {
         self.link = link
+        // Calls it can't read would pass for a fresh install: said once.
+        if let bytes = ledger.unreadableBytes {
+            link.log.note("watchDirectLedgerUnreadable", ["bytes": bytes])
+        }
     }
 
     private var appState: AppState { AppStateRuntimeRegistry.shared.appState }
@@ -230,6 +234,7 @@ final class WatchDirectBroker {
             grantLiveToken = true
             let grant = await requestGrant(id, profile: plan.connection.profile)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            ledger.setGrant(grantScope, for: id)
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
@@ -283,14 +288,7 @@ final class WatchDirectBroker {
     /// arriving late) gets one of its own, so the running call is left
     /// alone. Only asked for a call on the active connection.
     private func bridge(for id: UInt32) -> GeminiLiveToolBridge {
-        if callID == nil, let known = ledger.call(id), !known.ended {
-            callID = id
-            connection = known.connection
-            lateOutgoing = []
-            lastHeardAt = Date()
-            appState.setWatchVoiceCallActive(true)
-            appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = true
-        }
+        adoptIfKnown(id)
         guard callID == id else { return makeBridge() }
         if let bridge { return bridge }
         let bridge = makeBridge()
@@ -614,6 +612,7 @@ final class WatchDirectBroker {
     /// grant this phone got for the call can have its jobs carried over.
     private func renewGrant(_ id: UInt32, carryJobsFrom: String?) async -> WatchVoiceWire.Message {
         guard onCallsConnection(id) else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged) }
+        adoptIfKnown(id)
         guard id == callID, let profile = connection?.profile, !grantTools.isEmpty || !grantJobTools.isEmpty || grantLiveToken else {
             return .callRefused(callID: id, reason: "This call has no Watch lookups to renew.")
         }
@@ -622,12 +621,47 @@ final class WatchDirectBroker {
         }
         guard onCallsConnection(id) else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged) }
         let carry = carryJobsFrom.flatMap { grantIDs.contains($0) ? $0 : nil }
-        guard let grant = await requestGrant(id, profile: profile, carryJobsFrom: carry) else {
+        let renewed = await requestGrant(id, profile: profile, carryJobsFrom: carry)
+        if callID == id { ledger.setGrant(grantScope, for: id) }
+        guard let grant = renewed else {
             return .callRefused(callID: id, reason: "Hermes couldn't renew the Watch lookups.")
         }
         // Ending the call revokes the new grant with the others.
         guard onCallsConnection(id) else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged) }
         return .directGrantIssued(callID: id, grant: grant)
+    }
+
+    /// After a restart: a running call the ledger knows becomes the running
+    /// call again, with its connection and what its grants cover.
+    private func adoptIfKnown(_ id: UInt32) {
+        guard callID == nil, let known = ledger.call(id), !known.ended else { return }
+        callID = id
+        connection = known.connection
+        if let scope = known.grant {
+            grantTools = scope.tools
+            grantJobTools = scope.jobTools
+            grantLiveToken = scope.liveToken
+            grantMaxJobs = scope.maxJobs
+            grantJobOptions = scope.jobOptions
+            grantVoiceApprovals = scope.voiceApprovals
+            grantIDs = scope.grantIDs
+        }
+        lateOutgoing = []
+        lastHeardAt = Date()
+        appState.setWatchVoiceCallActive(true)
+        appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = true
+    }
+
+    private var grantScope: WatchDirectCallLedger.GrantScope {
+        .init(
+            tools: grantTools,
+            jobTools: grantJobTools,
+            liveToken: grantLiveToken,
+            maxJobs: grantMaxJobs,
+            jobOptions: grantJobOptions,
+            voiceApprovals: grantVoiceApprovals,
+            grantIDs: grantIDs
+        )
     }
 
     /// Ends the call's grants on Hermes, which closes them on the relay.
@@ -685,13 +719,15 @@ final class WatchDirectBroker {
     /// active now. A running call whose connection the phone left ends.
     private func onCallsConnection(_ id: UInt32) -> Bool {
         let current = appState.watchDirectConnection
-        if let known = ledger.call(id), known.connection == current { return true }
-        link.log.note("watchDirectConnectionChanged", [
-            "callID": Int(id),
-            "known": ledger.call(id) != nil,
-            "running": id == callID,
-        ])
-        if id == callID { endCall() }
+        let known = ledger.call(id)
+        if let known, known.connection == current { return true }
+        // The running call, or one still running when the phone restarted.
+        if id == callID || (callID == nil && known?.ended == false) {
+            link.log.note("watchDirectConnectionChanged", ["callID": Int(id), "known": known != nil])
+            if id == callID { endCall() } else { ledger.end(id) }
+        } else {
+            link.log.note("watchDirectRefused", ["callID": Int(id), "known": known != nil, "straggler": true])
+        }
         return false
     }
 
@@ -781,8 +817,9 @@ struct WatchDirectConnection: Codable, Equatable {
 
 /// What the phone keeps about its recent Watch calls across a restart:
 /// the connection each began on and the "Save voice calls" setting then,
-/// whether it ended, and the start_job calls sent toward Hermes for it.
-/// Profile names and dashboard ids only, never a key or a transcript.
+/// whether it ended, the start_job calls sent toward Hermes for it, and
+/// what its grants cover. Profile names, dashboard and grant ids only,
+/// never a key or a transcript.
 struct WatchDirectCallLedger {
     struct Call: Codable, Equatable {
         let id: UInt32
@@ -790,6 +827,20 @@ struct WatchDirectCallLedger {
         let saveCalls: Bool
         var ended = false
         var jobs: [String] = []
+        /// What its grants cover, so it can renew them after a restart.
+        var grant: GrantScope?
+    }
+
+    /// The tools and limits a call's grants were asked for, and the grants'
+    /// ids (for carrying jobs over and revoking): never their keys.
+    struct GrantScope: Codable, Equatable {
+        var tools: [String]
+        var jobTools: [String]
+        var liveToken: Bool
+        var maxJobs: Int
+        var jobOptions: [String: String]
+        var voiceApprovals: Bool
+        var grantIDs: [String]
     }
 
     static let defaultsKey = "watchDirect.calls.v1"
@@ -800,11 +851,21 @@ struct WatchDirectCallLedger {
 
     private let defaults: UserDefaults
     private(set) var calls: [Call]
+    /// The size of what was stored, when it couldn't be read.
+    private(set) var unreadableBytes: Int?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        calls = defaults.data(forKey: Self.defaultsKey)
-            .flatMap { try? JSONDecoder().decode([Call].self, from: $0) } ?? []
+        guard let data = defaults.data(forKey: Self.defaultsKey) else {
+            calls = []
+            return
+        }
+        if let calls = try? JSONDecoder().decode([Call].self, from: data) {
+            self.calls = calls
+        } else {
+            calls = []
+            unreadableBytes = data.count
+        }
     }
 
     static func jobKey(_ toolID: String, in id: UInt32) -> String {
@@ -833,6 +894,14 @@ struct WatchDirectCallLedger {
         store()
     }
 
+    mutating func setGrant(_ scope: GrantScope, for id: UInt32) {
+        guard let index = calls.lastIndex(where: { $0.id == id }), calls[index].grant != scope else { return }
+        calls[index].grant = scope
+        store()
+    }
+
+    /// Written at once: the receipt is on disk before the start can reach
+    /// Hermes.
     mutating func recordJob(_ toolID: String, in id: UInt32) {
         guard let index = calls.lastIndex(where: { $0.id == id }), !calls[index].jobs.contains(toolID) else { return }
         calls[index].jobs.append(toolID)

@@ -295,6 +295,39 @@ final class WatchDirectCallModel: ObservableObject {
     /// hasn't started yet.
     private var awaitingAnswerSince: TimeInterval?
     private var unansweredTurns = 0
+    /// The user's words came back transcribed and the model hasn't spoken
+    /// or called a tool since: a reply it owes (WatchStall). Counting the
+    /// turn unanswered doesn't clear it.
+    private var replyOwedSince: TimeInterval?
+    /// A turn ended with nothing from the model after the user's words: it
+    /// chose silence, so the session works.
+    private var silentTurnSinceUser = false
+    /// The stall prompt went out and nothing has come back from the model.
+    private var stallPromptedAt: TimeInterval?
+    private var stallPrompts = 0
+    private var stallPromptsAnswered = 0
+    private var stallPromptsSilent = 0
+    private var stalls = 0
+    private var silentTurns = 0
+    /// The model's last audio, words, tool call or turn end; and the last
+    /// message of any kind from Gemini.
+    private var lastModelEventAt: TimeInterval?
+    private var lastServerEventAt: TimeInterval?
+    /// The model turn under way, for its log line: its first output and
+    /// first audio, what it answered, and how much it said.
+    private var turnStartedAt: TimeInterval?
+    private var turnFirstAudioAt: TimeInterval?
+    private var turnHeardAt: TimeInterval?
+    private var turnVoicedAt: TimeInterval?
+    private var turnAnswering: String?
+    private var turnAudioSeconds: Double = 0
+    private var turnTools = 0
+    private var turnMaxGap: TimeInterval = 0
+    private var turnEndedByInterruption = false
+    private var modelTurnNotes = 0
+    /// From the user's last transcribed words to the first audio of the
+    /// reply: Gemini's side of the reply time.
+    private var heardReplyTimes: [Double] = []
     private var endRequestedAt: TimeInterval?
     private var transcript: [WatchVoiceWire.DirectTurn] = []
     private var openUserLine: Int?
@@ -788,12 +821,19 @@ final class WatchDirectCallModel: ObservableObject {
         case .failed: tokenFailures += 1
         case .first: break
         }
-        WatchProbeLog.shared.note("directToken", [
+        var fields: [String: Any] = [
             "source": source.rawValue,
-            "error": error as Any,
             "screen": "\(scenePhase)",
             "reachable": link.isReachable,
-        ])
+        ]
+        switch source {
+        case .reused, .relay:
+            // Served anyway: the error is the iPhone's.
+            fields["phoneError"] = error as Any
+        case .first, .phone, .failed:
+            fields["error"] = error as Any
+        }
+        WatchProbeLog.shared.note("directToken", fields)
     }
 
     // MARK: Connection
@@ -824,6 +864,8 @@ final class WatchDirectCallModel: ObservableObject {
                 WatchProbeLog.shared.note("directHandoff", ["ms": Int((at - since) * 1000), "screen": "\(scenePhase)"])
             }
             connectionReadyAt = at
+            // A later reconnect may ask the relay once again.
+            tokens?.allowRelayTry()
             if phase == .connecting || phase == .reconnecting { phase = restingPhase }
             if let since = rejoinStartedAt {
                 rejoinStartedAt = nil
@@ -868,7 +910,10 @@ final class WatchDirectCallModel: ObservableObject {
                 lastPlaybackEndedAt = now
             }
             suppressingModelTurn = false
-            if modelTurnActive { modelTurnEnded() }
+            if modelTurnActive { modelTurnEnded("cut") }
+            turnRecordEnded("cut")
+            // A prompt sent on the old connection can't be judged on this one.
+            stallPromptedAt = nil
             WatchProbeLog.shared.note("directReconnecting", [
                 "cutAnswer": cutAnswer,
                 "aliveS": alive.map { Int($0) } as Any,
@@ -908,7 +953,13 @@ final class WatchDirectCallModel: ObservableObject {
             lastPlaybackEndedAt = now
         }
         suppressingModelTurn = false
-        if modelTurnActive { modelTurnEnded() }
+        if modelTurnActive { modelTurnEnded("cut") }
+        turnRecordEnded("cut")
+        // The fresh session is told the conversation, and asked to answer
+        // what went unanswered.
+        stallPromptedAt = nil
+        replyOwedSince = nil
+        silentTurnSinceUser = false
         // Not a resumption: its time isn't one.
         reconnectStartedAt = nil
         rejoinWaitingSince = now
@@ -945,6 +996,7 @@ final class WatchDirectCallModel: ObservableObject {
             "ms": Int((now - since) * 1000),
             "rejoin": rejoins,
             "wristDown": rejoinWristDown,
+            "waitingOnRelay": tokens?.relayInFlight == true,
             "screen": "\(scenePhase)",
         ])
         session.stop()
@@ -967,8 +1019,15 @@ final class WatchDirectCallModel: ObservableObject {
     }
 
     private func rejoin() {
-        guard let session else { return }
+        guard let session else {
+            // Nothing to start again: the call can't come back.
+            rejoinWaitingSince = nil
+            finish(rejoinReason)
+            return
+        }
         rejoinWaitingSince = nil
+        // Each rejoin may ask Hermes for one token through the relay.
+        tokens?.allowRelayTry()
         rejoins += 1
         rejoinStartedAt = now
         rejoinWristDown = !link.isReachable
@@ -992,6 +1051,7 @@ final class WatchDirectCallModel: ObservableObject {
         let text = WatchRejoin.prompt(transcript)
         awaitingAnswerSince = now
         textUpdatesSent += 1
+        noteTextSent("rejoin", text)
         session.send(.textTurn(text), onSent: nil, onFailure: { [weak self] in
             self?.quietQueue.insert(.textWhenIdle(text), at: 0)
         })
@@ -1110,6 +1170,7 @@ final class WatchDirectCallModel: ObservableObject {
         guard !hasSentOpening, let openingPrompt, let session, session.isReady else { return }
         hasSentOpening = true
         awaitingAnswerSince = now
+        noteTextSent("opening", openingPrompt)
         session.send(.textTurn(openingPrompt), onSent: nil, onFailure: { [weak self] in self?.hasSentOpening = false })
     }
 
@@ -1117,6 +1178,7 @@ final class WatchDirectCallModel: ObservableObject {
 
     private func handle(_ event: GeminiLiveProtocol.ServerEvent) {
         guard isActive else { return }
+        lastServerEventAt = now
         switch event {
         case .setupComplete:
             break
@@ -1130,9 +1192,16 @@ final class WatchDirectCallModel: ObservableObject {
             let at = now
             if modelTurnActive, let last = lastAudioChunkAt {
                 maxAudioGap = max(maxAudioGap, at - last)
+                turnMaxGap = max(turnMaxGap, at - last)
             }
             lastAudioChunkAt = at
             lastModelAudioAt = at
+            modelActed(at)
+            if turnFirstAudioAt == nil {
+                turnFirstAudioAt = at
+                if turnAnswering == "user", let heard = turnHeardAt, at - heard < 60 { heardReplyTimes.append(at - heard) }
+            }
+            turnAudioSeconds += Double(pcm.count / 2) / max(1, sampleRate)
             if !awaitingFirstAudio, speechEndAtTurnStart == nil, !audio.isPlaying {
                 // The first audio of a reply: timed from the end of the
                 // user's speech.
@@ -1148,9 +1217,15 @@ final class WatchDirectCallModel: ObservableObject {
         case .inputTranscription(let text):
             lastUserSpeechAt = now
             if openUserLine == nil, awaitingReplySince == nil { awaitingReplySince = now }
+            // Words still coming in while the model answers are that turn's.
+            if !modelTurnActive, replyOwedSince == nil {
+                replyOwedSince = now
+                silentTurnSinceUser = false
+            }
             appendTranscript(.user, text)
         case .outputTranscription(let text):
             guard !suppressingModelTurn else { return }
+            modelActed(now)
             modelTurnActive = true
             awaitingReplySince = nil
             awaitingAnswerSince = nil
@@ -1160,11 +1235,18 @@ final class WatchDirectCallModel: ObservableObject {
             audio.stopPlayback()
             lastPlaybackEndedAt = now
             suppressingModelTurn = false
-            modelTurnEnded()
+            modelTurnEnded("interrupted")
+            turnEndedByInterruption = true
         case .turnComplete:
+            // A turn the orb stopped isn't a silent one.
+            let wasSuppressed = suppressingModelTurn
             suppressingModelTurn = false
-            modelTurnEnded()
+            if turnStartedAt == nil, !turnEndedByInterruption, !wasSuppressed { silentTurnEnded() }
+            turnEndedByInterruption = false
+            modelTurnEnded("complete")
         case .toolCall(let calls):
+            modelActed(now)
+            turnTools += calls.count
             for call in calls { toolCalled(call) }
         case .toolCallCancellation(let ids):
             // Answers still coming for these are dropped.
@@ -1178,11 +1260,12 @@ final class WatchDirectCallModel: ObservableObject {
         }
     }
 
-    private func modelTurnEnded() {
+    private func modelTurnEnded(_ end: String) {
         if modelTurnActive || openAssistantLine != nil {
             turns += 1
             if scenePhase != .active { turnsWhileScreenOff += 1 }
         }
+        turnRecordEnded(end)
         modelTurnActive = false
         lastModelTurnEndedAt = now
         openUserLine = nil
@@ -1194,6 +1277,82 @@ final class WatchDirectCallModel: ObservableObject {
         lastAudioChunkAt = nil
         activity.reset()
         flushQuietQueue()
+    }
+
+    /// The model spoke or called a tool: whatever it owed, it's working.
+    private func modelActed(_ at: TimeInterval) {
+        lastModelEventAt = at
+        turnEndedByInterruption = false
+        if turnStartedAt == nil {
+            turnStartedAt = at
+            turnHeardAt = lastUserSpeechAt
+            turnVoicedAt = activity.lastVoicedAt
+            if stallPromptedAt != nil {
+                turnAnswering = "stallPrompt"
+            } else if let sent = awaitingAnswerSince, at - sent < Self.replyWait {
+                turnAnswering = "update"
+            } else {
+                turnAnswering = replyOwedSince != nil ? "user" : "own"
+            }
+        }
+        replyOwedSince = nil
+        silentTurnSinceUser = false
+        if let prompted = stallPromptedAt { stallPromptAnswered(after: at - prompted, silent: false) }
+    }
+
+    /// A turn ended with nothing from the model: it chose silence, and the
+    /// session works.
+    private func silentTurnEnded() {
+        let at = now
+        silentTurns += 1
+        lastModelEventAt = at
+        if replyOwedSince != nil { silentTurnSinceUser = true }
+        if silentTurns <= 20 {
+            WatchProbeLog.shared.note("directSilentTurn", [
+                "sinceHeardMs": lastUserSpeechAt.map { Int((at - $0) * 1000) } as Any,
+                "owed": replyOwedSince != nil,
+                "prompted": stallPromptedAt != nil,
+                "screen": "\(scenePhase)",
+            ])
+        }
+        if let prompted = stallPromptedAt { stallPromptAnswered(after: at - prompted, silent: true) }
+    }
+
+    /// Gemini's side of each turn (round 7's slow replies): from the user's
+    /// last transcribed words and from the end of their voice on the Watch
+    /// to the reply's first audio, what the turn answered and how it ended.
+    /// Never what was said.
+    private func turnRecordEnded(_ end: String) {
+        defer {
+            turnStartedAt = nil
+            turnFirstAudioAt = nil
+            turnHeardAt = nil
+            turnVoicedAt = nil
+            turnAnswering = nil
+            turnAudioSeconds = 0
+            turnTools = 0
+            turnMaxGap = 0
+        }
+        guard let started = turnStartedAt else { return }
+        modelTurnNotes += 1
+        guard modelTurnNotes <= 200 else { return }
+        func ms(_ from: TimeInterval?, _ to: TimeInterval?) -> Int? {
+            guard let from, let to, to >= from else { return nil }
+            return Int((to - from) * 1000)
+        }
+        let answeringUser = turnAnswering == "user"
+        WatchProbeLog.shared.note("directModelTurn", [
+            "end": end,
+            "answering": turnAnswering as Any,
+            "heardToAudioMs": (answeringUser ? ms(turnHeardAt, turnFirstAudioAt) : nil) as Any,
+            "voiceToAudioMs": (answeringUser ? ms(turnVoicedAt, turnFirstAudioAt) : nil) as Any,
+            "firstOutputToAudioMs": ms(started, turnFirstAudioAt) as Any,
+            "audioMs": Int(turnAudioSeconds * 1000),
+            "maxGapMs": Int(turnMaxGap * 1000),
+            "tools": turnTools,
+            "outChars": openAssistantLine.flatMap { transcript.indices.contains($0) ? transcript[$0].text.count : nil } as Any,
+            "screen": "\(scenePhase)",
+        ])
     }
 
     private func appendTranscript(_ role: WatchVoiceWire.DirectTurn.Role, _ text: String) {
@@ -2048,6 +2207,85 @@ final class WatchDirectCallModel: ObservableObject {
         })
     }
 
+    /// Gemini heard the user and has said nothing since, with nothing else
+    /// owed (round 7: the user's words transcribed, then 40 s of silence on
+    /// an open socket). Prompted once for that turn, with their words.
+    private func promptIfStalled() {
+        guard stallPromptedAt == nil, endRequestedAt == nil, phase == .listening,
+              let session, session.isReady,
+              !modelTurnActive, !audio.isPlaying, toolsInFlight.isEmpty,
+              WatchStall.isDue(owedSince: replyOwedSince, lastHeardAt: lastUserSpeechAt, now: now) else { return }
+        // A tool's answer or an update just went out: its reply comes first.
+        if let sent = awaitingAnswerSince, now - sent < Self.replyWait { return }
+        let at = now
+        let text = WatchStall.prompt(lastUserLine: transcript.last { $0.role == .user }?.text)
+        WatchProbeLog.shared.note("directStallPrompt", [
+            "owedMs": replyOwedSince.map { Int((at - $0) * 1000) } as Any,
+            "sinceHeardMs": lastUserSpeechAt.map { Int((at - $0) * 1000) } as Any,
+            "sinceModelMs": lastModelEventAt.map { Int((at - $0) * 1000) } as Any,
+            "sinceServerMs": lastServerEventAt.map { Int((at - $0) * 1000) } as Any,
+            "silentTurn": silentTurnSinceUser,
+            "reachable": link.isReachable,
+            "screen": "\(scenePhase)",
+        ])
+        replyOwedSince = nil
+        stallPromptedAt = at
+        stallPrompts += 1
+        awaitingAnswerSince = at
+        noteTextSent("stallPrompt", text)
+        session.send(.textTurn(text), onSent: nil, onFailure: { [weak self] in
+            guard let self, self.stallPromptedAt == at else { return }
+            self.stallPromptedAt = nil
+        })
+    }
+
+    private func stallPromptAnswered(after wait: TimeInterval, silent: Bool) {
+        stallPromptedAt = nil
+        if silent { stallPromptsSilent += 1 } else { stallPromptsAnswered += 1 }
+        WatchProbeLog.shared.note("directStallPromptAnswered", [
+            "ms": Int(wait * 1000),
+            "silent": silent,
+            "screen": "\(scenePhase)",
+        ])
+    }
+
+    /// Nothing at all came back from the model for the prompt: the session
+    /// stopped working, and a fresh one carries the call on, told the
+    /// conversation so far, as after a session that broke.
+    private func rejoinIfStallUnanswered() {
+        guard let prompted = stallPromptedAt, now - prompted >= WatchStall.answerWait else { return }
+        stallPromptedAt = nil
+        guard let session, session.isReady, endRequestedAt == nil else { return }
+        stalls += 1
+        WatchProbeLog.shared.note("directStalled", [
+            "sinceServerMs": lastServerEventAt.map { Int((now - $0) * 1000) } as Any,
+            "sinceModelMs": lastModelEventAt.map { Int((now - $0) * 1000) } as Any,
+            "rejoins": rejoins,
+            "reachable": link.isReachable,
+            "relayToken": canMintThroughRelay,
+            "screen": "\(scenePhase)",
+        ])
+        session.stop()
+        let reason = "Gemini stopped answering."
+        if rejoins < Self.maxRejoins {
+            waitToRejoin(reason)
+        } else {
+            finish(reason)
+        }
+    }
+
+    /// Each text turn the model is sent, by kind and size: never its words.
+    private func noteTextSent(_ kind: String, _ text: String) {
+        let at = now
+        WatchProbeLog.shared.note("directTextSent", [
+            "kind": kind,
+            "chars": text.count,
+            "sinceHeardMs": lastUserSpeechAt.map { Int((at - $0) * 1000) } as Any,
+            "sinceModelMs": lastModelEventAt.map { Int((at - $0) * 1000) } as Any,
+            "screen": "\(scenePhase)",
+        ])
+    }
+
     /// Job news and the like go out only while nobody is speaking.
     private func flushQuietQueue() {
         guard !quietQueue.isEmpty, let session, session.isReady, isQuiet else { return }
@@ -2055,7 +2293,15 @@ final class WatchDirectCallModel: ObservableObject {
         guard let message = item.clientMessage else { return }
         textUpdatesSent += 1
         // A text turn is answered; the next update waits for that.
-        if case .textWhenIdle = item { awaitingAnswerSince = now }
+        switch item {
+        case .textWhenIdle(let text):
+            awaitingAnswerSince = now
+            noteTextSent("update", text)
+        case .contextWhenIdle(let text):
+            noteTextSent("context", text)
+        case .toolResponse, .endConversation:
+            break
+        }
         session.send(message, onSent: nil, onFailure: { [weak self] in self?.quietQueue.insert(item, at: 0) })
     }
 
@@ -2279,8 +2525,21 @@ final class WatchDirectCallModel: ObservableObject {
         if let since = awaitingReplySince, now - since >= Self.unansweredAfter, !modelTurnActive {
             awaitingReplySince = nil
             unansweredTurns += 1
-            WatchProbeLog.shared.note("directUnanswered", ["screen": "\(scenePhase)", "ready": session?.isReady == true])
+            WatchProbeLog.shared.note("directUnanswered", [
+                "screen": "\(scenePhase)",
+                "ready": session?.isReady == true,
+                "sinceHeardMs": lastUserSpeechAt.map { Int((now - $0) * 1000) } as Any,
+                "sinceModelMs": lastModelEventAt.map { Int((now - $0) * 1000) } as Any,
+                "sinceServerMs": lastServerEventAt.map { Int((now - $0) * 1000) } as Any,
+                "silentTurn": silentTurnSinceUser,
+                "toolsRunning": toolsInFlight.count,
+                "awaitingAnswer": awaitingAnswerSince != nil,
+                "playing": audio.isPlaying,
+                "prompted": stallPromptedAt != nil,
+            ])
         }
+        promptIfStalled()
+        rejoinIfStallUnanswered()
         if let endAt = endRequestedAt {
             let lastSound = max(endAt, lastModelAudioAt ?? 0)
             if (!audio.isPlaying && now - lastSound >= Self.endGrace) || now - endAt >= Self.endTimeout {
@@ -2562,6 +2821,27 @@ final class WatchDirectCallModel: ObservableObject {
         awaitingReplySince = nil
         awaitingAnswerSince = nil
         unansweredTurns = 0
+        replyOwedSince = nil
+        silentTurnSinceUser = false
+        stallPromptedAt = nil
+        stallPrompts = 0
+        stallPromptsAnswered = 0
+        stallPromptsSilent = 0
+        stalls = 0
+        silentTurns = 0
+        lastModelEventAt = nil
+        lastServerEventAt = nil
+        turnStartedAt = nil
+        turnFirstAudioAt = nil
+        turnHeardAt = nil
+        turnVoicedAt = nil
+        turnAnswering = nil
+        turnAudioSeconds = 0
+        turnTools = 0
+        turnMaxGap = 0
+        turnEndedByInterruption = false
+        modelTurnNotes = 0
+        heardReplyTimes = []
         endRequestedAt = nil
         transcript = []
         openUserLine = nil
@@ -2744,6 +3024,13 @@ final class WatchDirectCallModel: ObservableObject {
             "turns": turns,
             "turnsWhileScreenOff": turnsWhileScreenOff,
             "unansweredTurns": unansweredTurns,
+            "silentTurns": silentTurns,
+            "stallPrompts": stallPrompts,
+            "stallPromptsAnswered": stallPromptsAnswered,
+            "stallPromptsSilent": stallPromptsSilent,
+            "stalls": stalls,
+            "heardReplyP50Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(heardReplyTimes, 0.5)) as Any,
+            "heardReplyP95Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(heardReplyTimes, 0.95)) as Any,
             "replies": replyTimes.count,
             "replyP50Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(replyTimes, 0.5)) as Any,
             "replyP95Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(replyTimes, 0.95)) as Any,
@@ -2842,6 +3129,17 @@ final class WatchDirectTokens: GeminiLiveTokenProviding {
     var onIssued: ((Source, String?) -> Void)?
     private var first: GeminiLiveToken?
     private var latest: GeminiLiveToken
+    /// One try through the relay per rejoin, or per connection lost: the
+    /// session's next connect attempt doesn't spend another of the grant's
+    /// tokens.
+    private var relayTried = false
+    /// A token is on its way through the relay.
+    private(set) var relayInFlight = false
+
+    /// A rejoin may ask the relay once more.
+    func allowRelayTry() {
+        relayTried = false
+    }
 
     init(first: GeminiLiveToken) {
         self.first = first
@@ -2870,10 +3168,15 @@ final class WatchDirectTokens: GeminiLiveTokenProviding {
                 onIssued?(.reused, error.localizedDescription)
                 return latest
             }
-            guard let relayFetch else {
+            // A stopped session mustn't spend one of Hermes' tokens.
+            if Task.isCancelled { throw CancellationError() }
+            guard let relayFetch, !relayTried else {
                 onIssued?(.failed, error.localizedDescription)
                 throw error
             }
+            relayTried = true
+            relayInFlight = true
+            defer { relayInFlight = false }
             do {
                 let token = try await relayFetch()
                 latest = token
