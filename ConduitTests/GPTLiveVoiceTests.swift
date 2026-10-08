@@ -2201,6 +2201,13 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No problem"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yes, no problem"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yeah, no worries"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("That works"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sounds great"), .yes(addition: nil))
+        // A no after a "wait" is the answer.
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Wait, never mind"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Hold on, no"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Not now, no thanks"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Wait, I don't know"), .notYet(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Fine, forget it"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, wait"), .notYet(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, but not now"), .notYet(change: nil))
@@ -2248,6 +2255,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("不用了"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("不，谢谢"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("等一下"), .notYet(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("等一下，不用了"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("好，但是改成明天"), .other("好，但是改成明天"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("嗯，让我想想"), .other("嗯，让我想想"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("可以吗？"), .other("可以吗？"))
@@ -2594,6 +2602,18 @@ extension VoiceConversationControllerTests {
         let prompt = fake.submissions.first?.1 ?? ""
         XCTAssertTrue(prompt.hasSuffix("what's the weather in Rome"), prompt)
         XCTAssertFalse(prompt.contains("book a table"), prompt)
+
+        // Switched off by the model: what waited is dropped, and it hears so.
+        _ = await bridge.handleDelegation(id: "del_5", request: "Mode: ask first")
+        _ = await bridge.handleDelegation(id: "del_6", request: "book a table for Sam", userWords: "book a table for Sam")
+        let off = await bridge.handleDelegation(id: "del_7", request: "Mode: send directly")
+        guard case .delegationReply("del_7", let offText, .commentary)? = off.first, offText.contains("wasn't sent") else { return XCTFail("\(off)") }
+        // Nothing waits for an answer any more.
+        let empty = await bridge.handleDelegation(id: "del_8", request: "")
+        guard case .delegationReply("del_8", let emptyText, _)? = empty.first, emptyText != GPTLiveDelegationBridge.waitingForAnswer else {
+            return XCTFail("\(empty)")
+        }
+        XCTAssertEqual(fake.created, 1)
     }
 
     /// GPT-Live delegated while the user's words were still coming in: the

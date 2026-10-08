@@ -113,8 +113,10 @@ final class GPTLiveDelegationBridge {
         }
         guard !instructions.isEmpty else {
             // GPT-Live delegated on the user's answer before their words
-            // reached the transcript: it is answered once they do.
-            if draft != nil { return waitForAnswer(id) }
+            // reached the transcript: it is answered once they do. With
+            // asking first switched off since, nothing waits any more.
+            if draft != nil, supervisor.asksBeforeSending { return waitForAnswer(id) }
+            draft = nil
             if sentRecently { return [.delegationReply(delegationID: id, text: Self.alreadySent, channel: .commentary)] }
             return [.delegationReply(delegationID: id, text: Self.relay("Hermes didn't get a request to work on. Ask the user what they want done."), channel: .speakable)]
         }
@@ -122,11 +124,15 @@ final class GPTLiveDelegationBridge {
         if let asks = Self.modeMarker(in: instructions) {
             supervisor.setAsksBeforeSending(asks, byModel: true)
             // A supervisor that can't hold requests (a Watch call) keeps sending at once.
-            let text = supervisor.asksBeforeSending != asks
+            var text = supervisor.asksBeforeSending != asks
                 ? "Asking first isn't available on this call: requests go to Hermes straight away."
                 : asks
                 ? "Asking first is on for this call: each new request waits for the user's OK."
                 : "Asking first is off for this call: new requests go to Hermes straight away."
+            if !supervisor.asksBeforeSending, draft != nil {
+                draft = nil
+                text += " The request that was waiting wasn't sent: if the user still wants it, delegate it again."
+            }
             return [.delegationReply(delegationID: id, text: text, channel: .commentary)]
         }
         // Routed on the delegation's own words, not the conversation added

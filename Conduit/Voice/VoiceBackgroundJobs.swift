@@ -2015,7 +2015,8 @@ enum VoiceThreadRouting {
         "no problem", "no worries", "no rush", "yes", "yeah", "yep", "yup", "yea", "ya", "sure", "ok", "okay", "alright", "all right",
         "go ahead", "go for it", "do it", "send it", "send that", "send this", "please", "correct", "right",
         "exactly", "absolutely", "definitely", "of course", "sounds good", "perfect", "great", "fine",
-        "good", "that's right", "that's it", "go", "uh huh", "mhm", "why not",
+        "good", "that's right", "that's it", "that works", "works for me", "that'll do", "sounds great",
+        "go", "uh huh", "mhm", "why not",
     ]
     /// After a no, words that only decline politely ("no, I'm good", "yes,
     /// leave it as is").
@@ -2088,10 +2089,17 @@ enum VoiceThreadRouting {
             while dropNoLead() || dropLead(answerRefusalTails) || dropFiller() {}
             return .no(change: negates(rest) ? nil : more(words))
         }
+        // "Wait, never mind", "Hold on, actually no": a no after it is the
+        // answer.
+        func notYet() -> HeldRequestAnswer {
+            while dropLead(answerJoiners) {}
+            if dropNoLead() { return refusal() }
+            return .notYet(change: change(words))
+        }
         // "Oh yes", "Well, no", "Actually, go ahead".
         while dropLead(answerJoiners) {}
         if dropNoLead() { return refusal() }
-        if dropLead(answerNotYetLeads) { return .notYet(change: change(words)) }
+        if dropLead(answerNotYetLeads) { return notYet() }
         guard dropLead(answerYesLeads) else {
             // "Send to Hermes", or just "Send": a yes with nothing more.
             if words == ["send"] || saysSendToHermes(spoken) { return .yes(addition: more(words)) }
@@ -2101,7 +2109,7 @@ enum VoiceThreadRouting {
         // follows decides.
         while dropLead(answerYesLeads) || dropLead(answerJoiners) {}
         if dropNoLead() { return refusal() }
-        if dropLead(answerNotYetLeads) { return .notYet(change: change(words)) }
+        if dropLead(answerNotYetLeads) { return notYet() }
         // A negation or a question anywhere after it: not a yes after all.
         let turned = words.contains { word in
             answerTurnWords.contains(word) || word.hasSuffix("n't")
@@ -2168,15 +2176,21 @@ enum VoiceThreadRouting {
             let words = left()
             return words.isEmpty || turned(words) ? nil : spoken
         }
+        // "等一下，不用了": a no after it is the answer.
+        func notYet() -> HeldRequestAnswer {
+            guard dropLead(cjkAnswerNoLeads) else { return .notYet(change: change()) }
+            while dropLead(cjkAnswerNoLeads) {}
+            return .no(change: change())
+        }
         if dropClause(cjkAnswerClauseNo) || dropLead(cjkAnswerNoLeads) {
             while dropLead(cjkAnswerNoLeads) {}
             return .no(change: change())
         }
-        if dropLead(cjkAnswerNotYetLeads) { return .notYet(change: change()) }
+        if dropLead(cjkAnswerNotYetLeads) { return notYet() }
         guard dropClause(cjkAnswerClauseYes) || dropLead(cjkAnswerYesLeads) else { return nil }
         while dropLead(cjkAnswerYesLeads) {}
         if dropLead(cjkAnswerNoLeads) { return .no(change: change()) }
-        if dropLead(cjkAnswerNotYetLeads) { return .notYet(change: change()) }
+        if dropLead(cjkAnswerNotYetLeads) { return notYet() }
         let words = left()
         guard !words.isEmpty else { return .yes(addition: nil) }
         let asks = spoken.contains("?") || spoken.contains("？") || rest.hasSuffix("吗") || rest.hasSuffix("か")
