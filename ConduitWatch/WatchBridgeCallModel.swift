@@ -402,6 +402,14 @@ final class WatchBridgeCallModel: ObservableObject {
         grantGone || reason == "grantExpiring"
     }
 
+    /// As above, for a call that may have gone out: only the relay or
+    /// Hermes turning it away for the grant says it didn't run.
+    private static func grantRanOut(reason: String, grantGone: Bool, sent: Bool) -> Bool {
+        guard sent else { return grantRanOut(reason: reason, grantGone: grantGone) }
+        return ["relay 401", "relay 404", "relay 410", "host 403", "host 410"].contains(reason)
+            || reason.hasSuffix(" grant_exhausted")
+    }
+
     private func approvalsRanOut() {
         approvals = []
         pendingApproval = nil
@@ -1009,7 +1017,7 @@ final class WatchBridgeCallModel: ObservableObject {
                 self.followJobs()
             case .unavailable(let reason, let grantGone, let sent):
                 fields["reason"] = reason
-                if !sent, Self.grantRanOut(reason: reason, grantGone: grantGone) {
+                if Self.grantRanOut(reason: reason, grantGone: grantGone, sent: sent) {
                     self.answer(delegationID, WatchBridgeDelegation.notStarted(WatchBridgeDelegation.grantRanOut), channel: .speakable)
                 } else if sent {
                     self.relayJobsStarted += 1
@@ -1038,10 +1046,10 @@ final class WatchBridgeCallModel: ObservableObject {
             case .timedOut:
                 text = WatchBridgeDelegation.relay("The lookup took too long.")
             case .unavailable(let reason, let grantGone, let sent):
-                if sent {
-                    text = WatchBridgeDelegation.relay("The lookup got no answer from Hermes.")
-                } else if Self.grantRanOut(reason: reason, grantGone: grantGone) {
+                if Self.grantRanOut(reason: reason, grantGone: grantGone, sent: sent) {
                     text = WatchBridgeDelegation.notStarted(WatchBridgeDelegation.grantRanOut)
+                } else if sent {
+                    text = WatchBridgeDelegation.relay("The lookup got no answer from Hermes.")
                 } else {
                     text = WatchBridgeDelegation.relay("Hermes couldn't be reached from the Watch for the lookup.")
                 }
@@ -1109,6 +1117,8 @@ final class WatchBridgeCallModel: ObservableObject {
             let outcome = await relay.run(name: WatchJobAnswer.jobNews, arguments: ["wait_s": Self.jobNewsWait])
             guard let self, self.callID == id, self.isActive else { return }
             self.newsInFlight = false
+            // News stopped while this was out: its cards can't be answered.
+            guard self.followingJobs else { return }
             switch outcome {
             case .answered(let body):
                 guard let news = WatchJobAnswer.news(from: body, grantID: relay.grantID) else {
