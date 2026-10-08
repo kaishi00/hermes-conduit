@@ -705,6 +705,10 @@ struct SessionSummary: Identifiable, Equatable {
     var isActive: Bool
     var isArchived: Bool
     var messageCount: Int? = nil
+    /// Hermes' shared read flag (`unread` on dashboard rows, #454): activity
+    /// postdates the `last_read_at` watermark. Nil when the listing didn't
+    /// carry it (the `session.list` RPC, older gateways).
+    var isUnread: Bool? = nil
     var lineageRootId: String?
 }
 

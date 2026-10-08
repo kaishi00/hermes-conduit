@@ -160,6 +160,8 @@ struct SessionList: View {
     @State private var projectPendingDeletion: ProjectSummary?
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
+    /// Quick status filter (#454), layered on top of the source filter.
+    @State private var statusFilter: SessionStatusFilter?
 
     private enum SessionPresentation: String {
         case sessions
@@ -241,6 +243,14 @@ struct SessionList: View {
                     } label: {
                         Label("Archived conversations", systemImage: "archivebox")
                     }
+
+                    Button {
+                        Haptics.light()
+                        appState.markAllSessionsRead()
+                    } label: {
+                        Label("Mark all as read", systemImage: "envelope.open")
+                    }
+                    .disabled(unreadCount == 0)
 
                     Button {
                         Haptics.selection()
@@ -331,8 +341,10 @@ struct SessionList: View {
                 }
                 if layout.emptyState {
                     ContentUnavailableView(
-                        selectedSource == nil ? AppLocalization.string("No Sessions") : AppLocalization.string("No \(selectedSource!.label) Sessions"),
-                        systemImage: "tray",
+                        statusFilter == .unread
+                            ? AppLocalization.string("No Unread Chats")
+                            : selectedSource == nil ? AppLocalization.string("No Sessions") : AppLocalization.string("No \(selectedSource!.label) Sessions"),
+                        systemImage: statusFilter == .unread ? "envelope.open" : "tray",
                         description: Text(searchText.isEmpty ? AppLocalization.string("Sessions will appear here once created.") : AppLocalization.string("Try a different search."))
                     )
                 }
@@ -424,9 +436,21 @@ struct SessionList: View {
     }
 
     private var allSessions: [SessionSummary] {
-        let nonArchived = appState.activeProfileSessions.filter { !$0.isArchived }
-        guard let selectedSource else { return nonArchived }
-        return nonArchived.filter { appState.sessionCategory(for: $0) == selectedSource }
+        var listed = appState.activeProfileSessions.filter { !$0.isArchived }
+        if let selectedSource {
+            listed = listed.filter { appState.sessionCategory(for: $0) == selectedSource }
+        }
+        switch statusFilter {
+        case .some(.unread):
+            listed = listed.filter { appState.isSessionUnread($0) }
+        case .none:
+            break
+        }
+        return listed
+    }
+
+    private var unreadCount: Int {
+        appState.activeProfileSessions.filter { !$0.isArchived && appState.isSessionUnread($0) }.count
     }
 
     private var displayedSessions: [SessionSummary] {
@@ -557,6 +581,11 @@ struct SessionList: View {
     private var sourceFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                statusFilterChip(.unread, count: unreadCount)
+                Capsule()
+                    .fill(Color.primary.opacity(0.12))
+                    .frame(width: 1, height: 18)
+                    .accessibilityHidden(true)
                 sourceFilter(title: AppLocalization.string("All"), count: appState.activeProfileSessions.filter { !$0.isArchived }.count, source: nil)
                 ForEach(availableSources, id: \.self) { source in
                     sourceFilter(title: source.label, count: appState.activeProfileSessions.filter { !$0.isArchived && appState.sessionCategory(for: $0) == source }.count, source: source)
@@ -565,6 +594,32 @@ struct SessionList: View {
             .padding(.horizontal, 4)
             .padding(.vertical, 8)
         }
+    }
+
+    /// A status chip toggles on and off and narrows whichever source filter
+    /// is selected, so "Unread" works inside "Telegram" too.
+    private func statusFilterChip(_ filter: SessionStatusFilter, count: Int) -> some View {
+        let isOn = statusFilter == filter
+        return Button {
+            withAnimation(ConduitMotion.response) {
+                Haptics.selection()
+                statusFilter = isOn ? nil : filter
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(isOn ? Color.conduitBackgroundColor : filter.color)
+                    .frame(width: 6, height: 6)
+                Text("\(filter.title) \(String(count))")
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(isOn ? Color.conduitBackgroundColor : .secondary)
+            .padding(.horizontal, 11).padding(.vertical, 7)
+            .background(isOn ? filter.color : Color.primary.opacity(0.07), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+        .accessibilityHint(filter.accessibilityHint)
     }
 
     private func sourceFilter(title: String, count: Int, source: SessionSource?) -> some View {
@@ -616,6 +671,7 @@ struct SessionList: View {
                 session: session,
                 isSelected: session.id == appState.activeSessionId,
                 isPinned: appState.isSessionPinned(session),
+                isUnread: appState.isSessionUnread(session),
                 isVoiceJob: appState.isVoiceJobSession(session),
                 category: appState.sessionCategory(for: session),
                 detail: appState.voiceSessionDetail(for: session)
@@ -639,6 +695,9 @@ struct SessionList: View {
                 Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
             }
             .tint(.conduitAccent)
+
+            ReadStateToggleButton(session: session)
+                .tint(.blue)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button {
@@ -814,6 +873,8 @@ struct SessionRow: View {
     let session: SessionSummary
     var isSelected = false
     var isPinned = false
+    /// Has activity the user hasn't seen (#454).
+    var isUnread = false
     /// Started as a Voice background job (issue #163).
     var isVoiceJob = false
     /// The filter the row is filed under (a voice tag's, else its source).
@@ -835,7 +896,7 @@ struct SessionRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.title)
-                    .font(.subheadline.weight(.medium))
+                    .font(.subheadline.weight(isUnread ? .semibold : .medium))
                     .lineLimit(1)
                 HStack(spacing: 5) {
                     Text(detail ?? session.model)
@@ -847,6 +908,12 @@ struct SessionRow: View {
             }
 
             Spacer(minLength: 0)
+            if isUnread {
+                Circle()
+                    .fill(SessionStatusFilter.unread.color)
+                    .frame(width: 8, height: 8)
+                    .accessibilityLabel("Unread")
+            }
             if isVoiceJob, icon != .voiceJob {
                 Image(systemName: "waveform")
                     .font(.caption2.weight(.bold))
@@ -926,6 +993,8 @@ struct SessionActionMenuItems: View {
             Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
         }
 
+        ReadStateToggleButton(session: session)
+
         MoveToProjectMenu(session: session, excludingProjectID: excludingProjectID, onMoved: onChanged)
 
         Button {
@@ -946,6 +1015,55 @@ struct SessionActionMenuItems: View {
             Label("Delete", systemImage: "trash")
         }
         .disabled(appState.isSessionMutationInFlight(session))
+    }
+}
+
+/// Mark as read / Mark as unread for one conversation (#454). Writes Hermes'
+/// shared read flag too, so Hermes Desktop follows.
+struct ReadStateToggleButton: View {
+    @EnvironmentObject private var appState: AppState
+    let session: SessionSummary
+
+    var body: some View {
+        let isUnread = appState.isSessionUnread(session)
+        Button {
+            Haptics.light()
+            if isUnread {
+                appState.markSessionRead(session)
+            } else {
+                appState.markSessionUnread(session)
+            }
+        } label: {
+            Label(
+                isUnread ? AppLocalization.string("Mark as Read") : AppLocalization.string("Mark as Unread"),
+                systemImage: isUnread ? "envelope.open" : "envelope.badge"
+            )
+        }
+    }
+}
+
+/// Quick status filters in the session list (#454).
+enum SessionStatusFilter: String, CaseIterable, Identifiable {
+    case unread
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .unread: return AppLocalization.string("Unread")
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .unread: return .blue
+        }
+    }
+
+    var accessibilityHint: String {
+        switch self {
+        case .unread: return AppLocalization.string("Shows only chats with replies you haven't seen")
+        }
     }
 }
 
@@ -1061,6 +1179,7 @@ private struct ProjectSessionsSheet: View {
                                             session: session,
                                             isSelected: session.id == appState.activeSessionId,
                                             isPinned: appState.isSessionPinned(session),
+                                            isUnread: appState.isSessionUnread(session),
                                             isVoiceJob: appState.isVoiceJobSession(session),
                                             category: appState.sessionCategory(for: session),
                                             detail: appState.voiceSessionDetail(for: session)

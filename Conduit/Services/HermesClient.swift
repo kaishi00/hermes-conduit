@@ -2924,6 +2924,7 @@ enum MessageNormalizer {
                 isActive: false,
                 isArchived: obj["archived"]?.boolValue ?? false,
                 messageCount: messageCount,
+                isUnread: obj["unread"]?.boolValue,
                 lineageRootId: obj["_lineage_root_id"]?.stringValue
             )
         }
