@@ -471,7 +471,6 @@ struct SessionList: View {
         }.count
     }
 
-
     private var displayedSessions: [SessionSummary] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return allSessions }
@@ -937,11 +936,11 @@ struct SessionRow: View {
                 Image(systemName: "exclamationmark.bubble.fill")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(SessionStatusFilter.needsInput.color)
-                    .accessibilityLabel("Needs input")
+                    .accessibilityLabel(SessionStatusFilter.needsInput.title)
             case .working?:
                 ProgressView()
                     .controlSize(.mini)
-                    .accessibilityLabel("Working")
+                    .accessibilityLabel(SessionStatusFilter.working.title)
             case nil:
                 EmptyView()
             }
@@ -949,7 +948,7 @@ struct SessionRow: View {
                 Circle()
                     .fill(SessionStatusFilter.unread.color)
                     .frame(width: 8, height: 8)
-                    .accessibilityLabel("Unread")
+                    .accessibilityLabel(SessionStatusFilter.unread.title)
             }
             if isVoiceJob, icon != .voiceJob {
                 Image(systemName: "waveform")

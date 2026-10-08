@@ -604,6 +604,9 @@ final class AppState: ObservableObject {
     /// to (#454).
     @Published private(set) var liveSessionStatusIndex = SessionLiveStatusIndex()
     private var liveSessionStatusProfile: String?
+    /// The client whose gateway rejected `session.active_list`, so the chat
+    /// list's poll stops asking it.
+    private weak var activeListUnsupportedClient: HermesClient?
     @Published private(set) var sessionMutationID: String?
     @Published private(set) var isRefreshingSessionCatalog = false
     @Published var activeSessionId: String? {
@@ -5089,7 +5092,8 @@ final class AppState: ObservableObject {
     /// The open chat's own turn state is authoritative for "working"; the
     /// registry snapshot can lag it by a poll.
     func sessionLiveStatus(_ session: SessionSummary) -> SessionLiveStatus? {
-        let registry = liveSessionStatusProfile == activeProfile
+        // A snapshot from before a disconnect may be long stale.
+        let registry = isConnected && liveSessionStatusProfile == activeProfile
             ? liveSessionStatusIndex.status(for: session)
             : nil
         if sessionMatchesActiveSession(session) {
@@ -5103,11 +5107,18 @@ final class AppState: ObservableObject {
     /// in-memory snapshot that resumes and changes nothing. Gateways without
     /// `session.active_list` just leave the filters empty.
     func refreshLiveSessionStatuses() async {
-        guard isSceneActive, let client, isConnected else { return }
+        guard isSceneActive, let client, isConnected,
+              client !== activeListUnsupportedClient else { return }
         let profile = activeProfile
-        guard let rows = try? await client.activeSessions(),
-              profile == activeProfile, self.client === client else { return }
-        recordActiveListEvidence(rows, profile: profile)
+        do {
+            let rows = try await client.activeSessions()
+            guard profile == activeProfile, self.client === client else { return }
+            recordActiveListEvidence(rows, profile: profile)
+        } catch {
+            // Stop asking a gateway that doesn't have the method; a new
+            // connection probes again.
+            if isMethodUnavailable(error) { activeListUnsupportedClient = client }
+        }
     }
 
     func markSessionRead(_ session: SessionSummary) {
