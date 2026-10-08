@@ -87,6 +87,8 @@ final class WatchBridgeCallModel: ObservableObject {
     static let jobNewsWait = 15
     static let jobNewsPause: TimeInterval = 15
     static let jobNewsRetry: TimeInterval = 2
+    /// Grant calls job news leaves for delegations and approvals.
+    static let callsKeptForTurns = 10
     /// Conversation a rejoined session is seeded with.
     static let historyTurns = 40
     static let endTimeout: TimeInterval = 4
@@ -1064,9 +1066,13 @@ final class WatchBridgeCallModel: ObservableObject {
     /// news, wrist up or down: one ask at a time.
     private func fetchJobNewsIfDue() {
         guard followingJobs, !newsInFlight, endRequestedAt == nil, now >= nextNewsAt, let relay else { return }
-        guard !relay.isGone, !relay.expires(within: WatchToolRelayClient.expiryMargin) else {
+        // Job news stops before it spends the calls the call's own turns
+        // need (delegations, approvals); job results still come as
+        // notifications.
+        guard !relay.isGone, !relay.expires(within: WatchToolRelayClient.expiryMargin),
+              relay.callsLeft > Self.callsKeptForTurns else {
             followingJobs = false
-            note("bridgeJobNewsStopped", ["gone": relay.isGone])
+            note("bridgeJobNewsStopped", ["gone": relay.isGone, "callsLeft": relay.callsLeft])
             return
         }
         newsInFlight = true
@@ -1106,6 +1112,7 @@ final class WatchBridgeCallModel: ObservableObject {
                 approvalsShown += 1
                 shown += 1
             }
+            // GPT-Live can't answer an approval here: the user taps it.
             guard let text = WatchJobAnswer.notice(for: item, voiceApprovals: false) else { continue }
             let settled = ["finished", "failed", "cancelled"].contains(item.status)
             let delegationID = settled ? jobDelegations.removeValue(forKey: item.jobID) : nil

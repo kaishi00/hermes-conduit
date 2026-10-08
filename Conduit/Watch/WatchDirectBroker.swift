@@ -387,6 +387,7 @@ final class WatchDirectBroker {
                 "personality": plan.personalityIncluded,
                 "appState": WatchProbeLiveness.appStateName,
             ])
+            endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return .bridgeSession(callID: id, session: .init(
                 engine: engine,
                 grant: grant,
@@ -405,6 +406,21 @@ final class WatchDirectBroker {
             ])
             if callID == id { endCall() }
             return .callRefused(callID: id, reason: reason)
+        }
+    }
+
+    /// A bridge call can't outlive its grant: the relay closes the bridge
+    /// when the grant ends. If the Watch's end never arrives (its app was
+    /// killed), the call ends here a minute later, so the phone stops
+    /// keeping recovery running for it. An end that comes later still saves.
+    private func endWhenGrantDoes(_ id: UInt32, expiresAt: Date?) {
+        let at = expiresAt ?? Date().addingTimeInterval(Self.silenceLimit)
+        let wait = max(0, at.timeIntervalSinceNow) + 60
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(wait))
+            guard let self, self.callID == id else { return }
+            self.link.log.note("watchBridgeOutlivedGrant", ["callID": Int(id)])
+            self.endCall()
         }
     }
 
