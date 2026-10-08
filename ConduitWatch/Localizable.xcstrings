@@ -145,6 +145,22 @@
         }
       }
     },
+    "Clear the Watch call log?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch の通話ログを消去しますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除 Watch 通话日志？"
+          }
+        }
+      }
+    },
     "Conduit" : {
       "localizations" : {
         "ja" : {
