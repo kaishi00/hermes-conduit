@@ -83,6 +83,7 @@ extension HermesVoiceGatewayTimeoutTests {
             )),
             .directSession(callID: 7, session: .init(token: token, setup: Data([1, 2, 3]), setupBytes: 900, googleSearch: false, voice: "Kore", openingPrompt: nil)),
             .directSession(callID: 7, session: .init(token: token, setup: Data([1, 2, 3]), setupBytes: 900, googleSearch: false, voice: "Kore", openingPrompt: nil, toolGrant: Self.watchToolGrant)),
+            .directSession(callID: 7, session: .init(token: token, setup: Data([1, 2, 3]), setupBytes: 900, googleSearch: false, voice: "Kore", openingPrompt: nil, toolGrant: nil, endPhrases: ["goodbye", "再见"])),
             .directTokenIssued(callID: 7, token: token),
             .directGrant(callID: 7),
             .directGrant(callID: 7, carryJobsFrom: "AAAAAAAAAAAAAAAAAAAAAA"),
@@ -609,7 +610,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WatchJobAnswer.notice(for: news.items[0], voiceApprovals: false),
                        WatchJobAnswer.completionPrompt(title: "Build", result: "All green."))
         XCTAssertEqual(WatchJobAnswer.notice(for: news.items[1], voiceApprovals: false),
-                       WatchJobAnswer.updatePrompt("Deploy failed: provider overloaded"))
+                       WatchJobAnswer.updatePrompt("Deploy failed. Open it in Conduit on your iPhone for details. (provider overloaded)"))
+        // The phone's wording: the reason's first line, kept short.
+        XCTAssertEqual(WatchJobAnswer.failedNotice("Deploy", reason: "\nquota exceeded\nTraceback …"),
+                       VoiceBackgroundJobSupervisor.failedNotice("Deploy", reason: "\nquota exceeded\nTraceback …").replacingOccurrences(of: "in Conduit for", with: "in Conduit on your iPhone for"))
+        XCTAssertLessThan(WatchJobAnswer.failedNotice("Deploy", reason: String(repeating: "word ", count: 100)).count, 260)
         let tap = try XCTUnwrap(WatchJobAnswer.notice(for: news.items[2], voiceApprovals: false))
         let voice = try XCTUnwrap(WatchJobAnswer.notice(for: news.items[2], voiceApprovals: true))
         // Only voice approval tells the model it may answer, and how.
@@ -1020,11 +1025,20 @@ extension HermesVoiceGatewayTimeoutTests {
         let messages: [WatchVoiceWire.Message] = [
             .grokStart(callID: 9, version: WatchVoiceWire.version),
             .grokSession(callID: 9, session: .init(setup: packed.data, setupBytes: packed.bytes, voice: "Ara", openingPrompt: nil, grant: grant)),
+            .grokSession(callID: 9, session: .init(setup: packed.data, setupBytes: packed.bytes, voice: "Ara", openingPrompt: nil, grant: grant, endPhrases: ["bye"])),
         ]
         for message in messages {
             XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(message)), message)
         }
         XCTAssertEqual(VoiceCallEngine.watchBridge(WatchAudioBridgeWire.grok), .grokLive)
+    }
+
+    /// A Watch call ends on the same spoken goodbye as the phone's call:
+    /// the matcher it shares with the phone.
+    func testWatchCallsEndOnTheProfilesGoodbye() {
+        let phrases = VoiceSpokenCommands.defaultEndConversationPhrases
+        XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand("Okay, goodbye.", phrases: phrases))
+        XCTAssertFalse(VoiceSpokenCommands.matchesSpokenCommand("Goodbye to the old server.", phrases: phrases))
     }
 
     /// The host takes xAI's audio deltas out to pace them; the Watch's

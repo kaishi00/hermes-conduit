@@ -4233,6 +4233,14 @@ final class AppState: ObservableObject {
         publishVoiceCallSaveStatus()
     }
 
+    /// A queued call not saved yet takes `title` when its row is made.
+    private func retitleQueuedVoiceTranscript(callID: String, title: String) {
+        var outbox = VoiceTranscriptOutbox.load(from: defaults)
+        guard let index = outbox.entries.firstIndex(where: { $0.request.callID == callID && $0.request.sessionID == nil }) else { return }
+        outbox.entries[index].request.title = title
+        outbox.store(in: defaults)
+    }
+
     private func dequeueVoiceTranscript(callID: String) {
         var outbox = VoiceTranscriptOutbox.load(from: defaults)
         outbox.entries.removeAll { $0.request.callID == callID }
@@ -4314,9 +4322,28 @@ final class AppState: ObservableObject {
     /// and a link that opens the job's chat, so its full result is a tap
     /// away from the transcript.
     static func voiceJobStartedNote(_ job: VoiceBackgroundJob) -> String {
-        let line = AppLocalization.string("Started a background job: \(job.title).")
-        guard let id = [job.storedSessionID, job.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return line }
+        voiceJobStartedNote(title: job.title, sessionID: [job.storedSessionID, job.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }))
+    }
+
+    static func voiceJobStartedNote(title: String, sessionID: String?) -> String {
+        let line = AppLocalization.string("Started a background job: \(title).")
+        guard let id = sessionID, !id.isEmpty else { return line }
         return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open job"))
+    }
+
+    /// A saved Watch call's lines, with a "Started a background job" line
+    /// where each of its jobs started, as the phone's own calls note them.
+    static func watchCallTurns(_ turns: [WatchVoiceWire.DirectTurn], jobs: [WatchVoiceWire.DirectJob]) -> [VoiceTranscriptTurn] {
+        var lines = turns.map { (at: $0.at, role: $0.role == .user ? VoiceTranscriptTurn.Role.user : .assistant, text: $0.text) }
+        for job in jobs {
+            let note = (at: job.startedAt, role: VoiceTranscriptTurn.Role.assistant, text: voiceJobStartedNote(title: job.title, sessionID: job.sessionID))
+            // After every line said by then: the request comes before it.
+            let index = lines.firstIndex { $0.at > job.startedAt } ?? lines.endIndex
+            lines.insert(note, at: index)
+        }
+        return lines.enumerated().map { offset, line in
+            VoiceTranscriptTurn(index: offset, role: line.role, text: line.text, at: line.at)
+        }
     }
 
     /// The line a saved call gets where it sent work to its chat: the
@@ -4473,6 +4500,11 @@ final class AppState: ObservableObject {
     /// A short title from the call's opening, like a chat's; the time-stamped
     /// fallback when Hermes can't make one.
     private func voiceCallTitle(turns: [VoiceTranscriptTurn], profile: String) async -> String {
+        await generatedVoiceCallTitle(turns: turns, profile: profile) ?? Self.fallbackVoiceCallTitle()
+    }
+
+    /// Hermes' title for a call; nil when it couldn't make one.
+    private func generatedVoiceCallTitle(turns: [VoiceTranscriptTurn], profile: String) async -> String? {
         let opening = turns.prefix(6).map { ($0.role == .user ? "User: " : "Assistant: ") + String(ConduitAppLink.removingLinks(from: $0.text).prefix(300)) }.joined(separator: "\n")
         guard let client, !opening.isEmpty,
               let title = try? await client.oneshot(
@@ -4481,9 +4513,9 @@ final class AppState: ObservableObject {
                 input: opening,
                 profile: profile,
                 maxTokens: 60
-              ) else { return Self.fallbackVoiceCallTitle() }
+              ) else { return nil }
         let cleaned = title.trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”‘’ ").union(.whitespacesAndNewlines))
-        return cleaned.isEmpty ? Self.fallbackVoiceCallTitle() : String(cleaned.prefix(80))
+        return cleaned.isEmpty ? nil : String(cleaned.prefix(80))
     }
 
     // MARK: Resume
@@ -23768,6 +23800,8 @@ final class AppState: ObservableObject {
         /// The voice-job model settings for jobs the Watch starts through
         /// the push relay, as `createSession` sends them for a phone job.
         let jobOptions: [String: String]
+        /// The profile's spoken end phrases, as the phone's call uses them.
+        let endPhrases: [String]
     }
 
     /// Builds a Watch call's setup as `geminiLiveController` builds the
@@ -23802,7 +23836,8 @@ final class AppState: ObservableObject {
         let personality = await personalityLookup
         let token = try await tokens.freshToken()
         let style = liveVoiceStyle
-        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let jobSession = preferences.voiceJobSessionOptions(
             runtimeModel: runtime.model,
             runtimeProvider: runtime.provider
         )
@@ -23823,7 +23858,7 @@ final class AppState: ObservableObject {
                 personality: personality,
                 answerLength: style.answerLength,
                 asksFirst: false,
-                readsBack: false
+                onWatch: true
             ) + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
@@ -23837,7 +23872,8 @@ final class AppState: ObservableObject {
             saveCalls: voiceCallSavingEnabled,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
-            jobOptions: jobOptions
+            jobOptions: jobOptions,
+            endPhrases: preferences.spokenEndConversationPhrases
         )
     }
 
@@ -23853,6 +23889,7 @@ final class AppState: ObservableObject {
         let memoryIncluded: Bool
         let personalityIncluded: Bool
         let jobOptions: [String: String]
+        let endPhrases: [String]
     }
 
     /// Builds a Watch GPT-Live call's briefing as `gptLiveController`
@@ -23881,7 +23918,8 @@ final class AppState: ObservableObject {
         let memory = await memoryLookup
         let personality = await personalityLookup
         let style = liveVoiceStyle
-        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let jobSession = preferences.voiceJobSessionOptions(
             runtimeModel: runtime.model,
             runtimeProvider: runtime.provider
         )
@@ -23907,7 +23945,8 @@ final class AppState: ObservableObject {
             saveCalls: voiceCallSavingEnabled,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
-            jobOptions: jobOptions
+            jobOptions: jobOptions,
+            endPhrases: preferences.spokenEndConversationPhrases
         )
     }
 
@@ -23925,6 +23964,7 @@ final class AppState: ObservableObject {
         let memoryIncluded: Bool
         let personalityIncluded: Bool
         let jobOptions: [String: String]
+        let endPhrases: [String]
     }
 
     /// Builds a Watch Grok call's setup as `grokLiveController` builds the
@@ -23955,7 +23995,8 @@ final class AppState: ObservableObject {
         let memory = await memoryLookup
         let personality = await personalityLookup
         let style = liveVoiceStyle
-        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let jobSession = preferences.voiceJobSessionOptions(
             runtimeModel: runtime.model,
             runtimeProvider: runtime.provider
         )
@@ -23974,7 +24015,8 @@ final class AppState: ObservableObject {
                 memory: memory,
                 personality: personality,
                 answerLength: style.answerLength,
-                asksFirst: false
+                asksFirst: false,
+                onWatch: true
             ) + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
@@ -23986,7 +24028,8 @@ final class AppState: ObservableObject {
             saveCalls: voiceCallSavingEnabled,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
-            jobOptions: jobOptions
+            jobOptions: jobOptions,
+            endPhrases: preferences.spokenEndConversationPhrases
         )
     }
 
@@ -24019,7 +24062,7 @@ final class AppState: ObservableObject {
     /// call ends, by a transfer that arrives whenever the phone next runs;
     /// one that arrives twice is saved once. It goes to the connection the
     /// call began on, whichever is active when it arrives.
-    func saveWatchVoiceCall(_ transcript: WatchVoiceWire.DirectTranscript, connection: WatchDirectConnection, saveCalls: Bool) async {
+    func saveWatchVoiceCall(_ transcript: WatchVoiceWire.DirectTranscript, connection: WatchDirectConnection, saveCalls: Bool, phoneJobs: [WatchVoiceWire.DirectJob] = []) async {
         let profile = connection.profile
         let dashboard = connection.dashboard
         guard saveCalls, !transcript.turns.isEmpty else { return }
@@ -24027,9 +24070,12 @@ final class AppState: ObservableObject {
         guard !saved.contains(transcript.callUUID) else { return }
         saved.append(transcript.callUUID)
         defaults.set(Array(saved.suffix(50)), forKey: Self.watchDirectSavedCallsKey)
-        let turns = transcript.turns.enumerated().map { offset, turn in
-            VoiceTranscriptTurn(index: offset, role: turn.role == .user ? .user : .assistant, text: turn.text, at: turn.at)
-        }
+        // The Watch's relay jobs and the ones the phone ran for the call.
+        var jobs = transcript.jobs ?? []
+        for job in phoneJobs where !jobs.contains(where: { $0.jobID == job.jobID }) { jobs.append(job) }
+        jobs.sort { $0.startedAt < $1.startedAt }
+        let turns = Self.watchCallTurns(transcript.turns, jobs: jobs)
+        let jobSessions = jobs.compactMap(\.sessionID)
         queueVoiceTranscript(
             VoiceTranscriptSaveRequest(
                 callID: transcript.callUUID,
@@ -24039,14 +24085,27 @@ final class AppState: ObservableObject {
                 turns: turns
             ),
             dashboard: dashboard,
-            profile: profile
+            profile: profile,
+            jobs: jobSessions
         )
         // Only the active dashboard's outbox drains; another's waits until
-        // it's active again, as the phone's own calls do.
+        // it's active again, as the phone's own calls do, and keeps the
+        // time-stamped title.
         guard dashboard == activeDashboardID?.uuidString ?? "-" else { return }
         let end = beginVoiceTranscriptBackgroundTask()
         defer { end() }
-        guard await connectForWatchDirectCall(timeout: .seconds(20)) else { return }
+        // Held back from other drains until it has its title.
+        voiceTranscriptsSaving.insert(transcript.callUUID)
+        let connected = await connectForWatchDirectCall(timeout: .seconds(20))
+        // A title from the call's opening, as the phone's calls get; the
+        // queued time-stamped one stays if Hermes can't make one.
+        if connected, !isLiveVoiceCallActive, dashboard == activeDashboardID?.uuidString ?? "-" {
+            if let title = await generatedVoiceCallTitle(turns: turns, profile: profile) {
+                retitleQueuedVoiceTranscript(callID: transcript.callUUID, title: title)
+            }
+        }
+        voiceTranscriptsSaving.remove(transcript.callUUID)
+        guard connected else { return }
         await drainVoiceTranscriptOutbox(profile: profile, key: voiceHistoryKey(profile: profile))
     }
 

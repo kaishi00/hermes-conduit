@@ -171,6 +171,12 @@ final class WatchDirectCallModel: ObservableObject {
     private var grokStreams = 0
     private var tokens: WatchDirectTokens?
     private var openingPrompt: String?
+    /// The profile's spoken end phrases: the user saying one ends the
+    /// call, as on the iPhone, even if the model doesn't call
+    /// end_conversation.
+    private var endPhrases: [String] = []
+    /// The transcript line of the user's latest utterance.
+    private var exchangeUserLine: Int?
     private var hasSentOpening = false
     private(set) var callID: UInt32 = 0
     private var callUUID = UUID()
@@ -373,6 +379,8 @@ final class WatchDirectCallModel: ObservableObject {
     private var nextNewsAt: TimeInterval = 0
     /// Jobs this call started through the relay, for the user's cap.
     private var relayJobsStarted = 0
+    /// The relay jobs this call started, for its saved transcript.
+    private var jobLog = WatchVoiceWire.DirectJobLog()
     private var jobCallsViaRelay = 0
     private var jobNewsAsks = 0
     private var jobNewsFailed = 0
@@ -634,6 +642,7 @@ final class WatchDirectCallModel: ObservableObject {
             return
         }
         openingPrompt = direct.openingPrompt
+        endPhrases = direct.endPhrases ?? []
         let tokens = WatchDirectTokens(first: token)
         tokens.fetch = { [weak self] in
             guard let self else { throw WatchDirectError.ended }
@@ -703,6 +712,7 @@ final class WatchDirectCallModel: ObservableObject {
             return
         }
         openingPrompt = grok.openingPrompt
+        endPhrases = grok.endPhrases ?? []
         let bridge = WatchGrokBridge(url: url, grantID: grok.grant.grantID, root: root, watchKey: grok.grant.watchKey, voice: grok.voice)
         let session = GrokLiveSession(
             client: WatchGrokConnection(url: url),
@@ -1253,6 +1263,7 @@ final class WatchDirectCallModel: ObservableObject {
             if turnStartedAt == nil, !turnEndedByInterruption, !wasSuppressed { silentTurnEnded() }
             turnEndedByInterruption = false
             modelTurnEnded("complete")
+            endIfUserSaidGoodbye(finished: true)
         case .toolCall(let calls):
             modelActed(now)
             turnTools += calls.count
@@ -1379,6 +1390,7 @@ final class WatchDirectCallModel: ObservableObject {
         transcript.append(.init(role: role, text: text, at: Date()))
         if role == .user {
             openUserLine = transcript.count - 1
+            exchangeUserLine = openUserLine
             openAssistantLine = nil
         } else {
             openAssistantLine = transcript.count - 1
@@ -1725,6 +1737,7 @@ final class WatchDirectCallModel: ObservableObject {
                 // comes as news.
                 if isStart, result["status"] == "started" || result["status"] == "accepted" {
                     self.relayJobsStarted += 1
+                    if let jobID = result["job_id"] { self.jobLog.started(jobID: jobID, title: result["title"] ?? "") }
                     self.followJobs(on: self.jobsHolder(relay))
                 } else if wire.name == WatchJobAnswer.cancelJob {
                     // The running count changed: ask for it now.
@@ -1920,6 +1933,7 @@ final class WatchDirectCallModel: ObservableObject {
         approvals.removeAll { $0.grantID == relay.grantID && !open.contains("\($0.jobID)\n\($0.requestID)") }
         var shown = 0
         for item in news.items {
+            jobLog.heard(jobID: item.jobID, title: item.title, sessionID: item.sessionID)
             // A new request replaces the job's last one; news without one
             // leaves the card to the open-requests list above.
             if let approval = item.approval {
@@ -2616,6 +2630,7 @@ final class WatchDirectCallModel: ObservableObject {
         }
         promptIfStalled()
         rejoinIfStallUnanswered()
+        endIfUserSaidGoodbye(finished: false)
         if let endAt = endRequestedAt {
             let lastSound = max(endAt, lastModelAudioAt ?? 0)
             if (!audio.isPlaying && now - lastSound >= Self.endGrace) || now - endAt >= Self.endTimeout {
@@ -2746,8 +2761,35 @@ final class WatchDirectCallModel: ObservableObject {
         ])
     }
 
-    /// Hermes said goodbye (end_conversation): the microphone closes and
-    /// the call ends once the goodbye has played.
+    /// The user's latest utterance is one of the profile's end phrases, as
+    /// on the iPhone. Checked when the model's turn completes, and, when
+    /// no turn is coming (the transcript arrived after the reply, or the
+    /// model didn't answer), once the words went quiet with the model not
+    /// mid-turn. A quiet utterance must end like a sentence: a pause
+    /// mid-sentence ("By" of "By the way…") never ends the call.
+    private func endIfUserSaidGoodbye(finished: Bool) {
+        guard isActive, endRequestedAt == nil, !endPhrases.isEmpty, let line = exchangeUserLine,
+              transcript.indices.contains(line) else { return }
+        let text = transcript[line].text
+        if !finished {
+            guard !modelTurnActive, let heard = lastUserSpeechAt, now - heard >= Self.quietGoodbyeDelay,
+                  Self.endsAnUtterance(text) else { return }
+        }
+        guard VoiceSpokenCommands.matchesSpokenCommand(text, phrases: endPhrases) else { return }
+        exchangeUserLine = nil
+        WatchCallLog.shared.note("directGoodbyeHeard", ["afterTurn": finished])
+        requestEnd()
+    }
+
+    static let quietGoodbyeDelay: TimeInterval = 1.5
+
+    static func endsAnUtterance(_ text: String) -> Bool {
+        guard let last = text.trimmingCharacters(in: .whitespacesAndNewlines).last else { return false }
+        return ".!?。！？".contains(last)
+    }
+
+    /// Hermes said goodbye (end_conversation), or the user did: the
+    /// microphone closes and the call ends once the goodbye has played.
     private func requestEnd() {
         guard endRequestedAt == nil, isActive else { return }
         endRequestedAt = now
@@ -2780,6 +2822,8 @@ final class WatchDirectCallModel: ObservableObject {
         restartingAudio = false
         microphoneStopped = false
         openingPrompt = nil
+        endPhrases = []
+        exchangeUserLine = nil
         hasSentOpening = false
         caption = nil
         isMuted = false
@@ -2910,6 +2954,7 @@ final class WatchDirectCallModel: ObservableObject {
         newsInFlight = false
         nextNewsAt = 0
         relayJobsStarted = 0
+        jobLog.reset()
         jobCallsViaRelay = 0
         jobNewsAsks = 0
         jobNewsFailed = 0
@@ -2999,7 +3044,8 @@ final class WatchDirectCallModel: ObservableObject {
             startedAt: callStartedDate,
             endedAt: Date(),
             turns: saved,
-            engine: engine == .grok ? WatchAudioBridgeWire.grok : nil
+            engine: engine == .grok ? WatchAudioBridgeWire.grok : nil,
+            jobs: jobLog.jobs.isEmpty ? nil : jobLog.jobs
         )))
         if !queued {
             WatchCallLog.shared.note("directEndQueueFailed", ["lines": saved.count])

@@ -32,6 +32,29 @@ enum WatchBridgeDelegation {
         sent ? refused(reason) : grantGone || reason == "grantExpiring"
     }
 
+    /// VoiceThreadRouting.removingQuickMarker for the marked form the models
+    /// write ("Quick: …", "quickly, …"): routing, not part of the task.
+    static func removingQuickMarker(_ request: String) -> String {
+        let trimmed = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let marker = trimmed.range(of: #"^(quickly|quick)\s*[:,，：]\s*|^(快速|快)\s*[:,，：]\s*"#,
+                                         options: [.regularExpression, .caseInsensitive]) else { return trimmed }
+        let rest = trimmed[marker.upperBound...]
+        return rest.isEmpty ? trimmed : String(rest)
+    }
+
+    /// GPTLiveDelegationBridge.statusContext for the Watch's relay jobs:
+    /// each running job by its number, as the phone tells GPT-Live.
+    static func statusContext(_ jobs: [(number: Int, title: String, status: String)]) -> String {
+        guard !jobs.isEmpty else { return "[Background jobs: none running.]" }
+        let lines = jobs.map { "Job \($0.number) (\($0.title)): \(statusName($0.status))" }
+        return "[Background jobs on Hermes: " + lines.joined(separator: "; ") + ".]"
+    }
+
+    /// The host's job status, in GeminiLiveToolBridge.statusName's words.
+    static func statusName(_ status: String) -> String {
+        status == "needs_approval" ? "needs_approval_on_the_watch" : status
+    }
+
     /// `grantRanOut` without its closing period, to sit inside a sentence.
     static var grantRanOutClause: String {
         grantRanOut.trimmingCharacters(in: CharacterSet(charactersIn: "."))
@@ -139,6 +162,11 @@ enum WatchBridgeDelegation {
     static func relay(_ notice: String) -> String {
         WatchJobAnswer.updatePrompt(notice)
     }
+
+    /// Leads a delegation's result when the user kept talking after asking
+    /// for it (#379): what they said since comes first. The phone's
+    /// GPT-Live call sends the same. Not UI copy.
+    static let resultAfterUserNote = "[The user kept talking after asking for this, so this result waited until they finished. If anything they said since hasn't been answered or passed on to Hermes yet, deal with that first (delegate it if Hermes is needed). Then say that Hermes has come back on the earlier request and give what follows, as it asks.]\n\n"
 
     static let noRequest = relay("Hermes didn't get a request to work on. Ask the user what they want done.")
 

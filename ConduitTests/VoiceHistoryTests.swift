@@ -359,6 +359,40 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(AppState.voiceJobStartedNote(job), "Started a background job: Find a dinner recipe. [Open job](conduit://session/stored-1)")
     }
 
+    func testSavedWatchCallNotesEachJobWhereItStarted() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let turns: [WatchVoiceWire.DirectTurn] = [
+            .init(role: .user, text: "Check the build", at: start),
+            .init(role: .assistant, text: "On it.", at: start.addingTimeInterval(2)),
+            .init(role: .user, text: "Thanks", at: start.addingTimeInterval(30)),
+        ]
+        let jobs: [WatchVoiceWire.DirectJob] = [
+            .init(jobID: "j1", title: "Check the build", sessionID: "s1", startedAt: start.addingTimeInterval(1)),
+            .init(jobID: "j2", title: "Late one", sessionID: nil, startedAt: start.addingTimeInterval(60)),
+        ]
+        let saved = AppState.watchCallTurns(turns, jobs: jobs)
+        XCTAssertEqual(saved.map(\.text), [
+            "Check the build",
+            "Started a background job: Check the build. [Open job](conduit://session/s1)",
+            "On it.",
+            "Thanks",
+            "Started a background job: Late one.",
+        ])
+        XCTAssertEqual(saved.map(\.index), [0, 1, 2, 3, 4])
+        XCTAssertEqual(saved[1].role, .assistant)
+    }
+
+    func testWatchJobLogKeepsEachJobOnceAndLearnsItsChat() {
+        var log = WatchVoiceWire.DirectJobLog()
+        log.started(jobID: "j1", title: "")
+        log.heard(jobID: "j1", title: "Check the build", sessionID: "s1")
+        log.heard(jobID: "j1", title: "Other", sessionID: nil)
+        log.heard(jobID: "j2", title: "Heard first in news", sessionID: "")
+        XCTAssertEqual(log.jobs.map(\.jobID), ["j1", "j2"])
+        XCTAssertEqual(log.jobs.map(\.title), ["Check the build", "Heard first in news"])
+        XCTAssertEqual(log.jobs.map(\.sessionID), ["s1", nil])
+    }
+
     func testChatTurnNoteLinksTheChatTheCallIsAttachedTo() {
         let job = VoiceBackgroundJob(id: UUID(), title: "Check the build", instructions: "x", status: .starting, startedAt: Date())
         let stored = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")

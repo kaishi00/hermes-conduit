@@ -28,7 +28,7 @@ struct WatchSettingsSection: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-            Text("Open Conduit on your Watch and tap the microphone to talk to Hermes. Gemini Live runs on the Watch; GPT-Live and Grok run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history.")
+            Text("Open Conduit on your Watch to talk to Hermes: the call starts right away, or with a tap if you turn off Call on open in the Watch's settings. Gemini Live runs on the Watch; GPT-Live and Grok run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
