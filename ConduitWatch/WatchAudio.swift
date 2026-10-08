@@ -67,6 +67,7 @@ final class WatchAudio {
     /// When playback last moved: the player started or a buffer played out.
     private var playbackMovedAt: TimeInterval = 0
     private var stallNudged = false
+    private var nudgedAt: TimeInterval = 0
     /// The longest buffer queued since playback last stopped: one buffer
     /// playing out takes that long without a completion.
     private var longestBuffer: TimeInterval = 0
@@ -81,6 +82,11 @@ final class WatchAudio {
 
     static func requestPermission() async -> Bool {
         await AVAudioApplication.requestRecordPermission()
+    }
+
+    /// Recording was allowed before: starting won't put up the prompt.
+    static var hasPermission: Bool {
+        AVAudioApplication.shared.recordPermission == .granted
     }
 
     /// Starts the microphone and the player. Must run from a tap while the
@@ -271,14 +277,18 @@ final class WatchAudio {
         ]
         if !stallNudged {
             stallNudged = true
-            playbackMovedAt = now
+            nudgedAt = now
             WatchCallLog.shared.note("playbackStalled", fields)
             if let engine, !engine.isRunning { try? engine.start() }
             player.play()
             return
         }
+        // A nudge gets one more stall window to show movement.
+        guard now - nudgedAt >= Self.stallAfter else { return }
         playbackStalls += 1
-        WatchCallLog.shared.note("playbackDropped", fields)
+        var dropFields = fields
+        dropFields["sinceNudgeMs"] = Int((now - nudgedAt) * 1000)
+        WatchCallLog.shared.note("playbackDropped", dropFields)
         stopPlayback()
         onDrained?()
     }

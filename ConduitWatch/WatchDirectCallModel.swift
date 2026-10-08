@@ -204,6 +204,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// The longest microphone gap within 3 s of a reactivation: a glitch.
     private var maxReactivationCaptureGap: TimeInterval = 0
     private var routeChangesAtStart = 0
+    private var playbackStallsAtStart = 0
     private var firstDropAt: TimeInterval?
     private var handoffStartedAt: TimeInterval?
     private var handoffTimes: [Double] = []
@@ -2802,6 +2803,7 @@ final class WatchDirectCallModel: ObservableObject {
         reactivationTimes = []
         maxReactivationCaptureGap = 0
         routeChangesAtStart = audio.routeChanges
+        playbackStallsAtStart = audio.playbackStalls
         firstDropAt = nil
         lastTimelineAt = nil
         timelineEntries = 0
@@ -3021,6 +3023,7 @@ final class WatchDirectCallModel: ObservableObject {
             "pathMonitorUpdates": monitorUpdates,
             "firstUnsatisfiedSinceActivationS": firstUnsatisfiedAt.flatMap { at in audioActivatedAt.map { Int(at - $0) } } as Any,
             "routeChanges": audio.routeChanges - routeChangesAtStart,
+            "playbackStalls": audio.playbackStalls - playbackStallsAtStart,
             "audioSessionActivated": audioSessionActivated as Any,
             "sessionMs": sessionAt.map { Int(($0 - callStartedAt) * 1000) } as Any,
             "sessionRequests": sessionRequests,

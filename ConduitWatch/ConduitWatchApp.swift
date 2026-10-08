@@ -28,7 +28,7 @@ struct ConduitWatchApp: App {
                 .environmentObject(call)
                 .environmentObject(link)
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase, initial: true) { _, phase in
             call.scenePhaseChanged(phase)
         }
     }

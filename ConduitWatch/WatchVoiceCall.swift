@@ -89,6 +89,8 @@ final class WatchVoiceCall: ObservableObject {
     static let startsOnOpenKey = "watchStartsCallOnOpen"
     /// The app's scene phase before this one: nil until the first.
     private var lastScenePhase: ScenePhase?
+    /// The app has been in front since launch.
+    private var hasBeenActive = false
     /// The engine of the call on screen, which a change of `engine` during
     /// the call doesn't move.
     @Published private(set) var callEngine: WatchVoiceEngine
@@ -206,11 +208,13 @@ final class WatchVoiceCall: ObservableObject {
         bridge.scenePhaseChanged(newPhase)
         let previous = lastScenePhase
         lastScenePhase = newPhase
-        // Opened: launched, or back from the background. A wrist raise
+        // Opened: the first active since launch (launch can pass through
+        // inactive first), or back from the background. A wrist raise
         // comes from inactive and starts nothing.
-        if newPhase == .active, previous == nil || previous == .background {
+        if newPhase == .active, !hasBeenActive || previous == .background {
             startOnOpenIfWanted()
         }
+        if newPhase == .active { hasBeenActive = true }
         // Call diagnostics only: an idle wrist raise isn't worth a line.
         guard isActive else { return }
         WatchCallLog.shared.note("scenePhase", ["phase": "\(newPhase)", "reachable": WatchLink.shared.isReachable])
@@ -218,6 +222,11 @@ final class WatchVoiceCall: ObservableObject {
 
     private func startOnOpenIfWanted() {
         guard startsOnOpen, !isActive else { return }
+        // The microphone prompt is left to a tap on Start.
+        guard WatchAudio.hasPermission else {
+            WatchCallLog.shared.note("callOnOpenSkipped", ["reason": "noMicrophonePermission"])
+            return
+        }
         WatchCallLog.shared.note("callStartedOnOpen", ["engine": engine.rawValue])
         dismissEnded()
         start()

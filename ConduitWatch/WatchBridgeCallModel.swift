@@ -179,6 +179,8 @@ final class WatchBridgeCallModel: ObservableObject {
     private var modelSpeaking = false
     private var suppressingTurn = false
     private var lastLoudAt: TimeInterval?
+    /// The audio's dropped-playback count when this call started.
+    private var playbackStallsAtStart = 0
     private var leadInSamples: [Int16] = []
     private var audioChunksDown = 0
     private var speechStretches = 0
@@ -1462,6 +1464,7 @@ final class WatchBridgeCallModel: ObservableObject {
         callUUID = UUID()
         callStartedDate = Date()
         callStartedAt = now
+        playbackStallsAtStart = audio.playbackStalls
         closeSocket()
         stream = nil
         relay = nil
@@ -1598,6 +1601,7 @@ final class WatchBridgeCallModel: ObservableObject {
             "sessionMs": sessionAt.map { Int(($0 - callStartedAt) * 1000) } as Any,
             "firstStartedMs": firstStartedAt.map { Int(($0 - callStartedAt) * 1000) } as Any,
             "sessionRequests": sessionRequests,
+            "playbackStalls": audio.playbackStalls - playbackStallsAtStart,
             "streamsOpened": streamsOpened,
             "openFailures": openFailures,
             "drops": drops,
