@@ -484,6 +484,10 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "mode must be on or off"], scheduling: nil)]
             }
             supervisor.setAsksBeforeSending(mode == "on", byModel: true)
+            // A supervisor that can't hold requests (a Watch call) keeps sending at once.
+            guard supervisor.asksBeforeSending == (mode == "on") else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": "Asking first isn't available on this call: requests go to Hermes straight away. Tell the user in a few words."], scheduling: nil)]
+            }
             let message = mode == "on"
                 ? "Asking first is on for this call: each new request waits for the user's OK. Tell the user in a few words."
                 : "Asking first is off for this call: new requests go to Hermes straight away. Tell the user in a few words."

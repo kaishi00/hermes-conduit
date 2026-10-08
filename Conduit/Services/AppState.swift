@@ -23972,12 +23972,12 @@ final class AppState: ObservableObject {
                 search: search,
                 memory: memory,
                 personality: personality,
-                answerLength: style.answerLength
+                answerLength: style.answerLength,
+                asksFirst: false
             ) + style.instructions,
-            functions: GeminiLiveToolBridge.declarations(
+            functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
-                memoryRecall: memory?.canRecall == true,
-                thread: false
+                memoryRecall: memory?.canRecall == true
             ),
             voice: voice,
             openingPrompt: style.openingPrompt,
