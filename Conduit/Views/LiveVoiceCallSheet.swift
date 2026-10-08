@@ -378,16 +378,21 @@ private struct LiveVoiceCallThreadLabel: View {
 }
 
 /// Asking first for this call (#451). It shows the call's own setting, so a
-/// switch the user asked for by voice shows here too.
+/// switch the user asked for by voice shows here too. A raised hand reads
+/// as "hold it for my OK"; a short caption says what it means whenever it
+/// switches, and the first time it shows.
 private struct LiveVoiceAskFirstButton: View {
     @ObservedObject var jobs: VoiceBackgroundJobSupervisor
+    @AppStorage("conduit.liveVoiceAskFirstHintShown") private var hintShown = false
+    @State private var caption: String?
+    @State private var captionTask: Task<Void, Never>?
 
     var body: some View {
         let isOn = jobs.asksBeforeSending
         Button {
             jobs.setAsksBeforeSending(!isOn)
         } label: {
-            Image(systemName: isOn ? "questionmark.bubble.fill" : "questionmark.bubble")
+            Image(systemName: isOn ? "hand.raised.fill" : "hand.raised.slash")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(isOn ? Color.conduitAccent : Color.secondary)
                 .frame(width: 44, height: 44)
@@ -398,6 +403,43 @@ private struct LiveVoiceAskFirstButton: View {
         .accessibilityLabel(Text("Ask before sending to Hermes"))
         .accessibilityValue(isOn ? Text("On") : Text("Off"))
         .accessibilityAddTraits(isOn ? .isSelected : [])
+        // Below the button, over the stage: it never moves the header.
+        .overlay(alignment: .topTrailing) {
+            if let caption {
+                Text(verbatim: caption)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .fixedSize()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .conduitGlassControl(cornerRadius: 16, interactive: false)
+                    .offset(y: 52)
+                    .transition(.opacity)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onChange(of: isOn) { _, on in showCaption(for: on) }
+        .onAppear {
+            guard !hintShown else { return }
+            hintShown = true
+            showCaption(for: isOn)
+        }
+        .onDisappear { captionTask?.cancel() }
+    }
+
+    private func showCaption(for on: Bool) {
+        captionTask?.cancel()
+        withAnimation(.easeOut(duration: 0.2)) {
+            caption = on
+                ? AppLocalization.string("Asking before sending to Hermes")
+                : AppLocalization.string("Sending straight to Hermes")
+        }
+        captionTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.3)) { caption = nil }
+        }
     }
 }
 

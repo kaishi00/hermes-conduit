@@ -68,7 +68,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// Read-backs (#451): the phone's delegation bridge answers "Read back:"
     /// itself, so a Watch call (whose delegations go to the relay) leaves
     /// it out, like asking first below.
-    static let phoneReadBack = "When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory or in your own words: delegate \"Read back:\". Conduit gives you the reply, then tells you to read it: read it word for word, all of it, once."
+    static let phoneReadBack = "When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory or in your own words: delegate \"Read back:\". Conduit takes the reply from the chat or the job itself: a read-back never goes to Hermes and never needs the user's OK, so never ask whether to send it. Conduit gives you the reply, then tells you to read it: read it word for word, all of it, once."
 
     /// Job corrections ("Job 2: …", #455): the phone's delegation bridge
     /// and the Watch's (through the relay's interrupt_job) both route them.
@@ -76,11 +76,16 @@ final class GPTLiveConversationController: ObservableObject {
     /// tells the model what the user tapped.
     static let watchApprovals = "Never approve, deny, or answer anything on a job's behalf. When a job asks for approval, it's on the user's Watch screen with Approve and Deny: tell them in a sentence, and Conduit tells you what they tapped. If a job needs any other input, tell the user to open it in Conduit on their iPhone."
 
-    static let jobFollowUps = "When the user corrects, changes, pauses or calls off a background job that is still running (\"wait, make it Alex\", \"hold that\", \"never mind\"), delegate their words right away, starting with \"Job\" and its number, like \"Job 2: make it Alex\": Conduit puts them into that job at once, Hermes decides what they mean, and the job's result still arrives on its earlier delegation. A delegation without that start is new work."
+    static let jobFollowUps = "When the user corrects, changes, pauses or calls off a background job that is still running (\"wait, make it Alex\", \"hold that\", \"never mind\"), delegate their words right away, starting with \"Job\" and its number, like \"Job 2: make it Alex\": Conduit puts them into that job at once, Hermes decides what they mean, and the job's result still arrives on its earlier delegation."
 
-    /// Asking first (#451): only the phone's delegation bridge can hold a
-    /// request, so a Watch call leaves it out.
-    static let phoneFollowUps = jobFollowUps + "\nAsking first: when it is on for this call, a new delegation waits for the user's OK, and Conduit answers that it is waiting. Then tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, delegate \"Send:\". When they change it, delegate the new request; it replaces the waiting one. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Corrections (\"Job 2: …\") never wait. When the user asks you to check with them before sending things to Hermes, delegate \"Mode: ask first\"; to stop checking, delegate \"Mode: send directly\"."
+    static let watchFollowUps = jobFollowUps + " A delegation without that start is new work."
+
+    /// The only running job takes an unnumbered delegation, and asking
+    /// first holds a request (#451): only the phone's delegation bridge
+    /// does either, so a Watch call leaves them out.
+    static let phoneFollowUps = jobFollowUps + " In a call not attached to a chat, while just one background job is running, Conduit puts a delegation without that start into it too; to start separate new work while it runs, start the delegation with \"New job:\"."
+        + "\nAsking first: when it is on for this call, a new delegation waits for the user's OK, and Conduit answers that it is waiting. Then tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, delegate \"Send:\". When they change it, delegate the new request; it replaces the waiting one. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Until Conduit says a request went to Hermes, don't say it's sent, being sent or on its way: acknowledge with something like \"Okay\" instead. Corrections (\"Job 2: …\") and read-backs never wait. When the user asks you to check with them before sending things to Hermes, delegate \"Mode: ask first\"; to stop checking, delegate \"Mode: send directly\"."
+        + "\nMarkers like \"Send:\", \"Read back:\", \"Job 2:\", \"New job:\" and \"Mode:\" are for Conduit only: never say them aloud."
 
     /// Conduit's rules for the live model. They travel with the session
     /// request and the host adds them to GPT-Live's instructions; a host
@@ -91,7 +96,7 @@ final class GPTLiveConversationController: ObservableObject {
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions(readsBack: !onWatch)) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
         Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? "" : "\n" + phoneReadBack)
-        Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number. \(onWatch ? jobFollowUps : phoneFollowUps)
+        Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number. \(onWatch ? watchFollowUps : phoneFollowUps)
         \(onWatch ? watchApprovals : "Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.")
         When the user says goodbye, say a short goodbye.]
         """
@@ -523,6 +528,7 @@ final class GPTLiveConversationController: ObservableObject {
             case "assistant":
                 modelTurnActive = false
                 lastModelTurnEndedAt = now()
+                bridge.modelFinishedTurn()
                 if let finished = finishTurn(assistantTurnEntries, speaker: .assistant, text: text) {
                     finishedTurn = FinishedTurn(speaker: .assistant, text: finished)
                 }
@@ -564,6 +570,9 @@ final class GPTLiveConversationController: ObservableObject {
         // Asked to hear the chat's last reply: Hermes' own words follow,
         // even when the model answers from memory instead of delegating.
         if VoiceThreadRouting.wantsLastReply(text) {
+            // A delegation GPT-Live made on these words before they arrived
+            // reads it too, rather than waiting to be sent to Hermes (#451).
+            if let answer = bridge.userAskedToHearAReply(text) { deliver(answer) }
             Task { [weak self] in
                 guard let self else { return }
                 let outgoing = await self.bridge.userAskedForLastReply()
@@ -591,7 +600,23 @@ final class GPTLiveConversationController: ObservableObject {
                 self.dispatch(self.bridge.pendingUpdates())
             }
         default:
-            break
+            // A request waiting for the user's OK (#451): these words may
+            // answer it, or send it ("send it to Hermes").
+            if let answer = bridge.userFinishedSpeaking(text) { deliver(answer) }
+        }
+    }
+
+    /// Carries out what the user's words did to a held request. They are
+    /// spoken for at once, so the next delegation doesn't take them as a
+    /// new request.
+    private func deliver(_ answer: GPTLiveDelegationBridge.SpokenAnswer) {
+        delegatedEntries.formUnion(transcript.map(\.id))
+        Task { [weak self] in
+            guard let self else { return }
+            let outgoing = await self.bridge.deliver(answer)
+            guard self.isActive, self.endRequestedAt == nil else { return }
+            self.dispatch(outgoing)
+            if !outgoing.isEmpty { self.sendJobStatus() }
         }
     }
 
@@ -682,7 +707,10 @@ final class GPTLiveConversationController: ObservableObject {
         while !pendingContext.isEmpty, endRequestedAt == nil, isConversationIdle, let session {
             let item = pendingContext.removeFirst()
             var text = item.text
-            if let delegationID = item.delegationID, userSpokeAfterAsking(delegationID), !bridge.answersReadBack(delegationID) {
+            // Where a request stands (held, sent), not what came back: its
+            // delegation's result is still to come (#451).
+            let isStatus = GPTLiveDelegationBridge.isStatus(item.text)
+            if let delegationID = item.delegationID, !isStatus, userSpokeAfterAsking(delegationID), !bridge.answersReadBack(delegationID) {
                 text = Self.resultAfterUserNote + text
             }
             guard session.appendContext(text, channel: item.channel, delegationID: item.delegationID) else {
@@ -690,8 +718,10 @@ final class GPTLiveConversationController: ObservableObject {
                 return
             }
             if let delegationID = item.delegationID {
-                bridge.replyDelivered(delegationID: delegationID)
-                delegationUserEntries[delegationID] = nil
+                if !isStatus {
+                    bridge.replyDelivered(delegationID: delegationID)
+                    delegationUserEntries[delegationID] = nil
+                }
             } else {
                 bridge.contextDelivered(jobID: item.jobID)
             }

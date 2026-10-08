@@ -1340,6 +1340,10 @@ extension VoiceConversationControllerTests {
             "say it again word for word", "okay repeat what you just said", "read it back to me",
             "could you please read the full answer", "read the last uh? message",
             "read the last message from Hermes out loud", "read the last,uh message", "read the last reply that Hermes sent", "read the last message from the chat", "read your last reply", "read me your previous reply",
+            // Neal's words on a call (#451).
+            "No, no, I want you to read back the last reply without sending Hermes",
+            "No, you need to read back in full the last reply", "No. Read the last reply.",
+            "Just read the last message", "I want to hear the last reply again", "read the last reply without sending it to Hermes first",
         ] {
             XCTAssertTrue(VoiceThreadRouting.wantsLastReply(request), request)
         }
@@ -1347,6 +1351,7 @@ extension VoiceConversationControllerTests {
             "repeat that test with the new config", "say that again to Sam in an email",
             "the last message was wrong, fix it", "summarize the last message", "umbrella forecast",
             "read the last message from Sam and draft a reply", "say the last message in Spanish", "say the last message to the chat", "read the file and then say the last message", "tell me about the last message", "tell me what you think of the last message Hermes sent", "tell me what you thought of the last message", "tell me your take on the last message", "tell me your thoughts on the last reply", "tell me what you liked about the last reply",
+            "I want you to read the last reply and summarize it", "no, read the last message without the code", "don't read the last reply",
         ] {
             XCTAssertFalse(VoiceThreadRouting.wantsLastReply(request), request)
         }
