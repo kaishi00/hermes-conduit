@@ -303,6 +303,13 @@ struct ModelPickerView: View {
         .task { await loadModels() }
         .onChange(of: draftKey) { _, _ in
             applyError = nil
+            reasoningError = nil
+        }
+        .onChange(of: appState.runtime.reasoningEffort) { _, effort in
+            // Follow a level changed elsewhere (another device, a chat
+            // switch), but not mid-tap, so the tapped pill doesn't flicker.
+            guard !isApplyingReasoning else { return }
+            reasoningEffort = effort.isEmpty ? "none" : effort
         }
         .onChange(of: applyError) { _, message in
             // The error row appears silently; tell VoiceOver the apply failed.
@@ -477,7 +484,8 @@ struct ModelPickerView: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .disabled(isApplyingReasoning)
+        // One write at a time: Apply may switch the model under this level.
+        .disabled(isApplyingReasoning || isApplying)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -688,7 +696,7 @@ struct ModelPickerView: View {
                 .frame(height: 46)
             }
             .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: true)
-            .disabled(isApplying)
+            .disabled(isApplying || isApplyingReasoning)
         }
     }
 
@@ -751,22 +759,22 @@ struct ModelPickerView: View {
     /// Reasoning applies to the live agent at once, so a tap sends it without
     /// waiting for Apply.
     private func applyReasoning(_ level: ReasoningEffortLevel) async {
-        guard !isApplyingReasoning else { return }
+        guard !isApplyingReasoning, !isApplying else { return }
         Haptics.selection()
-        let previous = reasoningEffort
         reasoningEffort = level.rawValue
         reasoningError = nil
         isApplyingReasoning = true
         defer { isApplyingReasoning = false }
         if let message = await appState.setReasoningEffortReportingFailure(level.rawValue) {
-            reasoningEffort = previous
+            // Back to the live level, which may have moved meanwhile.
+            reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
             reasoningError = message
             UIAccessibility.post(notification: .announcement, argument: message)
         }
     }
 
     private func applyModel(confirmedModelSwitch: Bool = false) async {
-        guard !isApplying else { return }
+        guard !isApplying, !isApplyingReasoning else { return }
         guard let client = appState.client, let sessionId = appState.activeSessionId else {
             applyError = AppLocalization.string("Not connected to a conversation.")
             return
