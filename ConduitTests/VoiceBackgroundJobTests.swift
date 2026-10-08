@@ -89,6 +89,8 @@ final class FakeVoiceJobBackend {
     var threadRuntime: String?
     var onThreadSubmit: (@MainActor () -> Void)?
     var onLatestReply: (@MainActor () -> Void)?
+    /// Each chat whose latest reply was read.
+    private(set) var replyReads: [VoiceThreadTarget] = []
     /// What the user typed for the chat's latest turn, as the open chat shows it.
     var threadPrompt: String?
     private(set) var threadSubmissions: [(String, String)] = []
@@ -136,7 +138,8 @@ final class FakeVoiceJobBackend {
                 if let error = self.threadSubmitError { throw error }
                 return runtimeID
             },
-            latestThreadReply: { [self] _ in
+            latestThreadReply: { [self] chat in
+                self.replyReads.append(chat)
                 self.onLatestReply?()
                 return self.threadReply
             },
@@ -408,6 +411,59 @@ extension VoiceConversationControllerTests {
         await supervisor.pollOnce()
 
         XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+    }
+
+    func testAWatchCallHearsTheReplyOfAJobThePollSettled() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.readsRepliesWhenSettling = true
+        fake.profileTargets = ["fam": .other("fam")]
+        _ = await supervisor.startJob(instructions: "check the router", profile: "fam")
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "working")]
+        await supervisor.pollOnce()
+        fake.threadReply = "  The router rebooted at 3 am after a firmware update.  "
+
+        // Listed idle: the turn ended, and its completion event never came.
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "idle")]
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "The router rebooted at 3 am after a firmware update.")
+        XCTAssertEqual(fake.replyReads.map(\.runtimeSessionID), ["rt-1"])
+        XCTAssertEqual(fake.replyReads.first?.storedSessionID, "st-1")
+        XCTAssertEqual(fake.replyReads.first?.profile, "fam", "read in the job's own profile")
+        guard case .submit(let prompt, _)? = supervisor.takePendingNotice() else {
+            return XCTFail("the call hears the result, not a pointer to the chat")
+        }
+        XCTAssertTrue(prompt.contains("The router rebooted at 3 am"))
+    }
+
+    func testAJobWithNoReadableReplyStillSettlesForAWatchCall() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.readsRepliesWhenSettling = true
+        _ = await supervisor.startJob(instructions: "check the server")
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertNil(supervisor.jobs.first?.result)
+        XCTAssertEqual(fake.replyReads.count, 1)
+        guard case .speak? = supervisor.takePendingNotice() else {
+            return XCTFail("without a reply, the chat is named")
+        }
+    }
+
+    func testAPhoneCallsPollLeavesASettledJobsReplyInItsChat() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.threadReply = "The server is fine."
+        _ = await supervisor.startJob(instructions: "check the server")
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertNil(supervisor.jobs.first?.result)
+        XCTAssertTrue(fake.replyReads.isEmpty, "unchanged on the phone")
     }
 
     func testAMismatchedLeadingTargetStaysInTheTask() async {
