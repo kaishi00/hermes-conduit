@@ -32,9 +32,12 @@ final class WatchToolGrantClient {
     /// through this phone only, as before.
     /// `maxJobs`, `jobOptions` (the voice-job model, provider and
     /// reasoning effort) and `carryJobsFrom` (a renewal's previous grant,
-    /// whose jobs move to the new one) go with job tools only.
-    func grant(tools: [String], profile: String, maxJobs: Int? = nil, jobOptions: [String: String] = [:], carryJobsFrom: String? = nil) async throws -> WatchVoiceWire.DirectToolGrant {
+    /// whose jobs move to the new one) go with job tools only. `audio`
+    /// adds the call's audio bridge (GPT-Live on the Watch), which starts
+    /// on the host with the grant.
+    func grant(tools: [String], profile: String, maxJobs: Int? = nil, jobOptions: [String: String] = [:], carryJobsFrom: String? = nil, audio: Bool = false) async throws -> WatchVoiceWire.DirectToolGrant {
         var body: [String: Any] = ["tools": tools]
+        if audio { body["audio"] = true }
         if !WatchJobAnswer.tools.isDisjoint(with: tools) {
             if let maxJobs { body["max_jobs"] = maxJobs }
             if !jobOptions.isEmpty { body["job_options"] = jobOptions }
@@ -60,6 +63,33 @@ final class WatchToolGrantClient {
         )
     }
 
+    static let audioStatusPath = "/api/plugins/conduit_push/watch-audio/status"
+    static let audioPreparePath = "/api/plugins/conduit_push/watch-audio/prepare"
+
+    /// GPT-Live's WebRTC runtime on the host: ready, preparing, failed or
+    /// missing, with the host's reason when it isn't ready.
+    struct AudioRuntime: Equatable {
+        var runtime: String
+        var reason: String?
+    }
+
+    /// Starts making the runtime unless it's there or on its way.
+    func prepareAudio(profile: String) async throws -> AudioRuntime {
+        let response = try await request(DashboardPath.withProfile(Self.audioPreparePath, profile: profile), "POST", [:], 15_000)
+        return Self.audioRuntime(from: response)
+    }
+
+    func audioStatus(profile: String) async throws -> AudioRuntime {
+        let response = try await request(DashboardPath.withProfile(Self.audioStatusPath, profile: profile), "GET", nil, Self.timeoutMilliseconds)
+        return Self.audioRuntime(from: response)
+    }
+
+    static func audioRuntime(from response: [String: Any]) -> AudioRuntime {
+        let engines = response["engines"] as? [String: Any]
+        let gptLive = engines?[WatchAudioBridgeWire.gptLive] as? [String: Any]
+        return AudioRuntime(runtime: gptLive?["runtime"] as? String ?? "missing", reason: gptLive?["reason"] as? String)
+    }
+
     static func grant(from response: [String: Any]) -> WatchVoiceWire.DirectToolGrant? {
         guard response["ok"] as? Bool == true,
               let grantID = response["grant_id"] as? String, !grantID.isEmpty,
@@ -68,6 +98,12 @@ final class WatchToolGrantClient {
               let watchKey = response["watch_key"] as? String, !watchKey.isEmpty,
               let tools = response["tools"] as? [String], !tools.isEmpty,
               let maxCalls = response["max_calls"] as? Int, maxCalls > 0 else { return nil }
+        var bridge: WatchVoiceWire.AudioBridge?
+        if let audio = response["audio"] as? [String: Any],
+           let url = audio["url"] as? String, url.hasPrefix("wss://"),
+           let version = audio["version"] as? Int {
+            bridge = .init(url: url, version: version, engines: audio["engines"] as? [String] ?? [])
+        }
         return WatchVoiceWire.DirectToolGrant(
             grantID: grantID,
             relayURL: relayURL,
@@ -77,7 +113,8 @@ final class WatchToolGrantClient {
             tools: tools,
             maxCalls: maxCalls,
             maxJobs: response["max_jobs"] as? Int,
-            jobsCarriedFrom: response["jobs_carried_from"] as? String
+            jobsCarriedFrom: response["jobs_carried_from"] as? String,
+            audio: bridge
         )
     }
 }

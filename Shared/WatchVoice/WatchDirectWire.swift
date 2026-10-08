@@ -68,6 +68,20 @@ extension WatchVoiceWire.DirectSetup {
     }
 }
 
+extension WatchVoiceWire.BridgeSession {
+    static func pack(_ briefing: String) -> (data: Data, bytes: Int)? {
+        let text = Data(briefing.utf8)
+        guard let data = try? (text as NSData).compressed(using: .zlib) as Data else { return nil }
+        return (data, text.count)
+    }
+
+    /// The briefing as the iPhone built it; nil if it can't be read.
+    var briefingText: String? {
+        guard let text = try? (briefing as NSData).decompressed(using: .zlib) as Data else { return nil }
+        return String(data: text, encoding: .utf8)
+    }
+}
+
 extension WatchVoiceWire.DirectOutgoing {
     /// What the session sends Gemini for it. Nil for the end, which the
     /// call acts on itself once the goodbye has played.

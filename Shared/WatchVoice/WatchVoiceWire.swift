@@ -133,6 +133,35 @@ enum WatchVoiceWire {
         /// A renewal: the previous grant whose jobs Hermes moved to this
         /// one, so the Watch follows them here.
         var jobsCarriedFrom: String?
+        /// The call's audio bridge for GPT-Live (and Grok) through the
+        /// Hermes host, when asked for (designs/apple-watch-gpt-live.md).
+        var audio: AudioBridge?
+    }
+
+    /// Where the Watch dials the host's audio bridge: the relay's
+    /// wss://…/v1/watch-audio/{grant}/watch, with the grant's relay key.
+    /// `engines` are those the host can run now: GPT-Live only once its
+    /// WebRTC runtime is made.
+    struct AudioBridge: Codable, Equatable {
+        var url: String
+        var version: Int
+        var engines: [String]
+    }
+
+    /// Everything a Watch call to GPT-Live through the host's audio bridge
+    /// needs, built on the iPhone: the grant (audio, and jobs for the
+    /// delegations as the user allows), and what the phone's GPT-Live call
+    /// would start with.
+    struct BridgeSession: Codable, Equatable {
+        var engine: String
+        var grant: DirectToolGrant
+        /// Conduit's rules, persona and memory for the call as
+        /// zlib-compressed UTF-8: they can be long.
+        var briefing: Data
+        /// The briefing's size before compression, for the log.
+        var briefingBytes: Int
+        var greeting: String?
+        var voice: String?
     }
 
     /// The setup's long part. Function declarations travel as their JSON:
@@ -191,6 +220,8 @@ enum WatchVoiceWire {
         var startedAt: Date
         var endedAt: Date
         var turns: [DirectTurn]
+        /// The engine the call ran on; nil for Gemini.
+        var engine: String? = nil
     }
 
     /// Control messages, both directions.
@@ -227,6 +258,9 @@ enum WatchVoiceWire {
         /// A new tool grant, before the call's runs out; Hermes moves the
         /// jobs of `carryJobsFrom` (the call's grant with jobs) to it.
         case directGrant(callID: UInt32, carryJobsFrom: String? = nil)
+        /// A Watch call through the host's audio bridge (GPT-Live) wants
+        /// its grant and briefing.
+        case bridgeStart(callID: UInt32, version: Int, engine: String)
         // iPhone → Watch
         case callAccepted(callID: UInt32, mode: String)
         case callRefused(callID: UInt32, reason: String)
@@ -247,6 +281,8 @@ enum WatchVoiceWire {
         case directToolResult(callID: UInt32, result: DirectToolResult)
         /// The answer to `directGrant`; a refusal comes as `callRefused`.
         case directGrantIssued(callID: UInt32, grant: DirectToolGrant)
+        /// The answer to `bridgeStart`; a refusal comes as `callRefused`.
+        case bridgeSession(callID: UInt32, session: BridgeSession)
     }
 
     static func encode(_ message: Message) -> [String: Any] {

@@ -23615,6 +23615,75 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// What a Watch call to GPT-Live through the host's audio bridge
+    /// starts with (designs/apple-watch-gpt-live.md): what the phone's own
+    /// GPT-Live call sends the host, built the same way.
+    struct WatchBridgePlan {
+        let briefing: String
+        let greeting: String?
+        let voice: String?
+        let connection: WatchDirectConnection
+        let saveCalls: Bool
+        let memoryIncluded: Bool
+        let personalityIncluded: Bool
+        let jobOptions: [String: String]
+    }
+
+    /// Builds a Watch GPT-Live call's briefing as `gptLiveController`
+    /// builds the phone's: the same availability check, memory and persona
+    /// lookups, answer length and style. The call has no attached chat and
+    /// no resume context.
+    func prepareWatchBridgeCall() async throws -> WatchBridgePlan {
+        if isSceneActive, !PhoneScenePresence.isInForeground {
+            isSceneActive = false
+            publishVoiceRuntimeGates()
+        }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
+        let connection = watchDirectConnection
+        let hostContext = geminiLiveTokenClient
+        let wantsMemory = gptLiveMemoryEnabled
+        let wantsPersonality = gptLivePersonalityEnabled
+        async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
+        async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
+        let status = try await gptLiveClient.availability()
+        guard status.isAvailable else {
+            throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
+        }
+        let memory = await memoryLookup
+        let personality = await personalityLookup
+        let style = liveVoiceStyle
+        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+            runtimeModel: runtime.model,
+            runtimeProvider: runtime.provider
+        )
+        var jobOptions: [String: String] = [:]
+        if let model = jobSession.model {
+            jobOptions["model"] = model
+            if let provider = jobSession.provider { jobOptions["provider"] = provider }
+        }
+        if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
+        guard watchDirectConnection == connection else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+        }
+        return WatchBridgePlan(
+            briefing: GPTLiveConversationController.briefing(
+                memory: memory,
+                personality: personality,
+                answerLength: style.answerLength
+            ) + style.instructions,
+            greeting: style.greeting,
+            voice: gptLiveVoice,
+            connection: connection,
+            saveCalls: voiceCallSavingEnabled,
+            memoryIncluded: memory != nil,
+            personalityIncluded: personality != nil,
+            jobOptions: jobOptions
+        )
+    }
+
     /// The connection a Watch call started now would belong to.
     var watchDirectConnection: WatchDirectConnection {
         WatchDirectConnection(profile: activeProfile, dashboard: activeDashboardID?.uuidString ?? "-")
@@ -23658,7 +23727,7 @@ final class AppState: ObservableObject {
         queueVoiceTranscript(
             VoiceTranscriptSaveRequest(
                 callID: transcript.callUUID,
-                engine: .geminiLive,
+                engine: transcript.engine.flatMap(VoiceCallEngine.watchBridge) ?? .geminiLive,
                 sessionID: nil,
                 title: Self.fallbackVoiceCallTitle(at: transcript.startedAt),
                 turns: turns

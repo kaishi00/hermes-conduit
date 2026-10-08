@@ -4,8 +4,10 @@
 //
 //  Proof of concept for Apple Watch voice (designs/apple-watch-voice.md):
 //  a live call through the iPhone, a Gemini call the Watch makes itself
-//  (designs/apple-watch-voice-direct.md), the link test and the audio lab,
-//  each writing its numbers to a log that also lands on the iPhone.
+//  (designs/apple-watch-voice-direct.md), GPT-Live through the Hermes
+//  host's audio bridge (designs/apple-watch-gpt-live.md), the link test and
+//  the audio lab, each writing its numbers to a log that also lands on the
+//  iPhone.
 //
 
 import SwiftUI
@@ -15,6 +17,7 @@ struct ConduitWatchApp: App {
     @StateObject private var link = WatchLink.shared
     @StateObject private var call = WatchCallModel()
     @StateObject private var direct = WatchDirectCallModel()
+    @StateObject private var bridge = WatchBridgeCallModel()
     @StateObject private var soak = WatchSoakModel()
     @StateObject private var lab = WatchLabModel()
     @Environment(\.scenePhase) private var scenePhase
@@ -31,12 +34,14 @@ struct ConduitWatchApp: App {
             .environmentObject(link)
             .environmentObject(call)
             .environmentObject(direct)
+            .environmentObject(bridge)
             .environmentObject(soak)
             .environmentObject(lab)
         }
         .onChange(of: scenePhase) { _, phase in
             call.scenePhaseChanged(phase)
             direct.scenePhaseChanged(phase)
+            bridge.scenePhaseChanged(phase)
             soak.scenePhaseChanged(phase)
             lab.scenePhaseChanged(phase)
             WatchProbeLog.shared.note("scenePhase", ["phase": "\(phase)", "reachable": WatchLink.shared.isReachable])
@@ -53,6 +58,11 @@ struct WatchHomeView: View {
                 WatchDirectCallView()
             } label: {
                 Label("Talk to Gemini (direct)", systemImage: "waveform.badge.mic")
+            }
+            NavigationLink {
+                WatchBridgeCallView()
+            } label: {
+                Label("Talk to GPT-Live (via Hermes)", systemImage: "waveform.path.ecg")
             }
             NavigationLink {
                 WatchCallView()
@@ -91,6 +101,7 @@ struct WatchCallView: View {
     @EnvironmentObject private var lab: WatchLabModel
     @EnvironmentObject private var soak: WatchSoakModel
     @EnvironmentObject private var direct: WatchDirectCallModel
+    @EnvironmentObject private var bridge: WatchBridgeCallModel
 
     var body: some View {
         ScrollView {
@@ -151,6 +162,7 @@ struct WatchCallView: View {
     private var startBlocked: String? {
         guard !call.isActive else { return nil }
         if direct.isActive { return "End the Gemini call first." }
+        if bridge.isActive { return "End the GPT-Live call first." }
         if lab.isBusy || lab.isWatching { return "End the lab test first." }
         if soak.isRunning { return "Stop the link test first." }
         return nil
@@ -225,6 +237,7 @@ struct WatchCallView: View {
 struct WatchDirectCallView: View {
     @EnvironmentObject private var direct: WatchDirectCallModel
     @EnvironmentObject private var call: WatchCallModel
+    @EnvironmentObject private var bridge: WatchBridgeCallModel
     @EnvironmentObject private var lab: WatchLabModel
     @EnvironmentObject private var soak: WatchSoakModel
     @AppStorage(WatchDirectCallModel.KeepAlive.key) private var keepAlive = WatchDirectCallModel.KeepAlive.audioSession.rawValue
@@ -336,6 +349,7 @@ struct WatchDirectCallView: View {
     private var startBlocked: String? {
         guard !direct.isActive else { return nil }
         if call.isActive { return "End the Hermes call first." }
+        if bridge.isActive { return "End the GPT-Live call first." }
         if lab.isBusy || lab.isWatching { return "End the lab test first." }
         if soak.isRunning { return "Stop the link test first." }
         return nil
@@ -383,6 +397,143 @@ struct WatchDirectCallView: View {
         case .speaking: return "Speaking"
         case .reconnecting: return "Reconnecting…"
         case .lost: return "Connection lost. Raise your wrist to reconnect."
+        case .needsTap: return "Paused. Tap to continue."
+        case .ending: return "Ending…"
+        case .ended(let reason): return reason.map { "Ended: \($0)" } ?? "Ended"
+        }
+    }
+}
+
+/// GPT-Live through the Hermes host's audio bridge (test build): the host
+/// holds GPT-Live's WebRTC call, the Watch streams to it through the push
+/// relay, and delegations run as Hermes jobs through the call's grant.
+struct WatchBridgeCallView: View {
+    @EnvironmentObject private var bridge: WatchBridgeCallModel
+    @EnvironmentObject private var direct: WatchDirectCallModel
+    @EnvironmentObject private var call: WatchCallModel
+    @EnvironmentObject private var lab: WatchLabModel
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 8) {
+                if let approval = bridge.pendingApproval {
+                    approvalCard(approval)
+                }
+                orb
+                Text(phaseText)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                if let startBlocked {
+                    Text(startBlocked)
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                }
+                if let caption = bridge.caption {
+                    Text(caption)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.center)
+                }
+                if let summary = bridge.lastTurnSummary {
+                    Text(summary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if bridge.isActive {
+                    HStack {
+                        Button(bridge.isMuted ? "Unmute" : "Mute") { bridge.toggleMute() }
+                        Button("End", role: .destructive) { bridge.end() }
+                    }
+                    if bridge.relayJobsRunning > 0 {
+                        Text("\(bridge.relayJobsRunning) job\(bridge.relayJobsRunning == 1 ? "" : "s") running")
+                            .font(.caption2)
+                    }
+                }
+            }
+        }
+        .navigationTitle("GPT-Live")
+    }
+
+    /// A job's request to run a command. Approve allows this one command
+    /// only.
+    private func approvalCard(_ approval: WatchJobAnswer.Approval) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Approve this command?")
+                .font(.headline)
+            Text(approval.title)
+                .font(.footnote)
+                .lineLimit(2)
+            if !approval.description.isEmpty {
+                Text(approval.description)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+            Text(approval.command)
+                .font(.caption2.monospaced())
+                .lineLimit(8)
+            HStack {
+                Button("Deny", role: .destructive) { bridge.answerApproval(approve: false) }
+                Button("Approve") { bridge.answerApproval(approve: true) }
+                    .tint(.green)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.2)))
+    }
+
+    /// Why a call can't start now, if it can't.
+    private var startBlocked: String? {
+        guard !bridge.isActive else { return nil }
+        if call.isActive { return "End the Hermes call first." }
+        if direct.isActive { return "End the Gemini call first." }
+        if lab.isBusy || lab.isWatching { return "End the lab test first." }
+        return nil
+    }
+
+    @ViewBuilder
+    private var orb: some View {
+        let button = Button {
+            if bridge.isActive {
+                bridge.tapOrb()
+            } else {
+                Task { await bridge.start() }
+            }
+        } label: {
+            Image(systemName: bridge.isActive ? "waveform.circle.fill" : "mic.circle.fill")
+                .font(.system(size: 54))
+                .foregroundStyle(orbColor)
+        }
+        .buttonStyle(.plain)
+        .disabled(startBlocked != nil)
+        .accessibilityLabel(bridge.isActive ? (bridge.phase == .speaking ? "Interrupt" : phaseText) : "Start a call")
+        if #available(watchOS 11, *) {
+            button.handGestureShortcut(.primaryAction)
+        } else {
+            button
+        }
+    }
+
+    private var orbColor: Color {
+        switch bridge.phase {
+        case .speaking: return .purple
+        case .listening: return .green
+        case .needsTap: return .orange
+        case .ended, .idle: return .secondary
+        default: return .blue
+        }
+    }
+
+    private var phaseText: String {
+        switch bridge.phase {
+        case .idle: return "Tap to talk"
+        case .preparing: return "Asking your iPhone…"
+        case .connecting: return "Connecting to Hermes…"
+        case .listening: return "Listening"
+        case .speaking: return "Speaking"
+        case .reconnecting: return "Reconnecting…"
         case .needsTap: return "Paused. Tap to continue."
         case .ending: return "Ending…"
         case .ended(let reason): return reason.map { "Ended: \($0)" } ?? "Ended"
@@ -450,13 +601,14 @@ struct WatchLabView: View {
     /// The lab and a call can't share the audio session.
     @EnvironmentObject private var call: WatchCallModel
     @EnvironmentObject private var direct: WatchDirectCallModel
+    @EnvironmentObject private var bridge: WatchBridgeCallModel
 
-    private var blocked: Bool { lab.isBusy || call.isActive || direct.isActive }
+    private var blocked: Bool { lab.isBusy || call.isActive || direct.isActive || bridge.isActive }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                if call.isActive || direct.isActive {
+                if call.isActive || direct.isActive || bridge.isActive {
                     Text("End the call to use the lab.").font(.footnote)
                 }
                 Text("Encoders").font(.headline)

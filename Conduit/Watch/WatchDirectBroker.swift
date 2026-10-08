@@ -19,6 +19,10 @@
 //    its jobs run there wrist up or down (within the user's job
 //    settings), and ends it with the call;
 //  - saves the finished call in voice history.
+//  A Watch call to GPT-Live (designs/apple-watch-gpt-live.md) goes through
+//  the Hermes host's audio bridge instead: this side only builds its
+//  briefing as the phone's GPT-Live call would, and asks Hermes for the
+//  grant that opens the bridge and carries its jobs.
 //  Each is a short answer to a Watch message, which wakes Conduit in the
 //  background; nothing here runs between them.
 //
@@ -90,6 +94,11 @@ final class WatchDirectBroker {
     private var grantMaxJobs = 0
     private var grantJobOptions: [String: String] = [:]
     private var grantVoiceApprovals = false
+    /// The call's grants open the host's audio bridge (a GPT-Live call).
+    private var grantAudio = false
+    /// Why the last grant request failed, for a call that can't start
+    /// without one.
+    private var lastGrantError: String?
     /// Start_job calls by call and id, the newest `jobCallLimit`, ended
     /// calls' too. The Watch sends one again when the link dropped before
     /// its answer came; it gets the first one's answer instead of a second
@@ -128,6 +137,29 @@ final class WatchDirectBroker {
                 task = preparing.task
             } else {
                 task = Task { await self.prepare(id) }
+                preparing = (id, task)
+            }
+            Task {
+                let message = await task.value
+                answer(message)
+                if self.preparing?.callID == id { self.preparing = nil }
+                end()
+            }
+        case .bridgeStart(let id, let version, let engine):
+            guard version == WatchVoiceWire.version else {
+                answer(.callRefused(callID: id, reason: "Update Conduit on your iPhone and Watch to the same build."))
+                return
+            }
+            guard engine == WatchAudioBridgeWire.gptLive else {
+                answer(.callRefused(callID: id, reason: "This build runs only GPT-Live through Hermes on the Watch."))
+                return
+            }
+            let end = Self.beginBackgroundTask("conduit.watchBridge.start")
+            let task: Task<WatchVoiceWire.Message, Never>
+            if let preparing, preparing.callID == id {
+                task = preparing.task
+            } else {
+                task = Task { await self.prepareBridge(id, engine: engine) }
                 preparing = (id, task)
             }
             Task {
@@ -278,6 +310,123 @@ final class WatchDirectBroker {
             ])
             if callID == id { endCall() }
             return .callRefused(callID: id, reason: reason)
+        }
+    }
+
+    // MARK: Start through the audio bridge
+
+    /// How long a start waits for Hermes to make GPT-Live's WebRTC runtime
+    /// (a few seconds once its packages are cached; minutes the first time).
+    static let runtimeWait: TimeInterval = 20
+
+    /// A GPT-Live call on the Watch: the phone's briefing, and a grant that
+    /// opens the host's audio bridge, with jobs for GPT-Live's delegations
+    /// as the user allows and web_search for when they don't. Nothing else
+    /// runs here until the call ends.
+    private func prepareBridge(_ id: UInt32, engine: String) async -> WatchVoiceWire.Message {
+        let appState = self.appState
+        if let active = callID, active != id { endCall() }
+        callID = id
+        bridge = nil
+        lateOutgoing = []
+        lastHeardAt = Date()
+        appState.setWatchVoiceCallActive(true)
+        let startedAt = Date()
+        link.log.note("watchBridgeStart", [
+            "callID": Int(id),
+            "engine": engine,
+            "appState": WatchProbeLiveness.appStateName,
+            "phoneScreen": PhoneScenePresence.isInForeground,
+            "connected": appState.isConnected,
+        ])
+        do {
+            let plan = try await appState.prepareWatchBridgeCall()
+            guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            guard appState.watchDirectConnection == plan.connection else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            connection = plan.connection
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            grantTools = ["web_search"]
+            grantMaxJobs = WatchJobSettings.jobsPerCall
+            grantJobTools = grantMaxJobs > 0 ? WatchJobAnswer.tools.sorted() : []
+            grantJobOptions = plan.jobOptions
+            // GPT-Live never answers a job's approval: the user taps it.
+            grantVoiceApprovals = false
+            grantLiveToken = false
+            grantAudio = true
+            lastGrantError = nil
+            let grant = await requestGrant(id, profile: plan.connection.profile)
+            guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            ledger.setGrant(grantScope, for: id)
+            guard let grant, let audio = grant.audio else {
+                throw WatchDirectPrepareError(lastGrantError.map { "Hermes couldn't open GPT-Live for the Watch: \($0)" }
+                    ?? "Hermes couldn't open GPT-Live for the Watch. Update the Hermes notifier plugin and the push relay.")
+            }
+            if !audio.engines.contains(engine) {
+                try await prepareRuntime(id, profile: plan.connection.profile)
+                guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            }
+            guard appState.watchDirectConnection == plan.connection else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            guard let packed = WatchVoiceWire.BridgeSession.pack(plan.briefing) else {
+                throw WatchDirectPrepareError("The call's briefing couldn't be packed for the Watch.")
+            }
+            link.log.note("watchBridgePrepared", [
+                "callID": Int(id),
+                "ms": Self.milliseconds(since: startedAt),
+                "briefingBytes": packed.bytes,
+                "compressedBytes": packed.data.count,
+                "tools": grant.tools,
+                "engines": audio.engines,
+                "memory": plan.memoryIncluded,
+                "personality": plan.personalityIncluded,
+                "appState": WatchProbeLiveness.appStateName,
+            ])
+            return .bridgeSession(callID: id, session: .init(
+                engine: engine,
+                grant: grant,
+                briefing: packed.data,
+                briefingBytes: packed.bytes,
+                greeting: plan.greeting,
+                voice: plan.voice
+            ))
+        } catch {
+            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            link.log.note("watchBridgePrepareFailed", [
+                "callID": Int(id),
+                "ms": Self.milliseconds(since: startedAt),
+                "error": reason,
+                "appState": WatchProbeLiveness.appStateName,
+            ])
+            if callID == id { endCall() }
+            return .callRefused(callID: id, reason: reason)
+        }
+    }
+
+    /// Asks Hermes to make GPT-Live's WebRTC runtime (the plugin's own
+    /// small environment) and waits for it a little; a start that can't
+    /// wait longer is refused, and the next one finds it ready.
+    private func prepareRuntime(_ id: UInt32, profile: String) async throws {
+        let startedAt = Date()
+        var status = try await grantClient.prepareAudio(profile: profile)
+        while status.runtime == "preparing", Date().timeIntervalSince(startedAt) < Self.runtimeWait, callID == id {
+            try await Task.sleep(for: .seconds(2))
+            status = try await grantClient.audioStatus(profile: profile)
+        }
+        link.log.note("watchBridgeRuntime", [
+            "callID": Int(id),
+            "runtime": status.runtime,
+            "ms": Self.milliseconds(since: startedAt),
+        ])
+        switch status.runtime {
+        case "ready":
+            return
+        case "preparing":
+            throw WatchDirectPrepareError("Hermes is setting up GPT-Live for the Watch, which takes a few minutes the first time. Try again shortly.")
+        default:
+            throw WatchDirectPrepareError(status.reason ?? "Hermes couldn't set up GPT-Live for the Watch.")
         }
     }
 
@@ -566,7 +715,8 @@ final class WatchDirectBroker {
                 profile: profile,
                 maxJobs: withJobs ? grantMaxJobs : nil,
                 jobOptions: withJobs ? grantJobOptions : [:],
-                carryJobsFrom: withJobs ? carryJobsFrom : nil
+                carryJobsFrom: withJobs ? carryJobsFrom : nil,
+                audio: grantAudio
             )
             grant.voiceApprovals = grantVoiceApprovals && grant.tools.contains(WatchJobAnswer.answerApproval)
             guard callID == id else {
@@ -590,12 +740,15 @@ final class WatchDirectBroker {
                 "askedJobs": withJobs,
                 "askedToken": liveToken,
                 "askedCarry": carryJobsFrom != nil,
+                "askedAudio": grantAudio,
+                "audioEngines": grant.audio?.engines as Any,
                 // What the host said; the Watch logs whether it moved jobs.
                 "hostCarried": grant.jobsCarriedFrom != nil,
                 "expiresInS": grant.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any,
             ])
             return .success(grant)
         } catch {
+            lastGrantError = UserFacingError.message(for: error)
             link.log.note("watchToolGrant", [
                 "callID": Int(id),
                 "ok": false,
@@ -674,6 +827,7 @@ final class WatchDirectBroker {
         grantJobTools = []
         grantLiveToken = false
         grantJobOptions = [:]
+        grantAudio = false
         guard !ids.isEmpty, let connection else { return }
         guard connection.dashboard == appState.watchDirectConnection.dashboard else {
             link.log.note("watchToolGrantsLeft", ["grants": ids.count])

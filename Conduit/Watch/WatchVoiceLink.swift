@@ -128,7 +128,7 @@ final class WatchVoiceLink: ObservableObject {
         case .note(let line):
             log.watchNote(line)
             reply?([:])
-        case .directStart:
+        case .directStart, .bridgeStart:
             soak.endUnfinished()
             direct.handle(message, reply: reply)
         case .directToken, .directTool, .directToolCancel, .directPoll, .directEnd, .directGrant:
