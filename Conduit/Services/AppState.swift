@@ -607,6 +607,9 @@ final class AppState: ObservableObject {
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
     private weak var activeListUnsupportedClient: HermesClient?
+    /// The client whose failed poll was already logged, so a flaky
+    /// connection leaves one line rather than one per tick.
+    private weak var activeListFailureLoggedClient: HermesClient?
     /// The dashboard the Desktop views below came from, when each profile
     /// was last asked, and the newest settled time it reported.
     private weak var desktopViewsBridge: DashboardTicketBridge?
@@ -5176,8 +5179,15 @@ final class AppState: ObservableObject {
             recordActiveListEvidence(rows, profile: profile)
         } catch {
             // Stop asking a gateway that doesn't have the method; a new
-            // connection probes again.
-            if isMethodUnavailable(error) { activeListUnsupportedClient = client }
+            // connection probes again. Other failures retry on the next tick.
+            if isMethodUnavailable(error) {
+                activeListUnsupportedClient = client
+            } else if client !== activeListFailureLoggedClient {
+                activeListFailureLoggedClient = client
+                sessionCatalogLog.notice(
+                    "Live status poll failed: \(String(describing: error), privacy: .public)"
+                )
+            }
         }
     }
 
