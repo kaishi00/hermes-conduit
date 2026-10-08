@@ -50,10 +50,10 @@ enum VoiceReadBack {
         if line.range(of: #"^=+$"#, options: .regularExpression) != nil { return nil }
         if line.contains("|"), line.contains("-"),
            line.range(of: #"^[|:\-\s]+$"#, options: .regularExpression) != nil { return nil }
-        // A table row, with or without its outer pipes (but not a list item
-        // or quote that mentions a pipe).
+        // A table row, with or without its outer pipes (but not a heading,
+        // list item or quote that mentions a pipe).
         if line.hasPrefix("|")
-            || (line.contains(" | ") && line.range(of: #"^([-*+>]|[0-9]{1,3}[.)])\s"#, options: .regularExpression) == nil) {
+            || (line.contains(" | ") && line.range(of: #"^(#{1,6}|[-*+>]|[0-9]{1,3}[.)])\s"#, options: .regularExpression) == nil) {
             let cells = line.split(separator: "|")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
@@ -86,6 +86,8 @@ enum VoiceReadBack {
             (#"\[([^\]]+)\]\((?:[^()]|\([^()]*\))*\)"#, "$1"),
             (#"<(https?://[^>\s]+)>"#, "$1"),
             (#"<br\s*/?>"#, " "),
+            // A pipe between words is a separator, not something to say.
+            (#"\s+\|\s+"#, ", "),
         ]
         for (pattern, template) in rules {
             text = text.replacingOccurrences(of: pattern, with: template, options: [.regularExpression, .caseInsensitive])
@@ -116,7 +118,7 @@ enum VoiceReadBack {
             let link = result.substring(with: match.range)
             var site = URL(string: link)?.host ?? ""
             if site.hasPrefix("www.") { site.removeFirst(4) }
-            result = result.replacingCharacters(in: match.range, with: site.isEmpty ? "a link" : site) as NSString
+            result = result.replacingCharacters(in: match.range, with: site.isEmpty ? AppLocalization.string("a link") : site) as NSString
         }
         return result as String
     }

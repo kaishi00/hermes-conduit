@@ -2124,6 +2124,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceReadBack.plainSpeech("Already plain."), "Already plain.")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Summary\n=======\nAll good."), "Summary\nAll good.", "a heading's underline isn't read")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Item | Cost\n--- | ---\nMilk | $2"), "Item, Cost.\nMilk, $2.", "a table without outer pipes")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("## Done | Blocked"), "Done, Blocked.", "a heading isn't a table row, and its pipe isn't read")
         XCTAssertEqual(
             VoiceReadBack.plainSpeech("See https://en.wikipedia.org/wiki/Foo_(bar) and [Foo](https://en.wikipedia.org/wiki/Foo_(bar))."),
             "See en.wikipedia.org and Foo.",
