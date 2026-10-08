@@ -310,7 +310,8 @@ final class WatchDirectBroker {
                 googleSearch: plan.googleSearch,
                 voice: plan.voice,
                 openingPrompt: plan.openingPrompt,
-                toolGrant: grant
+                toolGrant: grant,
+                endPhrases: plan.endPhrases
             )
             link.log.note("watchDirectPrepared", [
                 "callID": Int(id),
@@ -407,7 +408,8 @@ final class WatchDirectBroker {
                 briefing: packed.data,
                 briefingBytes: packed.bytes,
                 greeting: plan.greeting,
-                voice: plan.voice
+                voice: plan.voice,
+                endPhrases: plan.endPhrases
             ))
             // The reply travels in one Watch message, which carries about
             // 65 KB as sent (the briefing as base64 in JSON).
@@ -505,7 +507,8 @@ final class WatchDirectBroker {
                 setupBytes: packed.bytes,
                 voice: plan.voice,
                 openingPrompt: plan.openingPrompt,
-                grant: grant
+                grant: grant,
+                endPhrases: plan.endPhrases
             ))
             guard let replyBytes = (WatchVoiceWire.encode(reply)[WatchVoiceWire.messageKey] as? Data)?.count else {
                 throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch."))

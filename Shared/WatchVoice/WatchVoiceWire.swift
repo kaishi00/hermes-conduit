@@ -47,6 +47,9 @@ enum WatchVoiceWire {
         /// while the iPhone can't be reached. Nil when the host can't
         /// grant one: lookups then go through the iPhone only.
         var toolGrant: DirectToolGrant?
+        /// The profile's spoken end phrases: the user saying one ends the
+        /// call, as on the iPhone. Nil from an older iPhone.
+        var endPhrases: [String]? = nil
     }
 
     /// One call's grant to run web_search and recall_memory, and with the
@@ -105,6 +108,9 @@ enum WatchVoiceWire {
         var briefingBytes: Int
         var greeting: String?
         var voice: String?
+        /// The profile's spoken end phrases: the user saying one ends the
+        /// call, as on the iPhone. Nil from an older iPhone.
+        var endPhrases: [String]? = nil
     }
 
     /// Everything a Watch call to Grok needs, built on the iPhone. The
@@ -119,6 +125,9 @@ enum WatchVoiceWire {
         var openingPrompt: String?
         /// Opens the audio bridge, and carries the call's lookups and jobs.
         var grant: DirectToolGrant
+        /// The profile's spoken end phrases: the user saying one ends the
+        /// call, as on the iPhone. Nil from an older iPhone.
+        var endPhrases: [String]? = nil
     }
 
     /// The setup's long part. Function declarations travel as their JSON:

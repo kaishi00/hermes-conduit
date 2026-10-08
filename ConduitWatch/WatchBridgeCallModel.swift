@@ -198,6 +198,11 @@ final class WatchBridgeCallModel: ObservableObject {
     /// Lines passed on with a delegation already.
     private var handledLines = 0
     private var userLine = ""
+    /// The profile's spoken end phrases: the user saying one ends the
+    /// call once GPT-Live's goodbye has played, as on the iPhone.
+    private var endPhrases: [String] = []
+    /// When the user said one of them; the microphone stays closed after.
+    private var goodbyeHeardAt: TimeInterval?
     /// A delegation already took the user's words still being heard: their
     /// line counts as handled when it lands, so it isn't sent again.
     private var openLineDelegated = false
@@ -496,6 +501,7 @@ final class WatchBridgeCallModel: ObservableObject {
         briefing = session.briefingText
         greeting = session.greeting
         voice = session.voice
+        endPhrases = session.endPhrases ?? []
         relay = relayClient
         note("bridgeSession", [
             "afterTapMs": Int((now - callStartedAt) * 1000),
@@ -759,6 +765,11 @@ final class WatchBridgeCallModel: ObservableObject {
                 transcript.append(.init(role: role == "user" ? .user : .assistant, text: text, at: Date()))
                 caption = String(text.suffix(120))
             }
+            if role == "user", goodbyeHeardAt == nil, endRequestedAt == nil,
+               VoiceSpokenCommands.matches(text, phrases: endPhrases) {
+                goodbyeHeardAt = now
+                note("bridgeGoodbyeHeard", [:])
+            }
             if role == "user", openLineDelegated {
                 openLineDelegated = false
                 if !text.isEmpty { handledLines = transcript.count }
@@ -840,6 +851,19 @@ final class WatchBridgeCallModel: ObservableObject {
         playbackDrained()
     }
 
+    /// The user said an end phrase: once GPT-Live's goodbye has played
+    /// (or none came), the call ends as if End was tapped.
+    private func endAfterGoodbyeIfDue(at: TimeInterval) {
+        guard let heard = goodbyeHeardAt, endRequestedAt == nil else { return }
+        let quietSince = max(heard, lastLoudAt ?? 0, lastPlaybackEndedAt ?? 0)
+        let quiet = !modelSpeaking && !audio.isPlaying && at - quietSince >= Self.goodbyeGrace
+        guard quiet || at - heard >= Self.goodbyeTimeout else { return }
+        end()
+    }
+
+    static let goodbyeGrace: TimeInterval = 1.5
+    static let goodbyeTimeout: TimeInterval = 10
+
     private func playbackDrained() {
         lastPlaybackEndedAt = now
         guard isActive, phase == .speaking, !modelSpeaking else { return }
@@ -848,7 +872,7 @@ final class WatchBridgeCallModel: ObservableObject {
     }
 
     private func captured(_ samples: [Int16], at time: TimeInterval) {
-        guard isActive, live, endRequestedAt == nil, !isMuted, phase != .needsTap, !isMicrophoneHeld else { return }
+        guard isActive, live, endRequestedAt == nil, goodbyeHeardAt == nil, !isMuted, phase != .needsTap, !isMicrophoneHeld else { return }
         activity.process(samples, sampleRate: Self.captureRate, endingAt: time)
         pendingSamples.append(contentsOf: samples)
     }
@@ -1382,6 +1406,7 @@ final class WatchBridgeCallModel: ObservableObject {
             finish(nil)
             return
         }
+        endAfterGoodbyeIfDue(at: at)
         reactivateIfDue()
         audio.checkPlayback()
         endSilentStretchIfDue(at: at)
@@ -1560,6 +1585,8 @@ final class WatchBridgeCallModel: ObservableObject {
         heardAt = nil
         lastModelTurnEndedAt = nil
         endRequestedAt = nil
+        endPhrases = []
+        goodbyeHeardAt = nil
         pendingSends = []
         seenDelegations = []
         delegationConnection = [:]

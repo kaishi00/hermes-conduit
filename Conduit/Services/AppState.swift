@@ -23768,6 +23768,8 @@ final class AppState: ObservableObject {
         /// The voice-job model settings for jobs the Watch starts through
         /// the push relay, as `createSession` sends them for a phone job.
         let jobOptions: [String: String]
+        /// The profile's spoken end phrases, as the phone's call uses them.
+        let endPhrases: [String]
     }
 
     /// Builds a Watch call's setup as `geminiLiveController` builds the
@@ -23802,7 +23804,8 @@ final class AppState: ObservableObject {
         let personality = await personalityLookup
         let token = try await tokens.freshToken()
         let style = liveVoiceStyle
-        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let jobSession = preferences.voiceJobSessionOptions(
             runtimeModel: runtime.model,
             runtimeProvider: runtime.provider
         )
@@ -23837,7 +23840,8 @@ final class AppState: ObservableObject {
             saveCalls: voiceCallSavingEnabled,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
-            jobOptions: jobOptions
+            jobOptions: jobOptions,
+            endPhrases: preferences.spokenEndConversationPhrases
         )
     }
 
@@ -23853,6 +23857,7 @@ final class AppState: ObservableObject {
         let memoryIncluded: Bool
         let personalityIncluded: Bool
         let jobOptions: [String: String]
+        let endPhrases: [String]
     }
 
     /// Builds a Watch GPT-Live call's briefing as `gptLiveController`
@@ -23881,7 +23886,8 @@ final class AppState: ObservableObject {
         let memory = await memoryLookup
         let personality = await personalityLookup
         let style = liveVoiceStyle
-        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let jobSession = preferences.voiceJobSessionOptions(
             runtimeModel: runtime.model,
             runtimeProvider: runtime.provider
         )
@@ -23907,7 +23913,8 @@ final class AppState: ObservableObject {
             saveCalls: voiceCallSavingEnabled,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
-            jobOptions: jobOptions
+            jobOptions: jobOptions,
+            endPhrases: preferences.spokenEndConversationPhrases
         )
     }
 
@@ -23925,6 +23932,7 @@ final class AppState: ObservableObject {
         let memoryIncluded: Bool
         let personalityIncluded: Bool
         let jobOptions: [String: String]
+        let endPhrases: [String]
     }
 
     /// Builds a Watch Grok call's setup as `grokLiveController` builds the
@@ -23955,7 +23963,8 @@ final class AppState: ObservableObject {
         let memory = await memoryLookup
         let personality = await personalityLookup
         let style = liveVoiceStyle
-        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let jobSession = preferences.voiceJobSessionOptions(
             runtimeModel: runtime.model,
             runtimeProvider: runtime.provider
         )
@@ -23987,7 +23996,8 @@ final class AppState: ObservableObject {
             saveCalls: voiceCallSavingEnabled,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
-            jobOptions: jobOptions
+            jobOptions: jobOptions,
+            endPhrases: preferences.spokenEndConversationPhrases
         )
     }
 
