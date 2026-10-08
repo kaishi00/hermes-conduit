@@ -1552,6 +1552,22 @@
           }
         }
       }
+    },
+    "Hermes started %@, not Grok. Update Conduit and the conduit_push plugin together." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes が Grok ではなく %@ を開始しました。Conduit と conduit_push プラグインを一緒にアップデートしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 启动的是 %@，而不是 Grok。请同时更新 Conduit 和 conduit_push 插件。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

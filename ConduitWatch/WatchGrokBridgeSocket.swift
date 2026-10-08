@@ -253,7 +253,7 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             }
             // A host that started another engine on this stream isn't talking to Grok.
             guard info.engine.isEmpty || info.engine == WatchAudioBridgeWire.grok else {
-                refusal = GeminiLiveServerClose(code: 4400, reason: "the host started \(info.engine), not Grok")
+                refusal = GeminiLiveServerClose(code: 4400, reason: String(localized: "Hermes started \(info.engine), not Grok. Update Conduit and the conduit_push plugin together."))
                 fail(Failure.closed)
                 return
             }
