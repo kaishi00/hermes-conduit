@@ -3658,7 +3658,9 @@ final class AppState: ObservableObject {
 
     /// The names a Watch call's job may give the user's profiles, in the
     /// order `voiceJobProfileTarget` tries them: the Watch resolves "for
-    /// Fam, …" from these as this phone would.
+    /// Fam, …" from these as this phone would. Kept within
+    /// `watchJobProfileNamesBytes`, as it rides in every grant: a name
+    /// left out goes through the iPhone, which knows them all.
     func watchJobProfileNames() -> [WatchVoiceWire.JobProfileName] {
         func entry(_ profile: String, _ names: [String]) -> WatchVoiceWire.JobProfileName {
             .init(profile: profilesMatch(profile, activeProfile) ? nil : profile, names: names.filter { !$0.isEmpty })
@@ -3666,8 +3668,17 @@ final class AppState: ObservableObject {
         let entries = profiles.map { entry($0, [$0]) }
             + [entry("default", [defaultProfileName])]
             + botRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
-        return entries.filter { !$0.names.isEmpty }
+        var bytes = 0
+        return entries.filter { entry in
+            guard !entry.names.isEmpty else { return false }
+            bytes += (entry.profile?.utf8.count ?? 0) + entry.names.reduce(0) { $0 + $1.utf8.count + 3 } + 24
+            return bytes <= Self.watchJobProfileNamesBytes
+        }
     }
+
+    /// The names' share of a Watch session message, well inside what
+    /// WatchConnectivity carries.
+    static let watchJobProfileNamesBytes = 8_000
 
     /// Stops following Voice background jobs at a server, profile, or
     /// sign-out boundary. The jobs keep running on the server as chats.

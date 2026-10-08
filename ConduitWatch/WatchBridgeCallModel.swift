@@ -1121,7 +1121,7 @@ final class WatchBridgeCallModel: ObservableObject {
         case .relay(let instructions, nil):
             return (["instructions": instructions], "")
         case .relay(let instructions, let profile?):
-            return (["instructions": instructions, "profile": profile], profile)
+            return (["instructions": instructions, "profile": profile], "")
         case .viaPhone(let label):
             return (nil, VoiceJobProfiles.viaPhoneReply(label))
         case .unknown(let name):
