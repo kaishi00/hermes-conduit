@@ -327,6 +327,9 @@ final class WatchDirectCallModel: ObservableObject {
     /// reached (WatchToolRelayClient). Nil without a grant, or once it
     /// ended; the iPhone's path then takes every call.
     private var toolRelay: WatchToolRelayClient?
+    /// A Grok session that fails this close to its grant's end doesn't
+    /// rejoin: the relay closes the bridge at the deadline anyway.
+    static let grantEndMargin: TimeInterval = 5
     private var hadToolGrant = false
     private var grantRequestInFlight = false
     private var lastGrantRequestAt: TimeInterval = 0
@@ -724,7 +727,9 @@ final class WatchDirectCallModel: ObservableObject {
         session.onStateChange = { [weak self] in self?.sessionStateChanged($0) }
         session.onConnectionReplaced = { [weak self] in self?.connectionReplaced() }
         self.session = session
-        // The bridge belongs to the grant, so the call keeps it: no renewal.
+        // The bridge belongs to the grant, so the call keeps it: no renewal
+        // (renewGrantIfDue skips Grok calls).
+        hadToolGrant = true
         toolRelay = relay
         if relay.hasJobs { jobsGrant = relay }
         WatchCallLog.shared.note("directSession", [
@@ -927,7 +932,7 @@ final class WatchDirectCallModel: ObservableObject {
             WatchCallLog.shared.note("directFailed", ["message": message, "screen": "\(scenePhase)", "rejoins": rejoins])
             // Once the call has been live, a fresh session carries it on;
             // not for Grok once its grant is over, which its bridge was.
-            let grantOver = engine == .grok && (toolRelay.map { $0.isGone || $0.expires(within: 0) } ?? true)
+            let grantOver = engine == .grok && (toolRelay.map { $0.isGone || $0.expires(within: Self.grantEndMargin) } ?? true)
             if firstReadyAt != nil, endRequestedAt == nil, rejoins < Self.maxRejoins, !grantOver {
                 waitToRejoin(message)
             } else {
@@ -2119,7 +2124,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// soon or ended early (a host restart, a spent budget). The old one is
     /// closed once nothing waits on it.
     private func renewGrantIfDue() {
-        guard hadToolGrant, endRequestedAt == nil, !grantRequestInFlight, link.isReachable,
+        guard hadToolGrant, engine != .grok, endRequestedAt == nil, !grantRequestInFlight, link.isReachable,
               grantRequests < Self.maxGrantRequests,
               now - lastGrantRequestAt >= Self.grantRequestInterval else { return }
         if let relay = toolRelay, !relay.isGone, relay.callsLeft > Self.grantRenewCallHeadroom,

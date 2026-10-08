@@ -144,7 +144,7 @@ enum WatchRejoin {
             case .broke:
                 return "[The call's connection to you broke and this is a new session. \(unheard) Say in a few words that you're back.]"
             case .froze:
-                return "[Your last session stopped responding and this is a new one for the same call. The user only heard a pause: don't mention a reconnection or say you're back. If they speak, answer them.]"
+                return "[Your last session stopped responding and this is a new one for the same call. Anything the user said during the pause wasn't heard. The user only heard a pause: don't mention a reconnection or say you're back. If they speak, answer them.]"
             }
         }
         // What was said can't close the block early and pass as instructions.

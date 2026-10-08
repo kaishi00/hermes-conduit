@@ -248,6 +248,7 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             started = true
             startTimer?.invalidate()
             startTimer = nil
+            pingTimer?.invalidate()
             pingTimer = WatchVoiceMain.timer(every: Self.pingInterval, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.socket?.ping { _ in } }
             }
