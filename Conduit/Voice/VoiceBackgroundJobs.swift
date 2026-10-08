@@ -310,15 +310,6 @@ struct VoiceThreadTarget: Equatable, Codable {
     }
 }
 
-/// What a profile or bot name spoken for a job refers to.
-enum VoiceJobProfileTarget: Equatable {
-    /// The profile the call is already on.
-    case active
-    /// Another profile (or bot) on the same Hermes server.
-    case other(String)
-    case unknown
-}
-
 /// Seam the Voice controller uses for spoken job commands and hand-backs.
 @MainActor
 protocol VoiceBackgroundJobHandling: AnyObject {
@@ -567,7 +558,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// `profile` is the profile or bot the user named for the job. Without
     /// one, a leading "for <profile>, …" in the instructions names it.
     func startJob(
-        instructions: String,
+        instructions requested: String,
         profile spokenProfile: String? = nil,
         onJobCreated: (@MainActor (UUID) -> Void)? = nil
     ) async -> String {
@@ -575,32 +566,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard activeCount < Self.maximumActiveJobs else {
             return AppLocalization.string("You already have \(activeCount) background jobs running. Cancel them before starting another.")
         }
-        var instructions = instructions
-        var profile: String?
-        var profileLabel: String?
-        if let spokenProfile = spokenProfile?.trimmingCharacters(in: .whitespacesAndNewlines), !spokenProfile.isEmpty {
-            switch backend.resolveProfile(spokenProfile) {
-            case .active:
-                break
-            case .other(let name):
-                profile = name
-                profileLabel = spokenProfile
-            case .unknown:
-                // A named target that isn't a known profile is never guessed at.
-                return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
-            }
-            // The model may also leave "for Fam, …" in the task itself; it
-            // is trimmed only when it names the same profile.
-            if let target = Self.leadingTarget(in: instructions, resolve: backend.resolveProfile),
-               target.target == (profile.map { VoiceJobProfileTarget.other($0) } ?? .active) {
-                instructions = target.remainder
-            }
-        } else if let target = Self.leadingTarget(in: instructions, resolve: backend.resolveProfile) {
-            if case .other(let name) = target.target {
-                profile = name
-                profileLabel = target.name
-            }
-            instructions = target.remainder
+        let routed = VoiceJobProfiles.route(instructions: requested, spokenProfile: spokenProfile, resolve: { self.backend.resolveProfile($0) })
+        let instructions: String
+        let profile: String?
+        let profileLabel: String?
+        switch routed {
+        case .run(let task, let target, let label):
+            (instructions, profile, profileLabel) = (task, target, label)
+        case .unknown(let spokenProfile):
+            // A named target that isn't a known profile is never guessed at.
+            return AppLocalization.string("I don't know a profile or bot called \(spokenProfile), so I didn't start the job.")
         }
         let job = VoiceBackgroundJob(
             id: UUID(),
@@ -1109,30 +1084,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     /// "for Fam, check the router" → (Fam, "check the router").
-    /// Only a leading "for/on/with <name>" whose name (up to three words)
-    /// is a known profile (this one included) counts; anything else stays
-    /// the task.
     static func leadingTarget(
         in instructions: String,
         resolve: @MainActor (String) -> VoiceJobProfileTarget
     ) -> (target: VoiceJobProfileTarget, name: String, remainder: String)? {
-        let separators = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
-        let words = instructions.split(whereSeparator: { $0 == " " || $0 == "\n" })
-        guard words.count >= 3,
-              // Not "to": it usually starts a verb ("to check the router").
-              ["for", "on", "with"].contains(words[0].lowercased()) else { return nil }
-        for length in stride(from: min(3, words.count - 2), through: 1, by: -1) {
-            let nameWords = words[1...length]
-            let name = nameWords.joined(separator: " ").trimmingCharacters(in: separators)
-            guard !name.isEmpty else { continue }
-            let target = resolve(name)
-            guard target != .unknown else { continue }
-            let remainder = words[(length + 1)...].joined(separator: " ")
-                .trimmingCharacters(in: separators)
-            guard !remainder.isEmpty else { return nil }
-            return (target, name, remainder)
-        }
-        return nil
+        VoiceJobProfiles.leadingTarget(in: instructions, resolve: { resolve($0) })
     }
 
     /// The start failed (or Hermes failed the turn before submit returned):

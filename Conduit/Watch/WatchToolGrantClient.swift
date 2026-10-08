@@ -40,16 +40,18 @@ final class WatchToolGrantClient {
     /// through this phone only, as before.
     /// `maxJobs`, `jobOptions` (the voice-job model, provider and
     /// reasoning effort) and `carryJobsFrom` (a renewal's previous grant,
-    /// whose jobs move to the new one) go with job tools only. `audio`
+    /// whose jobs move to the new one) and `jobProfiles` (the user's other
+    /// profiles a job may run on) go with job tools only. `audio`
     /// adds the call's audio bridge (GPT-Live on the Watch), which starts
     /// on the host with the grant.
-    func grant(tools: [String], profile: String, maxJobs: Int? = nil, jobOptions: [String: String] = [:], carryJobsFrom: String? = nil, audio: Bool = false) async throws -> WatchVoiceWire.DirectToolGrant {
+    func grant(tools: [String], profile: String, maxJobs: Int? = nil, jobOptions: [String: String] = [:], carryJobsFrom: String? = nil, jobProfiles: [String] = [], audio: Bool = false) async throws -> WatchVoiceWire.DirectToolGrant {
         var body: [String: Any] = ["tools": tools]
         if audio { body["audio"] = true }
         if !WatchJobAnswer.tools.isDisjoint(with: tools) {
             if let maxJobs { body["max_jobs"] = maxJobs }
             if !jobOptions.isEmpty { body["job_options"] = jobOptions }
             if let carryJobsFrom { body["carry_jobs_from"] = carryJobsFrom }
+            if !jobProfiles.isEmpty { body["job_profiles"] = jobProfiles }
         }
         let response = try await request(
             DashboardPath.withProfile(Self.grantPath, profile: profile),
@@ -123,7 +125,8 @@ final class WatchToolGrantClient {
             maxCalls: maxCalls,
             maxJobs: response["max_jobs"] as? Int,
             jobsCarriedFrom: response["jobs_carried_from"] as? String,
-            audio: bridge
+            audio: bridge,
+            hostJobProfiles: response["job_profiles"] as? [String]
         )
     }
 }

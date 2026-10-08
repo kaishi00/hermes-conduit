@@ -594,6 +594,13 @@ struct ComposerBar: View {
 
     /// Attach, model and session status on the left; dictate and the
     /// voice/send slot on the right, like the Codex composer (#335).
+    /// The round controls match the context ring, leaving the model chip
+    /// more width (#466).
+    static let controlSize: CGFloat = 32
+    /// Taps land a little outside each control. Half the row spacing, so
+    /// neighbours never overlap.
+    static var controlHitShape: some Shape { Rectangle().inset(by: -4) }
+
     private var controlsRow: some View {
         HStack(spacing: 8) {
             attachmentButton
@@ -609,8 +616,8 @@ struct ComposerBar: View {
                 appState.showContextSheet = true
             } label: {
                 ContextRingView(percent: appState.runtime.contextPercent)
-                    .frame(width: 32, height: 32)
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(width: Self.controlSize, height: Self.controlSize)
+                    .contentShape(Self.controlHitShape)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Context usage, \(Int(appState.runtime.contextPercent.rounded())) percent")
@@ -881,11 +888,12 @@ struct ComposerBar: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 20, weight: .medium))
-                .frame(width: 44, height: 44)
+                .font(.system(size: 16, weight: .medium))
+                .frame(width: Self.controlSize, height: Self.controlSize)
+                .contentShape(Self.controlHitShape)
         }
         .disabled(!appState.composerIsEnabled || appState.isBusy)
-        .conduitGlassControl(cornerRadius: 22, tint: .conduitAccent.opacity(0.08))
+        .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
         .photosPicker(
             isPresented: $showAttachmentMenu,
             selection: $photoItems,
@@ -946,7 +954,7 @@ struct ComposerBar: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: actionSymbol)
-                    .font(.system(size: stopOnly ? 14 : 17, weight: .semibold))
+                    .font(.system(size: stopOnly ? 12 : 14, weight: .semibold))
                     .contentTransition(.symbolEffect(.replace))
                 if let actionTitle {
                     Text(actionTitle)
@@ -955,13 +963,14 @@ struct ComposerBar: View {
                 }
             }
             .foregroundStyle(action == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
-            .frame(minWidth: actionTitle == nil ? 44 : 94, minHeight: 44)
+            .frame(minWidth: actionTitle == nil ? Self.controlSize : 86, minHeight: Self.controlSize)
             .padding(.horizontal, actionTitle == nil ? 0 : 4)
+            .contentShape(Self.controlHitShape)
             .animation(ConduitMotion.transition, value: action)
         }
         .disabled(action == .unavailable)
         .conduitGlassControl(
-            cornerRadius: 22,
+            cornerRadius: Self.controlSize / 2,
             tint: actionSurfaceTint,
             prominent: action == .send,
             interactive: action != .unavailable
@@ -971,40 +980,93 @@ struct ComposerBar: View {
 
     /// The model and effort, truncating first when the row is crowded.
     private var modelButton: some View {
-        Button {
-            Haptics.selection()
-            appState.showModelPicker = true
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "cpu")
-                    .foregroundStyle(Color.conduitAccent)
-                    .symbolEffect(
-                        .variableColor.iterative,
-                        options: .repeating,
-                        isActive: appState.turnState == .running && !reduceMotion
-                    )
-                Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                if !appState.runtime.reasoningEffort.isEmpty {
-                    // The model name gives way first, then the effort.
-                    Text(formatEffort(appState.runtime.reasoningEffort))
-                        .foregroundStyle(.secondary)
+        HStack(spacing: 2) {
+            Button {
+                openModelPicker()
+            } label: {
+                HStack(spacing: 5) {
+                    Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
                         .lineLimit(1)
-                        .layoutPriority(1)
+                        .truncationMode(.tail)
+                    if appState.runtime.yolo {
+                        Image(systemName: "shield.slash.fill")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.orange)
+                    }
                 }
-                if appState.runtime.yolo {
-                    Image(systemName: "shield.slash.fill")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(Color.orange)
-                }
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .font(.footnote.weight(.semibold))
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .buttonStyle(.plain)
+            .accessibilityLabel(modelAccessibilityLabel)
+
+            if !appState.runtime.model.isEmpty {
+                // The model name gives way first, then the effort.
+                reasoningMenu
+                    .layoutPriority(1)
+            }
+        }
+        .font(.footnote.weight(.semibold))
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        // The rest of the chip's width still opens the sheet.
+        .background {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { openModelPicker() }
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func openModelPicker() {
+        Haptics.selection()
+        appState.showModelPicker = true
+    }
+
+    /// One tap to change reasoning, the setting changed most, without opening
+    /// the Model sheet. Hermes applies it to the live agent at once.
+    private var reasoningMenu: some View {
+        let current = ReasoningEffortLevel(runtimeEffort: appState.runtime.reasoningEffort)
+        return Menu {
+            Picker(
+                selection: Binding<ReasoningEffortLevel?>(
+                    get: { current },
+                    set: { level in
+                        guard let level, level != current else { return }
+                        Haptics.selection()
+                        Task { @MainActor in
+                            // The state notice only shows while the composer
+                            // is disabled, so report it in the composer's own
+                            // notice.
+                            if case .failed(let message) = await appState.setReasoningEffort(level.rawValue) {
+                                composerErrorMessage = message
+                                Haptics.error()
+                                UIAccessibility.post(notification: .announcement, argument: message)
+                            }
+                        }
+                    }
+                )
+            ) {
+                ForEach(ReasoningEffortLevel.allCases) { level in
+                    Text(level.title).tag(Optional(level))
+                }
+            } label: {
+                Text("Reasoning")
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text(current?.title ?? formatEffort(appState.runtime.reasoningEffort))
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(modelAccessibilityLabel)
+        .menuOrder(.fixed)
+        .accessibilityLabel(Text("Reasoning"))
+        .accessibilityValue(Text(current?.title ?? formatEffort(appState.runtime.reasoningEffort)))
     }
 
     /// Return-shortcut entry point. Invokes the exact same submission path
@@ -1104,14 +1166,12 @@ struct ComposerBar: View {
             }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
-            .frame(width: 36, height: 36)
+            .frame(width: Self.controlSize, height: Self.controlSize)
+            .contentShape(Self.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(appState.isPreparingVoiceResume || appState.isBusy)
-        .conduitGlassControl(cornerRadius: 18, tint: .conduitAura.opacity(0.14), interactive: true)
-        // A 44pt target around the smaller glass chip.
-        .frame(minWidth: 44, minHeight: 44)
-        .contentShape(Rectangle())
+        .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAura.opacity(0.14), interactive: true)
         .accessibilityLabel(AppLocalization.string("Resume call"))
         .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
     }
@@ -1124,15 +1184,15 @@ struct ComposerBar: View {
             openVoiceFromComposer()
         } label: {
             Image(systemName: appState.canStartPhoneVoiceConversation ? "waveform" : "waveform.slash")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(canOpenVoice ? Color.accentColor : Color.secondary)
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
+                .frame(width: Self.controlSize, height: Self.controlSize)
+                .contentShape(Self.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(!canOpenVoice)
         .conduitGlassControl(
-            cornerRadius: 22,
+            cornerRadius: Self.controlSize / 2,
             tint: appState.canStartPhoneVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06),
             interactive: canOpenVoice
         )
@@ -1162,19 +1222,19 @@ struct ComposerBar: View {
             }
         } label: {
             Image(systemName: isCapturing ? "mic.fill" : "mic")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(isCapturing ? Color.red : (canDictate ? Color.primary : Color.secondary))
                 // Pulses from the tap, so a start still waiting on
                 // permission or the microphone shows it's in flight.
                 .symbolEffect(.pulse, isActive: isActive && !reduceMotion)
                 .contentTransition(.symbolEffect(.replace))
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
+                .frame(width: Self.controlSize, height: Self.controlSize)
+                .contentShape(Self.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(!canDictate && !isActive)
         .conduitGlassControl(
-            cornerRadius: 22,
+            cornerRadius: Self.controlSize / 2,
             tint: isCapturing ? .red.opacity(0.16) : .primary.opacity(0.025),
             interactive: canDictate || isActive
         )
@@ -1759,12 +1819,10 @@ struct ComposerBar: View {
 
     private var modelAccessibilityLabel: String {
         let model = appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model
-        let reasoning = appState.runtime.reasoningEffort.isEmpty
-            ? AppLocalization.string("reasoning not set")
-            : AppLocalization.string("reasoning \(formatEffort(appState.runtime.reasoningEffort))")
+        // Reasoning has its own control beside the model name.
         let approvals = appState.runtime.yolo ? AppLocalization.string(", auto-approve enabled") : ""
         let activity = appState.turnState == .running ? AppLocalization.string(", agent working") : ""
-        return "\(model), \(reasoning)\(approvals)\(activity)"
+        return "\(model)\(approvals)\(activity)"
     }
 }
 

@@ -35,14 +35,44 @@ func modelPickerSelectionChanged(
         || ProviderInfo.normalized(selectedProvider) != ProviderInfo.normalized(runtimeProvider)
 }
 
+/// The reasoning levels offered in the Model sheet and on the composer chip,
+/// lowest first. Hermes turns reasoning off with "none".
+enum ReasoningEffortLevel: String, CaseIterable, Identifiable {
+    case off = "none"
+    case minimal, low, medium, high, xhigh, max, ultra
+
+    var id: String { rawValue }
+
+    /// The level for the runtime's effort word, where empty means off. Nil
+    /// for a word Conduit doesn't offer.
+    init?(runtimeEffort: String) {
+        let word = runtimeEffort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        self.init(rawValue: word.isEmpty || word == "off" ? "none" : word)
+    }
+
+    var title: String {
+        switch self {
+        case .off: return AppLocalization.string("Off")
+        case .minimal: return AppLocalization.string("Minimal")
+        case .low: return AppLocalization.string("Low")
+        case .medium: return AppLocalization.string("Medium")
+        case .high: return AppLocalization.string("High")
+        case .xhigh: return AppLocalization.string("Extra High")
+        case .max: return AppLocalization.string("Max")
+        case .ultra: return AppLocalization.string("Ultra")
+        }
+    }
+}
+
 /// The settings an Apply sends, captured from the sheet's draft.
 struct ModelPickerApplyDraft: Equatable {
     var model: String
     var provider: String
     var yoloChanged: Bool
     var yolo: Bool
-    /// The effort word sent to Hermes ("none" turns reasoning off).
-    var reasoningEffort: String
+    /// The effort word sent to Hermes ("none" turns reasoning off), or nil
+    /// to leave reasoning alone. The sheet sets reasoning on tap instead.
+    var reasoningEffort: String?
     var fast: Bool
 }
 
@@ -115,8 +145,10 @@ func runModelPickerApply(
             }
             progress.yoloApplied = true
         }
-        try await actions.setReasoning(draft.reasoningEffort)
-        progress.reasoningApplied = true
+        if let effort = draft.reasoningEffort {
+            try await actions.setReasoning(effort)
+            progress.reasoningApplied = true
+        }
         try await actions.setFast(draft.fast)
         progress.fastApplied = true
         return .completed(progress)
@@ -179,8 +211,6 @@ struct ModelPickerSelection: Equatable {
 private struct ModelPickerDraftKey: Equatable {
     var model: String
     var provider: String
-    var reasoningEnabled: Bool
-    var reasoningEffort: String
     var fast: Bool
     var yolo: Bool
 }
@@ -191,8 +221,10 @@ struct ModelPickerView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var selectedModel = ""
     @State private var selectedProvider = ""
-    @State private var reasoningEnabled = true
-    @State private var reasoningEffort = "medium"
+    /// The runtime's effort word ("none" when off); set on tap.
+    @State private var reasoningEffort = "none"
+    @State private var isApplyingReasoning = false
+    @State private var reasoningError: String?
     @State private var fastEnabled = false
     @State private var yoloEnabled = false
     @State private var initialYoloEnabled: Bool?
@@ -221,8 +253,10 @@ struct ModelPickerView: View {
                         if editingVisibility {
                             visibilityEditor
                         } else {
-                            modelSection
+                            // Reasoning changes most often and the model
+                            // list can be long, so reasoning comes first.
                             reasoningSection
+                            modelSection
                             runSettingsSection
                             applyButton
                         }
@@ -253,7 +287,12 @@ struct ModelPickerView: View {
             }
         }
         .preferredColorScheme(appState.themePreference.colorScheme)
-        .onAppear { refreshYoloToggle(force: false) }
+        .onAppear {
+            // Seeded here, not after the catalog loads, so a failed catalog
+            // fetch still shows the real level.
+            reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+            refreshYoloToggle(force: false)
+        }
         .onChange(of: appState.runtime.approvalsMode) { oldMode, newMode in
             // Only transitions into/out of the global floor affect the toggle;
             // other mode changes (manual ↔ smart) must not discard an
@@ -264,6 +303,13 @@ struct ModelPickerView: View {
         .task { await loadModels() }
         .onChange(of: draftKey) { _, _ in
             applyError = nil
+            reasoningError = nil
+        }
+        .onChange(of: appState.runtime.reasoningEffort) { _, effort in
+            // Follow a level changed elsewhere (another device, a chat
+            // switch), but not mid-tap, so the tapped pill doesn't flicker.
+            guard !isApplyingReasoning else { return }
+            reasoningEffort = effort.isEmpty ? "none" : effort
         }
         .onChange(of: applyError) { _, message in
             // The error row appears silently; tell VoiceOver the apply failed.
@@ -399,21 +445,48 @@ struct ModelPickerView: View {
 
     private var reasoningSection: some View {
         ModelPickerSection(title: AppLocalization.string("Reasoning"), symbol: "brain.head.profile", tint: .conduitAura) {
-            Toggle("Enabled", isOn: $reasoningEnabled)
-
-            if reasoningEnabled {
-                Picker("Effort", selection: $reasoningEffort) {
-                    Text("Minimal").tag("minimal")
-                    Text("Low").tag("low")
-                    Text("Medium").tag("medium")
-                    Text("High").tag("high")
-                    Text("Extra High").tag("xhigh")
-                    Text("Max").tag("max")
-                    Text("Ultra").tag("ultra")
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(ReasoningEffortLevel.allCases) { level in
+                        reasoningPill(level)
+                    }
                 }
-                .pickerStyle(.segmented)
+                .padding(.vertical, 1)
+            }
+            .scrollIndicators(.hidden)
+
+            if let reasoningError {
+                Label(reasoningError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private func reasoningPill(_ level: ReasoningEffortLevel) -> some View {
+        let isSelected = ReasoningEffortLevel(runtimeEffort: reasoningEffort) == level
+        return Button {
+            Task { @MainActor in await applyReasoning(level) }
+        } label: {
+            Text(level.title)
+                .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 36)
+                .background(
+                    isSelected ? AnyShapeStyle(Color.conduitAura) : AnyShapeStyle(rowFoundation),
+                    in: Capsule()
+                )
+                .overlay {
+                    Capsule().strokeBorder(isSelected ? Color.clear : rowStroke, lineWidth: 1)
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        // One write at a time: Apply may switch the model under this level.
+        .disabled(isApplyingReasoning || isApplying)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var runSettingsSection: some View {
@@ -623,7 +696,7 @@ struct ModelPickerView: View {
                 .frame(height: 46)
             }
             .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: true)
-            .disabled(isApplying)
+            .disabled(isApplying || isApplyingReasoning)
         }
     }
 
@@ -631,8 +704,6 @@ struct ModelPickerView: View {
         ModelPickerDraftKey(
             model: selectedModel,
             provider: selectedProvider,
-            reasoningEnabled: reasoningEnabled,
-            reasoningEffort: reasoningEffort,
             fast: fastEnabled,
             yolo: yoloEnabled
         )
@@ -654,10 +725,6 @@ struct ModelPickerView: View {
             visibility = appState.modelVisibility
             selectedModel = appState.runtime.model
             selectedProvider = appState.runtime.provider
-            reasoningEnabled = !appState.runtime.reasoningEffort.isEmpty
-            if reasoningEnabled {
-                reasoningEffort = appState.runtime.reasoningEffort
-            }
             fastEnabled = appState.runtime.fast
             refreshYoloToggle(force: false)
         } catch {
@@ -689,8 +756,28 @@ struct ModelPickerView: View {
         }
     }
 
+    /// Reasoning applies to the live agent at once, so a tap sends it without
+    /// waiting for Apply.
+    private func applyReasoning(_ level: ReasoningEffortLevel) async {
+        guard !isApplyingReasoning, !isApplying else { return }
+        Haptics.selection()
+        reasoningEffort = level.rawValue
+        reasoningError = nil
+        isApplyingReasoning = true
+        defer { isApplyingReasoning = false }
+        let result = await appState.setReasoningEffort(level.rawValue)
+        if result != .applied {
+            // Back to the live level, which may have moved meanwhile.
+            reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+        }
+        if case .failed(let message) = result {
+            reasoningError = message
+            UIAccessibility.post(notification: .announcement, argument: message)
+        }
+    }
+
     private func applyModel(confirmedModelSwitch: Bool = false) async {
-        guard !isApplying else { return }
+        guard !isApplying, !isApplyingReasoning else { return }
         guard let client = appState.client, let sessionId = appState.activeSessionId else {
             applyError = AppLocalization.string("Not connected to a conversation.")
             return
@@ -705,7 +792,7 @@ struct ModelPickerView: View {
             provider: selection.provider,
             yoloChanged: sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled),
             yolo: yoloEnabled,
-            reasoningEffort: reasoningEnabled ? reasoningEffort : "none",
+            reasoningEffort: nil,
             fast: fastEnabled
         )
         let sendModelSwitch = modelPickerShouldSwitch(
@@ -754,8 +841,8 @@ struct ModelPickerView: View {
         if progress.yoloApplied {
             initialYoloEnabled = draft.yolo
         }
-        if progress.reasoningApplied {
-            appState.runtime.reasoningEffort = draft.reasoningEffort == "none" ? "" : draft.reasoningEffort
+        if progress.reasoningApplied, let effort = draft.reasoningEffort {
+            appState.runtime.reasoningEffort = effort == "none" ? "" : effort
         }
         if progress.fastApplied {
             appState.runtime.fast = draft.fast

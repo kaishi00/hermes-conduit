@@ -565,7 +565,10 @@ final class AppState: ObservableObject {
     // MARK: - Session
 
     @Published var sessions: [SessionSummary] = [] {
-        didSet { refreshActiveChatScrollSessionIdentity() }
+        didSet {
+            refreshActiveChatScrollSessionIdentity()
+            observeChatReadState()
+        }
     }
     @Published var cronSessions: [SessionSummary] = [] {
         didSet { refreshActiveChatScrollSessionIdentity() }
@@ -595,10 +598,18 @@ final class AppState: ObservableObject {
     @Published private(set) var projectsLoading = false
     @Published private(set) var archivedSessions: [SessionSummary] = []
     @Published private(set) var pinnedSessionIDs: [String] = []
+    /// What the user has and hasn't seen, per conversation (#454).
+    @Published private(set) var chatReadState = ChatReadState()
     @Published private(set) var sessionMutationID: String?
     @Published private(set) var isRefreshingSessionCatalog = false
     @Published var activeSessionId: String? {
-        didSet { refreshActiveChatScrollSessionIdentity() }
+        didSet {
+            refreshActiveChatScrollSessionIdentity()
+            if oldValue != activeSessionId {
+                noteChatLeft(oldValue)
+                noteActiveChatSeen()
+            }
+        }
     }
     @Published private(set) var activeChatScrollSessionIdentity = ChatScrollSessionIdentity.none
     @Published private(set) var chatTranscriptRevision: UInt64 = 0
@@ -1212,6 +1223,8 @@ final class AppState: ObservableObject {
     }
     @Published var showSidebar = false {
         didSet {
+            // Closing the drawer uncovers the open chat (#454).
+            if oldValue, !showSidebar { noteActiveChatSeen(respectingMarks: true) }
             // Avoid driving the entire presentation hierarchy at streaming
             // cadence while the drawer is animating. The live buffer remains
             // authoritative and is republished as soon as the drawer closes.
@@ -3558,6 +3571,10 @@ final class AppState: ObservableObject {
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             pinnedSessionIDsByProfile = stored
         }
+        if let data = defaults.data(forKey: chatReadLedgerKey),
+           let stored = try? JSONDecoder().decode(ChatReadLedger.self, from: data) {
+            chatReadState = ChatReadState(ledger: stored)
+        }
         if let data = defaults.data(forKey: voiceJobSessionIDsByProfileKey),
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             voiceJobSessionIDsByProfile = stored
@@ -3655,6 +3672,40 @@ final class AppState: ObservableObject {
         guard let match else { return .unknown }
         return profilesMatch(match, activeProfile) ? .active : .other(match)
     }
+
+    /// The names a Watch call's job may give the user's profiles, in the
+    /// order `voiceJobProfileTarget` tries them: the Watch resolves "for
+    /// Fam, …" from these as this phone would. `callProfile` is the
+    /// profile the call is on (the active one when nil). Kept within
+    /// `watchJobProfileNamesBytes`, as it rides in every grant: a spoken
+    /// profile left out goes through the iPhone, which knows them all,
+    /// while a leading "for <name>," for one stays part of the task.
+    func watchJobProfileNames(callProfile: String? = nil) -> [WatchVoiceWire.JobProfileName] {
+        let own = callProfile ?? activeProfile
+        func entry(_ profile: String, _ names: [String]) -> WatchVoiceWire.JobProfileName {
+            .init(
+                profile: profilesMatch(profile, own) ? nil : profile,
+                names: names.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            )
+        }
+        let entries = profiles.map { entry($0, [$0]) }
+            + [entry("default", [defaultProfileName])]
+            + botRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
+        var result: [WatchVoiceWire.JobProfileName] = []
+        var bytes = 0
+        for entry in entries where !entry.names.isEmpty {
+            let cost = (entry.profile?.utf8.count ?? 0) + entry.names.reduce(0) { $0 + $1.utf8.count + 3 } + 24
+            // A prefix, so the Watch tries names in the phone's order.
+            guard bytes + cost <= Self.watchJobProfileNamesBytes else { break }
+            bytes += cost
+            result.append(entry)
+        }
+        return result
+    }
+
+    /// The names' share of a Watch session message, well inside what
+    /// WatchConnectivity carries.
+    static let watchJobProfileNamesBytes = 8_000
 
     /// Stops following Voice background jobs at a server, profile, or
     /// sign-out boundary. The jobs keep running on the server as chats.
@@ -5054,6 +5105,139 @@ final class AppState: ObservableObject {
         }
         pinnedSessionIDsByProfile[activeProfile] = pinnedSessionIDs
         persistPinnedSessions()
+    }
+
+    // MARK: - Read state (#454)
+
+    private let chatReadLedgerKey = "conduit.chatReadLedger.v1"
+
+    func isSessionUnread(_ session: SessionSummary) -> Bool {
+        chatReadState.isUnread(session, profile: activeProfile)
+    }
+
+    func markSessionRead(_ session: SessionSummary) {
+        let profile = activeProfile
+        let flagged = chatReadState.serverUnread(session, profile: profile)
+        updateChatReadState { $0.markSeen(session, profile: profile) }
+        if flagged {
+            writeSessionUnreadFlag(session, unread: false, profile: profile)
+        }
+    }
+
+    func markSessionUnread(_ session: SessionSummary) {
+        let profile = activeProfile
+        updateChatReadState { $0.markUnread(session, profile: profile) }
+        writeSessionUnreadFlag(session, unread: true, profile: profile)
+    }
+
+    func markAllSessionsRead() {
+        let profile = activeProfile
+        let unread = activeProfileSessions.filter { !$0.isArchived && isSessionUnread($0) }
+        guard !unread.isEmpty else { return }
+        let flagged = unread.filter { chatReadState.serverUnread($0, profile: profile) }
+        // One ledger update (and one persisted encode) for the whole batch.
+        updateChatReadState { state in
+            for session in unread { state.markSeen(session, profile: profile) }
+        }
+        // One request at a time through the dashboard bridge.
+        let writes = flagged.compactMap { preparedUnreadFlagWrite($0, unread: false, profile: profile) }
+        guard !writes.isEmpty else { return }
+        Task {
+            for write in writes { await write() }
+        }
+    }
+
+    /// Applies a change and persists the ledger when it moved. Publishes only
+    /// on a real change: listings arrive often and most change nothing here.
+    private func updateChatReadState(_ change: (inout ChatReadState) -> Void) {
+        var next = chatReadState
+        change(&next)
+        guard next != chatReadState else { return }
+        let ledgerChanged = next.ledger != chatReadState.ledger
+        chatReadState = next
+        if ledgerChanged, let data = try? JSONEncoder().encode(next.ledger) {
+            defaults.set(data, forKey: chatReadLedgerKey)
+        }
+    }
+
+    private func observeChatReadState() {
+        let profile = activeProfile
+        let listed = sessions.filter { sessionBelongsToProfile($0, profile: profile) && $0.source != .cron }
+        updateChatReadState { $0.observe(listed, profile: profile) }
+        noteActiveChatSeen(respectingMarks: true)
+    }
+
+    /// The open chat counts as seen while it is actually on screen: the app is
+    /// in front and the sessions drawer isn't covering it. Seeing it also
+    /// clears Hermes' flag when activity set it. Opening a chat reads it
+    /// outright. Anything else (a listing refresh, closing the drawer,
+    /// returning to the app) leaves a chat the user, or Desktop, explicitly
+    /// marked unread alone, the way Desktop keeps a marked chat unread until
+    /// you open it again.
+    private func noteActiveChatSeen(respectingMarks: Bool = false) {
+        guard isSceneActive, !showSidebar,
+              let session = activeProfileSessions.first(where: sessionMatchesActiveSession) else { return }
+        let profile = activeProfile
+        if respectingMarks {
+            if chatReadState.isExplicitlyUnread(session, profile: profile) { return }
+            // Catch-up never re-sends a write Hermes hasn't confirmed yet.
+            if !chatReadState.mayRewritePassively(session, profile: profile) {
+                updateChatReadState { state in
+                    state.markSeen(session, profile: profile)
+                    if state.serverUnread(session, profile: profile) {
+                        state.recordLocalRead(session, profile: profile)
+                    }
+                }
+                return
+            }
+        }
+        markSessionRead(session)
+    }
+
+    /// The user was looking at this chat until now (switched to another, or
+    /// left the app): what the next listing reports for it, up to this moment,
+    /// was seen.
+    private func noteChatLeft(_ sessionID: String?) {
+        guard isSceneActive,
+              let sessionID,
+              let session = activeProfileSessions.first(where: { ([$0.id] + $0.alternateIds).contains(sessionID) }),
+              !chatReadState.isExplicitlyUnread(session, profile: activeProfile) else { return }
+        let profile = activeProfile
+        updateChatReadState { $0.markSeen(session, profile: profile) }
+    }
+
+    /// Writes Hermes' shared read flag, which Desktop shows and clears too.
+    /// Best-effort: a gateway without the flag (or a failed request) leaves
+    /// Conduit's own read state working on its own.
+    private func writeSessionUnreadFlag(_ session: SessionSummary, unread: Bool, profile: String) {
+        guard let write = preparedUnreadFlagWrite(session, unread: unread, profile: profile) else { return }
+        Task { await write() }
+    }
+
+    /// Records the write as pending now and returns the request to send.
+    private func preparedUnreadFlagWrite(
+        _ session: SessionSummary,
+        unread: Bool,
+        profile: String
+    ) -> (@MainActor () async -> Void)? {
+        guard let dashboardTicketBridge else { return nil }
+        var generation: UInt64 = 0
+        updateChatReadState { generation = $0.recordServerWrite(session, profile: profile, unread: unread) }
+        let writtenGeneration = generation
+        let path = dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile)
+        return { [weak self] in
+            do {
+                _ = try await dashboardTicketBridge.requestJSON(
+                    path: path,
+                    method: "PATCH",
+                    body: DashboardPath.bodyWithProfile(["unread": unread], profile: profile)
+                )
+            } catch {
+                self?.updateChatReadState {
+                    $0.discardServerWrite(session, profile: profile, generation: writtenGeneration)
+                }
+            }
+        }
     }
 
     private func removePinnedState(for session: SessionSummary) {
@@ -11663,6 +11847,7 @@ final class AppState: ObservableObject {
             if !(isSceneActive && sceneHasBeenActive) { sceneActiveSince = Date() }
             isSceneActive = true
             sceneHasBeenActive = true
+            noteActiveChatSeen(respectingMarks: true)
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
@@ -11818,7 +12003,10 @@ final class AppState: ObservableObject {
         case .background:
             // Only a departure from active counts: coming back passes
             // through .inactive too, and that is not "last used".
-            if isSceneActive, sceneHasBeenActive { lastLeftForegroundAt = Date() }
+            if isSceneActive, sceneHasBeenActive {
+                lastLeftForegroundAt = Date()
+                noteChatLeft(activeSessionId)
+            }
             isSceneActive = false
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
@@ -11895,7 +12083,10 @@ final class AppState: ObservableObject {
         case .inactive:
             // Only a departure from active counts: coming back passes
             // through .inactive too, and that is not "last used".
-            if isSceneActive, sceneHasBeenActive { lastLeftForegroundAt = Date() }
+            if isSceneActive, sceneHasBeenActive {
+                lastLeftForegroundAt = Date()
+                noteChatLeft(activeSessionId)
+            }
             isSceneActive = false
             disarmWakeListeningForBackground()
             // Same reasoning as .background: a dip through Control Center or a
@@ -13466,6 +13657,7 @@ final class AppState: ObservableObject {
             removeSessionFromLiveCatalog(session)
             archivedSessions.removeAll { sessionMatches($0, session) }
             removePinnedState(for: session)
+            updateChatReadState { $0.forget(session, profile: profile) }
             clearActiveSessionIfNeeded(session, replacement: .delete)
             return true
         } catch {
@@ -14517,6 +14709,9 @@ final class AppState: ObservableObject {
             let outcome = await self.openSessionOutcome(sessionId)
             if outcome == .failed, !Task.isCancelled { onFailure?() }
             let opened = outcome == .opened
+            // Tapping a chat reads it, even when it was already the open one
+            // (the id didn't change, so activeSessionId's didSet stayed quiet).
+            if opened { self.noteActiveChatSeen() }
             guard self.explicitSessionOpenRequestID == requestID else { return opened }
             self.explicitSessionOpenRequestID = nil
             self.explicitSessionOpenTask = nil
@@ -17198,6 +17393,32 @@ final class AppState: ObservableObject {
             errorMessage = message
         }
         return failure == nil
+    }
+
+    enum ReasoningWriteResult: Equatable {
+        case applied
+        /// The chat changed while the write was in flight; the current
+        /// chat's level is untouched.
+        case abandoned
+        case failed(String)
+    }
+
+    /// Sets the live agent's reasoning effort ("none" turns it off). Hermes
+    /// applies it at once, so the composer chip and the Model sheet send it
+    /// on tap.
+    func setReasoningEffort(_ effort: String) async -> ReasoningWriteResult {
+        guard let client, let sessionId = activeSessionId else {
+            return .failed(AppLocalization.string("Not connected to a conversation."))
+        }
+        do {
+            try await client.setReasoning(sessionId, effort: effort)
+        } catch {
+            return .failed(UserFacingError.message(for: error))
+        }
+        // Another chat's chip must not take this one's level.
+        guard activeSessionId == sessionId else { return .abandoned }
+        runtime.reasoningEffort = effort == "none" ? "" : effort
+        return .applied
     }
 
     /// Why a session YOLO write did not apply. `message` is nil when the
@@ -23802,6 +24023,8 @@ final class AppState: ObservableObject {
         let jobOptions: [String: String]
         /// The profile's spoken end phrases, as the phone's call uses them.
         let endPhrases: [String]
+        /// The names the call's jobs may give the user's profiles.
+        let jobProfiles: [WatchVoiceWire.JobProfileName]
     }
 
     /// Builds a Watch call's setup as `geminiLiveController` builds the
@@ -23873,7 +24096,8 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases
+            endPhrases: preferences.spokenEndConversationPhrases,
+            jobProfiles: watchJobProfileNames()
         )
     }
 
@@ -23890,6 +24114,7 @@ final class AppState: ObservableObject {
         let personalityIncluded: Bool
         let jobOptions: [String: String]
         let endPhrases: [String]
+        let jobProfiles: [WatchVoiceWire.JobProfileName]
     }
 
     /// Builds a Watch GPT-Live call's briefing as `gptLiveController`
@@ -23946,7 +24171,8 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases
+            endPhrases: preferences.spokenEndConversationPhrases,
+            jobProfiles: watchJobProfileNames()
         )
     }
 
@@ -23965,6 +24191,7 @@ final class AppState: ObservableObject {
         let personalityIncluded: Bool
         let jobOptions: [String: String]
         let endPhrases: [String]
+        let jobProfiles: [WatchVoiceWire.JobProfileName]
     }
 
     /// Builds a Watch Grok call's setup as `grokLiveController` builds the
@@ -24029,7 +24256,8 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases
+            endPhrases: preferences.spokenEndConversationPhrases,
+            jobProfiles: watchJobProfileNames()
         )
     }
 
