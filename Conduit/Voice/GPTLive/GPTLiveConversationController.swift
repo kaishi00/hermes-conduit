@@ -554,9 +554,11 @@ final class GPTLiveConversationController: ObservableObject {
                 let outgoing = await self.bridge.userAskedForLastReply()
                 guard self.isActive, self.endRequestedAt == nil else { return }
                 for case .sessionContext(let text, let channel, _, _) in outgoing {
-                    // Not ready yet: asking again must still be heard.
+                    // Not ready yet: asking again must still be heard, and
+                    // the cue never goes without the reply it reads.
                     if self.session?.appendContext(text, channel: channel, delegationID: nil) != true {
                         self.bridge.readBackNotDelivered()
+                        break
                     }
                 }
             }

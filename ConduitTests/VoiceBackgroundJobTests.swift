@@ -1166,7 +1166,7 @@ extension VoiceConversationControllerTests {
 
         fake.threadReply = "The last reply."
         let read = await bridge.handleDelegation(id: "del_3", request: "Read the last reply word for word")
-        guard case .sessionContext(let text, .commentary, false, nil)? = read.first,
+        guard case .sessionContext(let text, .commentary, true, nil)? = read.first,
               case .delegationReply("del_3", GPTLiveDelegationBridge.readBackCue, .speakable)? = read.last else {
             return XCTFail("\(read)")
         }
@@ -1175,7 +1175,7 @@ extension VoiceConversationControllerTests {
 
         clock += GPTLiveDelegationBridge.readBackWindow + 1
         let quickRead = await bridge.handleDelegation(id: "del_4", request: "Quick: read the last reply")
-        guard case .sessionContext(let quickText, .commentary, false, nil)? = quickRead.first,
+        guard case .sessionContext(let quickText, .commentary, true, nil)? = quickRead.first,
               case .delegationReply("del_4", _, .speakable)? = quickRead.last else {
             return XCTFail("\(quickRead)")
         }
@@ -1922,6 +1922,8 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("did you send it to Hermes?"))
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("when did you send that to Hermes"))
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("remind me to send it to Hermes tomorrow"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("should I send it to Hermes?"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("how do I send this to Hermes"))
         XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("can you send it to Hermes"))
     }
 
@@ -2119,6 +2121,7 @@ extension VoiceConversationControllerTests {
         ].joined(separator: "\n")
         XCTAssertEqual(VoiceReadBack.plainSpeech(markdown), expected)
         XCTAssertEqual(VoiceReadBack.plainSpeech("Already plain."), "Already plain.")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("Summary\n=======\nAll good."), "Summary\nAll good.", "a heading's underline isn't read")
     }
 
     func testGeminiReadBackWithoutAChatReadsTheNewestJobResultOfThisCall() async {
@@ -2162,7 +2165,7 @@ extension VoiceConversationControllerTests {
 
         let read = await bridge.handleDelegation(id: "del_2", request: "Read back: the server check")
         guard read.count == 2,
-              case .sessionContext(let text, .commentary, false, nil) = read[0],
+              case .sessionContext(let text, .commentary, true, nil) = read[0],
               case .delegationReply("del_2", GPTLiveDelegationBridge.readBackCue, .speakable) = read[1] else {
             return XCTFail("\(read)")
         }
@@ -2181,7 +2184,7 @@ extension VoiceConversationControllerTests {
 
         // The model paraphrased; the user's own words say it's a read-back.
         let read = await bridge.handleDelegation(id: "del_2", request: "Give the user Hermes' full previous answer", userWords: "Can you repeat exactly what you said?")
-        guard case .sessionContext(let text, .commentary, false, nil)? = read.first else { return XCTFail("\(read)") }
+        guard case .sessionContext(let text, .commentary, true, nil)? = read.first else { return XCTFail("\(read)") }
         XCTAssertTrue(text.contains("All good."))
         XCTAssertEqual(fake.created, 1)
     }

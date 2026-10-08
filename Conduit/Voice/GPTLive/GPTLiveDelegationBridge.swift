@@ -151,8 +151,10 @@ final class GPTLiveDelegationBridge {
             // The whole reply goes in quietly first, then one cue starts the
             // reading: spoken context is answered piece by piece as it
             // arrives, so the model would start (and stop) after the first.
+            // Both wait for a quiet moment together, so the cue never goes
+            // without the reply.
             return [
-                .sessionContext(text: Self.lastReplyText(reply), channel: .commentary, whenIdle: false, jobID: nil),
+                .sessionContext(text: Self.lastReplyText(reply), channel: .commentary, whenIdle: true, jobID: nil),
                 .delegationReply(delegationID: id, text: Self.readBackCue, channel: .speakable),
             ]
         }

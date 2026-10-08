@@ -1863,10 +1863,11 @@ enum VoiceThreadRouting {
     static let quickWords = ["quick", "quickly"]
 
     /// "Send it to Hermes" (#451): the user already said where it goes, so
-    /// asking first doesn't ask again. Never when the same clause says not
-    /// to ("don't just send it to Hermes") or only asks or wonders about it
-    /// ("did you send it to Hermes?"). Spaces are optional: transcript
-    /// pieces can lose the one between them ("send itto Hermes").
+    /// asking first doesn't ask again. Never when the words before it in
+    /// its clause say not to ("don't just send it to Hermes") or only ask or
+    /// wonder about it ("did you send it to Hermes?", "should I send it to
+    /// Hermes?"). Spaces are optional: transcript pieces can lose the one
+    /// between them ("send itto Hermes").
     static func saysSendToHermes(_ words: String) -> Bool {
         let folded = fold(words)
         let pattern = #"\bsend\s*(it|this|that|this one|that one)?\s*(straight|right|over|directly)?\s*to\s*hermes\b"#
@@ -1882,12 +1883,13 @@ enum VoiceThreadRouting {
         return false
     }
 
-    /// Words that make "send it to Hermes" something other than an
-    /// instruction in its clause: a negation, a question about it, a
-    /// condition or a reminder. A miss only means the user is asked.
+    /// Words before "send it to Hermes" in its clause that make it
+    /// something other than an instruction: a negation, a question about
+    /// it, a condition or a reminder. A miss only means the user is asked.
     static let sendVetoes: Set<String> = [
         "don't", "dont", "not", "never", "no", "stop", "without", "before", "won't", "can't", "cannot", "shouldn't", "didn't",
-        "did", "when", "whether", "if", "what", "why", "has", "have", "was", "were", "remind",
+        "did", "when", "whether", "if", "what", "why", "how", "where", "who", "should", "shall",
+        "has", "have", "was", "were", "remind",
     ]
 
     static func wantsBackgroundJob(_ request: String) -> Bool {

@@ -42,10 +42,12 @@ enum VoiceReadBack {
     }
 
     /// One line without its block markup: a heading, list item or table row
-    /// becomes a sentence. Nil drops the line: a rule or a table's divider.
+    /// becomes a sentence. Nil drops the line: a rule, a heading's "==="
+    /// underline or a table's divider.
     private static func spokenLine(_ line: String) -> String? {
         guard !line.isEmpty else { return "" }
         if line.range(of: #"^([-*_])(\s*\1){2,}$"#, options: .regularExpression) != nil { return nil }
+        if line.range(of: #"^=+$"#, options: .regularExpression) != nil { return nil }
         if line.hasPrefix("|") {
             if line.range(of: #"^[|:\-\s]+$"#, options: .regularExpression) != nil { return nil }
             let cells = line.split(separator: "|")
