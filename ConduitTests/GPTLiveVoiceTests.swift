@@ -2009,6 +2009,9 @@ extension VoiceConversationControllerTests {
         let early = await bridge.handleDelegation(id: "del_2", request: "Send:")
         guard case .delegationReply("del_2", let earlyText, .commentary)? = early.first else { return XCTFail("\(early)") }
         XCTAssertEqual(earlyText, GPTLiveDelegationBridge.notAnsweredYet)
+        // The request's own words arriving late aren't an answer either.
+        let late = await bridge.handleDelegation(id: "del_2b", request: "Send:", userWords: "for Sam")
+        guard case .delegationReply("del_2b", GPTLiveDelegationBridge.notAnsweredYet, .commentary)? = late.first else { return XCTFail("\(late)") }
         XCTAssertEqual(fake.created, 0)
 
         let sent = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "yes please")

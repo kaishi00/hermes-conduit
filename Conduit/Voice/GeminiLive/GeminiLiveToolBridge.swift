@@ -328,7 +328,7 @@ final class GeminiLiveToolBridge {
     private let now: () -> Date
 
     /// How long "send it to Hermes" counts for the next request.
-    static let sendNowWindow: TimeInterval = 60
+    static let sendNowWindow: TimeInterval = 20
     /// Words this soon after the request's own are still the request (its
     /// transcript can trail the call), not an answer to the question.
     static let answerGap: TimeInterval = 1

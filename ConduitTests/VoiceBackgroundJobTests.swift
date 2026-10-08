@@ -1894,6 +1894,7 @@ extension VoiceConversationControllerTests {
 
         supervisor.beginLiveCall()
         XCTAssertFalse(supervisor.asksBeforeSending, "a new call starts from the setting")
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "the last call's switch isn't this call's")
     }
 
     func testSendItToHermesIsHeardOnlyAsTheUsersOwnInstruction() {
@@ -1902,6 +1903,14 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("send to hermes: find flights to Rome"))
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("what did you send to the team"))
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("hermes, send it"))
+        // A transcript seam can lose a space.
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("send itto Hermes"))
+        // Saying not to is the opposite, but only in its own clause.
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("Don't send it to Hermes yet"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("ask me first, don't just send it to Hermes"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("never send that to hermes"))
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("no wait, send it to Hermes"))
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("don't ask, just send it to Hermes"))
     }
 
     func testGeminiAskingFirstHoldsANewJobUntilTheUserSaysYes() async throws {

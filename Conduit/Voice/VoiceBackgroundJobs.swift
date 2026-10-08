@@ -441,6 +441,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func beginLiveCall(asksBeforeSending: Bool = false) {
         liveCallID = UUID()
         self.asksBeforeSending = asksBeforeSending
+        // A switch the last call never heard about isn't this call's.
+        chatNotes.removeAll { $0.text == Self.askFirstOnPrompt || $0.text == Self.askFirstOffPrompt }
         // Only the running call's cards are ever shown.
         screenCards.removeAll()
     }
@@ -696,9 +698,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome {
         let previous = followUpsInFlight[jobID]
         let generation = generation
-        let current = Task { () -> VoiceFollowUpOutcome in
+        let current = Task { [weak self] () -> VoiceFollowUpOutcome in
             _ = await previous?.value
-            guard generation == self.generation else { return .finished(title: "") }
+            guard let self, generation == self.generation else { return .finished(title: "") }
             return await self.sendFollowUp(jobID: jobID, words: words)
         }
         followUpsInFlight[jobID] = current
@@ -722,12 +724,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // Marked in the chat like the call's other turns there; a background
         // job's own prompt carries no such mark.
         let text = job.isThreadTurn ? Self.threadTurnText(for: words) : words
-        var attempt = 0
+        var attempts = 0
+        var waits = 0
         while true {
             guard let current = self.job(jobID), current.status.isActive else { return .finished(title: job.title) }
-            attempt += 1
             // A chat turn can learn its runtime id from its own send.
             if let sessionID = current.runtimeSessionID, !sessionID.isEmpty {
+                attempts += 1
                 // Words Hermes already runs as its next turn keep this turn's
                 // completion from ending the request, whatever comes now.
                 let wasQueued = current.followUp == .queued
@@ -759,7 +762,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // job), or Hermes hasn't started it yet. Asked again shortly
             // while the request is still open.
             guard self.job(jobID)?.status.isActive == true else { return .finished(title: job.title) }
-            guard attempt < Self.followUpAttempts else {
+            // Only redirects Hermes answered count as tries; a chat turn still
+            // learning its runtime id gets a few more waits.
+            waits += 1
+            guard attempts < Self.followUpAttempts, waits < Self.followUpAttempts * 3 else {
                 return .failed("Hermes wasn't working on \(VoiceFollowUpOutcome.quoted(job.title)) just then.")
             }
             try? await Task.sleep(for: followUpRetryInterval)
@@ -1193,6 +1199,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         jobs.removeAll()
         lastJobNumber = 0
         asksBeforeSending = false
+        // Their generation no longer matches: cancelled, they stop at once.
+        for task in followUpsInFlight.values { task.cancel() }
         followUpsInFlight.removeAll()
         noticesInFlight.removeAll()
         liveThread = nil
@@ -1831,13 +1839,28 @@ enum VoiceThreadRouting {
     static let quickWords = ["quick", "quickly"]
 
     /// "Send it to Hermes" (#451): the user already said where it goes, so
-    /// asking first doesn't ask again.
+    /// asking first doesn't ask again. Never when the same clause says not
+    /// to ("don't just send it to Hermes"). Spaces are optional: transcript
+    /// pieces can lose the one between them ("send itto Hermes").
     static func saysSendToHermes(_ words: String) -> Bool {
-        fold(words).range(
-            of: #"\bsend (it |this |that |this one |that one )?(straight |right |over |directly )?to hermes\b"#,
-            options: .regularExpression
-        ) != nil
+        let folded = fold(words)
+        let pattern = #"\bsend\s*(it|this|that|this one|that one)?\s*(straight|right|over|directly)?\s*to\s*hermes\b"#
+        var searchStart = folded.startIndex
+        while let match = folded.range(of: pattern, options: .regularExpression, range: searchStart..<folded.endIndex) {
+            let clause = folded[..<match.lowerBound]
+                .split(omittingEmptySubsequences: false, whereSeparator: { ",.;:!?".contains($0) })
+                .last ?? ""
+            let negated = clause.split(whereSeparator: \.isWhitespace).contains { sendNegations.contains(String($0)) }
+            if !negated { return true }
+            searchStart = match.upperBound
+        }
+        return false
     }
+
+    /// Words that turn "send it to Hermes" around in its clause.
+    static let sendNegations: Set<String> = [
+        "don't", "dont", "not", "never", "no", "stop", "without", "before", "won't", "can't", "cannot", "shouldn't", "didn't",
+    ]
 
     static func wantsBackgroundJob(_ request: String) -> Bool {
         let folded = fold(request)
