@@ -2021,6 +2021,11 @@ enum VoiceThreadRouting {
         "and", "ok", "okay", "sure", "that's", "all",
     ]
 
+    /// Whether these words negate ("don't", "not", "never", "can't").
+    private static func negates(_ words: [String]) -> Bool {
+        words.contains { ["not", "never", "dont", "nothing"].contains($0) || $0.hasSuffix("n't") }
+    }
+
     static func heldRequestAnswer(_ answer: String) -> HeldRequestAnswer {
         let spoken = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         var words = fold(spoken)
@@ -2041,18 +2046,20 @@ enum VoiceThreadRouting {
             }
             return false
         }
-        if dropLead(answerNoLeads) { return .no(change: more(words)) }
-        if dropLead(answerNotYetLeads) { return .notYet(change: more(words)) }
+        // "No, I don't want that": a negation in what follows is still the no.
+        func change(_ rest: [String]) -> String? { negates(rest) ? nil : more(rest) }
+        if dropLead(answerNoLeads) { return .no(change: change(words)) }
+        if dropLead(answerNotYetLeads) { return .notYet(change: change(words)) }
         guard dropLead(answerYesLeads) else {
             // "Send to Hermes", or just "Send": a yes with nothing more.
             if words == ["send"] || saysSendToHermes(spoken) { return .yes(addition: more(words)) }
             return .other(spoken)
         }
-        while dropLead(answerYesLeads) {}
-        // "Okay, wait", "Yeah, no", "Please don't": what follows decides.
-        _ = dropLead(answerJoiners)
-        if dropLead(answerNoLeads) { return .no(change: more(words)) }
-        if dropLead(answerNotYetLeads) { return .notYet(change: more(words)) }
+        // "Okay, wait", "Yeah, but actually no", "Please don't": what
+        // follows decides.
+        while dropLead(answerYesLeads) || dropLead(answerJoiners) {}
+        if dropLead(answerNoLeads) { return .no(change: change(words)) }
+        if dropLead(answerNotYetLeads) { return .notYet(change: change(words)) }
         // A negation or a question anywhere after it: not a yes after all.
         let turned = words.contains { word in
             answerTurnWords.contains(word) || word.hasSuffix("n't")

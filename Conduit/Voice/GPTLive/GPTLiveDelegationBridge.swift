@@ -157,7 +157,7 @@ final class GPTLiveDelegationBridge {
                 draft = nil
                 return await release(request, intoJob: intoJob, delegationID: id, call: call)
             case .wait:
-                return waitForAnswer(id)
+                return waitForAnswer(id, isSend: isSend)
             case .drop:
                 draft = nil
                 return [.delegationReply(delegationID: id, text: Self.dropped, channel: .commentary)]
@@ -449,6 +449,8 @@ final class GPTLiveDelegationBridge {
         /// A delegation made on the user's answer before their words
         /// reached the transcript: answered once they do.
         var pendingDelegationID: String?
+        /// That delegation said "Send:": the model took the answer as a yes.
+        var pendingIsSend = false
         /// The only running job it goes into once OK'd: no "Job N:" named
         /// it, so asking first checks.
         var intoJob: UUID?
@@ -520,13 +522,14 @@ final class GPTLiveDelegationBridge {
         return Self.heldForJobText(number: job.number, title: job.title)
     }
 
-    private func waitForAnswer(_ id: String) -> [Outgoing] {
+    private func waitForAnswer(_ id: String, isSend: Bool = false) -> [Outgoing] {
         var outgoing: [Outgoing] = []
         // One answer, on the newest delegation: an older one waiting is told.
         if let older = draft?.pendingDelegationID, older != id {
             outgoing.append(.delegationReply(delegationID: older, text: Self.answerOnLaterDelegation, channel: .commentary))
         }
         draft?.pendingDelegationID = id
+        draft?.pendingIsSend = isSend
         return outgoing + [.delegationReply(delegationID: id, text: Self.waitingForAnswer, channel: .commentary)]
     }
 
@@ -558,7 +561,7 @@ final class GPTLiveDelegationBridge {
         if let pending = waiting.pendingDelegationID {
             waiting.pendingDelegationID = nil
             draft = waiting
-            switch decide(waiting, ownText: "", isSend: false, instructions: "", answer: words) {
+            switch decide(waiting, ownText: "", isSend: waiting.pendingIsSend, instructions: "", answer: words) {
             case .send(let request):
                 draft = nil
                 lastSentAt = now()

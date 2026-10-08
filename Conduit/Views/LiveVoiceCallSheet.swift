@@ -410,6 +410,9 @@ private struct LiveVoiceAskFirstButton: View {
                 Text(verbatim: caption)
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.primary)
+                    // One line from the trailing edge: it must fit the width.
+                    .dynamicTypeSize(...DynamicTypeSize.xLarge)
+                    .lineLimit(1)
                     .fixedSize()
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)

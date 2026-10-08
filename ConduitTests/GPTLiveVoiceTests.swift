@@ -2195,6 +2195,10 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sure, I'd rather not"), .other("Sure, I'd rather not"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, what's the weather in Rome?"), .other("Okay, what's the weather in Rome?"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Why not"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yeah, but actually no"), .no(change: nil))
+        // A no with a negation after it is still just a no, not a change.
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, don't bother"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, I don't want that"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("for Sam"), .other("for Sam"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Nothing else"), .other("Nothing else"), "a no is a word of its own")
         XCTAssertTrue(VoiceThreadRouting.heldRequestAnswer("Okay").isBare)
@@ -2387,6 +2391,16 @@ extension VoiceConversationControllerTests {
         let echoAgain = await bridge.handleDelegation(id: "del_4", request: "Yes")
         guard case .delegationReply("del_4", GPTLiveDelegationBridge.alreadySent, .commentary)? = echoAgain.first else { return XCTFail("\(echoAgain)") }
         XCTAssertEqual(fake.created, 1)
+
+        // "Send:" delegated before the words arrived: the model's yes holds.
+        let (_, sendFake, marked) = makeAskingFirstBridge()
+        _ = await marked.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        _ = await marked.handleDelegation(id: "del_2", request: "Send:")
+        XCTAssertEqual(sendFake.created, 0)
+        guard let markedAnswer = marked.userFinishedSpeaking("for Sam and Alex") else { return XCTFail("the words answer it") }
+        _ = await marked.deliver(markedAnswer)
+        XCTAssertEqual(sendFake.created, 1)
+        XCTAssertTrue(sendFake.submissions.first?.1.contains("\"for Sam and Alex\"") == true, sendFake.submissions.first?.1 ?? "")
 
         // "Send it to Hermes" with more: what else they said goes with it.
         let (_, moreFake, more) = makeAskingFirstBridge()
