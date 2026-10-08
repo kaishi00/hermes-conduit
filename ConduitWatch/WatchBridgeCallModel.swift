@@ -1128,7 +1128,7 @@ final class WatchBridgeCallModel: ObservableObject {
                         let next = self.jobNumbers.count + 1
                         self.jobNumbers[next] = jobID
                         number = next
-                        self.runningJobs[jobID] = (result["title"] ?? "Hermes job", "running")
+                        self.runningJobs[jobID] = (Self.jobTitle(result["title"]), "running")
                     }
                     self.answer(delegationID, WatchBridgeDelegation.working(title: result["title"] ?? "Hermes job", number: number), channel: .commentary)
                     if number != nil { self.sendJobStatus() }
@@ -1323,6 +1323,11 @@ final class WatchBridgeCallModel: ObservableObject {
         }
     }
 
+    static func jobTitle(_ title: String?) -> String {
+        guard let title, !title.isEmpty else { return "Hermes job" }
+        return title
+    }
+
     /// The phone's job status context: GPT-Live answers "how's my job
     /// going?" from it instead of delegating or guessing.
     private func sendJobStatus() {
@@ -1361,8 +1366,16 @@ final class WatchBridgeCallModel: ObservableObject {
             jobLog.heard(jobID: item.jobID, title: item.title, sessionID: item.sessionID)
             if ["finished", "failed", "cancelled"].contains(item.status) {
                 statusChanged = runningJobs.removeValue(forKey: item.jobID) != nil || statusChanged
-            } else if let known = runningJobs[item.jobID], known.status != item.status {
-                runningJobs[item.jobID] = (known.title, item.status)
+            } else if let known = runningJobs[item.jobID] {
+                if known.status != item.status {
+                    runningJobs[item.jobID] = (known.title, item.status)
+                    statusChanged = true
+                }
+            } else {
+                // A start whose answer was lost: numbered and counted from
+                // its first news, so GPT-Live hears of it.
+                if !jobNumbers.values.contains(item.jobID) { jobNumbers[jobNumbers.count + 1] = item.jobID }
+                runningJobs[item.jobID] = (Self.jobTitle(item.title), item.status)
                 statusChanged = true
             }
             // A new request replaces the job's last one; news without one

@@ -24084,17 +24084,22 @@ final class AppState: ObservableObject {
             jobs: jobSessions
         )
         // Only the active dashboard's outbox drains; another's waits until
-        // it's active again, as the phone's own calls do.
+        // it's active again, as the phone's own calls do, and keeps the
+        // time-stamped title.
         guard dashboard == activeDashboardID?.uuidString ?? "-" else { return }
         let end = beginVoiceTranscriptBackgroundTask()
         defer { end() }
-        guard await connectForWatchDirectCall(timeout: .seconds(20)) else { return }
+        // Held back from other drains until it has its title.
+        voiceTranscriptsSaving.insert(transcript.callUUID)
+        let connected = await connectForWatchDirectCall(timeout: .seconds(20))
         // A title from the call's opening, as the phone's calls get; the
         // queued time-stamped one stays if Hermes can't make one.
-        if !isLiveVoiceCallActive, dashboard == activeDashboardID?.uuidString ?? "-" {
+        if connected, !isLiveVoiceCallActive, dashboard == activeDashboardID?.uuidString ?? "-" {
             let title = await voiceCallTitle(turns: turns, profile: profile)
             retitleQueuedVoiceTranscript(callID: transcript.callUUID, title: title)
         }
+        voiceTranscriptsSaving.remove(transcript.callUUID)
+        guard connected else { return }
         await drainVoiceTranscriptOutbox(profile: profile, key: voiceHistoryKey(profile: profile))
     }
 
