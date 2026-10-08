@@ -203,7 +203,9 @@ final class GPTLiveDelegationBridge {
                 return sent.isEmpty ? [] : older + sent
             }
         }
-        if isSend {
+        // "Send:", or just "send it to Hermes", with nothing held: nothing
+        // to send, and no request or change of its own.
+        if isSend || (answerShape.isBare && VoiceThreadRouting.saysSendToHermes(routingText)) {
             // Sent a moment ago by the user's own words: no second request.
             if sentRecently { return [.delegationReply(delegationID: id, text: Self.alreadySent, channel: .commentary)] }
             return [.delegationReply(delegationID: id, text: Self.relay("Nothing is waiting to be sent to Hermes. Ask the user what they want done."), channel: .speakable)]
@@ -216,7 +218,10 @@ final class GPTLiveDelegationBridge {
         if sentRecently, spoken.isEmpty || ownText.isEmpty,
            case .yes(let addition) = (spoken.isEmpty ? answerShape : VoiceThreadRouting.heldRequestAnswer(spoken)),
            addition.map({ Self.wentWith($0, lastSentRequest) }) ?? true {
-            return [.delegationReply(delegationID: id, text: Self.alreadySent, channel: .commentary)]
+            // A bare yes the user said after the send may answer something
+            // new the model asked since: it can still delegate that.
+            let text = addition == nil && !spoken.isEmpty ? Self.alreadySentUnlessNew : Self.alreadySent
+            return [.delegationReply(delegationID: id, text: text, channel: .commentary)]
         }
         if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(routingWords) {
             // Attached to a chat: the call's request still running there
@@ -791,6 +796,7 @@ final class GPTLiveDelegationBridge {
     static let notReadyYet = "Not sent: the user isn't ready yet. It keeps waiting for their OK; don't say it's sent."
     static let dropped = "Not sent: the user said no, so Conduit dropped the waiting request. Nothing is waiting now."
     static let alreadySent = "Conduit already sent that request to Hermes; its reply follows on the delegation that sent it. Don't send it again or ask what to send."
+    static let alreadySentUnlessNew = "Conduit already sent that request to Hermes; its reply follows on the delegation that sent it. Don't send it again. If the user's yes was to something new you asked them since, delegate that new request with its words in your text."
     /// Starts every "it went" answer, so it isn't read as a result.
     static let sentPrefix = "[Sent to Hermes"
     static let sentToChat = "\(sentPrefix) as the chat's next message: tell the user in a few words that it's on its way. Hermes' reply follows on this delegation; don't guess it.]"

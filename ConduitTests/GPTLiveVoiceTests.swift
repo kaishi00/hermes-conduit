@@ -2107,7 +2107,8 @@ extension VoiceConversationControllerTests {
         }
 
         let yes = await bridge.handleDelegation(id: "del_3", request: "Yes", userWords: "Yes")
-        guard case .delegationReply("del_3", GPTLiveDelegationBridge.alreadySent, .commentary)? = yes.first else { return XCTFail("\(yes)") }
+        // Said after the send, it may be for something new the model asked.
+        guard case .delegationReply("del_3", GPTLiveDelegationBridge.alreadySentUnlessNew, .commentary)? = yes.first else { return XCTFail("\(yes)") }
         XCTAssertEqual(fake.created, 1)
         XCTAssertTrue(fake.redirects.isEmpty, "a yes is no correction to the job it started")
 
@@ -2433,6 +2434,13 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
         XCTAssertEqual(fake.redirects.map(\.1), ["cancel that"])
         XCTAssertEqual(fake.created, 1, "never a second job")
+        // A bare "send it to Hermes" with nothing held sends nothing and
+        // never changes the job.
+        let bareSend = await bridge.handleDelegation(id: "del_2b", request: "send it to Hermes", userWords: "send it to Hermes")
+        guard case .delegationReply("del_2b", let bareText, .speakable)? = bareSend.first, bareText.contains("Nothing is waiting") else {
+            return XCTFail("\(bareSend)")
+        }
+        XCTAssertEqual(fake.redirects.count, 1)
 
         // Asked for as separate work, it is one.
         _ = await bridge.handleDelegation(id: "del_3", request: "New job: check the weather in Rome")
