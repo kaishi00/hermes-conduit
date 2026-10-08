@@ -5166,7 +5166,12 @@ final class AppState: ObservableObject {
               client !== activeListUnsupportedClient else { return }
         let profile = activeProfile
         do {
-            let rows = try await client.activeSessions()
+            let rows: [LiveSessionStatus]
+            if let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions {
+                rows = try await probeActiveSessions(client)
+            } else {
+                rows = try await client.activeSessions()
+            }
             guard profile == activeProfile, self.client === client else { return }
             recordActiveListEvidence(rows, profile: profile)
         } catch {
