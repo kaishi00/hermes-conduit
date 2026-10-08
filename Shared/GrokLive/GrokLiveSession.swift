@@ -37,6 +37,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     var onStateChange: (@MainActor (State) -> Void)?
     var onConnectionReplaced: (@MainActor () -> Void)?
     private(set) var connectionGeneration = 0
+    var stateDescription: String { "\(state)" }
 
     private let client: GrokLiveConnecting
     private let instructions: String

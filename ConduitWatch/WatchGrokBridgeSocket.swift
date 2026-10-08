@@ -46,7 +46,9 @@ final class WatchGrokConnection: GrokLiveConnecting {
 
 @MainActor
 final class WatchGrokBridgeSocket: GeminiLiveSocket {
-    /// How long the host may take to start xAI's session.
+    /// How long the host may take to start xAI's session. `send` waits for the start,
+    /// so this, not the session's setup timeout, bounds a bridge's first
+    /// connect.
     static let startWait: TimeInterval = 20
     /// The relay closes a socket silent for a minute.
     static let pingInterval: TimeInterval = 20
@@ -204,6 +206,10 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             // expired. Nothing to reconnect to.
             if (fields["code"] as? Int ?? socket?.closeCode) == 4010 {
                 refusal = GeminiLiveServerClose(code: 4010, reason: String(localized: "The call's access to Hermes ended."))
+            } else if !started, let status = fields["http"] as? Int, status != 101 {
+                // The relay refused the upgrade (no plugin route, a bad
+                // grant): the session words it as an update to make.
+                refusal = GeminiLiveServerClose(code: status, reason: "", isHTTPStatus: true)
             }
             fail(Failure.closed)
         default:
@@ -242,6 +248,12 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
             // audio.
             guard info.inputRate == Self.rate, info.outputRate == Self.rate else {
                 refusal = GeminiLiveServerClose(code: 4400, reason: String(localized: "Hermes sends Grok's audio in a format this Watch build can't play. Update Conduit and the conduit_push plugin together."))
+                fail(Failure.closed)
+                return
+            }
+            // A host that started another engine on this stream isn't talking to Grok.
+            guard info.engine.isEmpty || info.engine == WatchAudioBridgeWire.grok else {
+                refusal = GeminiLiveServerClose(code: 4400, reason: "the host started \(info.engine), not Grok")
                 fail(Failure.closed)
                 return
             }

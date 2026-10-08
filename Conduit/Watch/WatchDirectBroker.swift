@@ -830,12 +830,12 @@ final class WatchDirectBroker {
         if !grantJobTools.isEmpty {
             let withJobs = await requestGrantWithToken(id, profile: profile, withJobs: true, carryJobsFrom: carryJobsFrom)
             if case .success(let grant) = withJobs { return grant }
-            guard callID == id, !grantTools.isEmpty || grantLiveToken else { return nil }
+            guard callID == id, !grantTools.isEmpty || grantLiveToken || grantAudio else { return nil }
             // A plugin before 0.7 refuses job tools (400): renewals stop
             // asking. A timeout or a 5xx only costs this grant its jobs.
             if case .failure(let error) = withJobs, Self.isRefusedTool(error) { grantJobTools = [] }
         }
-        guard !grantTools.isEmpty || grantLiveToken else { return nil }
+        guard !grantTools.isEmpty || grantLiveToken || grantAudio else { return nil }
         return try? await requestGrantWithToken(id, profile: profile, withJobs: false, carryJobsFrom: nil).get()
     }
 

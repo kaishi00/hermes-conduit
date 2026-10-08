@@ -18,6 +18,8 @@ protocol GeminiLiveSessionControlling: AnyObject {
     /// Changes whenever a new connection takes over; calls made before
     /// the change can't be answered after it.
     var connectionGeneration: Int { get }
+    /// The session's state, for logs.
+    var stateDescription: String { get }
     func start()
     func stop()
     /// `onSent` runs once the socket took the message; `onFailure` when it
@@ -27,10 +29,13 @@ protocol GeminiLiveSessionControlling: AnyObject {
 
 extension GeminiLiveSessionControlling {
     var connectionGeneration: Int { 0 }
+    var stateDescription: String { "" }
     func send(_ message: LiveVoiceClientMessage) { send(message, onSent: nil, onFailure: nil) }
     func send(_ message: LiveVoiceClientMessage, onFailure: (@MainActor () -> Void)?) {
         send(message, onSent: nil, onFailure: onFailure)
     }
 }
 
-extension GeminiLiveSession: GeminiLiveSessionControlling {}
+extension GeminiLiveSession: GeminiLiveSessionControlling {
+    var stateDescription: String { "\(state)" }
+}

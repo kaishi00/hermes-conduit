@@ -2680,7 +2680,7 @@ final class WatchDirectCallModel: ObservableObject {
         let gap = windowMaxCaptureGap
         windowMaxCaptureGap = 0
         guard timelineEntries <= 80 else { return }
-        let state = String((session.map { "\($0.state)" } ?? "none").prefix(40))
+        let state = String((session.map(\.stateDescription) ?? "none").prefix(40))
         WatchCallLog.shared.note("directTimeline", [
             "t": Int(at - callStartedAt),
             "sinceActivationS": lastActivationAt.map { Int(at - $0) } as Any,
