@@ -390,7 +390,9 @@ final class WatchDirectBroker {
             ))
             // The reply travels in one Watch message, which carries about
             // 65 KB as sent (the briefing as base64 in JSON).
-            let replyBytes = (WatchVoiceWire.encode(reply)[WatchVoiceWire.messageKey] as? Data)?.count ?? .max
+            guard let replyBytes = (WatchVoiceWire.encode(reply)[WatchVoiceWire.messageKey] as? Data)?.count else {
+                throw WatchDirectPrepareError("The call's briefing couldn't be packed for the Watch.")
+            }
             guard replyBytes <= Self.bridgeReplyLimit else {
                 throw WatchDirectPrepareError("The call's briefing (memory and persona) is too large to send to the Watch.")
             }

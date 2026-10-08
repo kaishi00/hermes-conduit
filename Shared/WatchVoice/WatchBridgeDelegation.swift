@@ -82,6 +82,8 @@ enum WatchBridgeDelegation {
     /// The call's grant is spent or about to end: this test build's calls
     /// through Hermes last up to half an hour.
     static let grantRanOut = "this call's access to Hermes has run out. The user can end the call and start a new one."
+    /// Too little of the grant is left to follow a new job to its result.
+    static let grantNearlyOut = "this call has used nearly all its access to Hermes, so it can't follow a new job to its result. The user can end the call and start a new one."
 
     /// When a delegation can't become a job from the Watch.
     static func notStarted(_ reason: String) -> String {

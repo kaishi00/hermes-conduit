@@ -87,8 +87,11 @@ final class WatchBridgeCallModel: ObservableObject {
     static let jobNewsWait = 15
     static let jobNewsPause: TimeInterval = 15
     static let jobNewsRetry: TimeInterval = 2
-    /// Grant calls job news leaves for delegations and approvals.
-    static let callsKeptForTurns = 10
+    /// A new job starts only with this many grant calls left, so its news
+    /// can follow it to a result.
+    static let callsForNewJob = 10
+    /// Grant calls job news leaves for answering approvals.
+    static let callsKeptForApprovals = 2
     /// Conversation a rejoined session is seeded with.
     static let historyTurns = 40
     static let endTimeout: TimeInterval = 4
@@ -454,6 +457,11 @@ final class WatchBridgeCallModel: ObservableObject {
             finish("Update the Hermes notifier plugin and Conduit to matching versions.")
             return
         }
+        // Delegations, jobs and approvals all go through the grant.
+        guard let relayClient = WatchToolRelayClient(session.grant) else {
+            finish("The iPhone's GPT-Live call couldn't be read. Update Conduit on both devices.")
+            return
+        }
         bridgeURL = url
         grantID = session.grant.grantID
         grantRoot = root
@@ -461,7 +469,7 @@ final class WatchBridgeCallModel: ObservableObject {
         briefing = session.briefingText
         greeting = session.greeting
         voice = session.voice
-        relay = WatchToolRelayClient(session.grant)
+        relay = relayClient
         note("bridgeSession", [
             "afterTapMs": Int((now - callStartedAt) * 1000),
             "requests": sessionRequests,
@@ -470,8 +478,8 @@ final class WatchBridgeCallModel: ObservableObject {
             "briefingRead": briefing != nil,
             "greeting": greeting != nil,
             "engines": bridge.engines,
-            "relayTools": relay.map { $0.tools.sorted() } as Any,
-            "maxJobs": relay?.maxJobs as Any,
+            "relayTools": relayClient.tools.sorted(),
+            "maxJobs": relayClient.maxJobs,
             "grantExpiresInS": session.grant.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any,
         ])
         phase = .connecting
@@ -575,7 +583,8 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         // The call's grant ended: closed on Hermes or the relay, or expired.
         if code == 4010 {
-            finish(hostError ?? "The call's access to Hermes ended.")
+            // An error from before a live session isn't why the grant ended.
+            finish((wasLive ? nil : hostError) ?? "The call's access to Hermes ended.")
             return
         }
         if !opened { openFailures += 1 }
@@ -955,6 +964,11 @@ final class WatchBridgeCallModel: ObservableObject {
             return
         }
         if relay.hasJobs {
+            // Too few calls left to follow a new job's news to its result.
+            guard relay.callsLeft >= Self.callsForNewJob else {
+                answer(id, WatchBridgeDelegation.notStarted(WatchBridgeDelegation.grantNearlyOut), channel: .speakable)
+                return
+            }
             guard relayJobsStarted < relay.maxJobs else {
                 answer(id, WatchBridgeDelegation.notStarted("this call has started \(relay.maxJobs) jobs, the most the user allows per call. They can raise it in Conduit's Watch settings."), channel: .speakable)
                 return
@@ -1080,11 +1094,10 @@ final class WatchBridgeCallModel: ObservableObject {
     /// news, wrist up or down: one ask at a time.
     private func fetchJobNewsIfDue() {
         guard followingJobs, !newsInFlight, endRequestedAt == nil, now >= nextNewsAt, let relay else { return }
-        // Job news stops before it spends the calls the call's own turns
-        // need (delegations, approvals); job results still come as
-        // notifications.
+        // Job news stops before it spends the calls an approval on screen
+        // needs; job results still come as notifications.
         guard !relay.isGone, !relay.expires(within: WatchToolRelayClient.expiryMargin),
-              relay.callsLeft > Self.callsKeptForTurns else {
+              relay.callsLeft > Self.callsKeptForApprovals else {
             followingJobs = false
             note("bridgeJobNewsStopped", ["gone": relay.isGone, "callsLeft": relay.callsLeft])
             return
