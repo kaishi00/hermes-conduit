@@ -5105,8 +5105,11 @@ final class AppState: ObservableObject {
         updateChatReadState { state in
             for session in unread { state.markSeen(session, profile: profile) }
         }
-        for session in flagged {
-            writeSessionUnreadFlag(session, unread: false, profile: profile)
+        // One request at a time through the dashboard bridge.
+        let writes = flagged.compactMap { preparedUnreadFlagWrite($0, unread: false, profile: profile) }
+        guard !writes.isEmpty else { return }
+        Task {
+            for write in writes { await write() }
         }
     }
 
@@ -5140,8 +5143,14 @@ final class AppState: ObservableObject {
     private func noteActiveChatSeen(respectingMarks: Bool = false) {
         guard isSceneActive, !showSidebar,
               let session = activeProfileSessions.first(where: sessionMatchesActiveSession) else { return }
-        if respectingMarks, chatReadState.isExplicitlyUnread(session, profile: activeProfile) {
-            return
+        let profile = activeProfile
+        if respectingMarks {
+            if chatReadState.isExplicitlyUnread(session, profile: profile) { return }
+            // Catch-up never re-sends a write Hermes hasn't confirmed yet.
+            if !chatReadState.mayRewritePassively(session, profile: profile) {
+                updateChatReadState { $0.markSeen(session, profile: profile) }
+                return
+            }
         }
         markSessionRead(session)
     }
@@ -5162,12 +5171,22 @@ final class AppState: ObservableObject {
     /// Best-effort: a gateway without the flag (or a failed request) leaves
     /// Conduit's own read state working on its own.
     private func writeSessionUnreadFlag(_ session: SessionSummary, unread: Bool, profile: String) {
-        guard let dashboardTicketBridge else { return }
+        guard let write = preparedUnreadFlagWrite(session, unread: unread, profile: profile) else { return }
+        Task { await write() }
+    }
+
+    /// Records the write as pending now and returns the request to send.
+    private func preparedUnreadFlagWrite(
+        _ session: SessionSummary,
+        unread: Bool,
+        profile: String
+    ) -> (@MainActor () async -> Void)? {
+        guard let dashboardTicketBridge else { return nil }
         var generation: UInt64 = 0
         updateChatReadState { generation = $0.recordServerWrite(session, profile: profile, unread: unread) }
         let writtenGeneration = generation
         let path = dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile)
-        Task { [weak self] in
+        return { [weak self] in
             do {
                 _ = try await dashboardTicketBridge.requestJSON(
                     path: path,

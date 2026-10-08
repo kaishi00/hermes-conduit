@@ -53,6 +53,14 @@ struct ChatReadState: Equatable {
     private(set) var seenPendingRefresh: [String: Date] = [:]
 
     private var writeGeneration: UInt64 = 0
+    /// "profile\u{1F}durable id" → when Conduit last wrote the flag. Passive
+    /// catch-up skips rewriting within `passiveRewriteInterval`, so a gateway
+    /// that accepts the write but never stores it isn't asked on every listing.
+    private(set) var lastWriteAttempts: [String: Date] = [:]
+    static let passiveRewriteInterval: TimeInterval = 5 * 60
+    /// A "seen" moment newer than this is left as is, so a chat sitting on
+    /// screen doesn't republish state on every listing.
+    static let seenRestampInterval: TimeInterval = 60
 
     /// How long a "seen while on screen" moment waits for a listing.
     static let seenPendingRefreshLifetime: TimeInterval = 10 * 60
@@ -157,6 +165,9 @@ struct ChatReadState: Equatable {
         seenPendingRefresh = seenPendingRefresh.filter {
             now.timeIntervalSince($0.value) < Self.seenPendingRefreshLifetime
         }
+        lastWriteAttempts = lastWriteAttempts.filter {
+            now.timeIntervalSince($0.value) < Self.passiveRewriteInterval
+        }
         if counts.count > ChatReadLedger.maxSeenCountsPerProfile {
             counts = counts.filter { listed.contains($0.key) }
         }
@@ -175,7 +186,12 @@ struct ChatReadState: Equatable {
                 ledger.seenCounts[profile, default: [:]][id] = seen
             }
         }
-        seenPendingRefresh[Self.key(profile, id)] = date
+        let key = Self.key(profile, id)
+        if let stamped = seenPendingRefresh[key], date.timeIntervalSince(stamped) < Self.seenRestampInterval {
+            // Recent enough: keep the state unchanged.
+        } else {
+            seenPendingRefresh[key] = date
+        }
         clearMark(session, profile: profile)
     }
 
@@ -199,12 +215,19 @@ struct ChatReadState: Equatable {
     @discardableResult
     mutating func recordServerWrite(_ session: SessionSummary, profile: String, unread: Bool, at date: Date = Date()) -> UInt64 {
         writeGeneration &+= 1
+        lastWriteAttempts[Self.key(profile, Self.durableID(for: session))] = date
         pendingServerValues[Self.key(profile, Self.durableID(for: session))] = PendingServerValue(
             unread: unread,
             writtenAt: date,
             generation: writeGeneration
         )
         return writeGeneration
+    }
+
+    /// Whether passive catch-up may write the flag again for this row.
+    func mayRewritePassively(_ session: SessionSummary, profile: String, now: Date = Date()) -> Bool {
+        guard let last = lastWriteAttempts[Self.key(profile, Self.durableID(for: session))] else { return true }
+        return now.timeIntervalSince(last) >= Self.passiveRewriteInterval
     }
 
     /// A write that failed no longer speaks for the row, unless a newer

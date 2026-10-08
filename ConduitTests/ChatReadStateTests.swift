@@ -150,6 +150,19 @@ final class ChatReadStateTests: XCTestCase {
         XCTAssertFalse(state.serverUnread(session, profile: profile, now: t0))
     }
 
+    func testPassiveCatchUpWaitsBeforeRewritingAnUnconfirmedFlag() {
+        var state = ChatReadState()
+        let session = row("a", count: 3, unread: true, watermark: 1_799_999_000)
+        XCTAssertTrue(state.mayRewritePassively(session, profile: profile, now: t0))
+        state.recordServerWrite(session, profile: profile, unread: false, at: t0)
+        XCTAssertFalse(state.mayRewritePassively(session, profile: profile, now: t0.addingTimeInterval(60)))
+        XCTAssertTrue(state.mayRewritePassively(
+            session,
+            profile: profile,
+            now: t0.addingTimeInterval(ChatReadState.passiveRewriteInterval)
+        ))
+    }
+
     func testStalePendingEntriesArePruned() {
         var state = ChatReadState()
         let gone = row("gone", count: 3)
