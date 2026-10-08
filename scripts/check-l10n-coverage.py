@@ -340,7 +340,7 @@ def extract_sites(source: str):
 # String(x) around something that reads as a count: `String(items.count)`,
 # `String(failedCount)`, `String(total)`.
 _STRING_WRAPPED_COUNT_RE = re.compile(
-    r"^\s*String\s*\((.*(?:\.\s*count\b|[Cc]ount\b|[Tt]otal\b).*)\)\s*$", re.S)
+    r"^\s*String\s*\((.*(?:(?<![a-z])count\b|Count\b|(?<![a-z])total\b|Total\b).*)\)\s*$", re.S)
 # What follows a counted number in English: up to two words, then a plural
 # noun ("%@ tasks", "%@ background agents"). Label numbers don't match
 # ("%@ of %@ left", "%@/%@"), and neither do verbs ("%@ is").
@@ -598,6 +598,13 @@ def count_problems(key: str, entry: dict, source: str) -> list:
     elif integers and normalized_language(source).split("-")[0] == "en":
         problems.extend(_english_one_form_problems(
             localization_for(localizations, source)))
+    if (len(integers) <= 1 and len(placeholder_specs(key)) > 1
+            and plural_variations(localization_for(localizations, source))):
+        # A whole-string plural is defined for a single argument; with more,
+        # which one selects the form isn't something the catalog states.
+        problems.append(
+            "varies by plural but holds more than one placeholder: keep the "
+            "count alone in its string and put the other values in their own")
     return problems
 
 

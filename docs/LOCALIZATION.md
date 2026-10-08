@@ -56,8 +56,10 @@ language needs when the source varies by plural, and `where` the app uses
 the string. A plural translation is an object with one value per form
 (`{"one": "%lld Datei", "other": "%lld Dateien"}`). `export --all`
 includes what is already translated, which is the easy way to hand a
-whole language to a reviewer. `rename` and `remove` keep translations in
-step when a call site's wording or placeholder types change.
+whole language to a reviewer. A new UI string needs every shipped
+language: write a worksheet per language with the new key and
+`import --create` them together. `rename` and `remove` keep translations
+in step when a call site's wording or placeholder types change.
 
 ## Counts and plurals
 
@@ -69,10 +71,10 @@ count. Everything else stays out of plural rules:
 
 - A number that isn't counted (an HTTP status, a process id, a
   position) goes in as `String(x)`, a `%@`.
-- In a string with two numbers, the one that isn't counted goes in as
-  `String(x)` ("Show %lld more rows (%@ of %@ left)"), or the string is
-  split into two keys, each with its own plural ("%lld active",
-  "%lld inactive").
+- A key that varies by plural holds the count and nothing else: a
+  whole-string plural is defined for one argument. Put a name or a second
+  number in its own string and join them in code ("Show %lld more rows"
+  then "(%@ of %@ left)"; "%lld active" · "%lld inactive").
 - A number shown as a label needs no plural forms: alone in parentheses
   ("Runs (%lld)") or ending the string after a colon ("Jobs: %lld").
 

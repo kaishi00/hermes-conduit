@@ -588,6 +588,12 @@ class CountRuleTests(unittest.TestCase):
             self.assertEqual(self.count_problems(
                 key, en=plural("one", "other", value=key)), [], key)
 
+    def test_a_plural_key_holds_only_its_count(self):
+        problems = self.count_problems("%@, %lld tasks", en={"variations": {"plural": {
+            "one": unit("%@, %lld task"), "other": unit("%@, %lld tasks")}}})
+        self.assertEqual(len(problems), 1)
+        self.assertIn("more than one placeholder", problems[0])
+
     def test_substitutions_are_reported(self):
         problems = self.count_problems("%lld of %lld", en={
             "stringUnit": {"state": "translated", "value": "%1$lld of %2$#@total@"},
@@ -623,6 +629,8 @@ class StringWrappedCountTests(unittest.TestCase):
             'Text("\\(count) tasks")',
             'Text("HTTP \\(String(status)) errors")',
             'Text("\\(String(count)) is ready")',
+            'Text("\\(String(account.name)) settings")',
+            'Text("\\(String(subtotal)) dollars")',
         ):
             self.assertEqual(self.wrapped(source), [], source)
 

@@ -12,10 +12,12 @@ only the translation.
       source, the plural forms the language needs, and where the app uses
       it. Fill in each "translation" and import the file.
 
-  import FILE [FILE ...]
+  import FILE [FILE ...] [--create]
       Write each entry's "translation" into its catalog for the worksheet's
       language. An empty or null translation is skipped. Importing "en"
       replaces the source's own value, for example to give it plural forms.
+      --create adds keys the catalog lacks, which is how a new UI string
+      gets its translations in every shipped language at once.
 
   rename OLD NEW [--catalog PATH]
       Give a key a new spelling and keep its translations: for a call site
@@ -183,7 +185,7 @@ def export(language: str, include_all: bool) -> dict:
     return {"language": language, "entries": entries}
 
 
-def import_worksheets(paths) -> int:
+def import_worksheets(paths, create: bool = False) -> int:
     catalogs = {}
     written = 0
     for worksheet_path in paths:
@@ -198,7 +200,9 @@ def import_worksheets(paths) -> int:
                 catalogs[catalog_path] = load(os.path.join(REPO_ROOT, catalog_path))
             strings = catalogs[catalog_path]["strings"]
             if item["key"] not in strings:
-                raise KeyError(f"{catalog_path}: no key {item['key']!r}")
+                if not create:
+                    raise KeyError(f"{catalog_path}: no key {item['key']!r} (pass --create for a new string)")
+                strings[item["key"]] = {"localizations": {}}
             set_localization(strings[item["key"]], language, localization_from(translation))
             written += 1
     for catalog_path, catalog in catalogs.items():
@@ -300,6 +304,8 @@ def main(argv=None) -> int:
     export_parser.add_argument("-o", "--output", help="worksheet path (default: stdout)")
     import_parser = commands.add_parser("import", help="write worksheets into the catalogs")
     import_parser.add_argument("worksheets", nargs="+")
+    import_parser.add_argument("--create", action="store_true",
+                               help="add keys the catalog doesn't have yet (a new UI string)")
     rename_parser = commands.add_parser("rename", help="respell a key, keeping its translations")
     rename_parser.add_argument("old")
     rename_parser.add_argument("new")
@@ -318,7 +324,7 @@ def main(argv=None) -> int:
             else:
                 sys.stdout.write(text)
         elif args.command == "import":
-            print(f"Wrote {import_worksheets(args.worksheets)} translation(s).")
+            print(f"Wrote {import_worksheets(args.worksheets, args.create)} translation(s).")
         elif args.command == "rename":
             rename(args.old, args.new, args.catalog)
         elif args.command == "remove":

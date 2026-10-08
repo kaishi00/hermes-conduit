@@ -1506,7 +1506,7 @@ struct KanbanView: View {
         .buttonStyle(.plain)
         .foregroundStyle(isSelected ? .primary : .secondary)
         .conduitGlassControl(cornerRadius: 15, tint: isSelected ? presentation.tint.opacity(0.16) : .clear)
-        .accessibilityLabel(presentation.displayName + ", " + String(column.tasks.count) + " tasks")
+        .accessibilityLabel(presentation.displayName + ", " + AppLocalization.string("\(column.tasks.count) tasks"))
         .disabled(bulkBusy)
     }
 
@@ -1756,7 +1756,7 @@ struct KanbanView: View {
         .padding(.horizontal, 4)
         .padding(.top, 6)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(group.displayName), \(group.tasks.count) tasks")
+        .accessibilityLabel(group.displayName + ", " + AppLocalization.string("\(group.tasks.count) tasks"))
     }
 
     private func move(_ task: KanbanTask, to status: String) async {

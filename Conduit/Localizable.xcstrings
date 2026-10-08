@@ -8643,40 +8643,6 @@
         }
       }
     },
-    "%@ of %lld models shown" : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%@ of %lld model shown"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%@ of %lld models shown"
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%2$lld件中%1$@件のモデルを表示"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已显示 %1$@/%2$lld 个模型"
-          }
-        }
-      }
-    },
     "%lld tasks failed" : {
       "localizations" : {
         "en" : {
@@ -8957,40 +8923,6 @@
         }
       }
     },
-    "%@, %lld tasks" : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%@, %lld task"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%@, %lld tasks"
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@、%lld件のタスク"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@，%2$lld 个任务"
-          }
-        }
-      }
-    },
     "%lld configured" : {
       "localizations" : {
         "en" : {
@@ -9229,22 +9161,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "，已启用自动批准"
-          }
-        }
-      }
-    },
-    "2 updated, 1 failed" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "2件を更新、1件が失敗"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "2 个已更新，1 个失败"
           }
         }
       }
@@ -26608,40 +26524,6 @@
         }
       }
     },
-    "Show %lld more rows (%@ of %@ left)" : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Show %lld more row (%@ of %@ left)"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Show %lld more rows (%@ of %@ left)"
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "さらに%lld行を表示（残り%@/%@）"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示更多 %1$lld 行（剩 %2$@/%3$@）"
-          }
-        }
-      }
-    },
     "Show Archived" : {
       "localizations" : {
         "ja" : {
@@ -37118,6 +37000,106 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "失败 %lld 个"
+          }
+        }
+      }
+    },
+    "%lld tasks" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld task"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tasks"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld件のタスク"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个任务"
+          }
+        }
+      }
+    },
+    "Show %lld more rows" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Show %lld more row"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Show %lld more rows"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "さらに%lld行を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示更多 %lld 行"
+          }
+        }
+      }
+    },
+    "%@ of %@ shown" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@件中%1$@件を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已显示 %1$@/%2$@ 个"
+          }
+        }
+      }
+    },
+    "(%@ of %@ left)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（残り%@/%@）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（剩 %1$@/%2$@）"
           }
         }
       }

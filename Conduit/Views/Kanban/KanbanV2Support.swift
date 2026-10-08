@@ -497,9 +497,9 @@ enum KanbanRunPresentation {
         failedOutcomes.contains(run.outcome ?? run.status)
     }
 
-    static func durationText(start: Int?, end: Int?) -> String? {
+    static func durationText(start: Int?, end: Int?, locale: Locale = AppLocalization.formattingLocale) -> String? {
         guard let start, let end, end >= start, start > 0 else { return nil }
-        return KanbanCompactDuration.text(seconds: end - start)
+        return KanbanCompactDuration.text(seconds: end - start, locale: locale)
     }
 
     static func outcomeLabel(_ run: KanbanRun) -> String {

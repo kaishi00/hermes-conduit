@@ -87,6 +87,17 @@ class WorksheetTests(unittest.TestCase):
         forms = strings["%lld files"]["localizations"]["fr"]["variations"]["plural"]
         self.assertEqual(list(forms), ["one", "many", "other"])
 
+    def test_import_creates_new_keys_only_when_asked(self):
+        worksheet = {"language": "ja", "entries": [
+            {"catalog": "Conduit/Localizable.xcstrings", "key": "New string", "translation": "新しい文字列"}]}
+        path = os.path.join(self.root, "ja.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(worksheet, handle)
+        with self.assertRaises(KeyError):
+            l10n.import_worksheets([path])
+        self.assertEqual(l10n.import_worksheets([path], create=True), 1)
+        self.assertEqual(self.read()["strings"]["New string"]["localizations"]["ja"], unit("新しい文字列"))
+
     def test_saved_catalogs_use_xcode_layout(self):
         with open(self.catalog_path, encoding="utf-8") as handle:
             text = handle.read()

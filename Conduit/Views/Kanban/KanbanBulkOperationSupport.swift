@@ -154,7 +154,7 @@ enum KanbanBulkResultPolicy {
         return KanbanBulkOperationOutcome(succeededIDs: succeeded, failures: failures)
     }
 
-    static func summary(outcome: KanbanBulkOperationOutcome) -> String {
+    static func summary(outcome: KanbanBulkOperationOutcome, locale: Locale = AppLocalization.formattingLocale) -> String {
         let updatedCount = outcome.succeededIDs.count
         let failedCount = outcome.failures.count
         switch (updatedCount, failedCount) {
@@ -171,7 +171,7 @@ enum KanbanBulkResultPolicy {
             return [
                 AppLocalization.string("\(updatedCount) updated"),
                 AppLocalization.string("\(failedCount) failed"),
-            ].formatted(.list(type: .and, width: .narrow).locale(AppLocalization.formattingLocale))
+            ].formatted(.list(type: .and, width: .narrow).locale(locale))
         }
     }
 
