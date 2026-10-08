@@ -624,6 +624,15 @@ def required_key_problems(catalog: dict, required_keys) -> dict:
 SOURCE_CATALOG = "Localizable.xcstrings"
 SECONDARY_CATALOGS = ("AppShortcuts.xcstrings", "InfoPlist.xcstrings")
 INFO_PLIST = os.path.join("Conduit", "Info.plist")
+# The Apple Watch app's sources and its own Localizable catalog.
+WATCH_DIRECTORY = "ConduitWatch"
+# The Watch target's other sources (project.yml), whose strings the Watch
+# catalog must carry too.
+WATCH_SHARED_SOURCES = (
+    "Shared/GeminiLive",
+    "Shared/WatchVoice",
+    "Conduit/Voice/GPTLive/GPTLiveProtocol.swift",
+)
 
 
 class _JSONObject(dict):
@@ -835,8 +844,55 @@ def check(repo_root: str):
         key_problems.setdefault("languages", []).extend(plan.problems)
 
     missing = {}
+    checked = scan_sites(conduit, catalog_keys, repo_root, missing, key_problems)
+    # The iPhone app compiles Shared/ too (project.yml).
+    checked += scan_sites(os.path.join(repo_root, "Shared"), catalog_keys, repo_root, missing, key_problems)
+
+    # The Apple Watch app has its own catalog, in the same languages.
+    watch = os.path.join(repo_root, WATCH_DIRECTORY)
+    watch_catalog_path = os.path.join(watch, SOURCE_CATALOG)
+    if os.path.exists(watch_catalog_path):
+        try:
+            watch_catalog, watch_duplicates = load_catalog(watch_catalog_path)
+        except (OSError, ValueError) as error:
+            raise CatalogError(f"{WATCH_DIRECTORY}/{SOURCE_CATALOG}: {error}") from error
+        watch_keys = set(watch_catalog["strings"])
+        for root in (watch, *(os.path.join(repo_root, source) for source in WATCH_SHARED_SOURCES)):
+            # A renamed shared folder would otherwise scan nothing, silently.
+            if not os.path.exists(root):
+                key_problems.setdefault(os.path.relpath(root, repo_root), []).append(
+                    "the Watch compiles this path (WATCH_SHARED_SOURCES), but it doesn't exist")
+                continue
+            checked += scan_sites(root, watch_keys, repo_root, missing, key_problems)
+        prefix = f"{WATCH_DIRECTORY}/{SOURCE_CATALOG}: "
+        for key, problems in watch_duplicates.items():
+            key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
+        for key, problems in catalog_problems(
+                watch_catalog, plan.shipped, plan.drafts).items():
+            key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
+
+    for name, current in catalogs.items():
+        prefix = "" if name == SOURCE_CATALOG else f"{name}: "
+        for key, problems in duplicates[name].items():
+            key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
+        for key, problems in catalog_problems(
+                current, plan.shipped, plan.drafts).items():
+            key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
+    for key, problems in required_key_problems(catalog, REGRESSION_KEYS).items():
+        key_problems.setdefault(key, []).extend(problems)
+    return checked, missing, key_problems, plan
+
+
+def scan_sites(root: str, catalog_keys, repo_root: str, missing: dict, key_problems: dict) -> int:
+    """Checks every localizable call site in the Swift files under `root`
+    (or in `root`, a single file) against `catalog_keys`, adding what's missing to `missing`. Returns the
+    number of sites checked."""
     checked = 0
-    for dirpath, _dirnames, filenames in os.walk(conduit):
+    if os.path.isfile(root):
+        walk = [(os.path.dirname(root), [], [os.path.basename(root)])]
+    else:
+        walk = os.walk(root)
+    for dirpath, _dirnames, filenames in walk:
         for name in filenames:
             if not name.endswith(".swift"):
                 continue
@@ -857,17 +913,7 @@ def check(repo_root: str):
                 line = source.count("\n", 0, offset) + 1
                 rel = os.path.relpath(path, repo_root)
                 missing.setdefault(skeleton, []).append(f"{rel}:{line}")
-
-    for name, current in catalogs.items():
-        prefix = "" if name == SOURCE_CATALOG else f"{name}: "
-        for key, problems in duplicates[name].items():
-            key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
-        for key, problems in catalog_problems(
-                current, plan.shipped, plan.drafts).items():
-            key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
-    for key, problems in required_key_problems(catalog, REGRESSION_KEYS).items():
-        key_problems.setdefault(key, []).extend(problems)
-    return checked, missing, key_problems, plan
+    return checked
 
 
 def describe(languages) -> str:

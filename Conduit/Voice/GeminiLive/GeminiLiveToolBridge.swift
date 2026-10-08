@@ -128,6 +128,14 @@ final class GeminiLiveToolBridge {
             + (thread ? threadDeclarations : [])
     }
 
+    /// A Watch call's tools: no attached chat, and no asking first, which
+    /// needs the user's speech timing on the phone that runs the bridge.
+    static func watchDeclarations(webSearch: Bool, memoryRecall: Bool) -> [GeminiLiveProtocol.FunctionDeclaration] {
+        let phoneOnly: Set<String> = [Tool.sendRequest.rawValue, Tool.setAskFirst.rawValue]
+        return declarations(webSearch: webSearch, memoryRecall: memoryRecall, thread: false)
+            .filter { !phoneOnly.contains($0.name) }
+    }
+
     /// Offered only while the call is attached to a Hermes chat.
     static let threadDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         .init(

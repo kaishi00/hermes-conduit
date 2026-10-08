@@ -89,6 +89,8 @@ final class FakeVoiceJobBackend {
     var threadRuntime: String?
     var onThreadSubmit: (@MainActor () -> Void)?
     var onLatestReply: (@MainActor () -> Void)?
+    /// Each chat whose latest reply was read.
+    private(set) var replyReads: [VoiceThreadTarget] = []
     /// What the user typed for the chat's latest turn, as the open chat shows it.
     var threadPrompt: String?
     private(set) var threadSubmissions: [(String, String)] = []
@@ -161,7 +163,8 @@ final class FakeVoiceJobBackend {
                 if let error = self.redirectError { throw error }
                 return self.redirectResults.isEmpty ? .redirected : self.redirectResults.removeFirst()
             },
-            latestThreadReply: { [self] _ in
+            latestThreadReply: { [self] chat in
+                self.replyReads.append(chat)
                 self.onLatestReply?()
                 return self.threadReply
             },
@@ -439,6 +442,59 @@ extension VoiceConversationControllerTests {
         await supervisor.pollOnce()
 
         XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+    }
+
+    func testAWatchCallHearsTheReplyOfAJobThePollSettled() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.readsRepliesWhenSettling = true
+        fake.profileTargets = ["fam": .other("fam")]
+        _ = await supervisor.startJob(instructions: "check the router", profile: "fam")
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "working")]
+        await supervisor.pollOnce()
+        fake.threadReply = "  The router rebooted at 3 am after a firmware update.  "
+
+        // Listed idle: the turn ended, and its completion event never came.
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "idle")]
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "The router rebooted at 3 am after a firmware update.")
+        XCTAssertEqual(fake.replyReads.map(\.runtimeSessionID), ["rt-1"])
+        XCTAssertEqual(fake.replyReads.first?.storedSessionID, "st-1")
+        XCTAssertEqual(fake.replyReads.first?.profile, "fam", "read in the job's own profile")
+        guard case .submit(let prompt, _)? = supervisor.takePendingNotice() else {
+            return XCTFail("the call hears the result, not a pointer to the chat")
+        }
+        XCTAssertTrue(prompt.contains("The router rebooted at 3 am"))
+    }
+
+    func testAJobWithNoReadableReplyStillSettlesForAWatchCall() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.readsRepliesWhenSettling = true
+        _ = await supervisor.startJob(instructions: "check the server")
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertNil(supervisor.jobs.first?.result)
+        XCTAssertEqual(fake.replyReads.count, 1)
+        guard case .speak? = supervisor.takePendingNotice() else {
+            return XCTFail("without a reply, the chat is named")
+        }
+    }
+
+    func testAPhoneCallsPollLeavesASettledJobsReplyInItsChat() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.threadReply = "The server is fine."
+        _ = await supervisor.startJob(instructions: "check the server")
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertNil(supervisor.jobs.first?.result)
+        XCTAssertTrue(fake.replyReads.isEmpty, "unchanged on the phone")
     }
 
     func testAMismatchedLeadingTargetStaysInTheTask() async {
@@ -1778,6 +1834,40 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse("call_4", _, let lateResult, _)? = late.first else { return XCTFail("\(late)") }
         XCTAssertEqual(lateResult["status"], "not_sent", "a finished job takes no more words")
         XCTAssertEqual(fake.redirects.count, 1)
+    }
+
+    func testWatchCallInterruptJobReachesTheRunningJob() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        let bridge = GeminiLiveToolBridge(supervisor: WatchCallJobSupervisor(supervisor))
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "book a table for Sam"]))
+        let job = try XCTUnwrap(supervisor.jobs.first)
+
+        let sent = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "interrupt_job", arguments: ["job_id": job.id.uuidString, "message": "wait, make it Alex"]))
+        guard case .toolResponse("call_2", "interrupt_job", let result, _)? = sent.first else { return XCTFail("\(sent)") }
+        XCTAssertEqual(result["status"], "sent", "a Watch call's correction reaches the job, not a no-op default")
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.redirects.first?.1, "wait, make it Alex", "a background job's words carry no chat mark")
+    }
+
+    func testWatchCallsAreNotOfferedAskingFirst() {
+        let names = GeminiLiveToolBridge.watchDeclarations(webSearch: true, memoryRecall: false).map(\.name)
+        XCTAssertFalse(names.contains("set_ask_first"), "the Watch adapter can't hold requests, so it can't claim to")
+        XCTAssertFalse(names.contains("send_request"))
+        XCTAssertTrue(names.contains("interrupt_job"))
+        XCTAssertTrue(names.contains("web_search"))
+
+        // Nor do the instructions teach it, on either Watch engine.
+        let gemini = GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false)
+        XCTAssertFalse(gemini.contains("set_ask_first"))
+        XCTAssertFalse(gemini.contains("send_request"))
+        XCTAssertTrue(gemini.contains("interrupt_job"), "corrections still reach the job on a Watch Gemini call")
+        XCTAssertTrue(GeminiLiveConversationController.instructions(search: .hermes).contains("set_ask_first"))
+        let gpt = GPTLiveConversationController.briefing(onWatch: true)
+        XCTAssertFalse(gpt.contains("Mode: ask first"))
+        XCTAssertFalse(gpt.contains("\"Send:\""))
+        XCTAssertFalse(gpt.contains("Job 2: make it Alex"), "the relay doesn't route job corrections")
+        XCTAssertTrue(GPTLiveConversationController.briefing().contains("Mode: ask first"))
+        XCTAssertTrue(GPTLiveConversationController.briefing().contains("Job 2: make it Alex"))
     }
 
     private func makeFollowUpRetrySupervisor() -> (VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
