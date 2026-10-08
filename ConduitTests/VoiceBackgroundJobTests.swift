@@ -92,6 +92,14 @@ final class FakeVoiceJobBackend {
     /// What the user typed for the chat's latest turn, as the open chat shows it.
     var threadPrompt: String?
     private(set) var threadSubmissions: [(String, String)] = []
+    /// Follow-ups put into a running turn (#451): what each carried, and
+    /// Hermes' answers to the next ones (taken in turn; none left means
+    /// it took them).
+    private(set) var redirects: [(String, String)] = []
+    var redirectResults: [VoiceRedirectResult] = []
+    var redirectError: Error?
+    /// Runs inside redirect, so a test can deliver events while it is sent.
+    var onRedirect: (@MainActor () -> Void)?
 
     /// Strong captures: tests routinely discard the fake (`let (supervisor, _)
     /// = makeSupervisor()`), and the supervisor's backend must keep it alive
@@ -135,6 +143,12 @@ final class FakeVoiceJobBackend {
                 self.onThreadSubmit?()
                 if let error = self.threadSubmitError { throw error }
                 return runtimeID
+            },
+            redirect: { [self] id, text in
+                self.redirects.append((id, text))
+                self.onRedirect?()
+                if let error = self.redirectError { throw error }
+                return self.redirectResults.isEmpty ? .redirected : self.redirectResults.removeFirst()
             },
             latestThreadReply: { [self] _ in
                 self.onLatestReply?()
@@ -1532,6 +1546,221 @@ extension VoiceConversationControllerTests {
         ]
         XCTAssertEqual(AppState.latestAssistantReply(inMessageRows: rows), "Build is green.")
         XCTAssertNil(AppState.latestAssistantReply(inMessageRows: [["role": "user", "content": "hi"]]))
+    }
+}
+
+// MARK: - Follow-ups into running work (#451)
+
+@MainActor
+extension VoiceConversationControllerTests {
+    private static let correctionNotice = "[This response was interrupted by a user correction.]"
+
+    func testAFollowUpGoesIntoTheRunningJobAndTheTurnsCompletionIsItsResult() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        _ = await supervisor.startJob(instructions: "check the weather")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        XCTAssertEqual(supervisor.jobs.map(\.number), [1, 2])
+        XCTAssertEqual(supervisor.backgroundJob(numbered: 2)?.title, supervisor.jobs[1].title)
+        XCTAssertNil(supervisor.backgroundJob(numbered: 3))
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: " wait, make it Alex ")
+
+        XCTAssertEqual(outcome, .interrupted(title: job.title))
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex")
+        XCTAssertEqual(fake.submissions.count, 2, "a follow-up is never a new turn")
+        // Hermes' marker for the cut-off reply is never the result.
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: Self.correctionNotice, reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        supervisor.observe(.messageDelta(sessionId: "rt-1", text: "Changing it"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Alex.", reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "Booked for Alex.")
+        XCTAssertNil(supervisor.jobs.first?.followUp)
+    }
+
+    func testACompletionBeforeAQueuedFollowUpRunsIsNotTheJobsEnd() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.redirectResults = [.queued]
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "make it Alex")
+        XCTAssertEqual(outcome, .interrupted(title: job.title))
+
+        // The turn Hermes was building ends first; the words run next.
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Sam.", reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        supervisor.observe(.messageStart(sessionId: "rt-1"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Changed it to Alex.", reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "Changed it to Alex.")
+    }
+
+    func testAFollowUpThatFindsTheTurnOverLetsItsCompletionEndTheJob() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        // The turn finished while the follow-up was on its way.
+        fake.redirectResults = [.notRunning]
+        fake.onRedirect = {
+            supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Sam.", reasoning: nil))
+        }
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "make it Alex")
+
+        XCTAssertEqual(outcome, .finished(title: job.title))
+        XCTAssertEqual(fake.redirects.count, 1, "a running job isn't retried")
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "Booked for Sam.")
+        XCTAssertNil(supervisor.jobs.first?.followUp)
+    }
+
+    func testAFollowUpTheLivenessPollFindsIdleSettlesWithTheHeldCompletion() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.redirectResults = [.queued]
+        _ = await supervisor.followUp(jobID: job.id, words: "make it Alex")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Sam.", reasoning: nil))
+
+        // Hermes never ran the words: the session went idle.
+        for _ in 0..<5 where supervisor.jobs.first?.status.isActive == true {
+            await supervisor.pollOnce()
+        }
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "Booked for Sam.")
+    }
+
+    func testAFollowUpSaidBeforeTheJobWentOutJoinsItsRequest() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        fake.parksCreate = true
+        let start = Task { await supervisor.startJob(instructions: "book a table for Sam") }
+        await fake.createParked.waitUntil(1)
+        let job = try XCTUnwrap(supervisor.jobs.first)
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "make it for four")
+        fake.releaseCreate()
+        _ = await start.value
+
+        XCTAssertEqual(outcome, .joined(title: job.title))
+        XCTAssertTrue(fake.redirects.isEmpty)
+        XCTAssertEqual(fake.submissions.count, 1)
+        let prompt = try XCTUnwrap(fake.submissions.first?.1)
+        XCTAssertTrue(prompt.contains("book a table for Sam\n\nmake it for four"), prompt)
+    }
+
+    func testAFollowUpToAFinishedJobIsNotSent() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked.", reasoning: nil))
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "make it Alex")
+
+        XCTAssertEqual(outcome, .finished(title: job.title))
+        XCTAssertTrue(outcome.foundRequestFinished)
+        XCTAssertTrue(fake.redirects.isEmpty)
+    }
+
+    func testAFollowUpHermesCantTakeIsReported() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.redirectError = URLError(.notConnectedToInternet)
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "make it Alex")
+
+        guard case .failed = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertNil(supervisor.jobs.first?.followUp)
+        // The job's own completion still ends it.
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked.", reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+    }
+
+    func testAFollowUpWhileTheChatTurnWaitsJoinsIt() async throws {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadBusy = true
+        let id = try XCTUnwrap(supervisor.startThreadTurn(request: "find flights to Paris").jobID)
+        XCTAssertEqual(supervisor.threadFollowUpTarget(), id)
+
+        let outcome = await supervisor.followUp(jobID: id, words: "make it Rome")
+        XCTAssertEqual(outcome, .joined(title: supervisor.jobs[0].title))
+        fake.threadBusy = false
+
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
+        XCTAssertEqual(fake.threadSubmissions.first?.1, "(voice) find flights to Paris\n\nmake it Rome")
+        XCTAssertTrue(fake.redirects.isEmpty)
+        supervisor.detachLiveThread()
+        XCTAssertNil(supervisor.threadFollowUpTarget(), "a call no longer attached has nothing to follow up")
+    }
+
+    func testGeminiAskThreadWhileTheCallsRequestRunsGoesIntoIt() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "find flights to Paris"]))
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+
+        let followUp = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "start_job", arguments: ["instructions": "actually make it Rome"]))
+
+        guard case .toolResponse("call_2", "start_job", let result, let scheduling)? = followUp.first, followUp.count == 1 else {
+            return XCTFail("\(followUp)")
+        }
+        XCTAssertEqual(scheduling, .whenIdle, "answered at once, said when the model is free")
+        XCTAssertEqual(result["status"], "sent")
+        XCTAssertNil(result["job_id"], "a follow-up's answer is never read as a job's outcome")
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-chat"])
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) actually make it Rome")
+        XCTAssertEqual(fake.threadSubmissions.count, 1)
+        XCTAssertEqual(fake.created, 0)
+
+        supervisor.observe(.messageDelta(sessionId: "rt-chat", text: "Rome"))
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Three flights to Rome.", reasoning: nil))
+        guard case .toolResponse("call_1", "ask_thread", let reply, _)? = bridge.pendingUpdates().first else {
+            return XCTFail("the chat's reply answers the first call")
+        }
+        XCTAssertEqual(reply["result"], "Three flights to Rome.")
+
+        // Once it's over, the next request is the chat's next turn again.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "ask_thread", arguments: ["request": "and hotels?"]))
+        guard await waitFor({ fake.threadSubmissions.count == 2 }) else { return }
+        XCTAssertEqual(fake.redirects.count, 1)
+    }
+
+    func testGeminiInterruptJobPassesTheUsersWordsIntoThatJob() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "book a table for Sam"]))
+        let job = try XCTUnwrap(supervisor.jobs.first)
+
+        let unknown = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "interrupt_job", arguments: ["job_id": UUID().uuidString, "message": "make it Alex"]))
+        guard case .toolResponse("call_2", _, let unknownResult, _)? = unknown.first else { return XCTFail("\(unknown)") }
+        XCTAssertNotNil(unknownResult["error"])
+        XCTAssertTrue(fake.redirects.isEmpty)
+
+        let sent = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "interrupt_job", arguments: ["job_id": job.id.uuidString, "message": "wait, make it Alex"]))
+        guard case .toolResponse("call_3", "interrupt_job", let result, let scheduling)? = sent.first, sent.count == 1 else {
+            return XCTFail("\(sent)")
+        }
+        XCTAssertEqual(scheduling, .whenIdle)
+        XCTAssertEqual(result["status"], "sent")
+        XCTAssertNil(result["job_id"])
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex")
+
+        supervisor.observe(.messageDelta(sessionId: "rt-1", text: "Alex"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Alex.", reasoning: nil))
+        guard case .toolResponse("call_1", "start_job", let outcome, _)? = bridge.pendingUpdates().first else {
+            return XCTFail("the job's result answers its start_job call")
+        }
+        XCTAssertEqual(outcome["result"], "Booked for Alex.")
+
+        let late = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_4", name: "interrupt_job", arguments: ["job_id": job.id.uuidString, "message": "and Sam"]))
+        guard case .toolResponse("call_4", _, let lateResult, _)? = late.first else { return XCTFail("\(late)") }
+        XCTAssertEqual(lateResult["status"], "not_sent", "a finished job takes no more words")
+        XCTAssertEqual(fake.redirects.count, 1)
     }
 }
 
