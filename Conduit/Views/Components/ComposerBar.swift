@@ -971,40 +971,88 @@ struct ComposerBar: View {
 
     /// The model and effort, truncating first when the row is crowded.
     private var modelButton: some View {
-        Button {
-            Haptics.selection()
-            appState.showModelPicker = true
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "cpu")
-                    .foregroundStyle(Color.conduitAccent)
-                    .symbolEffect(
-                        .variableColor.iterative,
-                        options: .repeating,
-                        isActive: appState.turnState == .running && !reduceMotion
-                    )
-                Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                if !appState.runtime.reasoningEffort.isEmpty {
-                    // The model name gives way first, then the effort.
-                    Text(formatEffort(appState.runtime.reasoningEffort))
-                        .foregroundStyle(.secondary)
+        HStack(spacing: 2) {
+            Button {
+                openModelPicker()
+            } label: {
+                HStack(spacing: 5) {
+                    Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
                         .lineLimit(1)
-                        .layoutPriority(1)
+                        .truncationMode(.tail)
+                    if appState.runtime.yolo {
+                        Image(systemName: "shield.slash.fill")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.orange)
+                    }
                 }
-                if appState.runtime.yolo {
-                    Image(systemName: "shield.slash.fill")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(Color.orange)
-                }
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .font(.footnote.weight(.semibold))
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .buttonStyle(.plain)
+            .accessibilityLabel(modelAccessibilityLabel)
+
+            if !appState.runtime.model.isEmpty {
+                // The model name gives way first, then the effort.
+                reasoningMenu
+                    .layoutPriority(1)
+            }
+        }
+        .font(.footnote.weight(.semibold))
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        // The rest of the chip's width still opens the sheet.
+        .background {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { openModelPicker() }
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func openModelPicker() {
+        Haptics.selection()
+        appState.showModelPicker = true
+    }
+
+    /// One tap to change reasoning, the setting changed most, without opening
+    /// the Model sheet. Hermes applies it to the live agent at once.
+    private var reasoningMenu: some View {
+        let current = ReasoningEffortLevel(runtimeEffort: appState.runtime.reasoningEffort)
+        return Menu {
+            Picker(
+                selection: Binding<ReasoningEffortLevel?>(
+                    get: { current },
+                    set: { level in
+                        guard let level, level != current else { return }
+                        Haptics.selection()
+                        Task { @MainActor in
+                            if let message = await appState.setReasoningEffortReportingFailure(level.rawValue) {
+                                appState.errorMessage = message
+                            }
+                        }
+                    }
+                )
+            ) {
+                ForEach(ReasoningEffortLevel.allCases) { level in
+                    Text(level.title).tag(Optional(level))
+                }
+            } label: {
+                Text("Reasoning")
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text(formatEffort(appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort))
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(modelAccessibilityLabel)
+        .menuOrder(.fixed)
+        .accessibilityLabel(Text("Reasoning"))
+        .accessibilityValue(Text(current?.title ?? formatEffort(appState.runtime.reasoningEffort)))
     }
 
     /// Return-shortcut entry point. Invokes the exact same submission path
@@ -1759,12 +1807,10 @@ struct ComposerBar: View {
 
     private var modelAccessibilityLabel: String {
         let model = appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model
-        let reasoning = appState.runtime.reasoningEffort.isEmpty
-            ? AppLocalization.string("reasoning not set")
-            : AppLocalization.string("reasoning \(formatEffort(appState.runtime.reasoningEffort))")
+        // Reasoning has its own control beside the model name.
         let approvals = appState.runtime.yolo ? AppLocalization.string(", auto-approve enabled") : ""
         let activity = appState.turnState == .running ? AppLocalization.string(", agent working") : ""
-        return "\(model), \(reasoning)\(approvals)\(activity)"
+        return "\(model)\(approvals)\(activity)"
     }
 }
 
