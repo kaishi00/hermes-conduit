@@ -838,8 +838,9 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         chunksUp += 1
         sendsInFlight += 1
+        let id = callID
         send(WatchAudioBridgeWire.pcm(samples), kind: .audio) { [weak self] ok in
-            guard let self else { return }
+            guard let self, self.callID == id else { return }
             self.sendsInFlight = max(0, self.sendsInFlight - 1)
             if !ok { self.sendFailures += 1 }
         }

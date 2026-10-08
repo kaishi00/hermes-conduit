@@ -992,9 +992,13 @@ extension HermesVoiceGatewayTimeoutTests {
         let turns = (0..<5).map {
             WatchVoiceWire.DirectTurn(role: $0.isMultiple(of: 2) ? .user : .assistant, text: String(repeating: "x", count: 10) + "\($0)", at: at)
         }
-        let kept = WatchVoiceWire.DirectTranscript.capped(turns, characters: 25)
+        let kept = WatchVoiceWire.DirectTranscript.capped(turns, bytes: 25)
         XCTAssertEqual(kept.map(\.text), [turns[3].text, turns[4].text])
         XCTAssertEqual(WatchVoiceWire.DirectTranscript.capped(turns).count, 5)
-        XCTAssertTrue(WatchVoiceWire.DirectTranscript.capped([], characters: 10).isEmpty)
+        XCTAssertTrue(WatchVoiceWire.DirectTranscript.capped([], bytes: 10).isEmpty)
+        // Counted in UTF-8 bytes: ten Japanese characters are thirty bytes.
+        let japanese = [WatchVoiceWire.DirectTurn(role: .user, text: String(repeating: "あ", count: 10), at: at)]
+        XCTAssertTrue(WatchVoiceWire.DirectTranscript.capped(japanese, bytes: 25).isEmpty)
+        XCTAssertEqual(WatchVoiceWire.DirectTranscript.capped(japanese, bytes: 30).count, 1)
     }
 }

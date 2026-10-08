@@ -16,6 +16,9 @@ final class WatchCallLog: ObservableObject {
     static let shared = WatchCallLog()
 
     @Published private(set) var lines: [String] = []
+    /// The running number of `lines[0]`, so each line keeps one identity
+    /// as newer lines arrive and older ones are dropped.
+    private(set) var firstLineNumber = 0
     private let fileURL: URL?
     private static let keptLines = 300
     private static let maxFileBytes = 1_000_000
@@ -59,13 +62,18 @@ final class WatchCallLog: ObservableObject {
     }
 
     func clear() {
+        firstLineNumber += lines.count
         lines = []
         if let fileURL { try? FileManager.default.removeItem(at: fileURL) }
     }
 
     private func append(_ line: String) {
         lines.append(line)
-        if lines.count > Self.keptLines { lines.removeFirst(lines.count - Self.keptLines) }
+        if lines.count > Self.keptLines {
+            let dropped = lines.count - Self.keptLines
+            firstLineNumber += dropped
+            lines.removeFirst(dropped)
+        }
         guard let fileURL, let data = (line + "\n").data(using: .utf8) else { return }
         if let handle = try? FileHandle(forWritingTo: fileURL) {
             defer { try? handle.close() }

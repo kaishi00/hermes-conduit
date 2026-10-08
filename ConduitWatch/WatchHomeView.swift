@@ -168,6 +168,12 @@ struct WatchLogView: View {
     @ObservedObject private var log = WatchCallLog.shared
     @State private var confirmingClear = false
 
+    /// Newest first, each line keyed by its running number.
+    private var numberedLines: [(number: Int, text: String)] {
+        let first = log.firstLineNumber
+        return log.lines.enumerated().reversed().map { (number: first + $0.offset, text: $0.element) }
+    }
+
     var body: some View {
         List {
             Section {
@@ -181,8 +187,8 @@ struct WatchLogView: View {
             } label: {
                 Text("Clear")
             }
-            ForEach(Array(log.lines.reversed().enumerated()), id: \.offset) { _, line in
-                Text(verbatim: line)
+            ForEach(numberedLines, id: \.number) { line in
+                Text(verbatim: line.text)
                     .font(.caption2.monospaced())
             }
         }
