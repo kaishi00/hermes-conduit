@@ -319,9 +319,10 @@ final class GPTLiveDelegationBridge {
 
     /// "Job 2: make it Alex" → (2, "make it Alex"): the marker GPT-Live puts
     /// on a follow-up to a running background job, from the job numbers in
-    /// `statusContext`. Only at the very start of the delegation.
+    /// `statusContext`. Only at the very start of the delegation, and never
+    /// a time or a decimal ("Job 2:30 reminder" is new work).
     static func jobMarker(in request: String) -> (number: Int, rest: String)? {
-        guard let range = request.range(of: #"^\s*job\s*#?\s*[0-9]{1,4}\s*[:,.\-–—]"#, options: [.regularExpression, .caseInsensitive]),
+        guard let range = request.range(of: #"^\s*job\s*#?\s*[0-9]{1,4}\s*[:,.\-–—](?![0-9])"#, options: [.regularExpression, .caseInsensitive]),
               let number = Int(String(request[range].filter { $0.isASCII && $0.isNumber })) else { return nil }
         let rest = request[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
         return (number, rest)
@@ -343,19 +344,16 @@ final class GPTLiveDelegationBridge {
     static func followUpReply(delegationID: String, _ outcome: VoiceFollowUpOutcome) -> Outgoing {
         switch outcome {
         case .interrupted(let title):
-            return .delegationReply(delegationID: delegationID, text: "Conduit put the user's words into \(quoted(title)) at once; Hermes keeps its work so far and changes course now. Its result still follows on the earlier delegation; don't guess it.", channel: .commentary)
+            return .delegationReply(delegationID: delegationID, text: "Conduit put the user's words into \(VoiceFollowUpOutcome.quoted(title)) at once; Hermes keeps its work so far and changes course now. Its result still follows on the earlier delegation; don't guess it.", channel: .commentary)
+        case .queued(let title):
+            return .delegationReply(delegationID: delegationID, text: "Conduit passed the user's words to \(VoiceFollowUpOutcome.quoted(title)); Hermes takes them right after the step it is finishing. Its result still follows on the earlier delegation; don't guess it.", channel: .commentary)
         case .joined(let title):
-            return .delegationReply(delegationID: delegationID, text: "Conduit added the user's words to \(quoted(title)) before Hermes started on it. Its result still follows on the earlier delegation; don't guess it.", channel: .commentary)
+            return .delegationReply(delegationID: delegationID, text: "Conduit added the user's words to \(VoiceFollowUpOutcome.quoted(title)) before Hermes started on it. Its result still follows on the earlier delegation; don't guess it.", channel: .commentary)
         case .finished(let title):
-            return .delegationReply(delegationID: delegationID, text: relay("\(quoted(title)) had already finished, so Hermes didn't get this. Ask the user what they want instead."), channel: .speakable)
+            return .delegationReply(delegationID: delegationID, text: relay("\(VoiceFollowUpOutcome.quoted(title)) had already finished, so Hermes didn't get this. Ask the user what they want instead."), channel: .speakable)
         case .failed(let message):
             return .delegationReply(delegationID: delegationID, text: relay("Hermes didn't get that (\(message))."), channel: .speakable)
         }
-    }
-
-    /// A request's title for the model, or a stand-in without one.
-    private static func quoted(_ title: String) -> String {
-        title.isEmpty ? "that request" : "\"\(title)\""
     }
 
     /// The chat's last reply, to be read as it is. Not UI copy.

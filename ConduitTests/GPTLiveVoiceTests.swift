@@ -1235,6 +1235,8 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "Find a job: in Paris"))
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "job interview prep: tomorrow"))
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "Job 2 make it Alex"), "the number needs its separator")
+        XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "Job 2:30 appointment reminder"), "a time is new work")
+        XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "job 2.5 things to check"))
     }
 
     func testGPTLiveJobMarkerPutsTheUsersOwnWordsIntoThatRunningJob() async {
@@ -1253,7 +1255,7 @@ extension VoiceConversationControllerTests {
             return XCTFail("\(followUp)")
         }
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it for Alex instead", "Hermes gets the user's own words")
+        XCTAssertEqual(fake.redirects.first?.1, "wait, make it for Alex instead", "Hermes gets the user's own words")
         XCTAssertEqual(fake.created, 1, "a follow-up is never a new job")
 
         // The job's result still answers its own delegation.
@@ -1288,7 +1290,7 @@ extension VoiceConversationControllerTests {
             id: "del_2",
             request: "Job 1: make it Milan" + GPTLiveConversationController.delegationContextMarker + "User: weather?\n"
         )
-        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it Milan"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["make it Milan"])
         XCTAssertEqual(fake.created, 1)
     }
 
@@ -1338,7 +1340,7 @@ extension VoiceConversationControllerTests {
         await waitForFollowUpState { !fake.redirects.isEmpty }
 
         XCTAssertEqual(fake.created, 1, "a follow-up is never a new job")
-        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) Wait, make it for Alex."])
+        XCTAssertEqual(fake.redirects.map(\.1), ["Wait, make it for Alex."])
         controller.stop()
     }
 }

@@ -100,6 +100,10 @@ final class FakeVoiceJobBackend {
     var redirectError: Error?
     /// Runs inside redirect, so a test can deliver events while it is sent.
     var onRedirect: (@MainActor () -> Void)?
+    /// When true, the next redirect parks until `releaseRedirect()`.
+    var parksRedirect = false
+    let redirectParked = AwaitableCounter()
+    private var parkedRedirect: CheckedContinuation<Void, Never>?
 
     /// Strong captures: tests routinely discard the fake (`let (supervisor, _)
     /// = makeSupervisor()`), and the supervisor's backend must keep it alive
@@ -147,6 +151,13 @@ final class FakeVoiceJobBackend {
             redirect: { [self] id, text in
                 self.redirects.append((id, text))
                 self.onRedirect?()
+                if self.parksRedirect {
+                    self.parksRedirect = false
+                    await withCheckedContinuation { continuation in
+                        self.parkedRedirect = continuation
+                        self.redirectParked.increment()
+                    }
+                }
                 if let error = self.redirectError { throw error }
                 return self.redirectResults.isEmpty ? .redirected : self.redirectResults.removeFirst()
             },
@@ -161,6 +172,12 @@ final class FakeVoiceJobBackend {
     func releaseCreate() {
         let continuation = parkedCreate
         parkedCreate = nil
+        continuation?.resume()
+    }
+
+    func releaseRedirect() {
+        let continuation = parkedRedirect
+        parkedRedirect = nil
         continuation?.resume()
     }
 }
@@ -1568,7 +1585,7 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(outcome, .interrupted(title: job.title))
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex")
+        XCTAssertEqual(fake.redirects.first?.1, "wait, make it Alex", "a background job's words carry no chat mark")
         XCTAssertEqual(fake.submissions.count, 2, "a follow-up is never a new turn")
         // Hermes' marker for the cut-off reply is never the result.
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: Self.correctionNotice, reasoning: nil))
@@ -1587,7 +1604,7 @@ extension VoiceConversationControllerTests {
         fake.redirectResults = [.queued]
 
         let outcome = await supervisor.followUp(jobID: job.id, words: "make it Alex")
-        XCTAssertEqual(outcome, .interrupted(title: job.title))
+        XCTAssertEqual(outcome, .queued(title: job.title))
 
         // The turn Hermes was building ends first; the words run next.
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Sam.", reasoning: nil))
@@ -1611,7 +1628,7 @@ extension VoiceConversationControllerTests {
         let outcome = await supervisor.followUp(jobID: job.id, words: "make it Alex")
 
         XCTAssertEqual(outcome, .finished(title: job.title))
-        XCTAssertEqual(fake.redirects.count, 1, "a running job isn't retried")
+        XCTAssertEqual(fake.redirects.count, 1, "a request that ended isn't asked again")
         XCTAssertEqual(supervisor.jobs.first?.status, .finished)
         XCTAssertEqual(supervisor.jobs.first?.result, "Booked for Sam.")
         XCTAssertNil(supervisor.jobs.first?.followUp)
@@ -1748,7 +1765,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(result["status"], "sent")
         XCTAssertNil(result["job_id"])
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex")
+        XCTAssertEqual(fake.redirects.first?.1, "wait, make it Alex")
 
         supervisor.observe(.messageDelta(sessionId: "rt-1", text: "Alex"))
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Alex.", reasoning: nil))
@@ -1761,6 +1778,100 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse("call_4", _, let lateResult, _)? = late.first else { return XCTFail("\(late)") }
         XCTAssertEqual(lateResult["status"], "not_sent", "a finished job takes no more words")
         XCTAssertEqual(fake.redirects.count, 1)
+    }
+
+    private func makeFollowUpRetrySupervisor() -> (VoiceBackgroundJobSupervisor, FakeVoiceJobBackend) {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), followUpRetryInterval: .milliseconds(5))
+        return (supervisor, fake)
+    }
+
+    func testFollowUpsToOneJobGoOneAtATime() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.parksRedirect = true
+
+        let first = Task { await supervisor.followUp(jobID: job.id, words: "make it Alex") }
+        await fake.redirectParked.waitUntil(1)
+        let second = Task { await supervisor.followUp(jobID: job.id, words: "and four people") }
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(fake.redirects.count, 1, "the second waits for Hermes' answer to the first")
+
+        fake.releaseRedirect()
+        let firstOutcome = await first.value
+        let secondOutcome = await second.value
+
+        XCTAssertEqual(firstOutcome, .interrupted(title: job.title))
+        XCTAssertEqual(secondOutcome, .interrupted(title: job.title))
+        XCTAssertEqual(fake.redirects.map(\.1), ["make it Alex", "and four people"])
+        XCTAssertEqual(supervisor.jobs.first?.followUp, .accepted)
+    }
+
+    func testAQueuedFollowUpAfterTheTurnEndedSettlesOnItsOwnTurn() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.redirectResults = [.queued]
+        // The step Hermes was finishing ends while the words are on their way.
+        fake.onRedirect = {
+            supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Sam.", reasoning: nil))
+        }
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "make it Alex")
+
+        XCTAssertEqual(outcome, .queued(title: job.title))
+        XCTAssertEqual(GeminiLiveToolBridge.followUpResult(outcome)["status"], "sent")
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        supervisor.observe(.messageStart(sessionId: "rt-1"))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Changed it to Alex.", reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "Changed it to Alex.")
+    }
+
+    func testAJobThatFailsDuringAFollowUpKeepsNoFollowUpState() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.onRedirect = {
+            supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Sam.", reasoning: nil))
+        }
+        _ = await supervisor.followUp(jobID: job.id, words: "make it Alex")
+        XCTAssertEqual(supervisor.jobs.first?.heldCompletion, "Booked for Sam.")
+
+        supervisor.observe(.messageError(sessionId: "rt-1", message: "Provider error"))
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .failed("Provider error"))
+        XCTAssertNil(supervisor.jobs.first?.followUp)
+        XCTAssertNil(supervisor.jobs.first?.heldCompletion)
+    }
+
+    func testAFollowUpHermesWasntRunningYetIsTriedAgain() async throws {
+        let (supervisor, fake) = makeFollowUpRetrySupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.redirectResults = [.notRunning]
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "make it Alex")
+
+        XCTAssertEqual(outcome, .interrupted(title: job.title))
+        XCTAssertEqual(fake.redirects.count, 2)
+        XCTAssertEqual(supervisor.jobs.first?.followUp, .accepted)
+    }
+
+    func testAFollowUpHermesNeverRunsIsNotCalledFinished() async throws {
+        let (supervisor, fake) = makeFollowUpRetrySupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.redirectResults = Array(repeating: .notRunning, count: 10)
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "make it Alex")
+
+        guard case .failed = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertFalse(outcome.foundRequestFinished, "the job is still open")
+        XCTAssertEqual(fake.redirects.count, 4)
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        XCTAssertNil(supervisor.jobs.first?.followUp)
     }
 }
 

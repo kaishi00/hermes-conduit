@@ -657,19 +657,16 @@ final class GeminiLiveToolBridge {
     static func followUpResult(_ outcome: VoiceFollowUpOutcome) -> [String: String] {
         switch outcome {
         case .interrupted(let title):
-            return ["status": "sent", "message": "Hermes took the user's words into \(quoted(title)) at once and changes course now. Tell the user in a few words; the result still comes back on the earlier request, so don't guess it."]
+            return ["status": "sent", "message": "Hermes took the user's words into \(VoiceFollowUpOutcome.quoted(title)) at once and changes course now. Tell the user in a few words; the result still comes back on the earlier request, so don't guess it."]
+        case .queued(let title):
+            return ["status": "sent", "message": "Hermes takes the user's words into \(VoiceFollowUpOutcome.quoted(title)) right after the step it is finishing. Tell the user in a few words; the result still comes back on the earlier request, so don't guess it."]
         case .joined(let title):
-            return ["status": "sent", "message": "Added to \(quoted(title)) before Hermes started on it. Tell the user in a few words; the result still comes back on the earlier request."]
+            return ["status": "sent", "message": "Added to \(VoiceFollowUpOutcome.quoted(title)) before Hermes started on it. Tell the user in a few words; the result still comes back on the earlier request."]
         case .finished(let title):
-            return ["status": "not_sent", "message": "\(quoted(title)) had already finished, so Hermes didn't get this. Tell the user, and ask what they want instead."]
+            return ["status": "not_sent", "message": "\(VoiceFollowUpOutcome.quoted(title)) had already finished, so Hermes didn't get this. Tell the user, and ask what they want instead."]
         case .failed(let message):
             return ["status": "not_sent", "error": message]
         }
-    }
-
-    /// A request's title for the model, or a stand-in without one.
-    private static func quoted(_ title: String) -> String {
-        title.isEmpty ? "that request" : "\"\(title)\""
     }
 
     static func statusName(_ status: VoiceBackgroundJob.Status) -> String {
