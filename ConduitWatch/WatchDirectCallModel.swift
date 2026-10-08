@@ -1683,7 +1683,8 @@ final class WatchDirectCallModel: ObservableObject {
             : toolRelay
         guard let relay = candidate, relay.hasJobs, relay.canRun(call.name) else { return nil }
         if call.name == WatchJobAnswer.startJob,
-           let route = relay.jobRoute(instructions: call.arguments["instructions"] ?? "", spokenProfile: call.arguments["profile"]) {
+           // The task as runJobThroughRelay routes it: without "Quick:".
+           let route = relay.jobRoute(instructions: WatchBridgeDelegation.removingQuickMarker(call.arguments["instructions"] ?? ""), spokenProfile: call.arguments["profile"]) {
             // A profile the host doesn't run this call's jobs on, or a name
             // only the iPhone may know: the iPhone starts or answers it.
             if case .relay = route { return relay }
@@ -1714,10 +1715,11 @@ final class WatchDirectCallModel: ObservableObject {
                 if let profile { arguments["profile"] = profile }
             case .viaPhone(let name), .unknown(let name):
                 // jobRelay sends these to the iPhone; this is a backstop.
-                WatchCallLog.shared.note("directJobRelay", ["name": wire.name, "outcome": "unknownProfile"])
+                let unknown = route == .unknown(name)
+                WatchCallLog.shared.note("directJobRelay", ["name": wire.name, "outcome": unknown ? "unknownProfile" : "profileViaPhone"])
                 answer(.toolResponse(id: wire.id, name: wire.name, result: [
                     "status": "not_started",
-                    "message": VoiceJobProfiles.unknownProfileReply(name),
+                    "message": unknown ? VoiceJobProfiles.unknownProfileReply(name) : VoiceJobProfiles.viaPhoneReply(name),
                 ], scheduling: whenIdle, fallback: nil), generation: generation)
                 return
             }

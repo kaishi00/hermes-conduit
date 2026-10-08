@@ -92,6 +92,12 @@ enum VoiceJobProfiles {
         }
     }
 
+    /// The answer to a job for one of the user's profiles a Watch call
+    /// can't start it on.
+    static func viaPhoneReply(_ name: String) -> String {
+        "Jobs on \(name) can't start from this Watch call. Tell the user to start them from the iPhone."
+    }
+
     /// The answer to a job for a profile the user doesn't have.
     static func unknownProfileReply(_ name: String) -> String {
         "I don't know a profile or bot called \(name), so I didn't start the job."

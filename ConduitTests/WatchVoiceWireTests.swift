@@ -1102,6 +1102,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(route("check the router", nil), .relay(instructions: "check the router", profile: nil))
         XCTAssertEqual(route("check the router", "Work"), .viaPhone(label: "Work"))
         XCTAssertEqual(route("check the router", "Brian"), .unknown("Brian"))
+        // The Watch routes the task as it sends it: without "Quick:".
+        XCTAssertEqual(route(WatchBridgeDelegation.removingQuickMarker("Quick: for work, check the router"), nil), .viaPhone(label: "work"))
     }
 
     /// The host takes xAI's audio deltas out to pace them; the Watch's
