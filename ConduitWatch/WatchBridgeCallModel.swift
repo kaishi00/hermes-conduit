@@ -405,9 +405,7 @@ final class WatchBridgeCallModel: ObservableObject {
     /// As above, for a call that may have gone out: only the relay or
     /// Hermes turning it away for the grant says it didn't run.
     private static func grantRanOut(reason: String, grantGone: Bool, sent: Bool) -> Bool {
-        guard sent else { return grantRanOut(reason: reason, grantGone: grantGone) }
-        return ["relay 401", "relay 404", "relay 410", "host 403", "host 410"].contains(reason)
-            || reason.hasSuffix(" grant_exhausted")
+        sent ? WatchBridgeDelegation.refused(reason) : grantRanOut(reason: reason, grantGone: grantGone)
     }
 
     private func approvalsRanOut() {

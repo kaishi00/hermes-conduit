@@ -567,6 +567,45 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(empty.isGone)
         guard case .unavailable("grantEnded", true, false) = await empty.run(name: "web_search", query: "weather") else { return XCTFail("Expected it ended") }
     }
+
+    /// The GPT-Live Watch call tells the model a call didn't run only on
+    /// these refusals (WatchBridgeDelegation.refused), so the client's
+    /// reasons for them are pinned here.
+    @MainActor
+    func testWatchToolRelayClientRefusalsAreTheOnesTheBridgeCallTrusts() async throws {
+        let grant = Self.watchToolGrant
+        let keys = try XCTUnwrap(WatchToolSeal.Keys(root: Data(0..<32)))
+        defer { WatchToolRelayStubProtocol.handler = nil }
+        func outcome(_ answer: @escaping (_ rid: String) throws -> (Int, [String: Any])) async throws -> WatchToolRelayClient.Outcome {
+            WatchToolRelayStubProtocol.handler = { _, body in
+                let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+                return try answer(try XCTUnwrap(envelope["rid"]))
+            }
+            let client = try XCTUnwrap(WatchToolRelayClient(grant, protocolClasses: [WatchToolRelayStubProtocol.self]))
+            return await client.run(name: "web_search", query: "weather")
+        }
+        func hostSays(_ status: Int) -> (String) throws -> (Int, [String: Any]) {
+            { rid in
+                let sealed = try WatchToolSeal.seal(WatchToolSeal.json(["ok": false, "status": status, "detail": "no"]), keys: keys, direction: .result, grantID: grant.grantID, rid: rid)
+                return (200, ["n": sealed.n, "ct": sealed.ct])
+            }
+        }
+        for status in [401, 404, 410] {
+            guard case .unavailable(let reason, true, true) = try await outcome({ _ in (status, ["error": "no"]) }) else { return XCTFail("Expected relay \(status) to end the grant") }
+            XCTAssertTrue(WatchBridgeDelegation.refused(reason), reason)
+        }
+        for status in [403, 410] {
+            guard case .unavailable(let reason, true, true) = try await outcome(hostSays(status)) else { return XCTFail("Expected host \(status) to end the grant") }
+            XCTAssertTrue(WatchBridgeDelegation.refused(reason), reason)
+        }
+        guard case .unavailable(let exhausted, true, true) = try await outcome({ _ in (429, ["error": "grant_exhausted"]) }) else { return XCTFail("Expected the grant spent on the relay") }
+        XCTAssertTrue(WatchBridgeDelegation.refused(exhausted), exhausted)
+        // Hermes may have it: no refusal.
+        guard case .unavailable(let offline, false, true) = try await outcome({ _ in (503, ["error": "host_offline"]) }) else { return XCTFail("Expected a fallback") }
+        XCTAssertFalse(WatchBridgeDelegation.refused(offline), offline)
+        guard case .unavailable(let unreadable, false, true) = try await outcome({ _ in (200, ["n": "x", "ct": "y"]) }) else { return XCTFail("Expected an unreadable answer") }
+        XCTAssertFalse(WatchBridgeDelegation.refused(unreadable), unreadable)
+    }
 }
 
 // MARK: Watch jobs through the relay

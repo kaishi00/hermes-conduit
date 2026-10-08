@@ -23,6 +23,14 @@ enum WatchBridgeDelegation {
     /// The lines of conversation a request carries for context, at most.
     static let contextLines = 8
 
+    /// The relay or Hermes turned away a call that went out because its
+    /// grant is over, so it didn't run: `WatchToolRelayClient`'s reasons
+    /// for those answers, pinned by a test against the client.
+    static func refused(_ reason: String) -> Bool {
+        ["relay 401", "relay 404", "relay 410", "host 403", "host 410"].contains(reason)
+            || reason.hasSuffix(" grant_exhausted")
+    }
+
     struct Line: Equatable {
         var role: WatchVoiceWire.DirectTurn.Role
         var text: String
