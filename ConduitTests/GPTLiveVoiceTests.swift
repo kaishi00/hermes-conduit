@@ -2184,6 +2184,12 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Don't send it yet"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, make it for Alex"), .no(change: "No, make it for Alex"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Hold on"), .notYet(change: nil))
+        // A yes word first doesn't make a no a yes.
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Please don't send it yet"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yeah, no"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Fine, forget it"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, wait"), .notYet(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, but not now"), .notYet(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("for Sam"), .other("for Sam"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Nothing else"), .other("Nothing else"), "a no is a word of its own")
         XCTAssertTrue(VoiceThreadRouting.heldRequestAnswer("Okay").isBare)
@@ -2346,6 +2352,39 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 2)
         XCTAssertEqual(fake.redirects.count, 1, "job 1 is left alone")
         XCTAssertTrue(fake.submissions.last?.1.contains("check the news") == true, fake.submissions.last?.1 ?? "")
+    }
+
+    /// GPT-Live's text for a delegation can be the user's answer itself
+    /// ("Send it to Hermes"): it waits for their words and never replaces
+    /// the held request.
+    func testGPTLiveAskingFirstAnswerEchoedByTheModelKeepsTheHeldRequest() async {
+        let (_, fake, bridge) = makeAskingFirstBridge()
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        let echo = await bridge.handleDelegation(id: "del_2", request: "Send it to Hermes")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.waitingForAnswer, .commentary)? = echo.last, echo.count == 1 else {
+            return XCTFail("\(echo)")
+        }
+        // A second one before the words arrive: the first is told the answer goes on it.
+        let again = await bridge.handleDelegation(id: "del_3", request: "")
+        XCTAssertEqual(again.count, 2, "\(again)")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.answerOnLaterDelegation, .commentary)? = again.first,
+              case .delegationReply("del_3", GPTLiveDelegationBridge.waitingForAnswer, .commentary)? = again.last else {
+            return XCTFail("\(again)")
+        }
+        XCTAssertEqual(fake.created, 0)
+
+        guard let answer = bridge.userFinishedSpeaking("Send it to Hermes") else { return XCTFail("the words answer it") }
+        _ = await bridge.deliver(answer)
+        XCTAssertEqual(fake.created, 1)
+        let prompt = fake.submissions.first?.1 ?? ""
+        XCTAssertTrue(prompt.hasSuffix("book a table for Sam"), prompt)
+
+        // The request restated with words that aren't a yes: asked again, not sent.
+        let (_, restatedFake, restated) = makeAskingFirstBridge()
+        _ = await restated.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        let changed = await restated.handleDelegation(id: "del_2", request: "Book a table for Sam.", userWords: "for four")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.heldForOKText, .speakable)? = changed.first else { return XCTFail("\(changed)") }
+        XCTAssertEqual(restatedFake.created, 0)
     }
 
     /// A request held for minutes was left: the user's next words are new,

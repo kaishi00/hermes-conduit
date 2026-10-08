@@ -2007,6 +2007,8 @@ enum VoiceThreadRouting {
         "exactly", "absolutely", "definitely", "of course", "sounds good", "perfect", "great", "fine",
         "good", "that's right", "that's it", "go", "uh huh", "mhm",
     ]
+    /// Words between a yes and what decides it ("okay, but wait").
+    static let answerJoiners = ["but", "actually", "oh", "well"]
     /// Words that add nothing to an answer ("no thanks", "yes, send it to
     /// Hermes now").
     static let answerFillerWords: Set<String> = [
@@ -2044,6 +2046,10 @@ enum VoiceThreadRouting {
             return .other(spoken)
         }
         while dropLead(answerYesLeads) {}
+        // "Okay, wait", "Yeah, no", "Please don't": what follows decides.
+        _ = dropLead(answerJoiners)
+        if dropLead(answerNoLeads) { return .no(change: more(words)) }
+        if dropLead(answerNotYetLeads) { return .notYet(change: more(words)) }
         // "Yes, send it to Hermes": the send is the yes.
         let rest = saysSendToHermes(words.joined(separator: " ")) ? [] : words
         return .yes(addition: more(rest))

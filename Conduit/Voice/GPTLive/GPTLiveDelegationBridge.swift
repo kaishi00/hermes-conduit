@@ -476,6 +476,9 @@ final class GPTLiveDelegationBridge {
     /// A yes in any words sends it, with anything they added; a no drops
     /// it; other words change it, and the model asks again.
     private func decide(_ waiting: Draft, ownText: String, isSend: Bool, instructions: String, answer: String) -> DraftDecision {
+        // Text that is only an answer ("Yes", "Send it to Hermes") echoes
+        // the user; it is no request of its own.
+        let ownText = VoiceThreadRouting.heldRequestAnswer(ownText).isBare ? "" : ownText
         let restated = !ownText.isEmpty && Self.sameRequest(ownText, waiting.request)
         // The model wrote a request of its own: the user changed it.
         let rewritten = !ownText.isEmpty && !restated
@@ -485,8 +488,8 @@ final class GPTLiveDelegationBridge {
             return .send(Self.adding(addition, to: waiting.request))
         case .other(let words):
             if rewritten { return .change(instructions) }
-            // The model took it as a yes: sent, with the user's words.
-            if isSend || restated { return .send(Self.adding(words, to: waiting.request)) }
+            // The model said "Send:": it took them as a yes. Sent with them.
+            if isSend { return .send(Self.adding(words, to: waiting.request)) }
             return .change(Self.adding(words, to: waiting.request))
         case .no(let change):
             if rewritten { return .change(instructions) }
@@ -517,8 +520,13 @@ final class GPTLiveDelegationBridge {
     }
 
     private func waitForAnswer(_ id: String) -> [Outgoing] {
+        var outgoing: [Outgoing] = []
+        // One answer, on the newest delegation: an older one waiting is told.
+        if let older = draft?.pendingDelegationID, older != id {
+            outgoing.append(.delegationReply(delegationID: older, text: Self.answerOnLaterDelegation, channel: .commentary))
+        }
         draft?.pendingDelegationID = id
-        return [.delegationReply(delegationID: id, text: Self.waitingForAnswer, channel: .commentary)]
+        return outgoing + [.delegationReply(delegationID: id, text: Self.waitingForAnswer, channel: .commentary)]
     }
 
     /// The model finished a turn: with a request held, it has asked.
@@ -620,7 +628,7 @@ final class GPTLiveDelegationBridge {
         // One holds the other plus only a yes ("what's next to work on" /
         // "… send it"); "… and Alex" is a change.
         let (longer, shorter) = a.count >= b.count ? (a, b) : (b, a)
-        guard shorter.count >= 8, let range = longer.range(of: shorter) else { return false }
+        guard shorter.count >= 4, let range = longer.range(of: shorter) else { return false }
         let rest = longer.replacingCharacters(in: range, with: " ").trimmingCharacters(in: .whitespaces)
         return rest.isEmpty || VoiceThreadRouting.heldRequestAnswer(rest).isBare
     }
@@ -649,6 +657,7 @@ final class GPTLiveDelegationBridge {
         "\(heldPrefix): the user OKs each request first. Background job \(number) (\(VoiceFollowUpOutcome.quoted(title))) is the only one running, so once they OK it Conduit puts this into that job as a change. Tell them in a few words what you'll change in job \(number) and ask whether to send it. If they say it's separate work, delegate it starting with \"New job:\" instead. Until Conduit says it went, don't say it's sent or being sent, and never say \"Send:\" aloud.]"
     }
     static let waitingForAnswer = "Not sent yet: Conduit is waiting for the user's answer to come through. Don't say it's sent or being sent; Conduit tells you when it goes."
+    static let answerOnLaterDelegation = "Nothing more follows on this delegation: what happens to the waiting request is told on your later one."
     static let notReadyYet = "Not sent: the user isn't ready yet. It keeps waiting for their OK; don't say it's sent."
     static let dropped = "Not sent: the user said no, so Conduit dropped the waiting request. Nothing is waiting now."
     static let alreadySent = "Conduit already sent that request to Hermes; its reply follows on the delegation that sent it. Don't send it again or ask what to send."
