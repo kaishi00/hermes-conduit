@@ -1663,8 +1663,9 @@ final class WatchDirectCallModel: ObservableObject {
     private func jobRelay(for call: GeminiLiveProtocol.FunctionCall) -> WatchToolRelayClient? {
         // A correction can still reach its job through the previous grant
         // while the current one renews: that grant answers until it closes.
-        let candidate = call.name == WatchJobAnswer.interruptJob && toolRelay?.hasJobs != true
-            ? jobRelays.last(where: { $0.hasJobs })
+        let candidate = call.name == WatchJobAnswer.interruptJob
+            && !(toolRelay.map { $0.hasJobs && $0.canRun(call.name) } ?? false)
+            ? jobRelays.last(where: { $0.hasJobs && $0.canRun(call.name) })
             : toolRelay
         guard let relay = candidate, relay.hasJobs, relay.canRun(call.name) else { return nil }
         let profile = call.arguments["profile"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

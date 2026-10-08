@@ -1014,7 +1014,9 @@ final class WatchBridgeCallModel: ObservableObject {
                 followUp(for: id, jobID: jobID, words: words, relay: relay)
                 return
             }
-            let request = WatchBridgeDelegation.request(itemText: marker.rest, lines: lines)
+            // A bare "Job 9:" asks for nothing, as on the phone: the user's
+            // lines would only repeat the marker.
+            let request = marker.rest.isEmpty ? "" : WatchBridgeDelegation.request(itemText: marker.rest, lines: lines)
             guard !request.isEmpty else {
                 answer(id, WatchBridgeDelegation.noRequest, channel: .speakable)
                 return
@@ -1112,7 +1114,7 @@ final class WatchBridgeCallModel: ObservableObject {
             return
         }
         guard relay.canRun(WatchJobAnswer.interruptJob) else {
-            answer(delegationID, WatchBridgeDelegation.relay("Hermes didn't get that (\(WatchBridgeDelegation.grantRanOut))"), channel: .speakable)
+            answer(delegationID, WatchBridgeDelegation.relay("Hermes didn't get that (\(WatchBridgeDelegation.grantRanOut.trimmingCharacters(in: CharacterSet(charactersIn: "."))))"), channel: .speakable)
             return
         }
         let id = callID
