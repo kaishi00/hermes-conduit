@@ -889,10 +889,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The newest job result handed to the running call, for a read-back.
     private var lastCallResult: (callID: UUID, text: String)?
 
-    /// A job's outcome went to the running call: a finished job's result is
-    /// what "read that again" means in a call without a chat.
+    /// A job's outcome reached the running call: a finished job's result is
+    /// what "read that again" means in a call without a chat. Only once it
+    /// went out, so a result handed back unsent is never read as heard.
     private func noteResultReported(_ job: VoiceBackgroundJob) {
-        guard let callID = liveCallID, !job.isThreadTurn, job.status == .finished,
+        guard let callID = liveCallID, !job.isThreadTurn, job.outcomeDelivered, job.status == .finished,
               let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
               !result.isEmpty else { return }
         lastCallResult = (callID, result)
@@ -1194,7 +1195,6 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// never announces it a second time.
     func markOutcomeDelivered(jobID: UUID) {
         update(jobID) { $0.outcomeDelivered = true }
-        if let job = job(jobID) { noteResultReported(job) }
         pruneSettledJobs()
     }
 
@@ -1483,7 +1483,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     func takePendingNotice() -> VoiceBackgroundJobNotice? {
         defer { pruneSettledJobs() }
-        return takeNotice()?.notice
+        guard let item = takeNotice() else { return nil }
+        // Spoken at once: no confirmation follows.
+        if let job = job(item.jobID) { noteResultReported(job) }
+        return item.notice
     }
 
     /// `takePendingNotice` plus the job it came from, for a channel that
@@ -1526,6 +1529,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A notice taken with `takePendingNoticeForJob` went out.
     func noticeSent(jobID: UUID) {
         guard releaseInFlight(jobID) else { return }
+        if let job = job(jobID) { noteResultReported(job) }
         pruneSettledJobs()
     }
 
@@ -1547,7 +1551,6 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                       !result.isEmpty else {
                     return (.speak(openChat), job.id)
                 }
-                noteResultReported(job)
                 return (.submit(prompt: Self.outcomePrompt(for: job, result: result), fallback: openChat), job.id)
             case .failed(let message):
                 // A chat turn's reason says what Hermes did with the request.
@@ -1885,11 +1888,12 @@ enum VoiceThreadRouting {
 
     /// Words before "send it to Hermes" in its clause that make it
     /// something other than an instruction: a negation, a question about
-    /// it, a condition or a reminder. A miss only means the user is asked.
+    /// it, a condition, a reminder or an alternative ("rather than send it
+    /// to Hermes"). A miss only means the user is asked.
     static let sendVetoes: Set<String> = [
         "don't", "dont", "not", "never", "no", "stop", "without", "before", "won't", "can't", "cannot", "shouldn't", "didn't",
         "did", "when", "whether", "if", "what", "why", "how", "where", "who", "should", "shall",
-        "has", "have", "was", "were", "remind",
+        "has", "have", "was", "were", "remind", "rather", "than", "instead",
     ]
 
     static func wantsBackgroundJob(_ request: String) -> Bool {

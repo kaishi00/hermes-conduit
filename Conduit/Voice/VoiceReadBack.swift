@@ -48,8 +48,12 @@ enum VoiceReadBack {
         guard !line.isEmpty else { return "" }
         if line.range(of: #"^([-*_])(\s*\1){2,}$"#, options: .regularExpression) != nil { return nil }
         if line.range(of: #"^=+$"#, options: .regularExpression) != nil { return nil }
-        if line.hasPrefix("|") {
-            if line.range(of: #"^[|:\-\s]+$"#, options: .regularExpression) != nil { return nil }
+        if line.contains("|"), line.contains("-"),
+           line.range(of: #"^[|:\-\s]+$"#, options: .regularExpression) != nil { return nil }
+        // A table row, with or without its outer pipes (but not a list item
+        // or quote that mentions a pipe).
+        if line.hasPrefix("|")
+            || (line.contains(" | ") && line.range(of: #"^([-*+>]|[0-9]{1,3}[.)])\s"#, options: .regularExpression) == nil) {
             let cells = line.split(separator: "|")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }

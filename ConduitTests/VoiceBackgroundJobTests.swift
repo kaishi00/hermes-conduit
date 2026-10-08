@@ -1924,6 +1924,7 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("remind me to send it to Hermes tomorrow"))
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("should I send it to Hermes?"))
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("how do I send this to Hermes"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("read it out rather than send it to Hermes"))
         XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("can you send it to Hermes"))
     }
 
@@ -2122,6 +2123,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceReadBack.plainSpeech(markdown), expected)
         XCTAssertEqual(VoiceReadBack.plainSpeech("Already plain."), "Already plain.")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Summary\n=======\nAll good."), "Summary\nAll good.", "a heading's underline isn't read")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("Item | Cost\n--- | ---\nMilk | $2"), "Item, Cost.\nMilk, $2.", "a table without outer pipes")
     }
 
     func testGeminiReadBackWithoutAChatReadsTheNewestJobResultOfThisCall() async {
@@ -2136,6 +2138,10 @@ extension VoiceConversationControllerTests {
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "check the server"]))
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "## Server\n- **Disk:** 80% full", reasoning: nil))
         _ = bridge.pendingUpdates()
+        // Not heard yet: a result still on its way isn't read back.
+        let unsent = await supervisor.readBackText()
+        XCTAssertNil(unsent)
+        bridge.outcomeSent(jobID: supervisor.jobs.first?.id)
 
         let read = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "read_last_reply", arguments: [:]))
         guard case .toolResponse("call_2", "read_last_reply", let result, let scheduling)? = read.first else { return XCTFail("\(read)") }
@@ -2162,6 +2168,12 @@ extension VoiceConversationControllerTests {
         _ = await bridge.handleDelegation(id: "del_1", request: "check the server")
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "**All good.** Uptime 9 days.", reasoning: nil))
         _ = bridge.pendingUpdates()
+        // Handed back unsent (the session was replaced): not read as heard.
+        bridge.replyUndelivered(delegationID: "del_1")
+        let unsent = await supervisor.readBackText()
+        XCTAssertNil(unsent)
+        _ = bridge.pendingUpdates()
+        bridge.contextDelivered(jobID: supervisor.jobs.first?.id)
 
         let read = await bridge.handleDelegation(id: "del_2", request: "Read back: the server check")
         guard read.count == 2,
@@ -2181,6 +2193,7 @@ extension VoiceConversationControllerTests {
         _ = await bridge.handleDelegation(id: "del_1", request: "check the server")
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All good.", reasoning: nil))
         _ = bridge.pendingUpdates()
+        bridge.replyDelivered(delegationID: "del_1")
 
         // The model paraphrased; the user's own words say it's a read-back.
         let read = await bridge.handleDelegation(id: "del_2", request: "Give the user Hermes' full previous answer", userWords: "Can you repeat exactly what you said?")
