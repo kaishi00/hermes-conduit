@@ -86,7 +86,7 @@ enum ConduitBackdropMotionPolicy {
     /// static composition so only the main chat and sidebar run a timeline,
     /// rather than one per stacked layer while a sheet is open.
     static func shouldAnimate(
-        drifts: Bool = true,
+        drifts: Bool,
         sceneIsActive: Bool,
         reduceMotion: Bool,
         lowPowerMode: Bool,

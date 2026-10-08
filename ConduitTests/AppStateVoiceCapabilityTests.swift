@@ -439,12 +439,14 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
 
     func testBackdropMotionPolicyGatesPowerAndLifecycle() {
         XCTAssertTrue(ConduitBackdropMotionPolicy.shouldAnimate(
+            drifts: true,
             sceneIsActive: true,
             reduceMotion: false,
             lowPowerMode: false,
             thermalState: .nominal
         ))
         XCTAssertTrue(ConduitBackdropMotionPolicy.shouldAnimate(
+            drifts: true,
             sceneIsActive: true,
             reduceMotion: false,
             lowPowerMode: false,
@@ -469,6 +471,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         ]
         for (sceneIsActive, reduceMotion, lowPowerMode, thermalState) in pausedConditions {
             XCTAssertFalse(ConduitBackdropMotionPolicy.shouldAnimate(
+                drifts: true,
                 sceneIsActive: sceneIsActive,
                 reduceMotion: reduceMotion,
                 lowPowerMode: lowPowerMode,
