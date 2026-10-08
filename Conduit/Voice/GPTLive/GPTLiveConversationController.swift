@@ -116,7 +116,7 @@ final class GPTLiveConversationController: ObservableObject {
     static let userTurnStaleInterval: TimeInterval = 6
     /// Leads a delegation's result when the user kept talking after asking
     /// for it (#379): what they said since comes first. Not UI copy.
-    static let resultAfterUserNote = "[The user kept talking after asking for this, so this result waited until they finished. If anything they said since hasn't been answered or passed on to Hermes yet, deal with that first (delegate it if Hermes is needed). Then say that Hermes has come back on the earlier request and give what follows, as it asks.]\n\n"
+    static let resultAfterUserNote = WatchBridgeDelegation.resultAfterUserNote
     /// An end closes the call once the model has been quiet this long.
     static let endGrace: TimeInterval = 1.5
     /// An end closes the call after this long even if the model still talks.

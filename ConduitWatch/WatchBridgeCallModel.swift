@@ -224,6 +224,9 @@ final class WatchBridgeCallModel: ObservableObject {
     /// Each delegation's connection: a rejoined session can't take an
     /// answer on the old one's delegations, so those go as session context.
     private var delegationConnection: [String: Int] = [:]
+    /// How many of the user's lines each delegation was made after, to
+    /// tell when they kept talking before its result (#379).
+    private var delegationUserLines: [String: Int] = [:]
     /// Jobs answering a delegation, by job id.
     private var jobDelegations: [String: String] = [:]
     /// Jobs this call started that still run, with their titles: the job
@@ -1026,6 +1029,7 @@ final class WatchBridgeCallModel: ObservableObject {
         if !open.isEmpty { lines.append(.init(role: .user, text: open, handled: false)) }
         handledLines = transcript.count
         openLineDelegated = !open.isEmpty
+        delegationUserLines[id] = lines.filter { $0.role == .user }.count
         let request = WatchBridgeDelegation.request(itemText: itemText, lines: lines)
         let userWords = lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
         let ownWords = itemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? userWords : itemText
@@ -1245,11 +1249,23 @@ final class WatchBridgeCallModel: ObservableObject {
             }
             // A rejoined session doesn't know the old one's delegations.
             let delegationID = item.delegationID.flatMap { delegationConnection[$0] == connection ? $0 : nil }
-            for message in GPTLiveProtocol.contextAppendMessages(item.text, channel: item.channel, delegationID: delegationID) {
+            var text = item.text
+            if item.channel == .speakable, let asked = item.delegationID, userSpokeAfter(asked) {
+                text = WatchBridgeDelegation.resultAfterUserNote + text
+            }
+            for message in GPTLiveProtocol.contextAppendMessages(text, channel: item.channel, delegationID: delegationID) {
                 sendEvent(message)
             }
         }
         pendingSends = kept
+    }
+
+    /// The user said more after asking for this, as the phone checks:
+    /// what they said since comes first (#379). A delegation made before
+    /// any words of theirs has no line to count from.
+    private func userSpokeAfter(_ delegationID: String) -> Bool {
+        guard let known = delegationUserLines[delegationID], known > 0 else { return false }
+        return transcript.filter { $0.role == .user }.count > known
     }
 
     private var isQuiet: Bool {
@@ -1590,6 +1606,7 @@ final class WatchBridgeCallModel: ObservableObject {
         pendingSends = []
         seenDelegations = []
         delegationConnection = [:]
+        delegationUserLines = [:]
         jobDelegations = [:]
         runningJobs = [:]
         jobNumbers = [:]
