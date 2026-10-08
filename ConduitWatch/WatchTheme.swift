@@ -33,11 +33,12 @@ struct WatchVoiceOrb: View {
     var size: CGFloat = 96
 
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var breathing = false
 
     var body: some View {
         ZStack {
-            if mood == .speaking, !isLuminanceReduced {
+            if mood == .speaking, animates {
                 ripples
             }
             Circle()
@@ -54,18 +55,22 @@ struct WatchVoiceOrb: View {
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.34, weight: .semibold))
                     .foregroundStyle(.white)
-                    .symbolEffect(.variableColor.iterative, isActive: mood == .speaking && !isLuminanceReduced)
+                    .symbolEffect(.variableColor.iterative, isActive: mood == .speaking && animates)
             }
         }
         .frame(width: size, height: size)
         .onAppear { updateBreathing() }
         .onChange(of: mood) { _, _ in updateBreathing() }
         .onChange(of: isLuminanceReduced) { _, _ in updateBreathing() }
+        .onChange(of: reduceMotion) { _, _ in updateBreathing() }
     }
 
-    /// Listening breathes slowly; nothing moves in always-on.
+    /// Nothing moves in always-on, or with Reduce Motion on.
+    private var animates: Bool { !isLuminanceReduced && !reduceMotion }
+
+    /// Listening breathes slowly.
     private func updateBreathing() {
-        let wanted = mood == .listening && !isLuminanceReduced
+        let wanted = mood == .listening && animates
         guard wanted != breathing else { return }
         if wanted {
             withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { breathing = true }

@@ -2829,7 +2829,9 @@ final class WatchDirectCallModel: ObservableObject {
         }
         // Queued, not sent: the iPhone saves the call whenever Conduit next
         // runs there, asleep or not right now.
-        let saved = transcript.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let saved = WatchVoiceWire.DirectTranscript.capped(
+            transcript.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        )
         let queued = link.queue(.directEnd(callID: callID, transcript: .init(
             callUUID: callUUID.uuidString,
             startedAt: callStartedDate,

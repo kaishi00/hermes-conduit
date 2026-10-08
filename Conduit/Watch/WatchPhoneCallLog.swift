@@ -42,15 +42,6 @@ final class WatchPhoneCallLog: ObservableObject {
         append(WatchVoiceStats.jsonLine(fields))
     }
 
-    /// A call's summary.
-    func summary(_ event: String, _ fields: [String: Any]) {
-        var fields = fields
-        fields["event"] = event
-        fields["side"] = "phone"
-        let line = WatchVoiceStats.jsonLine(fields)
-        append(line)
-    }
-
     /// A call summary the Watch sent.
     func watchReport(_ line: String) {
         append(line)

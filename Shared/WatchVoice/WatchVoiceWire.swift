@@ -165,6 +165,21 @@ enum WatchVoiceWire {
         var turns: [DirectTurn]
         /// The engine the call ran on; nil for Gemini.
         var engine: String? = nil
+
+        /// The newest turns that fit `characters`: a queued transfer is
+        /// meant for small payloads, and a long call keeps its end.
+        static let maxCharacters = 48_000
+
+        static func capped(_ turns: [DirectTurn], characters: Int = maxCharacters) -> [DirectTurn] {
+            var kept: [DirectTurn] = []
+            var total = 0
+            for turn in turns.reversed() {
+                total += turn.text.count
+                if total > characters { break }
+                kept.append(turn)
+            }
+            return kept.reversed()
+        }
     }
 
     /// Control messages, both directions.

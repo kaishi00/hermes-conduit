@@ -985,3 +985,16 @@ private final class WatchToolRelayStubProtocol: URLProtocol {
         return data
     }
 }
+
+extension HermesVoiceGatewayTimeoutTests {
+    func testWatchTranscriptCapKeepsTheNewestTurns() {
+        let at = Date(timeIntervalSince1970: 0)
+        let turns = (0..<5).map {
+            WatchVoiceWire.DirectTurn(role: $0.isMultiple(of: 2) ? .user : .assistant, text: String(repeating: "x", count: 10) + "\($0)", at: at)
+        }
+        let kept = WatchVoiceWire.DirectTranscript.capped(turns, characters: 25)
+        XCTAssertEqual(kept.map(\.text), [turns[3].text, turns[4].text])
+        XCTAssertEqual(WatchVoiceWire.DirectTranscript.capped(turns).count, 5)
+        XCTAssertTrue(WatchVoiceWire.DirectTranscript.capped([], characters: 10).isEmpty)
+    }
+}
