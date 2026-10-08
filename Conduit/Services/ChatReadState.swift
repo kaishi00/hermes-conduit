@@ -53,9 +53,10 @@ struct ChatReadState: Equatable {
     private(set) var seenPendingRefresh: [String: Date] = [:]
 
     private var writeGeneration: UInt64 = 0
-    /// "profile\u{1F}durable id" → when Conduit last wrote the flag. Passive
-    /// catch-up skips rewriting within `passiveRewriteInterval`, so a gateway
-    /// that accepts the write but never stores it isn't asked on every listing.
+    /// "profile\u{1F}durable id" → when Conduit last wrote the flag, until a
+    /// listing confirms it. Passive catch-up won't rewrite an unconfirmed
+    /// value within `passiveRewriteInterval`, so a gateway that accepts the
+    /// write but never stores it isn't asked on every listing.
     private(set) var lastWriteAttempts: [String: Date] = [:]
     static let passiveRewriteInterval: TimeInterval = 5 * 60
     /// A "seen" moment newer than this is left as is, so a chat sitting on
@@ -142,9 +143,11 @@ struct ChatReadState: Equatable {
                 if counts[id] == nil {
                     counts[id] = count
                 } else if let seenAt = seenPendingRefresh[key] {
+                    // Without a timestamp a newer reply can't be ruled out:
+                    // leave it unread rather than swallow it.
                     let activityIsNewer = session.lastActivityAt.map {
                         $0 > seenAt.timeIntervalSince1970 + Self.activityClockSlack
-                    } ?? false
+                    } ?? true
                     if !activityIsNewer {
                         counts[id] = max(count, counts[id] ?? 0)
                     }
@@ -157,6 +160,7 @@ struct ChatReadState: Equatable {
                 // clears it here too.
                 if pending.unread { clearMark(session, profile: profile) }
                 pendingServerValues[key] = nil
+                lastWriteAttempts[key] = nil
             }
         }
         pendingServerValues = pendingServerValues.filter {
@@ -222,6 +226,17 @@ struct ChatReadState: Equatable {
             generation: writeGeneration
         )
         return writeGeneration
+    }
+
+    /// The chat is on screen but its read write is held back: hide Hermes'
+    /// stale flag locally for a while without sending anything.
+    mutating func recordLocalRead(_ session: SessionSummary, profile: String, at date: Date = Date()) {
+        writeGeneration &+= 1
+        pendingServerValues[Self.key(profile, Self.durableID(for: session))] = PendingServerValue(
+            unread: false,
+            writtenAt: date,
+            generation: writeGeneration
+        )
     }
 
     /// Whether passive catch-up may write the flag again for this row.

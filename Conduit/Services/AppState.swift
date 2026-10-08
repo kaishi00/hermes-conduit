@@ -5148,7 +5148,12 @@ final class AppState: ObservableObject {
             if chatReadState.isExplicitlyUnread(session, profile: profile) { return }
             // Catch-up never re-sends a write Hermes hasn't confirmed yet.
             if !chatReadState.mayRewritePassively(session, profile: profile) {
-                updateChatReadState { $0.markSeen(session, profile: profile) }
+                updateChatReadState { state in
+                    state.markSeen(session, profile: profile)
+                    if state.serverUnread(session, profile: profile) {
+                        state.recordLocalRead(session, profile: profile)
+                    }
+                }
                 return
             }
         }

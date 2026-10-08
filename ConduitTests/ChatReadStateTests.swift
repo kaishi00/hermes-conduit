@@ -163,6 +163,31 @@ final class ChatReadStateTests: XCTestCase {
         ))
     }
 
+    func testAConfirmedWriteAllowsTheNextPassiveRewrite() {
+        var state = ChatReadState()
+        let session = row("a", count: 3, unread: true, watermark: 1_799_999_000)
+        state.recordServerWrite(session, profile: profile, unread: false, at: t0)
+        state.observe([row("a", count: 3, unread: false, watermark: 1_800_000_000)], profile: profile, now: t0.addingTimeInterval(2))
+        XCTAssertTrue(state.mayRewritePassively(session, profile: profile, now: t0.addingTimeInterval(60)))
+    }
+
+    func testALocalReadHidesAStaleFlagWithoutAWrite() {
+        var state = ChatReadState()
+        let session = row("a", count: 3, unread: true, watermark: 1_799_999_000)
+        state.recordLocalRead(session, profile: profile, at: t0)
+        XCTAssertFalse(state.isUnread(session, profile: profile, now: t0.addingTimeInterval(1)))
+        XCTAssertTrue(state.mayRewritePassively(session, profile: profile, now: t0))
+    }
+
+    func testALeftChatWithoutATimestampKeepsNewMessagesUnread() {
+        var state = ChatReadState()
+        state.observe([row("a", count: 4)], profile: profile, now: t0)
+        state.markSeen(row("a", count: 4), profile: profile, at: t0)
+        let grown = row("a", count: 6)
+        state.observe([grown], profile: profile, now: t0.addingTimeInterval(10))
+        XCTAssertTrue(state.isUnread(grown, profile: profile, now: t0.addingTimeInterval(10)))
+    }
+
     func testStalePendingEntriesArePruned() {
         var state = ChatReadState()
         let gone = row("gone", count: 3)
