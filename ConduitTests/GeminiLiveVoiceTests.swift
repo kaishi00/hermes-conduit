@@ -221,7 +221,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let behaviors = Dictionary(uniqueKeysWithValues: declarations.map { ($0["name"] as! String, $0["behavior"] as! String) })
         // Quick web lookups (weather, news) go to Gemini's own Search, not a Hermes job.
         XCTAssertTrue((body["tools"] as? [[String: Any]])?.contains { $0["googleSearch"] != nil } == true)
-        XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING", "interrupt_job": "NON_BLOCKING", "show_on_screen": "BLOCKING", "end_conversation": "BLOCKING"])
+        XCTAssertEqual(behaviors, ["start_job": "NON_BLOCKING", "list_jobs": "BLOCKING", "cancel_job": "BLOCKING", "interrupt_job": "NON_BLOCKING", "send_request": "NON_BLOCKING", "set_ask_first": "BLOCKING", "show_on_screen": "BLOCKING", "end_conversation": "BLOCKING"])
 
         // A first connection opts in to resumption without a handle.
         let fresh = GeminiLiveProtocol.setupMessage(systemInstruction: "", functions: [], resumptionHandle: nil)["setup"] as? [String: Any]
@@ -976,6 +976,16 @@ extension VoiceConversationControllerTests {
         appState.setLiveVoiceStyle(LiveVoiceStyle())
         XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, "Default is stored as nothing")
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LiveVoiceAnswerLength.standard.instructions), true)
+
+        // Asking first (#451): off is stored as nothing; the preview says
+        // how the next call starts.
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LiveVoiceStyle.askFirstInstructions(on: false)), true)
+        appState.setLiveVoiceStyle(LiveVoiceStyle(asksBeforeSending: true))
+        XCTAssertEqual(appState.activeProfileVoicePreferences.liveVoiceAskBeforeSending, true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LiveVoiceStyle.askFirstInstructions(on: true)), true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains("\"Send:\""), true, "GPT-Live's rules say how to send a waiting request")
+        appState.setLiveVoiceStyle(LiveVoiceStyle())
+        XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAskBeforeSending)
     }
 
     func testGeminiLiveUnavailableHostFailsWithTheReasonAndNeverConnects() async {
@@ -1285,12 +1295,61 @@ extension ContinuousConversationPreferenceTests {
         chosen.liveVoiceBackchannels = false
         chosen.liveVoiceGreeting = ""
         chosen.liveVoiceAnswerLength = .detailed
+        chosen.liveVoiceAskBeforeSending = true
         let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(chosen))
-        XCTAssertEqual(roundTrip.liveVoiceStyle, LiveVoiceStyle(tone: .relaxed, backchannels: false, greeting: "", answerLength: .detailed))
+        XCTAssertEqual(roundTrip.liveVoiceStyle, LiveVoiceStyle(tone: .relaxed, backchannels: false, greeting: "", answerLength: .detailed, asksBeforeSending: true))
         let newer = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"liveVoiceTone":"sarcastic","liveVoiceGreeting":"Hi","liveVoiceAnswerLength":"rambling"}"#.utf8))
         XCTAssertNil(newer.liveVoiceTone)
         XCTAssertEqual(newer.liveVoiceGreeting, "Hi")
         XCTAssertEqual(newer.liveVoiceStyle.answerLength, .standard, "an unknown length is Default")
+    }
+}
+
+// MARK: - Asking first (#451)
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testGeminiLiveAsksFirstUntilTheUsersYesAndSendItToHermesSkipsIt() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, _, supervisor) = makeGeminiController(clock: { current })
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        await controller.start()
+        session.becomeReady()
+        func answer(_ id: String) -> [String: Any]? {
+            for message in session.sent {
+                let responses = (message["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]]
+                if let response = responses?.first(where: { $0["id"] as? String == id }) {
+                    return response["response"] as? [String: Any]
+                }
+            }
+            return nil
+        }
+
+        // The request waits for the user's OK.
+        session.onEvent?(.inputTranscription("check the server"))
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(until: { answer("c1") != nil })
+        XCTAssertEqual(answer("c1")?["status"] as? String, "waiting_for_ok")
+        XCTAssertTrue(supervisor.jobs.isEmpty)
+
+        // The user's yes, said after the question, sends it.
+        session.onEvent?(.turnComplete)
+        current += 4
+        session.onEvent?(.inputTranscription("yes"))
+        session.onEvent?(.toolCall([.init(id: "c2", name: "send_request", arguments: [:])]))
+        await settle(until: { supervisor.jobs.count == 1 })
+        XCTAssertEqual(supervisor.jobs.count, 1)
+
+        // "Send it to Hermes" with a request sends it without asking.
+        session.onEvent?(.turnComplete)
+        current += 4
+        session.onEvent?(.inputTranscription("send it"))
+        session.onEvent?(.inputTranscription(" to Hermes, check the router"))
+        session.onEvent?(.toolCall([.init(id: "c3", name: "start_job", arguments: ["instructions": "check the router"])]))
+        await settle(until: { supervisor.jobs.count == 2 })
+        XCTAssertEqual(supervisor.jobs.count, 2)
+        XCTAssertNil(answer("c3"), "running: its call stays open for the result")
+        controller.stop()
     }
 }
 

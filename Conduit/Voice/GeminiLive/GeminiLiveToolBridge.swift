@@ -24,6 +24,11 @@
 //  routed to the chat) while the call's own request runs in the chat.
 //  Both answer at once; the work's result still comes on its first call.
 //
+//  With asking first on (#451), a new request waits as the call's draft:
+//  start_job and ask_thread answer waiting_for_ok, the model asks the user,
+//  and send_request sends it once the user spoke after the ask. The latest
+//  request replaces the draft; "send it to Hermes" sends at once.
+//
 //  Grok Live has no NON_BLOCKING calls, so its bridge answers start_job
 //  as soon as the job is running (`holdsJobCalls` false); the outcome
 //  arrives later as a text update, like a withdrawn call's.
@@ -59,6 +64,9 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob?
     /// Puts the user's follow-up into a request Hermes is working on.
     func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome
+    /// Whether the call holds new requests for the user's OK (#451).
+    var asksBeforeSending: Bool { get }
+    func setAsksBeforeSending(_ on: Bool, byModel: Bool)
 }
 
 /// Without follow-up support a request never takes one: the words go out
@@ -67,6 +75,8 @@ extension GeminiLiveJobSupervising {
     func threadFollowUpTarget() -> UUID? { nil }
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob? { nil }
     func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome { .finished(title: "") }
+    var asksBeforeSending: Bool { false }
+    func setAsksBeforeSending(_ on: Bool, byModel: Bool) {}
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -78,6 +88,8 @@ final class GeminiLiveToolBridge {
         case listJobs = "list_jobs"
         case cancelJob = "cancel_job"
         case interruptJob = "interrupt_job"
+        case sendRequest = "send_request"
+        case setAskFirst = "set_ask_first"
         case webSearch = "web_search"
         case recallMemory = "recall_memory"
         case endConversation = "end_conversation"
@@ -252,6 +264,27 @@ final class GeminiLiveToolBridge {
             ],
             behavior: .nonBlocking
         ),
+        .init(
+            name: Tool.sendRequest.rawValue,
+            description: "Send the request that is waiting for the user's OK to Hermes, once they said yes to it in any words. Only after start_job or ask_thread answered waiting_for_ok and the user answered your question. Its result arrives later on this call.",
+            parameters: ["type": "OBJECT", "properties": [String: Any]()],
+            behavior: .nonBlocking
+        ),
+        .init(
+            name: Tool.setAskFirst.rawValue,
+            description: "Turn asking first on or off for this call, when the user asks you to check with them before sending requests to Hermes, or to stop checking. While it is on, each new request waits for the user's OK.",
+            parameters: [
+                "type": "OBJECT",
+                "properties": [
+                    "mode": [
+                        "type": "STRING",
+                        "description": "\"on\" to ask first, \"off\" to send requests straight away.",
+                    ],
+                ],
+                "required": ["mode"],
+            ],
+            behavior: .blocking
+        ),
         showOnScreenDeclaration,
         .init(
             name: Tool.endConversation.rawValue,
@@ -270,23 +303,48 @@ final class GeminiLiveToolBridge {
     private let holdsJobCalls: Bool
     /// Open start_job calls, keyed by the job they started.
     private var openCalls: [UUID: String] = [:]
-    /// Open start_job calls that were sent to the attached chat: their
-    /// thread turn answers them under start_job, the name they were made
-    /// under, not ask_thread.
-    private var routedStartJobCallIDs: Set<String> = []
+    /// The name each open call was made under when it isn't the job's own
+    /// (a start_job sent to the attached chat, a send_request): its answer
+    /// must carry that name.
+    private var callNames: [String: String] = [:]
     /// Calls the model withdrew before their start_job finished starting.
     private var withdrawnCallIDs: Set<String> = []
+    /// A new request held for the user's OK while asking first is on
+    /// (#451). The latest replaces it.
+    private struct Draft {
+        let request: String
+        let profile: String
+        let toChat: Bool
+        /// The user's last words when it was held: the request's own.
+        let heardUntil: Date?
+    }
+    private var draft: Draft?
+    /// When the user last said to send something to Hermes: the next new
+    /// request goes at once.
+    private var sendNowAt: Date?
+    /// When the user last spoke, on the controller's clock. A draft is sent
+    /// only once they spoke after it was held.
+    var lastUserSpeechAt: @MainActor () -> Date? = { nil }
+    private let now: () -> Date
+
+    /// How long "send it to Hermes" counts for the next request.
+    static let sendNowWindow: TimeInterval = 20
+    /// Words this soon after the request's own are still the request (its
+    /// transcript can trail the call), not an answer to the question.
+    static let answerGap: TimeInterval = 1
 
     init(
         supervisor: GeminiLiveJobSupervising,
         webSearch: GeminiLiveWebSearching? = nil,
         memory: GeminiLiveMemoryRecalling? = nil,
-        holdsJobCalls: Bool = true
+        holdsJobCalls: Bool = true,
+        now: @escaping () -> Date = Date.init
     ) {
         self.supervisor = supervisor
         self.webSearch = webSearch
         self.memory = memory
         self.holdsJobCalls = holdsJobCalls
+        self.now = now
     }
 
     var openCallCount: Int { openCalls.count }
@@ -296,8 +354,9 @@ final class GeminiLiveToolBridge {
     /// Sends `request` to the attached chat as its next turn; Hermes' reply
     /// answers `call` (ask_thread, or a start_job routed to the chat). While
     /// the call's own request still runs there, it goes into that request
-    /// as a follow-up instead (#451), answered at once.
-    private func sendToThread(_ call: GeminiLiveProtocol.FunctionCall, request: String) async -> [Outgoing] {
+    /// as a follow-up instead (#451), answered at once. A new request waits
+    /// for the user's OK while asking first is on, unless `confirmed`.
+    private func sendToThread(_ call: GeminiLiveProtocol.FunctionCall, request: String, confirmed: Bool = false) async -> [Outgoing] {
         guard !isEnding else { return [] }
         if let target = supervisor.threadFollowUpTarget() {
             let outcome = await supervisor.followUp(jobID: target, words: request)
@@ -307,20 +366,67 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: Self.followUpResult(outcome), scheduling: .whenIdle)]
             }
         }
+        if !confirmed, let held = heldForOK(call, request: request, profile: "", toChat: true) { return held }
         let sent = supervisor.startThreadTurn(request: request)
         guard let jobID = sent.jobID else {
             return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? "Hermes couldn't take the request."], scheduling: .whenIdle)]
         }
         openCalls[jobID] = call.id
-        if call.name == Tool.startJob.rawValue { routedStartJobCallIDs.insert(call.id) }
+        if call.name != Tool.askThread.rawValue { callNames[call.id] = call.name }
         // Without held calls it's answered now and the reply follows as
         // a text update, like start_job's outcome.
         guard !holdsJobCalls else { return settleOpenCalls() }
         openCalls[jobID] = nil
-        routedStartJobCallIDs.remove(call.id)
+        callNames[call.id] = nil
         return [.toolResponse(id: call.id, name: call.name, result: [
             "status": "sent",
             "message": "Sent to the chat. Hermes' reply will arrive later as a message; don't guess it.",
+        ], scheduling: nil)]
+    }
+
+    /// Starts `instructions` as a background job; its outcome answers
+    /// `call` (start_job, or send_request for a draft).
+    private func startBackgroundJob(_ call: GeminiLiveProtocol.FunctionCall, instructions: String, profile: String) async -> [Outgoing] {
+        // "Quick:" only routed the request; it isn't part of the task.
+        let task = VoiceThreadRouting.removingQuickMarker(instructions)
+        var createdJobID: UUID?
+        // The call is registered the moment the job exists, so a
+        // withdrawal arriving during Hermes' session setup is honored.
+        let reply = await supervisor.startJob(instructions: task, profile: profile.isEmpty ? nil : profile) { [weak self] jobID in
+            createdJobID = jobID
+            guard self?.isEnding == false else { return }
+            self?.openCalls[jobID] = call.id
+        }
+        if isEnding {
+            // Ending while it started: its outcome stays pending.
+            if let jobID = createdJobID { openCalls[jobID] = nil }
+            return []
+        }
+        guard let jobID = createdJobID else {
+            // Refused (too many jobs): answer now.
+            return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_started", "message": reply], scheduling: .whenIdle)]
+        }
+        if withdrawnCallIDs.remove(call.id) != nil || openCalls[jobID] != call.id {
+            // Withdrawn while starting: its outcome arrives later as a
+            // text update instead.
+            if openCalls[jobID] == call.id { openCalls[jobID] = nil }
+            return []
+        }
+        if call.name != Tool.startJob.rawValue { callNames[call.id] = call.name }
+        // Already settled (it failed, or even finished, while starting):
+        // settleOpenCalls answers it with the full outcome, result
+        // included. Still running: the call stays open, or, without
+        // held calls, is answered now and the outcome follows as text.
+        let settled = settleOpenCalls()
+        guard !holdsJobCalls, openCalls[jobID] == call.id else { return settled }
+        openCalls[jobID] = nil
+        callNames[call.id] = nil
+        let title = supervisor.jobs.first(where: { $0.id == jobID })?.title ?? ""
+        return settled + [.toolResponse(id: call.id, name: call.name, result: [
+            "job_id": jobID.uuidString,
+            "title": title,
+            "status": "started",
+            "message": "The job is running on Hermes. Its result will arrive later as a message; don't wait for it.",
         ], scheduling: nil)]
     }
 
@@ -341,45 +447,8 @@ final class GeminiLiveToolBridge {
                !VoiceThreadRouting.wantsBackgroundJob(instructions), !supervisor.namesOtherProfile(instructions) {
                 return await sendToThread(call, request: instructions)
             }
-            // "Quick:" only routed the request; it isn't part of the task.
-            let task = VoiceThreadRouting.removingQuickMarker(instructions)
-            var createdJobID: UUID?
-            // The call is registered the moment the job exists, so a
-            // withdrawal arriving during Hermes' session setup is honored.
-            let reply = await supervisor.startJob(instructions: task, profile: call.arguments["profile"]) { [weak self] jobID in
-                createdJobID = jobID
-                guard self?.isEnding == false else { return }
-                self?.openCalls[jobID] = call.id
-            }
-            if isEnding {
-                // Ending while it started: its outcome stays pending.
-                if let jobID = createdJobID { openCalls[jobID] = nil }
-                return []
-            }
-            guard let jobID = createdJobID else {
-                // Refused (too many jobs): answer now.
-                return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_started", "message": reply], scheduling: .whenIdle)]
-            }
-            if withdrawnCallIDs.remove(call.id) != nil || openCalls[jobID] != call.id {
-                // Withdrawn while starting: its outcome arrives later as a
-                // text update instead.
-                if openCalls[jobID] == call.id { openCalls[jobID] = nil }
-                return []
-            }
-            // Already settled (it failed, or even finished, while starting):
-            // settleOpenCalls answers it with the full outcome, result
-            // included. Still running: the call stays open, or, without
-            // held calls, is answered now and the outcome follows as text.
-            let settled = settleOpenCalls()
-            guard !holdsJobCalls, openCalls[jobID] == call.id else { return settled }
-            openCalls[jobID] = nil
-            let title = supervisor.jobs.first(where: { $0.id == jobID })?.title ?? ""
-            return settled + [.toolResponse(id: call.id, name: call.name, result: [
-                "job_id": jobID.uuidString,
-                "title": title,
-                "status": "started",
-                "message": "The job is running on Hermes. Its result will arrive later as a message; don't wait for it.",
-            ], scheduling: nil)]
+            if let held = heldForOK(call, request: instructions, profile: profile, toChat: false) { return held }
+            return await startBackgroundJob(call, instructions: instructions, profile: profile)
         case .askThread:
             let request = call.arguments["request"]?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -387,6 +456,30 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "request is required"], scheduling: .whenIdle)]
             }
             return await sendToThread(call, request: request)
+        case .sendRequest:
+            guard !isEnding else { return [] }
+            // Not UI copy, so not localized.
+            guard let waiting = draft else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": "Nothing is waiting to be sent. Ask the user what they want Hermes to do."], scheduling: .whenIdle)]
+            }
+            guard let spoke = lastUserSpeechAt(), spoke.timeIntervalSince(waiting.heardUntil ?? .distantPast) > Self.answerGap else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["status": "waiting_for_ok", "message": "Not sent: the user hasn't answered yet. Wait for their OK, then call send_request."], scheduling: .silent)]
+            }
+            draft = nil
+            if waiting.toChat {
+                return await sendToThread(call, request: waiting.request, confirmed: true)
+            }
+            return await startBackgroundJob(call, instructions: waiting.request, profile: waiting.profile)
+        case .setAskFirst:
+            let mode = call.arguments["mode"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            guard mode == "on" || mode == "off" else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": "mode must be on or off"], scheduling: nil)]
+            }
+            supervisor.setAsksBeforeSending(mode == "on", byModel: true)
+            let message = mode == "on"
+                ? "Asking first is on for this call: each new request waits for the user's OK. Tell the user in a few words."
+                : "Asking first is off for this call: new requests go to Hermes straight away. Tell the user in a few words."
+            return [.toolResponse(id: call.id, name: call.name, result: ["status": mode, "message": message], scheduling: nil)]
         case .readLastReply:
             guard !isEnding else { return [] }
             let reply = await supervisor.lastThreadReply()
@@ -465,7 +558,7 @@ final class GeminiLiveToolBridge {
         let withdrawn = Set(ids)
         let known = Set(openCalls.values)
         openCalls = openCalls.filter { !withdrawn.contains($0.value) }
-        routedStartJobCallIDs.subtract(withdrawn)
+        for id in withdrawn { callNames[id] = nil }
         // A withdrawal can overtake a start_job still waiting on Hermes.
         withdrawnCallIDs.formUnion(withdrawn.subtracting(known))
     }
@@ -474,9 +567,16 @@ final class GeminiLiveToolBridge {
     /// can no longer be answered, so results go out as text updates.
     func connectionReplaced() {
         openCalls.removeAll()
-        routedStartJobCallIDs.removeAll()
+        callNames.removeAll()
         withdrawnCallIDs.removeAll()
         isEnding = false
+    }
+
+    /// A new server session starts (a call, or a retry after a failure): the
+    /// model there never asked about an earlier draft.
+    func serverSessionStarted() {
+        draft = nil
+        sendNowAt = nil
     }
 
     /// The conversation is ending: open calls are dropped and nothing is
@@ -484,12 +584,40 @@ final class GeminiLiveToolBridge {
     /// Hermes to report. Cleared by the next connection.
     func beginEnding() {
         openCalls.removeAll()
-        routedStartJobCallIDs.removeAll()
+        callNames.removeAll()
         withdrawnCallIDs.removeAll()
+        draft = nil
+        sendNowAt = nil
         isEnding = true
     }
 
     private(set) var isEnding = false
+
+    // MARK: Asking first (#451)
+
+    /// The user said to send it to Hermes: the next new request goes at
+    /// once, even while asking first is on.
+    func noteSendToHermes() {
+        sendNowAt = now()
+    }
+
+    /// Holds a new request as the call's draft while asking first is on,
+    /// answered at once so the model asks the user. Nil sends it now: asking
+    /// first is off, or the user just said to send it to Hermes.
+    private func heldForOK(_ call: GeminiLiveProtocol.FunctionCall, request: String, profile: String, toChat: Bool) -> [Outgoing]? {
+        let saidSend = sendNowAt.map { now().timeIntervalSince($0) < Self.sendNowWindow } ?? false
+        sendNowAt = nil
+        guard supervisor.asksBeforeSending, !saidSend else {
+            draft = nil
+            return nil
+        }
+        draft = Draft(request: request, profile: profile, toChat: toChat, heardUntil: lastUserSpeechAt())
+        // Not UI copy, so not localized.
+        return [.toolResponse(id: call.id, name: call.name, result: [
+            "status": "waiting_for_ok",
+            "message": "Not sent yet: the user OKs each new request before it goes to Hermes. Tell them in a few words what you'll send and ask whether to send it. When they say yes, call send_request; when they change it, call \(call.name) again with the new request.",
+        ], scheduling: .whenIdle)]
+    }
 
     // MARK: Job updates
 
@@ -594,8 +722,7 @@ final class GeminiLiveToolBridge {
             // second report; everything else — including a start that failed
             // — is told once the conversation is quiet.
             let scheduling: GeminiLiveProtocol.Scheduling = job.status == .cancelled && alreadyAnnounced ? .silent : .whenIdle
-            let routed = routedStartJobCallIDs.remove(callID) != nil
-            let name = job.isThreadTurn && !routed ? Tool.askThread.rawValue : Tool.startJob.rawValue
+            let name = callNames.removeValue(forKey: callID) ?? (job.isThreadTurn ? Tool.askThread.rawValue : Tool.startJob.rawValue)
             outgoing.append(.toolResponse(id: callID, name: name, result: result, scheduling: scheduling))
         }
         return outgoing
@@ -657,19 +784,16 @@ final class GeminiLiveToolBridge {
     static func followUpResult(_ outcome: VoiceFollowUpOutcome) -> [String: String] {
         switch outcome {
         case .interrupted(let title):
-            return ["status": "sent", "message": "Hermes took the user's words into \(quoted(title)) at once and changes course now. Tell the user in a few words; the result still comes back on the earlier request, so don't guess it."]
+            return ["status": "sent", "message": "Hermes took the user's words into \(VoiceFollowUpOutcome.quoted(title)) at once and changes course now. Tell the user in a few words; the result still comes back on the earlier request, so don't guess it."]
+        case .queued(let title):
+            return ["status": "sent", "message": "Hermes takes the user's words into \(VoiceFollowUpOutcome.quoted(title)) right after the step it is finishing. Tell the user in a few words; the result still comes back on the earlier request, so don't guess it."]
         case .joined(let title):
-            return ["status": "sent", "message": "Added to \(quoted(title)) before Hermes started on it. Tell the user in a few words; the result still comes back on the earlier request."]
+            return ["status": "sent", "message": "Added to \(VoiceFollowUpOutcome.quoted(title)) before Hermes started on it. Tell the user in a few words; the result still comes back on the earlier request."]
         case .finished(let title):
-            return ["status": "not_sent", "message": "\(quoted(title)) had already finished, so Hermes didn't get this. Tell the user, and ask what they want instead."]
+            return ["status": "not_sent", "message": "\(VoiceFollowUpOutcome.quoted(title)) had already finished, so Hermes didn't get this. Tell the user, and ask what they want instead."]
         case .failed(let message):
             return ["status": "not_sent", "error": message]
         }
-    }
-
-    /// A request's title for the model, or a stand-in without one.
-    private static func quoted(_ title: String) -> String {
-        title.isEmpty ? "that request" : "\"\(title)\""
     }
 
     static func statusName(_ status: VoiceBackgroundJob.Status) -> String {

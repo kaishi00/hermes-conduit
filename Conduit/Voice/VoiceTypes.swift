@@ -255,13 +255,17 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var liveVoiceGreeting: String? = nil
     /// How much live models say. Nil is Default.
     var liveVoiceAnswerLength: LiveVoiceAnswerLength? = nil
+    /// Whether live calls start asking before sending a request to Hermes
+    /// (#451). Nil is off.
+    var liveVoiceAskBeforeSending: Bool? = nil
 
     var liveVoiceStyle: LiveVoiceStyle {
         LiveVoiceStyle(
             tone: liveVoiceTone,
             backchannels: liveVoiceBackchannels ?? true,
             greeting: liveVoiceGreeting,
-            answerLength: liveVoiceAnswerLength ?? .standard
+            answerLength: liveVoiceAnswerLength ?? .standard,
+            asksBeforeSending: liveVoiceAskBeforeSending ?? false
         )
     }
 
@@ -327,6 +331,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         liveVoiceGreeting = try? container.decodeIfPresent(String.self, forKey: .liveVoiceGreeting)
         // An unknown length (a newer build's) is Default.
         liveVoiceAnswerLength = try? container.decodeIfPresent(LiveVoiceAnswerLength.self, forKey: .liveVoiceAnswerLength)
+        liveVoiceAskBeforeSending = try? container.decodeIfPresent(Bool.self, forKey: .liveVoiceAskBeforeSending)
     }
 
     /// What a voice job's `session.create` asks for: the chosen voice-job

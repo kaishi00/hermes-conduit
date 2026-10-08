@@ -184,8 +184,12 @@ struct LiveVoiceCallSheet: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
 
-            // Balances the chevron so the title stays centred.
-            Color.clear.frame(width: 44, height: 44)
+            if isMinimisable {
+                LiveVoiceAskFirstButton(jobs: jobs)
+            } else {
+                // Balances the chevron so the title stays centred.
+                Color.clear.frame(width: 44, height: 44)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
@@ -370,6 +374,30 @@ private struct LiveVoiceCallThreadLabel: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
+    }
+}
+
+/// Asking first for this call (#451). It shows the call's own setting, so a
+/// switch the user asked for by voice shows here too.
+private struct LiveVoiceAskFirstButton: View {
+    @ObservedObject var jobs: VoiceBackgroundJobSupervisor
+
+    var body: some View {
+        let isOn = jobs.asksBeforeSending
+        Button {
+            jobs.setAsksBeforeSending(!isOn)
+        } label: {
+            Image(systemName: isOn ? "questionmark.bubble.fill" : "questionmark.bubble")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(isOn ? Color.conduitAccent : Color.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .conduitGlassControl(cornerRadius: 22, tint: isOn ? .conduitAccent.opacity(0.14) : .clear)
+        .accessibilityLabel(Text("Ask before sending to Hermes"))
+        .accessibilityValue(isOn ? Text("On") : Text("Off"))
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
 

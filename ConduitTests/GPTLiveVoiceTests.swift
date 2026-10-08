@@ -1235,6 +1235,8 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "Find a job: in Paris"))
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "job interview prep: tomorrow"))
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "Job 2 make it Alex"), "the number needs its separator")
+        XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "Job 2:30 appointment reminder"), "a time is new work")
+        XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "job 2.5 things to check"))
     }
 
     func testGPTLiveJobMarkerPutsTheUsersOwnWordsIntoThatRunningJob() async {
@@ -1253,7 +1255,7 @@ extension VoiceConversationControllerTests {
             return XCTFail("\(followUp)")
         }
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it for Alex instead", "Hermes gets the user's own words")
+        XCTAssertEqual(fake.redirects.first?.1, "wait, make it for Alex instead", "Hermes gets the user's own words")
         XCTAssertEqual(fake.created, 1, "a follow-up is never a new job")
 
         // The job's result still answers its own delegation.
@@ -1288,7 +1290,7 @@ extension VoiceConversationControllerTests {
             id: "del_2",
             request: "Job 1: make it Milan" + GPTLiveConversationController.delegationContextMarker + "User: weather?\n"
         )
-        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it Milan"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["make it Milan"])
         XCTAssertEqual(fake.created, 1)
     }
 
@@ -1338,7 +1340,7 @@ extension VoiceConversationControllerTests {
         await waitForFollowUpState { !fake.redirects.isEmpty }
 
         XCTAssertEqual(fake.created, 1, "a follow-up is never a new job")
-        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) Wait, make it for Alex."])
+        XCTAssertEqual(fake.redirects.map(\.1), ["Wait, make it for Alex."])
         controller.stop()
     }
 }
@@ -1976,5 +1978,84 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(coordinator.lastActivatedState, .ready, "the car leaves Thinking for Ready, not Error")
         coordinator.handleDisconnect()
         withExtendedLifetime(spy) {}
+    }
+}
+
+// MARK: - Asking first (#451)
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testGPTLiveMarkersForAskingFirstAreOnlyAtTheStart() {
+        XCTAssertEqual(GPTLiveDelegationBridge.modeMarker(in: "Mode: ask first"), true)
+        XCTAssertEqual(GPTLiveDelegationBridge.modeMarker(in: " mode : Send directly."), false)
+        XCTAssertNil(GPTLiveDelegationBridge.modeMarker(in: "Change the mode: ask first"))
+        XCTAssertTrue(GPTLiveDelegationBridge.isSendMarker("Send:"))
+        XCTAssertTrue(GPTLiveDelegationBridge.isSendMarker("send : yes"))
+        XCTAssertFalse(GPTLiveDelegationBridge.isSendMarker("Send an email to Sam"))
+    }
+
+    func testGPTLiveAskingFirstHoldsADelegationUntilTheUserSaysYes() async {
+        let (supervisor, fake, bridge) = makeGPTJobs()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+
+        let held = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        guard case .delegationReply("del_1", let heldText, .speakable)? = held.first, held.count == 1 else {
+            return XCTFail("\(held)")
+        }
+        XCTAssertEqual(heldText, GPTLiveDelegationBridge.heldForOKText, "said aloud, so the model asks")
+        XCTAssertEqual(fake.created, 0)
+
+        // The user hasn't answered: not sent.
+        let early = await bridge.handleDelegation(id: "del_2", request: "Send:")
+        guard case .delegationReply("del_2", let earlyText, .commentary)? = early.first else { return XCTFail("\(early)") }
+        XCTAssertEqual(earlyText, GPTLiveDelegationBridge.notAnsweredYet)
+        // The request's own words arriving late aren't an answer either.
+        let late = await bridge.handleDelegation(id: "del_2b", request: "Send:", userWords: "for Sam")
+        guard case .delegationReply("del_2b", GPTLiveDelegationBridge.notAnsweredYet, .commentary)? = late.first else { return XCTFail("\(late)") }
+        XCTAssertEqual(fake.created, 0)
+
+        let sent = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "yes please")
+        XCTAssertEqual(fake.created, 1)
+        XCTAssertTrue(fake.submissions.first?.1.hasSuffix("book a table for Sam") == true)
+        guard case .delegationReply("del_3", _, .commentary)? = sent.first else { return XCTFail("\(sent)") }
+
+        // The job's result answers the delegation that sent it.
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Sam.", reasoning: nil))
+        guard case .delegationReply("del_3", let result, .speakable)? = bridge.pendingUpdates().first else {
+            return XCTFail("the result answers the Send: delegation")
+        }
+        XCTAssertTrue(result.contains("Booked for Sam."))
+
+        let nothing = await bridge.handleDelegation(id: "del_4", request: "Send:", userWords: "yes")
+        guard case .delegationReply("del_4", _, .speakable)? = nothing.first else { return XCTFail("\(nothing)") }
+        XCTAssertEqual(fake.created, 1, "nothing was waiting")
+    }
+
+    func testGPTLiveAskingFirstNeverHoldsAFollowUpOrSaidSendToHermes() async {
+        let (supervisor, fake, bridge) = makeGPTJobs()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "send it to Hermes: book a table for Sam")
+        XCTAssertEqual(fake.created, 1, "the user already said where it goes")
+
+        _ = await bridge.handleDelegation(id: "del_2", request: "Job 1: make it Alex", userWords: "wait, make it Alex")
+        XCTAssertEqual(fake.redirects.map(\.1), ["wait, make it Alex"], "a correction goes in at once")
+        XCTAssertEqual(fake.created, 1)
+    }
+
+    func testGPTLiveModeDelegationSwitchesTheCall() async {
+        let (supervisor, fake, bridge) = makeGPTJobs()
+        supervisor.beginLiveCall()
+
+        let on = await bridge.handleDelegation(id: "del_1", request: "Mode: ask first", userWords: "check with me before sending things")
+        guard case .delegationReply("del_1", _, .commentary)? = on.first else { return XCTFail("\(on)") }
+        XCTAssertTrue(supervisor.asksBeforeSending)
+        XCTAssertTrue(supervisor.pendingChatContext.isEmpty, "the model switched it, so it knows")
+        XCTAssertEqual(fake.created, 0)
+
+        _ = await bridge.handleDelegation(id: "del_2", request: "Mode: send directly")
+        XCTAssertFalse(supervisor.asksBeforeSending)
+        _ = await bridge.handleDelegation(id: "del_3", request: "check the server")
+        XCTAssertEqual(fake.created, 1)
     }
 }

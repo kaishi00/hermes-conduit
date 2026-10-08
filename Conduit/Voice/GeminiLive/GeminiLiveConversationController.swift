@@ -188,6 +188,7 @@ final class GeminiLiveConversationController: ObservableObject {
     Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user.
     Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
     When the user corrects, changes, pauses or calls off a job Hermes is still working on ("wait, make it Alex", "hold that", "never mind"), call interrupt_job with their words right away (job_id from list_jobs): Hermes takes them in at once and decides what they mean. Use cancel_job only when the user asks to cancel.
+    Asking first: when it is on for this call, a new request waits for the user's OK. start_job and ask_thread then answer waiting_for_ok: tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, call send_request. When they change it, call start_job or ask_thread again with the new request; it replaces the waiting one. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Corrections to running work never wait. When the user asks you to check with them before sending things to Hermes, or to stop checking, call set_ask_first.
     When the user says goodbye or asks to end the conversation, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
     """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality)
     }
@@ -347,6 +348,9 @@ final class GeminiLiveConversationController: ObservableObject {
     /// it for an end phrase.
     private var exchangeUserEntry: UUID?
     private var openAssistantEntry: UUID?
+    /// The user line that said to send it to Hermes (#451), so the rest of
+    /// that utterance doesn't say it again.
+    private var sendToHermesEntry: UUID?
     /// When a hands-free end was requested; the conversation closes once
     /// the model's goodbye has played.
     private var endRequestedAt: Date?
@@ -396,6 +400,8 @@ final class GeminiLiveConversationController: ObservableObject {
         // Resolved here, not as a default argument: those are evaluated
         // outside the main actor.
         self.headsetMute = headsetMute ?? .shared
+        // Asking first (#451) sends a draft only on words said after it.
+        tools.lastUserSpeechAt = { [weak self] in self?.lastUserSpeechAt }
     }
 
     /// The Interrupt button: stop the model now. On an open speaker this is
@@ -482,6 +488,7 @@ final class GeminiLiveConversationController: ObservableObject {
         // calls opened on the old one can't be answered there, so their
         // results must go out as text updates.
         tools.connectionReplaced()
+        tools.serverSessionStarted()
         // "Try again" after a failure: the old transport must not keep
         // feeding this controller alongside the new one.
         retireSession()
@@ -916,6 +923,7 @@ final class GeminiLiveConversationController: ObservableObject {
         case .inputTranscription(let text):
             lastUserSpeechAt = now()
             appendTranscript(text, speaker: .user)
+            noteSendToHermesIfSaid()
             scheduleLateEndPhraseCheck()
         case .interrupted:
             // The user started speaking: the model must stop immediately.
@@ -969,10 +977,11 @@ final class GeminiLiveConversationController: ObservableObject {
                     // in the pause is lost, but the model keeps the result.
                     let replaced = self.session !== calledOn || self.session?.connectionGeneration != generation
                     self.dispatch(outgoing, unanswerable: replaced ? [call.id] : [], holdingOutcomes: true, answering: call.id)
-                    // A start_job its own call didn't answer is running
+                    // A start_job (or a send_request) its own call didn't answer is running
                     // (other jobs may settle in the same batch): make sure
                     // the user heard that it was taken.
-                    if call.name == GeminiLiveToolBridge.Tool.startJob.rawValue, !outgoing.contains(where: { $0.answers(call.id) }) {
+                    let starts = [GeminiLiveToolBridge.Tool.startJob.rawValue, GeminiLiveToolBridge.Tool.sendRequest.rawValue]
+                    if starts.contains(call.name), !outgoing.contains(where: { $0.answers(call.id) }) {
                         self.ensureAcknowledgement(since: requestedAt, epoch: epoch)
                     }
                 }
@@ -1374,6 +1383,16 @@ final class GeminiLiveConversationController: ObservableObject {
     }
 
     // MARK: Transcript
+
+    /// "Send it to Hermes" in the user's words sends their next request at
+    /// once, even while asking first is on (#451).
+    private func noteSendToHermesIfSaid() {
+        guard let openUserEntry, openUserEntry != sendToHermesEntry,
+              let entry = transcript.last(where: { $0.id == openUserEntry }),
+              VoiceThreadRouting.saysSendToHermes(entry.text) else { return }
+        sendToHermesEntry = openUserEntry
+        tools.noteSendToHermes()
+    }
 
     private func appendTranscript(_ text: String, speaker: VoiceConversationTranscriptEntry.Speaker) {
         let openID = speaker == .user ? openUserEntry : openAssistantEntry
