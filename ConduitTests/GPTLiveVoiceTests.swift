@@ -2419,6 +2419,26 @@ extension VoiceConversationControllerTests {
             return XCTFail("\(noRead)")
         }
         XCTAssertTrue(quietFake.threadSubmissions.isEmpty, "\(quietFake.threadSubmissions)")
+
+        // A read-back already on its way still carries the drop.
+        let (_, queued) = makeAskingFirstChatBridge()
+        _ = await queued.handleDelegation(id: "del_1", request: "Read back: the last reply")
+        _ = await queued.handleDelegation(id: "del_2", request: "book a table for Sam", userWords: "book a table for Sam")
+        let repeated = await queued.handleDelegation(id: "del_3", request: "Read back: the last reply", userWords: "No, read me the last reply")
+        guard case .delegationReply("del_3", let repeatedText, .commentary)? = repeated.last,
+              repeatedText.hasSuffix(GPTLiveDelegationBridge.droppedBesideReadBack) else {
+            return XCTFail("\(repeated)")
+        }
+
+        // A new conversation never hears about a drop in the old one.
+        let (_, replaced) = makeAskingFirstChatBridge()
+        _ = await replaced.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        XCTAssertNil(replaced.userAskedToHearAReply("No, read me the last reply"))
+        replaced.connectionReplaced()
+        let fresh = await replaced.handleDelegation(id: "del_2", request: "Read back: the last reply")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.readBackCue, .speakable)? = fresh.last else {
+            return XCTFail("\(fresh)")
+        }
     }
 
     /// Neal's request (#451): GPT-Live often drops "Job N:", so with one
@@ -2677,6 +2697,17 @@ extension VoiceConversationControllerTests {
         _ = await bridge.handleDelegation(id: "del_2", request: "Send:", userWords: "Yes")
         XCTAssertEqual(fake.created, 1)
         XCTAssertTrue(fake.submissions.first?.1.hasSuffix("Book a table for four.") == true, fake.submissions.first?.1 ?? "")
+
+        // Finished with "send it to Hermes": the finished words go.
+        let (_, sendFake, sending) = makeAskingFirstBridge()
+        _ = await sending.handleDelegation(id: "del_1", request: "Book a table for", userWords: "Book a table for")
+        sending.modelFinishedTurn()
+        guard let answer = sending.userFinishedSpeaking("Book a table for four, send it to Hermes") else { return XCTFail("said to send it") }
+        _ = await sending.deliver(answer)
+        XCTAssertEqual(sendFake.created, 1)
+        let prompt = sendFake.submissions.first?.1 ?? ""
+        XCTAssertTrue(prompt.hasSuffix("Book a table for four, send it to Hermes"), prompt)
+        XCTAssertFalse(prompt.contains("the user said"), prompt)
     }
 
     /// An OK'd request Hermes refused (too many jobs) never went: a yes

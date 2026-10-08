@@ -354,7 +354,8 @@ final class GPTLiveDelegationBridge {
     private func readBack(id: String, call: UInt64) async -> [Outgoing] {
         if readBackIsRecent || readBackIsQueued {
             // Still waiting for a quiet moment: it's coming, not read yet.
-            let text = readBackIsQueued ? Self.readBackOnItsWay : Self.readBackAlreadySent
+            var text = readBackIsQueued ? Self.readBackOnItsWay : Self.readBackAlreadySent
+            if takeDroppedBesideReadBack() { text += " " + Self.droppedBesideReadBack }
             return [.delegationReply(delegationID: id, text: text, channel: .commentary)]
         }
         lastReadBackAt = now()
@@ -448,11 +449,16 @@ final class GPTLiveDelegationBridge {
     /// request still waiting for an OK, or hears that the user's no beside
     /// the read-back dropped it.
     private func readBackCueText() -> String {
-        defer { droppedBesideReadBackAt = nil }
-        if draft == nil, let dropped = droppedBesideReadBackAt, now().timeIntervalSince(dropped) < Self.readBackWindow {
-            return Self.readBackCueAfterDrop
-        }
+        if takeDroppedBesideReadBack() { return Self.readBackCueAfterDrop }
         return draft == nil ? Self.readBackCue : Self.readBackCueThenAskAgain
+    }
+
+    /// Whether a no beside this read-back just dropped the held request
+    /// with no delegation told. Asking clears it.
+    private func takeDroppedBesideReadBack() -> Bool {
+        defer { droppedBesideReadBackAt = nil }
+        guard draft == nil, let dropped = droppedBesideReadBackAt else { return false }
+        return now().timeIntervalSince(dropped) < Self.readBackWindow
     }
 
     /// Whether `delegationID` is answered by a read-back, which is read as
@@ -489,7 +495,9 @@ final class GPTLiveDelegationBridge {
     /// Not UI copy.
     static let readBackCueThenAskAgain = String(readBackCue.dropLast()) + " Then ask the user again whether to send the request that's still waiting for their OK.]"
     /// Not UI copy.
-    static let readBackCueAfterDrop = String(readBackCue.dropLast()) + " The request that was waiting for their OK wasn't sent: they said no, so Conduit dropped it and nothing is waiting now.]"
+    static let readBackCueAfterDrop = String(readBackCue.dropLast()) + " " + droppedBesideReadBack + "]"
+    /// Not UI copy.
+    static let droppedBesideReadBack = "The request that was waiting for the user's OK wasn't sent: they said no, so Conduit dropped it and nothing is waiting now."
     /// A read-back in a call without a chat, before any job result came
     /// back. Not UI copy.
     static var nothingToReadBack: String { "[\(GeminiLiveToolBridge.nothingToReadBack)]" }
@@ -504,6 +512,7 @@ final class GPTLiveDelegationBridge {
         readBackDelegationID = nil
         // A new conversation never asked about it.
         draft = nil
+        droppedBesideReadBackAt = nil
         lastSentAt = nil
         isEnding = false
     }
@@ -514,6 +523,7 @@ final class GPTLiveDelegationBridge {
         openDelegations.removeAll()
         readBackDelegationID = nil
         draft = nil
+        droppedBesideReadBackAt = nil
         lastSentAt = nil
         isEnding = true
     }
@@ -677,6 +687,12 @@ final class GPTLiveDelegationBridge {
         if VoiceThreadRouting.saysSendToHermes(words) {
             draft = nil
             lastSentAt = now()
+            // Finishing the words it was held from ("Book a table for", then
+            // "… for four, send it to Hermes"): they are the request.
+            if let finished = Self.finishing(waiting.request, heldFrom: waiting.userWords, with: words),
+               now().timeIntervalSince(waiting.heldAt) < Self.lateWordsWindow {
+                return .send(request: finished, intoJob: intoJob, delegationID: waiting.delegationID, call: callGeneration)
+            }
             // "…, but make it for four" goes with it; the request's own
             // words ending "send it to Hermes" add nothing.
             let extra = VoiceThreadRouting.heldRequestAnswer(words).isBare || Self.sameRequest(words, waiting.request) ? nil : words
