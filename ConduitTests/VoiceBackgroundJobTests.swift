@@ -1884,6 +1884,8 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(names.contains("read_last_reply"), "read-backs run on the phone's own call (#451)")
         XCTAssertFalse(GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, readsBack: false).contains("read_last_reply"))
         XCTAssertFalse(GPTLiveConversationController.briefing(onWatch: true).contains("\"Read back:\""))
+        XCTAssertFalse(GPTLiveConversationController.briefing(onWatch: true).contains("read-back"), "no read-back exception either")
+        XCTAssertFalse(GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, readsBack: false).contains("read-back"))
         XCTAssertTrue(names.contains("interrupt_job"))
         XCTAssertTrue(names.contains("web_search"))
 
@@ -2239,10 +2241,38 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceReadBack.plainSpeech("Summary\n=======\nAll good."), "Summary\nAll good.", "a heading's underline isn't read")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Item | Cost\n--- | ---\nMilk | $2"), "Item, Cost.\nMilk, $2.", "a table without outer pipes")
         XCTAssertEqual(VoiceReadBack.plainSpeech("## Done | Blocked"), "Done, Blocked.", "a heading isn't a table row, and its pipe isn't read")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("## 🎉 Launch\nShip it 🚀 today"), "Launch.\nShip it today", "a dropped emoji leaves no stray space")
+        XCTAssertEqual(
+            VoiceReadBack.plainSpeech("Mail <sam@example.com>, see note[^1].\n<div>Hi</div> and <span class=\"x\">Vec<String></span>\n[^1]: The source."),
+            "Mail sam@example.com, see note.\nHi and Vec<String>\nThe source.",
+            "HTML tags and footnote marks aren't read; an email address and a generic type are"
+        )
+        XCTAssertEqual(VoiceReadBack.plainSpeech("<a title=\"a > b\">Docs</a> here"), "Docs here", "a \">\" in a quoted attribute stays inside the tag")
+        let long = String(repeating: "word ", count: VoiceBackgroundJobSupervisor.maximumResultCharacters)
+        let clip = GeminiLiveToolBridge.clippedForReading(long)
+        XCTAssertTrue(clip.isCut)
+        XCTAssertLessThanOrEqual(clip.text.count, VoiceBackgroundJobSupervisor.maximumResultCharacters)
+        XCTAssertTrue(clip.text.hasSuffix("word"), "cut at a word, with no marker to read out")
+        let unbroken = GeminiLiveToolBridge.clippedForReading("a " + String(repeating: "x", count: VoiceBackgroundJobSupervisor.maximumResultCharacters))
+        XCTAssertEqual(unbroken.text.count, VoiceBackgroundJobSupervisor.maximumResultCharacters, "a long run with no break is cut where it is, not back at an early space")
+        let gptText = GPTLiveDelegationBridge.lastReplyText(long)
+        XCTAssertFalse(gptText.contains("[…]"))
+        XCTAssertTrue(gptText.contains(GeminiLiveToolBridge.readBackCutNote))
+        XCTAssertFalse(GPTLiveDelegationBridge.lastReplyText("Short.").contains(GeminiLiveToolBridge.readBackCutNote))
         XCTAssertEqual(
             VoiceReadBack.plainSpeech("```\na\n```\n\n```\nb\n```\nDone."),
             VoiceReadBack.codeBlockNote + "\n\nDone.",
             "back-to-back code blocks get one note"
+        )
+        XCTAssertEqual(
+            VoiceReadBack.plainSpeech("````md\n```swift\nlet x = 1\n```\n````\nDone."),
+            VoiceReadBack.codeBlockNote + "\nDone.",
+            "a longer fence can show a shorter one"
+        )
+        XCTAssertEqual(
+            VoiceReadBack.plainSpeech("```\na\n```swift\nb\n```\nDone."),
+            VoiceReadBack.codeBlockNote + "\nDone.",
+            "a fence with text after it doesn't close a block"
         )
         XCTAssertEqual(
             VoiceReadBack.plainSpeech("See https://en.wikipedia.org/wiki/Foo_(bar) and [Foo](https://en.wikipedia.org/wiki/Foo_(bar))."),
@@ -2382,10 +2412,33 @@ extension VoiceConversationControllerTests {
 
         _ = await supervisor.startJob(instructions: "check the disk")
         supervisor.observe(.messageError(sessionId: "rt-2", message: "Provider error"))
-        XCTAssertNotNil(supervisor.takePendingNotice())
         let title = supervisor.jobs.first { $0.runtimeSessionID == "rt-2" }?.title ?? ""
+        let told = supervisor.takePendingNoticeForJob()
+        XCTAssertEqual(told?.notice, .speak(VoiceBackgroundJobSupervisor.failedNotice(title, reason: "Provider error")), "a live model is told why, to put in its own words")
+        if let told { supervisor.noticeSent(jobID: told.jobID) }
         let failed = await supervisor.readBackText()
-        XCTAssertEqual(failed, VoiceBackgroundJobSupervisor.failedNotice(title), "the newest notice the call heard")
+        XCTAssertEqual(failed, VoiceBackgroundJobSupervisor.failedNotice(title, reason: "Provider error"), "the newest notice the call heard, with its reason")
+        XCTAssertTrue(failed?.hasSuffix("(Provider error)") == true)
+
+        // Classic voice speaks a notice as is: no raw reason read out.
+        _ = await supervisor.startJob(instructions: "check the logs")
+        supervisor.observe(.messageError(sessionId: "rt-3", message: "HTTP 500"))
+        let logs = supervisor.jobs.first { $0.runtimeSessionID == "rt-3" }?.title ?? ""
+        XCTAssertEqual(supervisor.takePendingNotice(), .speak(VoiceBackgroundJobSupervisor.failedNotice(logs, reason: "")))
+    }
+
+    func testAJobNoticeHeardWhileTheChatIsReadWinsTheReadBack() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall()
+        fake.threadReply = "Older chat reply."
+        _ = await supervisor.startJob(instructions: "check the server")
+        // The job's result goes out while the chat's reply is being read.
+        fake.onLatestReply = {
+            supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Server is fine.", reasoning: nil))
+            _ = supervisor.takePendingNotice()
+        }
+        let text = await supervisor.readBackText()
+        XCTAssertEqual(text, "Server is fine.", "the newer notice wins over the chat's older reply")
     }
 
     func testReadBackMarkerAndRules() {

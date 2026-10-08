@@ -20,25 +20,34 @@ enum VoiceReadBack {
     static func plainSpeech(_ markdown: String) -> String {
         let note = codeBlockNote
         var lines: [String] = []
-        var fence: String?
+        var fence: (mark: Character, length: Int)?
         for rawLine in markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if let open = fence {
-                if line.hasPrefix(open) { fence = nil }
+                // Closed only by the same mark, at least as long, alone on
+                // its line: a "````" block can show a "```" one.
+                let run = line.prefix { $0 == open.mark }
+                if run.count >= open.length, line.dropFirst(run.count).allSatisfy(\.isWhitespace) { fence = nil }
                 continue
             }
-            if line.hasPrefix("```") || line.hasPrefix("~~~") {
-                fence = String(line.prefix(3))
-                // Back-to-back code blocks get one note.
-                if lines.last(where: { !$0.isEmpty }) != note { lines.append(note) }
-                continue
+            if let mark = line.first, mark == "`" || mark == "~" {
+                let run = line.prefix { $0 == mark }
+                // "```x```" is inline code: a fence's info has no backticks.
+                if run.count >= 3, !(mark == "`" && line.dropFirst(run.count).contains("`")) {
+                    fence = (mark, run.count)
+                    // Back-to-back code blocks get one note.
+                    if lines.last(where: { !$0.isEmpty }) != note { lines.append(note) }
+                    continue
+                }
             }
             if let spoken = spokenLine(line) { lines.append(spoken) }
         }
-        // Emoji go too; the space one leaves before a full stop goes with it.
+        // Emoji go too; the spaces one leaves (before a full stop, at a
+        // line's start, doubled) go with it.
         let text = SpokenTextFilter.speakable(lines.joined(separator: "\n"))
             .replacingOccurrences(of: #"[ \t]+([.,!?;:])(?=\s|$)"#, with: "$1", options: .regularExpression)
-            .replacingOccurrences(of: #"[ \t]+\n"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"(?m)^[ \t]+|[ \t]+$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -79,7 +88,8 @@ enum VoiceReadBack {
     }
 
     /// Inline markup: links and images keep their words, a bare link its
-    /// site, and emphasis and code marks go.
+    /// site, an email address stays, and HTML tags, footnote marks,
+    /// emphasis and code marks go.
     private static func inline(_ text: String) -> String {
         var text = text
         let rules: [(String, String)] = [
@@ -87,7 +97,13 @@ enum VoiceReadBack {
             (#"!\[([^\]]*)\]\((?:[^()]|\([^()]*\))*\)"#, "$1"),
             (#"\[([^\]]+)\]\((?:[^()]|\([^()]*\))*\)"#, "$1"),
             (#"<(https?://[^>\s]+)>"#, "$1"),
+            (#"<(?:mailto:)?([^\s<>@]+@[^\s<>]+)>"#, "$1"),
             (#"<br\s*/?>"#, " "),
+            // Only HTML's own tags: "Vec<String>" in prose is not one. A
+            // quoted attribute can hold a ">".
+            (#"</?(?:a|abbr|b|blockquote|center|code|del|details|div|em|font|h[1-6]|hr|i|img|ins|kbd|li|mark|ol|p|pre|s|small|span|strong|sub|summary|sup|table|tbody|td|th|thead|tr|u|ul)(?:\s(?:[^<>"']|"[^"]*"|'[^']*')*)?/?>"#, ""),
+            // A footnote's mark, and its definition's label.
+            (#"\[\^[^\]\s]+\]:?"#, ""),
             // A pipe between words is a separator, not something to say.
             (#"\s+\|\s+"#, ", "),
         ]
