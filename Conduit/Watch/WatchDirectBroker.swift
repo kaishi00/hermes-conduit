@@ -869,11 +869,12 @@ final class WatchDirectBroker {
     /// any other goes through the iPhone.
     static func grantableJobProfiles(_ names: [WatchVoiceWire.JobProfileName]) -> [String] {
         var profiles: [String] = []
-        for case let profile? in names.map(\.profile)
-        where profiles.count < maxGrantJobProfiles
-            && profile.range(of: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", options: .regularExpression) != nil
-            && !profiles.contains(where: { $0.caseInsensitiveCompare(profile) == .orderedSame }) {
-            profiles.append(profile)
+        for case let profile? in names.map(\.profile) {
+            guard profiles.count < maxGrantJobProfiles else { break }
+            if profile.range(of: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", options: .regularExpression) != nil,
+               !profiles.contains(where: { $0.caseInsensitiveCompare(profile) == .orderedSame }) {
+                profiles.append(profile)
+            }
         }
         return profiles
     }
@@ -983,7 +984,8 @@ final class WatchDirectBroker {
             grantLiveToken = scope.liveToken
             grantMaxJobs = scope.maxJobs
             grantJobOptions = scope.jobOptions
-            grantJobProfiles = scope.jobProfiles ?? []
+            // A call stored before the names were kept gets today's.
+            grantJobProfiles = scope.jobProfiles ?? appState.watchJobProfileNames()
             grantVoiceApprovals = scope.voiceApprovals
             grantIDs = scope.grantIDs
             grantAudio = scope.audio ?? false

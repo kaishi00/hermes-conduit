@@ -1100,7 +1100,7 @@ final class WatchBridgeCallModel: ObservableObject {
             }
             let start = Self.startArguments(request, relay: relay)
             guard let arguments = start.arguments else {
-                answer(id, WatchBridgeDelegation.notStarted("jobs on \(start.profile) can't start from this Watch call. Start them from the iPhone."), channel: .speakable)
+                answer(id, WatchBridgeDelegation.notStarted(start.refusal), channel: .speakable)
                 return
             }
             startJob(for: id, arguments: arguments, relay: relay)
@@ -1111,9 +1111,9 @@ final class WatchBridgeCallModel: ObservableObject {
 
     /// A delegation's start_job: "for Fam, …" runs on Fam where the host
     /// runs jobs on the user's other profiles, as the iPhone's jobs do.
-    /// Nil, with the name, for one of the user's profiles the host doesn't
-    /// run this call's jobs on: a delegation has no way through the iPhone.
-    static func startArguments(_ request: String, relay: WatchToolRelayClient) -> (arguments: [String: Any]?, profile: String) {
+    /// Nil, with why, for one of the user's profiles the host doesn't run
+    /// this call's jobs on: a delegation has no way through the iPhone.
+    static func startArguments(_ request: String, relay: WatchToolRelayClient) -> (arguments: [String: Any]?, refusal: String) {
         let task = WatchBridgeDelegation.removingQuickMarker(request)
         switch relay.jobRoute(instructions: task, spokenProfile: nil) {
         case nil:
@@ -1122,8 +1122,11 @@ final class WatchBridgeCallModel: ObservableObject {
             return (["instructions": instructions], "")
         case .relay(let instructions, let profile?):
             return (["instructions": instructions, "profile": profile], profile)
-        case .viaPhone(let label), .unknown(let label):
-            return (nil, label)
+        case .viaPhone(let label):
+            return (nil, VoiceJobProfiles.viaPhoneReply(label))
+        case .unknown(let name):
+            // Only a spoken profile can be unknown; a delegation names none.
+            return (nil, VoiceJobProfiles.unknownProfileReply(name))
         }
     }
 
