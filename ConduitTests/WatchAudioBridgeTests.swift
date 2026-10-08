@@ -239,6 +239,53 @@ extension HermesVoiceGatewayTimeoutTests {
         let stored = Data(#"{"tools":[],"jobTools":[],"liveToken":false,"maxJobs":0,"jobOptions":{},"voiceApprovals":false,"grantIDs":[]}"#.utf8)
         XCTAssertNil(try JSONDecoder().decode(WatchDirectCallLedger.GrantScope.self, from: stored).audio)
     }
+
+    /// Corrections on a Watch call (#455): the marker, the words and what
+    /// the model hears match the phone's, for GPT-Live and Gemini/Grok.
+    @MainActor
+    func testWatchJobFollowUpsMirrorThePhone() {
+        for text in ["Job 2: make it Alex", "job #3, hold that", "JOB 12 - never mind", "Jobs: list them",
+                     "Job 2 make it Alex", "Job 2:30 appointment reminder", "job 2.5 things to check"] {
+            let watch = WatchBridgeDelegation.jobMarker(in: text)
+            let phone = GPTLiveDelegationBridge.jobMarker(in: text)
+            XCTAssertEqual(watch?.number, phone?.number, text)
+            XCTAssertEqual(watch?.rest, phone?.rest, text)
+        }
+        XCTAssertEqual(WatchBridgeDelegation.followUpWords(userWords: " make it Alex ", delegated: "Alex"), "make it Alex")
+        XCTAssertEqual(WatchBridgeDelegation.followUpWords(userWords: "", delegated: " hold that "), "hold that")
+        XCTAssertEqual(WatchBridgeDelegation.followUpWords(userWords: "", delegated: "hold that" + WatchBridgeDelegation.contextMarker + "User: hi\n"), "hold that")
+
+        let pairs: [(WatchJobAnswer.FollowUp, VoiceFollowUpOutcome)] = [
+            (.interrupted(title: "Tokyo weather"), .interrupted(title: "Tokyo weather")),
+            (.queued(title: "Tokyo weather"), .queued(title: "Tokyo weather")),
+            (.finished(title: ""), .finished(title: "")),
+            (.failed("session not found"), .failed("session not found")),
+        ]
+        for (watch, phone) in pairs {
+            XCTAssertEqual(WatchJobAnswer.followUpResult(watch), GeminiLiveToolBridge.followUpResult(phone))
+            let reply = WatchBridgeDelegation.followUpReply(watch)
+            XCTAssertEqual(
+                GPTLiveDelegationBridge.followUpReply(delegationID: "d1", phone),
+                .delegationReply(delegationID: "d1", text: reply.text, channel: reply.speakable ? .speakable : .commentary)
+            )
+        }
+
+        XCTAssertEqual(WatchJobAnswer.FollowUp(body: ["ok": true, "outcome": "interrupted", "title": "T"]), .interrupted(title: "T"))
+        XCTAssertEqual(WatchJobAnswer.FollowUp(body: ["ok": true, "outcome": "unknown_job"]), .unknownJob)
+        XCTAssertEqual(WatchJobAnswer.FollowUp(body: ["ok": true, "outcome": "failed", "error": "busy"]), .failed("busy"))
+        XCTAssertEqual(WatchJobAnswer.FollowUp(body: ["ok": false, "detail": "message is required"]), .failed("message is required"))
+
+        XCTAssertEqual(WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": " watch-2 ", "message": " make it Alex "]) as? [String: String],
+                       ["job_id": "watch-2", "message": "make it Alex"])
+        XCTAssertNil(WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": "watch-2"]))
+        XCTAssertEqual(WatchJobAnswer.missingArguments(name: WatchJobAnswer.interruptJob, ["job_id": "watch-2"]), ["error": "message is required"])
+        XCTAssertEqual(WatchJobAnswer.missingArguments(name: WatchJobAnswer.interruptJob, [:])["error"], "Unknown job_id. Call list_jobs for the jobs' ids.")
+        XCTAssertEqual(WatchJobAnswer.scheduling(name: WatchJobAnswer.interruptJob, result: [:]), GeminiLiveProtocol.Scheduling.whenIdle.rawValue)
+
+        // Numbered when the host takes corrections, as the phone's note.
+        XCTAssertTrue(WatchBridgeDelegation.working(title: "Tokyo weather", number: 2).contains("starting with \"Job 2:\""))
+        XCTAssertFalse(WatchBridgeDelegation.working(title: "Tokyo weather").contains("Job "))
+    }
 }
 
 private extension Data {

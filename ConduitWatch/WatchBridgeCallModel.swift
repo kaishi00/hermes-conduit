@@ -217,10 +217,14 @@ final class WatchBridgeCallModel: ObservableObject {
     private var delegationConnection: [String: Int] = [:]
     /// Jobs answering a delegation, by job id.
     private var jobDelegations: [String: String] = [:]
+    /// The host's job ids by their number in this call, as GPT-Live names
+    /// them in a correction ("Job 2: …", #455).
+    private var jobNumbers: [Int: String] = [:]
     private var delegations = 0
     private var delegationsAnswered = 0
     private var relayJobsStarted = 0
     private var lookupsInstead = 0
+    private var followUps = 0
     private var followingJobs = false
     private var newsInFlight = false
     private var nextNewsAt: TimeInterval = 0
@@ -409,13 +413,13 @@ final class WatchBridgeCallModel: ObservableObject {
     /// The grant is spent, closed or about to expire. It isn't renewed (the
     /// bridge belongs to it), so for this call it ran out.
     private static func grantRanOut(reason: String, grantGone: Bool) -> Bool {
-        grantGone || reason == "grantExpiring"
+        WatchBridgeDelegation.grantRanOut(reason: reason, grantGone: grantGone, sent: false)
     }
 
     /// As above, for a call that may have gone out: only the relay or
     /// Hermes turning it away for the grant says it didn't run.
     private static func grantRanOut(reason: String, grantGone: Bool, sent: Bool) -> Bool {
-        sent ? WatchBridgeDelegation.refused(reason) : grantRanOut(reason: reason, grantGone: grantGone)
+        WatchBridgeDelegation.grantRanOut(reason: reason, grantGone: grantGone, sent: sent)
     }
 
     private func approvalsRanOut() {
@@ -980,9 +984,8 @@ final class WatchBridgeCallModel: ObservableObject {
         handledLines = transcript.count
         openLineDelegated = !open.isEmpty
         let request = WatchBridgeDelegation.request(itemText: itemText, lines: lines)
-        let ownWords = itemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
-            : itemText
+        let userWords = lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
+        let ownWords = itemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? userWords : itemText
         note("bridgeDelegation", [
             "hasText": !itemText.isEmpty,
             "requestChars": request.count,
@@ -997,6 +1000,34 @@ final class WatchBridgeCallModel: ObservableObject {
             answer(id, WatchBridgeDelegation.notStarted("the Watch has no way to reach Hermes for this call."), channel: .speakable)
             return
         }
+        // "Job 2: make it Alex" puts the user's words into job 2 while it
+        // runs (#455). A number with no job is just new work.
+        // Read where the phone reads it: the delegation's own text, else
+        // the user's words GPT-Live left it in.
+        if let marker = WatchBridgeDelegation.jobMarker(in: ownWords) {
+            if let jobID = jobNumbers[marker.number] {
+                let words = WatchBridgeDelegation.followUpWords(userWords: userWords, delegated: marker.rest)
+                guard !words.isEmpty else {
+                    answer(id, WatchBridgeDelegation.noRequest, channel: .speakable)
+                    return
+                }
+                followUp(for: id, jobID: jobID, words: words, relay: relay)
+                return
+            }
+            // A bare "Job 9:" asks for nothing, as on the phone: the user's
+            // lines would only repeat the marker.
+            let request = marker.rest.isEmpty ? "" : WatchBridgeDelegation.request(itemText: marker.rest, lines: lines)
+            guard !request.isEmpty else {
+                answer(id, WatchBridgeDelegation.noRequest, channel: .speakable)
+                return
+            }
+            startNewWork(for: id, request: request, ownWords: marker.rest, relay: relay)
+            return
+        }
+        startNewWork(for: id, request: request, ownWords: ownWords, relay: relay)
+    }
+
+    private func startNewWork(for id: String, request: String, ownWords: String, relay: WatchToolRelayClient) {
         let tool = relay.hasJobs ? WatchJobAnswer.startJob : WatchToolAnswer.webSearch
         guard relay.tools.contains(tool) else {
             answer(id, WatchBridgeDelegation.notStarted("jobs from the Watch are off in Conduit's Watch settings."), channel: .speakable)
@@ -1038,8 +1069,17 @@ final class WatchBridgeCallModel: ObservableObject {
                 fields["status"] = status.isEmpty ? (result["error"] == nil ? "" : "error") : status
                 if status == "started" || status == "accepted" {
                     self.relayJobsStarted += 1
-                    if let jobID = result["job_id"] { self.jobDelegations[jobID] = delegationID }
-                    self.answer(delegationID, WatchBridgeDelegation.working(title: result["title"] ?? "Hermes job"), channel: .commentary)
+                    var number: Int?
+                    if let jobID = result["job_id"] {
+                        self.jobDelegations[jobID] = delegationID
+                        // Numbered whatever the host: on an older plugin a
+                        // correction then hears that it needs an update,
+                        // rather than starting the job again.
+                        let next = self.jobNumbers.count + 1
+                        self.jobNumbers[next] = jobID
+                        number = next
+                    }
+                    self.answer(delegationID, WatchBridgeDelegation.working(title: result["title"] ?? "Hermes job", number: number), channel: .commentary)
                     self.followJobs()
                 } else {
                     let reason = result["message"] ?? result["error"] ?? "Hermes didn't take the job."
@@ -1063,6 +1103,48 @@ final class WatchBridgeCallModel: ObservableObject {
                 }
             }
             self.note("bridgeJobStart", fields)
+        }
+    }
+
+    /// A correction to a job this call started, into the job on the host.
+    private func followUp(for delegationID: String, jobID: String, words: String, relay: WatchToolRelayClient) {
+        followUps += 1
+        guard relay.tools.contains(WatchJobAnswer.interruptJob) else {
+            answer(delegationID, WatchBridgeDelegation.followUpsUnavailable, channel: .speakable)
+            return
+        }
+        guard relay.canRun(WatchJobAnswer.interruptJob) else {
+            answer(delegationID, WatchBridgeDelegation.relay("Hermes didn't get that (\(WatchBridgeDelegation.grantRanOutClause))"), channel: .speakable)
+            return
+        }
+        let id = callID
+        let sentAt = now
+        Task { [weak self] in
+            let outcome = await relay.run(name: WatchJobAnswer.interruptJob, arguments: WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": jobID, "message": words]) ?? [:])
+            guard let self, self.callID == id, self.isActive else { return }
+            let result: WatchJobAnswer.FollowUp
+            switch outcome {
+            case .answered(let body): result = WatchJobAnswer.FollowUp(body: body)
+            case .timedOut: result = .failed("it took too long to answer")
+            case .unavailable(let reason, let grantGone, let sent):
+                result = .failed(Self.grantRanOut(reason: reason, grantGone: grantGone, sent: sent)
+                    ? WatchBridgeDelegation.grantRanOutClause
+                    : sent ? "Hermes didn't confirm it got the words" : "Hermes couldn't be reached from the Watch")
+            }
+            let reply = WatchBridgeDelegation.followUpReply(result)
+            self.note("bridgeFollowUp", ["outcome": outcome.label, "result": Self.label(result), "ms": Int((self.now - sentAt) * 1000)])
+            self.answer(delegationID, reply.text, channel: reply.speakable ? .speakable : .commentary)
+        }
+    }
+
+    /// The outcome's name for the log: never the words or the title.
+    private static func label(_ outcome: WatchJobAnswer.FollowUp) -> String {
+        switch outcome {
+        case .interrupted: return "interrupted"
+        case .queued: return "queued"
+        case .finished: return "finished"
+        case .failed: return "failed"
+        case .unknownJob: return "unknownJob"
         }
     }
 
@@ -1341,6 +1423,10 @@ final class WatchBridgeCallModel: ObservableObject {
         note("bridgeTimeline", [
             "sinceStartS": Int(at - callStartedAt),
             "phase": "\(phase)",
+            // Why the phase is speaking: speech still arriving, or audio
+            // still queued.
+            "modelSpeaking": modelSpeaking,
+            "playing": audio.isPlaying,
             "live": live,
             "screen": "\(scenePhase)",
             "kbUp": (bytesUpBefore + (socket?.bytesUp ?? 0)) / 1024,
@@ -1433,8 +1519,10 @@ final class WatchBridgeCallModel: ObservableObject {
         seenDelegations = []
         delegationConnection = [:]
         jobDelegations = [:]
+        jobNumbers = [:]
         delegations = 0
         delegationsAnswered = 0
+        followUps = 0
         relayJobsStarted = 0
         lookupsInstead = 0
         followingJobs = false
@@ -1505,6 +1593,7 @@ final class WatchBridgeCallModel: ObservableObject {
             "heardReplyP95Ms": WatchVoiceStats.milliseconds(WatchVoiceStats.percentile(heardReplyTimes, 0.95)) as Any,
             "delegations": delegations,
             "delegationsAnswered": delegationsAnswered,
+            "followUps": followUps,
             "jobsStarted": relayJobsStarted,
             "lookupsInstead": lookupsInstead,
             "jobNewsItems": jobNewsItems,

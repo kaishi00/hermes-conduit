@@ -1898,7 +1898,8 @@ extension VoiceConversationControllerTests {
         let gpt = GPTLiveConversationController.briefing(onWatch: true)
         XCTAssertFalse(gpt.contains("Mode: ask first"))
         XCTAssertFalse(gpt.contains("\"Send:\""))
-        XCTAssertFalse(gpt.contains("Job 2: make it Alex"), "the relay doesn't route job corrections")
+        XCTAssertTrue(gpt.contains("Job 2: make it Alex"), "the relay's interrupt_job routes job corrections")
+        XCTAssertFalse(gpt.contains("Corrections (\"Job 2: …\") never wait"), "nothing waits on a Watch call")
         XCTAssertTrue(GPTLiveConversationController.briefing().contains("Mode: ask first"))
         XCTAssertTrue(GPTLiveConversationController.briefing().contains("Job 2: make it Alex"))
     }

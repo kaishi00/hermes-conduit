@@ -71,7 +71,7 @@ final class WatchToolRelayClient {
         let jobs = Set(grant.tools).isSuperset(of: WatchJobAnswer.tools.union(WatchJobAnswer.calls))
         tools = Set(grant.tools).intersection(
             WatchToolAnswer.tools
-                .union(jobs ? WatchJobAnswer.tools.union(WatchJobAnswer.calls) : [])
+                .union(jobs ? WatchJobAnswer.tools.union(WatchJobAnswer.calls).union([WatchJobAnswer.interruptJob]) : [])
                 .union([WatchLiveToken.tool])
         )
         expiresAt = grant.expiresAt

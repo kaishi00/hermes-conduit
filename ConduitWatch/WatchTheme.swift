@@ -56,6 +56,9 @@ struct WatchVoiceOrb: View {
                     .font(.system(size: size * 0.34, weight: .semibold))
                     .foregroundStyle(.white)
                     .symbolEffect(.variableColor.iterative, isActive: mood == .speaking && animates)
+                    // A new image per symbol: one changed in place under an
+                    // indefinite effect can keep drawing the old symbol.
+                    .id(symbol)
             }
         }
         .frame(width: size, height: size)
