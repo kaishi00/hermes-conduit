@@ -2387,6 +2387,18 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 1)
         let prompt = fake.submissions.first?.1 ?? ""
         XCTAssertTrue(prompt.hasSuffix("book a table for Sam"), prompt)
+        // An answer with more, delegated as text before its words arrive:
+        // still the answer, never a request of its own.
+        let (_, longerFake, longer) = makeAskingFirstBridge()
+        _ = await longer.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        let longerEcho = await longer.handleDelegation(id: "del_2", request: "Yes, and make it for four")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.waitingForAnswer, .commentary)? = longerEcho.last else { return XCTFail("\(longerEcho)") }
+        guard let longerAnswer = longer.userFinishedSpeaking("Yes, and make it for four") else { return XCTFail("the words answer it") }
+        _ = await longer.deliver(longerAnswer)
+        XCTAssertEqual(longerFake.created, 1)
+        let longerPrompt = longerFake.submissions.first?.1 ?? ""
+        XCTAssertTrue(longerPrompt.contains("book a table for Sam\n\nWhen asked whether to send this, the user said: \"Yes, and make it for four\""), longerPrompt)
+
         // The same answer delegated again as text: no second request.
         let echoAgain = await bridge.handleDelegation(id: "del_4", request: "Yes")
         guard case .delegationReply("del_4", GPTLiveDelegationBridge.alreadySent, .commentary)? = echoAgain.first else { return XCTFail("\(echoAgain)") }
@@ -2396,6 +2408,8 @@ extension VoiceConversationControllerTests {
         let (_, sendFake, marked) = makeAskingFirstBridge()
         _ = await marked.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
         _ = await marked.handleDelegation(id: "del_2", request: "Send:")
+        // A later delegation with no text doesn't undo it.
+        _ = await marked.handleDelegation(id: "del_2b", request: "")
         XCTAssertEqual(sendFake.created, 0)
         guard let markedAnswer = marked.userFinishedSpeaking("for Sam and Alex") else { return XCTFail("the words answer it") }
         _ = await marked.deliver(markedAnswer)
@@ -2423,17 +2437,28 @@ extension VoiceConversationControllerTests {
     /// not a change to it.
     func testGPTLiveAskingFirstLetsAStaleHeldRequestGo() async {
         var clock = Date(timeIntervalSince1970: 1_000)
-        let (_, fake, bridge) = makeAskingFirstBridge(clock: { clock })
+        let (supervisor, fake, bridge) = makeAskingFirstBridge(clock: { clock })
         _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        // A "wait" near the end starts its time again.
+        clock += GPTLiveDelegationBridge.draftLifetime - 10
+        _ = await bridge.handleDelegation(id: "del_wait", request: "Wait", userWords: "Wait")
+        clock += 20
+        _ = await bridge.handleDelegation(id: "del_yes", request: "Send:", userWords: "yes")
+        XCTAssertEqual(fake.created, 1)
+        XCTAssertTrue(fake.submissions.first?.1.hasSuffix("book a table for Sam") == true, fake.submissions.first?.1 ?? "")
+        // Done, so nothing below is taken for a change to it.
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked.", reasoning: nil))
+
+        _ = await bridge.handleDelegation(id: "del_1b", request: "book a flight to Rome", userWords: "book a flight to Rome")
         clock += GPTLiveDelegationBridge.draftLifetime + 1
 
         let held = await bridge.handleDelegation(id: "del_2", request: "what's the weather in Rome", userWords: "what's the weather in Rome")
         guard case .delegationReply("del_2", GPTLiveDelegationBridge.heldForOKText, .speakable)? = held.first else { return XCTFail("\(held)") }
         _ = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "yes")
-        XCTAssertEqual(fake.created, 1)
-        let prompt = fake.submissions.first?.1 ?? ""
+        XCTAssertEqual(fake.created, 2)
+        let prompt = fake.submissions.last?.1 ?? ""
         XCTAssertTrue(prompt.hasSuffix("what's the weather in Rome"), prompt)
-        XCTAssertFalse(prompt.contains("book a table"), prompt)
+        XCTAssertFalse(prompt.contains("book a flight"), prompt)
     }
 
     /// An OK'd request Hermes refused (too many jobs) never went: a yes

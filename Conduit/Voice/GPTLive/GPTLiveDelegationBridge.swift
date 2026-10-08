@@ -143,8 +143,8 @@ final class GPTLiveDelegationBridge {
         let routingText = routingWords.trimmingCharacters(in: .whitespacesAndNewlines)
         // Text that is only an answer ("Yes", "Send it to Hermes") echoes
         // the user; it is no request of its own.
-        let echoed = VoiceThreadRouting.heldRequestAnswer(routingText).isBare
-        let ownText = routingText == spoken || echoed ? "" : routingText
+        let answerShape = VoiceThreadRouting.heldRequestAnswer(routingText)
+        let ownText = routingText == spoken || answerShape.isBare ? "" : routingText
         let isSend = Self.isSendMarker(instructions)
         // Asking first (#451): the next delegation after a held request
         // carries the user's answer, whatever its text says.
@@ -152,7 +152,10 @@ final class GPTLiveDelegationBridge {
             // Held for the only running job: separate work goes on its own.
             let intoJob = startsNewJob || VoiceThreadRouting.wantsNewWork(ownWords) || VoiceThreadRouting.wantsNewWork(spoken)
                 ? nil : waiting.intoJob
-            switch decide(waiting, ownText: isSend ? "" : ownText, isSend: isSend, instructions: instructions, answer: spoken) {
+            // Text led by a yes or a no ("Yes, and make it for four") is the
+            // user's answer echoed too: their own words decide.
+            let ownAnswer = isSend || answerShape.isAnswer ? "" : ownText
+            switch decide(waiting, ownText: ownAnswer, isSend: isSend, instructions: instructions, answer: spoken) {
             case .send(let request):
                 draft = nil
                 return await release(request, intoJob: intoJob, delegationID: id, call: call)
@@ -162,6 +165,8 @@ final class GPTLiveDelegationBridge {
                 draft = nil
                 return [.delegationReply(delegationID: id, text: Self.dropped, channel: .commentary)]
             case .keep:
+                // Their word on it: its five minutes start again.
+                draft?.heldAt = now()
                 return [.delegationReply(delegationID: id, text: Self.notReadyYet, channel: .commentary)]
             case .change(let request):
                 if let held = heldForOK(id: id, request: request, userWords: spoken, intoJob: intoJob) { return held }
@@ -443,7 +448,7 @@ final class GPTLiveDelegationBridge {
         /// The delegation that held it. Sent on the user's words alone
         /// ("send it to Hermes"), its reply follows on this one.
         var delegationID: String
-        let heldAt: Date
+        var heldAt: Date
         /// The model's turn ended since it was held: it asked the user.
         var asked = false
         /// A delegation made on the user's answer before their words
@@ -528,8 +533,10 @@ final class GPTLiveDelegationBridge {
         if let older = draft?.pendingDelegationID, older != id {
             outgoing.append(.delegationReply(delegationID: older, text: Self.answerOnLaterDelegation, channel: .commentary))
         }
+        // A later delegation with no text keeps an earlier "Send:".
+        let earlierSend = draft?.pendingDelegationID != nil && draft?.pendingIsSend == true
         draft?.pendingDelegationID = id
-        draft?.pendingIsSend = isSend
+        draft?.pendingIsSend = isSend || earlierSend
         return outgoing + [.delegationReply(delegationID: id, text: Self.waitingForAnswer, channel: .commentary)]
     }
 
@@ -570,6 +577,7 @@ final class GPTLiveDelegationBridge {
                 draft = nil
                 return .reply([.delegationReply(delegationID: pending, text: Self.dropped, channel: .commentary)])
             case .keep, .wait:
+                draft?.heldAt = now()
                 return .reply([.delegationReply(delegationID: pending, text: Self.notReadyYet, channel: .commentary)])
             case .change(let request):
                 // Changed and sent in one go ("…and send it to Hermes").

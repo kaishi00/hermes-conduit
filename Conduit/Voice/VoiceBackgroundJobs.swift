@@ -1983,6 +1983,13 @@ enum VoiceThreadRouting {
         /// `change` is the answer.
         case notYet(change: String?)
 
+        /// Led by a yes, a no or a "wait": shaped like an answer, not a
+        /// request.
+        var isAnswer: Bool {
+            if case .other = self { return false }
+            return true
+        }
+
         /// A bare yes, no or "wait": nothing to send.
         var isBare: Bool {
             switch self {
