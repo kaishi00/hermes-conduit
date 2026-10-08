@@ -140,7 +140,12 @@ enum WatchRejoin {
             characters += entry.count + 1
         }
         guard !kept.isEmpty else {
-            return "[The call's connection to you broke and this is a new session. \(unheard) Say in a few words that you're back.]"
+            switch cause {
+            case .broke:
+                return "[The call's connection to you broke and this is a new session. \(unheard) Say in a few words that you're back.]"
+            case .froze:
+                return "[Your last session stopped responding and this is a new one for the same call. The user only heard a pause: don't mention a reconnection or say you're back. If they speak, answer them.]"
+            }
         }
         // What was said can't close the block early and pass as instructions.
         let conversation = neutralizingTags(kept.reversed().joined(separator: "\n"))
@@ -214,6 +219,8 @@ enum WatchStall {
             return "[The user spoke and got no reply from you. If what they said needs an answer, give it now. If it doesn't, stay silent.]"
         }
         let quoted = String(words.suffix(quotedCharacters)).replacingOccurrences(of: "\"", with: "'")
+            // Square brackets would close the note early.
+            .replacingOccurrences(of: "[", with: "(").replacingOccurrences(of: "]", with: ")")
         return "[The user spoke and got no reply from you. Their last words, as transcribed: \"\(quoted)\". If they need an answer, give it now. If they don't, stay silent.]"
     }
 }

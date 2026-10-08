@@ -667,7 +667,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(froze.hasPrefix("[Your last session stopped responding"), froze)
         XCTAssertTrue(froze.contains("<conversation>\nYou: Done.\nUser: What did it find?\n</conversation>\nThe user only heard a pause: don't mention a reconnection or say you're back. If their last words need an answer, give it now."), froze)
         XCTAssertFalse(froze.contains("Say in a few words"))
-        XCTAssertEqual(WatchRejoin.prompt([], after: .froze), WatchRejoin.prompt([]))
+        let frozeEmpty = WatchRejoin.prompt([], after: .froze)
+        XCTAssertTrue(frozeEmpty.hasPrefix("[Your last session stopped responding"), frozeEmpty)
+        XCTAssertFalse(frozeEmpty.contains("Say in a few words"), "an empty record after a freeze still doesn't say it's back")
+        XCTAssertTrue(WatchRejoin.prompt([]).contains("Say in a few words that you're back"))
 
         // A long call keeps its newest lines whole, within the limit.
         let lines = (0..<100).map { WatchVoiceWire.DirectTurn(role: .user, text: "line \($0) " + String(repeating: "x", count: 90), at: at) }
@@ -713,6 +716,7 @@ extension HermesVoiceGatewayTimeoutTests {
             WatchStall.prompt(lastUserLine: " What did the \"job\" find? "),
             "[The user spoke and got no reply from you. Their last words, as transcribed: \"What did the 'job' find?\". If they need an answer, give it now. If they don't, stay silent.]"
         )
+        XCTAssertTrue(WatchStall.prompt(lastUserLine: "say [done] now").contains("\"say (done) now\""), "brackets can't close the note early")
         let long = WatchStall.prompt(lastUserLine: "first " + String(repeating: "z", count: 400))
         XCTAssertFalse(long.contains("first"))
         XCTAssertTrue(long.contains("\"" + String(repeating: "z", count: WatchStall.quotedCharacters) + "\""))

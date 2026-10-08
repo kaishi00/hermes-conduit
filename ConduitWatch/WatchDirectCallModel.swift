@@ -779,7 +779,13 @@ final class WatchDirectCallModel: ObservableObject {
         let id = callID
         let sentAt = now
         let outcome = await relay.run(name: WatchLiveToken.tool, arguments: [:])
-        guard callID == id, isActive else { throw WatchDirectError.ended }
+        guard callID == id, isActive else {
+            WatchCallLog.shared.note("directRelayTokenAbandoned", [
+                "outcome": outcome.label,
+                "reason": isActive ? "replaced" : "callEnded",
+            ])
+            throw WatchDirectError.ended
+        }
         var fields: [String: Any] = [
             "ms": Int((now - sentAt) * 1000),
             "outcome": outcome.label,
@@ -1302,11 +1308,15 @@ final class WatchDirectCallModel: ObservableObject {
         let at = now
         silentTurns += 1
         lastModelEventAt = at
-        if replyOwedSince != nil { silentTurnSinceUser = true }
+        let owed = replyOwedSince != nil
+        // A finished turn proves the session is alive, and a deliberate
+        // silence owes no reply: no stall prompt follows it.
+        if owed { silentTurnSinceUser = true }
+        replyOwedSince = nil
         if silentTurns <= 20 {
             WatchCallLog.shared.note("directSilentTurn", [
                 "sinceHeardMs": lastUserSpeechAt.map { Int((at - $0) * 1000) } as Any,
-                "owed": replyOwedSince != nil,
+                "owed": owed,
                 "prompted": stallPromptedAt != nil,
                 "screen": "\(scenePhase)",
             ])
