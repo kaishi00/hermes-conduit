@@ -166,6 +166,7 @@ struct WatchSettingsView: View {
 /// whole log, Watch lines included, to share from Voice settings.
 struct WatchLogView: View {
     @ObservedObject private var log = WatchCallLog.shared
+    @State private var confirmingClear = false
 
     var body: some View {
         List {
@@ -176,7 +177,7 @@ struct WatchLogView: View {
                     .listRowBackground(Color.clear)
             }
             Button(role: .destructive) {
-                log.clear()
+                confirmingClear = true
             } label: {
                 Text("Clear")
             }
@@ -186,5 +187,8 @@ struct WatchLogView: View {
             }
         }
         .navigationTitle("Call log")
+        .confirmationDialog("Clear the Watch call log?", isPresented: $confirmingClear) {
+            Button("Clear", role: .destructive) { log.clear() }
+        }
     }
 }

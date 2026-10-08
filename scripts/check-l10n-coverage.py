@@ -845,6 +845,8 @@ def check(repo_root: str):
 
     missing = {}
     checked = scan_sites(conduit, catalog_keys, repo_root, missing, key_problems)
+    # The iPhone app compiles Shared/ too (project.yml).
+    checked += scan_sites(os.path.join(repo_root, "Shared"), catalog_keys, repo_root, missing, key_problems)
 
     # The Apple Watch app has its own catalog, in the same languages.
     watch = os.path.join(repo_root, WATCH_DIRECTORY)
