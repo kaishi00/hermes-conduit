@@ -1593,6 +1593,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             update(id) {
                 $0.status = .finished
                 if let reply, !reply.isEmpty { $0.result = reply }
+                // A completion held for a follow-up that never carried on.
+                if $0.result == nil { $0.result = $0.heldCompletion }
+                $0.followUp = nil
+                $0.heldCompletion = nil
             }
             changed = true
         }
