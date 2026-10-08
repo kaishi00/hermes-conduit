@@ -984,9 +984,8 @@ final class WatchBridgeCallModel: ObservableObject {
         handledLines = transcript.count
         openLineDelegated = !open.isEmpty
         let request = WatchBridgeDelegation.request(itemText: itemText, lines: lines)
-        let ownWords = itemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
-            : itemText
+        let userWords = lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
+        let ownWords = itemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? userWords : itemText
         note("bridgeDelegation", [
             "hasText": !itemText.isEmpty,
             "requestChars": request.count,
@@ -1005,9 +1004,7 @@ final class WatchBridgeCallModel: ObservableObject {
         // runs (#455). A number with no job is just new work.
         // Read where the phone reads it: the delegation's own text, else
         // the user's words GPT-Live left it in.
-        let userWords = lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
-        let marked = itemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? userWords : itemText
-        if let marker = WatchBridgeDelegation.jobMarker(in: marked) {
+        if let marker = WatchBridgeDelegation.jobMarker(in: ownWords) {
             if let jobID = jobNumbers[marker.number] {
                 let words = WatchBridgeDelegation.followUpWords(userWords: userWords, delegated: marker.rest)
                 guard !words.isEmpty else {
@@ -1109,6 +1106,7 @@ final class WatchBridgeCallModel: ObservableObject {
 
     /// A correction to a job this call started, into the job on the host.
     private func followUp(for delegationID: String, jobID: String, words: String, relay: WatchToolRelayClient) {
+        followUps += 1
         guard relay.tools.contains(WatchJobAnswer.interruptJob) else {
             answer(delegationID, WatchBridgeDelegation.followUpsUnavailable, channel: .speakable)
             return
@@ -1119,7 +1117,6 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         let id = callID
         let sentAt = now
-        followUps += 1
         Task { [weak self] in
             let outcome = await relay.run(name: WatchJobAnswer.interruptJob, arguments: ["job_id": jobID, "message": WatchBridgeDelegation.clipped(words, bytes: WatchBridgeDelegation.maxRequestBytes)])
             guard let self, self.callID == id, self.isActive else { return }
@@ -1127,7 +1124,10 @@ final class WatchBridgeCallModel: ObservableObject {
             switch outcome {
             case .answered(let body): result = WatchJobAnswer.FollowUp(body: body)
             case .timedOut: result = .failed("Hermes took too long to answer")
-            case .unavailable(_, _, let sent): result = .failed(sent ? "Hermes didn't confirm it got the words" : "Hermes couldn't be reached from the Watch")
+            case .unavailable(let reason, let grantGone, let sent):
+                result = .failed(Self.grantRanOut(reason: reason, grantGone: grantGone, sent: sent)
+                    ? WatchBridgeDelegation.grantRanOut.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+                    : sent ? "Hermes didn't confirm it got the words" : "Hermes couldn't be reached from the Watch")
             }
             let reply = WatchBridgeDelegation.followUpReply(result)
             self.note("bridgeFollowUp", ["outcome": outcome.label, "result": Self.label(result), "ms": Int((self.now - sentAt) * 1000)])
