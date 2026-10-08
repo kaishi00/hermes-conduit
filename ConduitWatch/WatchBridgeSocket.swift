@@ -70,7 +70,10 @@ final class WatchBridgeSocket {
     /// The relay closes a socket silent for a minute; audio may pause
     /// longer (muted, a long reply).
     func ping(done: @escaping (Bool) -> Void) {
-        guard !isClosed else { return }
+        guard !isClosed else {
+            done(false)
+            return
+        }
         task.sendPing { error in
             WatchVoiceMain.async { done(error == nil) }
         }

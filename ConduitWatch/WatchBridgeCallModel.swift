@@ -365,7 +365,7 @@ final class WatchBridgeCallModel: ObservableObject {
             guard let self, self.callID == id, self.isActive else { return }
             // The grant ran out (it isn't renewed: the bridge belongs to it),
             // so no card can be answered from the Watch any more.
-            if case .unavailable(let reason, let grantGone, _) = outcome, grantGone || reason == "grantExpiring" {
+            if case .unavailable(let reason, let grantGone, _) = outcome, Self.grantRanOut(reason: reason, grantGone: grantGone) {
                 self.note("bridgeApproval", ["choice": choice, "taken": false, "outcome": outcome.label, "reason": reason])
                 self.approvalsRanOut()
                 return
@@ -391,6 +391,12 @@ final class WatchBridgeCallModel: ObservableObject {
             self.nextNewsAt = self.now
             self.flushPending()
         }
+    }
+
+    /// The grant is spent, closed or about to expire. It isn't renewed (the
+    /// bridge belongs to it), so for this call it ran out.
+    private static func grantRanOut(reason: String, grantGone: Bool) -> Bool {
+        grantGone || reason == "grantExpiring"
     }
 
     private func approvalsRanOut() {
@@ -985,9 +991,11 @@ final class WatchBridgeCallModel: ObservableObject {
                 self.relayJobsStarted += 1
                 self.answer(delegationID, WatchJobAnswer.accepted["message"] ?? "", channel: .commentary)
                 self.followJobs()
-            case .unavailable(let reason, _, let sent):
+            case .unavailable(let reason, let grantGone, let sent):
                 fields["reason"] = reason
-                if sent {
+                if !sent, Self.grantRanOut(reason: reason, grantGone: grantGone) {
+                    self.answer(delegationID, WatchBridgeDelegation.notStarted(WatchBridgeDelegation.grantRanOut), channel: .speakable)
+                } else if sent {
                     self.relayJobsStarted += 1
                     self.followJobs()
                     self.answer(delegationID, WatchBridgeDelegation.relay("Hermes didn't confirm the job. Tell the user it may or may not have started."), channel: .speakable)
@@ -1013,8 +1021,10 @@ final class WatchBridgeCallModel: ObservableObject {
                 text = WatchToolAnswer.fallbackText(for: result) ?? WatchBridgeDelegation.relay("The lookup found nothing.")
             case .timedOut:
                 text = WatchBridgeDelegation.relay("The lookup took too long.")
-            case .unavailable:
-                text = WatchBridgeDelegation.relay("Hermes couldn't be reached from the Watch for the lookup.")
+            case .unavailable(let reason, let grantGone, let sent):
+                text = !sent && Self.grantRanOut(reason: reason, grantGone: grantGone)
+                    ? WatchBridgeDelegation.notStarted(WatchBridgeDelegation.grantRanOut)
+                    : WatchBridgeDelegation.relay("Hermes couldn't be reached from the Watch for the lookup.")
             }
             self.note("bridgeLookup", ["outcome": outcome.label, "ms": Int((self.now - sentAt) * 1000)])
             self.answer(delegationID, text, channel: .speakable)

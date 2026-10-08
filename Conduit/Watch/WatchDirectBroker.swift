@@ -62,6 +62,8 @@ final class WatchDirectBroker {
     static let connectWait: Duration = .seconds(8)
     /// A call not heard from this long is over, whatever its end said.
     static let silenceLimit: TimeInterval = 30 * 60
+    /// Compressed bytes of a bridge call's briefing the start reply carries.
+    static let bridgeBriefingLimit = 48 * 1024
 
     private unowned let link: WatchVoiceLink
     private var callID: UInt32?
@@ -376,6 +378,11 @@ final class WatchDirectBroker {
             guard let packed = WatchVoiceWire.BridgeSession.pack(plan.briefing) else {
                 throw WatchDirectPrepareError("The call's briefing couldn't be packed for the Watch.")
             }
+            // The reply travels in one Watch message, which carries about
+            // 65 KB; the grant and the rest take a few.
+            guard packed.data.count <= Self.bridgeBriefingLimit else {
+                throw WatchDirectPrepareError("The call's briefing (memory and persona) is too large to send to the Watch.")
+            }
             link.log.note("watchBridgePrepared", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -417,7 +424,7 @@ final class WatchDirectBroker {
         let at = expiresAt ?? Date().addingTimeInterval(Self.silenceLimit)
         let wait = max(0, at.timeIntervalSinceNow) + 60
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(wait))
+            do { try await Task.sleep(for: .seconds(wait)) } catch { return }
             guard let self, self.callID == id else { return }
             self.link.log.note("watchBridgeOutlivedGrant", ["callID": Int(id)])
             self.endCall()
