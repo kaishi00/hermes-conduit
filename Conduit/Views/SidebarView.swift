@@ -26,7 +26,9 @@ struct SidebarView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ConduitBackdrop(drifts: true)
+                // The drawer is a sheet over the drifting chat; only the
+                // persistent column is a main surface of its own.
+                ConduitBackdrop(drifts: presentation == .persistent)
 
                 VStack(spacing: 16) {
                     ConduitGlassGroup(spacing: 12) {
