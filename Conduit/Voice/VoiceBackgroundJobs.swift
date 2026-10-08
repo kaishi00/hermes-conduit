@@ -374,6 +374,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     @Published private(set) var jobs: [VoiceBackgroundJob] = []
 
+    /// Whether a job the liveness poll settles has its final reply read
+    /// from its chat first, so the call hears the result instead of a
+    /// pointer to the chat. A Watch call turns it on: the iPhone sleeps
+    /// through its jobs' completion events, so the poll settles nearly all
+    /// of them.
+    var readsRepliesWhenSettling = false
+
     /// Called whenever a notice becomes pending, so the host can let an
     /// idle voice conversation deliver it.
     var onNoticePending: (@MainActor () -> Void)?
@@ -1680,6 +1687,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         var changed = false
         var settledThreadTurns: [UUID] = []
+        var settledJobs: [UUID] = []
         var learned: [(String, String)] = []
         defer { for (runtimeID, storedID) in learned { onJobStoredSessionLearned?(runtimeID, storedID) } }
         for index in jobs.indices where jobs[index].status == .running || jobs[index].status == .needsInput {
@@ -1713,12 +1721,39 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 settledThreadTurns.append(job.id)
                 continue
             }
+            if readsRepliesWhenSettling, !job.isThreadTurn, job.result == nil {
+                settledJobs.append(job.id)
+                continue
+            }
             jobs[index].status = .finished
             if job.isThreadTurn { jobs[index].settledByPoll = true }
             // A completion held for a follow-up that never carried on.
             if jobs[index].result == nil { jobs[index].result = job.heldCompletion }
             jobs[index].followUp = nil
             jobs[index].heldCompletion = nil
+            changed = true
+        }
+        for id in settledJobs {
+            guard let job = self.job(id) else { continue }
+            // The job's own chat, read as an attached chat's would be.
+            let chat = VoiceThreadTarget(
+                runtimeSessionID: job.runtimeSessionID ?? "",
+                storedSessionID: job.storedSessionID,
+                title: job.title,
+                profile: job.profile
+            )
+            let reply = await backend.latestThreadReply(chat)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard generation == self.generation else { return }
+            // Events may have settled it meanwhile; they carry the real reply.
+            guard let current = self.job(id), current.status.isActive else { continue }
+            update(id) {
+                $0.status = .finished
+                if let reply, !reply.isEmpty { $0.result = reply }
+                // A completion held for a follow-up that never carried on.
+                if $0.result == nil { $0.result = $0.heldCompletion }
+                $0.followUp = nil
+                $0.heldCompletion = nil
+            }
             changed = true
         }
         for id in settledThreadTurns {

@@ -56,6 +56,17 @@ enum VoiceCallEngine: String, Equatable, Codable {
     case grokLive = "grok-live"
 }
 
+extension VoiceCallEngine {
+    /// A Watch call's engine as the host's audio bridge names it.
+    static func watchBridge(_ engine: String) -> VoiceCallEngine? {
+        switch engine {
+        case WatchAudioBridgeWire.gptLive: return .gptLive
+        case WatchAudioBridgeWire.grok: return .grokLive
+        default: return nil
+        }
+    }
+}
+
 /// One settled turn of a call, numbered from 0 within the call.
 struct VoiceTranscriptTurn: Equatable, Codable {
     enum Role: String, Equatable, Codable {

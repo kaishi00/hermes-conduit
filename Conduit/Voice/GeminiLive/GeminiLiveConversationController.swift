@@ -158,13 +158,19 @@ final class GeminiLiveConversationController: ObservableObject {
         case failed(String)
     }
 
+    /// Asking first (#451), for calls whose supervisor can hold requests.
+    /// A Watch call can't, so it's left out there.
+    static let askFirstParagraph = "Asking first: when it is on for this call, a new request waits for the user's OK. start_job and ask_thread then answer waiting_for_ok: tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, call send_request. When they change it, call start_job or ask_thread again with the new request; it replaces the waiting one. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Corrections to running work never wait. When the user asks you to check with them before sending things to Hermes, or to stop checking, call set_ask_first."
+
     /// Instructions for the live model. Written for the model, not shown as
     /// UI copy, so not localized.
     static func instructions(
         search: GeminiLiveSearchSource,
         memory: GeminiLiveMemoryContext? = nil,
         personality: String? = nil,
-        answerLength: LiveVoiceAnswerLength = .standard
+        answerLength: LiveVoiceAnswerLength = .standard,
+        asksFirst: Bool = true,
+        readsBack: Bool = true
     ) -> String {
         let lookups: String
         switch search {
@@ -185,14 +191,16 @@ final class GeminiLiveConversationController: ObservableObject {
     Answer quick questions yourself. \(lookups)
     Call start_job only for work that needs the user's Hermes agent: their files, code, systems, accounts, or longer multi-step research. Pass the complete task. Every time you call start_job, first say a very short acknowledgement out loud, like "On it, I'll have Hermes look into that." Then carry on with the conversation; the job runs on Hermes in the background.
     Do not comment on how a job is progressing unless the user asks; use list_jobs when they do. When a job's result arrives, tell the user the outcome once, when the conversation is quiet: what Hermes found or did, with the details that matter.
-    When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory: call read_last_reply and read what it returns word for word, all of it, once.
-    Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user.
+    \(readsBack ? readBackParagraph + "\n" : "")Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user.
     Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
     When the user corrects, changes, pauses or calls off a job Hermes is still working on ("wait, make it Alex", "hold that", "never mind"), call interrupt_job with their words right away (job_id from list_jobs): Hermes takes them in at once and decides what they mean. Use cancel_job only when the user asks to cancel.
-    Asking first: when it is on for this call, a new request waits for the user's OK. start_job and ask_thread then answer waiting_for_ok: tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, call send_request. When they change it, call start_job or ask_thread again with the new request; it replaces the waiting one. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Corrections to running work never wait. When the user asks you to check with them before sending things to Hermes, or to stop checking, call set_ask_first.
-    When the user says goodbye or asks to end the conversation, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
+    \(asksFirst ? askFirstParagraph + "\n" : "")When the user says goodbye or asks to end the conversation, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
     """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality)
     }
+
+    /// Read-backs (#451) run on the phone's own call, so a Watch call
+    /// leaves this out.
+    static let readBackParagraph = "When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory: call read_last_reply and read what it returns word for word, all of it, once."
 
     /// Last, after the persona and memory: a persona written for text asks
     /// for *actions* in asterisks, and a rule stated only before it loses.

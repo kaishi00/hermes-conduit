@@ -65,18 +65,26 @@ final class GPTLiveConversationController: ObservableObject {
         case failed(String)
     }
 
+    /// Read-backs (#451): the phone's delegation bridge answers "Read back:"
+    /// itself, so a Watch call (whose delegations go to the relay) leaves
+    /// it out like the follow-ups below.
+    static let phoneReadBack = "When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory or in your own words: delegate \"Read back:\". Conduit gives you the reply, then tells you to read it: read it word for word, all of it, once."
+
+    /// Job corrections ("Job 2: …", #455) and asking first (#451): the
+    /// phone's delegation bridge handles both. A Watch call's delegations go
+    /// straight to the relay, which has neither, so the Watch leaves them out.
+    static let phoneFollowUps = "When the user corrects, changes, pauses or calls off a background job that is still running (\"wait, make it Alex\", \"hold that\", \"never mind\"), delegate their words right away, starting with \"Job\" and its number, like \"Job 2: make it Alex\": Conduit puts them into that job at once, Hermes decides what they mean, and the job's result still arrives on its earlier delegation. A delegation without that start is new work.\nAsking first: when it is on for this call, a new delegation waits for the user's OK, and Conduit answers that it is waiting. Then tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, delegate \"Send:\". When they change it, delegate the new request; it replaces the waiting one. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Corrections (\"Job 2: …\") never wait. When the user asks you to check with them before sending things to Hermes, delegate \"Mode: ask first\"; to stop checking, delegate \"Mode: send directly\"."
+
     /// Conduit's rules for the live model. They travel with the session
     /// request and the host adds them to GPT-Live's instructions; a host
     /// that doesn't take them gets them as session context when the call
     /// starts. Written for the model, not shown as UI copy, so not localized.
-    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard) -> String {
+    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard, onWatch: Bool = false) -> String {
         var text = """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
-        Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.
-        When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory or in your own words: delegate "Read back:". Conduit gives you the reply, then tells you to read it: read it word for word, all of it, once.
-        Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number. When the user corrects, changes, pauses or calls off a background job that is still running ("wait, make it Alex", "hold that", "never mind"), delegate their words right away, starting with "Job" and its number, like "Job 2: make it Alex": Conduit puts them into that job at once, Hermes decides what they mean, and the job's result still arrives on its earlier delegation. A delegation without that start is new work.
-        Asking first: when it is on for this call, a new delegation waits for the user's OK, and Conduit answers that it is waiting. Then tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, delegate "Send:". When they change it, delegate the new request; it replaces the waiting one. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Corrections ("Job 2: …") never wait. When the user asks you to check with them before sending things to Hermes, delegate "Mode: ask first"; to stop checking, delegate "Mode: send directly".
+        Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? "" : "\n" + phoneReadBack)
+        Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number.\(onWatch ? "" : " " + phoneFollowUps)
         Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
         When the user says goodbye, say a short goodbye.]
         """
