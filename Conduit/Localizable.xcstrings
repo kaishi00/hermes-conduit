@@ -35976,22 +35976,6 @@
         }
       }
     },
-    "A job's approval request shows on the Watch, and Gemini Live can also take your answer by voice. Voice only ever approves once. Text in a web page or a job's output could try to talk it into approving." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ジョブの承認リクエストは Watch に表示され、Gemini Live は音声での回答も受け付けます。音声での承認は常に1回限りです。Web ページやジョブの出力に含まれるテキストが、承認するよう誘導しようとする可能性があります。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "任务的批准请求会显示在 Watch 上，Gemini Live 也可以通过语音接收你的回答。语音只会批准一次。网页或任务输出中的文字可能会试图诱导它批准。"
-          }
-        }
-      }
-    },
     "A voice call is already running on your iPhone." : {
       "localizations" : {
         "ja" : {
@@ -36312,22 +36296,6 @@
         }
       }
     },
-    "Open Conduit on your Watch and tap the microphone to talk to Hermes. Gemini Live runs on the Watch; GPT-Live runs on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Watch で Conduit を開き、マイクをタップすると Hermes と話せます。Gemini Live は Watch 上で、GPT-Live は Hermes ホスト上で動作します。通話は手首を下ろしても iPhone がロックされても続き、音声履歴に保存されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Watch 上打开 Conduit 并轻点麦克风即可与 Hermes 交谈。Gemini Live 在 Watch 上运行；GPT-Live 在你的 Hermes 主机上运行。即使放下手腕、iPhone 锁定，通话也会继续，并会保存到语音记录中。"
-          }
-        }
-      }
-    },
     "Set up" : {
       "localizations" : {
         "ja" : {
@@ -36596,6 +36564,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每次 Watch 通话的任务数：%@"
+          }
+        }
+      }
+    },
+    "Hermes couldn't open Grok for the Watch: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は Watch 用の Grok を開けませんでした：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法为 Watch 打开 Grok：%@"
+          }
+        }
+      }
+    },
+    "Hermes couldn't open Grok for the Watch. Update the Conduit notifier plugin and the push relay." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は Watch 用の Grok を開けませんでした。Conduit 通知プラグインとプッシュリレーをアップデートしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法为 Watch 打开 Grok。请更新 Conduit 通知插件和推送中继。"
+          }
+        }
+      }
+    },
+    "Open Conduit on your Watch and tap the microphone to talk to Hermes. Gemini Live runs on the Watch; GPT-Live and Grok run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch で Conduit を開き、マイクをタップすると Hermes と話せます。Gemini Live は Watch 上で、GPT-Live と Grok は Hermes ホスト上で動作します。通話は手首を下ろしても iPhone がロックされても続き、音声履歴に保存されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Watch 上打开 Conduit 并轻点麦克风即可与 Hermes 交谈。Gemini Live 在 Watch 上运行；GPT-Live 和 Grok 在你的 Hermes 主机上运行。即使放下手腕、iPhone 锁定，通话也会继续，并会保存到语音记录中。"
+          }
+        }
+      }
+    },
+    "A job's approval request shows on the Watch, and Gemini Live or Grok can also take your answer by voice. Voice only ever approves once. Text in a web page or a job's output could try to talk it into approving." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジョブの承認リクエストは Watch に表示され、Gemini Live または Grok は音声での回答も受け付けます。音声での承認は常に1回限りです。Web ページやジョブの出力に含まれるテキストが、承認するよう誘導しようとする可能性があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务的批准请求会显示在 Watch 上，Gemini Live 或 Grok 也可以通过语音接收你的回答。语音只会批准一次。网页或任务输出中的文字可能会试图诱导它批准。"
           }
         }
       }

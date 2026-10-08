@@ -28,7 +28,7 @@ struct WatchSettingsSection: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-            Text("Open Conduit on your Watch and tap the microphone to talk to Hermes. Gemini Live runs on the Watch; GPT-Live runs on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history.")
+            Text("Open Conduit on your Watch and tap the microphone to talk to Hermes. Gemini Live runs on the Watch; GPT-Live and Grok run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -48,7 +48,7 @@ struct WatchSettingsSection: View {
             .disabled(jobsPerCall == 0)
             .accessibilityIdentifier("voice.watchApprovals")
             Text(voiceApprovals
-                ? AppLocalization.string("A job's approval request shows on the Watch, and Gemini Live can also take your answer by voice. Voice only ever approves once. Text in a web page or a job's output could try to talk it into approving.")
+                ? AppLocalization.string("A job's approval request shows on the Watch, and Gemini Live or Grok can also take your answer by voice. Voice only ever approves once. Text in a web page or a job's output could try to talk it into approving.")
                 : AppLocalization.string("A job's approval request shows on the Watch with Approve and Deny."))
                 .font(.caption)
                 .foregroundStyle(.secondary)

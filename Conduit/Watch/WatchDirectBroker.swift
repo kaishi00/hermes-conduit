@@ -22,7 +22,10 @@
 //  A Watch call to GPT-Live (designs/apple-watch-gpt-live.md) goes through
 //  the Hermes host's audio bridge instead: this side only builds its
 //  briefing as the phone's GPT-Live call would, and asks Hermes for the
-//  grant that opens the bridge and carries its jobs.
+//  grant that opens the bridge and carries its jobs. A Watch call to Grok
+//  is the two together: the Watch runs it as a Gemini call (this side
+//  builds the setup and runs its tools), and xAI's session is on the
+//  host, reached through the grant's audio bridge.
 //  Each is a short answer to a Watch message, which wakes Conduit in the
 //  background; nothing here runs between them.
 //
@@ -162,6 +165,25 @@ final class WatchDirectBroker {
                 task = preparing.task
             } else {
                 task = Task { await self.prepareBridge(id, engine: engine) }
+                preparing = (id, task)
+            }
+            Task {
+                let message = await task.value
+                answer(message)
+                if self.preparing?.callID == id { self.preparing = nil }
+                end()
+            }
+        case .grokStart(let id, let version):
+            guard version == WatchVoiceWire.version else {
+                answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
+                return
+            }
+            let end = Self.beginBackgroundTask("conduit.watchGrok.start")
+            let task: Task<WatchVoiceWire.Message, Never>
+            if let preparing, preparing.callID == id {
+                task = preparing.task
+            } else {
+                task = Task { await self.prepareGrok(id) }
                 preparing = (id, task)
             }
             Task {
@@ -412,6 +434,103 @@ final class WatchDirectBroker {
         } catch {
             let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
             link.log.note("watchBridgePrepareFailed", [
+                "callID": Int(id),
+                "ms": Self.milliseconds(since: startedAt),
+                "error": reason,
+                "appState": WatchVoiceLink.appStateName,
+            ])
+            if callID == id { endCall() }
+            return .callRefused(callID: id, reason: reason)
+        }
+    }
+
+    // MARK: Start for Grok
+
+    /// A Grok call on the Watch: the setup the phone's Grok Live call gets,
+    /// and a grant that opens the host's audio bridge (xAI's session, on
+    /// the host's sign-in) and carries the call's lookups and jobs. The
+    /// Watch runs the conversation as it runs Gemini's, so its tools and
+    /// polls come here as a Gemini call's do.
+    private func prepareGrok(_ id: UInt32) async -> WatchVoiceWire.Message {
+        let appState = self.appState
+        if let active = callID, active != id { endCall() }
+        callID = id
+        bridge = nil
+        lateOutgoing = []
+        lastHeardAt = Date()
+        appState.setWatchVoiceCallActive(true)
+        appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = true
+        let startedAt = Date()
+        link.log.note("watchGrokStart", [
+            "callID": Int(id),
+            "appState": WatchVoiceLink.appStateName,
+            "phoneScreen": PhoneScenePresence.isInForeground,
+            "connected": appState.isConnected,
+        ])
+        do {
+            let plan = try await appState.prepareWatchGrokCall()
+            guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            guard appState.watchDirectConnection == plan.connection else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            connection = plan.connection
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            let declared = plan.functions.map(\.name)
+            grantTools = declared.filter { WatchToolAnswer.tools.contains($0) }
+            grantMaxJobs = WatchJobSettings.jobsPerCall
+            grantJobTools = grantMaxJobs > 0 ? declared.filter { WatchJobAnswer.tools.contains($0) } : []
+            grantJobOptions = plan.jobOptions
+            grantVoiceApprovals = WatchJobSettings.voiceApprovals
+            grantLiveToken = false
+            grantAudio = true
+            lastGrantError = nil
+            let grant = await requestGrant(id, profile: plan.connection.profile)
+            guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            ledger.setGrant(grantScope, for: id)
+            guard let grant, let audio = grant.audio, audio.engines.contains(WatchAudioBridgeWire.grok) else {
+                throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Grok for the Watch: \($0)") }
+                    ?? AppLocalization.string("Hermes couldn't open Grok for the Watch. Update the Conduit notifier plugin and the push relay."))
+            }
+            guard appState.watchDirectConnection == plan.connection else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            var functions = plan.functions
+            if grant.voiceApprovals == true { functions.append(WatchJobAnswer.answerApprovalDeclaration) }
+            let setup = WatchVoiceWire.DirectSetup(systemInstruction: plan.systemInstruction, functions: functions)
+            guard setup.functions.count == functions.count, let packed = setup.compressed() else {
+                throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch."))
+            }
+            let reply = WatchVoiceWire.Message.grokSession(callID: id, session: .init(
+                setup: packed.data,
+                setupBytes: packed.bytes,
+                voice: plan.voice,
+                openingPrompt: plan.openingPrompt,
+                grant: grant
+            ))
+            guard let replyBytes = (WatchVoiceWire.encode(reply)[WatchVoiceWire.messageKey] as? Data)?.count else {
+                throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch."))
+            }
+            guard replyBytes <= Self.bridgeReplyLimit else {
+                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing (memory and persona) is too large to send to the Watch."))
+            }
+            link.log.note("watchGrokPrepared", [
+                "callID": Int(id),
+                "ms": Self.milliseconds(since: startedAt),
+                "setupBytes": packed.bytes,
+                "compressedBytes": packed.data.count,
+                "replyBytes": replyBytes,
+                "functions": functions.map(\.name),
+                "tools": grant.tools,
+                "engines": audio.engines,
+                "memory": plan.memoryIncluded,
+                "personality": plan.personalityIncluded,
+                "appState": WatchVoiceLink.appStateName,
+            ])
+            endWhenGrantDoes(id, expiresAt: grant.expiresAt)
+            return reply
+        } catch {
+            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            link.log.note("watchGrokPrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
                 "error": reason,

@@ -1002,3 +1002,33 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WatchVoiceWire.DirectTranscript.capped(japanese, bytes: 30).count, 1)
     }
 }
+
+// MARK: Grok on the Watch
+
+extension HermesVoiceGatewayTimeoutTests {
+    func testWatchGrokMessagesRoundTripThroughTheMessageDictionary() throws {
+        var grant = Self.watchToolGrant
+        grant.audio = .init(url: "wss://relay.example.test/v1/watch-audio/grant/watch", version: 1, engines: [WatchAudioBridgeWire.grok])
+        let setup = WatchVoiceWire.DirectSetup(systemInstruction: "Be brief.", functions: [])
+        let packed = try XCTUnwrap(setup.compressed())
+        let messages: [WatchVoiceWire.Message] = [
+            .grokStart(callID: 9, version: WatchVoiceWire.version),
+            .grokSession(callID: 9, session: .init(setup: packed.data, setupBytes: packed.bytes, voice: "Ara", openingPrompt: nil, grant: grant)),
+        ]
+        for message in messages {
+            XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(message)), message)
+        }
+        XCTAssertEqual(VoiceCallEngine.watchBridge(WatchAudioBridgeWire.grok), .grokLive)
+    }
+
+    /// The host takes xAI's audio deltas out to pace them; the Watch's
+    /// bridge socket gives them back to GrokLiveSession in xAI's shape.
+    func testGrokReadsTheWatchBridgesAudioAsXAISentIt() throws {
+        let pcm = Data([1, 0, 2, 0, 3, 0])
+        let event: [String: Any] = ["type": "response.output_audio.delta", "delta": pcm.base64EncodedString()]
+        let frames = GrokLiveProtocol.decode(try JSONSerialization.data(withJSONObject: event))
+        XCTAssertEqual(frames, [.event(.audio(pcm, sampleRate: GrokLiveProtocol.outputSampleRate))])
+        XCTAssertEqual(Int(GrokLiveProtocol.inputSampleRate), 24_000)
+        XCTAssertEqual(Int(GrokLiveProtocol.outputSampleRate), 24_000)
+    }
+}

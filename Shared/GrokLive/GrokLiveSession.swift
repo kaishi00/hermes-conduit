@@ -1,13 +1,15 @@
 //
 //  GrokLiveSession.swift
-//  Conduit
+//  Conduit and the Conduit Watch app
 //
-//  One Grok Live conversation over the Hermes host's relay socket. The
-//  first frame is the session.update (instructions, voice, tools); the
-//  session is ready once xAI confirms it. xAI has no session resumption, so
-//  a dropped connection reconnects as a new xAI session: calls opened on
-//  the old one can't be answered there, and the controller hears about it
-//  through `onConnectionReplaced`.
+//  One Grok Live conversation through the Hermes host: the phone's relay
+//  socket on the dashboard, or the Watch's audio bridge through the push
+//  relay (WatchGrokBridgeSocket). The first frame is the session.update
+//  (instructions, voice, tools); the session is ready once xAI confirms
+//  it. xAI has no session resumption, so a dropped connection reconnects
+//  as a new xAI session: calls opened on the old one can't be answered
+//  there, and the controller hears about it through
+//  `onConnectionReplaced`.
 //
 //  It speaks the same seam as Gemini Live's session, so the Gemini Live
 //  conversation controller (phases, transcript, jobs, the speaker echo

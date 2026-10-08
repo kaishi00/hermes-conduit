@@ -630,6 +630,7 @@ WATCH_DIRECTORY = "ConduitWatch"
 # catalog must carry too.
 WATCH_SHARED_SOURCES = (
     "Shared/GeminiLive",
+    "Shared/GrokLive",
     "Shared/WatchVoice",
     "Conduit/Voice/GPTLive/GPTLiveProtocol.swift",
 )

@@ -85,6 +85,9 @@ targets:
       # The iPhone's own Gemini Live code: the Watch runs the same session
       # (designs/apple-watch-voice-direct.md).
       - path: Shared/GeminiLive
+      # The iPhone's Grok Live session, which a Watch call to Grok runs
+      # through the host's audio bridge.
+      - path: Shared/GrokLive
       # GPT-Live's events, which the Watch reads and answers through the
       # host's audio bridge (designs/apple-watch-gpt-live.md).
       - path: Conduit/Voice/GPTLive/GPTLiveProtocol.swift
@@ -110,11 +113,12 @@ targets:
     sources:
       - path: ConduitNotificationService
       - path: Shared
-        # The Watch app's code and Gemini Live, which the
+        # The Watch app's code, Gemini Live and Grok Live, which the
         # extension never uses.
         excludes:
           - "WatchVoice/**"
           - "GeminiLive/**"
+          - "GrokLive/**"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.NotificationService
