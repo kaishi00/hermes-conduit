@@ -1042,7 +1042,39 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.turnDone(role: "user", transcript: "Say that again, please."))
         await settle(40)
         XCTAssertEqual(session.speakable.count, 1)
-        XCTAssertTrue(session.speakable[0].text.contains("The full reply."))
+        XCTAssertEqual(session.speakable.first?.text, GPTLiveDelegationBridge.readBackCue, "one cue starts the reading (#451)")
+        let reply = session.appended.firstIndex { $0.channel == .commentary && $0.text.contains("The full reply.") }
+        let cue = session.appended.firstIndex { $0.channel == .speakable }
+        XCTAssertNotNil(reply, "the whole reply goes in quietly")
+        XCTAssertLessThan(reply ?? .max, cue ?? .min, "before the cue")
+        XCTAssertEqual(fake.threadSubmissions.count, 0, "reading asks Hermes nothing")
+        controller.stop()
+    }
+
+    func testGPTLiveDelegatedReadBackSendsTheReplyWithItsCue() async {
+        let (controller, session, supervisor, fake) = makeGPTController(clock: Date.init)
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        fake.threadReply = "The full reply."
+        await controller.start()
+        session.becomeReady()
+        let before = session.appended.count
+
+        // Nothing goes through yet: the reply waits with its cue, so the
+        // model is never told to read a reply it doesn't have (#451).
+        session.failAppends = true
+        session.onEvent?(.delegation(id: "del_1", text: "Read back: the last reply"))
+        await settle(40)
+        controller.flushPendingContextIfIdle()
+        XCTAssertEqual(session.appended.count, before)
+
+        session.failAppends = false
+        controller.flushPendingContextIfIdle()
+        let added = Array(session.appended.dropFirst(before))
+        let reply = added.firstIndex { $0.channel == .commentary && $0.text.contains("The full reply.") }
+        let cue = added.firstIndex { $0.channel == .speakable && $0.text == GPTLiveDelegationBridge.readBackCue }
+        XCTAssertNotNil(reply, "\(added)")
+        XCTAssertNotNil(cue, "\(added)")
+        XCTAssertLessThan(reply ?? .max, cue ?? .min, "the reply goes in before the cue")
         XCTAssertEqual(fake.threadSubmissions.count, 0, "reading asks Hermes nothing")
         controller.stop()
     }

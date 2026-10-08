@@ -1199,6 +1199,7 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(plain.contains("ask_thread"))
         XCTAssertTrue(attached.contains("ask_thread"))
         XCTAssertTrue(attached.contains("read_last_reply"))
+        XCTAssertTrue(plain.contains("read_last_reply"), "a call without a chat reads back its newest job result (#451)")
         XCTAssertTrue(attached.contains("start_job"), "background work stays available")
     }
 
@@ -1221,15 +1222,18 @@ extension VoiceConversationControllerTests {
 
         fake.threadReply = "The last reply."
         let read = await bridge.handleDelegation(id: "del_3", request: "Read the last reply word for word")
-        guard case .delegationReply("del_3", let text, .speakable)? = read.first else {
+        guard case .sessionContext(let text, .commentary, true, nil)? = read.first,
+              case .delegationReply("del_3", GPTLiveDelegationBridge.readBackCue, .speakable)? = read.last else {
             return XCTFail("\(read)")
         }
         XCTAssertTrue(text.contains("The last reply."))
         XCTAssertEqual(fake.threadSubmissions.count, 1, "reading the last reply asks Hermes nothing")
 
+        bridge.replyDelivered(delegationID: "del_3")
         clock += GPTLiveDelegationBridge.readBackWindow + 1
         let quickRead = await bridge.handleDelegation(id: "del_4", request: "Quick: read the last reply")
-        guard case .delegationReply("del_4", let quickText, .speakable)? = quickRead.first else {
+        guard case .sessionContext(let quickText, .commentary, true, nil)? = quickRead.first,
+              case .delegationReply("del_4", _, .speakable)? = quickRead.last else {
             return XCTFail("\(quickRead)")
         }
         XCTAssertTrue(quickText.contains("The last reply."), "a quick read still reads the chat")
@@ -1245,26 +1249,49 @@ extension VoiceConversationControllerTests {
         // The model answered from memory; the user's words still bring
         // Hermes' reply (#290).
         let spoken = await bridge.userAskedForLastReply()
-        guard case .sessionContext(let text, .speakable, false, nil)? = spoken.first else {
+        guard spoken.count == 2,
+              case .sessionContext(let text, .commentary, false, nil) = spoken[0],
+              case .sessionContext(GPTLiveDelegationBridge.readBackCue, .speakable, false, nil) = spoken[1] else {
             return XCTFail("\(spoken)")
         }
-        XCTAssertTrue(text.contains("The full reply."))
+        XCTAssertTrue(text.contains("The full reply."), "the whole reply goes in quietly, then one cue reads it")
 
         // The model delegates the same request too: not read twice.
         let delegated = await bridge.handleDelegation(id: "del_1", request: "read the last reply")
-        guard case .delegationReply("del_1", _, .commentary)? = delegated.first else {
+        guard case .delegationReply("del_1", GPTLiveDelegationBridge.readBackAlreadySent, .commentary)? = delegated.first else {
             return XCTFail("\(delegated)")
         }
 
         clock += GPTLiveDelegationBridge.readBackWindow + 1
         let again = await bridge.handleDelegation(id: "del_2", request: "say that again")
-        guard case .delegationReply("del_2", let againText, .speakable)? = again.first else {
+        guard case .sessionContext(let againText, .commentary, true, nil)? = again.first,
+              case .delegationReply("del_2", _, .speakable)? = again.last else {
             return XCTFail("\(again)")
         }
         XCTAssertTrue(againText.contains("The full reply."), "a later request reads it again")
+        // Still queued for a quiet moment: it's on its way, not read yet.
+        let queued = await bridge.handleDelegation(id: "del_2b", request: "read the last reply")
+        guard case .delegationReply("del_2b", GPTLiveDelegationBridge.readBackOnItsWay, .commentary)? = queued.first else {
+            return XCTFail("\(queued)")
+        }
+        // However long the quiet moment takes, asking again queues no second copy.
+        clock += GPTLiveDelegationBridge.readBackWindow + 1
+        let stillQueued = await bridge.handleDelegation(id: "del_2d", request: "read the last reply")
+        guard case .delegationReply("del_2d", GPTLiveDelegationBridge.readBackOnItsWay, .commentary)? = stillQueued.first else {
+            return XCTFail("\(stillQueued)")
+        }
+        let userAskedWhileQueued = await bridge.userAskedForLastReply()
+        XCTAssertTrue(userAskedWhileQueued.isEmpty, "the queued read-back covers the user's ask too")
+        // Once it went out, a later request reads it again.
+        bridge.replyDelivered(delegationID: "del_2")
+        let afterRead = await bridge.handleDelegation(id: "del_2c", request: "read the last reply")
+        guard case .sessionContext(_, .commentary, true, nil)? = afterRead.first else {
+            return XCTFail("\(afterRead)")
+        }
         let afterDelegation = await bridge.userAskedForLastReply()
         XCTAssertTrue(afterDelegation.isEmpty, "the delegation already asked for this one")
         XCTAssertEqual(fake.threadSubmissions.count, 0, "reading asks Hermes nothing")
+        bridge.replyDelivered(delegationID: "del_2c")
 
         // The controller adds the recent conversation for context: routing
         // reads only the delegation's own words.
@@ -1273,7 +1300,8 @@ extension VoiceConversationControllerTests {
             id: "del_ctx",
             request: "read the last reply" + GPTLiveConversationController.delegationContextMarker + "User: what's the weather\nAssistant: Sunny.\n"
         )
-        guard case .delegationReply("del_ctx", let contextText, .speakable)? = withContext.first else {
+        guard case .sessionContext(let contextText, .commentary, true, nil)? = withContext.first,
+              case .delegationReply("del_ctx", _, .speakable)? = withContext.last else {
             return XCTFail("\(withContext)")
         }
         XCTAssertTrue(contextText.contains("The full reply."))
@@ -1853,6 +1881,9 @@ extension VoiceConversationControllerTests {
         let names = GeminiLiveToolBridge.watchDeclarations(webSearch: true, memoryRecall: false).map(\.name)
         XCTAssertFalse(names.contains("set_ask_first"), "the Watch adapter can't hold requests, so it can't claim to")
         XCTAssertFalse(names.contains("send_request"))
+        XCTAssertFalse(names.contains("read_last_reply"), "read-backs run on the phone's own call (#451)")
+        XCTAssertFalse(GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, readsBack: false).contains("read_last_reply"))
+        XCTAssertFalse(GPTLiveConversationController.briefing(onWatch: true).contains("\"Read back:\""))
         XCTAssertTrue(names.contains("interrupt_job"))
         XCTAssertTrue(names.contains("web_search"))
 
@@ -2001,6 +2032,14 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("never send that to hermes"))
         XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("no wait, send it to Hermes"))
         XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("don't ask, just send it to Hermes"))
+        // Asking or wondering about it isn't saying to.
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("did you send it to Hermes?"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("when did you send that to Hermes"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("remind me to send it to Hermes tomorrow"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("should I send it to Hermes?"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("how do I send this to Hermes"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("read it out rather than send it to Hermes"))
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("can you send it to Hermes"))
     }
 
     func testGeminiAskingFirstHoldsANewJobUntilTheUserSaysYes() async throws {
@@ -2098,6 +2137,15 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse("call_2", _, let result, _)? = next.first else { return XCTFail("\(next)") }
         XCTAssertEqual(result["status"], "waiting_for_ok", "only the request it was said for")
         XCTAssertEqual(fake.created, 1)
+
+        // Said while asking first was off, it skips nothing once it's on.
+        supervisor.setAsksBeforeSending(false)
+        bridge.noteSendToHermes()
+        supervisor.setAsksBeforeSending(true)
+        let afterSwitch = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "check the printer"]))
+        guard case .toolResponse("call_3", _, let switched, _)? = afterSwitch.first else { return XCTFail("\(afterSwitch)") }
+        XCTAssertEqual(switched["status"], "waiting_for_ok")
+        XCTAssertEqual(fake.created, 1)
     }
 
     func testGeminiSetAskFirstSwitchesTheCallWithoutANote() async {
@@ -2146,6 +2194,208 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse("call_4", _, let result, _)? = sent.first else { return XCTFail("\(sent)") }
         XCTAssertNotNil(result["error"])
         XCTAssertEqual(fake.created, 1)
+    }
+}
+
+// MARK: - Read-backs (#451)
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testReadBackIsPlainSpeech() {
+        let markdown = [
+            "## Plan for **Friday**",
+            "",
+            "1. Book the *room* at [Café Luz](https://www.cafeluz.com/book?x=1).",
+            "- [x] Done: check https://status.example.org/page.",
+            "* Buy milk and *eggs* 🎉",
+            "",
+            "| Item | Cost |",
+            "|------|-----:|",
+            "| Milk | $2 |",
+            "",
+            "---",
+            "> Note: 2 * 3 * 4 = 24, see my_team_list",
+            "```swift",
+            "let x = 1",
+            "```",
+            "Thanks!",
+        ].joined(separator: "\n")
+        let expected = [
+            "Plan for Friday.",
+            "",
+            "1. Book the room at Café Luz.",
+            "Done: check status.example.org.",
+            "Buy milk and eggs.",
+            "",
+            "Item, Cost.",
+            "Milk, $2.",
+            "",
+            "Note: 2 * 3 * 4 = 24, see my_team_list",
+            VoiceReadBack.codeBlockNote,
+            "Thanks!",
+        ].joined(separator: "\n")
+        XCTAssertEqual(VoiceReadBack.plainSpeech(markdown), expected)
+        XCTAssertEqual(VoiceReadBack.plainSpeech("Already plain."), "Already plain.")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("Summary\n=======\nAll good."), "Summary\nAll good.", "a heading's underline isn't read")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("Item | Cost\n--- | ---\nMilk | $2"), "Item, Cost.\nMilk, $2.", "a table without outer pipes")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("## Done | Blocked"), "Done, Blocked.", "a heading isn't a table row, and its pipe isn't read")
+        XCTAssertEqual(
+            VoiceReadBack.plainSpeech("```\na\n```\n\n```\nb\n```\nDone."),
+            VoiceReadBack.codeBlockNote + "\n\nDone.",
+            "back-to-back code blocks get one note"
+        )
+        XCTAssertEqual(
+            VoiceReadBack.plainSpeech("See https://en.wikipedia.org/wiki/Foo_(bar) and [Foo](https://en.wikipedia.org/wiki/Foo_(bar))."),
+            "See en.wikipedia.org and Foo.",
+            "parentheses inside a link's address"
+        )
+    }
+
+    func testGeminiReadBackWithoutAChatReadsTheNewestJobResultOfThisCall() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+
+        let none = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_0", name: "read_last_reply", arguments: [:]))
+        guard case .toolResponse("call_0", "read_last_reply", let noneResult, _)? = none.first else { return XCTFail("\(none)") }
+        XCTAssertEqual(noneResult["error"], GeminiLiveToolBridge.nothingToReadBack, "no job result yet; the model may repeat its own answer")
+
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "check the server"]))
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "## Server\n- **Disk:** 80% full", reasoning: nil))
+        _ = bridge.pendingUpdates()
+        // Not heard yet: a result still on its way isn't read back.
+        let unsent = await supervisor.readBackText()
+        XCTAssertNil(unsent)
+        bridge.outcomeSent(jobID: supervisor.jobs.first?.id)
+
+        let read = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "read_last_reply", arguments: [:]))
+        guard case .toolResponse("call_2", "read_last_reply", let result, let scheduling)? = read.first else { return XCTFail("\(read)") }
+        XCTAssertEqual(result["reply"], "Server.\nDisk: 80% full.", "as plain speech")
+        XCTAssertEqual(result["message"], GeminiLiveToolBridge.readBackRule, "read in full, whatever the answer length")
+        XCTAssertEqual(scheduling, .whenIdle)
+        XCTAssertEqual(fake.created, 1, "reading back asks Hermes nothing")
+
+        supervisor.beginLiveCall()
+        let nextCall = await supervisor.readBackText()
+        XCTAssertNil(nextCall, "a later call never reads this one's result")
+    }
+
+    func testGPTLiveReadBackMarkerReadsTheNewestJobResultWithoutAChat() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall()
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+
+        let none = await bridge.handleDelegation(id: "del_0", request: "Read back: the server check")
+        guard case .delegationReply("del_0", GPTLiveDelegationBridge.nothingToReadBack, .speakable)? = none.first else {
+            return XCTFail("\(none)")
+        }
+
+        _ = await bridge.handleDelegation(id: "del_1", request: "check the server")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "**All good.** Uptime 9 days.", reasoning: nil))
+        _ = bridge.pendingUpdates()
+        // Handed back unsent (the session was replaced): not read as heard.
+        bridge.replyUndelivered(delegationID: "del_1")
+        let unsent = await supervisor.readBackText()
+        XCTAssertNil(unsent)
+        _ = bridge.pendingUpdates()
+        bridge.contextDelivered(jobID: supervisor.jobs.first?.id)
+
+        let read = await bridge.handleDelegation(id: "del_2", request: "Read back: the server check")
+        guard read.count == 2,
+              case .sessionContext(let text, .commentary, true, nil) = read[0],
+              case .delegationReply("del_2", GPTLiveDelegationBridge.readBackCue, .speakable) = read[1] else {
+            return XCTFail("\(read)")
+        }
+        XCTAssertTrue(text.contains("All good. Uptime 9 days."), text)
+        XCTAssertTrue(bridge.answersReadBack("del_2"))
+        XCTAssertEqual(fake.created, 1, "a read-back asks Hermes nothing")
+    }
+
+    func testGPTLiveUsersOwnWordsKeepAnUnmarkedReadBackOutOfHermes() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall()
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        _ = await bridge.handleDelegation(id: "del_1", request: "check the server")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All good.", reasoning: nil))
+        _ = bridge.pendingUpdates()
+        bridge.replyDelivered(delegationID: "del_1")
+
+        // The model paraphrased; the user's own words say it's a read-back.
+        let read = await bridge.handleDelegation(id: "del_2", request: "Give the user Hermes' full previous answer", userWords: "Can you repeat exactly what you said?")
+        guard case .sessionContext(let text, .commentary, true, nil)? = read.first else { return XCTFail("\(read)") }
+        XCTAssertTrue(text.contains("All good."))
+        XCTAssertEqual(fake.created, 1)
+    }
+
+    func testAnAttachedReadBackReadsTheResultTheCallHeardLast() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        fake.threadReply = "Summary."
+
+        // A background job's result went out last: that's what is read again.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "check the server in the background"]))
+        XCTAssertEqual(fake.created, 1)
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Server is fine.", reasoning: nil))
+        _ = bridge.pendingUpdates()
+        bridge.outcomeSent(jobID: supervisor.jobs.first { !$0.isThreadTurn }?.id)
+        let heard = await supervisor.readBackText()
+        XCTAssertEqual(heard, "Server is fine.")
+
+        // The chat replies after it: a read-back reads the chat again.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "ask_thread", arguments: ["request": "summarize"]))
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Summary.", reasoning: nil))
+        _ = bridge.pendingUpdates()
+        bridge.outcomeSent(jobID: supervisor.jobs.first { $0.isThreadTurn }?.id)
+        let chat = await supervisor.readBackText()
+        XCTAssertEqual(chat, "Summary.")
+
+        // A typed exchange in the chat after a job result counts too.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "check the disk in the background"]))
+        XCTAssertEqual(fake.created, 2)
+        supervisor.observe(.messageComplete(sessionId: "rt-2", messageId: nil, content: "Disk is fine.", reasoning: nil))
+        _ = bridge.pendingUpdates()
+        bridge.outcomeSent(jobID: supervisor.jobs.last { !$0.isThreadTurn }?.id)
+        let disk = await supervisor.readBackText()
+        XCTAssertEqual(disk, "Disk is fine.")
+        fake.threadPrompt = "what's left on the release?"
+        fake.threadReply = "Two PRs."
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Two PRs.", reasoning: nil))
+        let typed = await supervisor.readBackText()
+        XCTAssertEqual(typed, "Two PRs.")
+
+        // A very long chat reply is cut before it is flattened for speech.
+        fake.threadReply = String(repeating: "word ", count: 10_000)
+        let long = await supervisor.readBackText()
+        XCTAssertEqual(long?.count, VoiceBackgroundJobSupervisor.readBackSourceLimit)
+    }
+
+    func testAReadBackAfterAFailedJobReadsTheFailureNotAnOlderResult() async {
+        let (supervisor, _) = makeSupervisor()
+        supervisor.beginLiveCall()
+        _ = await supervisor.startJob(instructions: "check the server")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Server is fine.", reasoning: nil))
+        XCTAssertNotNil(supervisor.takePendingNotice())
+        let heard = await supervisor.readBackText()
+        XCTAssertEqual(heard, "Server is fine.")
+
+        _ = await supervisor.startJob(instructions: "check the disk")
+        supervisor.observe(.messageError(sessionId: "rt-2", message: "Provider error"))
+        XCTAssertNotNil(supervisor.takePendingNotice())
+        let title = supervisor.jobs.first { $0.runtimeSessionID == "rt-2" }?.title ?? ""
+        let failed = await supervisor.readBackText()
+        XCTAssertEqual(failed, VoiceBackgroundJobSupervisor.failedNotice(title), "the newest notice the call heard")
+    }
+
+    func testReadBackMarkerAndRules() {
+        XCTAssertTrue(GPTLiveDelegationBridge.isReadBackMarker("Read back: the last reply"))
+        XCTAssertTrue(GPTLiveDelegationBridge.isReadBackMarker(" read-back:"))
+        XCTAssertFalse(GPTLiveDelegationBridge.isReadBackMarker("read back the email from Sam"))
+        XCTAssertTrue(GPTLiveConversationController.briefing().contains("\"Read back:\""))
+        for length in LiveVoiceAnswerLength.allCases {
+            XCTAssertTrue(length.instructions.contains("except a read-back"), "\(length)")
+        }
     }
 }
 

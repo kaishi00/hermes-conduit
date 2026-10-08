@@ -1,6 +1,38 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "a link" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンク"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一个链接"
+          }
+        }
+      }
+    },
+    "(There's code here; it's in the chat.)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（ここにコードがあります。チャットで確認してください。）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（这里有代码，请在聊天中查看。）"
+          }
+        }
+      }
+    },
     "Ask before sending to Hermes" : {
       "localizations" : {
         "ja" : {

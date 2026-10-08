@@ -65,6 +65,11 @@ final class GPTLiveConversationController: ObservableObject {
         case failed(String)
     }
 
+    /// Read-backs (#451): the phone's delegation bridge answers "Read back:"
+    /// itself, so a Watch call (whose delegations go to the relay) leaves
+    /// it out like the follow-ups below.
+    static let phoneReadBack = "When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory or in your own words: delegate \"Read back:\". Conduit gives you the reply, then tells you to read it: read it word for word, all of it, once."
+
     /// Job corrections ("Job 2: …", #455) and asking first (#451): the
     /// phone's delegation bridge handles both. A Watch call's delegations go
     /// straight to the relay, which has neither, so the Watch leaves them out.
@@ -78,7 +83,7 @@ final class GPTLiveConversationController: ObservableObject {
         var text = """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through the Conduit iPhone app. This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
-        Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.
+        Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? "" : "\n" + phoneReadBack)
         Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number.\(onWatch ? "" : " " + phoneFollowUps)
         Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.
         When the user says goodbye, say a short goodbye.]
@@ -557,9 +562,11 @@ final class GPTLiveConversationController: ObservableObject {
                 let outgoing = await self.bridge.userAskedForLastReply()
                 guard self.isActive, self.endRequestedAt == nil else { return }
                 for case .sessionContext(let text, let channel, _, _) in outgoing {
-                    // Not ready yet: asking again must still be heard.
+                    // Not ready yet: asking again must still be heard, and
+                    // the cue never goes without the reply it reads.
                     if self.session?.appendContext(text, channel: channel, delegationID: nil) != true {
                         self.bridge.readBackNotDelivered()
+                        break
                     }
                 }
             }
@@ -668,7 +675,7 @@ final class GPTLiveConversationController: ObservableObject {
         while !pendingContext.isEmpty, endRequestedAt == nil, isConversationIdle, let session {
             let item = pendingContext.removeFirst()
             var text = item.text
-            if let delegationID = item.delegationID, userSpokeAfterAsking(delegationID) {
+            if let delegationID = item.delegationID, userSpokeAfterAsking(delegationID), !bridge.answersReadBack(delegationID) {
                 text = Self.resultAfterUserNote + text
             }
             guard session.appendContext(text, channel: item.channel, delegationID: item.delegationID) else {

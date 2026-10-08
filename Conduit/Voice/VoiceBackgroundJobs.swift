@@ -334,6 +334,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     static let maximumActiveJobs = 3
     /// Upper bound on the finished-job text handed to the voice session.
     static let maximumResultCharacters = 6_000
+    /// Upper bound on the raw text a read-back flattens for speech: a few
+    /// times what it can say, since flattening only shrinks it.
+    static let readBackSourceLimit = maximumResultCharacters * 4
     static let maximumTitleCharacters = 60
     /// Settled, already-announced jobs kept for the Voice sheet and status.
     static let maximumSettledJobs = 10
@@ -442,6 +445,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     deinit {
         pollTask?.cancel()
         threadTask?.cancel()
+        for task in followUpsInFlight.values { task.cancel() }
     }
 
     /// A new live call begins: jobs started from now on are its own.
@@ -452,6 +456,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         chatNotes.removeAll { $0.text == Self.askFirstOnPrompt || $0.text == Self.askFirstOffPrompt }
         // Only the running call's cards are ever shown.
         screenCards.removeAll()
+        // A read-back reads only this call's results.
+        lastCallResult = nil
     }
 
     /// Switches asking first for the running call. `byModel`: the live model
@@ -884,6 +890,54 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         pruneSettledJobs()
     }
 
+    /// What a read-back reads (#451): the newest result the call reported,
+    /// a background job's or, in a call attached to a chat, the chat's
+    /// latest reply.
+    func readBackText() async -> String? {
+        if let lastCallResult, lastCallResult.callID == liveCallID { return lastCallResult.text }
+        guard liveThread != nil, let reply = await lastThreadReply() else { return nil }
+        return String(reply.prefix(Self.readBackSourceLimit))
+    }
+
+    /// The newest background job result handed to the running call, while
+    /// no chat reply (a voice or typed turn) came after it.
+    private var lastCallResult: (callID: UUID, text: String)?
+
+    /// A job's notice reached the running call: what it said (a finished
+    /// job's result, or that it finished, failed, was cancelled or waits on
+    /// the user) is what "read that again" means until the chat replies
+    /// after it. A reply to the user's own command (a start or a cancel) is
+    /// the model's answer in that exchange, which it repeats itself.
+    /// Only once it went out, so a notice handed back unsent is never read
+    /// as heard. Kept to the read-back source limit.
+    private func noteResultReported(_ job: VoiceBackgroundJob) {
+        guard let callID = liveCallID else { return }
+        if job.isThreadTurn {
+            // The chat replied since: a read-back reads the chat again.
+            if job.outcomeDelivered, job.status == .finished { lastCallResult = nil }
+            return
+        }
+        let heard: String
+        switch job.status {
+        case .finished:
+            guard job.outcomeDelivered else { return }
+            let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            heard = result.isEmpty ? Self.finishedNotice(job.title) : result
+        case .failed:
+            guard job.outcomeDelivered else { return }
+            heard = Self.failedNotice(job.title)
+        case .cancelled:
+            guard job.outcomeDelivered else { return }
+            heard = Self.cancelledNotice(job.title)
+        case .needsInput:
+            guard job.inputRequestDelivered else { return }
+            heard = Self.waitingNotice(job.title)
+        case .starting, .running:
+            return
+        }
+        lastCallResult = (callID, String(heard.prefix(Self.readBackSourceLimit)))
+    }
+
     /// The attached chat's latest reply, read without starting a turn.
     func lastThreadReply() async -> String? {
         guard let asked = liveThread else { return nil }
@@ -1206,6 +1260,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         jobs.removeAll()
         lastJobNumber = 0
         asksBeforeSending = false
+        lastCallResult = nil
         // Their generation no longer matches: cancelled, they stop at once.
         for task in followUpsInFlight.values { task.cancel() }
         followUpsInFlight.removeAll()
@@ -1344,6 +1399,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // A voice request's own text is never passed off as typed.
         var prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let typed = prompt, typed.isEmpty || typed.hasPrefix(Self.threadTurnText(for: "")) { prompt = nil }
+        // The chat replied after any job result: a read-back reads the chat.
+        lastCallResult = nil
         queueChatNote(ChatNote(text: Self.chatContextPrompt(typed: prompt, reply: reply)))
     }
 
@@ -1467,7 +1524,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     func takePendingNotice() -> VoiceBackgroundJobNotice? {
         defer { pruneSettledJobs() }
-        return takeNotice()?.notice
+        guard let item = takeNotice() else { return nil }
+        // Spoken at once: no confirmation follows.
+        if let job = job(item.jobID) { noteResultReported(job) }
+        return item.notice
     }
 
     /// `takePendingNotice` plus the job it came from, for a channel that
@@ -1510,6 +1570,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A notice taken with `takePendingNoticeForJob` went out.
     func noticeSent(jobID: UUID) {
         guard releaseInFlight(jobID) else { return }
+        if let job = job(jobID) { noteResultReported(job) }
         pruneSettledJobs()
     }
 
@@ -1520,13 +1581,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if job.isThreadTurn, job.outcomeDelivered || job.isDetachedThreadTurn || liveThread == nil { continue }
             if job.status == .needsInput, !job.inputRequestDelivered {
                 jobs[index].inputRequestDelivered = true
-                return (.speak(AppLocalization.string("\(job.title) is waiting for your approval or an answer. Open it in Conduit to respond.")), job.id)
+                return (.speak(Self.waitingNotice(job.title)), job.id)
             }
             guard !job.status.isActive, !job.outcomeDelivered else { continue }
             jobs[index].outcomeDelivered = true
             switch job.status {
             case .finished:
-                let openChat = AppLocalization.string("\(job.title) has finished. Open it in Conduit to read the result.")
+                let openChat = Self.finishedNotice(job.title)
                 guard let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !result.isEmpty else {
                     return (.speak(openChat), job.id)
@@ -1535,14 +1596,30 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             case .failed(let message):
                 // A chat turn's reason says what Hermes did with the request.
                 if job.isThreadTurn, !message.isEmpty { return (.speak(message), job.id) }
-                return (.speak(AppLocalization.string("\(job.title) failed. Open it in Conduit for details.")), job.id)
+                return (.speak(Self.failedNotice(job.title)), job.id)
             case .cancelled:
-                return (.speak(AppLocalization.string("\(job.title) was cancelled.")), job.id)
+                return (.speak(Self.cancelledNotice(job.title)), job.id)
             case .starting, .running, .needsInput:
                 continue
             }
         }
         return nil
+    }
+
+    static func finishedNotice(_ title: String) -> String {
+        AppLocalization.string("\(title) has finished. Open it in Conduit to read the result.")
+    }
+
+    static func waitingNotice(_ title: String) -> String {
+        AppLocalization.string("\(title) is waiting for your approval or an answer. Open it in Conduit to respond.")
+    }
+
+    static func failedNotice(_ title: String) -> String {
+        AppLocalization.string("\(title) failed. Open it in Conduit for details.")
+    }
+
+    static func cancelledNotice(_ title: String) -> String {
+        AppLocalization.string("\(title) was cancelled.")
     }
 
     /// A notice taken with `takePendingNoticeForJob` never reached the user:
@@ -1874,9 +1951,11 @@ enum VoiceThreadRouting {
     static let quickWords = ["quick", "quickly"]
 
     /// "Send it to Hermes" (#451): the user already said where it goes, so
-    /// asking first doesn't ask again. Never when the same clause says not
-    /// to ("don't just send it to Hermes"). Spaces are optional: transcript
-    /// pieces can lose the one between them ("send itto Hermes").
+    /// asking first doesn't ask again. Never when the words before it in
+    /// its clause say not to ("don't just send it to Hermes") or only ask or
+    /// wonder about it ("did you send it to Hermes?", "should I send it to
+    /// Hermes?"). Spaces are optional: transcript pieces can lose the one
+    /// between them ("send itto Hermes").
     static func saysSendToHermes(_ words: String) -> Bool {
         let folded = fold(words)
         let pattern = #"\bsend\s*(it|this|that|this one|that one)?\s*(straight|right|over|directly)?\s*to\s*hermes\b"#
@@ -1885,16 +1964,21 @@ enum VoiceThreadRouting {
             let clause = folded[..<match.lowerBound]
                 .split(omittingEmptySubsequences: false, whereSeparator: { ",.;:!?".contains($0) })
                 .last ?? ""
-            let negated = clause.split(whereSeparator: \.isWhitespace).contains { sendNegations.contains(String($0)) }
-            if !negated { return true }
+            let vetoed = clause.split(whereSeparator: \.isWhitespace).contains { sendVetoes.contains(String($0)) }
+            if !vetoed { return true }
             searchStart = match.upperBound
         }
         return false
     }
 
-    /// Words that turn "send it to Hermes" around in its clause.
-    static let sendNegations: Set<String> = [
+    /// Words before "send it to Hermes" in its clause that make it
+    /// something other than an instruction: a negation, a question about
+    /// it, a condition, a reminder or an alternative ("rather than send it
+    /// to Hermes"). A miss only means the user is asked.
+    static let sendVetoes: Set<String> = [
         "don't", "dont", "not", "never", "no", "stop", "without", "before", "won't", "can't", "cannot", "shouldn't", "didn't",
+        "did", "when", "whether", "if", "what", "why", "how", "where", "who", "should", "shall",
+        "has", "have", "was", "were", "remind", "rather", "than", "instead",
     ]
 
     static func wantsBackgroundJob(_ request: String) -> Bool {
