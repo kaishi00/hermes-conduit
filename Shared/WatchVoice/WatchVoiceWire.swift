@@ -107,6 +107,20 @@ enum WatchVoiceWire {
         var voice: String?
     }
 
+    /// Everything a Watch call to Grok needs, built on the iPhone. The
+    /// Watch runs the conversation as it runs Gemini's (the same setup,
+    /// functions and tools), but xAI's session is held by the Hermes host,
+    /// on its xAI sign-in, and reached through the grant's audio bridge.
+    struct GrokSession: Codable, Equatable {
+        /// `DirectSetup` as zlib-compressed JSON.
+        var setup: Data
+        var setupBytes: Int
+        var voice: String?
+        var openingPrompt: String?
+        /// Opens the audio bridge, and carries the call's lookups and jobs.
+        var grant: DirectToolGrant
+    }
+
     /// The setup's long part. Function declarations travel as their JSON:
     /// their parameter schemas aren't Codable.
     struct DirectSetup: Codable, Equatable {
@@ -176,10 +190,32 @@ enum WatchVoiceWire {
             var total = 0
             for turn in turns.reversed() {
                 total += turn.text.utf8.count
-                if total > bytes { break }
+                if total > bytes {
+                    // A newest turn too long on its own keeps its opening,
+                    // so a call is never saved empty.
+                    if kept.isEmpty {
+                        var clipped = turn
+                        clipped.text = clippedPrefix(turn.text, bytes: bytes)
+                        if !clipped.text.isEmpty { kept.append(clipped) }
+                    }
+                    break
+                }
                 kept.append(turn)
             }
             return kept.reversed()
+        }
+
+        /// The longest whole-character opening of `text` within `bytes` of UTF-8.
+        static func clippedPrefix(_ text: String, bytes: Int) -> String {
+            var used = 0
+            var end = text.startIndex
+            for index in text.indices {
+                let size = text[index].utf8.count
+                if used + size > bytes { break }
+                used += size
+                end = text.index(after: index)
+            }
+            return String(text[..<end])
         }
     }
 
@@ -208,6 +244,9 @@ enum WatchVoiceWire {
         /// A Watch call through the host's audio bridge (GPT-Live) wants
         /// its grant and briefing.
         case bridgeStart(callID: UInt32, version: Int, engine: String)
+        /// A Watch call to Grok wants its setup and the grant that opens
+        /// the host's audio bridge.
+        case grokStart(callID: UInt32, version: Int)
         // iPhone → Watch
         /// Why the iPhone can't serve the call, as the Watch shows it.
         case callRefused(callID: UInt32, reason: String)
@@ -221,6 +260,8 @@ enum WatchVoiceWire {
         case directGrantIssued(callID: UInt32, grant: DirectToolGrant)
         /// The answer to `bridgeStart`; a refusal comes as `callRefused`.
         case bridgeSession(callID: UInt32, session: BridgeSession)
+        /// The answer to `grokStart`; a refusal comes as `callRefused`.
+        case grokSession(callID: UInt32, session: GrokSession)
     }
 
     static func encode(_ message: Message) -> [String: Any] {

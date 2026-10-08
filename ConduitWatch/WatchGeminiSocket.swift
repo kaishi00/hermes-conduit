@@ -16,6 +16,8 @@ import Network
 
 enum WatchSocketAPI: String {
     case urlSession
+    /// A Grok call's connection through the grant's audio bridge.
+    case grokBridge
 }
 
 /// Makes each connection's socket and counts what went through them.

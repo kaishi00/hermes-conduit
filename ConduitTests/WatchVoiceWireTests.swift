@@ -665,9 +665,12 @@ extension HermesVoiceGatewayTimeoutTests {
             WatchVoiceWire.DirectTurn(role: .user, text: "What did it find?", at: at),
         ], after: .froze)
         XCTAssertTrue(froze.hasPrefix("[Your last session stopped responding"), froze)
-        XCTAssertTrue(froze.contains("<conversation>\nYou: Done.\nUser: What did it find?\n</conversation>\nThe user only heard a pause: don't mention a reconnection or say you're back. If their last words need an answer, give it now."), froze)
+        XCTAssertTrue(froze.contains("<conversation>\nYou: Done.\nUser: What did it find?\n</conversation>\nAnything the user said during the pause wasn't heard. The user only heard a pause: don't mention a reconnection or say you're back. If their last words need an answer, give it now."), froze)
         XCTAssertFalse(froze.contains("Say in a few words"))
-        XCTAssertEqual(WatchRejoin.prompt([], after: .froze), WatchRejoin.prompt([]))
+        let frozeEmpty = WatchRejoin.prompt([], after: .froze)
+        XCTAssertTrue(frozeEmpty.hasPrefix("[Your last session stopped responding"), frozeEmpty)
+        XCTAssertFalse(frozeEmpty.contains("Say in a few words"), "an empty record after a freeze still doesn't say it's back")
+        XCTAssertTrue(WatchRejoin.prompt([]).contains("Say in a few words that you're back"))
 
         // A long call keeps its newest lines whole, within the limit.
         let lines = (0..<100).map { WatchVoiceWire.DirectTurn(role: .user, text: "line \($0) " + String(repeating: "x", count: 90), at: at) }
@@ -713,6 +716,7 @@ extension HermesVoiceGatewayTimeoutTests {
             WatchStall.prompt(lastUserLine: " What did the \"job\" find? "),
             "[The user spoke and got no reply from you. Their last words, as transcribed: \"What did the 'job' find?\". If they need an answer, give it now. If they don't, stay silent.]"
         )
+        XCTAssertTrue(WatchStall.prompt(lastUserLine: "say [done] now").contains("\"say (done) now\""), "brackets can't close the note early")
         let long = WatchStall.prompt(lastUserLine: "first " + String(repeating: "z", count: 400))
         XCTAssertFalse(long.contains("first"))
         XCTAssertTrue(long.contains("\"" + String(repeating: "z", count: WatchStall.quotedCharacters) + "\""))
@@ -998,7 +1002,39 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(WatchVoiceWire.DirectTranscript.capped([], bytes: 10).isEmpty)
         // Counted in UTF-8 bytes: ten Japanese characters are thirty bytes.
         let japanese = [WatchVoiceWire.DirectTurn(role: .user, text: String(repeating: "あ", count: 10), at: at)]
-        XCTAssertTrue(WatchVoiceWire.DirectTranscript.capped(japanese, bytes: 25).isEmpty)
+        XCTAssertEqual(WatchVoiceWire.DirectTranscript.capped(japanese, bytes: 25).map(\.text), [String(repeating: "あ", count: 8)],
+                       "a newest turn too long on its own keeps its opening, cut on a whole character")
         XCTAssertEqual(WatchVoiceWire.DirectTranscript.capped(japanese, bytes: 30).count, 1)
+        XCTAssertTrue(WatchVoiceWire.DirectTranscript.capped(japanese, bytes: 2).isEmpty)
+    }
+}
+
+// MARK: Grok on the Watch
+
+extension HermesVoiceGatewayTimeoutTests {
+    func testWatchGrokMessagesRoundTripThroughTheMessageDictionary() throws {
+        var grant = Self.watchToolGrant
+        grant.audio = .init(url: "wss://relay.example.test/v1/watch-audio/grant/watch", version: 1, engines: [WatchAudioBridgeWire.grok])
+        let setup = WatchVoiceWire.DirectSetup(systemInstruction: "Be brief.", functions: [GeminiLiveProtocol.FunctionDeclaration]())
+        let packed = try XCTUnwrap(setup.compressed())
+        let messages: [WatchVoiceWire.Message] = [
+            .grokStart(callID: 9, version: WatchVoiceWire.version),
+            .grokSession(callID: 9, session: .init(setup: packed.data, setupBytes: packed.bytes, voice: "Ara", openingPrompt: nil, grant: grant)),
+        ]
+        for message in messages {
+            XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(message)), message)
+        }
+        XCTAssertEqual(VoiceCallEngine.watchBridge(WatchAudioBridgeWire.grok), .grokLive)
+    }
+
+    /// The host takes xAI's audio deltas out to pace them; the Watch's
+    /// bridge socket gives them back to GrokLiveSession in xAI's shape.
+    func testGrokReadsTheWatchBridgesAudioAsXAISentIt() throws {
+        let pcm = Data([1, 0, 2, 0, 3, 0])
+        let event: [String: Any] = ["type": "response.output_audio.delta", "delta": pcm.base64EncodedString()]
+        let frames = GrokLiveProtocol.decode(try JSONSerialization.data(withJSONObject: event))
+        XCTAssertEqual(frames, [.event(.audio(pcm, sampleRate: GrokLiveProtocol.outputSampleRate))])
+        XCTAssertEqual(Int(GrokLiveProtocol.inputSampleRate), 24_000)
+        XCTAssertEqual(Int(GrokLiveProtocol.outputSampleRate), 24_000)
     }
 }
