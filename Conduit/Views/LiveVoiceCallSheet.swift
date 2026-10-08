@@ -437,11 +437,12 @@ private struct LiveVoiceAskFirstButton: View {
 
     private func showCaption(for on: Bool) {
         captionTask?.cancel()
-        withAnimation(.easeOut(duration: 0.2)) {
-            caption = on
-                ? AppLocalization.string("Asking before sending to Hermes")
-                : AppLocalization.string("Sending straight to Hermes")
-        }
+        let text = on
+            ? AppLocalization.string("Asking before sending to Hermes")
+            : AppLocalization.string("Sending straight to Hermes")
+        withAnimation(.easeOut(duration: 0.2)) { caption = text }
+        // The caption itself is hidden from VoiceOver: said once instead.
+        AccessibilityNotification.Announcement(text).post()
         captionTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled else { return }

@@ -1990,6 +1990,9 @@ enum VoiceThreadRouting {
             return true
         }
 
+        /// Just a yes, with nothing more.
+        var isBareYes: Bool { self == .yes(addition: nil) }
+
         /// A bare yes, no or "wait": nothing to send.
         var isBare: Bool {
             switch self {
@@ -2055,6 +2058,8 @@ enum VoiceThreadRouting {
         }
         // "No, I don't want that": a negation in what follows is still the no.
         func change(_ rest: [String]) -> String? { negates(rest) ? nil : more(rest) }
+        // "Oh yes", "Well, no", "Actually, go ahead".
+        while dropLead(answerJoiners) {}
         if dropLead(answerNoLeads) { return .no(change: change(words)) }
         if dropLead(answerNotYetLeads) { return .notYet(change: change(words)) }
         guard dropLead(answerYesLeads) else {

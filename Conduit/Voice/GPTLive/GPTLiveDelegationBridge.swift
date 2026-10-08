@@ -180,8 +180,9 @@ final class GPTLiveDelegationBridge {
             return [.delegationReply(delegationID: id, text: Self.relay("Nothing is waiting to be sent to Hermes. Ask the user what they want done."), channel: .speakable)]
         }
         // The same yes delegated again, right after it sent the request
-        // (its words may not be in the transcript yet).
-        if sentRecently, ownText.isEmpty, spoken.isEmpty || VoiceThreadRouting.heldRequestAnswer(spoken).isBare {
+        // (its words may not be in the transcript yet). A "cancel that" or
+        // "wait" goes on as a correction.
+        if sentRecently, ownText.isEmpty, (spoken.isEmpty ? answerShape : VoiceThreadRouting.heldRequestAnswer(spoken)).isBareYes {
             return [.delegationReply(delegationID: id, text: Self.alreadySent, channel: .commentary)]
         }
         if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(routingWords) {

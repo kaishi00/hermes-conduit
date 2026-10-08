@@ -2196,6 +2196,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, what's the weather in Rome?"), .other("Okay, what's the weather in Rome?"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Why not"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yeah, but actually no"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Oh yes"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Well, sure"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Actually, go ahead"), .yes(addition: nil))
         // A no with a negation after it is still just a no, not a change.
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, don't bother"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, I don't want that"), .no(change: nil))
@@ -2361,6 +2364,15 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 2)
         XCTAssertEqual(fake.redirects.count, 1, "job 1 is left alone")
         XCTAssertTrue(fake.submissions.last?.1.contains("check the news") == true, fake.submissions.last?.1 ?? "")
+
+        // "Cancel that" right after a send is a correction, not the yes again.
+        let (_, quickFake, quick) = makeAskingFirstBridge()
+        _ = await quick.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        _ = await quick.handleDelegation(id: "del_2", request: "Send:", userWords: "yes")
+        XCTAssertEqual(quickFake.created, 1)
+        let cancel = await quick.handleDelegation(id: "del_3", request: "cancel that", userWords: "cancel that")
+        guard case .delegationReply("del_3", let cancelText, _)? = cancel.first else { return XCTFail("\(cancel)") }
+        XCTAssertTrue(cancelText.hasPrefix(GPTLiveDelegationBridge.heldPrefix), "held for job 1: \(cancelText)")
     }
 
     /// GPT-Live's text for a delegation can be the user's answer itself
