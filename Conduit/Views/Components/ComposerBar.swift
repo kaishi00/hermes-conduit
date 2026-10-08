@@ -594,6 +594,13 @@ struct ComposerBar: View {
 
     /// Attach, model and session status on the left; dictate and the
     /// voice/send slot on the right, like the Codex composer (#335).
+    /// The round controls match the context ring, leaving the model chip
+    /// more width (#466).
+    static let controlSize: CGFloat = 32
+    /// Taps land a little outside each control. Half the row spacing, so
+    /// neighbours never overlap.
+    static var controlHitShape: some Shape { Rectangle().inset(by: -4) }
+
     private var controlsRow: some View {
         HStack(spacing: 8) {
             attachmentButton
@@ -609,8 +616,8 @@ struct ComposerBar: View {
                 appState.showContextSheet = true
             } label: {
                 ContextRingView(percent: appState.runtime.contextPercent)
-                    .frame(width: 32, height: 32)
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(width: Self.controlSize, height: Self.controlSize)
+                    .contentShape(Self.controlHitShape)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Context usage, \(Int(appState.runtime.contextPercent.rounded())) percent")
@@ -881,11 +888,12 @@ struct ComposerBar: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 20, weight: .medium))
-                .frame(width: 44, height: 44)
+                .font(.system(size: 16, weight: .medium))
+                .frame(width: Self.controlSize, height: Self.controlSize)
+                .contentShape(Self.controlHitShape)
         }
         .disabled(!appState.composerIsEnabled || appState.isBusy)
-        .conduitGlassControl(cornerRadius: 22, tint: .conduitAccent.opacity(0.08))
+        .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
         .photosPicker(
             isPresented: $showAttachmentMenu,
             selection: $photoItems,
@@ -946,7 +954,7 @@ struct ComposerBar: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: actionSymbol)
-                    .font(.system(size: stopOnly ? 14 : 17, weight: .semibold))
+                    .font(.system(size: stopOnly ? 12 : 14, weight: .semibold))
                     .contentTransition(.symbolEffect(.replace))
                 if let actionTitle {
                     Text(actionTitle)
@@ -955,13 +963,14 @@ struct ComposerBar: View {
                 }
             }
             .foregroundStyle(action == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
-            .frame(minWidth: actionTitle == nil ? 44 : 94, minHeight: 44)
+            .frame(minWidth: actionTitle == nil ? Self.controlSize : 86, minHeight: Self.controlSize)
             .padding(.horizontal, actionTitle == nil ? 0 : 4)
+            .contentShape(Self.controlHitShape)
             .animation(ConduitMotion.transition, value: action)
         }
         .disabled(action == .unavailable)
         .conduitGlassControl(
-            cornerRadius: 22,
+            cornerRadius: Self.controlSize / 2,
             tint: actionSurfaceTint,
             prominent: action == .send,
             interactive: action != .unavailable
@@ -1152,14 +1161,12 @@ struct ComposerBar: View {
             }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
-            .frame(width: 36, height: 36)
+            .frame(width: Self.controlSize, height: Self.controlSize)
+            .contentShape(Self.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(appState.isPreparingVoiceResume || appState.isBusy)
-        .conduitGlassControl(cornerRadius: 18, tint: .conduitAura.opacity(0.14), interactive: true)
-        // A 44pt target around the smaller glass chip.
-        .frame(minWidth: 44, minHeight: 44)
-        .contentShape(Rectangle())
+        .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAura.opacity(0.14), interactive: true)
         .accessibilityLabel(AppLocalization.string("Resume call"))
         .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
     }
@@ -1172,15 +1179,15 @@ struct ComposerBar: View {
             openVoiceFromComposer()
         } label: {
             Image(systemName: appState.canStartPhoneVoiceConversation ? "waveform" : "waveform.slash")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(canOpenVoice ? Color.accentColor : Color.secondary)
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
+                .frame(width: Self.controlSize, height: Self.controlSize)
+                .contentShape(Self.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(!canOpenVoice)
         .conduitGlassControl(
-            cornerRadius: 22,
+            cornerRadius: Self.controlSize / 2,
             tint: appState.canStartPhoneVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06),
             interactive: canOpenVoice
         )
@@ -1210,19 +1217,19 @@ struct ComposerBar: View {
             }
         } label: {
             Image(systemName: isCapturing ? "mic.fill" : "mic")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(isCapturing ? Color.red : (canDictate ? Color.primary : Color.secondary))
                 // Pulses from the tap, so a start still waiting on
                 // permission or the microphone shows it's in flight.
                 .symbolEffect(.pulse, isActive: isActive && !reduceMotion)
                 .contentTransition(.symbolEffect(.replace))
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
+                .frame(width: Self.controlSize, height: Self.controlSize)
+                .contentShape(Self.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(!canDictate && !isActive)
         .conduitGlassControl(
-            cornerRadius: 22,
+            cornerRadius: Self.controlSize / 2,
             tint: isCapturing ? .red.opacity(0.16) : .primary.opacity(0.025),
             interactive: canDictate || isActive
         )
