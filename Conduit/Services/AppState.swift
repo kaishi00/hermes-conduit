@@ -23911,6 +23911,85 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// What a Watch call to Grok starts with: the setup this profile's
+    /// Grok Live call gets on the phone. Unlike Gemini there's no token:
+    /// the Hermes host holds xAI's session, on its own xAI sign-in, and the
+    /// Watch reaches it through the call grant's audio bridge.
+    struct WatchGrokPlan {
+        let systemInstruction: String
+        let functions: [GeminiLiveProtocol.FunctionDeclaration]
+        let voice: String?
+        let openingPrompt: String?
+        let connection: WatchDirectConnection
+        let saveCalls: Bool
+        let memoryIncluded: Bool
+        let personalityIncluded: Bool
+        let jobOptions: [String: String]
+    }
+
+    /// Builds a Watch Grok call's setup as `grokLiveController` builds the
+    /// phone's: the same availability check, search, memory and persona
+    /// lookups, instructions, functions and voice. The call has no attached
+    /// chat and no resume context.
+    func prepareWatchGrokCall() async throws -> WatchGrokPlan {
+        if isSceneActive, !PhoneScenePresence.isInForeground {
+            isSceneActive = false
+            publishVoiceRuntimeGates()
+        }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
+        let connection = watchDirectConnection
+        let hostContext = geminiLiveTokenClient
+        let wantsMemory = grokLiveMemoryEnabled
+        let wantsPersonality = grokLivePersonalityEnabled
+        async let searchLookup = hostContext.webSearchAvailable()
+        async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
+        async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
+        let status = try await grokLiveClient.availability()
+        guard case .available(_, let voice, _) = status else {
+            throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
+        }
+        let search: GeminiLiveSearchSource = await searchLookup ? .hermes : .none
+        let memory = await memoryLookup
+        let personality = await personalityLookup
+        let style = liveVoiceStyle
+        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+            runtimeModel: runtime.model,
+            runtimeProvider: runtime.provider
+        )
+        var jobOptions: [String: String] = [:]
+        if let model = jobSession.model {
+            jobOptions["model"] = model
+            if let provider = jobSession.provider { jobOptions["provider"] = provider }
+        }
+        if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
+        guard watchDirectConnection == connection else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+        }
+        return WatchGrokPlan(
+            systemInstruction: GeminiLiveConversationController.instructions(
+                search: search,
+                memory: memory,
+                personality: personality,
+                answerLength: style.answerLength,
+                asksFirst: false
+            ) + style.instructions,
+            functions: GeminiLiveToolBridge.watchDeclarations(
+                webSearch: search == .hermes,
+                memoryRecall: memory?.canRecall == true
+            ),
+            voice: voice,
+            openingPrompt: style.openingPrompt,
+            connection: connection,
+            saveCalls: voiceCallSavingEnabled,
+            memoryIncluded: memory != nil,
+            personalityIncluded: personality != nil,
+            jobOptions: jobOptions
+        )
+    }
+
     /// The connection a Watch call started now would belong to.
     var watchDirectConnection: WatchDirectConnection {
         WatchDirectConnection(profile: activeProfile, dashboard: activeDashboardID?.uuidString ?? "-")

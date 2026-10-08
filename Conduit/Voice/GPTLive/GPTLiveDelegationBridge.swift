@@ -99,7 +99,10 @@ final class GPTLiveDelegationBridge {
         // sends the request waiting for the user's OK, once they answered.
         if let asks = Self.modeMarker(in: instructions) {
             supervisor.setAsksBeforeSending(asks, byModel: true)
-            let text = asks
+            // A supervisor that can't hold requests (a Watch call) keeps sending at once.
+            let text = supervisor.asksBeforeSending != asks
+                ? "Asking first isn't available on this call: requests go to Hermes straight away."
+                : asks
                 ? "Asking first is on for this call: each new request waits for the user's OK."
                 : "Asking first is off for this call: new requests go to Hermes straight away."
             return [.delegationReply(delegationID: id, text: text, channel: .commentary)]

@@ -23,32 +23,6 @@ private let geminiLiveLogger = Logger(subsystem: "com.milim.relay", category: "G
 // MARK: - Seams
 
 @MainActor
-protocol GeminiLiveSessionControlling: AnyObject {
-    var onEvent: (@MainActor (GeminiLiveProtocol.ServerEvent) -> Void)? { get set }
-    var onStateChange: (@MainActor (GeminiLiveSession.State) -> Void)? { get set }
-    var onConnectionReplaced: (@MainActor () -> Void)? { get set }
-    var isReady: Bool { get }
-    /// Changes whenever a new connection takes over; calls made before
-    /// the change can't be answered after it.
-    var connectionGeneration: Int { get }
-    func start()
-    func stop()
-    /// `onSent` runs once the socket took the message; `onFailure` when it
-    /// never reached the socket.
-    func send(_ message: LiveVoiceClientMessage, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?)
-}
-
-extension GeminiLiveSessionControlling {
-    var connectionGeneration: Int { 0 }
-    func send(_ message: LiveVoiceClientMessage) { send(message, onSent: nil, onFailure: nil) }
-    func send(_ message: LiveVoiceClientMessage, onFailure: (@MainActor () -> Void)?) {
-        send(message, onSent: nil, onFailure: onFailure)
-    }
-}
-
-extension GeminiLiveSession: GeminiLiveSessionControlling {}
-
-@MainActor
 protocol GeminiLiveAudioInput: AnyObject {
     var onChunk: (@MainActor (Data) -> Void)? { get set }
     /// The system stopped capture (an audio interruption: a call, Siri…).

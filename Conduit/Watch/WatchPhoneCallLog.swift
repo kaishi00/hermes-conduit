@@ -53,6 +53,7 @@ final class WatchPhoneCallLog: ObservableObject {
     }
 
     func clear() {
+        bytesSinceTrim = 0
         try? FileManager.default.removeItem(at: fileURL)
         FileManager.default.createFile(atPath: fileURL.path, contents: nil)
     }

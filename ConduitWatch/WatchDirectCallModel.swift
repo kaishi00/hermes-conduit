@@ -26,6 +26,13 @@
 //  short echo tail after (the Watch can't cancel its own echo), and a tap
 //  stops Gemini.
 //
+//  A call to Grok runs here the same way, with the iPhone's own
+//  GrokLiveSession: the iPhone builds the same setup and runs the same
+//  tools, but xAI's session is held by the Hermes host on its own xAI
+//  sign-in, and the Watch reaches it through the call grant's audio bridge
+//  (WatchGrokBridgeSocket) instead of a token. xAI has no resumption: a
+//  dropped connection is a new session, told the conversation so far.
+//
 //  Logs what a support question needs: each step of the start, each
 //  reply's time from the end of the user's speech to audible speech,
 //  reconnects and GoAway handoffs, unanswered turns, tool calls, data both
@@ -139,6 +146,13 @@ final class WatchDirectCallModel: ObservableObject {
     /// After news, or an ask that failed.
     static let jobNewsRetry: TimeInterval = 2
 
+    /// Who the Watch talks to: Gemini Live straight from the Watch, or
+    /// Grok on the Hermes host through the call grant's audio bridge.
+    enum Engine: Equatable {
+        case gemini
+        case grok
+    }
+
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var caption: String?
     @Published private(set) var isMuted = false
@@ -151,7 +165,10 @@ final class WatchDirectCallModel: ObservableObject {
     private let link = WatchLink.shared
     private let audio = WatchAudio()
     private var meter = WatchSocketMeter()
-    private var session: GeminiLiveSession?
+    private var session: GeminiLiveSessionControlling?
+    private(set) var engine: Engine = .gemini
+    /// Grok's bridge streams opened on the call's grant, which takes 32.
+    private var grokStreams = 0
     private var tokens: WatchDirectTokens?
     private var openingPrompt: String?
     private var hasSentOpening = false
@@ -310,6 +327,9 @@ final class WatchDirectCallModel: ObservableObject {
     /// reached (WatchToolRelayClient). Nil without a grant, or once it
     /// ended; the iPhone's path then takes every call.
     private var toolRelay: WatchToolRelayClient?
+    /// A Grok session that fails this close to its grant's end doesn't
+    /// rejoin: the relay closes the bridge at the deadline anyway.
+    static let grantEndMargin: TimeInterval = 5
     private var hadToolGrant = false
     private var grantRequestInFlight = false
     private var lastGrantRequestAt: TimeInterval = 0
@@ -420,9 +440,10 @@ final class WatchDirectCallModel: ObservableObject {
 
     // MARK: Controls
 
-    func start() async {
+    func start(engine: Engine = .gemini) async {
         guard !isActive else { return }
         reset()
+        self.engine = engine
         phase = .preparing
         // Before the audio session, to see what activating it changes.
         startPathMonitor()
@@ -468,6 +489,7 @@ final class WatchDirectCallModel: ObservableObject {
             "audioSessionActivated": audioSessionActivated as Any,
             "audioMs": Int((now - callStartedAt) * 1000),
             "reachable": link.isReachable,
+            "engine": "\(engine)",
         ])
         timers = [
             WatchVoiceMain.timer(every: Self.flushInterval, repeats: true) { [weak self] _ in
@@ -566,10 +588,15 @@ final class WatchDirectCallModel: ObservableObject {
     private func requestSession() {
         sessionRequests += 1
         let id = callID
-        link.send(.directStart(callID: id, version: WatchVoiceWire.version), reply: { [weak self] answer in
+        let request: WatchVoiceWire.Message = engine == .grok
+            ? .grokStart(callID: id, version: WatchVoiceWire.version)
+            : .directStart(callID: id, version: WatchVoiceWire.version)
+        link.send(request, reply: { [weak self] answer in
             guard let self, self.callID == id, self.phase == .preparing else { return }
             switch answer {
-            case .directSession(_, let session)?:
+            case .directSession(_, let session)? where self.engine == .gemini:
+                self.begin(session)
+            case .grokSession(_, let session)? where self.engine == .grok:
                 self.begin(session)
             case .callRefused(_, let reason)?:
                 WatchCallLog.shared.note("directRefused", ["reason": reason])
@@ -657,6 +684,72 @@ final class WatchDirectCallModel: ObservableObject {
         session.start()
     }
 
+    /// A Grok call: the same setup and tools as Gemini's, xAI's session
+    /// on the Hermes host through the grant's audio bridge.
+    private func begin(_ grok: WatchVoiceWire.GrokSession) {
+        sessionAt = now
+        guard let setup = WatchVoiceWire.DirectSetup(compressed: grok.setup),
+              let functions = setup.declarations,
+              let audioBridge = grok.grant.audio,
+              let url = URL(string: audioBridge.url), url.scheme == "wss",
+              let root = WatchToolSeal.data(base64URL: grok.grant.key), root.count == 32,
+              let relay = WatchToolRelayClient(grok.grant) else {
+            finish(String(localized: "The iPhone's session couldn't be read. Update Conduit on both devices."))
+            return
+        }
+        guard audioBridge.version == Int(WatchAudioBridgeWire.version) else {
+            finish(String(localized: "Update the Hermes notifier plugin and Conduit to matching versions."))
+            return
+        }
+        openingPrompt = grok.openingPrompt
+        let bridge = WatchGrokBridge(url: url, grantID: grok.grant.grantID, root: root, watchKey: grok.grant.watchKey, voice: grok.voice)
+        let session = GrokLiveSession(
+            client: WatchGrokConnection(url: url),
+            instructions: setup.systemInstruction,
+            functions: functions,
+            voice: grok.voice,
+            openSocket: { [weak self] _ in
+                // A stream id is taken once per grant, and a grant takes 32.
+                let stream: WatchAudioBridgeStream?
+                var number = 0
+                if let self, self.grokStreams < 30 {
+                    self.grokStreams += 1
+                    number = self.grokStreams
+                    stream = WatchAudioBridgeStream(grantID: bridge.grantID, root: bridge.root)
+                } else {
+                    stream = nil
+                }
+                let socket = WatchGrokBridgeSocket(bridge: bridge, stream: stream)
+                socket.onNote = { [weak self] kind, fields in self?.socketEvent(.grokBridge, number: number, kind: kind, fields) }
+                return socket
+            }
+        )
+        session.onEvent = { [weak self] in self?.handle($0) }
+        session.onStateChange = { [weak self] in self?.sessionStateChanged($0) }
+        session.onConnectionReplaced = { [weak self] in self?.connectionReplaced() }
+        self.session = session
+        // The bridge belongs to the grant, so the call keeps it: no renewal
+        // (renewGrantIfDue skips Grok calls).
+        hadToolGrant = true
+        toolRelay = relay
+        if relay.hasJobs { jobsGrant = relay }
+        WatchCallLog.shared.note("directSession", [
+            "engine": "grok",
+            "afterTapMs": Int((now - callStartedAt) * 1000),
+            "requests": sessionRequests,
+            "setupBytes": grok.setupBytes,
+            "compressedBytes": grok.setup.count,
+            "functions": functions.map(\.name),
+            "opening": grok.openingPrompt != nil,
+            "engines": audioBridge.engines,
+            "relayTools": relay.tools.sorted(),
+            "grantExpiresInS": relay.expiresAt.map { Int($0.timeIntervalSinceNow) } as Any,
+        ])
+        phase = .connecting
+        connectStartedAt = now
+        session.start()
+    }
+
     /// A new single-use token for the next connection, from the iPhone.
     private func requestToken() async throws -> GeminiLiveToken {
         let id = callID
@@ -692,7 +785,13 @@ final class WatchDirectCallModel: ObservableObject {
         let id = callID
         let sentAt = now
         let outcome = await relay.run(name: WatchLiveToken.tool, arguments: [:])
-        guard callID == id, isActive else { throw WatchDirectError.ended }
+        guard callID == id, isActive else {
+            WatchCallLog.shared.note("directRelayTokenAbandoned", [
+                "outcome": outcome.label,
+                "reason": isActive ? "replaced" : "callEnded",
+            ])
+            throw WatchDirectError.ended
+        }
         var fields: [String: Any] = [
             "ms": Int((now - sentAt) * 1000),
             "outcome": outcome.label,
@@ -832,8 +931,10 @@ final class WatchDirectCallModel: ObservableObject {
             ])
         case .failed(let message):
             WatchCallLog.shared.note("directFailed", ["message": message, "screen": "\(scenePhase)", "rejoins": rejoins])
-            // Once the call has been live, a fresh session carries it on.
-            if firstReadyAt != nil, endRequestedAt == nil, rejoins < Self.maxRejoins {
+            // Once the call has been live, a fresh session carries it on;
+            // not for Grok once its grant is over, which its bridge was.
+            let grantOver = engine == .grok && (toolRelay.map { $0.isGone || $0.expires(within: Self.grantEndMargin) } ?? true)
+            if firstReadyAt != nil, endRequestedAt == nil, rejoins < Self.maxRejoins, !grantOver {
                 waitToRejoin(message)
             } else {
                 finish(message)
@@ -884,7 +985,8 @@ final class WatchDirectCallModel: ObservableObject {
             "relayToken": relayToken,
             "screen": "\(scenePhase)",
         ])
-        if link.isReachable || relayToken {
+        // Grok's bridge goes through the relay: it never needs the iPhone.
+        if link.isReachable || relayToken || engine == .grok {
             rejoin()
         } else {
             // The chime tells the user the call went, so the new session
@@ -912,7 +1014,9 @@ final class WatchDirectCallModel: ObservableObject {
             "screen": "\(scenePhase)",
         ])
         session.stop()
-        let reason = String(localized: "Gemini didn't come back after the connection broke.")
+        let reason = engine == .grok
+            ? String(localized: "Grok didn't come back after the connection broke.")
+            : String(localized: "Gemini didn't come back after the connection broke.")
         if endRequestedAt == nil, rejoins < Self.maxRejoins {
             waitToRejoin(reason)
         } else {
@@ -929,7 +1033,7 @@ final class WatchDirectCallModel: ObservableObject {
             finish(WatchCallEnd.goodbye)
             return
         }
-        if link.isReachable {
+        if link.isReachable || engine == .grok {
             rejoin()
         } else if now - since >= Self.rejoinWait {
             finish(rejoinReason)
@@ -1000,6 +1104,13 @@ final class WatchDirectCallModel: ObservableObject {
     /// answered on it, so their answers go out as text updates instead.
     private func connectionReplaced() {
         WatchCallLog.shared.note("directConnectionReplaced", ["openCalls": toolsInFlight.count])
+        // xAI has no resumption: the new session is told the conversation
+        // once it's ready, as after a rejoin.
+        if engine == .grok, rejoinStartedAt == nil {
+            rejoinStartedAt = now
+            rejoinWristDown = !link.isReachable
+            rejoinCause = .broke
+        }
     }
 
     /// Each socket's states or callbacks, timed from the audio session's
@@ -1203,11 +1314,15 @@ final class WatchDirectCallModel: ObservableObject {
         let at = now
         silentTurns += 1
         lastModelEventAt = at
-        if replyOwedSince != nil { silentTurnSinceUser = true }
+        let owed = replyOwedSince != nil
+        // A finished turn proves the session is alive, and a deliberate
+        // silence owes no reply: no stall prompt follows it.
+        if owed { silentTurnSinceUser = true }
+        replyOwedSince = nil
         if silentTurns <= 20 {
             WatchCallLog.shared.note("directSilentTurn", [
                 "sinceHeardMs": lastUserSpeechAt.map { Int((at - $0) * 1000) } as Any,
-                "owed": replyOwedSince != nil,
+                "owed": owed,
                 "prompted": stallPromptedAt != nil,
                 "screen": "\(scenePhase)",
             ])
@@ -2010,7 +2125,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// soon or ended early (a host restart, a spent budget). The old one is
     /// closed once nothing waits on it.
     private func renewGrantIfDue() {
-        guard hadToolGrant, endRequestedAt == nil, !grantRequestInFlight, link.isReachable,
+        guard hadToolGrant, engine != .grok, endRequestedAt == nil, !grantRequestInFlight, link.isReachable,
               grantRequests < Self.maxGrantRequests,
               now - lastGrantRequestAt >= Self.grantRequestInterval else { return }
         if let relay = toolRelay, !relay.isGone, relay.callsLeft > Self.grantRenewCallHeadroom,
@@ -2183,7 +2298,9 @@ final class WatchDirectCallModel: ObservableObject {
             "screen": "\(scenePhase)",
         ])
         session.stop()
-        let reason = String(localized: "Gemini stopped answering.")
+        let reason = engine == .grok
+            ? String(localized: "Grok stopped answering.")
+            : String(localized: "Gemini stopped answering.")
         if rejoins < Self.maxRejoins {
             waitToRejoin(reason, cause: .froze)
         } else {
@@ -2564,7 +2681,7 @@ final class WatchDirectCallModel: ObservableObject {
         let gap = windowMaxCaptureGap
         windowMaxCaptureGap = 0
         guard timelineEntries <= 80 else { return }
-        let state = String((session.map { "\($0.state)" } ?? "none").prefix(40))
+        let state = String((session.map(\.stateDescription) ?? "none").prefix(40))
         WatchCallLog.shared.note("directTimeline", [
             "t": Int(at - callStartedAt),
             "sinceActivationS": lastActivationAt.map { Int(at - $0) } as Any,
@@ -2609,6 +2726,7 @@ final class WatchDirectCallModel: ObservableObject {
     }
 
     private func reset() {
+        grokStreams = 0
         callID = UInt32.random(in: 1...UInt32.max)
         callUUID = UUID()
         callStartedDate = Date()
@@ -2844,7 +2962,8 @@ final class WatchDirectCallModel: ObservableObject {
             callUUID: callUUID.uuidString,
             startedAt: callStartedDate,
             endedAt: Date(),
-            turns: saved
+            turns: saved,
+            engine: engine == .grok ? WatchAudioBridgeWire.grok : nil
         )))
         if !queued {
             WatchCallLog.shared.note("directEndQueueFailed", ["lines": saved.count])

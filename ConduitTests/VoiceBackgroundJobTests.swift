@@ -2173,6 +2173,19 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 1, "off sends straight away")
     }
 
+    func testSetAskFirstOnAWatchCallSaysItIsNotAvailable() async {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall()
+        let bridge = GeminiLiveToolBridge(supervisor: WatchCallJobSupervisor(supervisor))
+
+        let on = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "set_ask_first", arguments: ["mode": "on"]))
+        guard case .toolResponse("call_1", "set_ask_first", let result, _)? = on.first else { return XCTFail("\(on)") }
+        XCTAssertNotNil(result["error"], "the Watch adapter can't hold requests, so the model mustn't say it will")
+        XCTAssertNil(result["status"])
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "start_job", arguments: ["instructions": "check the server"]))
+        XCTAssertEqual(fake.created, 1, "requests still go straight away")
+    }
+
     func testGeminiDraftOutlivesAHandoffButNotANewServerSession() async {
         let (supervisor, fake) = makeSupervisor()
         supervisor.beginLiveCall(asksBeforeSending: true)

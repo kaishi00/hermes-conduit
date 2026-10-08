@@ -1,6 +1,6 @@
 //
 //  GrokLiveProtocol.swift
-//  Conduit
+//  Conduit and the Conduit Watch app
 //
 //  Wire format for xAI's realtime voice API (Grok Live), whose events
 //  follow OpenAI's Realtime API: session.update, input_audio_buffer.append,
