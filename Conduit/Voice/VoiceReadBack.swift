@@ -112,7 +112,9 @@ enum VoiceReadBack {
         }
         text = replacingBareLinks(text)
         let marks: [(String, String)] = [
-            (#"`([^`]+)`"#, "$1"),
+            // A code span opens and closes with backtick runs of the same
+            // length, so "```x```" and "``a ` b``" are spans too.
+            (#"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)"#, "$2"),
             (#"\*\*(.+?)\*\*"#, "$1"),
             (#"__(.+?)__"#, "$1"),
             (#"~~(.+?)~~"#, "$1"),

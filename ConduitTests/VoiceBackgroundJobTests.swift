@@ -2261,6 +2261,7 @@ extension VoiceConversationControllerTests {
             "HTML tags and footnote marks aren't read; an email address and a generic type are"
         )
         XCTAssertEqual(VoiceReadBack.plainSpeech("<a title=\"a > b\">Docs</a> here"), "Docs here", "a \">\" in a quoted attribute stays inside the tag")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("Run ```make``` or ``a ` b`` now"), "Run make or a ` b now", "code spans of any backtick length")
         let long = String(repeating: "word ", count: VoiceBackgroundJobSupervisor.maximumResultCharacters)
         let clip = GeminiLiveToolBridge.clippedForReading(long)
         XCTAssertTrue(clip.isCut)
@@ -2440,15 +2441,26 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.takePendingNotice(), .speak(VoiceBackgroundJobSupervisor.failedNotice(logs, reason: "")))
     }
 
+    func testAFailureReasonIsItsFirstLineKeptShort() {
+        let notice = VoiceBackgroundJobSupervisor.failedNotice("Backup", reason: "")
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.failedNotice("Backup", reason: "  \nModel unavailable\nTraceback: …"), notice + " (Model unavailable)")
+        let raw = "Error code: 529 - " + String(repeating: "overloaded ", count: 40)
+        let long = VoiceBackgroundJobSupervisor.failedNotice("Backup", reason: raw)
+        XCTAssertTrue(long.hasPrefix(notice + " (Error code: 529 - overloaded"))
+        XCTAssertTrue(long.hasSuffix("overloaded…)"), "cut at a word")
+        XCTAssertLessThanOrEqual(long.count, notice.count + VoiceBackgroundJobSupervisor.maximumReasonCharacters + 4)
+    }
+
     func testAJobNoticeHeardWhileTheChatIsReadWinsTheReadBack() async {
         let (supervisor, fake) = makeThreadSupervisor()
         supervisor.beginLiveCall()
         fake.threadReply = "Older chat reply."
         _ = await supervisor.startJob(instructions: "check the server")
-        // The job's result goes out while the chat's reply is being read.
+        // The job's result goes out to the live model while the chat's
+        // reply is being read.
         fake.onLatestReply = {
             supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Server is fine.", reasoning: nil))
-            _ = supervisor.takePendingNotice()
+            if let told = supervisor.takePendingNoticeForJob() { supervisor.noticeSent(jobID: told.jobID) }
         }
         let text = await supervisor.readBackText()
         XCTAssertEqual(text, "Server is fine.", "the newer notice wins over the chat's older reply")
@@ -2460,7 +2472,7 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(GPTLiveDelegationBridge.isReadBackMarker("read back the email from Sam"))
         XCTAssertTrue(GPTLiveConversationController.briefing().contains("\"Read back:\""))
         for length in LiveVoiceAnswerLength.allCases {
-            XCTAssertTrue(length.instructions.contains("except a read-back"), "\(length)")
+            XCTAssertTrue(length.instructions(readsBack: true).contains("except a read-back"), "\(length)")
         }
     }
 }
