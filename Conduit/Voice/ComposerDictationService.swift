@@ -81,7 +81,7 @@ final class ComposerDictationService: ObservableObject {
             clearCallbacks()
             throw DictationError.message(AppLocalization.string("The microphone is not available right now."))
         }
-        guard let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer(),
+        guard let recognizer = SFSpeechRecognizer(locale: SpeechRecognitionLocale.preferred()) ?? SFSpeechRecognizer(),
               recognizer.isAvailable else {
             clearCallbacks()
             throw DictationError.message(AppLocalization.string("Dictation isn't available right now."))
