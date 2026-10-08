@@ -711,14 +711,15 @@ final class WatchDirectCallModel: ObservableObject {
             openSocket: { [weak self] _ in
                 // A stream id is taken once per grant, and a grant takes 32.
                 let stream: WatchAudioBridgeStream?
+                var number = 0
                 if let self, self.grokStreams < 30 {
                     self.grokStreams += 1
+                    number = self.grokStreams
                     stream = WatchAudioBridgeStream(grantID: bridge.grantID, root: bridge.root)
                 } else {
                     stream = nil
                 }
                 let socket = WatchGrokBridgeSocket(bridge: bridge, stream: stream)
-                let number = self?.grokStreams ?? 0
                 socket.onNote = { [weak self] kind, fields in self?.socketEvent(.grokBridge, number: number, kind: kind, fields) }
                 return socket
             }
