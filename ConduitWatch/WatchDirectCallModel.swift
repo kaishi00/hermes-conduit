@@ -1799,8 +1799,9 @@ final class WatchDirectCallModel: ObservableObject {
     }
 
     /// The Watch's Approve or Deny for the request on screen.
-    func answerApproval(approve: Bool) {
-        guard let approval = pendingApproval else { return }
+    func answerApproval(_ approval: WatchJobAnswer.Approval, approve: Bool) {
+        // Only the card the user read; a late tap never answers the next one.
+        guard pendingApproval == approval else { return }
         let choice = approve ? WatchJobAnswer.approve : WatchJobAnswer.deny
         resolveApproval(approval, choice: choice, byVoice: false) { [weak self] result in
             guard let self, result["error"] == nil, result["status"] != "failed" else { return }

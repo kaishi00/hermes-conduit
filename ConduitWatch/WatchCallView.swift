@@ -273,14 +273,14 @@ struct WatchApprovalCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.1)))
                 Button {
-                    call.answerApproval(approve: true)
+                    call.answerApproval(approval, approve: true)
                 } label: {
                     Label("Approve once", systemImage: "checkmark")
                         .frame(maxWidth: .infinity)
                 }
                 .tint(.green)
                 Button(role: .destructive) {
-                    call.answerApproval(approve: false)
+                    call.answerApproval(approval, approve: false)
                 } label: {
                     Label("Deny", systemImage: "xmark")
                         .frame(maxWidth: .infinity)

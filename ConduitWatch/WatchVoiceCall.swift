@@ -170,10 +170,11 @@ final class WatchVoiceCall: ObservableObject {
         }
     }
 
-    func answerApproval(approve: Bool) {
+    /// Answers the approval the card showed, never one queued behind it.
+    func answerApproval(_ approval: WatchJobAnswer.Approval, approve: Bool) {
         switch callEngine {
-        case .geminiLive: direct.answerApproval(approve: approve)
-        case .gptLive: bridge.answerApproval(approve: approve)
+        case .geminiLive: direct.answerApproval(approval, approve: approve)
+        case .gptLive: bridge.answerApproval(approval, approve: approve)
         }
     }
 
@@ -190,6 +191,8 @@ final class WatchVoiceCall: ObservableObject {
     func scenePhaseChanged(_ newPhase: ScenePhase) {
         direct.scenePhaseChanged(newPhase)
         bridge.scenePhaseChanged(newPhase)
+        // Call diagnostics only: an idle wrist raise isn't worth a line.
+        guard isActive else { return }
         WatchCallLog.shared.note("scenePhase", ["phase": "\(newPhase)", "reachable": WatchLink.shared.isReachable])
     }
 

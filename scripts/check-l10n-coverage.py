@@ -857,7 +857,12 @@ def check(repo_root: str):
         except (OSError, ValueError) as error:
             raise CatalogError(f"{WATCH_DIRECTORY}/{SOURCE_CATALOG}: {error}") from error
         watch_keys = set(watch_catalog["strings"])
-        for root in (watch,) + tuple(os.path.join(repo_root, source) for source in WATCH_SHARED_SOURCES):
+        for root in (watch, *(os.path.join(repo_root, source) for source in WATCH_SHARED_SOURCES)):
+            # A renamed shared folder would otherwise scan nothing, silently.
+            if not os.path.exists(root):
+                key_problems.setdefault(os.path.relpath(root, repo_root), []).append(
+                    "the Watch compiles this path (WATCH_SHARED_SOURCES), but it doesn't exist")
+                continue
             checked += scan_sites(root, watch_keys, repo_root, missing, key_problems)
         prefix = f"{WATCH_DIRECTORY}/{SOURCE_CATALOG}: "
         for key, problems in watch_duplicates.items():

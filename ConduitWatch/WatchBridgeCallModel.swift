@@ -354,8 +354,10 @@ final class WatchBridgeCallModel: ObservableObject {
     }
 
     /// The Watch's Approve or Deny for the request on screen.
-    func answerApproval(approve: Bool) {
-        guard let approval = pendingApproval, let relay else { return }
+    func answerApproval(_ approval: WatchJobAnswer.Approval, approve: Bool) {
+        // A second quick tap lands after the card moved on: it answers
+        // nothing rather than the next command, which the user hasn't read.
+        guard pendingApproval == approval, let relay else { return }
         approvals.removeAll { $0 == approval }
         pendingApproval = approvals.first
         let choice = approve ? WatchJobAnswer.approve : WatchJobAnswer.deny
@@ -876,7 +878,9 @@ final class WatchBridgeCallModel: ObservableObject {
             audio.stopPlayback()
             modelSpeaking = false
             microphoneStopped = true
-            phase = .needsTap
+            // Still waiting for the iPhone's session: its reply, retries and
+            // timeout all need .preparing. The tap prompt comes once live.
+            if phase != .preparing { phase = .needsTap }
         } else if scenePhase == .active {
             restartAudio()
         }
@@ -920,7 +924,11 @@ final class WatchBridgeCallModel: ObservableObject {
             do {
                 try self.audio.start(options: WatchAudio.Options(activatesSession: false), playbackRate: Self.playbackRate)
                 self.microphoneStopped = false
-                self.phase = self.live ? .listening : .reconnecting
+                if self.live {
+                    self.phase = .listening
+                } else if self.phase == .needsTap {
+                    self.phase = .reconnecting
+                }
             } catch {
                 self.note("bridgeAudioRestartFailed", ["error": error.localizedDescription])
             }
