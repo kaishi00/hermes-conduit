@@ -897,8 +897,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private var lastCallResult: (callID: UUID, text: String)?
 
     /// A job's notice reached the running call: what it said (a finished
-    /// job's result, or that it failed, was cancelled or waits on the user)
-    /// is what "read that again" means until the chat replies after it.
+    /// job's result, or that it finished, failed, was cancelled or waits on
+    /// the user) is what "read that again" means until the chat replies
+    /// after it. A reply to the user's own command (a start or a cancel) is
+    /// the model's answer in that exchange, which it repeats itself.
     /// Only once it went out, so a notice handed back unsent is never read
     /// as heard. Kept to the read-back source limit.
     private func noteResultReported(_ job: VoiceBackgroundJob) {
@@ -911,10 +913,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let heard: String
         switch job.status {
         case .finished:
-            guard job.outcomeDelivered,
-                  let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !result.isEmpty else { return }
-            heard = result
+            guard job.outcomeDelivered else { return }
+            let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            heard = result.isEmpty ? Self.finishedNotice(job.title) : result
         case .failed:
             guard job.outcomeDelivered else { return }
             heard = Self.failedNotice(job.title)
@@ -1579,7 +1580,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             jobs[index].outcomeDelivered = true
             switch job.status {
             case .finished:
-                let openChat = AppLocalization.string("\(job.title) has finished. Open it in Conduit to read the result.")
+                let openChat = Self.finishedNotice(job.title)
                 guard let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !result.isEmpty else {
                     return (.speak(openChat), job.id)
@@ -1596,6 +1597,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
         }
         return nil
+    }
+
+    static func finishedNotice(_ title: String) -> String {
+        AppLocalization.string("\(title) has finished. Open it in Conduit to read the result.")
     }
 
     static func waitingNotice(_ title: String) -> String {
