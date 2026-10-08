@@ -896,21 +896,38 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// no chat reply (a voice or typed turn) came after it.
     private var lastCallResult: (callID: UUID, text: String)?
 
-    /// A job's outcome reached the running call: a finished job's result is
-    /// what "read that again" means until the chat replies after it. Only
-    /// once it went out, so a result handed back unsent is never read as
-    /// heard. Kept to the read-back source limit.
+    /// A job's notice reached the running call: what it said (a finished
+    /// job's result, or that it failed, was cancelled or waits on the user)
+    /// is what "read that again" means until the chat replies after it.
+    /// Only once it went out, so a notice handed back unsent is never read
+    /// as heard. Kept to the read-back source limit.
     private func noteResultReported(_ job: VoiceBackgroundJob) {
-        guard let callID = liveCallID, job.outcomeDelivered else { return }
+        guard let callID = liveCallID else { return }
         if job.isThreadTurn {
             // The chat replied since: a read-back reads the chat again.
-            if job.status == .finished { lastCallResult = nil }
+            if job.outcomeDelivered, job.status == .finished { lastCallResult = nil }
             return
         }
-        guard job.status == .finished,
-              let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !result.isEmpty else { return }
-        lastCallResult = (callID, String(result.prefix(Self.readBackSourceLimit)))
+        let heard: String
+        switch job.status {
+        case .finished:
+            guard job.outcomeDelivered,
+                  let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !result.isEmpty else { return }
+            heard = result
+        case .failed:
+            guard job.outcomeDelivered else { return }
+            heard = Self.failedNotice(job.title)
+        case .cancelled:
+            guard job.outcomeDelivered else { return }
+            heard = Self.cancelledNotice(job.title)
+        case .needsInput:
+            guard job.inputRequestDelivered else { return }
+            heard = Self.waitingNotice(job.title)
+        case .starting, .running:
+            return
+        }
+        lastCallResult = (callID, String(heard.prefix(Self.readBackSourceLimit)))
     }
 
     /// The attached chat's latest reply, read without starting a turn.
@@ -1556,7 +1573,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if job.isThreadTurn, job.outcomeDelivered || job.isDetachedThreadTurn || liveThread == nil { continue }
             if job.status == .needsInput, !job.inputRequestDelivered {
                 jobs[index].inputRequestDelivered = true
-                return (.speak(AppLocalization.string("\(job.title) is waiting for your approval or an answer. Open it in Conduit to respond.")), job.id)
+                return (.speak(Self.waitingNotice(job.title)), job.id)
             }
             guard !job.status.isActive, !job.outcomeDelivered else { continue }
             jobs[index].outcomeDelivered = true
@@ -1571,14 +1588,26 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             case .failed(let message):
                 // A chat turn's reason says what Hermes did with the request.
                 if job.isThreadTurn, !message.isEmpty { return (.speak(message), job.id) }
-                return (.speak(AppLocalization.string("\(job.title) failed. Open it in Conduit for details.")), job.id)
+                return (.speak(Self.failedNotice(job.title)), job.id)
             case .cancelled:
-                return (.speak(AppLocalization.string("\(job.title) was cancelled.")), job.id)
+                return (.speak(Self.cancelledNotice(job.title)), job.id)
             case .starting, .running, .needsInput:
                 continue
             }
         }
         return nil
+    }
+
+    static func waitingNotice(_ title: String) -> String {
+        AppLocalization.string("\(title) is waiting for your approval or an answer. Open it in Conduit to respond.")
+    }
+
+    static func failedNotice(_ title: String) -> String {
+        AppLocalization.string("\(title) failed. Open it in Conduit for details.")
+    }
+
+    static func cancelledNotice(_ title: String) -> String {
+        AppLocalization.string("\(title) was cancelled.")
     }
 
     /// A notice taken with `takePendingNoticeForJob` never reached the user:

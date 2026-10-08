@@ -2278,6 +2278,23 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(long?.count, VoiceBackgroundJobSupervisor.readBackSourceLimit)
     }
 
+    func testAReadBackAfterAFailedJobReadsTheFailureNotAnOlderResult() async {
+        let (supervisor, _) = makeSupervisor()
+        supervisor.beginLiveCall()
+        _ = await supervisor.startJob(instructions: "check the server")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Server is fine.", reasoning: nil))
+        XCTAssertNotNil(supervisor.takePendingNotice())
+        let heard = await supervisor.readBackText()
+        XCTAssertEqual(heard, "Server is fine.")
+
+        _ = await supervisor.startJob(instructions: "check the disk")
+        supervisor.observe(.messageError(sessionId: "rt-2", message: "Provider error"))
+        XCTAssertNotNil(supervisor.takePendingNotice())
+        let title = supervisor.jobs.first { $0.runtimeSessionID == "rt-2" }?.title ?? ""
+        let failed = await supervisor.readBackText()
+        XCTAssertEqual(failed, VoiceBackgroundJobSupervisor.failedNotice(title), "the newest notice the call heard")
+    }
+
     func testReadBackMarkerAndRules() {
         XCTAssertTrue(GPTLiveDelegationBridge.isReadBackMarker("Read back: the last reply"))
         XCTAssertTrue(GPTLiveDelegationBridge.isReadBackMarker(" read-back:"))
