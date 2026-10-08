@@ -63,6 +63,35 @@ enum VoiceJobProfiles {
         return .run(instructions: instructions, profile: profile, label: label)
     }
 
+    /// Where a Watch job goes when the host runs jobs on some of the
+    /// user's other profiles (`hosted`, lowercased).
+    enum RelayRoute: Equatable {
+        /// Through the relay: `profile` nil is the call's own.
+        case relay(instructions: String, profile: String?)
+        /// One of the user's profiles the host doesn't run this call's
+        /// jobs on: the iPhone starts it, as before.
+        case viaPhone(label: String)
+        /// Not one of the names the iPhone sent: the iPhone, which knows
+        /// them all, answers it.
+        case unknown(String)
+    }
+
+    static func relayRoute(
+        instructions: String,
+        spokenProfile: String?,
+        names: [WatchVoiceWire.JobProfileName],
+        hosted: Set<String>
+    ) -> RelayRoute {
+        switch route(instructions: instructions, spokenProfile: spokenProfile, resolve: { target(named: $0, in: names) }) {
+        case .unknown(let name):
+            return .unknown(name)
+        case .run(let task, nil, _):
+            return .relay(instructions: task, profile: nil)
+        case .run(let task, let profile?, let label):
+            return hosted.contains(profile.lowercased()) ? .relay(instructions: task, profile: profile) : .viaPhone(label: label ?? profile)
+        }
+    }
+
     /// The answer to a job for a profile the user doesn't have.
     static func unknownProfileReply(_ name: String) -> String {
         "I don't know a profile or bot called \(name), so I didn't start the job."

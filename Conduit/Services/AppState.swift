@@ -3658,8 +3658,7 @@ final class AppState: ObservableObject {
 
     /// The names a Watch call's job may give the user's profiles, in the
     /// order `voiceJobProfileTarget` tries them: the Watch resolves "for
-    /// Fam, …" from these as this phone would. Other profiles beyond the
-    /// host's cap are left out.
+    /// Fam, …" from these as this phone would.
     func watchJobProfileNames() -> [WatchVoiceWire.JobProfileName] {
         func entry(_ profile: String, _ names: [String]) -> WatchVoiceWire.JobProfileName {
             .init(profile: profilesMatch(profile, activeProfile) ? nil : profile, names: names.filter { !$0.isEmpty })
@@ -3667,20 +3666,8 @@ final class AppState: ObservableObject {
         let entries = profiles.map { entry($0, [$0]) }
             + [entry("default", [defaultProfileName])]
             + botRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
-        var others: [String] = []
-        return entries.filter { candidate in
-            guard !candidate.names.isEmpty else { return false }
-            guard let profile = candidate.profile else { return true }
-            if others.contains(where: { profilesMatch($0, profile) }) { return true }
-            guard others.count < Self.watchJobProfileLimit else { return false }
-            others.append(profile)
-            return true
-        }
+        return entries.filter { !$0.names.isEmpty }
     }
-
-    /// The other profiles one Watch grant may name (the plugin's
-    /// WATCH_JOB_MAX_PROFILES).
-    static let watchJobProfileLimit = 32
 
     /// Stops following Voice background jobs at a server, profile, or
     /// sign-out boundary. The jobs keep running on the server as chats.

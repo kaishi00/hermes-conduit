@@ -1682,8 +1682,15 @@ final class WatchDirectCallModel: ObservableObject {
             ? jobRelays.last(where: { $0.hasJobs && $0.canRun(call.name) })
             : toolRelay
         guard let relay = candidate, relay.hasJobs, relay.canRun(call.name) else { return nil }
+        if call.name == WatchJobAnswer.startJob,
+           let route = relay.jobRoute(instructions: call.arguments["instructions"] ?? "", spokenProfile: call.arguments["profile"]) {
+            // A profile the host doesn't run this call's jobs on, or a name
+            // only the iPhone may know: the iPhone starts or answers it.
+            if case .relay = route { return relay }
+            return nil
+        }
         let profile = call.arguments["profile"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return profile.isEmpty || relay.jobProfiles != nil ? relay : nil
+        return profile.isEmpty ? relay : nil
     }
 
     /// A job call through the push relay, answered as the iPhone's bridge
@@ -1698,13 +1705,15 @@ final class WatchDirectCallModel: ObservableObject {
             answer(.toolResponse(id: wire.id, name: wire.name, result: WatchJobAnswer.missingArguments(name: wire.name, wire.arguments), scheduling: whenIdle, fallback: nil), generation: generation)
             return
         }
-        if isStart, let names = relay.jobProfiles, let task = arguments["instructions"] as? String {
+        if isStart, let task = arguments["instructions"] as? String,
+           let route = relay.jobRoute(instructions: task, spokenProfile: wire.arguments["profile"]) {
             // "for Fam, …" runs on Fam, as the iPhone's jobs do.
-            switch VoiceJobProfiles.route(instructions: task, spokenProfile: wire.arguments["profile"], resolve: { VoiceJobProfiles.target(named: $0, in: names) }) {
-            case .run(let instructions, let profile, _):
+            switch route {
+            case .relay(let instructions, let profile):
                 arguments["instructions"] = instructions
                 if let profile { arguments["profile"] = profile }
-            case .unknown(let name):
+            case .viaPhone(let name), .unknown(let name):
+                // jobRelay sends these to the iPhone; this is a backstop.
                 WatchCallLog.shared.note("directJobRelay", ["name": wire.name, "outcome": "unknownProfile"])
                 answer(.toolResponse(id: wire.id, name: wire.name, result: [
                     "status": "not_started",

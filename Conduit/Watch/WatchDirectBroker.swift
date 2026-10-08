@@ -864,12 +864,21 @@ final class WatchDirectBroker {
         return await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: false, carryJobsFrom: carryJobsFrom)
     }
 
-    /// The names the iPhone knows for the call's own profile and for the
-    /// others the host took: a job for any other goes through the iPhone.
-    static func jobProfileNames(_ names: [WatchVoiceWire.JobProfileName], hostedBy hosted: [WatchVoiceWire.JobProfileName]) -> [WatchVoiceWire.JobProfileName] {
-        let taken = Set(hosted.compactMap { $0.profile?.lowercased() })
-        return names.filter { entry in entry.profile.map { taken.contains($0.lowercased()) } ?? true }
+    /// The other profiles a grant may name: those that are Hermes profile
+    /// names, up to the plugin's cap (WATCH_JOB_MAX_PROFILES); a job for
+    /// any other goes through the iPhone.
+    static func grantableJobProfiles(_ names: [WatchVoiceWire.JobProfileName]) -> [String] {
+        var profiles: [String] = []
+        for case let profile? in names.map(\.profile)
+        where profiles.count < maxGrantJobProfiles
+            && profile.range(of: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", options: .regularExpression) != nil
+            && !profiles.contains(where: { $0.caseInsensitiveCompare(profile) == .orderedSame }) {
+            profiles.append(profile)
+        }
+        return profiles
     }
+
+    static let maxGrantJobProfiles = 32
 
     static func isRefusedTool(_ error: Error) -> Bool {
         if case DashboardTicketBridgeError.http(let status, _) = error, status == 400 { return true }
@@ -886,11 +895,13 @@ final class WatchDirectBroker {
                 maxJobs: withJobs ? grantMaxJobs : nil,
                 jobOptions: withJobs ? grantJobOptions : [:],
                 carryJobsFrom: withJobs ? carryJobsFrom : nil,
-                jobProfiles: withJobs ? grantJobProfiles.compactMap(\.profile) : [],
+                jobProfiles: withJobs ? Self.grantableJobProfiles(grantJobProfiles) : [],
                 audio: grantAudio
             )
             grant.voiceApprovals = grantVoiceApprovals && grant.tools.contains(WatchJobAnswer.answerApproval)
-            grant.jobProfiles = grant.jobProfiles.map { Self.jobProfileNames(grantJobProfiles, hostedBy: $0) }
+            // Every name the user's profiles go by: the Watch tells a
+            // profile the host doesn't take from a name that isn't one.
+            grant.jobProfiles = grant.hostJobProfiles == nil ? nil : grantJobProfiles
             guard callID == id else {
                 // The call ended while the host answered. Revoked through
                 // the dashboard that gave it; another runs it out.

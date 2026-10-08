@@ -126,8 +126,7 @@ final class WatchToolGrantClient {
             maxJobs: response["max_jobs"] as? Int,
             jobsCarriedFrom: response["jobs_carried_from"] as? String,
             audio: bridge,
-            // The host's names only; the iPhone fills in what each goes by.
-            jobProfiles: (response["job_profiles"] as? [String]).map { $0.map { .init(profile: $0, names: [$0]) } }
+            hostJobProfiles: response["job_profiles"] as? [String]
         )
     }
 }

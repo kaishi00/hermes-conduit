@@ -1098,7 +1098,12 @@ final class WatchBridgeCallModel: ObservableObject {
                 answer(id, WatchBridgeDelegation.notStarted("this call has started \(relay.maxJobs) jobs, the most the user allows per call. They can raise it in Conduit's Watch settings."), channel: .speakable)
                 return
             }
-            startJob(for: id, request: request, relay: relay)
+            let start = Self.startArguments(request, relay: relay)
+            guard let arguments = start.arguments else {
+                answer(id, WatchBridgeDelegation.notStarted("jobs on \(start.profile) can't start from this Watch call. Start them from the iPhone."), channel: .speakable)
+                return
+            }
+            startJob(for: id, arguments: arguments, relay: relay)
         } else {
             lookUp(for: id, query: WatchBridgeDelegation.clipped(ownWords, bytes: 300), relay: relay)
         }
@@ -1106,21 +1111,27 @@ final class WatchBridgeCallModel: ObservableObject {
 
     /// A delegation's start_job: "for Fam, …" runs on Fam where the host
     /// runs jobs on the user's other profiles, as the iPhone's jobs do.
-    static func startArguments(_ request: String, relay: WatchToolRelayClient) -> [String: Any] {
+    /// Nil, with the name, for one of the user's profiles the host doesn't
+    /// run this call's jobs on: a delegation has no way through the iPhone.
+    static func startArguments(_ request: String, relay: WatchToolRelayClient) -> (arguments: [String: Any]?, profile: String) {
         let task = WatchBridgeDelegation.removingQuickMarker(request)
-        guard let names = relay.jobProfiles,
-              case .run(let instructions, let profile, _) = VoiceJobProfiles.route(
-                instructions: task, spokenProfile: nil, resolve: { VoiceJobProfiles.target(named: $0, in: names) }) else {
-            return ["instructions": task]
+        switch relay.jobRoute(instructions: task, spokenProfile: nil) {
+        case nil:
+            return (["instructions": task], "")
+        case .relay(let instructions, nil):
+            return (["instructions": instructions], "")
+        case .relay(let instructions, let profile?):
+            return (["instructions": instructions, "profile": profile], profile)
+        case .viaPhone(let label), .unknown(let label):
+            return (nil, label)
         }
-        return profile.map { ["instructions": instructions, "profile": $0] } ?? ["instructions": instructions]
     }
 
-    private func startJob(for delegationID: String, request: String, relay: WatchToolRelayClient) {
+    private func startJob(for delegationID: String, arguments: [String: Any], relay: WatchToolRelayClient) {
         let id = callID
         let sentAt = now
         Task { [weak self] in
-            let outcome = await relay.run(name: WatchJobAnswer.startJob, arguments: Self.startArguments(request, relay: relay))
+            let outcome = await relay.run(name: WatchJobAnswer.startJob, arguments: arguments)
             guard let self, self.callID == id, self.isActive else { return }
             var fields: [String: Any] = ["outcome": outcome.label, "ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
             switch outcome {

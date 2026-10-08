@@ -1072,27 +1072,36 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(VoiceJobProfiles.unknownProfileReply("work"), "I don't know a profile or bot called work, so I didn't start the job.")
     }
 
-    /// The host names the other profiles it runs jobs on; the iPhone keeps
-    /// what each goes by for those and the call's own, and leaves the rest
-    /// to go through it. An older plugin names none: the grant has no list.
+    /// The host names the other profiles it runs jobs on (an older plugin
+    /// none); a job for a profile it doesn't take, or for a name only the
+    /// iPhone may know, goes through the iPhone.
     @MainActor
-    func testAWatchGrantKeepsOnlyTheProfilesTheHostRunsJobsOn() throws {
+    func testWatchJobsGoThroughTheRelayOnlyForProfilesTheHostTook() throws {
         var response: [String: Any] = [
             "ok": true, "grant_id": String(repeating: "G", count: 22), "relay_url": "https://relay.example.test",
             "key": "k", "watch_key": "w", "tools": ["start_job"], "max_calls": 120, "max_jobs": 5,
         ]
-        XCTAssertNil(WatchToolGrantClient.grant(from: response)?.jobProfiles)
+        XCTAssertNil(WatchToolGrantClient.grant(from: response)?.hostJobProfiles)
         response["job_profiles"] = ["Fam"]
-        let hosted = try XCTUnwrap(WatchToolGrantClient.grant(from: response)?.jobProfiles)
+        XCTAssertEqual(WatchToolGrantClient.grant(from: response)?.hostJobProfiles, ["Fam"])
+
         let names: [WatchVoiceWire.JobProfileName] = [
             .init(profile: nil, names: ["coder"]),
             .init(profile: "fam", names: ["fam", "Family"]),
             .init(profile: "work", names: ["work"]),
+            .init(profile: "Fam", names: ["Fam"]),
+            .init(profile: "my profile", names: ["my profile"]),
         ]
-        XCTAssertEqual(WatchDirectBroker.jobProfileNames(names, hostedBy: hosted), [
-            .init(profile: nil, names: ["coder"]),
-            .init(profile: "fam", names: ["fam", "Family"]),
-        ])
+        // Only real profile names, once each.
+        XCTAssertEqual(WatchDirectBroker.grantableJobProfiles(names), ["fam", "work"])
+        let route = { (task: String, spoken: String?) in
+            VoiceJobProfiles.relayRoute(instructions: task, spokenProfile: spoken, names: names, hosted: ["fam"])
+        }
+        XCTAssertEqual(route("for family, check the router", nil), .relay(instructions: "check the router", profile: "fam"))
+        XCTAssertEqual(route("check the router", "coder"), .relay(instructions: "check the router", profile: nil))
+        XCTAssertEqual(route("check the router", nil), .relay(instructions: "check the router", profile: nil))
+        XCTAssertEqual(route("check the router", "Work"), .viaPhone(label: "Work"))
+        XCTAssertEqual(route("check the router", "Brian"), .unknown("Brian"))
     }
 
     /// The host takes xAI's audio deltas out to pace them; the Watch's
