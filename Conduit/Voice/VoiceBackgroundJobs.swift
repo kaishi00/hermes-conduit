@@ -566,10 +566,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard activeCount < Self.maximumActiveJobs else {
             return AppLocalization.string("You already have \(activeCount) background jobs running. Cancel them before starting another.")
         }
+        let routed = VoiceJobProfiles.route(instructions: instructions, spokenProfile: spokenProfile, resolve: { self.backend.resolveProfile($0) })
         let instructions: String
         let profile: String?
         let profileLabel: String?
-        switch VoiceJobProfiles.route(instructions: instructions, spokenProfile: spokenProfile, resolve: { self.backend.resolveProfile($0) }) {
+        switch routed {
         case .run(let task, let target, let label):
             (instructions, profile, profileLabel) = (task, target, label)
         case .unknown(let spokenProfile):
