@@ -210,7 +210,20 @@ final class WatchURLSessionGeminiLiveSocket: GeminiLiveSocket {
 private final class WatchURLSessionSocketDelegate: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: GeminiLiveServerClose?
-    var onEvent: ((String, [String: Any]) -> Void)?
+    /// Set once, before the task starts; read on URLSession's queue.
+    var onEvent: ((String, [String: Any]) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return handler
+        }
+        set {
+            lock.lock()
+            handler = newValue
+            lock.unlock()
+        }
+    }
+    private var handler: ((String, [String: Any]) -> Void)?
 
     var serverClose: GeminiLiveServerClose? {
         lock.lock()

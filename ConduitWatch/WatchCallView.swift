@@ -265,9 +265,10 @@ struct WatchApprovalCard: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(4)
                 }
+                // All of it: the card scrolls, and the user approves what
+                // they read.
                 Text(verbatim: approval.command)
                     .font(.caption2.monospaced())
-                    .lineLimit(10)
                     .padding(6)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.1)))
@@ -338,10 +339,14 @@ struct WatchCallSummary: View {
 
     private var duration: String? {
         guard let since = call.liveSince, let ended = call.endedAt else { return nil }
+        return Self.durationFormatter.string(from: max(0, ended.timeIntervalSince(since)))
+    }
+
+    private static let durationFormatter: DateComponentsFormatter = {
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = [.hour, .minute, .second]
         formatter.unitsStyle = .abbreviated
         formatter.zeroFormattingBehavior = .dropLeading
-        return formatter.string(from: max(0, ended.timeIntervalSince(since)))
-    }
+        return formatter
+    }()
 }

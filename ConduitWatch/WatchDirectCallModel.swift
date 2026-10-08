@@ -142,7 +142,6 @@ final class WatchDirectCallModel: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var caption: String?
     @Published private(set) var isMuted = false
-    @Published private(set) var lastTurnSummary: String?
     @Published private(set) var runningJobs = 0
     /// Jobs started through the relay that Hermes reports running.
     @Published private(set) var relayJobsRunning = 0
@@ -2295,7 +2294,6 @@ final class WatchDirectCallModel: ObservableObject {
         guard let speechEnd = speechEndAtTurnStart, audibleAt > speechEnd, audibleAt - speechEnd < 30 else { return }
         let reply = audibleAt - speechEnd
         replyTimes.append(reply)
-        lastTurnSummary = String(format: "reply %.1fs", reply)
         WatchCallLog.shared.note("directTurn", [
             "replyMs": Int(reply * 1000),
             "screen": "\(scenePhase)",
@@ -2586,7 +2584,6 @@ final class WatchDirectCallModel: ObservableObject {
         hasSentOpening = false
         caption = nil
         isMuted = false
-        lastTurnSummary = nil
         runningJobs = 0
         audioSessionActivated = nil
         sessionRequests = 0

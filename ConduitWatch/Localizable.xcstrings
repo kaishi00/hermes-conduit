@@ -1,6 +1,22 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Add a Gemini API key on your Hermes server." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HermesサーバにGemini APIキーを追加してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Hermes 服务器上添加 Gemini API 密钥。"
+          }
+        }
+      }
+    },
     "Approve once" : {
       "localizations" : {
         "ja" : {
@@ -241,6 +257,38 @@
         }
       }
     },
+    "Couldn't connect to Gemini Live." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Liveに接続できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到 Gemini Live。"
+          }
+        }
+      }
+    },
+    "Couldn't connect to Gemini Live: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Liveに接続できませんでした：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到 Gemini Live：%@"
+          }
+        }
+      }
+    },
     "Couldn't reach Conduit on your iPhone." : {
       "localizations" : {
         "ja" : {
@@ -385,6 +433,54 @@
         }
       }
     },
+    "Gemini Live is not available on this Hermes server." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このHermesサーバではGemini Liveを利用できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器不支持 Gemini Live。"
+          }
+        }
+      }
+    },
+    "Gemini Live is not available on this Hermes server: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このHermesサーバではGemini Liveを利用できません：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器不支持 Gemini Live：%@"
+          }
+        }
+      }
+    },
+    "Gemini Live refused the connection: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Liveが接続を拒否しました：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 拒绝了连接：%@"
+          }
+        }
+      }
+    },
     "Gemini didn't come back after the connection broke." : {
       "localizations" : {
         "ja" : {
@@ -417,6 +513,22 @@
         }
       }
     },
+    "Hermes returned an invalid Gemini Live token." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesから無効なGemini Liveトークンが返されました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 返回了无效的 Gemini Live 令牌。"
+          }
+        }
+      }
+    },
     "Hermes sends GPT-Live's audio in a format this Watch build can't play. Update Conduit and the conduit_push plugin together." : {
       "localizations" : {
         "ja" : {
@@ -445,6 +557,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes：%@"
+          }
+        }
+      }
+    },
+    "Install or update the Hermes notifier plugin on your Hermes server." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HermesサーバにHermes通知プラグインをインストールまたはアップデートしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Hermes 服务器上安装或更新 Hermes 通知插件。"
           }
         }
       }
@@ -1037,6 +1165,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone 会使用你的 Hermes 配置中的记忆、人设和语音设置来准备每次通话。通话会保存到 iPhone 的语音记录中。"
+          }
+        }
+      }
+    },
+    "close code %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了コード%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭代码 %@"
           }
         }
       }

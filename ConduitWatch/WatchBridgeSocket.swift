@@ -109,7 +109,21 @@ final class WatchBridgeSocket {
 }
 
 private final class WatchBridgeSocketDelegate: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
-    var onEvent: ((String, [String: Any]) -> Void)?
+    private let lock = NSLock()
+    /// Set once, before the task starts; read on URLSession's queue.
+    var onEvent: ((String, [String: Any]) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return handler
+        }
+        set {
+            lock.lock()
+            handler = newValue
+            lock.unlock()
+        }
+    }
+    private var handler: ((String, [String: Any]) -> Void)?
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol negotiated: String?) {
         onEvent?("open", [:])

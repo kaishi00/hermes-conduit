@@ -19,6 +19,9 @@ final class WatchCallLog: ObservableObject {
     private let fileURL: URL?
     private static let keptLines = 300
     private static let maxFileBytes = 1_000_000
+    /// Bytes written since the file was last trimmed: it is trimmed again
+    /// after another eighth of its cap.
+    private var bytesSinceTrim = 0
 
     private init() {
         let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -70,6 +73,11 @@ final class WatchCallLog: ObservableObject {
             try? handle.write(contentsOf: data)
         } else {
             try? data.write(to: fileURL)
+        }
+        bytesSinceTrim += data.count
+        if bytesSinceTrim >= Self.maxFileBytes / 8 {
+            bytesSinceTrim = 0
+            WatchVoiceStats.trimLog(at: fileURL, maxBytes: Self.maxFileBytes)
         }
     }
 }

@@ -14,10 +14,11 @@ import Foundation
 final class WatchPhoneCallLog: ObservableObject {
     static let shared = WatchPhoneCallLog()
 
-    /// The newest call summaries.
-    @Published private(set) var summaries: [String] = []
     let fileURL: URL
     private static let maxFileBytes = 4_000_000
+    /// Bytes written since the file was last trimmed: it is trimmed again
+    /// after another eighth of its cap.
+    private var bytesSinceTrim = 0
 
     private init() {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -48,14 +49,11 @@ final class WatchPhoneCallLog: ObservableObject {
         fields["side"] = "phone"
         let line = WatchVoiceStats.jsonLine(fields)
         append(line)
-        remember(line)
     }
 
     /// A call summary the Watch sent.
     func watchReport(_ line: String) {
         append(line)
-        remember(line)
-        WatchVoiceStats.trimLog(at: fileURL, maxBytes: Self.maxFileBytes)
     }
 
     /// Any other event line the Watch sent: logged, not shown.
@@ -64,14 +62,8 @@ final class WatchPhoneCallLog: ObservableObject {
     }
 
     func clear() {
-        summaries = []
         try? FileManager.default.removeItem(at: fileURL)
         FileManager.default.createFile(atPath: fileURL.path, contents: nil)
-    }
-
-    private func remember(_ line: String) {
-        summaries.append(line)
-        if summaries.count > 30 { summaries.removeFirst(summaries.count - 30) }
     }
 
     private func append(_ line: String) {
@@ -82,6 +74,11 @@ final class WatchPhoneCallLog: ObservableObject {
             try? handle.write(contentsOf: data)
         } else {
             try? data.write(to: fileURL)
+        }
+        bytesSinceTrim += data.count
+        if bytesSinceTrim >= Self.maxFileBytes / 8 {
+            bytesSinceTrim = 0
+            WatchVoiceStats.trimLog(at: fileURL, maxBytes: Self.maxFileBytes)
         }
     }
 }

@@ -3,9 +3,8 @@
 //  Conduit Watch
 //
 //  What the Gemini Live code shared with the iPhone (Shared/GeminiLive)
-//  calls from the iPhone app, in the Watch's plain form: its text in the
-//  development language, and errors as they describe themselves. The test
-//  build ships no translations.
+//  calls from the iPhone app, in the Watch's plain form: its text from the
+//  Watch's own String Catalog, and errors as they describe themselves.
 //
 
 import Foundation

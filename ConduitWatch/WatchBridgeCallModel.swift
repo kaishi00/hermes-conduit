@@ -101,7 +101,6 @@ final class WatchBridgeCallModel: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var caption: String?
     @Published private(set) var isMuted = false
-    @Published private(set) var lastTurnSummary: String?
     @Published private(set) var relayJobsRunning = 0
     @Published private(set) var pendingApproval: WatchJobAnswer.Approval?
 
@@ -791,7 +790,6 @@ final class WatchBridgeCallModel: ObservableObject {
             let reply = audibleAt - speechEnd
             replyTimes.append(reply)
             fields["replyMs"] = Int(reply * 1000)
-            lastTurnSummary = String(format: "reply %.1fs", reply)
         }
         if let heard = heardAtTurnStart, audibleAt > heard, audibleAt - heard < 30 {
             heardReplyTimes.append(audibleAt - heard)
@@ -1317,7 +1315,6 @@ final class WatchBridgeCallModel: ObservableObject {
         relay = nil
         caption = nil
         isMuted = false
-        lastTurnSummary = nil
         relayJobsRunning = 0
         pendingApproval = nil
         sessionRequests = 0

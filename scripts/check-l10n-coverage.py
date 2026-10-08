@@ -626,6 +626,13 @@ SECONDARY_CATALOGS = ("AppShortcuts.xcstrings", "InfoPlist.xcstrings")
 INFO_PLIST = os.path.join("Conduit", "Info.plist")
 # The Apple Watch app's sources and its own Localizable catalog.
 WATCH_DIRECTORY = "ConduitWatch"
+# The Watch target's other sources (project.yml), whose strings the Watch
+# catalog must carry too.
+WATCH_SHARED_SOURCES = (
+    "Shared/GeminiLive",
+    "Shared/WatchVoice",
+    "Conduit/Voice/GPTLive/GPTLiveProtocol.swift",
+)
 
 
 class _JSONObject(dict):
@@ -847,7 +854,9 @@ def check(repo_root: str):
             watch_catalog, watch_duplicates = load_catalog(watch_catalog_path)
         except (OSError, ValueError) as error:
             raise CatalogError(f"{WATCH_DIRECTORY}/{SOURCE_CATALOG}: {error}") from error
-        checked += scan_sites(watch, set(watch_catalog["strings"]), repo_root, missing, key_problems)
+        watch_keys = set(watch_catalog["strings"])
+        for root in (watch,) + tuple(os.path.join(repo_root, source) for source in WATCH_SHARED_SOURCES):
+            checked += scan_sites(root, watch_keys, repo_root, missing, key_problems)
         prefix = f"{WATCH_DIRECTORY}/{SOURCE_CATALOG}: "
         for key, problems in watch_duplicates.items():
             key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
@@ -869,10 +878,14 @@ def check(repo_root: str):
 
 def scan_sites(root: str, catalog_keys, repo_root: str, missing: dict, key_problems: dict) -> int:
     """Checks every localizable call site in the Swift files under `root`
-    against `catalog_keys`, adding what's missing to `missing`. Returns the
+    (or in `root`, a single file) against `catalog_keys`, adding what's missing to `missing`. Returns the
     number of sites checked."""
     checked = 0
-    for dirpath, _dirnames, filenames in os.walk(root):
+    if os.path.isfile(root):
+        walk = [(os.path.dirname(root), [], [os.path.basename(root)])]
+    else:
+        walk = os.walk(root)
+    for dirpath, _dirnames, filenames in walk:
         for name in filenames:
             if not name.endswith(".swift"):
                 continue
