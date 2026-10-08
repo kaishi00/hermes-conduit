@@ -1474,7 +1474,7 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         if let since = screenOffSince { screenOffSeconds += now - since }
         phase = .ended(reason)
-        let saved = WatchVoiceWire.DirectTranscript.capped(transcript.filter { !$0.text.isEmpty })
+        let saved = WatchVoiceWire.DirectTranscript.capped(transcript.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
         let queued = link.queue(.directEnd(callID: callID, transcript: .init(
             callUUID: callUUID.uuidString,
             startedAt: callStartedDate,

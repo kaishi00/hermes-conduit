@@ -64,6 +64,7 @@ final class WatchCallLog: ObservableObject {
     func clear() {
         firstLineNumber += lines.count
         lines = []
+        bytesSinceTrim = 0
         if let fileURL { try? FileManager.default.removeItem(at: fileURL) }
     }
 

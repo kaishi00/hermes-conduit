@@ -190,10 +190,32 @@ enum WatchVoiceWire {
             var total = 0
             for turn in turns.reversed() {
                 total += turn.text.utf8.count
-                if total > bytes { break }
+                if total > bytes {
+                    // A newest turn too long on its own keeps its opening,
+                    // so a call is never saved empty.
+                    if kept.isEmpty {
+                        var clipped = turn
+                        clipped.text = clippedPrefix(turn.text, bytes: bytes)
+                        if !clipped.text.isEmpty { kept.append(clipped) }
+                    }
+                    break
+                }
                 kept.append(turn)
             }
             return kept.reversed()
+        }
+
+        /// The longest whole-character opening of `text` within `bytes` of UTF-8.
+        static func clippedPrefix(_ text: String, bytes: Int) -> String {
+            var used = 0
+            var end = text.startIndex
+            for index in text.indices {
+                let size = text[index].utf8.count
+                if used + size > bytes { break }
+                used += size
+                end = text.index(after: index)
+            }
+            return String(text[..<end])
         }
     }
 
