@@ -1173,6 +1173,7 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(text.contains("The last reply."))
         XCTAssertEqual(fake.threadSubmissions.count, 1, "reading the last reply asks Hermes nothing")
 
+        bridge.replyDelivered(delegationID: "del_3")
         clock += GPTLiveDelegationBridge.readBackWindow + 1
         let quickRead = await bridge.handleDelegation(id: "del_4", request: "Quick: read the last reply")
         guard case .sessionContext(let quickText, .commentary, true, nil)? = quickRead.first,
@@ -1201,7 +1202,7 @@ extension VoiceConversationControllerTests {
 
         // The model delegates the same request too: not read twice.
         let delegated = await bridge.handleDelegation(id: "del_1", request: "read the last reply")
-        guard case .delegationReply("del_1", _, .commentary)? = delegated.first else {
+        guard case .delegationReply("del_1", GPTLiveDelegationBridge.readBackAlreadySent, .commentary)? = delegated.first else {
             return XCTFail("\(delegated)")
         }
 
@@ -1217,14 +1218,24 @@ extension VoiceConversationControllerTests {
         guard case .delegationReply("del_2b", GPTLiveDelegationBridge.readBackOnItsWay, .commentary)? = queued.first else {
             return XCTFail("\(queued)")
         }
+        // However long the quiet moment takes, asking again queues no second copy.
+        clock += GPTLiveDelegationBridge.readBackWindow + 1
+        let stillQueued = await bridge.handleDelegation(id: "del_2d", request: "read the last reply")
+        guard case .delegationReply("del_2d", GPTLiveDelegationBridge.readBackOnItsWay, .commentary)? = stillQueued.first else {
+            return XCTFail("\(stillQueued)")
+        }
+        let userAskedWhileQueued = await bridge.userAskedForLastReply()
+        XCTAssertTrue(userAskedWhileQueued.isEmpty, "the queued read-back covers the user's ask too")
+        // Once it went out, a later request reads it again.
         bridge.replyDelivered(delegationID: "del_2")
         let afterRead = await bridge.handleDelegation(id: "del_2c", request: "read the last reply")
-        guard case .delegationReply("del_2c", GPTLiveDelegationBridge.readBackAlreadySent, .commentary)? = afterRead.first else {
+        guard case .sessionContext(_, .commentary, true, nil)? = afterRead.first else {
             return XCTFail("\(afterRead)")
         }
         let afterDelegation = await bridge.userAskedForLastReply()
         XCTAssertTrue(afterDelegation.isEmpty, "the delegation already asked for this one")
         XCTAssertEqual(fake.threadSubmissions.count, 0, "reading asks Hermes nothing")
+        bridge.replyDelivered(delegationID: "del_2c")
 
         // The controller adds the recent conversation for context: routing
         // reads only the delegation's own words.
@@ -2154,7 +2165,7 @@ extension VoiceConversationControllerTests {
 
         let none = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_0", name: "read_last_reply", arguments: [:]))
         guard case .toolResponse("call_0", "read_last_reply", let noneResult, _)? = none.first else { return XCTFail("\(none)") }
-        XCTAssertNotNil(noneResult["error"], "no job result yet")
+        XCTAssertEqual(noneResult["error"], GeminiLiveToolBridge.nothingToReadBack, "no job result yet; the model may repeat its own answer")
 
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "check the server"]))
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "## Server\n- **Disk:** 80% full", reasoning: nil))
@@ -2260,6 +2271,11 @@ extension VoiceConversationControllerTests {
         supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Two PRs.", reasoning: nil))
         let typed = await supervisor.readBackText()
         XCTAssertEqual(typed, "Two PRs.")
+
+        // A very long chat reply is cut before it is flattened for speech.
+        fake.threadReply = String(repeating: "word ", count: 10_000)
+        let long = await supervisor.readBackText()
+        XCTAssertEqual(long?.count, VoiceBackgroundJobSupervisor.readBackSourceLimit)
     }
 
     func testReadBackMarkerAndRules() {

@@ -334,6 +334,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     static let maximumActiveJobs = 3
     /// Upper bound on the finished-job text handed to the voice session.
     static let maximumResultCharacters = 6_000
+    /// Upper bound on the raw text a read-back flattens for speech: a few
+    /// times what it can say, since flattening only shrinks it.
+    static let readBackSourceLimit = maximumResultCharacters * 4
     static let maximumTitleCharacters = 60
     /// Settled, already-announced jobs kept for the Voice sheet and status.
     static let maximumSettledJobs = 10
@@ -885,7 +888,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// latest reply.
     func readBackText() async -> String? {
         if let lastCallResult, lastCallResult.callID == liveCallID { return lastCallResult.text }
-        return liveThread != nil ? await lastThreadReply() : nil
+        guard liveThread != nil, let reply = await lastThreadReply() else { return nil }
+        return String(reply.prefix(Self.readBackSourceLimit))
     }
 
     /// The newest background job result handed to the running call, while
@@ -895,8 +899,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A job's outcome reached the running call: a finished job's result is
     /// what "read that again" means until the chat replies after it. Only
     /// once it went out, so a result handed back unsent is never read as
-    /// heard. Kept to a few times what a read-back can say, before the
-    /// Markdown is flattened.
+    /// heard. Kept to the read-back source limit.
     private func noteResultReported(_ job: VoiceBackgroundJob) {
         guard let callID = liveCallID, job.outcomeDelivered else { return }
         if job.isThreadTurn {
@@ -907,7 +910,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard job.status == .finished,
               let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines),
               !result.isEmpty else { return }
-        lastCallResult = (callID, String(result.prefix(Self.maximumResultCharacters * 4)))
+        lastCallResult = (callID, String(result.prefix(Self.readBackSourceLimit)))
     }
 
     /// The attached chat's latest reply, read without starting a turn.

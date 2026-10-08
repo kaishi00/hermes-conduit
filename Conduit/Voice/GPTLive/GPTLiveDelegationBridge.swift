@@ -134,9 +134,9 @@ final class GPTLiveDelegationBridge {
         // a chat it reads the newest job result.
         if Self.isReadBackMarker(ownWords) || VoiceThreadRouting.wantsLastReply(ownWords)
             || VoiceThreadRouting.wantsLastReply(userWords) {
-            if readBackIsRecent {
+            if readBackIsRecent || readBackIsQueued {
                 // Still waiting for a quiet moment: it's coming, not read yet.
-                let text = readBackDelegationID == nil ? Self.readBackAlreadySent : Self.readBackOnItsWay
+                let text = readBackIsQueued ? Self.readBackOnItsWay : Self.readBackAlreadySent
                 return [.delegationReply(delegationID: id, text: text, channel: .commentary)]
             }
             lastReadBackAt = now()
@@ -223,7 +223,7 @@ final class GPTLiveDelegationBridge {
     /// memory is followed by Hermes' own words. Nothing when the model's
     /// delegation already asked for it.
     func userAskedForLastReply() async -> [Outgoing] {
-        guard supervisor.liveThread != nil, !isEnding, !readBackIsRecent else { return [] }
+        guard supervisor.liveThread != nil, !isEnding, !readBackIsRecent, !readBackIsQueued else { return [] }
         lastReadBackAt = now()
         let call = callGeneration
         let reply = await supervisor.readBackText()
@@ -251,6 +251,12 @@ final class GPTLiveDelegationBridge {
         readBackDelegationID = nil
     }
 
+    /// A delegated read-back's reply and cue still wait for a quiet moment,
+    /// however long that takes: asking again must not queue a second pair.
+    private var readBackIsQueued: Bool {
+        readBackDelegationID != nil && lastReadBackAt != nil
+    }
+
     private var readBackIsRecent: Bool {
         guard let lastReadBackAt else { return false }
         let elapsed = now().timeIntervalSince(lastReadBackAt)
@@ -265,7 +271,7 @@ final class GPTLiveDelegationBridge {
     static let readBackCue = "[Read the reply Conduit just gave you, between <read_back> tags, to the user now: word for word from start to end, all of it, once, whatever your answer length. Don't summarize, shorten or add to it.]"
     /// A read-back in a call without a chat, before any job result came
     /// back. Not UI copy.
-    static let nothingToReadBack = "[No Hermes reply or job result has come back in this call yet, so there is nothing of Hermes' to read back. If the user meant your own last answer, say it again; otherwise tell them in a few words.]"
+    static var nothingToReadBack: String { "[\(GeminiLiveToolBridge.nothingToReadBack)]" }
 
     /// The call ended or was replaced: open delegations can no longer be
     /// answered, so their outcomes go out as session context later.
