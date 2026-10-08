@@ -820,7 +820,7 @@ final class WatchBridgeCallModel: ObservableObject {
     }
 
     private func flushUplink() {
-        guard live, !pendingSamples.isEmpty else { return }
+        guard live, endRequestedAt == nil, !pendingSamples.isEmpty else { return }
         let samples = pendingSamples
         pendingSamples = []
         guard sendsInFlight < Self.sendsInFlightLimit else {
