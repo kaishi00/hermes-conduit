@@ -1041,6 +1041,71 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(VoiceSpokenCommands.matchesSpokenCommand("Goodbye to the old server.", phrases: phrases))
     }
 
+    /// "for Fam, …" on the Watch resolves from the names the iPhone sent,
+    /// as `AppState.voiceJobProfileTarget` resolves it on the phone.
+    func testWatchJobsRouteToTheProfileTheUserNamed() {
+        let names: [WatchVoiceWire.JobProfileName] = [
+            .init(profile: nil, names: ["coder"]),
+            .init(profile: "fam", names: ["fam"]),
+            .init(profile: "default", names: ["Main"]),
+            .init(profile: "helper-bot", names: ["Helper Bot", "helper-bot", "Assistant"]),
+        ]
+        let resolve = { VoiceJobProfiles.target(named: $0, in: names) }
+        XCTAssertEqual(resolve(" FAM "), .other("fam"))
+        XCTAssertEqual(resolve("Coder"), .active)
+        XCTAssertEqual(resolve("main"), .other("default"))
+        XCTAssertEqual(resolve("assistant"), .other("helper-bot"))
+        XCTAssertEqual(resolve("work"), .unknown)
+
+        XCTAssertEqual(VoiceJobProfiles.route(instructions: "For Fam, check the router", spokenProfile: nil, resolve: resolve),
+                       .run(instructions: "check the router", profile: "fam", label: "Fam"))
+        XCTAssertEqual(VoiceJobProfiles.route(instructions: "for helper bot: plan the week", spokenProfile: nil, resolve: resolve),
+                       .run(instructions: "plan the week", profile: "helper-bot", label: "helper bot"))
+        // The call's own profile named: the lead goes, the job stays here.
+        XCTAssertEqual(VoiceJobProfiles.route(instructions: "for coder, fix the build", spokenProfile: nil, resolve: resolve),
+                       .run(instructions: "fix the build", profile: nil, label: nil))
+        XCTAssertEqual(VoiceJobProfiles.route(instructions: "for dinner, find a recipe", spokenProfile: nil, resolve: resolve),
+                       .run(instructions: "for dinner, find a recipe", profile: nil, label: nil))
+        XCTAssertEqual(VoiceJobProfiles.route(instructions: "for Fam, check the router", spokenProfile: "Fam", resolve: resolve),
+                       .run(instructions: "check the router", profile: "fam", label: "Fam"))
+        XCTAssertEqual(VoiceJobProfiles.route(instructions: "check the router", spokenProfile: "work", resolve: resolve), .unknown("work"))
+        XCTAssertEqual(VoiceJobProfiles.unknownProfileReply("work"), "I don't know a profile or bot called work, so I didn't start the job.")
+    }
+
+    /// The host names the other profiles it runs jobs on (an older plugin
+    /// none); a job for a profile it doesn't take, or for a name only the
+    /// iPhone may know, goes through the iPhone.
+    @MainActor
+    func testWatchJobsGoThroughTheRelayOnlyForProfilesTheHostTook() throws {
+        var response: [String: Any] = [
+            "ok": true, "grant_id": String(repeating: "G", count: 22), "relay_url": "https://relay.example.test",
+            "key": "k", "watch_key": "w", "tools": ["start_job"], "max_calls": 120, "max_jobs": 5,
+        ]
+        XCTAssertNil(WatchToolGrantClient.grant(from: response)?.hostJobProfiles)
+        response["job_profiles"] = ["Fam"]
+        XCTAssertEqual(WatchToolGrantClient.grant(from: response)?.hostJobProfiles, ["Fam"])
+
+        let names: [WatchVoiceWire.JobProfileName] = [
+            .init(profile: nil, names: ["coder"]),
+            .init(profile: "fam", names: ["fam", "Family"]),
+            .init(profile: "work", names: ["work"]),
+            .init(profile: "Fam", names: ["Fam"]),
+            .init(profile: "my profile", names: ["my profile"]),
+        ]
+        // Only real profile names, once each.
+        XCTAssertEqual(WatchDirectBroker.grantableJobProfiles(names), ["fam", "work"])
+        let route = { (task: String, spoken: String?) in
+            VoiceJobProfiles.relayRoute(instructions: task, spokenProfile: spoken, names: names, hosted: ["fam"])
+        }
+        XCTAssertEqual(route("for family, check the router", nil), .relay(instructions: "check the router", profile: "fam"))
+        XCTAssertEqual(route("check the router", "coder"), .relay(instructions: "check the router", profile: nil))
+        XCTAssertEqual(route("check the router", nil), .relay(instructions: "check the router", profile: nil))
+        XCTAssertEqual(route("check the router", "Work"), .viaPhone(label: "Work"))
+        XCTAssertEqual(route("check the router", "Brian"), .unknown("Brian"))
+        // The Watch routes the task as it sends it: without "Quick:".
+        XCTAssertEqual(route(WatchBridgeDelegation.removingQuickMarker("Quick: for work, check the router"), nil), .viaPhone(label: "work"))
+    }
+
     /// The host takes xAI's audio deltas out to pace them; the Watch's
     /// bridge socket gives them back to GrokLiveSession in xAI's shape.
     func testGrokReadsTheWatchBridgesAudioAsXAISentIt() throws {

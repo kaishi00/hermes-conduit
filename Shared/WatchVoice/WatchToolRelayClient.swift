@@ -48,6 +48,11 @@ final class WatchToolRelayClient {
     let maxJobs: Int
     /// The model may answer approvals (the user's setting on the iPhone).
     let voiceApprovals: Bool
+    /// The user's profiles a job may name, where the host runs jobs on
+    /// others; nil otherwise.
+    let jobProfiles: [WatchVoiceWire.JobProfileName]?
+    /// Those others, lowercased.
+    let hostJobProfiles: Set<String>
     private let grantURL: URL
     private let watchKey: String
     private let keys: WatchToolSeal.Keys
@@ -77,6 +82,8 @@ final class WatchToolRelayClient {
         expiresAt = grant.expiresAt
         maxJobs = jobs ? max(0, grant.maxJobs ?? 0) : 0
         voiceApprovals = jobs && grant.voiceApprovals == true
+        jobProfiles = jobs && grant.hostJobProfiles != nil ? grant.jobProfiles : nil
+        hostJobProfiles = Set((grant.hostJobProfiles ?? []).map { $0.lowercased() })
         grantURL = base.appendingPathComponent("v1/watch-tools/grants/\(grant.grantID)")
         watchKey = grant.watchKey
         self.keys = keys
@@ -91,6 +98,13 @@ final class WatchToolRelayClient {
         if let protocolClasses { configuration.protocolClasses = protocolClasses }
         // The relay key travels in a header: never to another host.
         session = URLSession(configuration: configuration, delegate: WatchToolRelayNoRedirects(), delegateQueue: nil)
+    }
+
+    /// Where a start_job for `instructions` (and the model's `profile`)
+    /// goes, when the host runs jobs on the user's other profiles.
+    func jobRoute(instructions: String, spokenProfile: String?) -> VoiceJobProfiles.RelayRoute? {
+        guard let names = jobProfiles else { return nil }
+        return VoiceJobProfiles.relayRoute(instructions: instructions, spokenProfile: spokenProfile, names: names, hosted: hostJobProfiles)
     }
 
     /// Whether the grant carries Hermes jobs.

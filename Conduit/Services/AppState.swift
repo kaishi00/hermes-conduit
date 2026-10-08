@@ -3673,6 +3673,40 @@ final class AppState: ObservableObject {
         return profilesMatch(match, activeProfile) ? .active : .other(match)
     }
 
+    /// The names a Watch call's job may give the user's profiles, in the
+    /// order `voiceJobProfileTarget` tries them: the Watch resolves "for
+    /// Fam, …" from these as this phone would. `callProfile` is the
+    /// profile the call is on (the active one when nil). Kept within
+    /// `watchJobProfileNamesBytes`, as it rides in every grant: a spoken
+    /// profile left out goes through the iPhone, which knows them all,
+    /// while a leading "for <name>," for one stays part of the task.
+    func watchJobProfileNames(callProfile: String? = nil) -> [WatchVoiceWire.JobProfileName] {
+        let own = callProfile ?? activeProfile
+        func entry(_ profile: String, _ names: [String]) -> WatchVoiceWire.JobProfileName {
+            .init(
+                profile: profilesMatch(profile, own) ? nil : profile,
+                names: names.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            )
+        }
+        let entries = profiles.map { entry($0, [$0]) }
+            + [entry("default", [defaultProfileName])]
+            + botRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
+        var result: [WatchVoiceWire.JobProfileName] = []
+        var bytes = 0
+        for entry in entries where !entry.names.isEmpty {
+            let cost = (entry.profile?.utf8.count ?? 0) + entry.names.reduce(0) { $0 + $1.utf8.count + 3 } + 24
+            // A prefix, so the Watch tries names in the phone's order.
+            guard bytes + cost <= Self.watchJobProfileNamesBytes else { break }
+            bytes += cost
+            result.append(entry)
+        }
+        return result
+    }
+
+    /// The names' share of a Watch session message, well inside what
+    /// WatchConnectivity carries.
+    static let watchJobProfileNamesBytes = 8_000
+
     /// Stops following Voice background jobs at a server, profile, or
     /// sign-out boundary. The jobs keep running on the server as chats.
     private func retireVoiceBackgroundJobs() {
@@ -23989,6 +24023,8 @@ final class AppState: ObservableObject {
         let jobOptions: [String: String]
         /// The profile's spoken end phrases, as the phone's call uses them.
         let endPhrases: [String]
+        /// The names the call's jobs may give the user's profiles.
+        let jobProfiles: [WatchVoiceWire.JobProfileName]
     }
 
     /// Builds a Watch call's setup as `geminiLiveController` builds the
@@ -24060,7 +24096,8 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases
+            endPhrases: preferences.spokenEndConversationPhrases,
+            jobProfiles: watchJobProfileNames()
         )
     }
 
@@ -24077,6 +24114,7 @@ final class AppState: ObservableObject {
         let personalityIncluded: Bool
         let jobOptions: [String: String]
         let endPhrases: [String]
+        let jobProfiles: [WatchVoiceWire.JobProfileName]
     }
 
     /// Builds a Watch GPT-Live call's briefing as `gptLiveController`
@@ -24133,7 +24171,8 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases
+            endPhrases: preferences.spokenEndConversationPhrases,
+            jobProfiles: watchJobProfileNames()
         )
     }
 
@@ -24152,6 +24191,7 @@ final class AppState: ObservableObject {
         let personalityIncluded: Bool
         let jobOptions: [String: String]
         let endPhrases: [String]
+        let jobProfiles: [WatchVoiceWire.JobProfileName]
     }
 
     /// Builds a Watch Grok call's setup as `grokLiveController` builds the
@@ -24216,7 +24256,8 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases
+            endPhrases: preferences.spokenEndConversationPhrases,
+            jobProfiles: watchJobProfileNames()
         )
     }
 
