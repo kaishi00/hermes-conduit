@@ -1253,8 +1253,10 @@ final class WatchBridgeCallModel: ObservableObject {
             // A rejoined session doesn't know the old one's delegations.
             let delegationID = item.delegationID.flatMap { delegationConnection[$0] == connection ? $0 : nil }
             var text = item.text
-            if item.channel == .speakable, let asked = item.delegationID, userSpokeAfter(asked) {
-                text = WatchBridgeDelegation.resultAfterUserNote + text
+            if item.channel == .speakable, let asked = item.delegationID {
+                if userSpokeAfter(asked) { text = WatchBridgeDelegation.resultAfterUserNote + text }
+                // Only its first result waited on the user, as on the phone.
+                delegationUserLines[asked] = nil
             }
             for message in GPTLiveProtocol.contextAppendMessages(text, channel: item.channel, delegationID: delegationID) {
                 sendEvent(message)

@@ -4500,6 +4500,11 @@ final class AppState: ObservableObject {
     /// A short title from the call's opening, like a chat's; the time-stamped
     /// fallback when Hermes can't make one.
     private func voiceCallTitle(turns: [VoiceTranscriptTurn], profile: String) async -> String {
+        await generatedVoiceCallTitle(turns: turns, profile: profile) ?? Self.fallbackVoiceCallTitle()
+    }
+
+    /// Hermes' title for a call; nil when it couldn't make one.
+    private func generatedVoiceCallTitle(turns: [VoiceTranscriptTurn], profile: String) async -> String? {
         let opening = turns.prefix(6).map { ($0.role == .user ? "User: " : "Assistant: ") + String(ConduitAppLink.removingLinks(from: $0.text).prefix(300)) }.joined(separator: "\n")
         guard let client, !opening.isEmpty,
               let title = try? await client.oneshot(
@@ -4508,9 +4513,9 @@ final class AppState: ObservableObject {
                 input: opening,
                 profile: profile,
                 maxTokens: 60
-              ) else { return Self.fallbackVoiceCallTitle() }
+              ) else { return nil }
         let cleaned = title.trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”‘’ ").union(.whitespacesAndNewlines))
-        return cleaned.isEmpty ? Self.fallbackVoiceCallTitle() : String(cleaned.prefix(80))
+        return cleaned.isEmpty ? nil : String(cleaned.prefix(80))
     }
 
     // MARK: Resume
@@ -24095,8 +24100,9 @@ final class AppState: ObservableObject {
         // A title from the call's opening, as the phone's calls get; the
         // queued time-stamped one stays if Hermes can't make one.
         if connected, !isLiveVoiceCallActive, dashboard == activeDashboardID?.uuidString ?? "-" {
-            let title = await voiceCallTitle(turns: turns, profile: profile)
-            retitleQueuedVoiceTranscript(callID: transcript.callUUID, title: title)
+            if let title = await generatedVoiceCallTitle(turns: turns, profile: profile) {
+                retitleQueuedVoiceTranscript(callID: transcript.callUUID, title: title)
+            }
         }
         voiceTranscriptsSaving.remove(transcript.callUUID)
         guard connected else { return }
