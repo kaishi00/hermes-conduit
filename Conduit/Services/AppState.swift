@@ -1566,6 +1566,7 @@ final class AppState: ObservableObject {
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens),
             input: audio.input,
             output: audio.output,
+            routePolicy: { [weak self] in self?.liveVoiceRoutePolicy() ?? VoiceBargeInRoutePolicy.current() },
             // The same "End conversation" phrases as the classic Voice mode.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
@@ -2102,6 +2103,7 @@ final class AppState: ObservableObject {
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false),
             input: audio.input,
             output: audio.output,
+            routePolicy: { [weak self] in self?.liveVoiceRoutePolicy() ?? VoiceBargeInRoutePolicy.current() },
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
@@ -2824,7 +2826,7 @@ final class AppState: ObservableObject {
     /// left a socket lost during suspension dead for the whole drive and
     /// CarPlay reporting Voice unavailable.
     private var canRunTransportRecovery: Bool {
-        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive
+        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive
     }
     /// A transport whose handshake completed but whose post-connect bootstrap
     /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
@@ -3651,6 +3653,9 @@ final class AppState: ObservableObject {
     /// Stops following Voice background jobs at a server, profile, or
     /// sign-out boundary. The jobs keep running on the server as chats.
     private func retireVoiceBackgroundJobs() {
+        // A Watch call to Gemini belongs to the outgoing connection too: it
+        // ends here, before its jobs' news goes back to the supervisor.
+        WatchVoiceLink.shared.direct.connectionRetiring(in: self)
         voiceBackgroundJobSupervisor.reset()
         voiceJobSessionListRefreshTask?.cancel()
         voiceJobSessionListRefreshTask = nil
@@ -3854,8 +3859,18 @@ final class AppState: ObservableObject {
             makeEchoCancelling: {
                 let audio = EchoCancellingLiveVoiceAudio(outputSampleRate: outputSampleRate)
                 return (audio.input, audio.output)
-            }
+            },
+            // Only the conversation the Watch call started: a call started
+            // on the phone while a Watch call connects keeps the phone's.
+            wantsWatch: { [weak self] in self?.watchStartedLiveConversation ?? false },
+            makeWatch: { WatchVoiceLink.shared.makeLiveAudio() }
         )
+    }
+
+    /// A Watch call plays on the Watch's own speaker, whatever the phone's
+    /// route is: half duplex unless the Watch cancels its echo.
+    private func liveVoiceRoutePolicy() -> VoiceBargeInRoutePolicy {
+        watchStartedLiveConversation ? .speakerSafeHalfDuplex : VoiceBargeInRoutePolicy.current()
     }
 
     /// The row's voice tag, matched through every id the row answers to.
@@ -23672,13 +23687,322 @@ final class AppState: ObservableObject {
     /// transitions cannot keep a dead gateway on a fixed 0.1s retry.
     func recoverTransportForCarPlayIfNeeded(immediately: Bool = false) {
         // A conversation kept running while locked relies on the transport
-        // the same way.
-        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive,
+        // the same way, and so does a call the Apple Watch started.
+        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive,
               !isSceneActive,
               connection != nil,
               !isConnected,
               !isConnecting else { return }
         scheduleReconnect(immediately: immediately, purpose: chatResumePurposeForDisconnect())
+    }
+
+    // MARK: Apple Watch voice (proof of concept)
+
+    /// A call the Apple Watch started is running, with the Watch as its
+    /// microphone and speaker (designs/apple-watch-voice.md). Like CarPlay,
+    /// the Watch is another surface over the same live call, never a second
+    /// owner: it keeps transport recovery going with the phone locked.
+    @Published private(set) var isWatchVoiceCallActive = false
+    /// The Watch call started the running live conversation, so it runs on
+    /// the Watch's microphone and speaker. A call the Watch was refused, or
+    /// ended before it started one, leaves a call started on the phone
+    /// alone, on the phone's own audio.
+    private var watchStartedLiveConversation = false
+
+    func setWatchVoiceCallActive(_ active: Bool) {
+        isWatchVoiceCallActive = active
+    }
+
+    /// Starts the profile's live mode for a call the Watch started. Nil
+    /// once the call is starting; otherwise why it can't. `stillWanted`
+    /// is asked after waiting for Hermes: the Watch may have ended or
+    /// replaced the call meanwhile.
+    func startLiveVoiceForWatch(_ mode: CarPlayLiveVoiceMode, stillWanted: () -> Bool) async -> String? {
+        // Woken (or launched) by the Watch with no phone screen up.
+        if isSceneActive, !PhoneScenePresence.isInForeground {
+            isSceneActive = false
+            publishVoiceRuntimeGates()
+        }
+        if !isConnected {
+            recoverTransportForCarPlayIfNeeded(immediately: true)
+            guard await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: .seconds(20)) else {
+                return WatchVoiceStartFailure.hermesUnreachable
+            }
+        }
+        guard isWatchVoiceCallActive, stillWanted() else { return WatchVoiceStartFailure.ended }
+        // A call started on the phone while this waited for Hermes keeps
+        // going; the Watch is told instead.
+        guard !isLiveVoiceCallActive else { return WatchVoiceStartFailure.callRunning }
+        messageReadAloudController.stop()
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopGPTLiveConversation()
+        voiceBackgroundJobSupervisor.detachLiveThread()
+        switch mode {
+        case .geminiLive:
+            stopGrokLiveConversation()
+            guard !geminiLiveController.isActive else { return WatchVoiceStartFailure.callRunning }
+            watchStartedLiveConversation = true
+            beginVoiceCallRecording(engine: .geminiLive)
+            let epoch = geminiLiveController.callEpoch &+ 1
+            await geminiLiveController.start()
+            // Ended or replaced from the Watch while it started: nothing
+            // may keep the phone's microphone on for it. A conversation the
+            // phone started since is the user's and stays.
+            guard isWatchVoiceCallActive, stillWanted() else {
+                if geminiLiveController.callEpoch == epoch { closeGeminiLiveConversation() }
+                return WatchVoiceStartFailure.ended
+            }
+        case .grokLive:
+            stopGeminiLiveConversation()
+            guard !grokLiveController.isActive else { return WatchVoiceStartFailure.callRunning }
+            watchStartedLiveConversation = true
+            beginVoiceCallRecording(engine: .grokLive)
+            let epoch = grokLiveController.callEpoch &+ 1
+            await grokLiveController.start()
+            guard isWatchVoiceCallActive, stillWanted() else {
+                if grokLiveController.callEpoch == epoch { closeGrokLiveConversation() }
+                return WatchVoiceStartFailure.ended
+            }
+        case .gptLive:
+            return WatchVoiceStartFailure.unsupportedMode
+        }
+        return nil
+    }
+
+    /// The Watch call is over: a conversation it started closes (and is
+    /// saved) as the phone's End button would close it.
+    func finishLiveVoiceForWatch(_ mode: CarPlayLiveVoiceMode) {
+        if watchStartedLiveConversation {
+            switch mode {
+            case .geminiLive: closeGeminiLiveConversation()
+            case .grokLive: closeGrokLiveConversation()
+            case .gptLive: break
+            }
+        }
+        watchStartedLiveConversation = false
+        isWatchVoiceCallActive = false
+    }
+
+    // MARK: Apple Watch voice, Gemini on the Watch (test build)
+
+    /// What a Watch call to Gemini Live starts with: the setup this
+    /// profile's Gemini Live call gets on the phone, and the session's
+    /// first single-use token (designs/apple-watch-voice-direct.md).
+    struct WatchDirectPlan {
+        let systemInstruction: String
+        let functions: [GeminiLiveProtocol.FunctionDeclaration]
+        let googleSearch: Bool
+        let voice: String?
+        let openingPrompt: String?
+        let token: GeminiLiveToken
+        /// The connection the setup, token and tools came from.
+        let connection: WatchDirectConnection
+        /// The profile's "Save voice calls" setting as the call began.
+        let saveCalls: Bool
+        let memoryIncluded: Bool
+        let personalityIncluded: Bool
+        /// The voice-job model settings for jobs the Watch starts through
+        /// the push relay, as `createSession` sends them for a phone job.
+        let jobOptions: [String: String]
+    }
+
+    /// Builds a Watch call's setup as `geminiLiveController` builds the
+    /// phone's: the same search, memory and persona lookups, instructions,
+    /// functions and voice. The call has no attached chat and no phone
+    /// screen, so it gets no chat tools and no resume context.
+    func prepareWatchDirectCall() async throws -> WatchDirectPlan {
+        // Woken (or launched) by the Watch with no phone screen up.
+        if isSceneActive, !PhoneScenePresence.isInForeground {
+            isSceneActive = false
+            publishVoiceRuntimeGates()
+        }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        // The phone's microphone and the Watch's would both feed Hermes.
+        guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
+        // Every lookup below goes to the connection active now.
+        let connection = watchDirectConnection
+        let tokens = geminiLiveTokenClient
+        let wantsMemory = geminiLiveMemoryEnabled
+        let wantsPersonality = geminiLivePersonalityEnabled
+        async let searchLookup = resolveGeminiLiveSearchSource()
+        async let memoryLookup = wantsMemory ? tokens.memoryContext() : nil
+        async let personalityLookup = wantsPersonality ? tokens.personality() : nil
+        let status = try await tokens.availability()
+        guard status.isAvailable else {
+            throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
+        }
+        let search = await searchLookup
+        let memory = await memoryLookup
+        let personality = await personalityLookup
+        let token = try await tokens.freshToken()
+        let style = liveVoiceStyle
+        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+            runtimeModel: runtime.model,
+            runtimeProvider: runtime.provider
+        )
+        var jobOptions: [String: String] = [:]
+        if let model = jobSession.model {
+            jobOptions["model"] = model
+            if let provider = jobSession.provider { jobOptions["provider"] = provider }
+        }
+        if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
+        // A switch while the lookups ran would mix two connections' setup.
+        guard watchDirectConnection == connection else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+        }
+        return WatchDirectPlan(
+            systemInstruction: GeminiLiveConversationController.instructions(
+                search: search,
+                memory: memory,
+                personality: personality,
+                answerLength: style.answerLength
+            ) + style.instructions,
+            functions: GeminiLiveToolBridge.declarations(
+                webSearch: search == .hermes,
+                memoryRecall: memory?.canRecall == true,
+                thread: false
+            ),
+            googleSearch: search == .google,
+            voice: geminiLiveVoice,
+            openingPrompt: style.openingPrompt,
+            token: token,
+            connection: connection,
+            saveCalls: voiceCallSavingEnabled,
+            memoryIncluded: memory != nil,
+            personalityIncluded: personality != nil,
+            jobOptions: jobOptions
+        )
+    }
+
+    /// What a Watch call to GPT-Live through the host's audio bridge
+    /// starts with (designs/apple-watch-gpt-live.md): what the phone's own
+    /// GPT-Live call sends the host, built the same way.
+    struct WatchBridgePlan {
+        let briefing: String
+        let greeting: String?
+        let voice: String?
+        let connection: WatchDirectConnection
+        let saveCalls: Bool
+        let memoryIncluded: Bool
+        let personalityIncluded: Bool
+        let jobOptions: [String: String]
+    }
+
+    /// Builds a Watch GPT-Live call's briefing as `gptLiveController`
+    /// builds the phone's: the same availability check, memory and persona
+    /// lookups, answer length and style. The call has no attached chat and
+    /// no resume context.
+    func prepareWatchBridgeCall() async throws -> WatchBridgePlan {
+        if isSceneActive, !PhoneScenePresence.isInForeground {
+            isSceneActive = false
+            publishVoiceRuntimeGates()
+        }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
+        let connection = watchDirectConnection
+        let hostContext = geminiLiveTokenClient
+        let wantsMemory = gptLiveMemoryEnabled
+        let wantsPersonality = gptLivePersonalityEnabled
+        async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
+        async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
+        let status = try await gptLiveClient.availability()
+        guard status.isAvailable else {
+            throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
+        }
+        let memory = await memoryLookup
+        let personality = await personalityLookup
+        let style = liveVoiceStyle
+        let jobSession = loadVoiceProfilePreferences(profile: activeProfile).voiceJobSessionOptions(
+            runtimeModel: runtime.model,
+            runtimeProvider: runtime.provider
+        )
+        var jobOptions: [String: String] = [:]
+        if let model = jobSession.model {
+            jobOptions["model"] = model
+            if let provider = jobSession.provider { jobOptions["provider"] = provider }
+        }
+        if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
+        guard watchDirectConnection == connection else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+        }
+        return WatchBridgePlan(
+            briefing: GPTLiveConversationController.briefing(
+                memory: memory,
+                personality: personality,
+                answerLength: style.answerLength
+            ) + style.instructions,
+            greeting: style.greeting,
+            voice: gptLiveVoice,
+            connection: connection,
+            saveCalls: voiceCallSavingEnabled,
+            memoryIncluded: memory != nil,
+            personalityIncluded: personality != nil,
+            jobOptions: jobOptions
+        )
+    }
+
+    /// The connection a Watch call started now would belong to.
+    var watchDirectConnection: WatchDirectConnection {
+        WatchDirectConnection(profile: activeProfile, dashboard: activeDashboardID?.uuidString ?? "-")
+    }
+
+    /// A single-use token for the Watch call's next connection.
+    func watchDirectToken() async throws -> GeminiLiveToken {
+        guard await connectForWatchDirectCall(timeout: WatchDirectBroker.connectWait) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        return try await geminiLiveTokenClient.freshToken()
+    }
+
+    /// Reconnects to Hermes if the phone's suspension dropped the
+    /// connection, as a CarPlay call does. True once connected.
+    func connectForWatchDirectCall(timeout: Duration) async -> Bool {
+        if isConnected { return true }
+        recoverTransportForCarPlayIfNeeded(immediately: true)
+        return await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: timeout)
+    }
+
+    private static let watchDirectSavedCallsKey = "watchDirect.savedCalls"
+
+    /// Saves a finished Watch call in voice history through the same
+    /// outbox as the phone's calls: queued first, so a save Hermes can't
+    /// take now is retried later. The Watch sends the transcript once the
+    /// call ends, by a transfer that arrives whenever the phone next runs;
+    /// one that arrives twice is saved once. It goes to the connection the
+    /// call began on, whichever is active when it arrives.
+    func saveWatchVoiceCall(_ transcript: WatchVoiceWire.DirectTranscript, connection: WatchDirectConnection, saveCalls: Bool) async {
+        let profile = connection.profile
+        let dashboard = connection.dashboard
+        guard saveCalls, !transcript.turns.isEmpty else { return }
+        var saved = defaults.stringArray(forKey: Self.watchDirectSavedCallsKey) ?? []
+        guard !saved.contains(transcript.callUUID) else { return }
+        saved.append(transcript.callUUID)
+        defaults.set(Array(saved.suffix(50)), forKey: Self.watchDirectSavedCallsKey)
+        let turns = transcript.turns.enumerated().map { offset, turn in
+            VoiceTranscriptTurn(index: offset, role: turn.role == .user ? .user : .assistant, text: turn.text, at: turn.at)
+        }
+        queueVoiceTranscript(
+            VoiceTranscriptSaveRequest(
+                callID: transcript.callUUID,
+                engine: transcript.engine.flatMap(VoiceCallEngine.watchBridge) ?? .geminiLive,
+                sessionID: nil,
+                title: Self.fallbackVoiceCallTitle(at: transcript.startedAt),
+                turns: turns
+            ),
+            dashboard: dashboard,
+            profile: profile
+        )
+        // Only the active dashboard's outbox drains; another's waits until
+        // it's active again, as the phone's own calls do.
+        guard dashboard == activeDashboardID?.uuidString ?? "-" else { return }
+        let end = beginVoiceTranscriptBackgroundTask()
+        defer { end() }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else { return }
+        await drainVoiceTranscriptOutbox(profile: profile, key: voiceHistoryKey(profile: profile))
     }
 
     /// Called by the CarPlay coordinator when the CarPlay Voice surface goes
