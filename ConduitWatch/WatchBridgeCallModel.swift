@@ -1129,10 +1129,14 @@ final class WatchBridgeCallModel: ObservableObject {
             answer(delegationID, WatchBridgeDelegation.relay("Hermes didn't get that (\(WatchBridgeDelegation.grantRanOutClause))"), channel: .speakable)
             return
         }
+        guard let arguments = WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": jobID, "message": words]) else {
+            answer(delegationID, WatchBridgeDelegation.noRequest, channel: .speakable)
+            return
+        }
         let id = callID
         let sentAt = now
         Task { [weak self] in
-            let outcome = await relay.run(name: WatchJobAnswer.interruptJob, arguments: WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": jobID, "message": words]) ?? [:])
+            let outcome = await relay.run(name: WatchJobAnswer.interruptJob, arguments: arguments)
             guard let self, self.callID == id, self.isActive else { return }
             let result: WatchJobAnswer.FollowUp
             switch outcome {
