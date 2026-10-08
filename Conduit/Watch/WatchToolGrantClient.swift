@@ -73,9 +73,10 @@ final class WatchToolGrantClient {
         var reason: String?
     }
 
-    /// Starts making the runtime unless it's there or on its way.
+    /// Starts making the runtime unless it's there or on its way. The host
+    /// makes it in the background and answers at once.
     func prepareAudio(profile: String) async throws -> AudioRuntime {
-        let response = try await request(DashboardPath.withProfile(Self.audioPreparePath, profile: profile), "POST", [:], 15_000)
+        let response = try await request(DashboardPath.withProfile(Self.audioPreparePath, profile: profile), "POST", [:], Self.timeoutMilliseconds)
         return Self.audioRuntime(from: response)
     }
 

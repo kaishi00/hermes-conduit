@@ -79,6 +79,10 @@ enum WatchBridgeDelegation {
 
     static let noRequest = relay("Hermes didn't get a request to work on. Ask the user what they want done.")
 
+    /// The call's grant is spent or about to end: this test build's calls
+    /// through Hermes last up to half an hour.
+    static let grantRanOut = "this call's access to Hermes has run out. The user can end the call and start a new one."
+
     /// When a delegation can't become a job from the Watch.
     static func notStarted(_ reason: String) -> String {
         relay("The job didn't start: \(reason)")

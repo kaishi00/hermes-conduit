@@ -629,8 +629,12 @@ final class WatchBridgeCallModel: ObservableObject {
                 "briefingApplied": info.briefingApplied,
                 "greetingApplied": info.greetingApplied,
             ])
+            // The host's rates are fixed for wire version 1; other rates
+            // would play at the wrong speed and send mis-framed audio.
             if info.inputRate != Int(Self.captureRate) || info.outputRate != Int(Self.playbackRate) {
                 note("bridgeRateMismatch", ["input": info.inputRate, "output": info.outputRate])
+                finish("Hermes sends GPT-Live's audio in a format this Watch build can't play. Update Conduit and the conduit_push plugin together.")
+                return
             }
             flushPending()
         case .ended(let reason):
@@ -793,12 +797,13 @@ final class WatchBridgeCallModel: ObservableObject {
     }
 
     private func send(_ plain: Data, kind: WatchAudioBridgeWire.Kind, done: ((Bool) -> Void)? = nil) {
-        guard let socket, stream != nil else {
+        guard let socket, var stream else {
             done?(false)
             return
         }
         do {
-            guard let message = try stream?.seal(plain, kind: kind) else { return }
+            let message = try stream.seal(plain, kind: kind)
+            self.stream = stream
             socket.send(message, done: done)
         } catch {
             note("bridgeSealFailed", ["error": "\(error)", "bytes": plain.count])
@@ -909,16 +914,25 @@ final class WatchBridgeCallModel: ObservableObject {
             answer(id, WatchBridgeDelegation.notStarted("the Watch has no way to reach Hermes for this call."), channel: .speakable)
             return
         }
-        if relay.hasJobs, relay.canRun(WatchJobAnswer.startJob) {
+        let tool = relay.hasJobs ? WatchJobAnswer.startJob : WatchToolAnswer.webSearch
+        guard relay.tools.contains(tool) else {
+            answer(id, WatchBridgeDelegation.notStarted("jobs from the Watch are off in Conduit's Watch settings."), channel: .speakable)
+            return
+        }
+        // The grant's half hour or its calls ran out. Renewing it wouldn't
+        // keep the call: the audio bridge belongs to the grant.
+        guard relay.canRun(tool) else {
+            answer(id, WatchBridgeDelegation.notStarted(WatchBridgeDelegation.grantRanOut), channel: .speakable)
+            return
+        }
+        if relay.hasJobs {
             guard relayJobsStarted < relay.maxJobs else {
                 answer(id, WatchBridgeDelegation.notStarted("this call has started \(relay.maxJobs) jobs, the most the user allows per call. They can raise it in Conduit's Watch settings."), channel: .speakable)
                 return
             }
             startJob(for: id, request: request, relay: relay)
-        } else if relay.canRun(WatchToolAnswer.webSearch) {
-            lookUp(for: id, query: WatchBridgeDelegation.clipped(ownWords, bytes: 300), relay: relay)
         } else {
-            answer(id, WatchBridgeDelegation.notStarted("jobs from the Watch are off in Conduit's Watch settings."), channel: .speakable)
+            lookUp(for: id, query: WatchBridgeDelegation.clipped(ownWords, bytes: 300), relay: relay)
         }
     }
 

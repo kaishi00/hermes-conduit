@@ -412,6 +412,7 @@ struct WatchBridgeCallView: View {
     @EnvironmentObject private var direct: WatchDirectCallModel
     @EnvironmentObject private var call: WatchCallModel
     @EnvironmentObject private var lab: WatchLabModel
+    @EnvironmentObject private var soak: WatchSoakModel
 
     var body: some View {
         ScrollView {
@@ -490,6 +491,7 @@ struct WatchBridgeCallView: View {
         if call.isActive { return "End the Hermes call first." }
         if direct.isActive { return "End the Gemini call first." }
         if lab.isBusy || lab.isWatching { return "End the lab test first." }
+        if soak.isRunning { return "Stop the link test first." }
         return nil
     }
 
@@ -546,11 +548,12 @@ struct WatchSoakView: View {
     /// The link test would share the call's channel to the iPhone.
     @EnvironmentObject private var call: WatchCallModel
     @EnvironmentObject private var direct: WatchDirectCallModel
+    @EnvironmentObject private var bridge: WatchBridgeCallModel
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                if !soak.isRunning, call.isActive || direct.isActive {
+                if !soak.isRunning, call.isActive || direct.isActive || bridge.isActive {
                     Text("End the call to run the link test.").font(.footnote)
                 }
                 if !soak.isRunning {
@@ -565,7 +568,7 @@ struct WatchSoakView: View {
                         }
                     }
                     Button("Start") { soak.start() }
-                        .disabled(call.isActive || direct.isActive)
+                        .disabled(call.isActive || direct.isActive || bridge.isActive)
                 } else {
                     Button("Stop", role: .destructive) { soak.stop() }
                 }

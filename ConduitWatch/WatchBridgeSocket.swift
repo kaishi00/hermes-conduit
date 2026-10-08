@@ -37,7 +37,8 @@ final class WatchBridgeSocket {
         configuration.urlCache = nil
         session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
         task = session.webSocketTask(with: request)
-        // The relay's bound is 64 KB a message.
+        // Above the relay's 64 KB bound on purpose: an oversized message is
+        // dropped when it doesn't open, instead of failing the socket.
         task.maximumMessageSize = 1 << 20
         delegate.onEvent = { [weak self] kind, fields in
             WatchVoiceMain.async { self?.onEvent?(kind, fields) }

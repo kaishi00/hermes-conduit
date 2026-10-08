@@ -315,9 +315,12 @@ final class WatchDirectBroker {
 
     // MARK: Start through the audio bridge
 
-    /// How long a start waits for Hermes to make GPT-Live's WebRTC runtime
-    /// (a few seconds once its packages are cached; minutes the first time).
-    static let runtimeWait: TimeInterval = 20
+    /// How long a start waits for Hermes to make GPT-Live's WebRTC runtime:
+    /// about 5 s once its packages are cached, minutes the first time. Short,
+    /// so the start's answer reaches the Watch within the background time a
+    /// Watch message gives Conduit; a longer make is refused with "try again
+    /// shortly", and the next start finds it ready.
+    static let runtimeWait: TimeInterval = 8
 
     /// A GPT-Live call on the Watch: the phone's briefing, and a grant that
     /// opens the host's audio bridge, with jobs for GPT-Live's delegations
@@ -798,6 +801,7 @@ final class WatchDirectBroker {
             grantJobOptions = scope.jobOptions
             grantVoiceApprovals = scope.voiceApprovals
             grantIDs = scope.grantIDs
+            grantAudio = scope.audio ?? false
         }
         lateOutgoing = []
         lastHeardAt = Date()
@@ -813,7 +817,8 @@ final class WatchDirectBroker {
             maxJobs: grantMaxJobs,
             jobOptions: grantJobOptions,
             voiceApprovals: grantVoiceApprovals,
-            grantIDs: grantIDs
+            grantIDs: grantIDs,
+            audio: grantAudio
         )
     }
 
@@ -995,6 +1000,9 @@ struct WatchDirectCallLedger {
         var jobOptions: [String: String]
         var voiceApprovals: Bool
         var grantIDs: [String]
+        /// The grant carries the host's audio bridge. Missing in calls
+        /// stored before the bridge.
+        var audio: Bool? = nil
     }
 
     static let defaultsKey = "watchDirect.calls.v1"

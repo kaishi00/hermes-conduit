@@ -4,7 +4,8 @@
 //
 //  GPT-Live on the Watch through the Hermes host's audio bridge
 //  (designs/apple-watch-gpt-live.md): the sealing both ends share, the
-//  control messages, the iPhone's hand-off and the delegation requests.
+//  control messages, the iPhone's hand-off, the delegation requests and
+//  the call ledger's audio grant.
 //  Written as an extension of an existing suite: the CI test planner is at
 //  capacity for new XCTestCase classes.
 //
@@ -211,6 +212,32 @@ extension HermesVoiceGatewayTimeoutTests {
 
         XCTAssertEqual(WatchBridgeDelegation.relay("The job finished."), WatchJobAnswer.updatePrompt("The job finished."))
         XCTAssertTrue(WatchBridgeDelegation.working(title: "Tokyo weather").contains("\"Tokyo weather\""))
+    }
+
+    /// A bridge call adopted after a restart still asks for the audio
+    /// bridge; calls stored before it read as no audio.
+    @MainActor
+    func testWatchBridgeCallLedgerKeepsTheAudioGrantAcrossARestart() throws {
+        let suite = "WatchDirectCallLedger.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var ledger = WatchDirectCallLedger(defaults: defaults)
+        ledger.begin(7, connection: WatchDirectConnection(profile: "default", dashboard: "A"), saveCalls: true)
+        let scope = WatchDirectCallLedger.GrantScope(
+            tools: ["web_search"],
+            jobTools: [],
+            liveToken: false,
+            maxJobs: 0,
+            jobOptions: [:],
+            voiceApprovals: false,
+            grantIDs: ["grant-1"],
+            audio: true
+        )
+        ledger.setGrant(scope, for: 7)
+        XCTAssertEqual(WatchDirectCallLedger(defaults: defaults).call(7)?.grant?.audio, true)
+
+        let stored = Data(#"{"tools":[],"jobTools":[],"liveToken":false,"maxJobs":0,"jobOptions":{},"voiceApprovals":false,"grantIDs":[]}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(WatchDirectCallLedger.GrantScope.self, from: stored).audio)
     }
 }
 
