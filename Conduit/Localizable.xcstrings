@@ -5869,22 +5869,6 @@
         }
       }
     },
-    "The screen stays on while a voice conversation is open, including Gemini Live. When off, the phone locks on its usual timer and the conversation keeps going in the background. Applies to this device." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gemini Liveを含め、音声会話を開いている間は画面がオンのままになります。オフの場合、iPhoneは通常のタイマーでロックされ、会話はバックグラウンドで続きます。このデバイスに適用されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "语音对话（包括 Gemini Live）打开时屏幕保持常亮。关闭时，手机按平常的时间自动锁定，对话会在后台继续。仅适用于此设备。"
-          }
-        }
-      }
-    },
     "Voice jobs" : {
       "localizations" : {
         "ja" : {
@@ -6073,22 +6057,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此 Hermes 服务器不支持 Gemini Live：%@"
-          }
-        }
-      }
-    },
-    "Gemini Live is not available: the Conduit plugin on this Hermes server does not support it yet." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gemini Liveを利用できません：このHermesサーバのConduitプラグインがまだ対応していません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gemini Live 不可用：此 Hermes 服务器上的 Conduit 插件尚不支持。"
           }
         }
       }
@@ -7019,22 +6987,6 @@
         }
       }
     },
-    "That job's chat is no longer available." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "そのジョブのチャットはもう利用できません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "该任务的对话已不存在。"
-          }
-        }
-      }
-    },
     "Open job" : {
       "localizations" : {
         "ja" : {
@@ -7697,22 +7649,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "该群聊已解散。"
-          }
-        }
-      }
-    },
-    "A member started working…" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "メンバーが作業を開始しました…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有成员开始工作…"
           }
         }
       }
@@ -8469,22 +8405,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请重试。"
-          }
-        }
-      }
-    },
-    "Preparing secure sign-in…" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安全なサインインを準備中…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在准备安全登录…"
           }
         }
       }
@@ -9535,22 +9455,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "手动添加"
-          }
-        }
-      }
-    },
-    "Add phrase" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "フレーズを追加"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加短语"
           }
         }
       }
@@ -11625,22 +11529,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "检查服务器证书的有效期和有效性。"
-          }
-        }
-      }
-    },
-    "Check voice support" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "音声のサポート状況を確認"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "检查语音支持"
           }
         }
       }
@@ -13945,22 +13833,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法将此对话移至 %@。"
-          }
-        }
-      }
-    },
-    "Touch and hold for conversation actions." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "長押しでチャットの操作を表示します。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "长按可查看对话操作。"
           }
         }
       }
@@ -18353,22 +18225,6 @@
         }
       }
     },
-    "Hermes will retain all provider credentials and audio processing." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "プロバイダの認証情報と音声処理はすべてHermes側で保持されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 将保留所有提供方凭据和音频处理设置。"
-          }
-        }
-      }
-    },
     "Hermes will save this approval pattern for future commands." : {
       "localizations" : {
         "ja" : {
@@ -18893,22 +18749,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在每个网关上安装一次 notifier，然后在此为你要通知的每个 Hermes 仪表板创建短期配对码。"
-          }
-        }
-      }
-    },
-    "Install the notifier once on the gateway, then create a short-lived pairing code here for each Hermes profile you want to reach." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ゲートウェイに通知プラグインを一度インストールしてから、通知を受け取りたいHermesプロファイルごとに、ここで有効期限の短いペアリングコードを作成してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在网关上安装一次通知插件，然后在此为每个要接收推送的 Hermes 档案创建短时效配对码。"
           }
         }
       }
@@ -20815,38 +20655,6 @@
         }
       }
     },
-    "N tasks selected" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "N件のタスクを選択中"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已选 N 个任务"
-          }
-        }
-      }
-    },
-    "N updated, M failed" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "N件更新、M件失敗"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "N 个已更新，M 个失败"
-          }
-        }
-      }
-    },
     "NEEDS YOUR INPUT" : {
       "localizations" : {
         "ja" : {
@@ -22648,22 +22456,6 @@
         }
       }
     },
-    "Opens voice controls over this conversation" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このチャットの上に音声コントロールを開きます"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在此对话上方打开语音控制。"
-          }
-        }
-      }
-    },
     "Optional path override" : {
       "localizations" : {
         "ja" : {
@@ -22868,22 +22660,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "PID %@"
-          }
-        }
-      }
-    },
-    "Pair the active profile" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "アクティブなプロファイルをペアリング"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "配对当前档案"
           }
         }
       }
@@ -23272,22 +23048,6 @@
         }
       }
     },
-    "Play TTS" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TTSを再生"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "播放 TTS"
-          }
-        }
-      }
-    },
     "Play a sound when a turn or task finishes" : {
       "localizations" : {
         "ja" : {
@@ -23316,22 +23076,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 等待你操作时播放提示音"
-          }
-        }
-      }
-    },
-    "Plays a short sample using this profile's speech provider" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このプロファイルの音声合成プロバイダで短いサンプルを再生します"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用此档案的语音提供方播放一段简短示例。"
           }
         }
       }
@@ -24372,38 +24116,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在重新连接…"
-          }
-        }
-      }
-    },
-    "Record ASR" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ASRを録音"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "录制 ASR"
-          }
-        }
-      }
-    },
-    "Records a short sample using this profile's speech-to-text provider" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このプロファイルの音声認識プロバイダで短いサンプルを録音します"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用此档案的语音转文字提供方录制一段简短示例。"
           }
         }
       }
@@ -27440,28 +27152,6 @@
         }
       }
     },
-    "Start a voice conversation in %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Start a voice conversation in %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@で音声会話を開始"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 %@ 中开始语音对话"
-          }
-        }
-      }
-    },
     "Start voice conversation" : {
       "localizations" : {
         "ja" : {
@@ -27634,22 +27324,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "第 3 步，共 3 步"
-          }
-        }
-      }
-    },
-    "Step N of 3" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ステップN/3"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "第 N 步，共 3 步"
           }
         }
       }
@@ -28278,28 +27952,6 @@
         }
       }
     },
-    "Talk to %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Talk to %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@と話す"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "与 %@ 对话"
-          }
-        }
-      }
-    },
     "Talk to Conduit" : {
       "localizations" : {
         "ja" : {
@@ -28670,22 +28322,6 @@
         }
       }
     },
-    "Test this profile" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このプロファイルをテスト"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "测试此档案"
-          }
-        }
-      }
-    },
     "Test, troubleshoot, or change your connection" : {
       "localizations" : {
         "ja" : {
@@ -28800,22 +28436,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "看板的项目目录（%@）将应用于此任务。"
-          }
-        }
-      }
-    },
-    "The bundled bilingual wake model is not active yet. Its redistribution terms and checksums must be reviewed before it can be included in Conduit." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "同梱のバイリンガル・ウェイクフレーズモデルはまだ有効になっていません。Conduitに含めるには、再配布条件とチェックサムの審査が必要です。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "内置的双语唤醒模型尚未启用。其再分发条款与校验和须经审核，方可纳入 Conduit。"
           }
         }
       }
@@ -29300,22 +28920,6 @@
         }
       }
     },
-    "These checks use the selected speech route and active profile. Provider credentials remain on Hermes." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "これらのテストでは、選択した音声ルートと現在のプロファイルを使用します。プロバイダの認証情報はHermes上に保持されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这些测试使用所选语音通道和当前档案。提供方凭据仍保留在 Hermes 上。"
-          }
-        }
-      }
-    },
     "These choices follow the active workspace." : {
       "localizations" : {
         "ja" : {
@@ -29578,22 +29182,6 @@
         }
       }
     },
-    "This means the Hermes dashboard username and password you sign in with — not Tailscale, " : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "これはサインインに使うHermesダッシュボードのユーザ名とパスワードのことで、Tailscale、"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "即你登录 Hermes 仪表盘所用的用户名和密码——而非 Tailscale、"
-          }
-        }
-      }
-    },
     "This means the Hermes dashboard username and password you sign in with — not Tailscale, Cloudflare, or Apple credentials." : {
       "localizations" : {
         "ja" : {
@@ -29676,22 +29264,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这将从所选 Hermes 看板中永久移除该任务。"
-          }
-        }
-      }
-    },
-    "This preference is stored locally for this gateway and profile. Voice starts disabled until you opt in." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "この設定は、このゲートウェイとプロファイル用にローカルに保存されます。音声は、オンにするまで無効のままです。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此偏好设置会针对此网关和档案存储在本地。在你主动开启前，语音保持关闭。"
           }
         }
       }
@@ -30662,22 +30234,6 @@
         }
       }
     },
-    "Use These Settings" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "これらの設定を使用"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用这些设置"
-          }
-        }
-      }
-    },
     "Use or edit current dashboard address" : {
       "localizations" : {
         "ja" : {
@@ -31126,22 +30682,6 @@
         }
       }
     },
-    "Voice is unavailable" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "音声を利用できません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "语音不可用"
-          }
-        }
-      }
-    },
     "Voice is unavailable." : {
       "localizations" : {
         "ja" : {
@@ -31174,22 +30714,6 @@
         }
       }
     },
-    "Voice on %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "音声 · %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "语音 · %@"
-          }
-        }
-      }
-    },
     "Voice permissions can only be requested while Conduit is in the foreground." : {
       "localizations" : {
         "ja" : {
@@ -31202,22 +30726,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "只有当 Conduit 位于前台时才能请求语音权限。"
-          }
-        }
-      }
-    },
-    "Voice settings are available" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "音声設定を利用できます"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "语音设置可用"
           }
         }
       }
@@ -32130,22 +31638,6 @@
         }
       }
     },
-    "not sent" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未送信"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未发送"
-          }
-        }
-      }
-    },
     "now" : {
       "localizations" : {
         "ja" : {
@@ -32248,44 +31740,6 @@
         }
       }
     },
-    "reasoning %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "reasoning %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "推論 %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "思考 %@"
-          }
-        }
-      }
-    },
-    "reasoning not set" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "推論 未設定"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "思考未设置"
-          }
-        }
-      }
-    },
     "restore" : {
       "localizations" : {
         "ja" : {
@@ -32318,38 +31772,6 @@
         }
       }
     },
-    "set to NULL" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "NULLに設定済み"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已设为 NULL"
-          }
-        }
-      }
-    },
-    "signed out" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サインアウト済み"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已退出登录"
-          }
-        }
-      }
-    },
     "someone" : {
       "localizations" : {
         "ja" : {
@@ -32378,22 +31800,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "立即运行"
-          }
-        }
-      }
-    },
-    "unassigned (parked — won't run)" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未割り当て（保留中 — 実行されません）"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未分配（已搁置 — 不会运行）"
           }
         }
       }
@@ -32458,22 +31864,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不会运行"
-          }
-        }
-      }
-    },
-    "wrong password" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "パスワードが違います"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "密码错误"
           }
         }
       }
@@ -33156,22 +32546,6 @@
         }
       }
     },
-    "GPT-Live is not available: the Conduit plugin on this Hermes server does not support it yet." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "GPT-Liveを利用できません：このHermesサーバのConduitプラグインはまだ対応していません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法使用 GPT-Live：此 Hermes 服务器上的 Conduit 插件尚不支持它。"
-          }
-        }
-      }
-    },
     "GPT-Live refused the conversation: %@" : {
       "localizations" : {
         "ja" : {
@@ -33248,22 +32622,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 返回了无效的 GPT-Live 应答。"
-          }
-        }
-      }
-    },
-    "Talk with GPT-Live on the ChatGPT subscription your Hermes server is signed in to, instead of the Hermes speech pipeline. Hermes still does the work: GPT-Live hands requests to background jobs on this profile. The sign-in stays on your Hermes server, and it never falls back to API billing. Turning this on turns Gemini Live off." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesの音声パイプラインの代わりに、HermesサーバがサインインしているChatGPTサブスクリプションでGPT-Liveと会話します。処理は引き続きHermesが行い、GPT-Liveはリクエストをこのプロファイルのバックグラウンドジョブに渡します。サインイン情報はHermesサーバに保持され、API課金に切り替わることはありません。これをオンにするとGemini Liveはオフになります。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用你的 Hermes 服务器所登录的 ChatGPT 订阅与 GPT-Live 对话，而不是使用 Hermes 语音流程。工作仍由 Hermes 完成：GPT-Live 会把请求交给此配置文件上的后台任务。登录信息保留在你的 Hermes 服务器上，并且绝不会回退到 API 计费。开启此项会关闭 Gemini Live。"
           }
         }
       }
@@ -33552,22 +32910,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "设置"
-          }
-        }
-      }
-    },
-    "Each call's transcript is saved to your Hermes server's history and shows under Voice in Sessions, where you can read it or resume the call. Needs an up-to-date Hermes notifier plugin. Shared with Gemini Live and GPT-Live. Applies to the next conversation." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "各通話の文字起こしはHermesサーバの履歴に保存され、「セッション」の「音声」に表示されます。そこで内容を読んだり、通話を再開したりできます。最新のHermes通知プラグインが必要です。Gemini LiveとGPT-Liveで共通の設定です。次回の会話から適用されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每次通话的文字记录都会保存到 Hermes 服务器的历史记录中，并显示在“会话”的“语音”下，你可以在那里查看或继续通话。需要最新版本的 Hermes notifier 插件。Gemini Live 和 GPT-Live 共用此设置。从下一次对话开始生效。"
           }
         }
       }
