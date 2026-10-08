@@ -114,6 +114,14 @@ final class SecurityBoundaryTests: XCTestCase {
         )
     }
 
+    func testSessionPatchBodyCarriesNamedProfile() {
+        let named = DashboardPath.bodyWithProfile(["title": "Plan"], profile: "builder")
+        XCTAssertEqual(named["title"] as? String, "Plan")
+        XCTAssertEqual(named["profile"] as? String, "builder")
+        XCTAssertNil(DashboardPath.bodyWithProfile(["archived": true], profile: "default")["profile"])
+        XCTAssertNil(DashboardPath.bodyWithProfile(["archived": true], profile: "")["profile"])
+    }
+
     func testInlineScriptSerializationEscapesScriptTerminators() {
         let value = MarkupHTML.jsonString("</script>\u{2028}\u{2029}")
         XCTAssertTrue(value.contains("\\u003c/script>"))

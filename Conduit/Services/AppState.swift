@@ -13241,7 +13241,7 @@ final class AppState: ObservableObject {
             _ = try await dashboardTicketBridge.requestJSON(
                 path: dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile),
                 method: "PATCH",
-                body: ["archived": archived]
+                body: DashboardPath.bodyWithProfile(["archived": archived], profile: profile)
             )
             guard profile == activeProfile else { return false }
 
@@ -13327,7 +13327,7 @@ final class AppState: ObservableObject {
                             profile: profile
                         ),
                         method: "PATCH",
-                        body: ["title": title]
+                        body: DashboardPath.bodyWithProfile(["title": title], profile: profile)
                     )
                 }
             )
