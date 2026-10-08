@@ -894,9 +894,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// a background job's or, in a call attached to a chat, the chat's
     /// latest reply.
     func readBackText() async -> String? {
-        if let lastCallResult, lastCallResult.callID == liveCallID { return lastCallResult.text }
-        guard liveThread != nil, let reply = await lastThreadReply() else { return nil }
-        return String(reply.prefix(Self.readBackSourceLimit))
+        if let heard = heardResult { return heard }
+        guard liveThread != nil else { return nil }
+        let reply = await lastThreadReply()
+        // A job's notice that went out while the chat was read is newer.
+        if let heard = heardResult { return heard }
+        return reply.map { String($0.prefix(Self.readBackSourceLimit)) }
+    }
+
+    private var heardResult: String? {
+        guard let lastCallResult, lastCallResult.callID == liveCallID else { return nil }
+        return lastCallResult.text
     }
 
     /// The newest background job result handed to the running call, while
@@ -923,9 +931,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard job.outcomeDelivered else { return }
             let result = job.result?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             heard = result.isEmpty ? Self.finishedNotice(job.title) : result
-        case .failed:
+        case .failed(let message):
             guard job.outcomeDelivered else { return }
-            heard = Self.failedNotice(job.title)
+            heard = Self.failedNotice(job.title, reason: message)
         case .cancelled:
             guard job.outcomeDelivered else { return }
             heard = Self.cancelledNotice(job.title)
@@ -1614,8 +1622,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         AppLocalization.string("\(title) is waiting for your approval or an answer. Open it in Conduit to respond.")
     }
 
-    static func failedNotice(_ title: String) -> String {
-        AppLocalization.string("\(title) failed. Open it in Conduit for details.")
+    /// With Hermes' reason, when there is one, as the call is told it.
+    static func failedNotice(_ title: String, reason: String = "") -> String {
+        let notice = AppLocalization.string("\(title) failed. Open it in Conduit for details.")
+        let reason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        return reason.isEmpty ? notice : notice + " (\(reason))"
     }
 
     static func cancelledNotice(_ title: String) -> String {

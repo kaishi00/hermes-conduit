@@ -2239,6 +2239,21 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceReadBack.plainSpeech("Summary\n=======\nAll good."), "Summary\nAll good.", "a heading's underline isn't read")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Item | Cost\n--- | ---\nMilk | $2"), "Item, Cost.\nMilk, $2.", "a table without outer pipes")
         XCTAssertEqual(VoiceReadBack.plainSpeech("## Done | Blocked"), "Done, Blocked.", "a heading isn't a table row, and its pipe isn't read")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("## 🎉 Launch\nShip it 🚀 today"), "Launch.\nShip it today", "a dropped emoji leaves no stray space")
+        XCTAssertEqual(
+            VoiceReadBack.plainSpeech("Mail <sam@example.com>, see note[^1].\n<div>Hi</div> and <span class=\"x\">Vec<String></span>\n[^1]: The source."),
+            "Mail sam@example.com, see note.\nHi and Vec<String>\nThe source.",
+            "HTML tags and footnote marks aren't read; an email address and a generic type are"
+        )
+        let long = String(repeating: "word ", count: VoiceBackgroundJobSupervisor.maximumResultCharacters)
+        let clip = GeminiLiveToolBridge.clippedForReading(long)
+        XCTAssertTrue(clip.isCut)
+        XCTAssertLessThanOrEqual(clip.text.count, VoiceBackgroundJobSupervisor.maximumResultCharacters)
+        XCTAssertTrue(clip.text.hasSuffix("word"), "cut at a word, with no marker to read out")
+        let gptText = GPTLiveDelegationBridge.lastReplyText(long)
+        XCTAssertFalse(gptText.contains("[…]"))
+        XCTAssertTrue(gptText.contains(GeminiLiveToolBridge.readBackCutNote))
+        XCTAssertFalse(GPTLiveDelegationBridge.lastReplyText("Short.").contains(GeminiLiveToolBridge.readBackCutNote))
         XCTAssertEqual(
             VoiceReadBack.plainSpeech("```\na\n```\n\n```\nb\n```\nDone."),
             VoiceReadBack.codeBlockNote + "\n\nDone.",
@@ -2385,7 +2400,8 @@ extension VoiceConversationControllerTests {
         XCTAssertNotNil(supervisor.takePendingNotice())
         let title = supervisor.jobs.first { $0.runtimeSessionID == "rt-2" }?.title ?? ""
         let failed = await supervisor.readBackText()
-        XCTAssertEqual(failed, VoiceBackgroundJobSupervisor.failedNotice(title), "the newest notice the call heard")
+        XCTAssertEqual(failed, VoiceBackgroundJobSupervisor.failedNotice(title, reason: "Provider error"), "the newest notice the call heard, with its reason")
+        XCTAssertTrue(failed?.hasSuffix("(Provider error)") == true)
     }
 
     func testReadBackMarkerAndRules() {
