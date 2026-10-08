@@ -49,7 +49,11 @@ enum LiveVoiceAnswerLength: String, Codable, CaseIterable, Identifiable {
 
     /// The answer-length rule in the live model's instructions. Written for
     /// the model, not shown as UI copy, so not localized.
-    var instructions: String {
+    var instructions: String { instructions(readsBack: true) }
+
+    /// Without the read-back exception for a call that has no read-backs
+    /// (a Watch call, #451).
+    func instructions(readsBack: Bool) -> String {
         let lead: String
         switch self {
         case .concise:
@@ -59,7 +63,10 @@ enum LiveVoiceAnswerLength: String, Codable, CaseIterable, Identifiable {
         case .detailed:
             lead = "Be thorough. Answer a real question in depth the first time: the answer, then the reasoning behind it, the numbers, names, steps and options that matter, an example where it helps, and the caveats worth knowing, often several paragraphs of speech. Don't leave the user asking follow-up questions to get the full picture, and don't end on an offer to say more instead of saying it."
         }
-        let speech = " This goes for everything you say, Hermes' results included, except a read-back: when the user asks to hear a reply again or in full and Conduit gives it to you to read, read all of it word for word, however long. It is still speech: say it in natural spoken sentences, not lists, headings or Markdown, and never read out URLs. When the detail is on the user's screen, that takes the place of a long spoken answer."
+        let scope = readsBack
+            ? " This goes for everything you say, Hermes' results included, except a read-back: when the user asks to hear a reply again or in full and Conduit gives it to you to read, read all of it word for word, however long."
+            : " This goes for everything you say, Hermes' results included."
+        let speech = scope + " It is still speech: say it in natural spoken sentences, not lists, headings or Markdown, and never read out URLs. When the detail is on the user's screen, that takes the place of a long spoken answer."
         return self == .concise ? lead + speech : lead + speech + " Keep it short only for greetings, small talk, acknowledgements and confirmations."
     }
 }

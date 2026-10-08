@@ -1884,6 +1884,8 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(names.contains("read_last_reply"), "read-backs run on the phone's own call (#451)")
         XCTAssertFalse(GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, readsBack: false).contains("read_last_reply"))
         XCTAssertFalse(GPTLiveConversationController.briefing(onWatch: true).contains("\"Read back:\""))
+        XCTAssertFalse(GPTLiveConversationController.briefing(onWatch: true).contains("read-back"), "no read-back exception either")
+        XCTAssertFalse(GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, readsBack: false).contains("read-back"))
         XCTAssertTrue(names.contains("interrupt_job"))
         XCTAssertTrue(names.contains("web_search"))
 
