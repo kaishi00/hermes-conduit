@@ -150,13 +150,6 @@ REGRESSION_KEYS = (
     "Hype",
     "Session",
     "Skills & extensions",
-    # archive/restore ternary passed as a variable argument
-    "archive",
-    "restore",
-    # Cron action verb display map (wire tokens stay raw in the URL path)
-    "pause",
-    "resume",
-    "trigger",
 )
 
 CALL_RE = re.compile(

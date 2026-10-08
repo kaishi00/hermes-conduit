@@ -16306,7 +16306,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Borrar"
+            "value" : "Clara"
           }
         },
         "fr" : {
@@ -16330,7 +16330,7 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Очистить"
+            "value" : "Чёткий"
           }
         },
         "zh-Hans" : {
@@ -28383,52 +28383,6 @@
         }
       }
     },
-    "Already operating an HTTPS domain or reverse proxy for Hermes? Choose Existing Domain." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Betreibst du bereits eine HTTPS-Domain oder einen Reverse-Proxy für Hermes? Wähle „Vorhandene Domain“."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Ya tienes un dominio HTTPS o un proxy inverso para Hermes? Elige Dominio existente."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vous exploitez déjà un domaine HTTPS ou un proxy inverse pour Hermes ? Choisissez Domaine existant."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes用のHTTPSドメインやリバースプロキシをすでに運用していますか？「既存のドメイン」を選択してください。"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Já tem um domínio HTTPS ou um proxy reverso para o Hermes? Escolha Domínio HTTPS existente."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Уже есть HTTPS-домен или обратный прокси для Hermes? Выберите «Существующий домен»."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已经在为 Hermes 使用 HTTPS 域名或反向代理？选择“现有域名”。"
-          }
-        }
-      }
-    },
     "Always allow" : {
       "localizations" : {
         "de" : {
@@ -30457,52 +30411,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "归档"
-          }
-        }
-      }
-    },
-    "Ask Hermes" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes fragen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Preguntar a Hermes"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Demander à Hermes"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesに聞く"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Perguntar ao Hermes"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Спросить Hermes"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "询问 Hermes"
           }
         }
       }
@@ -38307,52 +38215,6 @@
         }
       }
     },
-    "Connecting..." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird verbunden …"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conectando..."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connexion..."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "接続中…"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conectando..."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Подключение…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连接中…"
-          }
-        }
-      }
-    },
     "Connecting…" : {
       "localizations" : {
         "de" : {
@@ -40319,104 +40181,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "复制任务标题"
-          }
-        }
-      }
-    },
-    "Could not %@ scheduled job: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Konnte den geplanten Job nicht %@: %@"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo %@ el trabajo programado: %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échec de %@ du job planifié : %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "スケジュール済みジョブを%@できませんでした：%@"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não foi possível %@ o trabalho agendado: %@"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Не удалось %@ запланированное задание: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法%1$@定时任务：%2$@"
-          }
-        }
-      }
-    },
-    "Could not %@ this conversation: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Konnte diese Unterhaltung nicht %@: %@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Could not %@ this conversation: %@"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo %@ esta conversación: %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échec de %@ de cette conversation : %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このチャットを%@できませんでした：%@"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não foi possível %@ esta conversa: %@"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Не удалось %@ этот чат: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法%1$@此对话：%2$@"
           }
         }
       }
@@ -54435,52 +54199,6 @@
         }
       }
     },
-    "If you use your own certificate authority, install and trust its root certificate on this device (Settings → General → VPN & Device Management → Certificate Trust Settings)." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wenn du eine eigene Zertifizierungsstelle nutzt, installiere ihr Root-Zertifikat auf diesem Gerät und vertraue ihm (Einstellungen → Allgemein → VPN und Geräteverwaltung → Zertifikatsvertrauenseinstellungen)."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Si usas tu propia autoridad de certificación, instala su certificado raíz en este dispositivo y confía en él (Ajustes → General → VPN y gestión de dispositivos → Ajustes de confianza de certificados)."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Si vous utilisez votre propre autorité de certification, installez et approuvez son certificat racine sur cet appareil (Réglages → Général → VPN et gestion de l'appareil → Réglages de confiance des certificats)."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "独自の認証局を使用している場合は、そのルート証明書をこのデバイスにインストールして信頼してください（設定 → 一般 → VPNとデバイス管理 → 証明書信頼設定）。"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se você usa sua própria autoridade certificadora, instale o certificado raiz dela neste aparelho e confie nele (Ajustes → Geral → VPN e Gerenciamento de Dispositivos → Ajustes de Confiança de Certificado)."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Если вы используете собственный центр сертификации, установите его корневой сертификат на этом устройстве и включите доверие к нему («Настройки» → «Основные» → «VPN и управление устройством» → «Доверие сертификатам»)."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "如果你使用自签证书颁发机构，请在本设备上安装并信任其根证书（设置 → 通用 → VPN 与设备管理 → 证书信任设置）。"
-          }
-        }
-      }
-    },
     "Image attached" : {
       "localizations" : {
         "de" : {
@@ -57675,52 +57393,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载文件夹…"
-          }
-        }
-      }
-    },
-    "Loading image..." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bild wird geladen …"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cargando imagen..."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chargement de l'image..."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "画像を読み込み中…"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Carregando imagem..."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Загрузка изображения…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在加载图片…"
           }
         }
       }
@@ -89098,52 +88770,6 @@
         }
       }
     },
-    "Using Conduit at home, on the same network as the Hermes machine? Choose Same Network." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nutzt du Conduit zu Hause im selben Netzwerk wie den Hermes-Rechner? Wähle „Gleiches Netzwerk“."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Usas Conduit en casa, en la misma red que el equipo de Hermes? Elige Misma red."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vous utilisez Conduit chez vous, sur le même réseau que la machine Hermes ? Choisissez Même réseau."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自宅で、Hermesマシンと同じネットワーク上からConduitを使いますか？「同じネットワーク」を選択してください。"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Usa o Conduit em casa, na mesma rede que a máquina do Hermes? Escolha Mesma rede."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Пользуетесь Conduit дома, в одной сети с компьютером Hermes? Выберите «Та же сеть»."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在家里、与 Hermes 机器处于同一网络时使用 Conduit？选择“同一网络”。"
-          }
-        }
-      }
-    },
     "Verify pairing" : {
       "localizations" : {
         "de" : {
@@ -91588,52 +91214,6 @@
         }
       }
     },
-    "archive" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "archivieren"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "archivar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "l'archivage"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "アーカイブ"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "arquivar"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "архивировать"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "归档"
-          }
-        }
-      }
-    },
     "auto" : {
       "localizations" : {
         "de" : {
@@ -91774,52 +91354,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "第 %@ 个字符"
-          }
-        }
-      }
-    },
-    "context compaction" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kontextkomprimierung"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "compactación del contexto"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "compactage du contexte"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "コンテキストの圧縮"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "compactação de contexto"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "сжатие контекста"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "上下文压缩"
           }
         }
       }
@@ -92330,52 +91864,6 @@
         }
       }
     },
-    "pause" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "pausieren"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "pausar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "la mise en pause"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "一時停止"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "pausar"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "приостановить"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂停"
-          }
-        }
-      }
-    },
     "pid %@" : {
       "localizations" : {
         "de" : {
@@ -92520,98 +92008,6 @@
         }
       }
     },
-    "restore" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "wiederherstellen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "restaurar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "la restauration"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "復元"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "restaurar"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "восстановить"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复"
-          }
-        }
-      }
-    },
-    "resume" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "fortsetzen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "reanudar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "la reprise"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "再開"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "retomar"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "возобновить"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复"
-          }
-        }
-      }
-    },
     "someone" : {
       "localizations" : {
         "de" : {
@@ -92658,52 +92054,6 @@
         }
       }
     },
-    "trigger" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "auslösen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ejecutar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "l'exécution"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今すぐ実行"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "disparar"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "запустить"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "立即运行"
-          }
-        }
-      }
-    },
     "undescribed" : {
       "localizations" : {
         "de" : {
@@ -92746,52 +92096,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无描述"
-          }
-        }
-      }
-    },
-    "unsaved changes" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "nicht gespeicherte Änderungen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "cambios sin guardar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "modifications non enregistrées"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未保存の変更あり"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "alterações não salvas"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "несохранённые изменения"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有未保存的更改"
           }
         }
       }
@@ -97310,52 +96614,6 @@
         }
       }
     },
-    "%@ is still replying in this chat. Try again when it finishes." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In diesem Chat antwortet noch %@. Versuche es erneut, wenn die Antwort fertig ist."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ sigue respondiendo en este chat. Vuelve a intentarlo cuando termine."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ répond encore dans cette discussion. Réessayez quand il aura terminé."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@はまだこのチャットで返信中です。完了してからもう一度お試しください。"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ainda está respondendo neste chat. Tente novamente quando terminar."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ещё отвечает в этом чате. Повторите попытку, когда ответ будет завершён."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 仍在此对话中回复。请在回复结束后重试。"
-          }
-        }
-      }
-    },
     "A reply running there always finishes first. If you go back to that app, reopen the chat there to see what you sent from Conduit." : {
       "localizations" : {
         "de" : {
@@ -97536,52 +96794,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法接管此对话：%@"
-          }
-        }
-      }
-    },
-    "Hermes Desktop" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes Desktop"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes Desktop"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes Desktop"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes Desktop"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes Desktop"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes Desktop"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes Desktop"
           }
         }
       }
@@ -97816,52 +97028,6 @@
         }
       }
     },
-    "Taking this chat over from %@. If it's replying, Conduit waits for the reply to finish." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieser Chat wird übernommen; bisher nutzt ihn %@. Falls dort gerade eine Antwort läuft, wartet Conduit, bis sie fertig ist."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Retomando este chat desde %@. Si está respondiendo, Conduit espera a que termine la respuesta."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reprise de cette discussion depuis %@. Si une réponse est en cours, Conduit attend qu'elle se termine."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@からこのチャットを引き継いでいます。返信中の場合、Conduitは返信の完了を待ちます。"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Assumindo este chat, aberto em %@. Se ele estiver respondendo, o Conduit espera a resposta terminar."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Перенос чата из другого приложения (%@). Если там идёт ответ, Conduit дождётся его завершения."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在从 %@ 接管此对话。如果它正在回复，Conduit 会等待回复结束。"
-          }
-        }
-      }
-    },
     "This Hermes version can't hand a chat over." : {
       "localizations" : {
         "de" : {
@@ -97904,52 +97070,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此 Hermes 版本无法转交对话。"
-          }
-        }
-      }
-    },
-    "This chat is open in %@. Take it over to send from here." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diesen Chat nutzt gerade %@. Übernimm ihn, um von hier aus zu senden."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Este chat está abierto en %@. Retómalo para enviar desde aquí."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cette discussion est ouverte dans %@. Reprenez-la pour envoyer d'ici."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このチャットは%@で開かれています。ここから送信するには引き継いでください。"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Este chat está aberto em %@. Assuma-o para enviar daqui."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Этот чат открыт в другом приложении (%@). Перенесите его сюда, чтобы отправлять отсюда."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此对话已在 %@ 中打开。接管后即可在这里发送。"
           }
         }
       }
@@ -98042,98 +97162,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请更新 Hermes 主机上的 Conduit 通知插件以接管对话。"
-          }
-        }
-      }
-    },
-    "a Hermes terminal" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ein Hermes-Terminal"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "un terminal de Hermes"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "un terminal Hermes"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesのターミナル"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "um terminal do Hermes"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "терминал Hermes"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 终端"
-          }
-        }
-      }
-    },
-    "another Hermes window" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ein anderes Hermes-Fenster"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "otra ventana de Hermes"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "une autre fenêtre Hermes"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "別のHermesウインドウ"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "outra janela do Hermes"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "другое окно Hermes"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "另一个 Hermes 窗口"
           }
         }
       }
@@ -103062,52 +102090,6 @@
         }
       }
     },
-    "A job's approval request shows on the Watch with Approve and Deny." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Freigabeanfrage eines Jobs erscheint auf der Watch mit „Freigeben“ und „Ablehnen“."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La solicitud de aprobación de un trabajo aparece en el Apple Watch con Aprobar y Denegar."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La demande d'approbation d'un job s'affiche sur l'Apple Watch avec Approuver et Refuser."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ジョブの承認リクエストは、Watch に「承認」と「拒否」付きで表示されます。"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O pedido de aprovação de um trabalho aparece no Watch com Aprovar e Negar."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Запрос разрешения от задания отображается на часах с кнопками «Разрешить» и «Отклонить»."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "任务的批准请求会显示在 Watch 上，带有“批准”和“拒绝”。"
-          }
-        }
-      }
-    },
     "A voice call is already running on your iPhone." : {
       "localizations" : {
         "de" : {
@@ -106282,6 +105264,926 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "（剩 %1$@/%2$@）"
+          }
+        }
+      }
+    },
+    "This chat is open in Hermes Desktop. Take it over to send from here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Chat ist in Hermes Desktop geöffnet. Übernimm ihn, um von hier aus zu senden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat está abierto en Hermes Desktop. Retómalo para enviar desde aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette discussion est ouverte dans Hermes Desktop. Reprenez-la pour envoyer d'ici."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このチャットはHermes Desktopで開かれています。ここから送信するには引き継いでください。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat está aberto no Hermes Desktop. Assuma-o para enviar daqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот чат открыт в Hermes Desktop. Перенесите его сюда, чтобы отправлять отсюда."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话已在 Hermes Desktop 中打开。接管后即可在这里发送。"
+          }
+        }
+      }
+    },
+    "This chat is open in a Hermes terminal. Take it over to send from here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Chat ist in einem Hermes-Terminal geöffnet. Übernimm ihn, um von hier aus zu senden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat está abierto en un terminal de Hermes. Retómalo para enviar desde aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette discussion est ouverte dans un terminal Hermes. Reprenez-la pour envoyer d'ici."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このチャットはHermesのターミナルで開かれています。ここから送信するには引き継いでください。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat está aberto em um terminal do Hermes. Assuma-o para enviar daqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот чат открыт в терминале Hermes. Перенесите его сюда, чтобы отправлять отсюда."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话已在 Hermes 终端中打开。接管后即可在这里发送。"
+          }
+        }
+      }
+    },
+    "This chat is open in another Hermes window. Take it over to send from here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Chat ist in einem anderen Hermes-Fenster geöffnet. Übernimm ihn, um von hier aus zu senden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat está abierto en otra ventana de Hermes. Retómalo para enviar desde aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette discussion est ouverte dans une autre fenêtre Hermes. Reprenez-la pour envoyer d'ici."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このチャットは別のHermesウインドウで開かれています。ここから送信するには引き継いでください。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat está aberto em outra janela do Hermes. Assuma-o para enviar daqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот чат открыт в другом окне Hermes. Перенесите его сюда, чтобы отправлять отсюда."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话已在另一个 Hermes 窗口中打开。接管后即可在这里发送。"
+          }
+        }
+      }
+    },
+    "Taking this chat over from Hermes Desktop. If it's replying, Conduit waits for the reply to finish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Chat wird aus Hermes Desktop übernommen. Falls dort gerade eine Antwort läuft, wartet Conduit, bis sie fertig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retomando este chat desde Hermes Desktop. Si está respondiendo, Conduit espera a que termine la respuesta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reprise de cette discussion depuis Hermes Desktop. Si une réponse est en cours, Conduit attend qu'elle se termine."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Desktopからこのチャットを引き継いでいます。返信中の場合、Conduitは返信の完了を待ちます。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assumindo este chat do Hermes Desktop. Se houver uma resposta em andamento, o Conduit espera que ela termine."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перенос чата из Hermes Desktop. Если там идёт ответ, Conduit дождётся его завершения."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从 Hermes Desktop 接管此对话。如果它正在回复，Conduit 会等待回复结束。"
+          }
+        }
+      }
+    },
+    "Taking this chat over from a Hermes terminal. If it's replying, Conduit waits for the reply to finish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Chat wird aus einem Hermes-Terminal übernommen. Falls dort gerade eine Antwort läuft, wartet Conduit, bis sie fertig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retomando este chat desde un terminal de Hermes. Si está respondiendo, Conduit espera a que termine la respuesta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reprise de cette discussion depuis un terminal Hermes. Si une réponse est en cours, Conduit attend qu'elle se termine."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesのターミナルからこのチャットを引き継いでいます。返信中の場合、Conduitは返信の完了を待ちます。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assumindo este chat de um terminal do Hermes. Se houver uma resposta em andamento, o Conduit espera que ela termine."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перенос чата из терминала Hermes. Если там идёт ответ, Conduit дождётся его завершения."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从 Hermes 终端接管此对话。如果它正在回复，Conduit 会等待回复结束。"
+          }
+        }
+      }
+    },
+    "Taking this chat over from another Hermes window. If it's replying, Conduit waits for the reply to finish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Chat wird aus einem anderen Hermes-Fenster übernommen. Falls dort gerade eine Antwort läuft, wartet Conduit, bis sie fertig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retomando este chat desde otra ventana de Hermes. Si está respondiendo, Conduit espera a que termine la respuesta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reprise de cette discussion depuis une autre fenêtre Hermes. Si une réponse est en cours, Conduit attend qu'elle se termine."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のHermesウインドウからこのチャットを引き継いでいます。返信中の場合、Conduitは返信の完了を待ちます。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assumindo este chat de outra janela do Hermes. Se houver uma resposta em andamento, o Conduit espera que ela termine."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перенос чата из другого окна Hermes. Если там идёт ответ, Conduit дождётся его завершения."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从另一个 Hermes 窗口接管此对话。如果它正在回复，Conduit 会等待回复结束。"
+          }
+        }
+      }
+    },
+    "Hermes Desktop is still replying in this chat. Try again when it finishes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Desktop antwortet noch in diesem Chat. Versuche es erneut, wenn die Antwort fertig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Desktop sigue respondiendo en este chat. Vuelve a intentarlo cuando termine."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Desktop répond encore dans cette discussion. Réessayez quand il aura terminé."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Desktopはまだこのチャットで返信中です。完了してからもう一度お試しください。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes Desktop ainda está respondendo neste chat. Tente novamente quando terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Desktop ещё отвечает в этом чате. Повторите попытку, когда ответ будет завершён."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Desktop 仍在此对话中回复。请在回复结束后重试。"
+          }
+        }
+      }
+    },
+    "A Hermes terminal is still replying in this chat. Try again when it finishes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Hermes-Terminal antwortet noch in diesem Chat. Versuche es erneut, wenn die Antwort fertig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un terminal de Hermes sigue respondiendo en este chat. Vuelve a intentarlo cuando termine."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un terminal Hermes répond encore dans cette discussion. Réessayez quand il aura terminé."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesのターミナルはまだこのチャットで返信中です。完了してからもう一度お試しください。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um terminal do Hermes ainda está respondendo neste chat. Tente novamente quando terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Терминал Hermes ещё отвечает в этом чате. Повторите попытку, когда ответ будет завершён."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 终端仍在此对话中回复。请在回复结束后重试。"
+          }
+        }
+      }
+    },
+    "Another Hermes window is still replying in this chat. Try again when it finishes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderes Hermes-Fenster antwortet noch in diesem Chat. Versuche es erneut, wenn die Antwort fertig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otra ventana de Hermes sigue respondiendo en este chat. Vuelve a intentarlo cuando termine."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une autre fenêtre Hermes répond encore dans cette discussion. Réessayez quand elle aura terminé."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のHermesウインドウはまだこのチャットで返信中です。完了してからもう一度お試しください。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outra janela do Hermes ainda está respondendo neste chat. Tente novamente quando terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Другое окно Hermes ещё отвечает в этом чате. Повторите попытку, когда ответ будет завершён."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另一个 Hermes 窗口仍在此对话中回复。请在回复结束后重试。"
+          }
+        }
+      }
+    },
+    "Could not archive this conversation: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Unterhaltung konnte nicht archiviert werden: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo archivar esta conversación: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d'archiver cette conversation : %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このチャットをアーカイブできませんでした：%@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível arquivar esta conversa: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось архивировать этот чат: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法归档此对话：%@"
+          }
+        }
+      }
+    },
+    "Could not restore this conversation: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Unterhaltung konnte nicht wiederhergestellt werden: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo restaurar esta conversación: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de restaurer cette conversation : %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このチャットを復元できませんでした：%@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível restaurar esta conversa: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось восстановить этот чат: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法恢复此对话：%@"
+          }
+        }
+      }
+    },
+    "Could not pause scheduled job: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der geplante Job konnte nicht pausiert werden: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo pausar el trabajo programado: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de mettre en pause le job planifié : %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スケジュール済みジョブを一時停止できませんでした：%@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível pausar o trabalho agendado: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось приостановить запланированное задание: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法暂停定时任务：%@"
+          }
+        }
+      }
+    },
+    "Could not resume scheduled job: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der geplante Job konnte nicht fortgesetzt werden: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo reanudar el trabajo programado: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de reprendre le job planifié : %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スケジュール済みジョブを再開できませんでした：%@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível retomar o trabalho agendado: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось возобновить запланированное задание: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法恢复定时任务：%@"
+          }
+        }
+      }
+    },
+    "Could not run scheduled job: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der geplante Job konnte nicht ausgeführt werden: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo ejecutar el trabajo programado: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d'exécuter le job planifié : %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スケジュール済みジョブを実行できませんでした：%@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível executar o trabalho agendado: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось запустить запланированное задание: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法运行定时任务：%@"
+          }
+        }
+      }
+    },
+    "Could not update scheduled job: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der geplante Job konnte nicht aktualisiert werden: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo actualizar el trabajo programado: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de mettre à jour le job planifié : %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スケジュール済みジョブを更新できませんでした：%@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível atualizar o trabalho agendado: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось обновить запланированное задание: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更新定时任务：%@"
+          }
+        }
+      }
+    },
+    "Clear Log" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokoll löschen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrar registro"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effacer le journal"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ログを消去"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limpar registro"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очистить журнал"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除日志"
+          }
+        }
+      }
+    },
+    "If you use your own certificate authority, install its profile on this device (Settings → General → VPN & Device Management), then turn on full trust for its root certificate (Settings → General → About → Certificate Trust Settings)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du eine eigene Zertifizierungsstelle nutzt, installiere ihr Profil auf diesem Gerät (Einstellungen → Allgemein → VPN und Geräteverwaltung) und aktiviere dann das volle Vertrauen für ihr Root-Zertifikat (Einstellungen → Allgemein → Info → Zertifikatsvertrauenseinstellungen)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si usas tu propia autoridad de certificación, instala su perfil en este dispositivo (Ajustes → General → VPN y gestión de dispositivos) y después activa la confianza total en su certificado raíz (Ajustes → General → Información → Ajustes de confianza de certificados)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si vous utilisez votre propre autorité de certification, installez son profil sur cet appareil (Réglages → Général → VPN et gestion de l'appareil), puis activez la confiance totale pour son certificat racine (Réglages → Général → Informations → Réglages de confiance des certificats)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "独自の認証局を使用している場合は、そのプロファイルをこのデバイスにインストールし（設定 → 一般 → VPNとデバイス管理）、ルート証明書を全面的に信頼してください（設定 → 一般 → 情報 → 証明書信頼設定）。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se você usa sua própria autoridade certificadora, instale o perfil dela neste aparelho (Ajustes → Geral → VPN e Gerenciamento de Dispositivos) e depois ative a confiança total no certificado raiz dela (Ajustes → Geral → Sobre → Ajustes de Confiança de Certificado)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Если вы используете собственный центр сертификации, установите его профиль на этом устройстве («Настройки» → «Основные» → «VPN и управление устройством»), а затем включите полное доверие к его корневому сертификату («Настройки» → «Основные» → «Об этом устройстве» → «Доверие сертификатам»)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果你使用自签证书颁发机构，请先在本设备上安装其描述文件（设置 → 通用 → VPN 与设备管理），再为其根证书开启完全信任（设置 → 通用 → 关于本机 → 证书信任设置）。"
+          }
+        }
+      }
+    },
+    "Using Conduit at home, on the same network as the Hermes machine? Choose “I’m on the same network as Hermes”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzt du Conduit zu Hause im selben Netzwerk wie den Hermes-Rechner? Wähle „Ich bin im selben Netzwerk wie Hermes“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Usas Conduit en casa, en la misma red que el equipo de Hermes? Elige «Estoy en la misma red que Hermes»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous utilisez Conduit chez vous, sur le même réseau que la machine Hermes ? Choisissez « Je suis sur le même réseau qu'Hermes »."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自宅で、Hermesマシンと同じネットワーク上からConduitを使いますか？「Hermesと同じネットワークに接続している」を選択してください。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa o Conduit em casa, na mesma rede que a máquina do Hermes? Escolha “Estou na mesma rede que o Hermes”."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пользуетесь Conduit дома, в одной сети с компьютером Hermes? Выберите «Я в одной сети с Hermes»."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在家里、与 Hermes 机器处于同一网络时使用 Conduit？选择“我与 Hermes 在同一网络”。"
+          }
+        }
+      }
+    },
+    "Already operating an HTTPS domain or reverse proxy for Hermes? Choose “I already have a domain or reverse proxy”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Betreibst du bereits eine HTTPS-Domain oder einen Reverse-Proxy für Hermes? Wähle „Ich habe bereits eine Domain oder einen Reverse-Proxy“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Ya tienes un dominio HTTPS o un proxy inverso para Hermes? Elige «Ya tengo un dominio o un proxy inverso»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous exploitez déjà un domaine HTTPS ou un proxy inverse pour Hermes ? Choisissez « J'ai déjà un domaine ou un proxy inverse »."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes用のHTTPSドメインやリバースプロキシをすでに運用していますか？「ドメインまたはリバースプロキシを設定済み」を選択してください。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Já tem um domínio HTTPS ou um proxy reverso para o Hermes? Escolha “Já tenho um domínio ou proxy reverso”."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уже есть HTTPS-домен или обратный прокси для Hermes? Выберите «У меня уже есть домен или обратный прокси»."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已经在为 Hermes 使用 HTTPS 域名或反向代理？选择“我已有域名或反向代理”。"
+          }
+        }
+      }
+    },
+    "A job's approval request shows on the Watch with Approve once and Deny." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Freigabeanfrage eines Jobs erscheint auf der Watch mit „Einmal freigeben“ und „Ablehnen“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La solicitud de aprobación de un trabajo aparece en el Apple Watch con «Aprobar una vez» y «Denegar»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La demande d'approbation d'un job s'affiche sur l'Apple Watch avec « Approuver une fois » et « Refuser »."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジョブの承認リクエストは、Watch に「1回だけ承認」と「拒否」付きで表示されます。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O pedido de aprovação de um trabalho aparece no Watch com “Aprovar uma vez” e “Negar”."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запрос разрешения от задания отображается на часах с кнопками «Разрешить один раз» и «Отклонить»."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务的批准请求会显示在 Watch 上，带有“批准一次”和“拒绝”。"
           }
         }
       }

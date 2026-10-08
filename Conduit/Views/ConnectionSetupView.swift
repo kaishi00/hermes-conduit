@@ -551,9 +551,9 @@ struct ConnectionSetupView: View {
 
             if showNotSureGuidance {
                 VStack(alignment: .leading, spacing: 10) {
-                    guidanceBullet(AppLocalization.string("Using Conduit at home, on the same network as the Hermes machine? Choose Same Network."))
+                    guidanceBullet(AppLocalization.string("Using Conduit at home, on the same network as the Hermes machine? Choose “I’m on the same network as Hermes”."))
                     guidanceBullet(AppLocalization.string("Need access away from home without existing remote access? Choose Tailscale — the simplest secure option."))
-                    guidanceBullet(AppLocalization.string("Already operating an HTTPS domain or reverse proxy for Hermes? Choose Existing Domain."))
+                    guidanceBullet(AppLocalization.string("Already operating an HTTPS domain or reverse proxy for Hermes? Choose “I already have a domain or reverse proxy”."))
                 }
                 .padding(.top, 2)
             }
@@ -897,7 +897,7 @@ extension ConnectionHelpDestination {
         switch self {
         case .tls:
             return [
-                AppLocalization.string("If you use your own certificate authority, install and trust its root certificate on this device (Settings → General → VPN & Device Management → Certificate Trust Settings)."),
+                AppLocalization.string("If you use your own certificate authority, install its profile on this device (Settings → General → VPN & Device Management), then turn on full trust for its root certificate (Settings → General → About → Certificate Trust Settings)."),
                 AppLocalization.string("Check the server certificate’s expiration and validity dates."),
                 AppLocalization.string("Confirm this device’s date and time are correct.")
             ]

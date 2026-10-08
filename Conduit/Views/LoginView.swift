@@ -493,7 +493,7 @@ struct LoginView: View {
                 Button {
                     Task { await connect() }
                 } label: {
-                    Label(isConnecting ? AppLocalization.string("Connecting...") : AppLocalization.string("Connect"), systemImage: "arrow.right")
+                    Label(isConnecting ? AppLocalization.string("Connecting…") : AppLocalization.string("Connect"), systemImage: "arrow.right")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)

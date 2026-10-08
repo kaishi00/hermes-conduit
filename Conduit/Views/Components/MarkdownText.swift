@@ -1747,7 +1747,7 @@ private struct RemoteMarkdownImage: View {
     private var loadingLabel: some View {
         HStack(spacing: 8) {
             ProgressView()
-            Text(alt.isEmpty ? AppLocalization.string("Loading image...") : alt)
+            Text(alt.isEmpty ? AppLocalization.string("Loading image…") : alt)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

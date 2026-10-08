@@ -49,7 +49,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         XCTAssertEqual(server.value as? String, "http://192.168.1.28:9119")
         XCTAssertEqual(app.textFields["login.username"].value as? String, "round4-user")
         XCTAssertTrue(app.buttons["Connect"].isEnabled)
-        XCTAssertFalse(app.staticTexts["Connecting..."].exists)
+        XCTAssertFalse(app.staticTexts["Connecting…"].exists)
     }
 
     func testAuthenticationFailureKeepsPriorStagesAndOffersEditCredentials() {
@@ -161,7 +161,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         XCTAssertEqual(server.value as? String, "http://192.168.1.28:9119")
         XCTAssertEqual(app.textFields["login.username"].value as? String, "round4-user")
         XCTAssertTrue(app.buttons["Connect"].isEnabled)
-        XCTAssertFalse(app.staticTexts["Connecting..."].exists)
+        XCTAssertFalse(app.staticTexts["Connecting…"].exists)
     }
 
     // MARK: - Walk helpers

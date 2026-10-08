@@ -768,9 +768,9 @@ struct ComposerBar: View {
     static func chatTakeoverMessage(_ takeover: ChatTakeoverState) -> String {
         switch takeover.phase {
         case .offered:
-            return AppLocalization.string("This chat is open in \(takeover.ownerName). Take it over to send from here.")
+            return takeover.openElsewhereMessage
         case .waiting:
-            return AppLocalization.string("Taking this chat over from \(takeover.ownerName). If it's replying, Conduit waits for the reply to finish.")
+            return takeover.takingOverMessage
         case .ready:
             return AppLocalization.string("This chat is yours now. Send your message again.")
         case .failed(let message), .unavailable(let message):
