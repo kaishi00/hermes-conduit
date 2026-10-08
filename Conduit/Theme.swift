@@ -82,14 +82,18 @@ enum ConduitBackdropMotionPolicy {
     static let framesPerSecond = 30
     static let cycleDuration: TimeInterval = 26
 
+    /// `drifts` is false for sheets and pushed detail screens: they hold the
+    /// static composition so only the main chat and sidebar run a timeline,
+    /// rather than one per stacked layer while a sheet is open.
     static func shouldAnimate(
+        drifts: Bool = true,
         sceneIsActive: Bool,
         reduceMotion: Bool,
         lowPowerMode: Bool,
         thermalState: ProcessInfo.ThermalState
     ) -> Bool {
         let thermalStateAllowsMotion = thermalState == .nominal || thermalState == .fair
-        return sceneIsActive && !reduceMotion && !lowPowerMode && thermalStateAllowsMotion
+        return drifts && sceneIsActive && !reduceMotion && !lowPowerMode && thermalStateAllowsMotion
     }
 
     /// One smooth out-and-back drift over 26 seconds, matching the previous
@@ -150,9 +154,17 @@ struct ConduitBackdrop: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var devicePower = DevicePowerState.shared
     @State private var motionClock = ConduitBackdropMotionClock()
+    private let drifts: Bool
+
+    /// Pass `drifts: true` only for the app's main surfaces (chat, sidebar,
+    /// sign-in). Sheets and pushed screens keep the still composition.
+    init(drifts: Bool = false) {
+        self.drifts = drifts
+    }
 
     private var shouldAnimate: Bool {
         ConduitBackdropMotionPolicy.shouldAnimate(
+            drifts: drifts,
             sceneIsActive: scenePhase == .active,
             reduceMotion: reduceMotion,
             lowPowerMode: devicePower.isLowPowerModeEnabled,

@@ -451,6 +451,15 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
             thermalState: .fair
         ))
 
+        // Sheets and pushed screens never drift, even when everything else allows it.
+        XCTAssertFalse(ConduitBackdropMotionPolicy.shouldAnimate(
+            drifts: false,
+            sceneIsActive: true,
+            reduceMotion: false,
+            lowPowerMode: false,
+            thermalState: .nominal
+        ))
+
         let pausedConditions: [(Bool, Bool, Bool, ProcessInfo.ThermalState)] = [
             (false, false, false, .nominal), // app inactive/background
             (true, true, false, .nominal),  // Reduce Motion

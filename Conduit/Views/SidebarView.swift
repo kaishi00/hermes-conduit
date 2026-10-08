@@ -26,7 +26,7 @@ struct SidebarView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ConduitBackdrop()
+                ConduitBackdrop(drifts: true)
 
                 VStack(spacing: 16) {
                     ConduitGlassGroup(spacing: 12) {
