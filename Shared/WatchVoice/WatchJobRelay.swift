@@ -58,7 +58,9 @@ enum WatchJobAnswer {
         case interruptJob:
             let jobID = arguments["job_id"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let message = arguments["message"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return jobID.isEmpty || message.isEmpty ? nil : ["job_id": jobID, "message": message]
+            // Clipped as GPT-Live's words are, under the plugin's 3,000-byte cap.
+            let words = WatchBridgeDelegation.clipped(message, bytes: WatchBridgeDelegation.maxRequestBytes)
+            return jobID.isEmpty || message.isEmpty ? nil : ["job_id": jobID, "message": words]
         default:
             return nil
         }
