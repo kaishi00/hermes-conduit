@@ -87,6 +87,8 @@ final class WatchDirectBroker {
     /// start_job, or a call queued while the Watch couldn't wait): sent
     /// with the next poll.
     private var lateOutgoing: [GeminiLiveToolBridge.Outgoing] = []
+    /// The phone's jobs each Watch call started, for its saved transcript.
+    private var callJobs: [UInt32: [UUID]] = [:]
     /// The tools the running call's grants cover, and the grants it got:
     /// all revoked when it ends.
     private var grantTools: [String] = []
@@ -593,19 +595,22 @@ final class WatchDirectBroker {
     /// alone. Only asked for a call on the active connection.
     private func bridge(for id: UInt32) -> GeminiLiveToolBridge {
         adoptIfKnown(id)
-        guard callID == id else { return makeBridge() }
+        guard callID == id else { return makeBridge(for: id) }
         if let bridge { return bridge }
-        let bridge = makeBridge()
+        let bridge = makeBridge(for: id)
         self.bridge = bridge
         return bridge
     }
 
-    private func makeBridge() -> GeminiLiveToolBridge {
+    private func makeBridge(for id: UInt32) -> GeminiLiveToolBridge {
         let tokens = appState.geminiLiveTokenClient
+        let supervisor = WatchCallJobSupervisor(appState.voiceBackgroundJobSupervisor)
+        // Noted in the saved call, as the phone's own calls note theirs.
+        supervisor.onJobCreated = { [weak self] jobID in self?.callJobs[id, default: []].append(jobID) }
         // Answered once each job runs, its outcome later as a text update:
         // a Watch message's answer can't stay open for a job.
         return GeminiLiveToolBridge(
-            supervisor: WatchCallJobSupervisor(appState.voiceBackgroundJobSupervisor),
+            supervisor: supervisor,
             webSearch: tokens,
             memory: tokens,
             holdsJobCalls: false
@@ -1019,9 +1024,17 @@ final class WatchDirectBroker {
         ])
         if isCurrent { endCall(keepRecovery: true) }
         let appState = self.appState
+        // Jobs on another profile are filed there, so the call lists only
+        // its own profile's.
+        let started = callJobs.removeValue(forKey: id) ?? []
+        let phoneJobs = appState.voiceBackgroundJobSupervisor.jobs.compactMap { job -> WatchVoiceWire.DirectJob? in
+            guard started.contains(job.id), job.profile == nil else { return nil }
+            let sessionID = [job.storedSessionID, job.runtimeSessionID].compactMap { $0 }.first { !$0.isEmpty }
+            return .init(jobID: job.id.uuidString, title: job.title, sessionID: sessionID, startedAt: job.startedAt)
+        }
         Task {
             if let known {
-                await appState.saveWatchVoiceCall(transcript, connection: known.connection, saveCalls: known.saveCalls)
+                await appState.saveWatchVoiceCall(transcript, connection: known.connection, saveCalls: known.saveCalls, phoneJobs: phoneJobs)
             }
             // Recovery stays allowed until the save has had its chance.
             if self.callID == nil { appState.setWatchVoiceCallActive(false) }
@@ -1271,8 +1284,15 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
 
     var jobs: [VoiceBackgroundJob] { base.jobs }
 
+    /// Told of each job this call starts.
+    var onJobCreated: (@MainActor (UUID) -> Void)?
+
     func startJob(instructions: String, profile: String?, onJobCreated: (@MainActor (UUID) -> Void)?) async -> String {
-        await base.startJob(instructions: instructions, profile: profile, onJobCreated: onJobCreated)
+        let noted = self.onJobCreated
+        return await base.startJob(instructions: instructions, profile: profile, onJobCreated: { jobID in
+            noted?(jobID)
+            onJobCreated?(jobID)
+        })
     }
 
     func statusSummary() -> String { base.statusSummary() }

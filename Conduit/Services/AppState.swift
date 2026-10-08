@@ -4233,6 +4233,14 @@ final class AppState: ObservableObject {
         publishVoiceCallSaveStatus()
     }
 
+    /// A queued call not saved yet takes `title` when its row is made.
+    private func retitleQueuedVoiceTranscript(callID: String, title: String) {
+        var outbox = VoiceTranscriptOutbox.load(from: defaults)
+        guard let index = outbox.entries.firstIndex(where: { $0.request.callID == callID && $0.request.sessionID == nil }) else { return }
+        outbox.entries[index].request.title = title
+        outbox.store(in: defaults)
+    }
+
     private func dequeueVoiceTranscript(callID: String) {
         var outbox = VoiceTranscriptOutbox.load(from: defaults)
         outbox.entries.removeAll { $0.request.callID == callID }
@@ -4314,9 +4322,28 @@ final class AppState: ObservableObject {
     /// and a link that opens the job's chat, so its full result is a tap
     /// away from the transcript.
     static func voiceJobStartedNote(_ job: VoiceBackgroundJob) -> String {
-        let line = AppLocalization.string("Started a background job: \(job.title).")
-        guard let id = [job.storedSessionID, job.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return line }
+        voiceJobStartedNote(title: job.title, sessionID: [job.storedSessionID, job.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }))
+    }
+
+    static func voiceJobStartedNote(title: String, sessionID: String?) -> String {
+        let line = AppLocalization.string("Started a background job: \(title).")
+        guard let id = sessionID, !id.isEmpty else { return line }
         return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open job"))
+    }
+
+    /// A saved Watch call's lines, with a "Started a background job" line
+    /// where each of its jobs started, as the phone's own calls note them.
+    static func watchCallTurns(_ turns: [WatchVoiceWire.DirectTurn], jobs: [WatchVoiceWire.DirectJob]) -> [VoiceTranscriptTurn] {
+        var lines = turns.map { (at: $0.at, role: $0.role == .user ? VoiceTranscriptTurn.Role.user : .assistant, text: $0.text) }
+        for job in jobs {
+            let note = (at: job.startedAt, role: VoiceTranscriptTurn.Role.assistant, text: voiceJobStartedNote(title: job.title, sessionID: job.sessionID))
+            // After every line said by then: the request comes before it.
+            let index = lines.firstIndex { $0.at > job.startedAt } ?? lines.endIndex
+            lines.insert(note, at: index)
+        }
+        return lines.enumerated().map { offset, line in
+            VoiceTranscriptTurn(index: offset, role: line.role, text: line.text, at: line.at)
+        }
     }
 
     /// The line a saved call gets where it sent work to its chat: the
@@ -24030,7 +24057,7 @@ final class AppState: ObservableObject {
     /// call ends, by a transfer that arrives whenever the phone next runs;
     /// one that arrives twice is saved once. It goes to the connection the
     /// call began on, whichever is active when it arrives.
-    func saveWatchVoiceCall(_ transcript: WatchVoiceWire.DirectTranscript, connection: WatchDirectConnection, saveCalls: Bool) async {
+    func saveWatchVoiceCall(_ transcript: WatchVoiceWire.DirectTranscript, connection: WatchDirectConnection, saveCalls: Bool, phoneJobs: [WatchVoiceWire.DirectJob] = []) async {
         let profile = connection.profile
         let dashboard = connection.dashboard
         guard saveCalls, !transcript.turns.isEmpty else { return }
@@ -24038,9 +24065,12 @@ final class AppState: ObservableObject {
         guard !saved.contains(transcript.callUUID) else { return }
         saved.append(transcript.callUUID)
         defaults.set(Array(saved.suffix(50)), forKey: Self.watchDirectSavedCallsKey)
-        let turns = transcript.turns.enumerated().map { offset, turn in
-            VoiceTranscriptTurn(index: offset, role: turn.role == .user ? .user : .assistant, text: turn.text, at: turn.at)
-        }
+        // The Watch's relay jobs and the ones the phone ran for the call.
+        var jobs = transcript.jobs ?? []
+        for job in phoneJobs where !jobs.contains(where: { $0.jobID == job.jobID }) { jobs.append(job) }
+        jobs.sort { $0.startedAt < $1.startedAt }
+        let turns = Self.watchCallTurns(transcript.turns, jobs: jobs)
+        let jobSessions = jobs.compactMap(\.sessionID)
         queueVoiceTranscript(
             VoiceTranscriptSaveRequest(
                 callID: transcript.callUUID,
@@ -24050,7 +24080,8 @@ final class AppState: ObservableObject {
                 turns: turns
             ),
             dashboard: dashboard,
-            profile: profile
+            profile: profile,
+            jobs: jobSessions
         )
         // Only the active dashboard's outbox drains; another's waits until
         // it's active again, as the phone's own calls do.
@@ -24058,6 +24089,12 @@ final class AppState: ObservableObject {
         let end = beginVoiceTranscriptBackgroundTask()
         defer { end() }
         guard await connectForWatchDirectCall(timeout: .seconds(20)) else { return }
+        // A title from the call's opening, as the phone's calls get; the
+        // queued time-stamped one stays if Hermes can't make one.
+        if !isLiveVoiceCallActive, dashboard == activeDashboardID?.uuidString ?? "-" {
+            let title = await voiceCallTitle(turns: turns, profile: profile)
+            retitleQueuedVoiceTranscript(callID: transcript.callUUID, title: title)
+        }
         await drainVoiceTranscriptOutbox(profile: profile, key: voiceHistoryKey(profile: profile))
     }
 

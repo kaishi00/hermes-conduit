@@ -379,6 +379,8 @@ final class WatchDirectCallModel: ObservableObject {
     private var nextNewsAt: TimeInterval = 0
     /// Jobs this call started through the relay, for the user's cap.
     private var relayJobsStarted = 0
+    /// The relay jobs this call started, for its saved transcript.
+    private var jobLog = WatchVoiceWire.DirectJobLog()
     private var jobCallsViaRelay = 0
     private var jobNewsAsks = 0
     private var jobNewsFailed = 0
@@ -1735,6 +1737,7 @@ final class WatchDirectCallModel: ObservableObject {
                 // comes as news.
                 if isStart, result["status"] == "started" || result["status"] == "accepted" {
                     self.relayJobsStarted += 1
+                    if let jobID = result["job_id"] { self.jobLog.started(jobID: jobID, title: result["title"] ?? "") }
                     self.followJobs(on: self.jobsHolder(relay))
                 } else if wire.name == WatchJobAnswer.cancelJob {
                     // The running count changed: ask for it now.
@@ -1930,6 +1933,7 @@ final class WatchDirectCallModel: ObservableObject {
         approvals.removeAll { $0.grantID == relay.grantID && !open.contains("\($0.jobID)\n\($0.requestID)") }
         var shown = 0
         for item in news.items {
+            jobLog.heard(jobID: item.jobID, title: item.title, sessionID: item.sessionID)
             // A new request replaces the job's last one; news without one
             // leaves the card to the open-requests list above.
             if let approval = item.approval {
@@ -2950,6 +2954,7 @@ final class WatchDirectCallModel: ObservableObject {
         newsInFlight = false
         nextNewsAt = 0
         relayJobsStarted = 0
+        jobLog.reset()
         jobCallsViaRelay = 0
         jobNewsAsks = 0
         jobNewsFailed = 0
@@ -3039,7 +3044,8 @@ final class WatchDirectCallModel: ObservableObject {
             startedAt: callStartedDate,
             endedAt: Date(),
             turns: saved,
-            engine: engine == .grok ? WatchAudioBridgeWire.grok : nil
+            engine: engine == .grok ? WatchAudioBridgeWire.grok : nil,
+            jobs: jobLog.jobs.isEmpty ? nil : jobLog.jobs
         )))
         if !queued {
             WatchCallLog.shared.note("directEndQueueFailed", ["lines": saved.count])

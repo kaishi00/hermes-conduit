@@ -206,6 +206,8 @@ enum WatchJobAnswer {
             var result: String?
             var error: String?
             var approval: Approval?
+            /// The job's Hermes chat, once the host has one.
+            var sessionID: String? = nil
         }
 
         struct OpenApproval: Equatable {
@@ -244,7 +246,8 @@ enum WatchJobAnswer {
                 status: status,
                 result: item["result"] as? String,
                 error: item["error"] as? String,
-                approval: approval
+                approval: approval,
+                sessionID: (item["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             )
         }
         let open = (body["approvals"] as? [[String: Any]] ?? []).compactMap { item -> News.OpenApproval? in

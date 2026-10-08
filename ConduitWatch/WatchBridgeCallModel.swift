@@ -238,6 +238,8 @@ final class WatchBridgeCallModel: ObservableObject {
     private var delegations = 0
     private var delegationsAnswered = 0
     private var relayJobsStarted = 0
+    /// The relay jobs this call started, for its saved transcript.
+    private var jobLog = WatchVoiceWire.DirectJobLog()
     private var lookupsInstead = 0
     private var followUps = 0
     private var followingJobs = false
@@ -1118,6 +1120,7 @@ final class WatchBridgeCallModel: ObservableObject {
                     self.relayJobsStarted += 1
                     var number: Int?
                     if let jobID = result["job_id"] {
+                        self.jobLog.started(jobID: jobID, title: result["title"] ?? "")
                         self.jobDelegations[jobID] = delegationID
                         // Numbered whatever the host: on an older plugin a
                         // correction then hears that it needs an update,
@@ -1355,6 +1358,7 @@ final class WatchBridgeCallModel: ObservableObject {
         var shown = 0
         var statusChanged = false
         for item in news.items {
+            jobLog.heard(jobID: item.jobID, title: item.title, sessionID: item.sessionID)
             if ["finished", "failed", "cancelled"].contains(item.status) {
                 statusChanged = runningJobs.removeValue(forKey: item.jobID) != nil || statusChanged
             } else if let known = runningJobs[item.jobID], known.status != item.status {
@@ -1614,6 +1618,7 @@ final class WatchBridgeCallModel: ObservableObject {
         delegationsAnswered = 0
         followUps = 0
         relayJobsStarted = 0
+        jobLog.reset()
         lookupsInstead = 0
         followingJobs = false
         newsInFlight = false
@@ -1658,7 +1663,8 @@ final class WatchBridgeCallModel: ObservableObject {
             startedAt: callStartedDate,
             endedAt: Date(),
             turns: saved,
-            engine: Self.engine
+            engine: Self.engine,
+            jobs: jobLog.jobs.isEmpty ? nil : jobLog.jobs
         )))
         let battery = WKInterfaceDevice.current().batteryLevel
         WKInterfaceDevice.current().isBatteryMonitoringEnabled = false

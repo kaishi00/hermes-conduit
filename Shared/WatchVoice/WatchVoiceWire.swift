@@ -178,6 +178,37 @@ enum WatchVoiceWire {
         var at: Date
     }
 
+    /// A job a Watch call started through the push relay.
+    struct DirectJob: Codable, Equatable {
+        var jobID: String
+        var title: String
+        /// The job's Hermes chat, once the host named it.
+        var sessionID: String?
+        var startedAt: Date
+    }
+
+    /// The jobs a Watch call started through the relay, in order, from the
+    /// start answers and the job news.
+    struct DirectJobLog: Equatable {
+        private(set) var jobs: [DirectJob] = []
+
+        mutating func started(jobID: String, title: String, at: Date = Date()) {
+            guard !jobID.isEmpty, !jobs.contains(where: { $0.jobID == jobID }) else { return }
+            jobs.append(.init(jobID: jobID, title: title.isEmpty ? "Hermes job" : title, sessionID: nil, startedAt: at))
+        }
+
+        /// News names the job's chat; a job first heard of here (its start
+        /// answer was lost) is kept from now.
+        mutating func heard(jobID: String, title: String, sessionID: String?, at: Date = Date()) {
+            started(jobID: jobID, title: title, at: at)
+            guard let index = jobs.firstIndex(where: { $0.jobID == jobID }) else { return }
+            if let sessionID, !sessionID.isEmpty { jobs[index].sessionID = sessionID }
+            if !title.isEmpty, jobs[index].title == "Hermes job" { jobs[index].title = title }
+        }
+
+        mutating func reset() { jobs = [] }
+    }
+
     /// A finished Watch call, queued to the iPhone to save in voice
     /// history whenever Conduit next runs there.
     struct DirectTranscript: Codable, Equatable {
@@ -188,6 +219,9 @@ enum WatchVoiceWire {
         var turns: [DirectTurn]
         /// The engine the call ran on; nil for Gemini.
         var engine: String? = nil
+        /// The jobs the call started through the push relay, for the saved
+        /// call's "Started a background job" lines. Nil from an older Watch.
+        var jobs: [DirectJob]? = nil
 
         /// The newest turns whose text fits `bytes` of UTF-8: a queued
         /// transfer is meant for small payloads (Japanese or Chinese text
