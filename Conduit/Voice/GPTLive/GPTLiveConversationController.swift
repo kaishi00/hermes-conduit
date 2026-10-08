@@ -67,7 +67,7 @@ final class GPTLiveConversationController: ObservableObject {
 
     /// Read-backs (#451): the phone's delegation bridge answers "Read back:"
     /// itself, so a Watch call (whose delegations go to the relay) leaves
-    /// it out like the follow-ups below.
+    /// it out, like asking first below.
     static let phoneReadBack = "When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory or in your own words: delegate \"Read back:\". Conduit gives you the reply, then tells you to read it: read it word for word, all of it, once."
 
     /// Job corrections ("Job 2: …", #455): the phone's delegation bridge

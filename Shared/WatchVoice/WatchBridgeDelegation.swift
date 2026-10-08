@@ -99,7 +99,9 @@ enum WatchBridgeDelegation {
     /// the last delegation, else the delegation's.
     static func followUpWords(userWords: String, delegated: String) -> String {
         let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
-        return spoken.isEmpty ? delegated.trimmingCharacters(in: .whitespacesAndNewlines) : spoken
+        guard spoken.isEmpty else { return spoken }
+        let own = delegated.components(separatedBy: contextMarker).first ?? delegated
+        return own.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// GPTLiveDelegationBridge.followUpReply: taken, quiet, since the model

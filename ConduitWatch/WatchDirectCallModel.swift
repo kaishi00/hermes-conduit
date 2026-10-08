@@ -1457,7 +1457,8 @@ final class WatchDirectCallModel: ObservableObject {
         // Jobs go to Hermes through the relay wrist up or down: their news
         // and approvals come that way too.
         // A correction goes to the job where it runs: the grant's jobs
-        // live on the host (#455).
+        // live on the host (#455). interrupt_job stays out of
+        // WatchJobAnswer.tools, the tools a grant asks for by name.
         if WatchJobAnswer.tools.contains(call.name) || call.name == WatchJobAnswer.interruptJob, let relay = jobRelay(for: call) {
             runJobThroughRelay(wire, relay: relay, generation: generation, wristDown: wristDown)
             return
@@ -1730,6 +1731,8 @@ final class WatchDirectCallModel: ObservableObject {
                     self.relayJobsStarted += 1
                     self.followJobs(on: self.jobsHolder(relay))
                     result = WatchJobAnswer.accepted
+                } else if isFollowUp {
+                    result = WatchJobAnswer.followUpResult(.failed("Hermes took too long to answer"))
                 } else {
                     result = WatchToolAnswer.tookTooLong
                 }

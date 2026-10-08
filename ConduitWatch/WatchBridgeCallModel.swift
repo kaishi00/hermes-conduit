@@ -1003,10 +1003,18 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         // "Job 2: make it Alex" puts the user's words into job 2 while it
         // runs (#455). A number with no job is just new work.
-        if let marker = WatchBridgeDelegation.jobMarker(in: itemText) {
+        // Read where the phone reads it: the delegation's own text, else
+        // the user's words GPT-Live left it in.
+        let userWords = lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
+        let marked = itemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? userWords : itemText
+        if let marker = WatchBridgeDelegation.jobMarker(in: marked) {
             if let jobID = jobNumbers[marker.number] {
-                let userWords = lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
-                followUp(for: id, jobID: jobID, words: WatchBridgeDelegation.followUpWords(userWords: userWords, delegated: marker.rest), relay: relay)
+                let words = WatchBridgeDelegation.followUpWords(userWords: userWords, delegated: marker.rest)
+                guard !words.isEmpty else {
+                    answer(id, WatchBridgeDelegation.noRequest, channel: .speakable)
+                    return
+                }
+                followUp(for: id, jobID: jobID, words: words, relay: relay)
                 return
             }
             let request = WatchBridgeDelegation.request(itemText: marker.rest, lines: lines)
@@ -1065,12 +1073,12 @@ final class WatchBridgeCallModel: ObservableObject {
                     var number: Int?
                     if let jobID = result["job_id"] {
                         self.jobDelegations[jobID] = delegationID
-                        // Numbered only where the host takes corrections.
-                        if relay.tools.contains(WatchJobAnswer.interruptJob) {
-                            let next = self.jobNumbers.count + 1
-                            self.jobNumbers[next] = jobID
-                            number = next
-                        }
+                        // Numbered whatever the host: on an older plugin a
+                        // correction then hears that it needs an update,
+                        // rather than starting the job again.
+                        let next = self.jobNumbers.count + 1
+                        self.jobNumbers[next] = jobID
+                        number = next
                     }
                     self.answer(delegationID, WatchBridgeDelegation.working(title: result["title"] ?? "Hermes job", number: number), channel: .commentary)
                     self.followJobs()

@@ -253,6 +253,7 @@ extension HermesVoiceGatewayTimeoutTests {
         }
         XCTAssertEqual(WatchBridgeDelegation.followUpWords(userWords: " make it Alex ", delegated: "Alex"), "make it Alex")
         XCTAssertEqual(WatchBridgeDelegation.followUpWords(userWords: "", delegated: " hold that "), "hold that")
+        XCTAssertEqual(WatchBridgeDelegation.followUpWords(userWords: "", delegated: "hold that" + WatchBridgeDelegation.contextMarker + "User: hi\n"), "hold that")
 
         let pairs: [(WatchJobAnswer.FollowUp, VoiceFollowUpOutcome)] = [
             (.interrupted(title: "Tokyo weather"), .interrupted(title: "Tokyo weather")),
