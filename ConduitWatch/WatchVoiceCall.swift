@@ -82,6 +82,13 @@ final class WatchVoiceCall: ObservableObject {
     @Published var engine: WatchVoiceEngine {
         didSet { UserDefaults.standard.set(engine.rawValue, forKey: WatchVoiceEngine.storageKey) }
     }
+    /// Opening Conduit starts a call, with no tap on the orb.
+    @Published var startsOnOpen: Bool {
+        didSet { UserDefaults.standard.set(startsOnOpen, forKey: Self.startsOnOpenKey) }
+    }
+    static let startsOnOpenKey = "watchStartsCallOnOpen"
+    /// The app's scene phase before this one: nil until the first.
+    private var lastScenePhase: ScenePhase?
     /// The engine of the call on screen, which a change of `engine` during
     /// the call doesn't move.
     @Published private(set) var callEngine: WatchVoiceEngine
@@ -110,6 +117,7 @@ final class WatchVoiceCall: ObservableObject {
         let stored = UserDefaults.standard.string(forKey: WatchVoiceEngine.storageKey).flatMap(WatchVoiceEngine.init(rawValue:))
         engine = stored ?? .geminiLive
         callEngine = stored ?? .geminiLive
+        startsOnOpen = UserDefaults.standard.object(forKey: Self.startsOnOpenKey) as? Bool ?? true
         // Models publish before they change: read them once the change is in.
         for model in [direct.objectWillChange, bridge.objectWillChange] {
             model.sink { [weak self] _ in self?.queueRefresh() }.store(in: &cancellables)
@@ -196,9 +204,23 @@ final class WatchVoiceCall: ObservableObject {
     func scenePhaseChanged(_ newPhase: ScenePhase) {
         direct.scenePhaseChanged(newPhase)
         bridge.scenePhaseChanged(newPhase)
+        let previous = lastScenePhase
+        lastScenePhase = newPhase
+        // Opened: launched, or back from the background. A wrist raise
+        // comes from inactive and starts nothing.
+        if newPhase == .active, previous == nil || previous == .background {
+            startOnOpenIfWanted()
+        }
         // Call diagnostics only: an idle wrist raise isn't worth a line.
         guard isActive else { return }
         WatchCallLog.shared.note("scenePhase", ["phase": "\(newPhase)", "reachable": WatchLink.shared.isReachable])
+    }
+
+    private func startOnOpenIfWanted() {
+        guard startsOnOpen, !isActive else { return }
+        WatchCallLog.shared.note("callStartedOnOpen", ["engine": engine.rawValue])
+        dismissEnded()
+        start()
     }
 
     // MARK: State

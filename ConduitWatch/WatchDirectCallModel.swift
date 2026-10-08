@@ -2629,6 +2629,7 @@ final class WatchDirectCallModel: ObservableObject {
         fetchJobNewsIfDue()
         pollIfNeeded()
         reactivateIfDue()
+        audio.checkPlayback()
         timelineIfDue()
         flushQuietQueue()
     }

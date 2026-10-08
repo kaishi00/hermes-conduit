@@ -64,6 +64,14 @@ final class WatchAudio {
     private var startStep = "session"
     private var startPending = false
     private var queuedDuration: TimeInterval = 0
+    /// When playback last moved: the player started or a buffer played out.
+    private var playbackMovedAt: TimeInterval = 0
+    private var stallNudged = false
+    /// The longest buffer queued since playback last stopped: one buffer
+    /// playing out takes that long without a completion.
+    private var longestBuffer: TimeInterval = 0
+    /// Playback that stopped moving and was dropped, for the call summary.
+    private(set) var playbackStalls = 0
     private var observers: [NSObjectProtocol] = []
 
     var isPlaying: Bool { outstandingBuffers > 0 || startPending }
@@ -226,6 +234,7 @@ final class WatchAudio {
         }
         outstandingBuffers += 1
         queuedDuration += Double(samples.count) / sampleRate
+        longestBuffer = max(longestBuffer, Double(samples.count) / sampleRate)
         let generation = playbackGeneration
         player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             WatchVoiceMain.async { [weak self] in self?.bufferPlayed(generation: generation) }
@@ -244,11 +253,44 @@ final class WatchAudio {
         }
     }
 
+    /// Playback that stopped moving with speech still queued: no buffer
+    /// played out for `stallAfter` once the player started (the engine or
+    /// player stopped underneath, so no completion comes). Left alone, the
+    /// call reads as speaking forever and holds the microphone. The player
+    /// gets one nudge; still stuck, the queue is dropped as if it drained.
+    /// Called from the call's 1 s tick.
+    func checkPlayback() {
+        guard outstandingBuffers > 0, !startPending, let player else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - playbackMovedAt >= Self.stallAfter + longestBuffer else { return }
+        let fields: [String: Any] = [
+            "outstanding": outstandingBuffers,
+            "playerPlaying": player.isPlaying,
+            "engine": engine?.isRunning ?? false,
+            "stillMs": Int((now - playbackMovedAt) * 1000),
+        ]
+        if !stallNudged {
+            stallNudged = true
+            playbackMovedAt = now
+            WatchCallLog.shared.note("playbackStalled", fields)
+            if let engine, !engine.isRunning { try? engine.start() }
+            player.play()
+            return
+        }
+        playbackStalls += 1
+        WatchCallLog.shared.note("playbackDropped", fields)
+        stopPlayback()
+        onDrained?()
+    }
+
+    static let stallAfter: TimeInterval = 1.5
+
     /// Drops everything queued, at once.
     func stopPlayback() {
         playbackGeneration += 1
         outstandingBuffers = 0
         queuedDuration = 0
+        longestBuffer = 0
         startPending = false
         player?.stop()
     }
@@ -257,6 +299,8 @@ final class WatchAudio {
         guard let player, isRunning else { return }
         startPending = false
         player.play()
+        playbackMovedAt = ProcessInfo.processInfo.systemUptime
+        stallNudged = false
         let latency = AVAudioSession.sharedInstance().outputLatency
         onPlaybackStarted?(ProcessInfo.processInfo.systemUptime + latency)
     }
@@ -264,8 +308,11 @@ final class WatchAudio {
     private func bufferPlayed(generation: Int) {
         guard generation == playbackGeneration, outstandingBuffers > 0 else { return }
         outstandingBuffers -= 1
+        playbackMovedAt = ProcessInfo.processInfo.systemUptime
+        stallNudged = false
         guard outstandingBuffers == 0 else { return }
         queuedDuration = 0
+        longestBuffer = 0
         // Stopped, so the next speech gets its pre-roll again.
         player?.stop()
         startPending = false

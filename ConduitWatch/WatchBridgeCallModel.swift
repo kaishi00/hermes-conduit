@@ -78,6 +78,8 @@ final class WatchBridgeCallModel: ObservableObject {
     static let speechPeak = 600
     /// This much quiet ends a stretch of GPT-Live's speech.
     static let speechGap: TimeInterval = 0.6
+    /// No loud audio for this long ends a stretch, chunks arriving or not.
+    static let silentStretch: TimeInterval = 2
     /// Quiet audio kept before speech starts, so its first sound isn't cut.
     static let leadIn: TimeInterval = 0.1
     /// Results wait for this much quiet after the user and GPT-Live, as on
@@ -821,6 +823,16 @@ final class WatchBridgeCallModel: ObservableObject {
         note("bridgeTurn", fields)
     }
 
+    /// A stretch of speech whose audio stopped coming: only a quiet chunk
+    /// ends one in handleAudio, so with no chunks at all it would read as
+    /// speaking, with the microphone held, until GPT-Live spoke again.
+    private func endSilentStretchIfDue(at: TimeInterval) {
+        guard modelSpeaking, let lastLoudAt, at - lastLoudAt >= Self.silentStretch else { return }
+        modelSpeaking = false
+        note("bridgeSpeechStopped", ["quietMs": Int((at - lastLoudAt) * 1000), "playing": audio.isPlaying])
+        if !audio.isPlaying { playbackDrained() }
+    }
+
     private func playbackDrained() {
         lastPlaybackEndedAt = now
         guard isActive, phase == .speaking, !modelSpeaking else { return }
@@ -1341,6 +1353,8 @@ final class WatchBridgeCallModel: ObservableObject {
             return
         }
         reactivateIfDue()
+        audio.checkPlayback()
+        endSilentStretchIfDue(at: at)
         pingIfDue()
         fetchJobNewsIfDue()
         flushPending()
