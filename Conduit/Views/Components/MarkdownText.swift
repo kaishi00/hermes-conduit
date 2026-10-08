@@ -1582,7 +1582,10 @@ struct LargeMarkdownTable: View {
                 Button {
                     renderedRowCount = min(renderedRowCount + Self.rowBatch, rows.count)
                 } label: {
-                    Label("Show \(min(Self.rowBatch, rows.count - renderedRowCount)) more rows (\(rows.count - renderedRowCount) of \(rows.count) left)", systemImage: "chevron.down")
+                    // The count drives its own plural; the progress is a separate string.
+                    Label(AppLocalization.string("Show \(min(Self.rowBatch, rows.count - renderedRowCount)) more rows")
+                        + " " + AppLocalization.string("(\(String(rows.count - renderedRowCount)) of \(String(rows.count)) left)"),
+                        systemImage: "chevron.down")
                         .font(.caption.weight(.semibold))
                 }
                 .tint(usesAccentSurface ? .white : .conduitAccent)

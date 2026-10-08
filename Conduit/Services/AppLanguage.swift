@@ -248,6 +248,22 @@ enum AppLocalization {
         return bundles
     }()
 
+    /// Locale for what Conduit formats itself (lists, durations): the
+    /// pinned App Language, else the device's locale when its language is
+    /// the one the UI resolved to, else that UI language. An English UI on
+    /// a phone set to a language Conduit doesn't ship yet keeps English
+    /// lists ("2 updated, 1 failed") instead of mixing in the device's.
+    nonisolated static var formattingLocale: Locale {
+        if let pinned = AppLanguage.current.locale { return pinned }
+        let shown = Bundle.main.preferredLocalizations.first ?? AppLocalizations.main.source
+        let device = Locale.Language(identifier: Locale.current.language.maximalIdentifier)
+        let ui = Locale.Language(identifier: Locale.Language(identifier: shown).maximalIdentifier)
+        // Script too: a Traditional Chinese phone showing the Simplified UI
+        // formats as Simplified.
+        let same = device.languageCode == ui.languageCode && device.script == ui.script
+        return same ? .current : Locale(identifier: shown)
+    }
+
     nonisolated static func string(
         _ keyAndValue: String.LocalizationValue,
         table: String? = nil,

@@ -371,7 +371,7 @@ final class KanbanV3CTests: XCTestCase {
             succeededIDs: ["A", "B"],
             failures: [KanbanBulkFailure(id: "C", reason: "running task is claimed")]
         )
-        XCTAssertEqual(KanbanBulkResultPolicy.summary(outcome: partial), "2 updated, 1 failed")
+        XCTAssertEqual(KanbanBulkResultPolicy.summary(outcome: partial, locale: Locale(identifier: "en_US")), "2 updated, 1 failed")
         let none = KanbanBulkOperationOutcome(succeededIDs: [], failures: [])
         XCTAssertEqual(KanbanBulkResultPolicy.summary(outcome: none), "No tasks updated")
     }

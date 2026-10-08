@@ -272,7 +272,9 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     }
 
     private static func endpointAccessibilityValue(_ segmentID: String, offset: Int) -> String {
-        String(format: NSLocalizedString(AppLocalization.string("character %d"), comment: "VoiceOver position of a selection endpoint"), offset)
+        // VoiceOver position of a selection endpoint. A position, not a
+        // count: String(offset) keeps it out of plural rules.
+        AppLocalization.string("character \(String(offset))")
     }
 
     /// The container sits outside the transcript scroll view, so nothing

@@ -633,7 +633,7 @@ struct ComposerBar: View {
                         .frame(minWidth: 44, minHeight: 44)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(AppLocalization.string("Delegate agents, \(String(appState.activeAgents)) active"))
+                .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"))
             }
 
             dictateButton
