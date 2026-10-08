@@ -14675,6 +14675,9 @@ final class AppState: ObservableObject {
             let outcome = await self.openSessionOutcome(sessionId)
             if outcome == .failed, !Task.isCancelled { onFailure?() }
             let opened = outcome == .opened
+            // Tapping a chat reads it, even when it was already the open one
+            // (the id didn't change, so activeSessionId's didSet stayed quiet).
+            if opened { self.noteActiveChatSeen() }
             guard self.explicitSessionOpenRequestID == requestID else { return opened }
             self.explicitSessionOpenRequestID = nil
             self.explicitSessionOpenTask = nil
