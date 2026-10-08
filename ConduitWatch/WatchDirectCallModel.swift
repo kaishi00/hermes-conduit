@@ -155,7 +155,7 @@ final class WatchDirectCallModel: ObservableObject {
     private var tokens: WatchDirectTokens?
     private var openingPrompt: String?
     private var hasSentOpening = false
-    private var callID: UInt32 = 0
+    private(set) var callID: UInt32 = 0
     private var callUUID = UUID()
     private var callStartedDate = Date()
     private var timers: [Timer] = []
@@ -195,6 +195,9 @@ final class WatchDirectCallModel: ObservableObject {
     private var loggedResumable = false
     private var socketNotes = 0
     private var restartingAudio = false
+    /// Siri or an alarm stopped the microphone, and nothing has started it
+    /// again: the call needs a tap, whatever a rejoin did to the phase.
+    private var microphoneStopped = false
     private var restartAttempts = 0
     /// The Watch's network path for the whole call, whichever socket runs:
     /// a refused WebSocket was reported with the path unsatisfied, and
@@ -514,7 +517,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// The orb: stops Gemini while it speaks, brings the microphone back
     /// after Siri or an alarm.
     func tapOrb() {
-        if phase == .needsTap {
+        if phase == .needsTap || microphoneStopped {
             restartAudio()
             return
         }
@@ -706,9 +709,9 @@ final class WatchDirectCallModel: ObservableObject {
             }
             let detail = (body["detail"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             fields["status"] = body["status"] as Any
-            throw WatchDirectError.relayToken(detail ?? "Hermes sent no usable Gemini token.")
+            throw WatchDirectError.relayToken(detail ?? String(localized: "Hermes sent no usable Gemini token."))
         case .timedOut:
-            throw WatchDirectError.relayToken("Hermes didn't answer in time.")
+            throw WatchDirectError.relayToken(String(localized: "Hermes didn't answer in time."))
         case .unavailable(let reason, let grantGone, _):
             fields["reason"] = reason
             fields["grantGone"] = grantGone
@@ -716,7 +719,7 @@ final class WatchDirectCallModel: ObservableObject {
                 toolRelay = nil
                 closeIfUnused(relay)
             }
-            throw WatchDirectError.relayToken("The relay couldn't reach Hermes (\(reason)).")
+            throw WatchDirectError.relayToken(String(localized: "The relay couldn't reach Hermes (\(reason))."))
         }
     }
 
@@ -920,6 +923,12 @@ final class WatchDirectCallModel: ObservableObject {
     /// From the tick: the wrist came up, or the wait ran out.
     private func rejoinIfDue() {
         guard let since = rejoinWaitingSince else { return }
+        // Hermes said goodbye meanwhile: no new session for it.
+        guard endRequestedAt == nil else {
+            rejoinWaitingSince = nil
+            finish(WatchCallEnd.goodbye)
+            return
+        }
         if link.isReachable {
             rejoin()
         } else if now - since >= Self.rejoinWait {
@@ -962,8 +971,10 @@ final class WatchDirectCallModel: ObservableObject {
         awaitingAnswerSince = now
         textUpdatesSent += 1
         noteTextSent("rejoin", text)
+        let id = callID
         session.send(.textTurn(text), onSent: nil, onFailure: { [weak self] in
-            self?.quietQueue.insert(.textWhenIdle(text), at: 0)
+            guard let self, self.callID == id else { return }
+            self.quietQueue.insert(.textWhenIdle(text), at: 0)
         })
     }
 
@@ -1053,7 +1064,11 @@ final class WatchDirectCallModel: ObservableObject {
         hasSentOpening = true
         awaitingAnswerSince = now
         noteTextSent("opening", openingPrompt)
-        session.send(.textTurn(openingPrompt), onSent: nil, onFailure: { [weak self] in self?.hasSentOpening = false })
+        let id = callID
+        session.send(.textTurn(openingPrompt), onSent: nil, onFailure: { [weak self] in
+            guard let self, self.callID == id else { return }
+            self.hasSentOpening = false
+        })
     }
 
     // MARK: Server events
@@ -1752,8 +1767,10 @@ final class WatchDirectCallModel: ObservableObject {
         approvals.removeAll { $0.grantID == relay.grantID && !open.contains("\($0.jobID)\n\($0.requestID)") }
         var shown = 0
         for item in news.items {
-            approvals.removeAll { $0.grantID == relay.grantID && $0.jobID == item.jobID }
+            // A new request replaces the job's last one; news without one
+            // leaves the card to the open-requests list above.
             if let approval = item.approval {
+                approvals.removeAll { $0.grantID == relay.grantID && $0.jobID == item.jobID }
                 approvals.append(approval)
                 approvalsShown += 1
                 shown += 1
@@ -1846,11 +1863,15 @@ final class WatchDirectCallModel: ObservableObject {
             var fields: [String: Any] = ["choice": choice, "byVoice": byVoice, "ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
             let result: [String: String]
             var taken = false
+            // Hermes answered, and turned it down (already handled, or
+            // expired): asking again can't change that.
+            var refused = false
             switch outcome {
             case .answered(let body):
                 result = WatchJobAnswer.result(body: body)
                 fields["status"] = result["status"] ?? (result["error"] == nil ? "" : "error")
                 taken = result["error"] == nil && result["status"] != "failed"
+                refused = !taken
             case .timedOut:
                 fields["status"] = "timedOut"
                 result = WatchToolAnswer.tookTooLong
@@ -1868,7 +1889,7 @@ final class WatchDirectCallModel: ObservableObject {
                 let holder = self.jobsHolder(relay)
                 var again = approval
                 again.grantID = holder.grantID
-                if self.jobRelays.contains(where: { $0 === holder }), !self.approvals.contains(again) {
+                if !refused, self.jobRelays.contains(where: { $0 === holder }), !self.approvals.contains(again) {
                     self.approvals.insert(again, at: 0)
                     self.pendingApproval = self.approvals.first
                 }
@@ -2083,8 +2104,9 @@ final class WatchDirectCallModel: ObservableObject {
         }
         // The model talks about it next: job news waits for that.
         if scheduling != GeminiLiveProtocol.Scheduling.silent.rawValue { awaitingAnswerSince = now }
+        let id = callID
         session.send(message, onSent: nil, onFailure: { [weak self] in
-            guard let self, let fallback else { return }
+            guard let self, self.callID == id, let fallback else { return }
             self.quietQueue.append(.textWhenIdle(fallback))
         })
     }
@@ -2116,8 +2138,9 @@ final class WatchDirectCallModel: ObservableObject {
         stallPrompts += 1
         awaitingAnswerSince = at
         noteTextSent("stallPrompt", text)
+        let id = callID
         session.send(.textTurn(text), onSent: nil, onFailure: { [weak self] in
-            guard let self, self.stallPromptedAt == at else { return }
+            guard let self, self.callID == id, self.stallPromptedAt == at else { return }
             self.stallPromptedAt = nil
             // Never sent: the user's words still wait for a reply.
             if self.replyOwedSince == nil { self.replyOwedSince = owed }
@@ -2188,7 +2211,11 @@ final class WatchDirectCallModel: ObservableObject {
         case .toolResponse, .endConversation:
             break
         }
-        session.send(message, onSent: nil, onFailure: { [weak self] in self?.quietQueue.insert(item, at: 0) })
+        let id = callID
+        session.send(message, onSent: nil, onFailure: { [weak self] in
+            guard let self, self.callID == id else { return }
+            self.quietQueue.insert(item, at: 0)
+        })
     }
 
     private var isQuiet: Bool {
@@ -2278,11 +2305,13 @@ final class WatchDirectCallModel: ObservableObject {
         let pcm = samples.withUnsafeBufferPointer { Data(buffer: $0) }
         chunksUp += 1
         sendsInFlight += 1
+        let id = callID
         session.send(.audio(pcm), onSent: { [weak self] in
-            self?.sendsInFlight -= 1
-            self?.chunksSent += 1
+            guard let self, self.callID == id else { return }
+            self.sendsInFlight = max(0, self.sendsInFlight - 1)
+            self.chunksSent += 1
         }, onFailure: { [weak self] in
-            guard let self else { return }
+            guard let self, self.callID == id else { return }
             self.sendsInFlight = max(0, self.sendsInFlight - 1)
             self.sendFailures += 1
         })
@@ -2308,7 +2337,7 @@ final class WatchDirectCallModel: ObservableObject {
     }
 
     private func audioInterrupted(began: Bool) {
-        guard isActive else { return }
+        guard isActive, endRequestedAt == nil else { return }
         WatchCallLog.shared.note("directAudioInterruption", ["began": began, "screen": "\(scenePhase)"])
         if began {
             // Before the iPhone's session came, a tap would have no call
@@ -2319,6 +2348,7 @@ final class WatchDirectCallModel: ObservableObject {
             }
             pendingSamples = []
             activity.reset()
+            microphoneStopped = true
             phase = .needsTap
         } else if scenePhase == .active {
             restartAudio()
@@ -2328,7 +2358,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// The session is activated again asynchronously first, as at
     /// the start; never with the synchronous call.
     private func restartAudio() {
-        guard !restartingAudio else { return }
+        guard !restartingAudio, endRequestedAt == nil else { return }
         restartingAudio = true
         restartAttempts += 1
         let attempt = restartAttempts
@@ -2378,6 +2408,8 @@ final class WatchDirectCallModel: ObservableObject {
     private func startAudioAgain() {
         do {
             try audio.start(options: audioOptions, playbackRate: GeminiLiveProtocol.outputSampleRate)
+            microphoneStopped = false
+            guard endRequestedAt == nil else { return }
             phase = session?.isReady == true ? restingPhase : .reconnecting
         } catch {
             WatchCallLog.shared.note("directAudioRestartFailed", ["error": error.localizedDescription])
@@ -2398,6 +2430,11 @@ final class WatchDirectCallModel: ObservableObject {
             }
         }
         lastTickAt = at
+        // A rejoin moved the phase on while the microphone stayed stopped:
+        // the tap that brings it back has to show again.
+        if microphoneStopped, endRequestedAt == nil, phase == .listening || phase == .speaking {
+            phase = .needsTap
+        }
         if phase == .preparing, now - callStartedAt >= Self.sessionWait + 15 {
             finish(String(localized: "Conduit on your iPhone didn't answer."))
             return
@@ -2580,6 +2617,7 @@ final class WatchDirectCallModel: ObservableObject {
         firstUnsatisfiedAt = nil
         socketNotes = 0
         restartingAudio = false
+        microphoneStopped = false
         openingPrompt = nil
         hasSentOpening = false
         caption = nil

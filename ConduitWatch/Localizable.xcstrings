@@ -561,6 +561,22 @@
         }
       }
     },
+    "Hermes didn't answer in time." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes が時間内に応答しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未及时响应。"
+          }
+        }
+      }
+    },
     "Hermes returned an invalid Gemini Live token." : {
       "localizations" : {
         "ja" : {
@@ -589,6 +605,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 发送的 GPT-Live 音频格式无法在此版本的 Watch App 上播放。请同时更新 Conduit 和 conduit_push 插件。"
+          }
+        }
+      }
+    },
+    "Hermes sent no usable Gemini token." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes から使用可能な Gemini トークンが届きませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未发送可用的 Gemini 令牌。"
           }
         }
       }
@@ -1085,6 +1117,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通话连接前麦克风被中断。请重试。"
+          }
+        }
+      }
+    },
+    "The relay couldn't reach Hermes (%@)." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リレーが Hermes に接続できませんでした（%@）。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中继无法连接 Hermes（%@）。"
           }
         }
       }

@@ -98,6 +98,9 @@ final class WatchVoiceCall: ObservableObject {
     /// The ended call's summary was dismissed: its model's end is old news
     /// until the next call starts.
     private var summaryDismissed = false
+    /// The model's previous call when a new one was started, until the
+    /// model begins the new one: until then, what it shows is old news.
+    private var previousModelCall: UInt32?
 
     init() {
         let stored = UserDefaults.standard.string(forKey: WatchVoiceEngine.storageKey).flatMap(WatchVoiceEngine.init(rawValue:))
@@ -137,6 +140,7 @@ final class WatchVoiceCall: ObservableObject {
         caption = nil
         transcript = []
         phase = .preparing
+        previousModelCall = modelCallID
         switch callEngine {
         case .geminiLive: Task { await direct.start() }
         case .gptLive: Task { await bridge.start() }
@@ -210,8 +214,12 @@ final class WatchVoiceCall: ObservableObject {
         }
         // Only a dismissed summary goes back to the home screen: a model
         // at rest before its start has run isn't the end of the call, and
-        // still holds the last call's lines.
+        // still holds the last call's lines; nor is the end it still shows.
         if next == .idle { return }
+        if let previous = previousModelCall {
+            guard modelCallID != previous else { return }
+            previousModelCall = nil
+        }
         switch callEngine {
         case .geminiLive:
             caption = direct.caption
@@ -235,6 +243,13 @@ final class WatchVoiceCall: ObservableObject {
             WKInterfaceDevice.current().play(WatchCallEnd.isNormal(reason) ? .stop : .failure)
         }
         if phase != next { phase = next }
+    }
+
+    private var modelCallID: UInt32 {
+        switch callEngine {
+        case .geminiLive: return direct.callID
+        case .gptLive: return bridge.callID
+        }
     }
 
     private static func phase(_ phase: WatchDirectCallModel.Phase) -> Phase {

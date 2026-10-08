@@ -69,10 +69,13 @@ enum WatchVoiceStats {
     }
 
     /// One JSON line for the test log. Optionals that are nil become null.
+    /// Thread-safe, and costly to make for every line.
+    private static let timestampFormatter = ISO8601DateFormatter()
+
     static func jsonLine(_ fields: [String: Any]) -> String {
         var fields = fields.mapValues(jsonValue)
         if fields["at"] == nil {
-            fields["at"] = ISO8601DateFormatter().string(from: Date())
+            fields["at"] = timestampFormatter.string(from: Date())
         }
         guard JSONSerialization.isValidJSONObject(fields),
               let data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]),

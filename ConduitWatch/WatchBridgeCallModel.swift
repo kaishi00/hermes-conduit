@@ -106,7 +106,7 @@ final class WatchBridgeCallModel: ObservableObject {
 
     private let link = WatchLink.shared
     private let audio = WatchAudio()
-    private var callID: UInt32 = 0
+    private(set) var callID: UInt32 = 0
     private var callUUID = UUID()
     private var callStartedDate = Date()
     private var callStartedAt: TimeInterval = 0
@@ -159,6 +159,9 @@ final class WatchBridgeCallModel: ObservableObject {
     private var reactivationFailures = 0
     private var reactivationTimes: [Double] = []
     private var restartingAudio = false
+    /// Siri or an alarm stopped the microphone, and nothing has started it
+    /// again: the call needs a tap, whatever a reconnect did to the phase.
+    private var microphoneStopped = false
 
     // Uplink
     private var pendingSamples: [Int16] = []
@@ -312,7 +315,7 @@ final class WatchBridgeCallModel: ObservableObject {
     /// The orb: stops GPT-Live while it speaks, brings the microphone back
     /// after Siri or an alarm.
     func tapOrb() {
-        if phase == .needsTap {
+        if phase == .needsTap || microphoneStopped {
             restartAudio()
             return
         }
@@ -371,9 +374,13 @@ final class WatchBridgeCallModel: ObservableObject {
                 return
             }
             var taken = false
+            // Hermes answered, and turned it down (already handled, or
+            // expired): asking again can't change that.
+            var refused = false
             if case .answered(let body) = outcome {
                 let result = WatchJobAnswer.result(body: body)
                 taken = result["error"] == nil && result["status"] != "failed"
+                refused = !taken
             }
             self.note("bridgeApproval", ["choice": choice, "taken": taken, "outcome": outcome.label])
             if taken {
@@ -384,7 +391,7 @@ final class WatchBridgeCallModel: ObservableObject {
                     channel: .commentary,
                     delegationID: nil
                 ))
-            } else if !self.approvals.contains(approval) {
+            } else if !refused, !self.approvals.contains(approval) {
                 self.approvals.insert(approval, at: 0)
                 self.pendingApproval = self.approvals.first
             }
@@ -859,13 +866,14 @@ final class WatchBridgeCallModel: ObservableObject {
     }
 
     private func audioInterrupted(began: Bool) {
-        guard isActive else { return }
+        guard isActive, endRequestedAt == nil else { return }
         note("bridgeAudioInterruption", ["began": began, "screen": "\(scenePhase)"])
         if began {
             pendingSamples = []
             activity.reset()
             audio.stopPlayback()
             modelSpeaking = false
+            microphoneStopped = true
             phase = .needsTap
         } else if scenePhase == .active {
             restartAudio()
@@ -875,14 +883,14 @@ final class WatchBridgeCallModel: ObservableObject {
     /// The session activated again asynchronously first, as at the start;
     /// never with the synchronous call.
     private func restartAudio() {
-        guard !restartingAudio else { return }
+        guard !restartingAudio, endRequestedAt == nil else { return }
         restartingAudio = true
         let id = callID
         Task { [weak self] in
             guard let self else { return }
             let activated = await self.activateAudioSession()
             self.restartingAudio = false
-            guard self.callID == id, self.isActive else {
+            guard self.callID == id, self.isActive, self.endRequestedAt == nil else {
                 if activated, !self.isActive {
                     try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
                 }
@@ -895,6 +903,7 @@ final class WatchBridgeCallModel: ObservableObject {
             self.lastActivationAt = self.now
             do {
                 try self.audio.start(options: WatchAudio.Options(activatesSession: false), playbackRate: Self.playbackRate)
+                self.microphoneStopped = false
                 self.phase = self.live ? .listening : .reconnecting
             } catch {
                 self.note("bridgeAudioRestartFailed", ["error": error.localizedDescription])
@@ -1157,8 +1166,10 @@ final class WatchBridgeCallModel: ObservableObject {
         approvals.removeAll { !open.contains("\($0.jobID)\n\($0.requestID)") }
         var shown = 0
         for item in news.items {
-            approvals.removeAll { $0.jobID == item.jobID }
+            // A new request replaces the job's last one; news without one
+            // leaves the card to the open-requests list above.
             if let approval = item.approval {
+                approvals.removeAll { $0.jobID == item.jobID }
                 approvals.append(approval)
                 approvalsShown += 1
                 shown += 1
@@ -1196,6 +1207,11 @@ final class WatchBridgeCallModel: ObservableObject {
             if watchGaps <= 20 { note("bridgeWatchGap", ["ms": missed, "screen": "\(scenePhase)"]) }
         }
         lastTickAt = at
+        // A reconnect moved the phase on while the microphone stayed
+        // stopped: the tap that brings it back has to show again.
+        if microphoneStopped, endRequestedAt == nil, phase == .listening || phase == .speaking {
+            phase = .needsTap
+        }
         if phase == .preparing, at - callStartedAt >= Self.sessionWait + 15 {
             finish(String(localized: "Conduit on your iPhone didn't answer."))
             return
@@ -1352,6 +1368,7 @@ final class WatchBridgeCallModel: ObservableObject {
         reactivationFailures = 0
         reactivationTimes = []
         restartingAudio = false
+        microphoneStopped = false
         pendingSamples = []
         sendsInFlight = 0
         chunksUp = 0

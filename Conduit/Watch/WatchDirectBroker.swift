@@ -68,6 +68,8 @@ final class WatchDirectBroker {
 
     private unowned let link: WatchVoiceLink
     private var callID: UInt32?
+    /// Ends a bridge call whose Watch went quiet once its grant is over.
+    private var grantWatchdog: Task<Void, Never>?
     private var bridge: GeminiLiveToolBridge?
     private var preparing: (callID: UInt32, task: Task<WatchVoiceWire.Message, Never>)?
     /// The running call's connection.
@@ -427,7 +429,8 @@ final class WatchDirectBroker {
     private func endWhenGrantDoes(_ id: UInt32, expiresAt: Date?) {
         let at = expiresAt ?? Date().addingTimeInterval(Self.silenceLimit)
         let wait = max(0, at.timeIntervalSinceNow) + 60
-        Task { [weak self] in
+        grantWatchdog?.cancel()
+        grantWatchdog = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(wait)) } catch { return }
             guard let self, self.callID == id else { return }
             self.link.log.note("watchBridgeOutlivedGrant", ["callID": Int(id)])
@@ -754,7 +757,11 @@ final class WatchDirectBroker {
                 // the dashboard that gave it; another runs it out.
                 if appState.watchDirectConnection.dashboard == dashboard {
                     let client = grantClient
-                    Task { await client.revoke(grantID: grant.grantID, profile: profile) }
+                    let end = Self.beginBackgroundTask("conduit.watchDirect.lateRevoke")
+                    Task {
+                        defer { end() }
+                        await client.revoke(grantID: grant.grantID, profile: profile)
+                    }
                 }
                 return .failure(CancellationError())
             }
@@ -929,6 +936,8 @@ final class WatchDirectBroker {
 
     /// Unspoken job news goes back to the jobs, which report it as usual.
     private func endCall(keepRecovery: Bool = false) {
+        grantWatchdog?.cancel()
+        grantWatchdog = nil
         if let callID { ledger.end(callID) }
         if let bridge {
             bridge.returnUnsent(lateOutgoing.compactMap { item in
