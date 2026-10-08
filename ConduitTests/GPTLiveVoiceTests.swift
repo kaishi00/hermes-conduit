@@ -2198,6 +2198,7 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(GPTLiveDelegationBridge.newJobMarker(in: "Find me a new job: in Paris"))
         XCTAssertTrue(GPTLiveDelegationBridge.sameRequest("What's next to work on?", "what's next to work on? Send it"))
         XCTAssertFalse(GPTLiveDelegationBridge.sameRequest("check the weather in Milan", "check the weather in Rome"))
+        XCTAssertFalse(GPTLiveDelegationBridge.sameRequest("book a table for Sam and Alex", "book a table for Sam"), "an addition is a change")
     }
 
     /// GPT-Live delegates on the user's yes before it reaches the
@@ -2313,5 +2314,74 @@ extension VoiceConversationControllerTests {
         _ = await bridge.handleDelegation(id: "del_4", request: "what's on my calendar", userWords: "what's on my calendar")
         XCTAssertEqual(fake.created, 3)
         XCTAssertEqual(fake.redirects.count, 1)
+    }
+
+    /// Putting untagged words into the only running job is a guess: asking
+    /// first holds it for the user's OK, naming the job, so new work never
+    /// changes that job unasked.
+    func testGPTLiveAskingFirstHoldsAGuessedChangeToTheOnlyRunningJob() async {
+        let (_, fake, bridge) = makeAskingFirstBridge()
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam, send it to Hermes")
+        XCTAssertEqual(fake.created, 1)
+
+        let held = await bridge.handleDelegation(id: "del_2", request: "cancel that", userWords: "cancel that")
+        guard case .delegationReply("del_2", let heldText, .speakable)? = held.first, held.count == 1 else { return XCTFail("\(held)") }
+        XCTAssertTrue(heldText.hasPrefix(GPTLiveDelegationBridge.heldPrefix), heldText)
+        XCTAssertTrue(heldText.contains("job 1"), heldText)
+        XCTAssertTrue(GPTLiveDelegationBridge.isStatus(heldText))
+        XCTAssertTrue(fake.redirects.isEmpty, "not OK'd yet")
+
+        let sent = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "yes")
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["cancel that"])
+        XCTAssertEqual(fake.created, 1, "into the job, not a second one")
+        guard case .delegationReply("del_3", let sentText, .speakable)? = sent.first else { return XCTFail("\(sent)") }
+        XCTAssertTrue(sentText.hasPrefix(GPTLiveDelegationBridge.sentPrefix), sentText)
+        XCTAssertTrue(sentText.contains("job 1"), sentText)
+
+        // Separate work, said in the answer: a new job instead.
+        _ = await bridge.handleDelegation(id: "del_4", request: "check the news", userWords: "check the news")
+        XCTAssertEqual(fake.redirects.count, 1)
+        _ = await bridge.handleDelegation(id: "del_5", request: "Send:", userWords: "yes, as a new job")
+        XCTAssertEqual(fake.created, 2)
+        XCTAssertEqual(fake.redirects.count, 1, "job 1 is left alone")
+        XCTAssertTrue(fake.submissions.last?.1.contains("check the news") == true, fake.submissions.last?.1 ?? "")
+    }
+
+    /// A request held for minutes was left: the user's next words are new,
+    /// not a change to it.
+    func testGPTLiveAskingFirstLetsAStaleHeldRequestGo() async {
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let (_, fake, bridge) = makeAskingFirstBridge(clock: { clock })
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        clock += GPTLiveDelegationBridge.draftLifetime + 1
+
+        let held = await bridge.handleDelegation(id: "del_2", request: "what's the weather in Rome", userWords: "what's the weather in Rome")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.heldForOKText, .speakable)? = held.first else { return XCTFail("\(held)") }
+        _ = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "yes")
+        XCTAssertEqual(fake.created, 1)
+        let prompt = fake.submissions.first?.1 ?? ""
+        XCTAssertTrue(prompt.hasSuffix("what's the weather in Rome"), prompt)
+        XCTAssertFalse(prompt.contains("book a table"), prompt)
+    }
+
+    /// An OK'd request Hermes refused (too many jobs) never went: a yes
+    /// after it isn't taken for one that did.
+    func testGPTLiveAskingFirstRefusedSendIsNotTakenAsSent() async {
+        let (_, fake, bridge) = makeAskingFirstBridge()
+        for number in 1...VoiceBackgroundJobSupervisor.maximumActiveJobs {
+            _ = await bridge.handleDelegation(id: "del_\(number)", request: "New job: task \(number)", userWords: "new job, task \(number), send it to Hermes")
+        }
+        XCTAssertEqual(fake.created, VoiceBackgroundJobSupervisor.maximumActiveJobs)
+
+        _ = await bridge.handleDelegation(id: "del_held", request: "New job: check the news", userWords: "new job, check the news")
+        let refused = await bridge.handleDelegation(id: "del_yes", request: "Send:", userWords: "yes")
+        guard case .delegationReply("del_yes", let refusal, .speakable)? = refused.first else { return XCTFail("\(refused)") }
+        XCTAssertFalse(refusal.hasPrefix(GPTLiveDelegationBridge.sentPrefix), refusal)
+        XCTAssertEqual(fake.created, VoiceBackgroundJobSupervisor.maximumActiveJobs)
+
+        let again = await bridge.handleDelegation(id: "del_again", request: "Send:", userWords: "yes")
+        guard case .delegationReply("del_again", let text, _)? = again.first else { return XCTFail("\(again)") }
+        XCTAssertNotEqual(text, GPTLiveDelegationBridge.alreadySent, "nothing went")
     }
 }

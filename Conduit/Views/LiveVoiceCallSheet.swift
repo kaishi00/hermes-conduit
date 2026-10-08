@@ -330,7 +330,8 @@ struct LiveVoiceCallSheet: View {
                 // talks, so this is the way to cut in.
                 if let onInterrupt {
                     LiveVoiceCallButton(
-                        symbol: "hand.raised.fill",
+                        // Not a hand: that is asking first's (#451).
+                        symbol: "stop.fill",
                         title: AppLocalization.string("Interrupt"),
                         voiceOverHint: canInterrupt
                             ? AppLocalization.string("Stops the assistant so you can speak")
@@ -419,10 +420,13 @@ private struct LiveVoiceAskFirstButton: View {
                     .allowsHitTesting(false)
             }
         }
-        .onChange(of: isOn) { _, on in showCaption(for: on) }
+        .onChange(of: isOn) { _, on in
+            // Switched it: they've seen what it means.
+            hintShown = true
+            showCaption(for: on)
+        }
         .onAppear {
             guard !hintShown else { return }
-            hintShown = true
             showCaption(for: isOn)
         }
         .onDisappear { captionTask?.cancel() }
@@ -438,6 +442,8 @@ private struct LiveVoiceAskFirstButton: View {
         captionTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled else { return }
+            // The first-time hint counts once it was on screen in full.
+            hintShown = true
             withAnimation(.easeIn(duration: 0.3)) { caption = nil }
         }
     }
