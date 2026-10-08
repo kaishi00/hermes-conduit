@@ -109,10 +109,11 @@ final class GPTLiveDelegationBridge {
             guard let waiting = draft else {
                 return [.delegationReply(delegationID: id, text: Self.relay("Nothing is waiting to be sent to Hermes. Ask the user what they want done."), channel: .speakable)]
             }
-            // An answer is words said after the request: the request's own
-            // words arriving late don't count.
+            // An answer is words said after the request: the end of the
+            // request's own words arriving late doesn't count.
             let answer = userWords.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard !answer.isEmpty, !waiting.userWords.lowercased().contains(answer) else {
+            let held = waiting.userWords.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !answer.isEmpty, !held.hasSuffix(answer) else {
                 return [.delegationReply(delegationID: id, text: Self.notAnsweredYet, channel: .commentary)]
             }
             draft = nil

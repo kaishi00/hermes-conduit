@@ -608,7 +608,9 @@ final class GeminiLiveToolBridge {
     /// The user said to send it to Hermes: the next new request goes at
     /// once, even while asking first is on.
     func noteSendToHermes() {
-        sendNowAt = now()
+        // Said while asking first is off, it has nothing to skip, and must
+        // not skip a question once the user turns asking first on.
+        sendNowAt = supervisor.asksBeforeSending ? now() : nil
     }
 
     /// Holds a new request as the call's draft while asking first is on,

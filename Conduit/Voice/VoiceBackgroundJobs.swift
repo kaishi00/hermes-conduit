@@ -435,6 +435,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     deinit {
         pollTask?.cancel()
         threadTask?.cancel()
+        for task in followUpsInFlight.values { task.cancel() }
     }
 
     /// A new live call begins: jobs started from now on are its own.

@@ -2015,6 +2015,15 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse("call_2", _, let result, _)? = next.first else { return XCTFail("\(next)") }
         XCTAssertEqual(result["status"], "waiting_for_ok", "only the request it was said for")
         XCTAssertEqual(fake.created, 1)
+
+        // Said while asking first was off, it skips nothing once it's on.
+        supervisor.setAsksBeforeSending(false)
+        bridge.noteSendToHermes()
+        supervisor.setAsksBeforeSending(true)
+        let afterSwitch = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "check the printer"]))
+        guard case .toolResponse("call_3", _, let switched, _)? = afterSwitch.first else { return XCTFail("\(afterSwitch)") }
+        XCTAssertEqual(switched["status"], "waiting_for_ok")
+        XCTAssertEqual(fake.created, 1)
     }
 
     func testGeminiSetAskFirstSwitchesTheCallWithoutANote() async {
