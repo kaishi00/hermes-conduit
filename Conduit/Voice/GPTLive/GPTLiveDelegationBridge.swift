@@ -69,6 +69,8 @@ final class GPTLiveDelegationBridge {
     /// When a held request last went to Hermes (set as it is released, so
     /// a delegation racing the send already sees it).
     private var lastSentAt: Date?
+    /// What that held request went as, with anything the user added.
+    private var lastSentRequest: String?
 
     /// A second request for the last reply within this long is the same one.
     static let readBackWindow: TimeInterval = 10
@@ -136,7 +138,10 @@ final class GPTLiveDelegationBridge {
         // didn't mark (GPT-Live often leaves a delegation's text empty).
         if Self.isReadBackMarker(ownWords) || VoiceThreadRouting.wantsLastReply(ownWords)
             || VoiceThreadRouting.wantsLastReply(spoken) {
-            return await readBack(id: id, call: call)
+            let dropped = answerHeldBesideReadBack(spoken)
+            let read = await readBack(id: id, call: call)
+            // The call ended meanwhile: nothing is answered.
+            return read.isEmpty ? [] : dropped + read
         }
         // The model's own words for the request. Without any, the request
         // is the user's words.
@@ -180,9 +185,13 @@ final class GPTLiveDelegationBridge {
             return [.delegationReply(delegationID: id, text: Self.relay("Nothing is waiting to be sent to Hermes. Ask the user what they want done."), channel: .speakable)]
         }
         // The same yes delegated again, right after it sent the request
-        // (its words may not be in the transcript yet). A "cancel that" or
-        // "wait" goes on as a correction.
-        if sentRecently, ownText.isEmpty, (spoken.isEmpty ? answerShape : VoiceThreadRouting.heldRequestAnswer(spoken)).isBareYes {
+        // (its words may not be in the transcript yet), or with what it
+        // added ("Yes, and make it for four") that went with it. A
+        // "cancel that" or "wait" goes on as a correction, and a yes with
+        // something new ("yes, book a taxi too") as new work.
+        if sentRecently, spoken.isEmpty || ownText.isEmpty,
+           case .yes(let addition) = (spoken.isEmpty ? answerShape : VoiceThreadRouting.heldRequestAnswer(spoken)),
+           addition.map({ Self.wentWith($0, lastSentRequest) }) ?? true {
             return [.delegationReply(delegationID: id, text: Self.alreadySent, channel: .commentary)]
         }
         if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(routingWords) {
@@ -290,6 +299,7 @@ final class GPTLiveDelegationBridge {
     /// Sends the held request the user OK'd: into the job it was held for,
     /// or as new work.
     private func release(_ request: String, intoJob: UUID?, delegationID id: String, call: UInt64) async -> [Outgoing] {
+        lastSentRequest = request
         guard let jobID = intoJob else { return await send(request, delegationID: id, call: call, confirmed: true) }
         guard callGeneration == call, !isEnding else { return [] }
         lastSentAt = now()
@@ -336,7 +346,7 @@ final class GPTLiveDelegationBridge {
         // without the reply.
         return [
             .sessionContext(text: Self.lastReplyText(reply), channel: .commentary, whenIdle: true, jobID: nil),
-            .delegationReply(delegationID: id, text: Self.readBackCue, channel: .speakable),
+            .delegationReply(delegationID: id, text: readBackCueText, channel: .speakable),
         ]
     }
 
@@ -356,28 +366,55 @@ final class GPTLiveDelegationBridge {
         }
         return [
             .sessionContext(text: Self.lastReplyText(reply), channel: .commentary, whenIdle: false, jobID: nil),
-            .sessionContext(text: Self.readBackCue, channel: .speakable, whenIdle: false, jobID: nil),
+            .sessionContext(text: readBackCueText, channel: .speakable, whenIdle: false, jobID: nil),
         ]
     }
 
     /// The user's finished words ask to hear a reply (#451). A delegation
     /// GPT-Live made on them before they reached the transcript was this
     /// read-back, not an answer or a new request: it reads the reply, and
-    /// whatever it held is never sent to Hermes.
+    /// the held request is never sent by it.
     func userAskedToHearAReply(_ words: String) -> SpokenAnswer? {
         guard var waiting = draft, !isEnding else { return nil }
         if let pending = waiting.pendingDelegationID {
             waiting.pendingDelegationID = nil
             draft = waiting
+            answerHeldBesideReadBack(words)
             return .readBack(delegationID: pending, call: callGeneration)
         }
         // Held from these same words a moment ago.
         let elapsed = now().timeIntervalSince(waiting.heldAt)
-        guard elapsed >= 0, elapsed < Self.readBackWindow else { return nil }
         let held = waiting.userWords.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard held.isEmpty || words.lowercased().contains(held) else { return nil }
+        guard elapsed >= 0, elapsed < Self.readBackWindow, held.isEmpty || words.lowercased().contains(held) else {
+            answerHeldBesideReadBack(words)
+            return nil
+        }
         draft = nil
         return .readBack(delegationID: waiting.delegationID, call: callGeneration)
+    }
+
+    /// A read-back asked for while another request waits for the user's
+    /// OK (#451): a no in the same words ("No, read me the last reply
+    /// instead") drops that request. Otherwise it keeps waiting, its five
+    /// minutes start again, and the model asks about it once the reply is
+    /// read, so a "thanks" for the reading isn't taken as its yes. A
+    /// delegation still waiting for these words hears it was dropped.
+    @discardableResult
+    private func answerHeldBesideReadBack(_ words: String) -> [Outgoing] {
+        guard let waiting = draft, !words.isEmpty else { return [] }
+        guard case .no = VoiceThreadRouting.heldRequestAnswer(words) else {
+            draft?.heldAt = now()
+            return []
+        }
+        draft = nil
+        guard let pending = waiting.pendingDelegationID else { return [] }
+        return [.delegationReply(delegationID: pending, text: Self.dropped, channel: .commentary)]
+    }
+
+    /// The read-back cue, asking about a request still waiting for an OK
+    /// once the reply is read.
+    private var readBackCueText: String {
+        draft == nil ? Self.readBackCue : Self.readBackCueThenAskAgain
     }
 
     /// Whether `delegationID` is answered by a read-back, which is read as
@@ -411,6 +448,8 @@ final class GPTLiveDelegationBridge {
     static let readBackOnItsWay = "Conduit is sending you the reply for this request as soon as the conversation is quiet. Wait for it, then read it word for word; don't answer from memory."
     /// Starts the reading once the whole reply is in. Not UI copy.
     static let readBackCue = "[Read the reply Conduit just gave you, between <read_back> tags, to the user now: word for word from start to end, all of it, once, whatever your answer length. Don't summarize, shorten or add to it.]"
+    /// Not UI copy.
+    static let readBackCueThenAskAgain = String(readBackCue.dropLast()) + " Then ask the user again whether to send the request that's still waiting for their OK.]"
     /// A read-back in a call without a chat, before any job result came
     /// back. Not UI copy.
     static var nothingToReadBack: String { "[\(GeminiLiveToolBridge.nothingToReadBack)]" }
@@ -631,14 +670,8 @@ final class GPTLiveDelegationBridge {
     /// Whether two requests are the same one: the model's own text for it
     /// again, or the user's words for it.
     static func sameRequest(_ text: String, _ request: String) -> Bool {
-        func normalized(_ value: String) -> String {
-            let own = value.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? value
-            return own.lowercased()
-                .split(whereSeparator: { !($0.isLetter || $0.isNumber) })
-                .joined(separator: " ")
-        }
-        let a = normalized(text)
-        let b = normalized(request)
+        let a = normalizedRequest(text)
+        let b = normalizedRequest(request)
         guard !a.isEmpty, !b.isEmpty else { return false }
         if a == b { return true }
         // One holds the other plus only a yes ("what's next to work on" /
@@ -647,6 +680,23 @@ final class GPTLiveDelegationBridge {
         guard shorter.count >= 4, let range = longer.range(of: shorter) else { return false }
         let rest = longer.replacingCharacters(in: range, with: " ").trimmingCharacters(in: .whitespaces)
         return rest.isEmpty || VoiceThreadRouting.heldRequestAnswer(rest).isBare
+    }
+
+    /// A request's own words (without the conversation added for context),
+    /// lowercased, with only spaces between them.
+    private static func normalizedRequest(_ value: String) -> String {
+        let own = value.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? value
+        return own.lowercased()
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber) })
+            .joined(separator: " ")
+    }
+
+    /// Whether a yes's words ("Yes, and make it for four") already went
+    /// with the request sent, as `adding` put them there.
+    static func wentWith(_ answer: String, _ sent: String?) -> Bool {
+        guard let sent else { return false }
+        let words = normalizedRequest(answer)
+        return !words.isEmpty && normalizedRequest(sent).contains(words)
     }
 
     /// The held request with what the user said when they answered, ahead

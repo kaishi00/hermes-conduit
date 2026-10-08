@@ -2038,6 +2038,7 @@ enum VoiceThreadRouting {
 
     static func heldRequestAnswer(_ answer: String) -> HeldRequestAnswer {
         let spoken = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let cjk = cjkHeldRequestAnswer(spoken) { return cjk }
         var words = fold(spoken)
             .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
             .map(String.init)
@@ -2081,6 +2082,74 @@ enum VoiceThreadRouting {
         // "Yes, send it to Hermes": the send is the yes.
         let rest = saysSendToHermes(words.joined(separator: " ")) ? [] : words
         return .yes(addition: more(rest))
+    }
+
+    /// Japanese and Chinese have no word breaks: an answer is read from how
+    /// it starts ("はい、お願いします", "好的", "不用了", "等一下").
+    static let cjkAnswerNoLeads = [
+        "いいえ", "いえ", "ううん", "いや", "やめて", "結構です", "けっこうです", "要らない", "いらない", "キャンセル",
+        "不要", "不用", "不了", "不是", "不对", "不行", "不需要", "算了", "取消", "别发",
+    ]
+    static let cjkAnswerNotYetLeads = [
+        "ちょっと待って", "待って", "まだ", "ちょっと", "等等", "等一下", "稍等", "先等", "先别", "先不", "还没", "暂时不",
+    ]
+    static let cjkAnswerYesLeads = [
+        "はい", "うん", "ええ", "お願いします", "お願い", "オッケー", "オーケー", "どうぞ", "送って", "送信して", "そうして",
+        "好的", "好啊", "好呀", "好吧", "行吧", "行啊", "可以", "是的", "对的", "当然", "没问题", "发吧", "发送",
+    ]
+    /// One-character answers count only as a clause of their own: "好，
+    /// 改成四个人" is a yes, "好像不对" isn't.
+    static let cjkAnswerShortYes: Set<Character> = ["好", "对", "嗯", "行", "是"]
+    static let cjkAnswerShortNo: Set<Character> = ["不", "别"]
+    /// Words that add nothing to an answer ("好的，谢谢", "はい、お願いします").
+    static let cjkAnswerFillers = [
+        "ありがとうございます", "ありがとう", "お願いします", "お願い", "ください", "どうも", "です", "ます", "ね", "よ",
+        "送って", "没问题", "谢谢", "谢了", "发吧", "发送", "请", "吧", "了", "啊", "呀", "呢", "的",
+    ].sorted { $0.count > $1.count }
+    /// After a yes, these turn it around or question it ("好，但是…",
+    /// "嗯，让我想想", "はい、でも…"): asked again.
+    static let cjkAnswerTurns = ["不", "没", "别", "但", "等", "想", "考虑", "でも", "けど", "やめ", "待", "ない", "ません", "考え"]
+
+    /// A Japanese or Chinese answer, or nil for any other.
+    private static func cjkHeldRequestAnswer(_ spoken: String) -> HeldRequestAnswer? {
+        let clauses = spoken.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
+        let all = Substring(clauses.joined())
+        var rest = all
+        func dropLead(_ leads: [String]) -> Bool {
+            guard let lead = leads.first(where: { rest.hasPrefix($0) }) else { return false }
+            rest = rest.dropFirst(lead.count)
+            return true
+        }
+        func dropShort(_ answers: Set<Character>) -> Bool {
+            guard rest == all, let first = clauses.first, let character = first.first,
+                  answers.contains(character), first.allSatisfy({ $0 == character }) else { return false }
+            rest = rest.dropFirst(first.count)
+            return true
+        }
+        // What's left once the lead and words like "谢谢" are gone.
+        func left() -> String {
+            cjkAnswerFillers.reduce(String(rest)) { $0.replacingOccurrences(of: $1, with: "") }
+        }
+        func turned(_ words: String) -> Bool { cjkAnswerTurns.contains { words.contains($0) } }
+        // "不用，我不需要": a negation in what follows is still the no.
+        func change() -> String? {
+            let words = left()
+            return words.isEmpty || turned(words) ? nil : spoken
+        }
+        if dropShort(cjkAnswerShortNo) || dropLead(cjkAnswerNoLeads) {
+            while dropLead(cjkAnswerNoLeads) {}
+            return .no(change: change())
+        }
+        if dropLead(cjkAnswerNotYetLeads) { return .notYet(change: change()) }
+        guard dropShort(cjkAnswerShortYes) || dropLead(cjkAnswerYesLeads) else { return nil }
+        while dropLead(cjkAnswerYesLeads) {}
+        if dropLead(cjkAnswerNoLeads) { return .no(change: change()) }
+        if dropLead(cjkAnswerNotYetLeads) { return .notYet(change: change()) }
+        let words = left()
+        guard !words.isEmpty else { return .yes(addition: nil) }
+        let asks = spoken.contains("?") || spoken.contains("？") || rest.hasSuffix("吗") || rest.hasSuffix("か")
+        if turned(words) || asks { return .other(spoken) }
+        return .yes(addition: spoken)
     }
 
     /// The user asked for separate work while a job runs ("start a new

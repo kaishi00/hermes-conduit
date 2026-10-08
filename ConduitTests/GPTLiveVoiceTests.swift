@@ -2036,6 +2036,17 @@ extension VoiceConversationControllerTests {
         return (supervisor, fake, GPTLiveDelegationBridge(supervisor: supervisor, now: clock))
     }
 
+    /// Asking first in a call attached to a chat whose last reply is
+    /// "Here is the edited image."
+    private func makeAskingFirstChatBridge() -> (FakeVoiceJobBackend, GPTLiveDelegationBridge) {
+        let fake = FakeVoiceJobBackend()
+        fake.threadReply = "Here is the edited image."
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Image Editing")
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        return (fake, GPTLiveDelegationBridge(supervisor: supervisor))
+    }
+
     func testGPTLiveAskingFirstHoldsADelegationUntilTheUserSaysYes() async {
         var clock = Date(timeIntervalSince1970: 1_000)
         let (supervisor, fake, bridge) = makeAskingFirstBridge(clock: { clock })
@@ -2206,6 +2217,24 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Nothing else"), .other("Nothing else"), "a no is a word of its own")
         XCTAssertTrue(VoiceThreadRouting.heldRequestAnswer("Okay").isBare)
         XCTAssertFalse(VoiceThreadRouting.heldRequestAnswer("What's the weather?").isBare)
+        // Japanese and Chinese, read from how the answer starts.
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("はい、お願いします"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("ええ、送ってください"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("はい、四人にしてください"), .yes(addition: "はい、四人にしてください"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("いいえ"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("ううん"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("ちょっと待ってください"), .notYet(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("はい、でも明日にして"), .other("はい、でも明日にして"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("好的，谢谢"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("嗯嗯"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("好，改成四个人"), .yes(addition: "好，改成四个人"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("不用了"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("不，谢谢"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("等一下"), .notYet(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("好，但是改成明天"), .other("好，但是改成明天"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("嗯，让我想想"), .other("嗯，让我想想"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("可以吗？"), .other("可以吗？"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("好像不对"), .other("好像不对"), "a one-character yes is a clause of its own")
 
         XCTAssertTrue(VoiceThreadRouting.wantsNewWork("In the meantime, what's in the news?"))
         XCTAssertTrue(VoiceThreadRouting.wantsNewWork("start another job to check the weather"))
@@ -2271,7 +2300,7 @@ extension VoiceConversationControllerTests {
 
     /// Neal's read-back (#451): delegated before the user's words arrived,
     /// it waited as an answer to the held request. It is read from the chat
-    /// instead, and the held request is never sent by it.
+    /// instead, and the "no" in the same words drops the held request.
     func testGPTLiveReadBackDelegatedBeforeItsWordsArrivedIsReadNotSent() async {
         var current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, supervisor, fake) = makeGPTController(clock: { current })
@@ -2295,19 +2324,61 @@ extension VoiceConversationControllerTests {
         // Quiet: what waited goes out, the held question first.
         current += GPTLiveConversationController.userQuietInterval + GPTLiveConversationController.modelQuietInterval + 1
         controller.flushPendingContextIfIdle()
-        session.onEvent?(.turnDone(role: "assistant", transcript: "Book a table for Sam: send it?"))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Okay, here it is."))
         current += GPTLiveConversationController.userQuietInterval + GPTLiveConversationController.modelQuietInterval + 1
         controller.flushPendingContextIfIdle()
+        XCTAssertEqual(controller.pendingContextCountForTesting, 0)
         XCTAssertTrue(session.appended.contains { $0.channel == .commentary && $0.text.contains("Here is the edited image.") }, "\(session.appended)")
-        XCTAssertTrue(session.appended.contains { $0.text == GPTLiveDelegationBridge.readBackCue })
+        XCTAssertTrue(session.appended.contains { $0.text == GPTLiveDelegationBridge.readBackCue }, "nothing waits, so nothing to ask again")
         XCTAssertTrue(fake.threadSubmissions.isEmpty, "a read-back asks Hermes nothing")
 
-        // The held request still waits for its own yes.
-        session.onEvent?(.turnDone(role: "user", transcript: "Okay, now send the booking."))
-        session.onEvent?(.delegation(id: "del_3", text: ""))
-        await waitForFollowUpState { !fake.threadSubmissions.isEmpty }
-        XCTAssertTrue(fake.threadSubmissions.first?.1.contains("Book a table for Sam.") == true, "\(fake.threadSubmissions)")
+        // Their no was for the booking: a "Send:" later has nothing to send.
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Here is the edited image."))
+        session.onEvent?(.delegation(id: "del_3", text: "Send:"))
+        await waitForFollowUpState {
+            controller.pendingContextCountForTesting > 0 || session.appended.contains { $0.delegationID == "del_3" }
+        }
+        current += GPTLiveConversationController.userQuietInterval + GPTLiveConversationController.modelQuietInterval + 1
+        controller.flushPendingContextIfIdle()
+        XCTAssertTrue(session.appended.contains { $0.delegationID == "del_3" && $0.text.contains("Nothing is waiting") }, "\(session.appended)")
+        XCTAssertTrue(fake.threadSubmissions.isEmpty, "\(fake.threadSubmissions)")
         controller.stop()
+    }
+
+    /// A read-back asked for while a request waits for the user's OK
+    /// (#451): a no in the same words drops it; otherwise it keeps waiting
+    /// and the model asks about it again once the reply is read.
+    func testGPTLiveAskingFirstReadBackAnswersTheHeldRequest() async {
+        let (fake, bridge) = makeAskingFirstChatBridge()
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        bridge.modelFinishedTurn()
+        let first = await bridge.handleDelegation(id: "del_2", request: "Read back: the last reply", userWords: "Wait, read me the last reply first")
+        guard first.count == 2, case .delegationReply("del_2", GPTLiveDelegationBridge.readBackCueThenAskAgain, .speakable) = first[1] else {
+            return XCTFail("\(first)")
+        }
+        // Still waiting: its yes sends it.
+        _ = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "Yes")
+        await waitForFollowUpState { !fake.threadSubmissions.isEmpty }
+        XCTAssertTrue(fake.threadSubmissions.first?.1.contains("book a table for Sam") == true, "\(fake.threadSubmissions)")
+
+        // A no in the same words drops it, and the delegation waiting for
+        // those words hears so.
+        let (droppedFake, dropping) = makeAskingFirstChatBridge()
+        _ = await dropping.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        dropping.modelFinishedTurn()
+        _ = await dropping.handleDelegation(id: "del_2", request: "")
+        let neal = "No, no, I want you to read back the last reply without sending Hermes"
+        let read = await dropping.handleDelegation(id: "del_3", request: neal, userWords: neal)
+        guard read.count == 3,
+              case .delegationReply("del_2", GPTLiveDelegationBridge.dropped, .commentary) = read[0],
+              case .delegationReply("del_3", GPTLiveDelegationBridge.readBackCue, .speakable) = read[2] else {
+            return XCTFail("\(read)")
+        }
+        let send = await dropping.handleDelegation(id: "del_4", request: "Send:", userWords: "Okay, thanks")
+        guard case .delegationReply("del_4", let nothing, .speakable)? = send.first, nothing.contains("Nothing is waiting") else {
+            return XCTFail("\(send)")
+        }
+        XCTAssertTrue(droppedFake.threadSubmissions.isEmpty, "\(droppedFake.threadSubmissions)")
     }
 
     /// Neal's request (#451): GPT-Live often drops "Job N:", so with one
@@ -2410,6 +2481,17 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(longerFake.created, 1)
         let longerPrompt = longerFake.submissions.first?.1 ?? ""
         XCTAssertTrue(longerPrompt.contains("book a table for Sam\n\nWhen asked whether to send this, the user said: \"Yes, and make it for four\""), longerPrompt)
+        // Delegated again as text once it went: what it added went with it.
+        let longerAgain = await longer.handleDelegation(id: "del_3", request: "Yes, and make it for four")
+        guard case .delegationReply("del_3", GPTLiveDelegationBridge.alreadySent, .commentary)? = longerAgain.first, longerAgain.count == 1 else {
+            return XCTFail("\(longerAgain)")
+        }
+        // A yes with something new is no echo.
+        let taxi = await longer.handleDelegation(id: "del_4", request: "Yes, book a taxi too")
+        guard case .delegationReply("del_4", let taxiText, _)? = taxi.first, taxiText != GPTLiveDelegationBridge.alreadySent else {
+            return XCTFail("\(taxi)")
+        }
+        XCTAssertEqual(longerFake.created, 1)
 
         // The same answer delegated again as text: no second request.
         let echoAgain = await bridge.handleDelegation(id: "del_4", request: "Yes")
