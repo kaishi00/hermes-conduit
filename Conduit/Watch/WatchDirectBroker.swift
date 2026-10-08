@@ -879,6 +879,8 @@ final class WatchDirectBroker {
         return profiles
     }
 
+    /// The plugin's WATCH_JOB_MAX_PROFILES (and its name pattern above):
+    /// it refuses a longer ask outright, so the two move together.
     static let maxGrantJobProfiles = 32
 
     static func isRefusedTool(_ error: Error) -> Bool {
@@ -984,8 +986,10 @@ final class WatchDirectBroker {
             grantLiveToken = scope.liveToken
             grantMaxJobs = scope.maxJobs
             grantJobOptions = scope.jobOptions
-            // A call stored before the names were kept gets today's.
-            grantJobProfiles = scope.jobProfiles ?? appState.watchJobProfileNames()
+            // A call stored before the names were kept gets today's, with
+            // its own profile as the one jobs run on by default.
+            grantJobProfiles = scope.jobProfiles
+                ?? appState.watchJobProfileNames(callProfile: known.connection.profile)
             grantVoiceApprovals = scope.voiceApprovals
             grantIDs = scope.grantIDs
             grantAudio = scope.audio ?? false

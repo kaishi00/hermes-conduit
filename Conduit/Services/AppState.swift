@@ -3658,22 +3658,32 @@ final class AppState: ObservableObject {
 
     /// The names a Watch call's job may give the user's profiles, in the
     /// order `voiceJobProfileTarget` tries them: the Watch resolves "for
-    /// Fam, …" from these as this phone would. Kept within
-    /// `watchJobProfileNamesBytes`, as it rides in every grant: a name
-    /// left out goes through the iPhone, which knows them all.
-    func watchJobProfileNames() -> [WatchVoiceWire.JobProfileName] {
+    /// Fam, …" from these as this phone would. `callProfile` is the
+    /// profile the call is on (the active one when nil). Kept within
+    /// `watchJobProfileNamesBytes`, as it rides in every grant: a spoken
+    /// profile left out goes through the iPhone, which knows them all,
+    /// while a leading "for <name>," for one stays part of the task.
+    func watchJobProfileNames(callProfile: String? = nil) -> [WatchVoiceWire.JobProfileName] {
+        let own = callProfile ?? activeProfile
         func entry(_ profile: String, _ names: [String]) -> WatchVoiceWire.JobProfileName {
-            .init(profile: profilesMatch(profile, activeProfile) ? nil : profile, names: names.filter { !$0.isEmpty })
+            .init(
+                profile: profilesMatch(profile, own) ? nil : profile,
+                names: names.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            )
         }
         let entries = profiles.map { entry($0, [$0]) }
             + [entry("default", [defaultProfileName])]
             + botRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
+        var result: [WatchVoiceWire.JobProfileName] = []
         var bytes = 0
-        return entries.filter { entry in
-            guard !entry.names.isEmpty else { return false }
-            bytes += (entry.profile?.utf8.count ?? 0) + entry.names.reduce(0) { $0 + $1.utf8.count + 3 } + 24
-            return bytes <= Self.watchJobProfileNamesBytes
+        for entry in entries where !entry.names.isEmpty {
+            let cost = (entry.profile?.utf8.count ?? 0) + entry.names.reduce(0) { $0 + $1.utf8.count + 3 } + 24
+            // A prefix, so the Watch tries names in the phone's order.
+            guard bytes + cost <= Self.watchJobProfileNamesBytes else { break }
+            bytes += cost
+            result.append(entry)
         }
+        return result
     }
 
     /// The names' share of a Watch session message, well inside what
