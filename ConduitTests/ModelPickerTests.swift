@@ -263,6 +263,34 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertEqual(result, .completed(ModelPickerApplyProgress(reasoningApplied: true, fastApplied: true)))
     }
 
+    @MainActor
+    func testApplyWithoutReasoningLeavesReasoningAlone() async {
+        let gateway = GatewayRecorder()
+        var sheetDraft = draft
+        sheetDraft.yoloChanged = false
+        sheetDraft.reasoningEffort = nil
+
+        let result = await runModelPickerApply(sheetDraft, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
+
+        XCTAssertEqual(gateway.calls, ["fast"])
+        XCTAssertEqual(result, .completed(ModelPickerApplyProgress(fastApplied: true)))
+    }
+
+    // MARK: - Reasoning levels
+
+    func testReasoningLevelReadsTheRuntimeEffortWord() {
+        XCTAssertEqual(ReasoningEffortLevel(runtimeEffort: ""), .off)
+        XCTAssertEqual(ReasoningEffortLevel(runtimeEffort: "off"), .off)
+        XCTAssertEqual(ReasoningEffortLevel(runtimeEffort: " High "), .high)
+        XCTAssertEqual(ReasoningEffortLevel(runtimeEffort: "xhigh"), .xhigh)
+        XCTAssertNil(ReasoningEffortLevel(runtimeEffort: "turbo"))
+    }
+
+    func testReasoningLevelsRunFromOffToUltra() {
+        XCTAssertEqual(ReasoningEffortLevel.allCases.map(\.rawValue),
+                       ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
+    }
+
     // MARK: - Switched row
 
     private let sonnetRow = ModelPickerSelection(model: "sonnet", provider: "anthropic")
