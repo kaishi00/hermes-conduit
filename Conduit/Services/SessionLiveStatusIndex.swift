@@ -34,8 +34,6 @@ struct SessionLiveStatusIndex: Equatable {
         }
     }
 
-    var isEmpty: Bool { statusByID.isEmpty }
-
     func status(for session: SessionSummary) -> SessionLiveStatus? {
         let ids = [session.id, session.storedSessionId, session.lineageRootId].compactMap { $0 } + session.alternateIds
         var found: SessionLiveStatus?

@@ -3294,6 +3294,68 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
+    func testOpenChatLiveStatusPrecedence() {
+        // #454: the open chat's own turn state outranks a poll once it is
+        // known, except that a question waiting on the user always shows.
+        let harness = makeHarness()
+        let appState = harness.appState
+        let open = self.session("open")
+        let other = self.session("other")
+        appState.sessions = [open, other]
+        appState.activeSessionId = "open"
+        appState.isConnected = true
+        let profile = appState.activeProfile
+
+        appState.handleStreamEvent(.sessionBusy(sessionId: "open", busy: false))
+        XCTAssertEqual(appState.turnState, .idle)
+        appState.recordActiveListEvidence(
+            [
+                LiveSessionStatus(runtimeSessionId: "rt-open", storedSessionId: "open", status: "working"),
+                LiveSessionStatus(runtimeSessionId: "rt-other", storedSessionId: "other", status: "working"),
+            ],
+            profile: profile
+        )
+        XCTAssertNil(appState.sessionLiveStatus(open), "A known idle open chat outranks a poll's working row")
+        XCTAssertEqual(appState.sessionLiveStatus(other), .working)
+
+        appState.handleStreamEvent(.sessionBusy(sessionId: "open", busy: true))
+        XCTAssertEqual(appState.turnState, .running)
+        appState.recordActiveListEvidence([], profile: profile)
+        XCTAssertEqual(appState.sessionLiveStatus(open), .working, "A running open chat shows without a poll row")
+        XCTAssertNil(appState.sessionLiveStatus(other))
+
+        appState.recordActiveListEvidence(
+            [LiveSessionStatus(runtimeSessionId: "rt-open", storedSessionId: "open", status: "waiting")],
+            profile: profile
+        )
+        XCTAssertEqual(appState.sessionLiveStatus(open), .needsInput, "Needs input outranks the local running state")
+
+        appState.isConnected = false
+        XCTAssertEqual(
+            appState.sessionLiveStatus(open), .working,
+            "Disconnected, the poll is ignored and only the open chat's own state shows"
+        )
+        appState.recordActiveListEvidence(
+            [LiveSessionStatus(runtimeSessionId: "rt-other", storedSessionId: "other", status: "waiting")],
+            profile: profile
+        )
+        XCTAssertNil(appState.sessionLiveStatus(other), "A snapshot is not shown while disconnected")
+    }
+
+    func testAnotherProfilesActiveListLeavesTheChatListAlone() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        let other = self.session("other")
+        appState.sessions = [other]
+        appState.isConnected = true
+
+        appState.recordActiveListEvidence(
+            [LiveSessionStatus(runtimeSessionId: "rt-other", storedSessionId: "other", status: "working")],
+            profile: appState.activeProfile + "-elsewhere"
+        )
+        XCTAssertNil(appState.sessionLiveStatus(other))
+    }
+
     func testConfirmedAliasNotificationDecisionSurvivesRotatedRuntimePromotion() async {
         // The promotion case: a confirmedAlias notification carries a pending
         // approval under runtime-old; the resume of stored-a is admitted and
