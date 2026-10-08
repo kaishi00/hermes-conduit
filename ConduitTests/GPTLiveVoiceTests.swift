@@ -2198,6 +2198,9 @@ extension VoiceConversationControllerTests {
         // A yes word first doesn't make a no a yes.
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Please don't send it yet"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yeah, no"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No problem"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yes, no problem"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yeah, no worries"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Fine, forget it"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, wait"), .notYet(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, but not now"), .notYet(change: nil))
@@ -2572,6 +2575,25 @@ extension VoiceConversationControllerTests {
         let prompt = fake.submissions.last?.1 ?? ""
         XCTAssertTrue(prompt.hasSuffix("what's the weather in Rome"), prompt)
         XCTAssertFalse(prompt.contains("book a flight"), prompt)
+    }
+
+    /// The user's plain no drops a held request whatever the model wrote,
+    /// and once asking first is off, words that don't answer it go on
+    /// their own.
+    func testGPTLiveAskingFirstPlainNoAndSwitchingOffSettleTheHeldRequest() async {
+        let (supervisor, fake, bridge) = makeAskingFirstBridge()
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        let no = await bridge.handleDelegation(id: "del_2", request: "Book a table for Alex", userWords: "No.")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.dropped, .commentary)? = no.first else { return XCTFail("\(no)") }
+        XCTAssertEqual(fake.created, 0)
+
+        _ = await bridge.handleDelegation(id: "del_3", request: "book a table for Sam", userWords: "book a table for Sam")
+        supervisor.setAsksBeforeSending(false)
+        _ = await bridge.handleDelegation(id: "del_4", request: "what's the weather in Rome", userWords: "what's the weather in Rome")
+        XCTAssertEqual(fake.created, 1)
+        let prompt = fake.submissions.first?.1 ?? ""
+        XCTAssertTrue(prompt.hasSuffix("what's the weather in Rome"), prompt)
+        XCTAssertFalse(prompt.contains("book a table"), prompt)
     }
 
     /// GPT-Live delegated while the user's words were still coming in: the

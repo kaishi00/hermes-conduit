@@ -2012,7 +2012,7 @@ enum VoiceThreadRouting {
         "just a sec", "just a second", "just a moment", "hold it",
     ]
     static let answerYesLeads = [
-        "yes", "yeah", "yep", "yup", "yea", "ya", "sure", "ok", "okay", "alright", "all right",
+        "no problem", "no worries", "no rush", "yes", "yeah", "yep", "yup", "yea", "ya", "sure", "ok", "okay", "alright", "all right",
         "go ahead", "go for it", "do it", "send it", "send that", "send this", "please", "correct", "right",
         "exactly", "absolutely", "definitely", "of course", "sounds good", "perfect", "great", "fine",
         "good", "that's right", "that's it", "go", "uh huh", "mhm", "why not",
@@ -2069,6 +2069,11 @@ enum VoiceThreadRouting {
             }
             return false
         }
+        // "No problem" and "no worries" are a yes, not a no.
+        func dropNoLead() -> Bool {
+            !answerYesLeads.contains { $0.hasPrefix("no ") && words.starts(with: $0.split(separator: " ").map(String.init)) }
+                && dropLead(answerNoLeads)
+        }
         // "No, I don't want that": a negation in what follows is still the no.
         func change(_ rest: [String]) -> String? { negates(rest) ? nil : more(rest) }
         func dropFiller() -> Bool {
@@ -2080,12 +2085,12 @@ enum VoiceThreadRouting {
         // another no or a polite tail after it is still just the no.
         func refusal() -> HeldRequestAnswer {
             let rest = words
-            while dropLead(answerNoLeads) || dropLead(answerRefusalTails) || dropFiller() {}
+            while dropNoLead() || dropLead(answerRefusalTails) || dropFiller() {}
             return .no(change: negates(rest) ? nil : more(words))
         }
         // "Oh yes", "Well, no", "Actually, go ahead".
         while dropLead(answerJoiners) {}
-        if dropLead(answerNoLeads) { return refusal() }
+        if dropNoLead() { return refusal() }
         if dropLead(answerNotYetLeads) { return .notYet(change: change(words)) }
         guard dropLead(answerYesLeads) else {
             // "Send to Hermes", or just "Send": a yes with nothing more.
@@ -2095,7 +2100,7 @@ enum VoiceThreadRouting {
         // "Okay, wait", "Yeah, but actually no", "Please don't": what
         // follows decides.
         while dropLead(answerYesLeads) || dropLead(answerJoiners) {}
-        if dropLead(answerNoLeads) { return refusal() }
+        if dropNoLead() { return refusal() }
         if dropLead(answerNotYetLeads) { return .notYet(change: change(words)) }
         // A negation or a question anywhere after it: not a yes after all.
         let turned = words.contains { word in

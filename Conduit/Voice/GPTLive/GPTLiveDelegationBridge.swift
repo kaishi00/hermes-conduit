@@ -151,6 +151,12 @@ final class GPTLiveDelegationBridge {
         let answerShape = VoiceThreadRouting.heldRequestAnswer(routingText)
         let ownText = routingText == spoken || answerShape.isBare ? "" : routingText
         let isSend = Self.isSendMarker(instructions)
+        // Asking first was switched off while a request waited: only an
+        // answer to it still settles it; other words go on their own.
+        if draft != nil, !supervisor.asksBeforeSending, !isSend,
+           !(spoken.isEmpty ? answerShape : VoiceThreadRouting.heldRequestAnswer(spoken)).isAnswer {
+            draft = nil
+        }
         // Asking first (#451): the next delegation after a held request
         // carries the user's answer, whatever its text says.
         if let waiting = draft {
@@ -541,11 +547,12 @@ final class GPTLiveDelegationBridge {
             if isSend { return .send(Self.adding(words, to: waiting.request)) }
             return .change(Self.adding(words, to: waiting.request))
         case .no(let change):
-            if rewritten { return .change(instructions) }
-            return change.map { .change(Self.adding($0, to: waiting.request)) } ?? .drop
+            // A plain no drops it, whatever the model wrote.
+            guard let change else { return .drop }
+            return rewritten ? .change(instructions) : .change(Self.adding(change, to: waiting.request))
         case .notYet(let change):
-            if rewritten { return .change(instructions) }
-            return change.map { .change(Self.adding($0, to: waiting.request)) } ?? .keep
+            guard let change else { return .keep }
+            return rewritten ? .change(instructions) : .change(Self.adding(change, to: waiting.request))
         }
     }
 
