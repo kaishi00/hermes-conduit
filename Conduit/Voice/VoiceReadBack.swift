@@ -18,6 +18,7 @@ enum VoiceReadBack {
 
     /// `markdown` as plain speech, paragraphs kept.
     static func plainSpeech(_ markdown: String) -> String {
+        let note = codeBlockNote
         var lines: [String] = []
         var fence: String?
         for rawLine in markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
@@ -28,7 +29,8 @@ enum VoiceReadBack {
             }
             if line.hasPrefix("```") || line.hasPrefix("~~~") {
                 fence = String(line.prefix(3))
-                lines.append(codeBlockNote)
+                // Back-to-back code blocks get one note.
+                if lines.last(where: { !$0.isEmpty }) != note { lines.append(note) }
                 continue
             }
             if let spoken = spokenLine(line) { lines.append(spoken) }

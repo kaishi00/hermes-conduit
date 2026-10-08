@@ -889,7 +889,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     /// The newest background job result handed to the running call, while
-    /// no chat reply came after it.
+    /// no chat reply (a voice or typed turn) came after it.
     private var lastCallResult: (callID: UUID, text: String)?
 
     /// A job's outcome reached the running call: a finished job's result is
@@ -1371,6 +1371,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // A voice request's own text is never passed off as typed.
         var prompt = backend.latestThreadPrompt(thread)?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let typed = prompt, typed.isEmpty || typed.hasPrefix(Self.threadTurnText(for: "")) { prompt = nil }
+        // The chat replied after any job result: a read-back reads the chat.
+        lastCallResult = nil
         queueChatNote(ChatNote(text: Self.chatContextPrompt(typed: prompt, reply: reply)))
     }
 

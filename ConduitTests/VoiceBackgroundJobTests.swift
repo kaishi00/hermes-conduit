@@ -1212,6 +1212,16 @@ extension VoiceConversationControllerTests {
             return XCTFail("\(again)")
         }
         XCTAssertTrue(againText.contains("The full reply."), "a later request reads it again")
+        // Still queued for a quiet moment: it's on its way, not read yet.
+        let queued = await bridge.handleDelegation(id: "del_2b", request: "read the last reply")
+        guard case .delegationReply("del_2b", GPTLiveDelegationBridge.readBackOnItsWay, .commentary)? = queued.first else {
+            return XCTFail("\(queued)")
+        }
+        bridge.replyDelivered(delegationID: "del_2")
+        let afterRead = await bridge.handleDelegation(id: "del_2c", request: "read the last reply")
+        guard case .delegationReply("del_2c", GPTLiveDelegationBridge.readBackAlreadySent, .commentary)? = afterRead.first else {
+            return XCTFail("\(afterRead)")
+        }
         let afterDelegation = await bridge.userAskedForLastReply()
         XCTAssertTrue(afterDelegation.isEmpty, "the delegation already asked for this one")
         XCTAssertEqual(fake.threadSubmissions.count, 0, "reading asks Hermes nothing")
@@ -2126,6 +2136,11 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceReadBack.plainSpeech("Item | Cost\n--- | ---\nMilk | $2"), "Item, Cost.\nMilk, $2.", "a table without outer pipes")
         XCTAssertEqual(VoiceReadBack.plainSpeech("## Done | Blocked"), "Done, Blocked.", "a heading isn't a table row, and its pipe isn't read")
         XCTAssertEqual(
+            VoiceReadBack.plainSpeech("```\na\n```\n\n```\nb\n```\nDone."),
+            VoiceReadBack.codeBlockNote + "\n\nDone.",
+            "back-to-back code blocks get one note"
+        )
+        XCTAssertEqual(
             VoiceReadBack.plainSpeech("See https://en.wikipedia.org/wiki/Foo_(bar) and [Foo](https://en.wikipedia.org/wiki/Foo_(bar))."),
             "See en.wikipedia.org and Foo.",
             "parentheses inside a link's address"
@@ -2231,6 +2246,20 @@ extension VoiceConversationControllerTests {
         bridge.outcomeSent(jobID: supervisor.jobs.first { $0.isThreadTurn }?.id)
         let chat = await supervisor.readBackText()
         XCTAssertEqual(chat, "Summary.")
+
+        // A typed exchange in the chat after a job result counts too.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "check the disk in the background"]))
+        XCTAssertEqual(fake.created, 2)
+        supervisor.observe(.messageComplete(sessionId: "rt-2", messageId: nil, content: "Disk is fine.", reasoning: nil))
+        _ = bridge.pendingUpdates()
+        bridge.outcomeSent(jobID: supervisor.jobs.last { !$0.isThreadTurn }?.id)
+        let disk = await supervisor.readBackText()
+        XCTAssertEqual(disk, "Disk is fine.")
+        fake.threadPrompt = "what's left on the release?"
+        fake.threadReply = "Two PRs."
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Two PRs.", reasoning: nil))
+        let typed = await supervisor.readBackText()
+        XCTAssertEqual(typed, "Two PRs.")
     }
 
     func testReadBackMarkerAndRules() {
