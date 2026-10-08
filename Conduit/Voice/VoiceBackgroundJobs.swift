@@ -2005,10 +2005,13 @@ enum VoiceThreadRouting {
         "yes", "yeah", "yep", "yup", "yea", "ya", "sure", "ok", "okay", "alright", "all right",
         "go ahead", "go for it", "do it", "send it", "send that", "send this", "please", "correct", "right",
         "exactly", "absolutely", "definitely", "of course", "sounds good", "perfect", "great", "fine",
-        "good", "that's right", "that's it", "go", "uh huh", "mhm",
+        "good", "that's right", "that's it", "go", "uh huh", "mhm", "why not",
     ]
     /// Words between a yes and what decides it ("okay, but wait").
     static let answerJoiners = ["but", "actually", "oh", "well"]
+    /// Words after a yes that turn it around or question it ("yeah, I don't
+    /// think so", "sure, but why?", "okay, let me think"): asked again.
+    static let answerTurnWords: Set<String> = sendVetoes.union(["wait", "hold", "cancel", "nope", "nah", "think", "later", "maybe"])
     /// Words that add nothing to an answer ("no thanks", "yes, send it to
     /// Hermes now").
     static let answerFillerWords: Set<String> = [
@@ -2050,6 +2053,12 @@ enum VoiceThreadRouting {
         _ = dropLead(answerJoiners)
         if dropLead(answerNoLeads) { return .no(change: more(words)) }
         if dropLead(answerNotYetLeads) { return .notYet(change: more(words)) }
+        // A negation or a question anywhere after it: not a yes after all.
+        let turned = words.contains { word in
+            answerTurnWords.contains(word) || word.hasSuffix("n't")
+                || answerTurnWords.contains(String(word.prefix(while: { $0 != "'" })))
+        }
+        if !words.isEmpty, turned || spoken.contains("?") { return .other(spoken) }
         // "Yes, send it to Hermes": the send is the yes.
         let rest = saysSendToHermes(words.joined(separator: " ")) ? [] : words
         return .yes(addition: more(rest))

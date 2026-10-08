@@ -2190,6 +2190,11 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Fine, forget it"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, wait"), .notYet(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, but not now"), .notYet(change: nil))
+        // A negation or question after it turns it around: asked again.
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yeah, I don't think so"), .other("Yeah, I don't think so"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sure, I'd rather not"), .other("Sure, I'd rather not"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okay, what's the weather in Rome?"), .other("Okay, what's the weather in Rome?"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Why not"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("for Sam"), .other("for Sam"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Nothing else"), .other("Nothing else"), "a no is a word of its own")
         XCTAssertTrue(VoiceThreadRouting.heldRequestAnswer("Okay").isBare)
@@ -2378,6 +2383,19 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 1)
         let prompt = fake.submissions.first?.1 ?? ""
         XCTAssertTrue(prompt.hasSuffix("book a table for Sam"), prompt)
+        // The same answer delegated again as text: no second request.
+        let echoAgain = await bridge.handleDelegation(id: "del_4", request: "Yes")
+        guard case .delegationReply("del_4", GPTLiveDelegationBridge.alreadySent, .commentary)? = echoAgain.first else { return XCTFail("\(echoAgain)") }
+        XCTAssertEqual(fake.created, 1)
+
+        // "Send it to Hermes" with more: what else they said goes with it.
+        let (_, moreFake, more) = makeAskingFirstBridge()
+        _ = await more.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        more.modelFinishedTurn()
+        guard let sendMore = more.userFinishedSpeaking("Send it to Hermes, but make it for four") else { return XCTFail("said to send it") }
+        _ = await more.deliver(sendMore)
+        XCTAssertEqual(moreFake.created, 1)
+        XCTAssertTrue(moreFake.submissions.first?.1.contains("make it for four") == true, moreFake.submissions.first?.1 ?? "")
 
         // The request restated with words that aren't a yes: asked again, not sent.
         let (_, restatedFake, restated) = makeAskingFirstBridge()

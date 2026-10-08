@@ -141,7 +141,10 @@ final class GPTLiveDelegationBridge {
         // The model's own words for the request. Without any, the request
         // is the user's words.
         let routingText = routingWords.trimmingCharacters(in: .whitespacesAndNewlines)
-        let ownText = routingText == spoken ? "" : routingText
+        // Text that is only an answer ("Yes", "Send it to Hermes") echoes
+        // the user; it is no request of its own.
+        let echoed = VoiceThreadRouting.heldRequestAnswer(routingText).isBare
+        let ownText = routingText == spoken || echoed ? "" : routingText
         let isSend = Self.isSendMarker(instructions)
         // Asking first (#451): the next delegation after a held request
         // carries the user's answer, whatever its text says.
@@ -171,8 +174,9 @@ final class GPTLiveDelegationBridge {
             if sentRecently { return [.delegationReply(delegationID: id, text: Self.alreadySent, channel: .commentary)] }
             return [.delegationReply(delegationID: id, text: Self.relay("Nothing is waiting to be sent to Hermes. Ask the user what they want done."), channel: .speakable)]
         }
-        // The same yes delegated again, right after it sent the request.
-        if sentRecently, ownText.isEmpty, VoiceThreadRouting.heldRequestAnswer(spoken).isBare {
+        // The same yes delegated again, right after it sent the request
+        // (its words may not be in the transcript yet).
+        if sentRecently, ownText.isEmpty, spoken.isEmpty || VoiceThreadRouting.heldRequestAnswer(spoken).isBare {
             return [.delegationReply(delegationID: id, text: Self.alreadySent, channel: .commentary)]
         }
         if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(routingWords) {
@@ -476,9 +480,6 @@ final class GPTLiveDelegationBridge {
     /// A yes in any words sends it, with anything they added; a no drops
     /// it; other words change it, and the model asks again.
     private func decide(_ waiting: Draft, ownText: String, isSend: Bool, instructions: String, answer: String) -> DraftDecision {
-        // Text that is only an answer ("Yes", "Send it to Hermes") echoes
-        // the user; it is no request of its own.
-        let ownText = VoiceThreadRouting.heldRequestAnswer(ownText).isBare ? "" : ownText
         let restated = !ownText.isEmpty && Self.sameRequest(ownText, waiting.request)
         // The model wrote a request of its own: the user changed it.
         let rewritten = !ownText.isEmpty && !restated
@@ -581,7 +582,10 @@ final class GPTLiveDelegationBridge {
         if VoiceThreadRouting.saysSendToHermes(words) {
             draft = nil
             lastSentAt = now()
-            return .send(request: waiting.request, intoJob: intoJob, delegationID: waiting.delegationID, call: callGeneration)
+            // "…, but make it for four" goes with it; the request's own
+            // words ending "send it to Hermes" add nothing.
+            let extra = VoiceThreadRouting.heldRequestAnswer(words).isBare || Self.sameRequest(words, waiting.request) ? nil : words
+            return .send(request: Self.adding(extra, to: waiting.request), intoJob: intoJob, delegationID: waiting.delegationID, call: callGeneration)
         }
         // Held before the user's words for it arrived: these are they, not
         // an answer to a question the model hasn't asked yet.
