@@ -36,9 +36,9 @@ targets:
       - path: Conduit/Resources/AlternateIcons
         buildPhase: resources
       # End-to-end encrypted notifications (#431), shared with the
-      # Notification Service Extension. Also the Apple Watch proof of
-      # concept's link format and audio codec (Shared/WatchVoice,
-      # designs/apple-watch-voice.md) and Gemini Live's protocol and
+      # Notification Service Extension. Also the Apple Watch app's link
+      # format and relay wires (Shared/WatchVoice,
+      # designs/apple-watch-voice-direct.md) and Gemini Live's protocol and
       # session (Shared/GeminiLive, designs/apple-watch-voice-direct.md),
       # shared with the Watch app.
       - path: Shared
@@ -70,10 +70,11 @@ targets:
             --info-plist "$SRCROOT/$INFOPLIST_FILE" \
             --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
             --development-language "$DEVELOPMENT_LANGUAGE"
-  # Apple Watch proof of concept (designs/apple-watch-voice.md): the
-  # Watch as the microphone and speaker of a call the iPhone runs. A test
-  # build's target, embedded in the iPhone app; signed automatically so
-  # Xcode registers its App ID on the first archive.
+  # The Apple Watch app: voice calls to Hermes, Gemini Live on the Watch
+  # itself or GPT-Live through the host's audio bridge
+  # (designs/apple-watch-voice-direct.md, apple-watch-gpt-live.md).
+  # Embedded in the iPhone app; signed automatically so Xcode registers
+  # its App ID on the first archive.
   ConduitWatch:
     type: application
     platform: watchOS
@@ -109,7 +110,7 @@ targets:
     sources:
       - path: ConduitNotificationService
       - path: Shared
-        # The Watch proof of concept's code and Gemini Live, which the
+        # The Watch app's code and Gemini Live, which the
         # extension never uses.
         excludes:
           - "WatchVoice/**"

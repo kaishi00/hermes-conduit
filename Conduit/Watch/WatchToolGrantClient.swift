@@ -27,6 +27,14 @@ final class WatchToolGrantClient {
         self.request = request
     }
 
+    /// A client for whichever Hermes dashboard is active when it asks.
+    static func activeDashboard() -> WatchToolGrantClient {
+        WatchToolGrantClient(request: { path, method, body, timeout in
+            guard let bridge = AppStateRuntimeRegistry.shared.appState.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        })
+    }
+
     /// Throws when the host can't grant one: an older plugin or relay, no
     /// notification pairing, no network. The call's lookups then go
     /// through this phone only, as before.
@@ -49,7 +57,7 @@ final class WatchToolGrantClient {
             body,
             Self.timeoutMilliseconds
         )
-        guard let grant = Self.grant(from: response) else { throw WatchDirectPrepareError("The Watch tool grant couldn't be read.") }
+        guard let grant = Self.grant(from: response) else { throw WatchDirectPrepareError(AppLocalization.string("The Watch tool grant couldn't be read.")) }
         return grant
     }
 

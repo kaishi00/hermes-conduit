@@ -35911,6 +35911,646 @@
           }
         }
       }
+    },
+    "A job's approval request shows on the Watch with Approve and Deny." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジョブの承認リクエストは、Watch に「承認」と「拒否」付きで表示されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务的批准请求会显示在 Watch 上，带有“批准”和“拒绝”。"
+          }
+        }
+      }
+    },
+    "A job's approval request shows on the Watch, and Gemini Live can also take your answer by voice. Voice only ever approves once. Text in a web page or a job's output could try to talk it into approving." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジョブの承認リクエストは Watch に表示され、Gemini Live は音声での回答も受け付けます。音声での承認は常に1回限りです。Web ページやジョブの出力に含まれるテキストが、承認するよう誘導しようとする可能性があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务的批准请求会显示在 Watch 上，Gemini Live 也可以通过语音接收你的回答。语音只会批准一次。网页或任务输出中的文字可能会试图诱导它批准。"
+          }
+        }
+      }
+    },
+    "A voice call is already running on your iPhone." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone で音声通話がすでに実行中です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 iPhone 上已有语音通话正在进行。"
+          }
+        }
+      }
+    },
+    "Apple Watch" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch"
+          }
+        }
+      }
+    },
+    "Approve from the Watch" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch からの承認"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从 Watch 批准"
+          }
+        }
+      }
+    },
+    "Call log" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話ログ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话日志"
+          }
+        }
+      }
+    },
+    "Checking for an Apple Watch…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch を確認中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在检查 Apple Watch…"
+          }
+        }
+      }
+    },
+    "Clear the Watch call log?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch の通話ログを消去しますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除 Watch 通话日志？"
+          }
+        }
+      }
+    },
+    "Conduit is on your Apple Watch." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit は Apple Watch にインストールされています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 已安装在你的 Apple Watch 上。"
+          }
+        }
+      }
+    },
+    "Conduit on your iPhone couldn't reach Hermes. Open it once and try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone の Conduit が Hermes に接続できませんでした。一度開いてから再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 上的 Conduit 无法连接 Hermes。请打开一次后重试。"
+          }
+        }
+      }
+    },
+    "Conduit on your iPhone switched to another Hermes profile or server, so this call ended." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone の Conduit が別の Hermes プロファイルまたはサーバーに切り替わったため、この通話は終了しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 上的 Conduit 切换到了其他 Hermes 配置或服务器，因此此通话已结束。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes to check." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認するには Hermes に接続してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请连接 Hermes 以进行检查。"
+          }
+        }
+      }
+    },
+    "GPT-Live on the Watch" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch での GPT-Live"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 上的 GPT-Live"
+          }
+        }
+      }
+    },
+    "Hermes couldn't open GPT-Live for the Watch. Update the Conduit notifier plugin and the push relay." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は Watch 用の GPT-Live を開けませんでした。Conduit 通知プラグインとプッシュリレーをアップデートしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法为 Watch 打开 GPT-Live。请更新 Conduit 通知插件和推送中继。"
+          }
+        }
+      }
+    },
+    "Hermes couldn't renew the Watch lookups." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は Watch の検索アクセスを更新できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法续期 Watch 的查询权限。"
+          }
+        }
+      }
+    },
+    "Hermes couldn't set up GPT-Live for the Watch." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は Watch 用の GPT-Live を設定できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法为 Watch 设置 GPT-Live。"
+          }
+        }
+      }
+    },
+    "Hermes is setting up GPT-Live for the Watch, which takes a few minutes the first time. Try again shortly." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes が Watch 用の GPT-Live を設定中です。初回は数分かかります。少し後で再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 正在为 Watch 设置 GPT-Live，首次需要几分钟。请稍后重试。"
+          }
+        }
+      }
+    },
+    "Hermes jobs a Watch call can start, wrist up or down. Each runs as a normal Hermes chat under Voice Jobs, and Hermes' own approval settings apply." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch の通話から開始できる Hermes ジョブの数です（手首を上げていても下げていても）。各ジョブは「Voice Jobs」の通常の Hermes チャットとして実行され、Hermes 自身の承認設定が適用されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 通话可以启动的 Hermes 任务（无论手腕抬起或放下）。每个任务都作为“Voice Jobs”下的普通 Hermes 聊天运行，并适用 Hermes 自身的批准设置。"
+          }
+        }
+      }
+    },
+    "Install Conduit on your Apple Watch from the Watch app on this iPhone." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この iPhone の Watch アプリから Apple Watch に Conduit をインストールしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请通过此 iPhone 上的 Watch App 在 Apple Watch 上安装 Conduit。"
+          }
+        }
+      }
+    },
+    "Jobs per Watch call: through the iPhone" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 通話ごとのジョブ数：iPhone 経由"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次 Watch 通话的任务数：通过 iPhone"
+          }
+        }
+      }
+    },
+    "No Apple Watch is paired with this iPhone." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この iPhone とペアリングされた Apple Watch はありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 未配对 Apple Watch。"
+          }
+        }
+      }
+    },
+    "Not set up yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未設定"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未设置"
+          }
+        }
+      }
+    },
+    "Open Conduit on your Watch and tap the microphone to talk to Hermes. Gemini Live runs on the Watch; GPT-Live runs on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch で Conduit を開き、マイクをタップすると Hermes と話せます。Gemini Live は Watch 上で、GPT-Live は Hermes ホスト上で動作します。通話は手首を下ろしても iPhone がロックされても続き、音声履歴に保存されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Watch 上打开 Conduit 并轻点麦克风即可与 Hermes 交谈。Gemini Live 在 Watch 上运行；GPT-Live 在你的 Hermes 主机上运行。即使放下手腕、iPhone 锁定，通话也会继续，并会保存到语音记录中。"
+          }
+        }
+      }
+    },
+    "Set up" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定する"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置"
+          }
+        }
+      }
+    },
+    "Setting up on Hermes…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes で設定中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在 Hermes 上设置…"
+          }
+        }
+      }
+    },
+    "Share call log" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話ログを共有"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享通话日志"
+          }
+        }
+      }
+    },
+    "Tap" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タップ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点"
+          }
+        }
+      }
+    },
+    "Tap or voice" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タップまたは音声"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点或语音"
+          }
+        }
+      }
+    },
+    "The Watch tool grant couldn't be read." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch のツール許可を読み取れませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 Watch 的工具授权。"
+          }
+        }
+      }
+    },
+    "The call ended before it connected." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続前に通話が終了しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话在连接前已结束。"
+          }
+        }
+      }
+    },
+    "The call's briefing (memory and persona) is too large to send to the Watch." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話のブリーフィング（メモリとペルソナ）が大きすぎて Watch に送信できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话简报（记忆和人设）太大，无法发送到 Watch。"
+          }
+        }
+      }
+    },
+    "The call's briefing couldn't be packed for the Watch." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話のブリーフィングを Watch 用にまとめられませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法为 Watch 打包通话简报。"
+          }
+        }
+      }
+    },
+    "The call's setup couldn't be packed for the Watch." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話の設定を Watch 用にまとめられませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法为 Watch 打包通话设置。"
+          }
+        }
+      }
+    },
+    "This call has no Watch lookups to renew." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この通話には更新する Watch の検索アクセスがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此通话没有需要续期的 Watch 查询权限。"
+          }
+        }
+      }
+    },
+    "Timings and connection events from Watch calls, without what was said. Share it when reporting a problem." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 通話のタイミングと接続イベントです（会話内容は含みません）。問題を報告するときに共有してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 通话的时间和连接事件，不含通话内容。报告问题时请共享。"
+          }
+        }
+      }
+    },
+    "Update Conduit on your iPhone and Watch to the same version." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone と Watch の Conduit を同じバージョンにアップデートしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请将 iPhone 和 Watch 上的 Conduit 更新到相同版本。"
+          }
+        }
+      }
+    },
+    "Your Hermes host doesn't offer GPT-Live for the Watch. Update the Conduit notifier plugin." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ホストは Watch 用の GPT-Live に対応していません。Conduit 通知プラグインをアップデートしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 主机不提供 Watch 版 GPT-Live。请更新 Conduit 通知插件。"
+          }
+        }
+      }
+    },
+    "Your Hermes host holds GPT-Live's call for the Watch, with a small runtime it sets up once. The first call sets it up too, but that can take a few minutes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 用の GPT-Live 通話は Hermes ホストが保持し、そのための小さなランタイムを一度だけ設定します。最初の通話でも設定されますが、数分かかることがあります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 的 GPT-Live 通话由你的 Hermes 主机承载，主机会一次性设置一个小型运行环境。首次通话也会进行设置，但可能需要几分钟。"
+          }
+        }
+      }
+    },
+    "Hermes couldn't open GPT-Live for the Watch: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は Watch 用の GPT-Live を開けませんでした：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 无法为 Watch 打开 GPT-Live：%@"
+          }
+        }
+      }
+    },
+    "Jobs per Watch call: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 通話ごとのジョブ数：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次 Watch 通话的任务数：%@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

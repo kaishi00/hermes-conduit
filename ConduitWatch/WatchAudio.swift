@@ -164,7 +164,7 @@ final class WatchAudio {
         self.playerFormat = playerFormat
         isRunning = true
         observe(engine)
-        WatchProbeLog.shared.note("audioStarted", [
+        WatchCallLog.shared.note("audioStarted", [
             "voiceProcessing": options.voiceProcessing,
             "voiceChatMode": options.voiceChatMode,
             "inputRate": inputFormat.sampleRate,
@@ -180,7 +180,7 @@ final class WatchAudio {
     /// "avfaudio error -308" with voice processing on.
     private func logStartFailure(_ error: Error) {
         let error = error as NSError
-        WatchProbeLog.shared.note("audioStartFailed", [
+        WatchCallLog.shared.note("audioStartFailed", [
             "step": startStep,
             "domain": error.domain,
             "code": error.code,
@@ -214,7 +214,7 @@ final class WatchAudio {
         guard abs(playerFormat.sampleRate - sampleRate) < 0.5 else {
             if refusedRate != sampleRate {
                 refusedRate = sampleRate
-                WatchProbeLog.shared.note("playbackRateMismatch", ["expected": playerFormat.sampleRate, "got": sampleRate])
+                WatchCallLog.shared.note("playbackRateMismatch", ["expected": playerFormat.sampleRate, "got": sampleRate])
             }
             return
         }
@@ -310,10 +310,10 @@ final class WatchAudio {
                     guard let self else { return }
                     switch type {
                     case .began?:
-                        WatchProbeLog.shared.note("audioInterruptionBegan")
+                        WatchCallLog.shared.note("audioInterruptionBegan")
                         self.onInterruption?(true)
                     case .ended?:
-                        WatchProbeLog.shared.note("audioInterruptionEnded")
+                        WatchCallLog.shared.note("audioInterruptionEnded")
                         self.onInterruption?(false)
                     default:
                         break
@@ -322,7 +322,7 @@ final class WatchAudio {
             },
             NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    WatchProbeLog.shared.note("audioEngineConfigurationChange", ["running": self?.engine?.isRunning ?? false])
+                    WatchCallLog.shared.note("audioEngineConfigurationChange", ["running": self?.engine?.isRunning ?? false])
                     // The engine stopped underneath: treat it as taken.
                     if self?.engine?.isRunning == false { self?.onInterruption?(true) }
                 }
@@ -331,7 +331,7 @@ final class WatchAudio {
                 let route = AVAudioSession.sharedInstance().currentRoute
                 MainActor.assumeIsolated {
                     self?.routeChanges += 1
-                    WatchProbeLog.shared.note("audioRouteChange", [
+                    WatchCallLog.shared.note("audioRouteChange", [
                         "outputs": route.outputs.map { $0.portType.rawValue },
                         "inputs": route.inputs.map { $0.portType.rawValue },
                     ])
@@ -347,8 +347,8 @@ enum WatchAudioError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noMicrophoneFormat: return "The microphone isn't ready."
-        case .permissionDenied: return "Conduit needs the microphone. Allow it in Settings on your Watch."
+        case .noMicrophoneFormat: return String(localized: "The microphone isn't ready.")
+        case .permissionDenied: return String(localized: "Conduit needs the microphone. Allow it in Settings on your Watch.")
         }
     }
 }

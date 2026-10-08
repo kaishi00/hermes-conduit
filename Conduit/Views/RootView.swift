@@ -71,9 +71,6 @@ struct MainView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("conduit.ipadPersistentSidebar") private var prefersPersistentSidebar = false
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
-    /// Apple Watch proof of concept: a Watch call or link test holds off
-    /// auto-lock too.
-    @ObservedObject private var watchLiveness = WatchVoiceLink.shared.liveness
     @State private var availableWindowWidth: CGFloat = 0
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
@@ -125,7 +122,7 @@ struct MainView: View {
                 enabled: keepScreenAwake,
                 voiceSheetShown: appState.showVoiceSheet,
                 liveSheetShown: appState.showGeminiLiveSheet || appState.showGPTLiveSheet || appState.showGrokLiveSheet
-            ) || watchLiveness.isRunning,
+            ),
             initial: true
         ) { _, holds in
             UIApplication.shared.isIdleTimerDisabled = holds

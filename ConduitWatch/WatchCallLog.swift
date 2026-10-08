@@ -1,27 +1,33 @@
 //
-//  WatchProbeLog.swift
+//  WatchCallLog.swift
 //  Conduit Watch
 //
-//  The Watch side of the test log: every event is a JSON line kept on the
+//  The Watch side of the call log: every event is a JSON line kept on the
 //  Watch and also sent to the iPhone (queued, so it arrives even when the
-//  iPhone isn't reachable right now), where the log can be shared.
-//  Finished results also show in the iPhone's Apple Watch test section.
+//  iPhone isn't reachable right now), where Voice settings > Apple Watch
+//  can share it for a support question. Kept to its newest megabyte.
 //
 
 import Foundation
 import WatchConnectivity
 
 @MainActor
-final class WatchProbeLog: ObservableObject {
-    static let shared = WatchProbeLog()
+final class WatchCallLog: ObservableObject {
+    static let shared = WatchCallLog()
 
     @Published private(set) var lines: [String] = []
     private let fileURL: URL?
     private static let keptLines = 300
+    private static let maxFileBytes = 1_000_000
 
     private init() {
         let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-        fileURL = directory?.appendingPathComponent("watch-probe.jsonl")
+        fileURL = directory?.appendingPathComponent("watch-call-log.jsonl")
+        if let directory {
+            // The proof of concept's log, which nothing reads any more.
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent("watch-probe.jsonl"))
+        }
+        if let fileURL { WatchVoiceStats.trimLog(at: fileURL, maxBytes: Self.maxFileBytes) }
     }
 
     /// Records one event, here and in the iPhone's log.
@@ -34,7 +40,7 @@ final class WatchProbeLog: ObservableObject {
         sendToPhone(.note(line))
     }
 
-    /// Records a finished result, which the iPhone also lists.
+    /// Records a call's summary, which the iPhone also lists.
     func report(_ event: String, _ fields: [String: Any]) {
         var fields = fields
         fields["event"] = event

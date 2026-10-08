@@ -2,10 +2,10 @@
 //  WatchLink.swift
 //  Conduit Watch
 //
-//  The Watch end of WatchConnectivity: control messages and audio packets
-//  to and from Conduit on the iPhone, with reachability tracked for the
-//  test log. The session's delegate calls arrive on a background queue;
-//  everything is handled on the main actor.
+//  The Watch end of WatchConnectivity: a call's control messages to and
+//  from Conduit on the iPhone, with reachability tracked for the call log.
+//  The session's delegate calls arrive on a background queue; everything
+//  is handled on the main actor.
 //
 
 import Foundation
@@ -20,13 +20,6 @@ final class WatchLink: ObservableObject {
     @Published private(set) var isCompanionInstalled = false
     /// Every reachable ↔ unreachable change since launch.
     private(set) var reachabilityChanges = 0
-
-    /// The running call's and link test's handlers.
-    var onMessage: ((WatchVoiceWire.Message) -> Void)?
-    var onCallPacket: ((WatchVoicePacket) -> Void)?
-    var onSoakPacket: ((WatchVoicePacket) -> Void)?
-    var onReachabilityChange: ((Bool) -> Void)?
-    var onSoakReachabilityChange: ((Bool) -> Void)?
 
     private let proxy = SessionDelegateProxy()
 
@@ -77,49 +70,18 @@ final class WatchLink: ObservableObject {
         return true
     }
 
-    /// Sends a packet; `done` gets the round trip to the iPhone's
-    /// acknowledgement, or the error.
-    func send(_ packet: WatchVoicePacket, done: @escaping (Result<TimeInterval, Error>) -> Void) {
-        let session = WCSession.default
-        guard session.activationState == .activated else {
-            done(.failure(WatchLinkError.notActivated))
-            return
-        }
-        let sentAt = Date()
-        session.sendMessageData(packet.encoded(), replyHandler: { _ in
-            let roundTrip = Date().timeIntervalSince(sentAt)
-            WatchVoiceMain.async { done(.success(roundTrip)) }
-        }, errorHandler: { error in
-            WatchVoiceMain.async { done(.failure(error)) }
-        })
-    }
-
     fileprivate func activationCompleted(_ session: WCSession) {
         isActivated = session.activationState == .activated
         isCompanionInstalled = session.isCompanionAppInstalled
         isReachable = session.isReachable
-        WatchProbeLog.shared.note("linkActivated", ["reachable": session.isReachable, "companionInstalled": session.isCompanionAppInstalled])
+        WatchCallLog.shared.note("linkActivated", ["reachable": session.isReachable, "companionInstalled": session.isCompanionAppInstalled])
     }
 
     fileprivate func reachabilityChanged(_ reachable: Bool) {
         guard reachable != isReachable else { return }
         isReachable = reachable
         reachabilityChanges += 1
-        WatchProbeLog.shared.note("reachability", ["reachable": reachable])
-        onReachabilityChange?(reachable)
-        onSoakReachabilityChange?(reachable)
-    }
-
-    /// A link test's results come back as replies, never on their own.
-    fileprivate func received(_ message: WatchVoiceWire.Message) {
-        onMessage?(message)
-    }
-
-    fileprivate func received(_ packet: WatchVoicePacket) {
-        switch packet.kind {
-        case .callAudio: onCallPacket?(packet)
-        case .soak: onSoakPacket?(packet)
-        }
+        WatchCallLog.shared.note("reachability", ["reachable": reachable])
     }
 }
 
@@ -128,7 +90,7 @@ enum WatchLinkError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notActivated: return "The link to the iPhone isn't ready."
+        case .notActivated: return String(localized: "The link to your iPhone isn't ready.")
         }
     }
 }
@@ -147,26 +109,9 @@ private final class SessionDelegateProxy: NSObject, WCSessionDelegate {
         WatchVoiceMain.async { [weak self] in self?.link?.reachabilityChanged(reachable) }
     }
 
-    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-        guard let decoded = WatchVoiceWire.decode(message) else { return }
-        WatchVoiceMain.async { [weak self] in self?.link?.received(decoded) }
-    }
-
+    // The iPhone only ever answers the Watch's messages: anything it sends
+    // on its own is acknowledged and dropped.
     func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
         replyHandler([:])
-        guard let decoded = WatchVoiceWire.decode(message) else { return }
-        WatchVoiceMain.async { [weak self] in self?.link?.received(decoded) }
-    }
-
-    func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
-        guard let packet = WatchVoicePacket(data: messageData) else { return }
-        WatchVoiceMain.async { [weak self] in self?.link?.received(packet) }
-    }
-
-    func session(_ session: WCSession, didReceiveMessageData messageData: Data, replyHandler: @escaping (Data) -> Void) {
-        // The acknowledgement is the sender's flow control: answer first.
-        replyHandler(Data())
-        guard let packet = WatchVoicePacket(data: messageData) else { return }
-        WatchVoiceMain.async { [weak self] in self?.link?.received(packet) }
     }
 }

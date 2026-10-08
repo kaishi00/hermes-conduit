@@ -2,8 +2,8 @@
 //  WatchDirectBroker.swift
 //  Conduit
 //
-//  The iPhone's part in a Watch call to Gemini Live (test T2 of
-//  designs/apple-watch-voice-direct.md). The Watch runs the session; this
+//  The iPhone's part in a Watch call to Gemini Live
+//  (designs/apple-watch-voice-direct.md). The Watch runs the session; this
 //  side brokers it and runs its tools:
 //  - builds the setup a Gemini Live call on this phone gets (instructions,
 //    persona, memory, functions, voice) and a single-use token;
@@ -109,10 +109,7 @@ final class WatchDirectBroker {
     private var jobCalls: [String: Task<[GeminiLiveToolBridge.Outgoing], Never>] = [:]
     private var jobCallOrder: [String] = []
 
-    private lazy var grantClient = WatchToolGrantClient(request: { path, method, body, timeout in
-        guard let bridge = AppStateRuntimeRegistry.shared.appState.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    })
+    private lazy var grantClient = WatchToolGrantClient.activeDashboard()
 
     init(link: WatchVoiceLink) {
         self.link = link
@@ -129,7 +126,7 @@ final class WatchDirectBroker {
         switch message {
         case .directStart(let id, let version):
             guard version == WatchVoiceWire.version else {
-                answer(.callRefused(callID: id, reason: "Update Conduit on your iPhone and Watch to the same build."))
+                answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
             }
             let end = Self.beginBackgroundTask("conduit.watchDirect.start")
@@ -150,11 +147,11 @@ final class WatchDirectBroker {
             }
         case .bridgeStart(let id, let version, let engine):
             guard version == WatchVoiceWire.version else {
-                answer(.callRefused(callID: id, reason: "Update Conduit on your iPhone and Watch to the same build."))
+                answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
             }
             guard engine == WatchAudioBridgeWire.gptLive else {
-                answer(.callRefused(callID: id, reason: "This build runs only GPT-Live through Hermes on the Watch."))
+                answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
             }
             let end = Self.beginBackgroundTask("conduit.watchBridge.start")
@@ -189,10 +186,10 @@ final class WatchDirectBroker {
                         return
                     }
                     answer(.directTokenIssued(callID: id, token: .init(token)))
-                    self.link.log.note("watchDirectToken", ["ok": true, "ms": Self.milliseconds(since: startedAt), "appState": WatchProbeLiveness.appStateName])
+                    self.link.log.note("watchDirectToken", ["ok": true, "ms": Self.milliseconds(since: startedAt), "appState": WatchVoiceLink.appStateName])
                 } catch {
                     answer(.callRefused(callID: id, reason: UserFacingError.message(for: error)))
-                    self.link.log.note("watchDirectToken", ["ok": false, "error": error.localizedDescription, "appState": WatchProbeLiveness.appStateName])
+                    self.link.log.note("watchDirectToken", ["ok": false, "error": error.localizedDescription, "appState": WatchVoiceLink.appStateName])
                 }
             }
         case .directTool(let id, let call):
@@ -245,7 +242,7 @@ final class WatchDirectBroker {
         let startedAt = Date()
         link.log.note("watchDirectStart", [
             "callID": Int(id),
-            "appState": WatchProbeLiveness.appStateName,
+            "appState": WatchVoiceLink.appStateName,
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
@@ -280,7 +277,7 @@ final class WatchDirectBroker {
             if grant?.voiceApprovals == true { functions.append(WatchJobAnswer.answerApprovalDeclaration) }
             let setup = WatchVoiceWire.DirectSetup(systemInstruction: plan.systemInstruction, functions: functions)
             guard setup.functions.count == functions.count, let packed = setup.compressed() else {
-                throw WatchDirectPrepareError("The call's setup couldn't be packed for the Watch.")
+                throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch."))
             }
             let session = WatchVoiceWire.DirectSession(
                 token: .init(plan.token),
@@ -301,7 +298,7 @@ final class WatchDirectBroker {
                 "memory": plan.memoryIncluded,
                 "personality": plan.personalityIncluded,
                 "toolGrant": grant != nil,
-                "appState": WatchProbeLiveness.appStateName,
+                "appState": WatchVoiceLink.appStateName,
             ])
             return .directSession(callID: id, session: session)
         } catch {
@@ -310,7 +307,7 @@ final class WatchDirectBroker {
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
                 "error": reason,
-                "appState": WatchProbeLiveness.appStateName,
+                "appState": WatchVoiceLink.appStateName,
             ])
             if callID == id { endCall() }
             return .callRefused(callID: id, reason: reason)
@@ -342,7 +339,7 @@ final class WatchDirectBroker {
         link.log.note("watchBridgeStart", [
             "callID": Int(id),
             "engine": engine,
-            "appState": WatchProbeLiveness.appStateName,
+            "appState": WatchVoiceLink.appStateName,
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
@@ -367,8 +364,8 @@ final class WatchDirectBroker {
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio else {
-                throw WatchDirectPrepareError(lastGrantError.map { "Hermes couldn't open GPT-Live for the Watch: \($0)" }
-                    ?? "Hermes couldn't open GPT-Live for the Watch. Update the Hermes notifier plugin and the push relay.")
+                throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open GPT-Live for the Watch: \($0)") }
+                    ?? AppLocalization.string("Hermes couldn't open GPT-Live for the Watch. Update the Conduit notifier plugin and the push relay."))
             }
             if !audio.engines.contains(engine) {
                 try await prepareRuntime(id, profile: plan.connection.profile)
@@ -378,7 +375,7 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             guard let packed = WatchVoiceWire.BridgeSession.pack(plan.briefing) else {
-                throw WatchDirectPrepareError("The call's briefing couldn't be packed for the Watch.")
+                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing couldn't be packed for the Watch."))
             }
             let reply = WatchVoiceWire.Message.bridgeSession(callID: id, session: .init(
                 engine: engine,
@@ -391,10 +388,10 @@ final class WatchDirectBroker {
             // The reply travels in one Watch message, which carries about
             // 65 KB as sent (the briefing as base64 in JSON).
             guard let replyBytes = (WatchVoiceWire.encode(reply)[WatchVoiceWire.messageKey] as? Data)?.count else {
-                throw WatchDirectPrepareError("The call's briefing couldn't be packed for the Watch.")
+                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing couldn't be packed for the Watch."))
             }
             guard replyBytes <= Self.bridgeReplyLimit else {
-                throw WatchDirectPrepareError("The call's briefing (memory and persona) is too large to send to the Watch.")
+                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing (memory and persona) is too large to send to the Watch."))
             }
             link.log.note("watchBridgePrepared", [
                 "callID": Int(id),
@@ -406,7 +403,7 @@ final class WatchDirectBroker {
                 "engines": audio.engines,
                 "memory": plan.memoryIncluded,
                 "personality": plan.personalityIncluded,
-                "appState": WatchProbeLiveness.appStateName,
+                "appState": WatchVoiceLink.appStateName,
             ])
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
@@ -416,7 +413,7 @@ final class WatchDirectBroker {
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
                 "error": reason,
-                "appState": WatchProbeLiveness.appStateName,
+                "appState": WatchVoiceLink.appStateName,
             ])
             if callID == id { endCall() }
             return .callRefused(callID: id, reason: reason)
@@ -457,9 +454,9 @@ final class WatchDirectBroker {
         case "ready":
             return
         case "preparing":
-            throw WatchDirectPrepareError("Hermes is setting up GPT-Live for the Watch, which takes a few minutes the first time. Try again shortly.")
+            throw WatchDirectPrepareError(AppLocalization.string("Hermes is setting up GPT-Live for the Watch, which takes a few minutes the first time. Try again shortly."))
         default:
-            throw WatchDirectPrepareError(status.reason ?? "Hermes couldn't set up GPT-Live for the Watch.")
+            throw WatchDirectPrepareError(status.reason ?? AppLocalization.string("Hermes couldn't set up GPT-Live for the Watch."))
         }
     }
 
@@ -529,7 +526,7 @@ final class WatchDirectBroker {
                 "ms": Self.milliseconds(since: startedAt),
                 "connected": connected,
                 "queued": true,
-                "appState": WatchProbeLiveness.appStateName,
+                "appState": WatchVoiceLink.appStateName,
             ]
             fields.merge(Self.answerSummary(late, answering: call.id)) { first, _ in first }
             link.log.note("watchDirectTool", fields)
@@ -555,7 +552,7 @@ final class WatchDirectBroker {
             "connected": connected,
             "queued": false,
             "outgoing": outgoing.count,
-            "appState": WatchProbeLiveness.appStateName,
+            "appState": WatchVoiceLink.appStateName,
         ]
         fields.merge(Self.answerSummary(outgoing, answering: call.id)) { first, _ in first }
         link.log.note("watchDirectTool", fields)
@@ -573,7 +570,7 @@ final class WatchDirectBroker {
     /// A call on a connection the phone has left: refused, and the Watch's
     /// call ends, as the phone's own call does at a switch.
     private func refused(_ call: WatchVoiceWire.DirectToolCall, waiting: Bool) -> WatchVoiceWire.DirectToolResult {
-        link.log.note("watchDirectTool", ["name": call.name, "connectionChanged": true, "queued": !waiting, "appState": WatchProbeLiveness.appStateName])
+        link.log.note("watchDirectTool", ["name": call.name, "connectionChanged": true, "queued": !waiting, "appState": WatchVoiceLink.appStateName])
         guard waiting else { return WatchVoiceWire.DirectToolResult(outgoing: [], runningJobs: 0) }
         let answer = GeminiLiveToolBridge.Outgoing.toolResponse(id: call.id, name: call.name, result: ["error": WatchVoiceStartFailure.connectionChanged], scheduling: nil)
         return WatchVoiceWire.DirectToolResult(outgoing: [Self.wire(answer), .endConversation], runningJobs: 0)
@@ -584,7 +581,7 @@ final class WatchDirectBroker {
     /// have the job, so it isn't sent again.
     private func replayedJobCall(_ call: WatchVoiceWire.DirectToolCall, waiting: Bool) -> WatchVoiceWire.DirectToolResult {
         let runningJobs = appState.voiceBackgroundJobSupervisor.activeJobCount
-        link.log.note("watchDirectTool", ["name": call.name, "replay": true, "queued": !waiting, "appState": WatchProbeLiveness.appStateName])
+        link.log.note("watchDirectTool", ["name": call.name, "replay": true, "queued": !waiting, "appState": WatchVoiceLink.appStateName])
         guard waiting else { return WatchVoiceWire.DirectToolResult(outgoing: [], runningJobs: runningJobs) }
         let answer = GeminiLiveToolBridge.Outgoing.toolResponse(id: call.id, name: call.name, result: Self.jobAlreadySent, scheduling: nil)
         return WatchVoiceWire.DirectToolResult(outgoing: [Self.wire(answer)], runningJobs: runningJobs)
@@ -600,7 +597,7 @@ final class WatchDirectBroker {
     ) async -> WatchVoiceWire.DirectToolResult {
         let runningJobs = appState.voiceBackgroundJobSupervisor.activeJobCount
         guard waiting else {
-            link.log.note("watchDirectTool", ["name": call.name, "repeat": true, "queued": true, "appState": WatchProbeLiveness.appStateName])
+            link.log.note("watchDirectTool", ["name": call.name, "repeat": true, "queued": true, "appState": WatchVoiceLink.appStateName])
             return WatchVoiceWire.DirectToolResult(outgoing: [], runningJobs: runningJobs)
         }
         let answer = (await Self.value(of: earlier, within: Self.jobStartWait) ?? []).filter { $0.answers(call.id) }
@@ -612,7 +609,7 @@ final class WatchDirectBroker {
             "repeat": true,
             "ms": Self.milliseconds(since: startedAt),
             "queued": false,
-            "appState": WatchProbeLiveness.appStateName,
+            "appState": WatchVoiceLink.appStateName,
         ]
         fields.merge(Self.answerSummary(outgoing, answering: call.id)) { first, _ in first }
         link.log.note("watchDirectTool", fields)
@@ -657,7 +654,7 @@ final class WatchDirectBroker {
             return nil
         }
         if !news.isEmpty {
-            link.log.note("watchDirectPoll", ["news": news.count, "newsChars": news, "appState": WatchProbeLiveness.appStateName])
+            link.log.note("watchDirectPoll", ["news": news.count, "newsChars": news, "appState": WatchVoiceLink.appStateName])
         }
         return result(updates, bridge: bridge)
     }
@@ -800,7 +797,7 @@ final class WatchDirectBroker {
         guard onCallsConnection(id) else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged) }
         adoptIfKnown(id)
         guard id == callID, let profile = connection?.profile, !grantTools.isEmpty || !grantJobTools.isEmpty || grantLiveToken else {
-            return .callRefused(callID: id, reason: "This call has no Watch lookups to renew.")
+            return .callRefused(callID: id, reason: AppLocalization.string("This call has no Watch lookups to renew."))
         }
         guard await appState.connectForWatchDirectCall(timeout: Self.connectWait) else {
             return .callRefused(callID: id, reason: WatchVoiceStartFailure.hermesUnreachable)
@@ -810,7 +807,7 @@ final class WatchDirectBroker {
         let renewed = await requestGrant(id, profile: profile, carryJobsFrom: carry)
         if callID == id { ledger.setGrant(grantScope, for: id) }
         guard let grant = renewed else {
-            return .callRefused(callID: id, reason: "Hermes couldn't renew the Watch lookups.")
+            return .callRefused(callID: id, reason: AppLocalization.string("Hermes couldn't renew the Watch lookups."))
         }
         // Ending the call revokes the new grant with the others.
         guard onCallsConnection(id) else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged) }
@@ -891,7 +888,7 @@ final class WatchDirectBroker {
             "lines": transcript.turns.count,
             "current": isCurrent,
             "known": known != nil,
-            "appState": WatchProbeLiveness.appStateName,
+            "appState": WatchVoiceLink.appStateName,
         ])
         if isCurrent { endCall(keepRecovery: true) }
         let appState = self.appState

@@ -509,8 +509,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
 
 /// The live controller's audio seams, choosing for each call between the
 /// default audio (separate microphone and speaker, half duplex on an open
-/// speaker), the echo-cancelling one (speaker barge-in), and an Apple
-/// Watch's microphone and speaker for a call the Watch started. The choice is
+/// speaker) and the echo-cancelling one (speaker barge-in). The choice is
 /// made when the call first uses audio and kept until the speaker side
 /// stops with the microphone off (the controller does that only when a
 /// call ends or fails), so a setting changed mid-call, mutes included,
@@ -522,9 +521,6 @@ final class LiveVoiceAudioSelector {
     private let wantsEchoCancellation: @MainActor () -> Bool
     private let makeStandard: @MainActor () -> Pair
     private let makeEchoCancelling: @MainActor () -> Pair
-    private let wantsWatch: @MainActor () -> Bool
-    /// The Watch call's own pair, nil once no Watch call is linked.
-    private let makeWatch: @MainActor () -> Pair?
     private var standard: Pair?
     private var echoCancelling: Pair?
     private var current: Pair?
@@ -534,20 +530,15 @@ final class LiveVoiceAudioSelector {
         didSet { current?.input.onChunk = onChunk }
     }
     var onInterrupted: (@MainActor () -> Void)?
-    var onAudioReturned: (@MainActor () -> Void)?
 
     init(
         wantsEchoCancellation: @escaping @MainActor () -> Bool,
         makeStandard: @escaping @MainActor () -> Pair,
-        makeEchoCancelling: @escaping @MainActor () -> Pair,
-        wantsWatch: @escaping @MainActor () -> Bool = { false },
-        makeWatch: @escaping @MainActor () -> Pair? = { nil }
+        makeEchoCancelling: @escaping @MainActor () -> Pair
     ) {
         self.wantsEchoCancellation = wantsEchoCancellation
         self.makeStandard = makeStandard
         self.makeEchoCancelling = makeEchoCancelling
-        self.wantsWatch = wantsWatch
-        self.makeWatch = makeWatch
     }
 
     var input: GeminiLiveAudioInput { Input(selector: self) }
@@ -571,15 +562,9 @@ final class LiveVoiceAudioSelector {
 
     private func selected() -> Pair {
         if let current { return current }
-        let chosen: Pair
-        if wantsWatch(), let watch = makeWatch() {
-            chosen = watch
-        } else {
-            chosen = pair(echoCancelling: wantsEchoCancellation())
-        }
+        let chosen = pair(echoCancelling: wantsEchoCancellation())
         chosen.input.onChunk = onChunk
         chosen.input.onInterrupted = { [weak self] in self?.inputInterrupted() }
-        chosen.input.onAudioReturned = { [weak self] in self?.onAudioReturned?() }
         current = chosen
         return chosen
     }
@@ -589,15 +574,12 @@ final class LiveVoiceAudioSelector {
         guard !inputRunning, let released = current else { return }
         released.input.onChunk = nil
         released.input.onInterrupted = nil
-        released.input.onAudioReturned = nil
         current = nil
     }
 
-    /// Asked before a call has any audio, so it builds nothing. A Watch
-    /// call uses the Watch's microphone, which the Watch asks for.
+    /// Asked before a call has any audio, so it builds nothing.
     fileprivate func requestPermission() async -> Bool {
-        if wantsWatch() { return true }
-        return await EchoCancellingLiveVoiceAudio.requestPermission()
+        await EchoCancellingLiveVoiceAudio.requestPermission()
     }
 
     fileprivate func startInput() throws {
@@ -655,10 +637,6 @@ final class LiveVoiceAudioSelector {
         var onInterrupted: (@MainActor () -> Void)? {
             get { selector.onInterrupted }
             set { selector.onInterrupted = newValue }
-        }
-        var onAudioReturned: (@MainActor () -> Void)? {
-            get { selector.onAudioReturned }
-            set { selector.onAudioReturned = newValue }
         }
         var cancelsEcho: Bool { selector.cancelsEcho }
         func requestPermission() async -> Bool { await selector.requestPermission() }

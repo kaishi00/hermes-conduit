@@ -162,7 +162,6 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
 final class FakeGeminiLiveInput: GeminiLiveAudioInput {
     var onChunk: (@MainActor (Data) -> Void)?
     var onInterrupted: (@MainActor () -> Void)?
-    var onAudioReturned: (@MainActor () -> Void)?
     var cancelsEcho = false
     private(set) var starts = 0
     var permission = true
@@ -1496,60 +1495,6 @@ extension VoiceConversationControllerTests {
         output.stop()
     }
 
-    /// Apple Watch proof of concept: only a call the Watch started uses
-    /// the Watch's microphone and speaker, and a Watch that's gone by the
-    /// time the call needs audio leaves it on the phone's own.
-    func testLiveVoiceAudioUsesTheWatchOnlyForAWatchCall() throws {
-        var watchCall = false
-        var watchPair: LiveVoiceAudioSelector.Pair?
-        var watchAsked = 0
-        let standardInput = FakeGeminiLiveInput()
-        let watchInput = FakeGeminiLiveInput()
-        let watchOutput = FakeGeminiLiveOutput()
-        let selector = LiveVoiceAudioSelector(
-            wantsEchoCancellation: { false },
-            makeStandard: { (standardInput, FakeGeminiLiveOutput()) },
-            makeEchoCancelling: { (FakeGeminiLiveInput(), FakeGeminiLiveOutput()) },
-            wantsWatch: { watchCall },
-            makeWatch: {
-                watchAsked += 1
-                return watchPair
-            }
-        )
-        let input = selector.input
-        let output = selector.output
-        var returned = 0
-        input.onAudioReturned = { returned += 1 }
-
-        // A call on the phone never asks the Watch.
-        try input.start()
-        XCTAssertTrue(standardInput.running)
-        XCTAssertEqual(watchAsked, 0)
-        input.stop()
-        output.stop()
-
-        // A Watch call runs on the Watch's microphone and speaker.
-        watchCall = true
-        watchPair = (watchInput, watchOutput)
-        try input.start()
-        XCTAssertTrue(watchInput.running)
-        XCTAssertEqual(standardInput.starts, 1)
-        try output.play(Data([0, 0]), sampleRate: 24_000)
-        XCTAssertEqual(watchOutput.played, 1)
-        watchInput.onAudioReturned?()
-        XCTAssertEqual(returned, 1, "The Watch's cue reaches the controller")
-        input.stop()
-        output.stop()
-        XCTAssertNil(watchInput.onAudioReturned, "A released pair keeps no call's handlers")
-
-        // The Watch went away before the call used audio.
-        watchPair = nil
-        try input.start()
-        XCTAssertEqual(standardInput.starts, 2)
-        input.stop()
-        output.stop()
-    }
-
     func testLiveVoiceAudioKeepsTheCallsChoiceThroughMutesAndInterruptions() throws {
         var wantsEchoCancellation = false
         let standardInput = FakeGeminiLiveInput()
@@ -1832,31 +1777,6 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(controller.phase, .listening, "The call carries on once the alarm stops")
         XCTAssertTrue(input.running)
         XCTAssertFalse(controller.isAudioPausedForTesting)
-        controller.stop()
-    }
-
-    /// Apple Watch proof of concept: the Watch's microphone stopping and
-    /// coming back is a cue only the input sees, never the phone's own
-    /// audio session. Muted, that cue is all the call can go on.
-    func testGeminiLiveListensAgainWhenItsInputSaysTheAudioIsBack() async {
-        let (controller, session, input, _, _) = makeGeminiController(clock: Date.init)
-        await controller.start()
-        session.becomeReady()
-        input.startError = WatchVoiceAudioError.watchNotStreaming
-        input.stop()
-        input.onInterrupted?()
-        controller.setMicrophoneMuted(true)
-        XCTAssertEqual(controller.phase, .paused)
-        XCTAssertNotNil(input.onAudioReturned)
-
-        input.onAudioReturned?()
-        await settle(until: { controller.phase == .listening })
-        XCTAssertEqual(controller.phase, .listening)
-        XCTAssertFalse(controller.isAudioPausedForTesting)
-
-        input.startError = nil
-        controller.setMicrophoneMuted(false)
-        XCTAssertTrue(input.running)
         controller.stop()
     }
 

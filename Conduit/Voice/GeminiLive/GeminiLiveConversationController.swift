@@ -53,10 +53,6 @@ protocol GeminiLiveAudioInput: AnyObject {
     var onChunk: (@MainActor (Data) -> Void)? { get set }
     /// The system stopped capture (an audio interruption: a call, Siri…).
     var onInterrupted: (@MainActor () -> Void)? { get set }
-    /// The audio came back after `onInterrupted` somewhere this device's
-    /// audio session doesn't see (an Apple Watch's microphone): the call
-    /// can resume now.
-    var onAudioReturned: (@MainActor () -> Void)? { get set }
     /// The microphone hears the speaker with its echo cancelled (the
     /// speaker barge-in audio): the model's own voice can't read as the
     /// user, so the microphone stays open while it speaks on any route.
@@ -68,12 +64,6 @@ protocol GeminiLiveAudioInput: AnyObject {
 
 extension GeminiLiveAudioInput {
     var cancelsEcho: Bool { false }
-    /// The phone's own audio comes back through its audio session's
-    /// notifications instead.
-    var onAudioReturned: (@MainActor () -> Void)? {
-        get { nil }
-        set {}
-    }
 }
 
 @MainActor
@@ -346,7 +336,7 @@ final class GeminiLiveConversationController: ObservableObject {
     private var heldOutcomes: [HeldOutcome] = []
     /// Bumped on every start, so work armed for one call never acts on
     /// the next.
-    private(set) var callEpoch = 0
+    private var callEpoch = 0
     /// Typed exchanges in the attached chat (#363), sent while idle as
     /// context the model keeps without answering.
     private var pendingContextNotes: [String] = []
@@ -511,9 +501,6 @@ final class GeminiLiveConversationController: ObservableObject {
         self.session = session
         input.onChunk = { [weak self] chunk in self?.microphoneChunk(chunk) }
         input.onInterrupted = { [weak self] in self?.captureInterrupted() }
-        input.onAudioReturned = { [weak self] in
-            self?.scheduleAudioResume(delays: Self.audioResumeDelays, audioReturned: true)
-        }
         session.start()
     }
 

@@ -1,0 +1,268 @@
+//
+//  WatchVoiceCall.swift
+//  Conduit Watch
+//
+//  The one call the Watch app shows, whichever engine runs it: Gemini Live
+//  on the Watch itself (WatchDirectCallModel), or GPT-Live through the
+//  Hermes host's audio bridge (WatchBridgeCallModel). The screens read the
+//  call from here and send its controls here, so they never depend on the
+//  engine.
+//
+
+import Combine
+import SwiftUI
+import WatchKit
+
+/// Why a call ended, when nothing went wrong: the screens don't show
+/// these as errors.
+enum WatchCallEnd {
+    static let byUser = "ended on the Watch"
+    static let goodbye = "Hermes said goodbye."
+
+    static func isNormal(_ reason: String?) -> Bool {
+        guard let reason else { return true }
+        return reason == byUser || reason == goodbye
+    }
+}
+
+/// The voice a Watch call talks to, picked on the Watch.
+enum WatchVoiceEngine: String, CaseIterable, Identifiable {
+    case geminiLive
+    case gptLive
+
+    static let storageKey = "watchVoice.engine"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .geminiLive: return String(localized: "Gemini Live")
+        case .gptLive: return String(localized: "GPT-Live")
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .geminiLive: return String(localized: "Runs on your Watch")
+        case .gptLive: return String(localized: "Runs on your Hermes host")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .geminiLive: return "sparkles"
+        case .gptLive: return "waveform.path.ecg"
+        }
+    }
+}
+
+@MainActor
+final class WatchVoiceCall: ObservableObject {
+    enum Phase: Equatable {
+        case idle
+        /// Starting the Watch's audio and asking the iPhone for the call.
+        case preparing
+        case connecting
+        case listening
+        case speaking
+        case reconnecting
+        /// The connection broke and a fresh one waits for the iPhone: the
+        /// wrist comes up.
+        case lost
+        /// Siri or an alarm took the microphone: a tap brings it back.
+        case needsTap
+        case ending
+        case ended(String?)
+    }
+
+    @Published var engine: WatchVoiceEngine {
+        didSet { UserDefaults.standard.set(engine.rawValue, forKey: WatchVoiceEngine.storageKey) }
+    }
+    /// The engine of the call on screen, which a change of `engine` during
+    /// the call doesn't move.
+    @Published private(set) var callEngine: WatchVoiceEngine
+    @Published private(set) var phase: Phase = .idle
+    @Published private(set) var caption: String?
+    @Published private(set) var transcript: [WatchVoiceWire.DirectTurn] = []
+    @Published private(set) var isMuted = false
+    @Published private(set) var jobsRunning = 0
+    @Published private(set) var pendingApproval: WatchJobAnswer.Approval?
+    /// When the call connected, for the call timer.
+    @Published private(set) var liveSince: Date?
+    @Published private(set) var endedAt: Date?
+
+    let direct = WatchDirectCallModel()
+    let bridge = WatchBridgeCallModel()
+    private var cancellables: Set<AnyCancellable> = []
+    private var refreshQueued = false
+    /// The ended call's summary was dismissed: its model's end is old news
+    /// until the next call starts.
+    private var summaryDismissed = false
+
+    init() {
+        let stored = UserDefaults.standard.string(forKey: WatchVoiceEngine.storageKey).flatMap(WatchVoiceEngine.init(rawValue:))
+        engine = stored ?? .geminiLive
+        callEngine = stored ?? .geminiLive
+        // Models publish before they change: read them once the change is in.
+        for model in [direct.objectWillChange, bridge.objectWillChange] {
+            model.sink { [weak self] _ in self?.queueRefresh() }.store(in: &cancellables)
+        }
+    }
+
+    /// A call is starting, running or ending.
+    var isActive: Bool {
+        switch phase {
+        case .idle, .ended: return false
+        default: return true
+        }
+    }
+
+    /// The call screen is up: a call is on, or one just ended and its
+    /// summary hasn't been dismissed.
+    var isPresenting: Bool { phase != .idle }
+
+    var endedReason: String? {
+        if case .ended(let reason) = phase { return reason }
+        return nil
+    }
+
+    // MARK: Controls
+
+    func start() {
+        guard !isActive else { return }
+        callEngine = engine
+        summaryDismissed = false
+        liveSince = nil
+        endedAt = nil
+        caption = nil
+        transcript = []
+        phase = .preparing
+        switch callEngine {
+        case .geminiLive: Task { await direct.start() }
+        case .gptLive: Task { await bridge.start() }
+        }
+    }
+
+    func end() {
+        switch callEngine {
+        case .geminiLive: direct.end()
+        case .gptLive: bridge.end()
+        }
+    }
+
+    /// Stops the voice while it speaks; brings the microphone back after
+    /// Siri or an alarm.
+    func tap() {
+        switch callEngine {
+        case .geminiLive: direct.tapOrb()
+        case .gptLive: bridge.tapOrb()
+        }
+    }
+
+    func toggleMute() {
+        switch callEngine {
+        case .geminiLive: direct.toggleMute()
+        case .gptLive: bridge.toggleMute()
+        }
+    }
+
+    func answerApproval(approve: Bool) {
+        switch callEngine {
+        case .geminiLive: direct.answerApproval(approve: approve)
+        case .gptLive: bridge.answerApproval(approve: approve)
+        }
+    }
+
+    /// Back to the home screen after a call's summary.
+    func dismissEnded() {
+        guard case .ended = phase else { return }
+        summaryDismissed = true
+        phase = .idle
+        caption = nil
+        transcript = []
+        liveSince = nil
+    }
+
+    func scenePhaseChanged(_ newPhase: ScenePhase) {
+        direct.scenePhaseChanged(newPhase)
+        bridge.scenePhaseChanged(newPhase)
+        WatchCallLog.shared.note("scenePhase", ["phase": "\(newPhase)", "reachable": WatchLink.shared.isReachable])
+    }
+
+    // MARK: State
+
+    private func queueRefresh() {
+        guard !refreshQueued else { return }
+        refreshQueued = true
+        WatchVoiceMain.async { [weak self] in
+            guard let self else { return }
+            self.refreshQueued = false
+            self.refresh()
+        }
+    }
+
+    private func refresh() {
+        guard !summaryDismissed else { return }
+        let next: Phase
+        switch callEngine {
+        case .geminiLive: next = Self.phase(direct.phase)
+        case .gptLive: next = Self.phase(bridge.phase)
+        }
+        // Only a dismissed summary goes back to the home screen: a model
+        // at rest before its start has run isn't the end of the call, and
+        // still holds the last call's lines.
+        if next == .idle { return }
+        switch callEngine {
+        case .geminiLive:
+            caption = direct.caption
+            transcript = direct.transcript
+            isMuted = direct.isMuted
+            jobsRunning = direct.runningJobs + direct.relayJobsRunning
+            pendingApproval = direct.pendingApproval
+        case .gptLive:
+            caption = bridge.caption
+            transcript = bridge.transcript
+            isMuted = bridge.isMuted
+            jobsRunning = bridge.relayJobsRunning
+            pendingApproval = bridge.pendingApproval
+        }
+        if liveSince == nil, next == .listening || next == .speaking {
+            liveSince = Date()
+            WKInterfaceDevice.current().play(.start)
+        }
+        if case .ended(let reason) = next, endedAt == nil {
+            endedAt = Date()
+            WKInterfaceDevice.current().play(WatchCallEnd.isNormal(reason) ? .stop : .failure)
+        }
+        if phase != next { phase = next }
+    }
+
+    private static func phase(_ phase: WatchDirectCallModel.Phase) -> Phase {
+        switch phase {
+        case .idle: return .idle
+        case .preparing: return .preparing
+        case .connecting: return .connecting
+        case .listening: return .listening
+        case .speaking: return .speaking
+        case .reconnecting: return .reconnecting
+        case .lost: return .lost
+        case .needsTap: return .needsTap
+        case .ending: return .ending
+        case .ended(let reason): return .ended(reason)
+        }
+    }
+
+    private static func phase(_ phase: WatchBridgeCallModel.Phase) -> Phase {
+        switch phase {
+        case .idle: return .idle
+        case .preparing: return .preparing
+        case .connecting: return .connecting
+        case .listening: return .listening
+        case .speaking: return .speaking
+        case .reconnecting: return .reconnecting
+        case .needsTap: return .needsTap
+        case .ending: return .ending
+        case .ended(let reason): return .ended(reason)
+        }
+    }
+}

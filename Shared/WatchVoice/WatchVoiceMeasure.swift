@@ -2,9 +2,9 @@
 //  WatchVoiceMeasure.swift
 //  Conduit and the Conduit Watch app
 //
-//  The measurements the Watch proof of concept reports: when the user
-//  last spoke (a simple level detector, the same on both devices so their
-//  numbers compare), and percentiles of timings.
+//  What a Watch call measures and logs: when the user last spoke (a
+//  simple level detector), percentiles of timings, and the call log's
+//  JSON lines.
 //
 
 import Foundation
@@ -88,5 +88,18 @@ enum WatchVoiceStats {
         guard mirror.displayStyle == .optional else { return value }
         guard let wrapped = mirror.children.first?.value else { return NSNull() }
         return jsonValue(wrapped)
+    }
+
+    /// Keeps a log file from growing without end: past `maxBytes`, only
+    /// its newest half stays, from a line start.
+    static func trimLog(at url: URL, maxBytes: Int) {
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int,
+              size > maxBytes,
+              let data = try? Data(contentsOf: url) else { return }
+        var tail = data.suffix(maxBytes / 2)
+        if let newline = tail.firstIndex(of: UInt8(ascii: "\n")) {
+            tail = tail[tail.index(after: newline)...]
+        }
+        try? Data(tail).write(to: url, options: .atomic)
     }
 }

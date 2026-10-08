@@ -3,7 +3,7 @@
 //  Conduit Watch
 //
 //  A GPT-Live call on the Watch through the Hermes host's audio bridge
-//  (designs/apple-watch-gpt-live.md, test build). GPT-Live on the ChatGPT
+//  (designs/apple-watch-gpt-live.md). GPT-Live on the ChatGPT
 //  subscription speaks WebRTC only, which watchOS doesn't have, so the
 //  conduit_push plugin holds the WebRTC call and the Watch streams to it:
 //  one WebSocket through the push relay, every message sealed with the
@@ -186,7 +186,8 @@ final class WatchBridgeCallModel: ObservableObject {
     private var events: [String: Int] = [:]
 
     // Conversation
-    private var transcript: [WatchVoiceWire.DirectTurn] = []
+    /// The call's settled lines, for the transcript page and the saved call.
+    @Published private(set) var transcript: [WatchVoiceWire.DirectTurn] = []
     /// Lines passed on with a delegation already.
     private var handledLines = 0
     private var userLine = ""
@@ -259,9 +260,6 @@ final class WatchBridgeCallModel: ObservableObject {
             return
         }
         guard callID == id, phase == .preparing else { return }
-        // A CallKit call left from an earlier test would grant the network
-        // itself.
-        if WatchSystemCall.isCreated { WatchSystemCall.shared.endStaleCalls() }
         let activated = await activateAudioSession()
         guard callID == id, phase == .preparing else {
             if activated, !isActive {
@@ -271,14 +269,14 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         audioSessionActivated = activated
         guard activated else {
-            finish("The Watch's audio session didn't start. Try again.")
+            finish(String(localized: "The Watch's audio session didn't start. Try again."))
             return
         }
         lastActivationAt = now
         do {
             try audio.start(options: WatchAudio.Options(activatesSession: false), playbackRate: Self.playbackRate)
         } catch {
-            finish("The microphone didn't start: \(error.localizedDescription)")
+            finish(String(localized: "The microphone didn't start: \(error.localizedDescription)"))
             return
         }
         WKInterfaceDevice.current().isBatteryMonitoringEnabled = true
@@ -303,7 +301,7 @@ final class WatchBridgeCallModel: ObservableObject {
     func end() {
         guard isActive else { return }
         guard live, endRequestedAt == nil else {
-            finish("ended on the Watch")
+            finish(WatchCallEnd.byUser)
             return
         }
         endRequestedAt = now
@@ -412,7 +410,7 @@ final class WatchBridgeCallModel: ObservableObject {
         approvals = []
         pendingApproval = nil
         stopFollowingJobs("approvalsRanOut")
-        caption = "This call's access to Hermes ran out, so it can't answer the job's request."
+        caption = String(localized: "This call's access to Hermes ran out, so it can't answer the job's request.")
     }
 
     // MARK: The call from the iPhone
@@ -429,7 +427,7 @@ final class WatchBridgeCallModel: ObservableObject {
                 self.note("bridgeRefused", ["reason": reason])
                 self.finish(reason)
             default:
-                self.finish("Conduit on the iPhone sent something this Watch app can't read. Update both.")
+                self.finish(String(localized: "Conduit on the iPhone sent something this Watch app can't read. Update both."))
             }
         }, failure: { [weak self] error in
             guard let self, self.callID == id, self.phase == .preparing else { return }
@@ -439,7 +437,7 @@ final class WatchBridgeCallModel: ObservableObject {
                 "attempt": self.sessionRequests,
             ])
             guard self.now - self.callStartedAt < Self.sessionWait else {
-                self.finish("Couldn't reach Conduit on your iPhone.")
+                self.finish(String(localized: "Couldn't reach Conduit on your iPhone."))
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.sessionRetryDelay) { [weak self] in
@@ -456,16 +454,16 @@ final class WatchBridgeCallModel: ObservableObject {
         guard let bridge = session.grant.audio,
               let url = URL(string: bridge.url), url.scheme == "wss",
               let root = WatchToolSeal.data(base64URL: session.grant.key), root.count == 32 else {
-            finish("The iPhone's GPT-Live call couldn't be read. Update Conduit on both devices.")
+            finish(String(localized: "The iPhone's GPT-Live call couldn't be read. Update Conduit on both devices."))
             return
         }
         guard bridge.version == Int(WatchAudioBridgeWire.version) else {
-            finish("Update the Hermes notifier plugin and Conduit to matching versions.")
+            finish(String(localized: "Update the Hermes notifier plugin and Conduit to matching versions."))
             return
         }
         // Delegations, jobs and approvals all go through the grant.
         guard let relayClient = WatchToolRelayClient(session.grant) else {
-            finish("The iPhone's GPT-Live call couldn't be read. Update Conduit on both devices.")
+            finish(String(localized: "The iPhone's GPT-Live call couldn't be read. Update Conduit on both devices."))
             return
         }
         bridgeURL = url
@@ -498,7 +496,7 @@ final class WatchBridgeCallModel: ObservableObject {
         guard isActive, let bridgeURL, let grantID, let grantRoot, let watchKey else { return }
         // A stream id is taken once per grant, and a grant takes 32.
         guard streamsOpened < 30, let stream = WatchAudioBridgeStream(grantID: grantID, root: grantRoot) else {
-            finish("Couldn't reconnect to Hermes.")
+            finish(String(localized: "Couldn't reconnect to Hermes."))
             return
         }
         closeSocket()
@@ -586,13 +584,13 @@ final class WatchBridgeCallModel: ObservableObject {
         live = false
         closeSocket()
         if endRequestedAt != nil {
-            finish("ended on the Watch")
+            finish(WatchCallEnd.byUser)
             return
         }
         // The call's grant ended: closed on Hermes or the relay, or expired.
         if code == 4010 {
             // An error from before a live session isn't why the grant ended.
-            finish((wasLive ? nil : hostError) ?? "The call's access to Hermes ended.")
+            finish((wasLive ? nil : hostError) ?? String(localized: "The call's access to Hermes ended."))
             return
         }
         if !opened { openFailures += 1 }
@@ -608,7 +606,7 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         drops += 1
         guard rejoins < Self.maxRejoins else {
-            finish("Lost the connection to Hermes.")
+            finish(String(localized: "Lost the connection to Hermes."))
             return
         }
         rejoins += 1
@@ -679,7 +677,7 @@ final class WatchBridgeCallModel: ObservableObject {
             // would play at the wrong speed and send mis-framed audio.
             if info.inputRate != Int(Self.captureRate) || info.outputRate != Int(Self.playbackRate) {
                 note("bridgeRateMismatch", ["input": info.inputRate, "output": info.outputRate])
-                finish("Hermes sends GPT-Live's audio in a format this Watch build can't play. Update Conduit and the conduit_push plugin together.")
+                finish(String(localized: "Hermes sends GPT-Live's audio in a format this Watch build can't play. Update Conduit and the conduit_push plugin together."))
                 return
             }
             flushPending()
@@ -1201,7 +1199,7 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         lastTickAt = at
         if phase == .preparing, at - callStartedAt >= Self.sessionWait + 15 {
-            finish("Conduit on your iPhone didn't answer.")
+            finish(String(localized: "Conduit on your iPhone didn't answer."))
             return
         }
         if !live, let sent = startSentAt, at - sent > Self.startedWait {
@@ -1439,7 +1437,7 @@ final class WatchBridgeCallModel: ObservableObject {
         )))
         let battery = WKInterfaceDevice.current().batteryLevel
         WKInterfaceDevice.current().isBatteryMonitoringEnabled = false
-        WatchProbeLog.shared.report("bridgeCallSummary", [
+        WatchCallLog.shared.report("bridgeCallSummary", [
             "callID": Int(callID),
             "engine": Self.engine,
             "reason": reason as Any,
@@ -1488,6 +1486,6 @@ final class WatchBridgeCallModel: ObservableObject {
     }
 
     private func note(_ event: String, _ fields: [String: Any]) {
-        WatchProbeLog.shared.note(event, fields)
+        WatchCallLog.shared.note(event, fields)
     }
 }
