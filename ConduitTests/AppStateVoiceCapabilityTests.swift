@@ -437,8 +437,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         }
     }
 
-    func testBackdropMotionIsCappedAndPausesForPowerOrLifecycle() {
-        XCTAssertEqual(ConduitBackdropMotionPolicy.framesPerSecond, 30)
+    func testBackdropMotionPolicyGatesPowerAndLifecycle() {
         XCTAssertTrue(ConduitBackdropMotionPolicy.shouldAnimate(
             sceneIsActive: true,
             reduceMotion: false,
@@ -483,6 +482,25 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(progress, 0)
             XCTAssertLessThanOrEqual(progress, 1)
         }
+    }
+
+    func testBackdropMotionClockKeepsStaticStartAndResumesWithoutJump() {
+        var clock = ConduitBackdropMotionClock(now: 0)
+        clock.setAnimating(false, at: 0)
+        XCTAssertEqual(clock.progress(at: 100, isAnimating: false), 0, accuracy: 0.000_001)
+
+        clock.setAnimating(true, at: 10)
+        let phaseBeforePause = clock.progress(at: 17, isAnimating: true)
+        clock.setAnimating(false, at: 17)
+        XCTAssertEqual(clock.progress(at: 90, isAnimating: false), phaseBeforePause, accuracy: 0.000_001)
+
+        clock.setAnimating(true, at: 90)
+        XCTAssertEqual(clock.progress(at: 90, isAnimating: true), phaseBeforePause, accuracy: 0.000_001)
+        XCTAssertEqual(
+            clock.progress(at: 91, isAnimating: true),
+            ConduitBackdropMotionPolicy.progress(at: 8),
+            accuracy: 0.000_001
+        )
     }
 
     func testTheCallOrbSpendsSixtyFramesOnlyWhileSpeakingAndHoldsStillWhenHot() {

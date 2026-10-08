@@ -88,18 +88,57 @@ enum ConduitBackdropMotionPolicy {
         lowPowerMode: Bool,
         thermalState: ProcessInfo.ThermalState
     ) -> Bool {
-        sceneIsActive
-            && !reduceMotion
-            && !lowPowerMode
-            && thermalState.rawValue < ProcessInfo.ThermalState.serious.rawValue
+        let thermalStateAllowsMotion = thermalState == .nominal || thermalState == .fair
+        return sceneIsActive && !reduceMotion && !lowPowerMode && thermalStateAllowsMotion
     }
 
     /// One smooth out-and-back drift over 26 seconds, matching the previous
     /// 13-second ease-in/ease-out animation with autoreverse.
-    static func progress(at time: TimeInterval) -> CGFloat {
-        let remainder = time.truncatingRemainder(dividingBy: cycleDuration)
+    static func progress(at activeTime: TimeInterval) -> CGFloat {
+        let remainder = activeTime.truncatingRemainder(dividingBy: cycleDuration)
         let normalized = (remainder < 0 ? remainder + cycleDuration : remainder) / cycleDuration
         return CGFloat((1 - cos(2 * .pi * normalized)) / 2)
+    }
+}
+
+/// Tracks only active monotonic time so a paused backdrop freezes in place and
+/// resumes at the same phase. Reduce Motion from launch keeps the original
+/// static composition until the user enables motion.
+struct ConduitBackdropMotionClock {
+    private var motionOrigin: TimeInterval
+    private var pauseStartedAt: TimeInterval?
+    private var hasAnimated = false
+    private(set) var pausedProgress: CGFloat = 0
+
+    init(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        motionOrigin = now
+    }
+
+    mutating func setAnimating(_ isAnimating: Bool, at now: TimeInterval) {
+        if isAnimating {
+            if let pauseStartedAt {
+                if hasAnimated {
+                    motionOrigin += now - pauseStartedAt
+                } else {
+                    motionOrigin = now
+                }
+                self.pauseStartedAt = nil
+            } else {
+                motionOrigin = now
+            }
+            hasAnimated = true
+        } else {
+            guard pauseStartedAt == nil else { return }
+            pausedProgress = hasAnimated
+                ? ConduitBackdropMotionPolicy.progress(at: now - motionOrigin)
+                : 0
+            pauseStartedAt = now
+        }
+    }
+
+    func progress(at now: TimeInterval, isAnimating: Bool) -> CGFloat {
+        guard isAnimating, hasAnimated else { return pausedProgress }
+        return ConduitBackdropMotionPolicy.progress(at: now - motionOrigin)
     }
 }
 
@@ -108,6 +147,7 @@ struct ConduitBackdrop: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var devicePower = DevicePowerState.shared
+    @State private var motionClock = ConduitBackdropMotionClock()
 
     private var shouldAnimate: Bool {
         ConduitBackdropMotionPolicy.shouldAnimate(
@@ -124,10 +164,11 @@ struct ConduitBackdrop: View {
                 minimumInterval: 1.0 / Double(ConduitBackdropMotionPolicy.framesPerSecond),
                 paused: !shouldAnimate
             )
-        ) { timeline in
+        ) { _ in
             GeometryReader { proxy in
-                let drift = ConduitBackdropMotionPolicy.progress(
-                    at: timeline.date.timeIntervalSinceReferenceDate
+                let drift = motionClock.progress(
+                    at: ProcessInfo.processInfo.systemUptime,
+                    isAnimating: shouldAnimate
                 )
                 ZStack {
                     base
@@ -158,6 +199,9 @@ struct ConduitBackdrop: View {
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
             }
+        }
+        .onChange(of: shouldAnimate, initial: true) { _, isAnimating in
+            motionClock.setAnimating(isAnimating, at: ProcessInfo.processInfo.systemUptime)
         }
         .ignoresSafeArea()
     }
