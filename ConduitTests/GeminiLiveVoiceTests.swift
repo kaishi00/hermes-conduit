@@ -899,7 +899,7 @@ extension VoiceConversationControllerTests {
         }
         engines.append(("GPT-Live", gpt))
         for (engine, text) in engines {
-            XCTAssertTrue(text.contains(LiveVoiceAnswerLength.standard.instructions), "\(engine) gets the answer-length rule")
+            XCTAssertTrue(text.contains(LiveVoiceAnswerLength.standard.instructions(readsBack: true)), "\(engine) gets the answer-length rule")
             XCTAssertFalse(text.localizedCaseInsensitiveContains("keep replies short"), "\(engine) is no longer told to keep it short")
             XCTAssertFalse(text.contains("a few spoken sentences"), engine)
             XCTAssertTrue(text.contains("not how much you say"), "\(engine): a text persona can't make spoken answers terse")
@@ -941,15 +941,15 @@ extension VoiceConversationControllerTests {
         for length in LiveVoiceAnswerLength.allCases {
             let gemini = GeminiLiveConversationController.instructions(search: .google, answerLength: length)
             let gpt = GPTLiveConversationController.briefing(answerLength: length)
-            XCTAssertTrue(gemini.contains(length.instructions), "\(length)")
-            XCTAssertTrue(gpt.contains(length.instructions), "\(length)")
+            XCTAssertTrue(gemini.contains(length.instructions(readsBack: true)), "\(length)")
+            XCTAssertTrue(gpt.contains(length.instructions(readsBack: true)), "\(length)")
             for other in LiveVoiceAnswerLength.allCases where other != length {
-                XCTAssertFalse(gemini.contains(other.instructions), "\(length): one length rule per call")
-                XCTAssertFalse(gpt.contains(other.instructions), "\(length): one length rule per call")
+                XCTAssertFalse(gemini.contains(other.instructions(readsBack: true)), "\(length): one length rule per call")
+                XCTAssertFalse(gpt.contains(other.instructions(readsBack: true)), "\(length): one length rule per call")
             }
         }
-        XCTAssertFalse(LiveVoiceAnswerLength.concise.instructions.contains("Keep it short only"), "Concise doesn't contradict itself")
-        XCTAssertTrue(LiveVoiceAnswerLength.detailed.instructions.contains("in depth"))
+        XCTAssertFalse(LiveVoiceAnswerLength.concise.instructions(readsBack: true).contains("Keep it short only"), "Concise doesn't contradict itself")
+        XCTAssertTrue(LiveVoiceAnswerLength.detailed.instructions(readsBack: true).contains("in depth"))
         XCTAssertEqual(LiveVoiceStyle(answerLength: .detailed).instructions, "", "the length goes in the rules, not the style block")
 
         let suite = "LiveVoiceAnswerLength.\(UUID().uuidString)"
@@ -962,7 +962,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, .concise)
 
         // What the next call gets, through the same builders the sessions use.
-        let detailed = LiveVoiceAnswerLength.detailed.instructions
+        let detailed = LiveVoiceAnswerLength.detailed.instructions(readsBack: true)
         appState.setLiveVoiceStyle(LiveVoiceStyle(answerLength: .detailed))
         appState.setGeminiLiveEnabled(true)
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "Gemini Live")
@@ -975,7 +975,7 @@ extension VoiceConversationControllerTests {
 
         appState.setLiveVoiceStyle(LiveVoiceStyle())
         XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, "Default is stored as nothing")
-        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LiveVoiceAnswerLength.standard.instructions), true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LiveVoiceAnswerLength.standard.instructions(readsBack: true)), true)
 
         // Asking first (#451): off is stored as nothing; the preview says
         // how the next call starts.

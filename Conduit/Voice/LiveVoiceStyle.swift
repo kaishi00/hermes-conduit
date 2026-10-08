@@ -47,14 +47,9 @@ enum LiveVoiceAnswerLength: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// The answer-length rule in the live model's instructions, as a phone
-    /// call (with read-backs) gets it. Written for the model, not shown as
-    /// UI copy, so not localized. Call sites pass `readsBack` themselves,
-    /// so a Watch call can't pick up the read-back exception by mistake.
-    var instructions: String { instructions(readsBack: true) }
-
-    /// Without the read-back exception for a call that has no read-backs
-    /// (a Watch call, #451).
+    /// The answer-length rule in the live model's instructions. Written for
+    /// the model, not shown as UI copy, so not localized. A call with no
+    /// read-backs (a Watch call, #451) leaves out the read-back exception.
     func instructions(readsBack: Bool) -> String {
         let lead: String
         switch self {

@@ -1626,12 +1626,22 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         AppLocalization.string("\(title) is waiting for your approval or an answer. Open it in Conduit to respond.")
     }
 
-    /// With Hermes' reason, when there is one, as the call is told it.
+    /// With Hermes' reason, when there is one, as the call is told it: its
+    /// first line, kept short. A provider's raw error can run on, and a
+    /// read-back repeats the notice word for word.
     static func failedNotice(_ title: String, reason: String) -> String {
         let notice = AppLocalization.string("\(title) failed. Open it in Conduit for details.")
-        let reason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
-        return reason.isEmpty ? notice : notice + " (\(reason))"
+        let line = reason.split(whereSeparator: \.isNewline).lazy
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty } ?? ""
+        guard !line.isEmpty else { return notice }
+        guard line.count > maximumReasonCharacters else { return notice + " (\(line))" }
+        let prefix = line.prefix(maximumReasonCharacters)
+        let end = prefix.suffix(40).lastIndex(where: \.isWhitespace) ?? prefix.endIndex
+        return notice + " (\(prefix[..<end].trimmingCharacters(in: .whitespaces))…)"
     }
+
+    static let maximumReasonCharacters = 160
 
     static func cancelledNotice(_ title: String) -> String {
         AppLocalization.string("\(title) was cancelled.")
