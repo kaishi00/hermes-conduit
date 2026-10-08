@@ -164,7 +164,7 @@ enum WatchRejoin {
             <conversation>
             \(conversation)
             </conversation>
-            The user only heard a pause: don't mention a reconnection or say you're back. If their last words need an answer, give it now. If they don't, stay silent.]
+            Anything the user said during the pause wasn't heard. The user only heard a pause: don't mention a reconnection or say you're back. If their last words need an answer, give it now. If they don't, stay silent.]
             """
         }
     }

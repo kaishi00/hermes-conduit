@@ -665,7 +665,7 @@ extension HermesVoiceGatewayTimeoutTests {
             WatchVoiceWire.DirectTurn(role: .user, text: "What did it find?", at: at),
         ], after: .froze)
         XCTAssertTrue(froze.hasPrefix("[Your last session stopped responding"), froze)
-        XCTAssertTrue(froze.contains("<conversation>\nYou: Done.\nUser: What did it find?\n</conversation>\nThe user only heard a pause: don't mention a reconnection or say you're back. If their last words need an answer, give it now."), froze)
+        XCTAssertTrue(froze.contains("<conversation>\nYou: Done.\nUser: What did it find?\n</conversation>\nAnything the user said during the pause wasn't heard. The user only heard a pause: don't mention a reconnection or say you're back. If their last words need an answer, give it now."), froze)
         XCTAssertFalse(froze.contains("Say in a few words"))
         let frozeEmpty = WatchRejoin.prompt([], after: .froze)
         XCTAssertTrue(frozeEmpty.hasPrefix("[Your last session stopped responding"), frozeEmpty)
