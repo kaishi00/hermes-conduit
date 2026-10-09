@@ -516,7 +516,7 @@ final class AppState: ObservableObject {
     @Published var isConnecting = false
     @Published var profiles: [String] = []
     @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
-    static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .other]
+    static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .cron, .other]
     /// Stable per-profile gateway-media resolver for settled row content.
     /// Created lazily on first read and reused while the active profile is
     /// unchanged, so ChatView's first body pass already has a resolver
@@ -571,7 +571,11 @@ final class AppState: ObservableObject {
         }
     }
     @Published var cronSessions: [SessionSummary] = [] {
-        didSet { refreshActiveChatScrollSessionIdentity() }
+        didSet {
+            refreshActiveChatScrollSessionIdentity()
+            // Pinned runs carry read state too (#485).
+            observeChatReadState()
+        }
     }
     @Published private(set) var projects: [ProjectSummary] = []
     @Published private(set) var supportsProjects = false
@@ -5304,7 +5308,9 @@ final class AppState: ObservableObject {
 
     func markAllSessionsRead() {
         let profile = activeProfile
-        let unread = activeProfileSessions.filter { !$0.isArchived && isSessionUnread($0) }
+        // What All lists: the chats and pinned cron runs (#485).
+        let listed = activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) }
+        let unread = listed.filter { !$0.isArchived && isSessionUnread($0) }
         guard !unread.isEmpty else { return }
         let flagged = unread.filter { chatReadState.serverUnread($0, profile: profile) }
         // One ledger update (and one persisted encode) for the whole batch.
@@ -5332,10 +5338,16 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The rows the chat list shows with read state: the chats plus cron
+    /// runs, which the Cron filter lists (#485).
+    private var readStateSessions: [SessionSummary] {
+        activeProfileSessions + activeProfileCronSessions
+    }
+
     private func observeChatReadState() {
         let profile = activeProfile
         // The same rows every read-state query sees.
-        let listed = activeProfileSessions.filter { $0.source != .cron }
+        let listed = readStateSessions
         updateChatReadState { $0.observe(listed, profile: profile) }
         noteActiveChatSeen(respectingMarks: true)
     }
@@ -5349,7 +5361,7 @@ final class AppState: ObservableObject {
     /// you open it again.
     private func noteActiveChatSeen(respectingMarks: Bool = false) {
         guard isSceneActive, !showSidebar,
-              let session = activeProfileSessions.first(where: sessionMatchesActiveSession) else { return }
+              let session = readStateSessions.first(where: sessionMatchesActiveSession) else { return }
         let profile = activeProfile
         if respectingMarks {
             if chatReadState.isExplicitlyUnread(session, profile: profile) { return }
@@ -5373,7 +5385,7 @@ final class AppState: ObservableObject {
     private func noteChatLeft(_ sessionID: String?) {
         guard isSceneActive,
               let sessionID,
-              let session = activeProfileSessions.first(where: { ([$0.id] + $0.alternateIds).contains(sessionID) }),
+              let session = readStateSessions.first(where: { ([$0.id] + $0.alternateIds).contains(sessionID) }),
               !chatReadState.isExplicitlyUnread(session, profile: activeProfile) else { return }
         let profile = activeProfile
         updateChatReadState { $0.markSeen(session, profile: profile) }
@@ -13727,7 +13739,12 @@ final class AppState: ObservableObject {
                 clearActiveSessionIfNeeded(updated, replacement: .archive)
             } else {
                 archivedSessions.removeAll { sessionMatches($0, updated) }
-                sessions = [updated] + sessions.filter { !sessionMatches($0, updated) }
+                // A restored cron run goes back to the Cron list, not the chats.
+                if updated.source == .cron {
+                    cronSessions = [updated] + cronSessions.filter { !sessionMatches($0, updated) }
+                } else {
+                    sessions = [updated] + sessions.filter { !sessionMatches($0, updated) }
+                }
             }
             return true
         } catch {
@@ -21112,7 +21129,7 @@ final class AppState: ObservableObject {
                 result.append(source)
             }
         }
-        // Filters a saved order predates (Voice, Voice Jobs) take their
+        // Filters a saved order predates (Voice, Voice Jobs, Cron) take their
         // default place after the one before them, not the end of the row.
         for (position, source) in defaults.enumerated() where !unique.contains(source) {
             let after = defaults[..<position].last { unique.contains($0) }

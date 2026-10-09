@@ -262,7 +262,7 @@ struct SessionList: View {
                     } label: {
                         Label("Mark all as read", systemImage: "envelope.open")
                     }
-                    .disabled(!appState.activeProfileSessions.contains { !$0.isArchived && appState.isSessionUnread($0) })
+                    .disabled(!sourceRows(nil).contains { appState.isSessionUnread($0) })
 
                     Button {
                         Haptics.selection()
@@ -457,10 +457,7 @@ struct SessionList: View {
     }
 
     private var allSessions: [SessionSummary] {
-        var listed = appState.activeProfileSessions.filter { !$0.isArchived }
-        if let selectedSource {
-            listed = listed.filter { appState.sessionCategory(for: $0) == selectedSource }
-        }
+        var listed = sourceRows(selectedSource)
         if let statusFilter {
             listed = listed.filter { matches($0, statusFilter) }
         }
@@ -477,11 +474,19 @@ struct SessionList: View {
 
     /// Counted within the selected source, matching what the chip shows.
     private func statusCount(_ filter: SessionStatusFilter) -> Int {
-        appState.activeProfileSessions.filter {
-            !$0.isArchived
-                && (selectedSource == nil || appState.sessionCategory(for: $0) == selectedSource)
-                && matches($0, filter)
-        }.count
+        sourceRows(selectedSource).filter { matches($0, filter) }.count
+    }
+
+    /// The rows a source filter lists: cron runs only under Cron, plus the
+    /// pinned ones in All (#485).
+    private func sourceRows(_ source: SessionSource?) -> [SessionSummary] {
+        SidebarSourceRows.rows(
+            sessions: appState.activeProfileSessions,
+            cronSessions: appState.activeProfileCronSessions,
+            source: source,
+            category: appState.sessionCategory,
+            isPinned: appState.isSessionPinned
+        )
     }
 
     private var displayedSessions: [SessionSummary] {
@@ -499,7 +504,7 @@ struct SessionList: View {
     /// ignores them and lists pinned chats from every project.
     private var projectsViewPinnedSessions: [SessionSummary] {
         SidebarPinnedSessions.forProjectsView(
-            appState.activeProfileSessions,
+            sourceRows(nil),
             query: searchText,
             isPinned: appState.isSessionPinned,
             matches: sessionMatches
@@ -596,9 +601,7 @@ struct SessionList: View {
     }
 
     private var availableSources: [SessionSource] {
-        appState.sessionFilterOrder.filter { source in
-            appState.activeProfileSessions.contains { !$0.isArchived && appState.sessionCategory(for: $0) == source }
-        }
+        appState.sessionFilterOrder.filter { !sourceRows($0).isEmpty }
     }
 
     private var pinnedSessions: [SessionSummary] {
@@ -619,9 +622,9 @@ struct SessionList: View {
                     .fill(Color.primary.opacity(0.12))
                     .frame(width: 1, height: 18)
                     .accessibilityHidden(true)
-                sourceFilter(title: AppLocalization.string("All"), count: appState.activeProfileSessions.filter { !$0.isArchived }.count, source: nil)
+                sourceFilter(title: AppLocalization.string("All"), count: sourceRows(nil).count, source: nil)
                 ForEach(availableSources, id: \.self) { source in
-                    sourceFilter(title: source.label, count: appState.activeProfileSessions.filter { !$0.isArchived && appState.sessionCategory(for: $0) == source }.count, source: source)
+                    sourceFilter(title: source.label, count: sourceRows(source).count, source: source)
                 }
             }
             .padding(.horizontal, 4)
@@ -665,6 +668,14 @@ struct SessionList: View {
                 .background(selectedSource == source ? Color.conduitAccent : Color.primary.opacity(0.07), in: Capsule())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                Haptics.selection()
+                showFilterOrder = true
+            } label: {
+                Label("Reorder filters", systemImage: "arrow.left.arrow.right")
+            }
+        }
     }
 
     private func offlineSessionRow(
@@ -1045,7 +1056,10 @@ struct SessionActionMenuItems: View {
 
         ReadStateToggleButton(session: session)
 
-        MoveToProjectMenu(session: session, excludingProjectID: excludingProjectID, onMoved: onChanged)
+        // A cron run keeps the job's workspace (#485).
+        if session.source != .cron {
+            MoveToProjectMenu(session: session, excludingProjectID: excludingProjectID, onMoved: onChanged)
+        }
 
         Button {
             Task {
@@ -1578,7 +1592,9 @@ struct CronList: View {
     @EnvironmentObject var appState: AppState
     @State private var searchText = ""
     @State private var selectedJob: CronJob?
-    @AppStorage("conduit.cronJobsExpanded") private var cronJobsExpanded = true
+    /// The Jobs list shows a few rows until expanded (#485), so the runs
+    /// below it stay in reach.
+    @AppStorage("conduit.cronJobsShowAll") private var showAllJobs = false
     @AppStorage("conduit.cronJobsFilter") private var jobFilterRaw = CronJobFilter.all.rawValue
 
     private var jobFilter: Binding<CronJobFilter> {
@@ -1625,44 +1641,70 @@ struct CronList: View {
                 let empty = CronJobFilter.emptyState(
                     filter: jobFilter.wrappedValue,
                     hasJobs: !appState.cronJobs.isEmpty,
-                    isSearching: !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    isSearching: isSearching
                 )
                 ContentUnavailableView(empty.title, systemImage: "clock", description: Text(empty.description))
             }
 
             if !jobs.isEmpty {
-                DisclosureGroup(isExpanded: $cronJobsExpanded) {
-                    ForEach(jobs) { job in
-                        Button { selectedJob = job } label: { CronJobRow(job: job) }
-                            .buttonStyle(.plain)
-                            .listRowBackground(Color.clear).listRowSeparator(.hidden)
-                    }
-                } label: {
-                    HStack {
-                        Text("Jobs").font(.headline)
-                        Spacer()
-                        Text("\(jobs.count)")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-                    }
+                let shown = CronJobFilter.shownJobs(jobs, showAll: showAllJobs, isSearching: isSearching)
+                HStack {
+                    Text("Jobs").font(.headline)
+                    Spacer()
+                    Text("\(jobs.count)")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
+                ForEach(shown) { job in
+                    Button { selectedJob = job } label: { CronJobRow(job: job) }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                }
+                if !isSearching && jobs.count > CronJobFilter.collapsedRowCount {
+                    Button {
+                        Haptics.selection()
+                        withAnimation(ConduitMotion.response) { showAllJobs.toggle() }
+                    } label: {
+                        Label(
+                            showAllJobs
+                                ? AppLocalization.string("Show fewer")
+                                : AppLocalization.string("Show \(jobs.count - shown.count) more"),
+                            systemImage: showAllJobs ? "chevron.up" : "chevron.down"
+                        )
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color.conduitAccent)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
             }
 
             if !appState.activeProfileCronSessions.isEmpty {
                 Section("Recent runs") {
                     ForEach(appState.activeProfileCronSessions.prefix(20)) { session in
-                    Button {
-                        appState.dismissSidebarDrawer()
-                        appState.requestOpenSession(session.id)
-                    } label: {
-                        SessionRow(session: session, isSelected: session.id == appState.activeSessionId).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+                        let isPinned = appState.isSessionPinned(session)
+                        Button {
+                            appState.dismissSidebarDrawer()
+                            appState.requestOpenSession(session.id)
+                        } label: {
+                            SessionRow(session: session, isSelected: session.id == appState.activeSessionId, isPinned: isPinned).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Swipe or touch and hold for conversation actions.")
+                        // A pinned run sits at the top of the Sessions list (#485).
+                        .contextMenu {
+                            pinButton(session, isPinned: isPinned)
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            pinButton(session, isPinned: isPinned)
+                                .tint(.conduitAccent)
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
                     }
                 }
             }
@@ -1673,6 +1715,19 @@ struct CronList: View {
         .task(id: appState.activeProfile) { await appState.refreshCronContent() }
         .refreshable { await appState.refreshCronContent() }
         .sheet(item: $selectedJob) { CronJobDetailSheet(job: $0) }
+    }
+
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func pinButton(_ session: SessionSummary, isPinned: Bool) -> some View {
+        Button {
+            Haptics.light()
+            appState.toggleSessionPinned(session)
+        } label: {
+            Label(isPinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: isPinned ? "pin.slash" : "pin")
+        }
     }
 
     private var activeJobCount: Int {
@@ -1719,6 +1774,15 @@ enum CronJobFilter: String, CaseIterable, Identifiable {
         return jobs
             .filter { filter.includes($0) && (query.isEmpty || matches($0, query: query)) }
             .sorted(by: listOrder)
+    }
+
+    /// Rows the collapsed Jobs list shows (#485).
+    static let collapsedRowCount = 3
+
+    /// A search shows every match; otherwise the list stays collapsed to
+    /// its first rows until expanded.
+    static func shownJobs(_ jobs: [CronJob], showAll: Bool, isSearching: Bool) -> [CronJob] {
+        showAll || isSearching ? jobs : Array(jobs.prefix(collapsedRowCount))
     }
 
     static func matches(_ job: CronJob, query: String) -> Bool {
@@ -1853,9 +1917,34 @@ private struct CronJobDetailSheet: View {
     }
 }
 
+/// Which rows a Sessions source filter lists (#485). Cron runs stay out of
+/// All and the other filters, like Hermes Desktop's main list: Cron lists
+/// every run, and a pinned run joins All at the top so it works like any
+/// pinned chat.
+enum SidebarSourceRows {
+    static func rows(
+        sessions: [SessionSummary],
+        cronSessions: [SessionSummary],
+        source: SessionSource?,
+        category: (SessionSummary) -> SessionSource,
+        isPinned: (SessionSummary) -> Bool
+    ) -> [SessionSummary] {
+        let chats = sessions.filter { !$0.isArchived }
+        let runs = cronSessions.filter { !$0.isArchived }
+        switch source {
+        case nil:
+            return runs.filter(isPinned) + chats
+        case .cron?:
+            return runs
+        case let source?:
+            return chats.filter { category($0) == source }
+        }
+    }
+}
+
 /// The Projects view's Pinned section (#338): every non-archived pinned chat
-/// in the profile, whatever its project or source, narrowed by the search
-/// field like the project list below it.
+/// in the profile, pinned cron runs included (#485), whatever its project or
+/// source, narrowed by the search field like the project list below it.
 enum SidebarPinnedSessions {
     static func forProjectsView(
         _ sessions: [SessionSummary],
