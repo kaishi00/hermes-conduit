@@ -3025,6 +3025,22 @@ extension VoiceConversationControllerTests {
         let prompt = sendFake.submissions.first?.1 ?? ""
         XCTAssertTrue(prompt.hasSuffix("Book a table for four, send it to Hermes"), prompt)
         XCTAssertFalse(prompt.contains("the user said"), prompt)
+
+        // Delegated again before the words finished: the finished ones are
+        // still the request, and that delegation waits for the answer.
+        let (_, pendingFake, pending) = makeAskingFirstBridge()
+        _ = await pending.handleDelegation(id: "del_1", request: "Book a table for", userWords: "Book a table for")
+        let early = await pending.handleDelegation(id: "del_2", request: "")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.waitingForAnswer, .commentary)? = early.first else {
+            return XCTFail("\(early)")
+        }
+        XCTAssertEqual(pending.userFinishedSpeaking("Book a table for four."), .reply([]), "these words are the request's")
+        guard let yes = pending.userFinishedSpeaking("Yes") else { return XCTFail("the yes answers the waiting delegation") }
+        _ = await pending.deliver(yes)
+        XCTAssertEqual(pendingFake.created, 1)
+        let pendingPrompt = pendingFake.submissions.first?.1 ?? ""
+        XCTAssertTrue(pendingPrompt.hasSuffix("Book a table for four."), pendingPrompt)
+        XCTAssertFalse(pendingPrompt.contains("the user said"), pendingPrompt)
     }
 
     /// An OK'd request Hermes refused (too many jobs) never went: a yes

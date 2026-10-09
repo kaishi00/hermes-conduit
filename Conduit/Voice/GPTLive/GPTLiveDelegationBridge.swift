@@ -665,6 +665,22 @@ final class GPTLiveDelegationBridge {
         guard !words.isEmpty else { return nil }
         let intoJob = VoiceThreadRouting.wantsNewWork(words) ? nil : waiting.intoJob
         if let pending = waiting.pendingDelegationID {
+            // Held from the user's words while they were still coming in,
+            // then delegated again before they finished: the finished ones
+            // are the request, and that delegation still waits for the
+            // answer.
+            if let finished = Self.finishing(waiting.request, heldFrom: waiting.userWords, with: words),
+               now().timeIntervalSince(waiting.heldAt) < Self.lateWordsWindow {
+                if VoiceThreadRouting.saysSendToHermes(words) || !supervisor.asksBeforeSending {
+                    draft = nil
+                    lastSentAt = now()
+                    return .send(request: finished, intoJob: intoJob, delegationID: pending, call: callGeneration)
+                }
+                waiting.request = finished
+                waiting.userWords = words
+                draft = waiting
+                return .reply([])
+            }
             waiting.pendingDelegationID = nil
             draft = waiting
             switch decide(waiting, ownText: "", isSend: waiting.pendingIsSend, instructions: "", answer: words) {
