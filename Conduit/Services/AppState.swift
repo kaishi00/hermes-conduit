@@ -633,9 +633,15 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var activeChatScrollSessionIdentity = ChatScrollSessionIdentity.none
     @Published private(set) var chatTranscriptRevision: UInt64 = 0
+    /// Cached once per transcript mutation so view updates do not rescan the full history.
+    @Published private(set) var pendingClarifyMessageID: String?
     @Published var messages: [ChatMessage] = [] {
         didSet {
             chatTranscriptRevision &+= 1
+            let pendingClarify = ChatResumeCoordinator.pendingClarifyMessageID(in: messages)
+            if pendingClarifyMessageID != pendingClarify {
+                pendingClarifyMessageID = pendingClarify
+            }
             advanceChatViewportExpectedTranscriptRevisionIfNeeded()
             // A real transcript replaces the read-only offline copy wholesale;
             // the two are never mixed on screen.
@@ -9687,7 +9693,13 @@ final class AppState: ObservableObject {
         guard let sessionKey = activeChatScrollSessionIdentity.canonicalSessionKey else {
             return
         }
-        guard let request = chatResumeCoordinator.reconciliationSettled(sessionKey: sessionKey) else {
+        // This id is derived from the adopted transcript and can briefly lag
+        // during a session handoff; ChatScrollEngine revalidates it against
+        // rendered targets and falls back if it belongs to the prior session.
+        guard let request = chatResumeCoordinator.reconciliationSettled(
+            sessionKey: sessionKey,
+            pendingClarifyMessageID: pendingClarifyMessageID
+        ) else {
             // reconciliationSettled returned nil. If there was a pending
             // session key (mismatch path), clear the freeze so viewport
             // recording resumes. If there was no pending key, there's
@@ -10965,10 +10977,10 @@ final class AppState: ObservableObject {
 
     static func hasPendingDecision(in messages: [ChatMessage]) -> Bool {
         messages.contains { message in
-            // A retryable `.error` question/decision is still unresolved —
-            // the card remains answerable and must not read as completed.
+            // A retryable `.error` or in-flight `.submitting` question stays
+            // unresolved; an expired sibling does not erase an active answer.
             let clarifyPending = message.clarify.map {
-                SessionPresentationCache.isPendingDecision($0.status)
+                SessionPresentationCache.isPendingDecision($0)
             } ?? false
             let approvalPending = message.approval.map {
                 SessionPresentationCache.isPendingDecision($0.status)
@@ -22807,7 +22819,7 @@ final class AppState: ObservableObject {
         messages.removeAll { message in
             guard let clarify = message.clarify,
                   clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
-                  clarify.status == .pending,
+                  clarify.presentationStatus == .pending,
                   Self.pushCardSupersededBy(clarify, live: activity) else {
                 return false
             }
@@ -23544,7 +23556,7 @@ final class AppState: ObservableObject {
 
     private var responseAwaitsUserInput: Bool {
         messages.contains { message in
-            message.clarify.map { $0.status == .pending || $0.status == .submitting } == true
+            message.clarify.map { $0.hasPendingDecision } == true
                 || message.approval.map { $0.status == .pending || $0.status == .submitting } == true
                 || message.inputPrompt.map { $0.isAnswerable || $0.status == .submitting } == true
         }

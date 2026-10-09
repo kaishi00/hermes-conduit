@@ -4,6 +4,51 @@ import XCTest
 
 @MainActor
 final class AppStateChatResumeTests: XCTestCase {
+    func testPendingClarifyMessageIDIsCachedWhenTranscriptChanges() {
+        let suite = "AppStateChatResumeTests.pendingClarifyCache.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            return XCTFail("Failed to create test UserDefaults suite")
+        }
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {}
+        )
+        let pending = ClarifyActivity(
+            requestId: "request-cache",
+            question: "Continue?",
+            choices: [],
+            status: .pending
+        )
+        appState.messages = [ChatMessage(
+            id: "clarify-cache",
+            role: .clarify,
+            content: "Continue?",
+            timestamp: "2026-01-01T00:00:00Z",
+            clarify: pending
+        )]
+        XCTAssertEqual(appState.pendingClarifyMessageID, "clarify-cache")
+
+        let answered = ClarifyActivity(
+            requestId: pending.requestId,
+            question: "Continue?",
+            choices: [],
+            status: .answered,
+            answer: "yes"
+        )
+        appState.messages = [ChatMessage(
+            id: "clarify-cache",
+            role: .clarify,
+            content: "Continue?",
+            timestamp: "2026-01-01T00:00:00Z",
+            clarify: answered
+        )]
+        XCTAssertNil(appState.pendingClarifyMessageID)
+    }
+
     func testResumeHydratesApprovalsQueuedBehindSnapshotHead() async {
         let pending: (String) -> ApprovalActivity = { requestID in
             ApprovalActivity(
@@ -2123,6 +2168,46 @@ final class AppStateChatResumeTests: XCTestCase {
         let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
         XCTAssertEqual(clarifyCards.count, 1, "The still-pending push card must be superseded by the live event")
         XCTAssertEqual(clarifyCards.first?.clarify?.requestId, "gateway-rid-1")
+    }
+
+    func testLiveClarifyEventSupersedesMixedExpiredPendingPushCard() async {
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+        let pushed = ClarifyActivity(
+            requestId: "conduit-push-mixed",
+            questions: [
+                ClarifyQuestion(id: "old", question: "Which color?", choices: [], status: .expired),
+                ClarifyQuestion(id: "active", question: "Which region?", choices: [], status: .pending)
+            ]
+        )
+        XCTAssertEqual(pushed.status, .expired)
+        XCTAssertEqual(pushed.presentationStatus, .pending)
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-mixed",
+                role: .clarify,
+                content: pushed.displayQuestion,
+                timestamp: "1",
+                clarify: pushed
+            )
+        ]
+
+        harness.appState.handleStreamEvent(
+            .clarify(
+                sessionId: "stored-a",
+                activity: ClarifyActivity(
+                    requestId: "gateway-rid-mixed",
+                    questions: [
+                        ClarifyQuestion(id: "color", question: "Which color?", choices: []),
+                        ClarifyQuestion(id: "region", question: "Which region?", choices: [])
+                    ]
+                )
+            )
+        )
+
+        let cards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(cards.count, 1, "An answerable mixed push card must be superseded by the live batch")
+        XCTAssertEqual(cards.first?.clarify?.requestId, "gateway-rid-mixed")
     }
 
     func testLiveClarifyEventSupersedeMatchesNormalizedQuestion() async {

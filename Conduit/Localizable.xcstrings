@@ -90151,6 +90151,40 @@
         }
       }
     },
+    "Go to the question that needs your answer" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Zur Frage wechseln, die auf deine Antwort wartet" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Ir a la pregunta que espera tu respuesta" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aller à la question qui attend votre réponse" } },
+        "id" : { "stringUnit" : { "state" : "translated", "value" : "Buka pertanyaan yang menunggu jawaban Anda" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Vai alla domanda in attesa della tua risposta" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "回答を待っている質問に移動" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "답변을 기다리는 질문으로 이동" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Przejdź do pytania oczekującego na odpowiedź" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Ir para a pergunta que aguarda sua resposta" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Перейти к вопросу, который ждёт вашего ответа" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Yanıtınızı bekleyen soruya git" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "前往等待您回答的问题" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "前往等待您回答的問題" } }
+      }
+    },
+    "Go to your question" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Zu deiner Frage gehen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Ir a tu pregunta" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aller à votre question" } },
+        "id" : { "stringUnit" : { "state" : "translated", "value" : "Buka pertanyaan Anda" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Vai alla tua domanda" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "質問に移動" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "질문으로 이동" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Przejdź do pytania" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Ir para sua pergunta" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Перейти к вашему вопросу" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Sorunuza git" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "前往您的问题" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "前往您的問題" } }
+      }
+    },
     "Goal Mode" : {
       "localizations" : {
         "de" : {
@@ -132096,6 +132130,23 @@
             "value" : "捲動到對話頂端"
           }
         }
+      }
+    },
+    "Scrolls to the pending question in the conversation" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Scrollt in der Unterhaltung zur offenen Frage" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Desplaza la conversación hasta la pregunta pendiente" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Fait défiler la conversation jusqu’à la question en attente" } },
+        "id" : { "stringUnit" : { "state" : "translated", "value" : "Menggulir percakapan ke pertanyaan yang belum terjawab" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Scorre la conversazione fino alla domanda in sospeso" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "会話内の未回答の質問までスクロールします" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "대화에서 답변을 기다리는 질문까지 스크롤합니다" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Przewija rozmowę do pytania oczekującego na odpowiedź" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Rola a conversa até a pergunta pendente" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Прокручивает беседу к вопросу, ожидающему ответа" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Sohbeti yanıt bekleyen soruya kaydırır" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "滚动到对话中等待回答的问题" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "捲動至對話中等待回答的問題" } }
       }
     },
     "Search archived conversations" : {

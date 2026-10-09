@@ -3,6 +3,7 @@ import Foundation
 enum ChatResumeRestorationDestination: Equatable {
     case latest
     case snapshot(ChatScrollSnapshot)
+    case pendingClarify(messageID: String, fallbackSnapshot: ChatScrollSnapshot?)
 }
 
 struct ChatResumeRestorationRequest: Identifiable, Equatable {
@@ -35,6 +36,15 @@ final class ChatResumeCoordinator {
 
     init(store: ChatResumeStore) {
         self.store = store
+    }
+
+    /// A mixed batch may retain an expired sibling while another question
+    /// remains answerable; only request-level expiry makes the whole card stale.
+    static func pendingClarifyMessageID(in messages: [ChatMessage]) -> String? {
+        messages.last { message in
+            guard let clarify = message.clarify else { return false }
+            return clarify.needsAnswer
+        }?.id
     }
 
     func beginAutomaticWork() -> ChatResumeAutomaticWorkToken {
@@ -228,7 +238,10 @@ final class ChatResumeCoordinator {
         viewportIsFrozen = false
     }
 
-    func reconciliationSettled(sessionKey: ChatScrollSessionKey) -> ChatResumeRestorationRequest? {
+    func reconciliationSettled(
+        sessionKey: ChatScrollSessionKey,
+        pendingClarifyMessageID: String?
+    ) -> ChatResumeRestorationRequest? {
         guard pendingSessionKey == sessionKey, pendingRestoration == nil else {
             // Mismatch: leave pendingSessionKey intact so the caller
             // (publishChatResumeRestorationIfReady) can detect it via
@@ -242,11 +255,26 @@ final class ChatResumeCoordinator {
         pendingSessionKey = nil
         let isFallbackSelection = pendingFallbackSelection
         pendingFallbackSelection = false
-        let destination: ChatResumeRestorationDestination
-        if isFallbackSelection || store.behavior == .latestActivity {
-            destination = .latest
+        let latestActivityTakesPrecedence = isFallbackSelection || store.behavior == .latestActivity
+        let fallbackSnapshot: ChatScrollSnapshot?
+        if latestActivityTakesPrecedence {
+            fallbackSnapshot = nil
         } else if let snapshot = store.snapshot(for: sessionKey), !snapshot.followsLatest {
-            destination = .snapshot(snapshot)
+            fallbackSnapshot = snapshot
+        } else {
+            fallbackSnapshot = nil
+        }
+
+        let destination: ChatResumeRestorationDestination
+        if latestActivityTakesPrecedence {
+            destination = .latest
+        } else if let pendingClarifyMessageID, !pendingClarifyMessageID.isEmpty {
+            destination = .pendingClarify(
+                messageID: pendingClarifyMessageID,
+                fallbackSnapshot: fallbackSnapshot
+            )
+        } else if let fallbackSnapshot {
+            destination = .snapshot(fallbackSnapshot)
         } else {
             destination = .latest
         }

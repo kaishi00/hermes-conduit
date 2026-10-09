@@ -9,6 +9,19 @@ import SwiftUI
 import UIKit
 import ImageIO
 
+private struct OptionalAccessibilityHint: ViewModifier {
+    let hint: String?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let hint {
+            content.accessibilityHint(Text(verbatim: hint))
+        } else {
+            content
+        }
+    }
+}
+
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var viewportSnapshotProviderID = UUID()
@@ -361,17 +374,56 @@ struct ChatView: View {
             )
         }
         .overlay(alignment: .bottomTrailing) {
-            if viewportInputs.showsJumpToLatest {
+            let pendingClarifyMessageID = appState.pendingClarifyMessageID
+            let hasPendingClarify = pendingClarifyMessageID != nil
+                && viewportInputs.visibilityTrackedMessageID == pendingClarifyMessageID
+                && viewportInputs.isVisibilityTrackedMessageOffscreen
+            // Both actions share this overlay slot; the offscreen pending
+            // question takes priority, and latest reappears when it is visible.
+            if viewportInputs.showsJumpToLatest || hasPendingClarify {
                 Button {
-                    ChatViewportTrace.shared.log("event explicitLatest (button)")
-                    requestLatest(animated: true)
+                    ChatViewportTrace.shared.log(
+                        hasPendingClarify
+                            ? "event explicitPendingClarify (button)"
+                            : "event explicitLatest (button)"
+                    )
+                    if hasPendingClarify, let pendingClarifyMessageID {
+                        scrollEngine.explicitMessageRequested(id: pendingClarifyMessageID)
+                    } else {
+                        requestLatest(animated: true)
+                    }
                 } label: {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(width: 44, height: 44)
+                    if hasPendingClarify {
+                        HStack(spacing: 7) {
+                            Image(systemName: "questionmark.bubble")
+                            Text(AppLocalization.string("Go to your question"))
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 44)
+                    } else {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 15, weight: .bold))
+                            .frame(width: 44, height: 44)
+                    }
                 }
-                .conduitGlassControl(cornerRadius: 22, tint: .conduitAccent.opacity(0.14))
-                .accessibilityLabel("Scroll to latest message")
+                .conduitGlassControl(
+                    cornerRadius: 22,
+                    tint: (hasPendingClarify ? Color.orange : Color.conduitAccent).opacity(0.14)
+                )
+                .accessibilityLabel(
+                    hasPendingClarify
+                        ? AppLocalization.string("Go to the question that needs your answer")
+                        : AppLocalization.string("Scroll to latest message")
+                )
+                .modifier(OptionalAccessibilityHint(
+                    hint: hasPendingClarify
+                        ? AppLocalization.string("Scrolls to the pending question in the conversation")
+                        : nil
+                ))
                 .padding(.trailing, 18)
                 .padding(.bottom, 14)
             }
@@ -395,6 +447,7 @@ struct ChatView: View {
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
                     isInitialSync: true
                 )
+                scrollEngine.trackMessageVisibility(of: appState.pendingClarifyMessageID)
                 appState.installChatViewportSnapshotProvider(
                     id: viewportSnapshotProviderID,
                     capture: { [weak engine = scrollEngine] in
@@ -445,6 +498,9 @@ struct ChatView: View {
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
                     activeSessionKey: activeScrollSessionKey
                 )
+            }
+            .onChange(of: appState.pendingClarifyMessageID) { _, id in
+                scrollEngine.trackMessageVisibility(of: id)
             }
             .onChange(of: appState.chatResumeRestorationRequest) { oldRequest, newRequest in
                 guard oldRequest != nil, newRequest == nil else { return }
@@ -2154,15 +2210,16 @@ struct ClarifyCard: View {
     var body: some View {
         if let clarify = message.clarify {
             let layout = ClarifyCardLayout(questionCount: clarify.questions.count)
+            let displayStatus = clarify.presentationStatus
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Image(systemName: "questionmark.bubble")
                         .foregroundStyle(.orange)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(statusTitle(for: clarify.status))
+                        Text(statusTitle(for: displayStatus))
                             .font(.caption2.weight(.bold))
                             .tracking(0.5)
-                            .foregroundStyle(statusColor(for: clarify.status))
+                            .foregroundStyle(statusColor(for: displayStatus))
                         SelectableTextView(
                             text: layout.headerText(for: clarify),
                             font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
@@ -2171,9 +2228,9 @@ struct ClarifyCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Spacer(minLength: 8)
-                    if clarify.status == .submitting {
+                    if displayStatus == .submitting {
                         ProgressView().controlSize(.small)
-                    } else if clarify.status == .answered,
+                    } else if displayStatus == .answered,
                               clarify.questions.contains(where: { $0.answer != nil }) {
                         // Only an answer this device holds earns the check;
                         // an answered-elsewhere settle renders no checkmark so
@@ -2222,7 +2279,7 @@ struct ClarifyCard: View {
 
     private func send(_ answer: String, for question: ClarifyQuestion, in clarify: ClarifyActivity) {
         let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, isAnswerable(question) else { return }
+        guard !trimmed.isEmpty, question.isAnswerable else { return }
         customAnswers[question.id] = ""
         Task { await appState.respondToClarify(requestId: clarify.requestId, questionId: question.id, answer: trimmed) }
     }
@@ -2233,10 +2290,6 @@ struct ClarifyCard: View {
             .map(\.value)
         guard !values.isEmpty else { return }
         send(ClarifyQuestion.multiSelectAnswer(values), for: question, in: clarify)
-    }
-
-    private func isAnswerable(_ question: ClarifyQuestion) -> Bool {
-        question.status == .pending || question.status == .error
     }
 
     private func statusTitle(for status: ClarifyActivity.Status) -> String {
@@ -2505,7 +2558,7 @@ struct ClarifyQuestionRow: View {
     }
 
     private var isAnswerable: Bool {
-        question.status == .pending || question.status == .error
+        question.isAnswerable
     }
 
     private var canSubmitCustomAnswer: Bool {
