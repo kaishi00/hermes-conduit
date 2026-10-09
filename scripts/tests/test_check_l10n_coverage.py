@@ -692,6 +692,25 @@ class RawTernaryTests(unittest.TestCase):
             self.assertEqual(self.literals(source), [], source)
 
 
+class UsageDescriptionTests(unittest.TestCase):
+    """A permission prompt without an InfoPlist catalog entry shows in
+    English whatever the language."""
+
+    def test_a_prompt_missing_from_the_catalog_is_reported(self):
+        info = {"NSCameraUsageDescription": "Conduit uses the camera.",
+                "NSMicrophoneUsageDescription": "Conduit uses the microphone.",
+                "CFBundleName": "Conduit"}
+        catalog = {"strings": {"NSMicrophoneUsageDescription": {}}}
+        self.assertEqual(check_l10n_coverage.usage_description_problems(info, catalog),
+                         ["NSCameraUsageDescription"])
+
+    def test_covered_prompts_and_other_keys_pass(self):
+        info = {"NSMicrophoneUsageDescription": "Conduit uses the microphone.",
+                "UIBackgroundModes": ["audio"]}
+        catalog = {"strings": {"NSMicrophoneUsageDescription": {}}}
+        self.assertEqual(check_l10n_coverage.usage_description_problems(info, catalog), [])
+
+
 class DraftLanguageTests(unittest.TestCase):
     """A draft may be partial and unreviewed, but never malformed."""
 

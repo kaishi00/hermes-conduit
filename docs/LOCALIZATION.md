@@ -125,6 +125,8 @@ app).
   Japanese: other). The table is `PLURAL_CATEGORIES` in the checker,
   generated from CLDR; a language CLDR doesn't know only needs `other`, and
   the checker says so;
+- every permission prompt (`NS…UsageDescription`) in the app's and the
+  Watch's `Info.plist` has an entry in the `InfoPlist.xcstrings` beside it;
 - each language is spelled the same way in every catalog;
 - every value in every language, drafts included, keeps the key's
   placeholders in the same order, or reorders all of them with positional

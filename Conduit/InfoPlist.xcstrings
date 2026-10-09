@@ -1,6 +1,95 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "NSCameraUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit verwendet die Kamera nur, wenn du ein Foto aufnehmen möchtest, etwa für dein Profilbild oder einen Chat-Anhang."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit uses the camera only when you choose to take a photo, such as for your profile picture or a chat attachment."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit usa la cámara solo cuando eliges hacer una foto, por ejemplo para tu foto de perfil o para adjuntarla a un chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit utilise l'appareil photo uniquement lorsque vous choisissez de prendre une photo, par exemple pour votre photo de profil ou une pièce jointe de discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit menggunakan kamera hanya saat Anda memilih untuk mengambil foto, misalnya untuk foto profil atau lampiran obrolan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit usa la fotocamera solo quando scegli di scattare una foto, ad esempio per l'immagine del profilo o un allegato della chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitは、プロフィール写真やチャットの添付ファイル用など、写真を撮ることを選んだときにだけカメラを使用します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 프로필 사진이나 채팅 첨부 파일처럼 사진을 찍기로 선택했을 때만 카메라를 사용해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit używa aparatu tylko wtedy, gdy zdecydujesz się zrobić zdjęcie, na przykład do zdjęcia profilowego lub załącznika w czacie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit usa a câmera somente quando você escolhe tirar uma foto, como para sua foto de perfil ou um anexo de chat."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit использует камеру, только когда вы решаете сделать снимок, например для фото профиля или вложения в чат."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, kamerayı yalnızca profil resminiz veya bir sohbet eki gibi bir fotoğraf çekmeyi seçtiğinizde kullanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅当你选择拍照时（例如用作头像或聊天附件），Conduit 才会使用相机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有在你選擇拍照時（例如用於個人照片或聊天附件），Conduit 才會使用相機。"
+          }
+        }
+      }
+    },
     "NSFaceIDUsageDescription" : {
       "extractionState" : "manual",
       "localizations" : {

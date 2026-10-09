@@ -50,6 +50,8 @@ InfoPlist):
     parentheses at the end, "Runs (%lld)", or ending the string after a
     colon, "Jobs: %lld"); a count interpolated as String(...) in front of
     a plural noun is reported at its call site;
+  * every permission prompt (NS...UsageDescription) in the app's and the
+    Watch's Info.plist has an entry in the InfoPlist catalog beside it;
   * a raw string literal passed as a ternary branch to a SwiftUI title
     (Text(flag ? "A" : "B")) is reported at its call site: it binds the
     verbatim String overload and is never looked up;
@@ -812,6 +814,13 @@ SECONDARY_CATALOGS = ("AppShortcuts.xcstrings", "InfoPlist.xcstrings")
 INFO_PLIST = os.path.join("Conduit", "Info.plist")
 # The Apple Watch app's sources and its own Localizable catalog.
 WATCH_DIRECTORY = "ConduitWatch"
+# Each Info.plist with the InfoPlist catalog iOS reads its permission
+# prompts (NS…UsageDescription) from.
+INFO_PLIST_CATALOGS = (
+    (INFO_PLIST, os.path.join("Conduit", "InfoPlist.xcstrings")),
+    (os.path.join(WATCH_DIRECTORY, "Info.plist"),
+     os.path.join(WATCH_DIRECTORY, "InfoPlist.xcstrings")),
+)
 # The Watch target's other sources (project.yml), whose strings the Watch
 # catalog must carry too.
 WATCH_SHARED_SOURCES = (
@@ -1001,6 +1010,16 @@ class CatalogError(Exception):
     with merge-conflict markers)."""
 
 
+def usage_description_problems(info: dict, catalog: dict) -> list:
+    """The permission prompts in `info` (an Info.plist) that `catalog`
+    (its InfoPlist catalog) lacks: iOS shows those in English whatever
+    the language."""
+    keys = set(catalog.get("strings", {}))
+    return sorted(key for key in info
+                  if key.startswith("NS") and key.endswith("UsageDescription")
+                  and key not in keys)
+
+
 def check(repo_root: str):
     """Full check. Returns (checked_site_count, missing_sites,
     key_problems, language_plan). Raises CatalogError for a catalog that
@@ -1067,6 +1086,40 @@ def check(repo_root: str):
             key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
     for key, problems in required_key_problems(catalog, REGRESSION_KEYS).items():
         key_problems.setdefault(key, []).extend(problems)
+
+    # Permission prompts: each one in an Info.plist needs its InfoPlist
+    # catalog entry. The Watch's InfoPlist catalog is checked here too.
+    for plist_name, catalog_name in INFO_PLIST_CATALOGS:
+        plist_path = os.path.join(repo_root, plist_name)
+        catalog_path = os.path.join(repo_root, catalog_name)
+        if not os.path.exists(plist_path):
+            continue
+        try:
+            with open(plist_path, "rb") as handle:
+                info = plistlib.load(handle)
+        except (OSError, plistlib.InvalidFileException,
+                xml.parsers.expat.ExpatError) as error:
+            key_problems.setdefault(plist_name, []).append(f"unreadable: {error}")
+            continue
+        if catalog_name == os.path.join("Conduit", SECONDARY_CATALOGS[1]):
+            prompts_catalog = catalogs.get(SECONDARY_CATALOGS[1], {})
+        elif os.path.exists(catalog_path):
+            try:
+                prompts_catalog, prompt_duplicates = load_catalog(catalog_path)
+            except (OSError, ValueError) as error:
+                raise CatalogError(f"{catalog_name}: {error}") from error
+            prefix = f"{catalog_name}: "
+            for key, problems in prompt_duplicates.items():
+                key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
+            for key, problems in catalog_problems(
+                    prompts_catalog, plan.shipped, plan.drafts).items():
+                key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
+        else:
+            prompts_catalog = {}
+        for key in usage_description_problems(info, prompts_catalog):
+            key_problems.setdefault(f"{plist_name}: {key}", []).append(
+                f"permission prompt missing from {catalog_name}, so iOS "
+                f"shows it in English in every language")
     return checked, missing, key_problems, plan
 
 
