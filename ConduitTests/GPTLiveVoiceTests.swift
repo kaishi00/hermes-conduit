@@ -2279,8 +2279,8 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(GPTLiveDelegationBridge.sameRequest("book a table for Sam and Alex", "book a table for Sam"), "an addition is a change")
     }
 
-    /// Answers in the other shipped languages with word breaks are read the
-    /// same way (#451): "Ja, bitte" sends, "Nein, danke" drops, "Attends"
+    /// German, Spanish, French, Portuguese and Russian answers are read the
+    /// same way as English ones (#451): "Ja, bitte" sends, "Nein, danke" drops, "Attends"
     /// keeps it waiting, and a verb that also starts a new request
     /// ("Envoie un mail à Paul") is no yes.
     func testGPTLiveAnswersToSendItAreReadInGermanSpanishFrenchPortugueseAndRussian() {
