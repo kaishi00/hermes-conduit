@@ -677,8 +677,10 @@ struct SessionList: View {
         }
         .menuOrder(.fixed)
         .buttonStyle(.plain)
-        .accessibilityLabel(selected.map { "\(AppLocalization.string("Status")): \($0.title) \(String(statusCount($0)))" }
-            ?? AppLocalization.string("Status"))
+        // The idle dots say which statuses have chats; VoiceOver hears them too.
+        .accessibilityLabel(([AppLocalization.string("Status")]
+            + (selected.map { [$0] } ?? waiting).map { "\($0.title) \(String(statusCount($0)))" })
+            .joined(separator: ", "))
         .accessibilityAddTraits(selected == nil ? [] : .isSelected)
     }
 
