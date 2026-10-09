@@ -3309,6 +3309,34 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(fake.threadSubmissions.isEmpty, "a read-back asks Hermes nothing")
         controller.stop()
     }
+
+    /// The same read request while a request waits for the user's OK: the
+    /// request keeps waiting, and the words asking for the read never go
+    /// to Hermes with it (#451).
+    func testGPTLiveReadBackAfterOtherSentencesNeverGoesWithAHeldRequest() async {
+        let current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, fake) = makeGPTController(clock: { current })
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Book a table for Sam."))
+        session.onEvent?(.delegation(id: "del_1", text: "book a table for Sam"))
+        await waitForFollowUpState { controller.pendingContextCountForTesting > 0 }
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Shall I send that?"))
+
+        session.onEvent?(.turnDone(role: "user", transcript: "I think you have it already. Could you just read what we said."))
+        await settle(40)
+        XCTAssertEqual(fake.created, 0, "still waiting for the OK")
+
+        session.onEvent?(.turnDone(role: "user", transcript: "Yes."))
+        await waitForFollowUpState { fake.created == 1 }
+        XCTAssertEqual(fake.created, 1)
+        let prompt = fake.submissions.first?.1 ?? ""
+        let own = prompt.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? prompt
+        XCTAssertTrue(own.contains("Book a table for Sam."), prompt)
+        XCTAssertFalse(own.contains("read what we said"), prompt)
+        controller.stop()
+    }
 }
 
 /// The call's record of the user's words, for the delegation bridge alone.

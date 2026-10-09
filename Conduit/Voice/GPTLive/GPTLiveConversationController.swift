@@ -589,8 +589,11 @@ final class GPTLiveConversationController: ObservableObject {
         }
         // Asked to hear the chat's last reply: Hermes' own words follow,
         // even when the model answers from memory instead of delegating.
-        if VoiceThreadRouting.wantsLastReply(text) {
-            // Words that only ask for it never go to Hermes (#451).
+        // Also when asked for after sentences of their own ("I think you
+        // have it already. Could you just read what we said?", #451).
+        if VoiceThreadRouting.wantsLastReply(text) || VoiceThreadRouting.endsWithLastReplyRequest(text) {
+            // Words that ask for it never go to Hermes (#451). A request
+            // waiting for their OK is asked about again once it's read.
             settleLatestUserTurn()
             // A delegation GPT-Live made on these words before they arrived
             // reads it too, rather than waiting to be sent to Hermes (#451).
@@ -598,10 +601,6 @@ final class GPTLiveConversationController: ObservableObject {
             readLastReply()
             return
         }
-        // Asked for after sentences of their own ("I think you have it
-        // already. Could you just read what we said?", #451): read, and
-        // the rest may still answer a request waiting for their OK.
-        if VoiceThreadRouting.endsWithLastReplyRequest(text) { readLastReply() }
         switch VoiceBackgroundJobCommands.parse(text) {
         case .status?:
             settleLatestUserTurn()
