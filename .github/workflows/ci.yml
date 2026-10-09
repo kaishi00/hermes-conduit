@@ -26,8 +26,8 @@ name: CI
 #
 # Three macOS jobs per run: GitHub allows 5 concurrent macOS jobs per account,
 # and a PR's superseded runs are cancelled, so a run must leave room for the
-# next. Runs on main are never cancelled, so back-to-back merges overlap and one
-# macOS job queues behind the ceiling.
+# next. A newer push to main never cancels an older one's run, so back-to-back
+# merges overlap and their macOS jobs queue behind the ceiling.
 
 on:
   push:
