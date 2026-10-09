@@ -33,6 +33,11 @@ struct MarkdownText: View {
     /// snapshot that would be dead the moment the next delta arrives.
     var isStreaming: Bool = false
 
+    /// The source is a cut of a longer message (a large document's
+    /// preview), so its last block may be partial: a diagram or formula
+    /// there shows its source instead of drawing a truncated one.
+    var mayEndMidBlock = false
+
     /// The selected chat text size (issue #85): a first-class rendering
     /// input, injected at the chat root. Streaming and settled content read
     /// the same value, so the whole stream stays at one size. The
@@ -55,6 +60,9 @@ struct MarkdownText: View {
             normalBody
         }
     }
+
+    /// A streaming reply or a cut preview can end inside a block.
+    private var lastBlockMayBePartial: Bool { isStreaming || mayEndMidBlock }
 
     @ViewBuilder
     private var normalBody: some View {
@@ -104,7 +112,7 @@ struct MarkdownText: View {
                     selectionCoordinator: selectionCoordinator,
                     selectionSegments: selectionSegments,
                     newestCharacterOpacities: newestCharacterOpacities,
-                    isStreaming: isStreaming
+                    lastBlockMayBePartial: lastBlockMayBePartial
                 )
             } else {
                 VStack(alignment: .leading, spacing: 10) {
@@ -120,7 +128,7 @@ struct MarkdownText: View {
                             newestCharacterOpacities: index == rendering.blocks.count - 1
                                 ? newestCharacterOpacities
                                 : [],
-                            isStreamingTail: isStreaming && index == rendering.blocks.count - 1
+                            isStreamingTail: lastBlockMayBePartial && index == rendering.blocks.count - 1
                         )
                     }
                 }
@@ -649,8 +657,9 @@ struct MarkdownBlockView: View {
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     let newestCharacterOpacities: [Double]
-    /// The last block of a reply that is still streaming, which may be half
-    /// written: a diagram or formula there shows its source until it's done.
+    /// The last block of a reply that is still streaming (or of a cut
+    /// preview), which may be half written: a diagram or formula there
+    /// shows its source until it's done.
     var isStreamingTail = false
     @Environment(\.chatTextSize) private var chatTextSize
 

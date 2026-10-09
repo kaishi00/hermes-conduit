@@ -155,7 +155,6 @@ STRING_DISPLAY_PARAMETERS = {
     "GeminiLiveBarContent": ("name",),
     "LiveVoiceBarRow": ("name", "status"),
     "GuardedSourceCard": ("title",),
-    "RenderCard": ("title", "actionTitle"),
     "SelectableTextView": ("text",),
     # View helpers
     "homeSection": ("_",),

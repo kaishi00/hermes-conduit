@@ -42,6 +42,11 @@ extension MarkdownFallbackTests {
             1,
             "a settled reply draws whatever it ends with"
         )
+        XCTAssertEqual(
+            markupPageCount(in: MarkdownText(source: halfWritten, mayEndMidBlock: true)),
+            0,
+            "a large document's preview can cut a diagram short"
+        )
 
         let halfWrittenFormula = "Intro.\n\n$$\na^2 +"
         XCTAssertEqual(markupPageCount(in: MarkdownText(source: halfWrittenFormula, isStreaming: true)), 0)

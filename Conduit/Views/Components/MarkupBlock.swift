@@ -246,7 +246,11 @@ enum MarkupHeights {
 
     static func store(_ height: CGFloat, for document: MarkupDocument) {
         if heights[document] == nil, heights.count >= limit {
-            heights.removeAll(keepingCapacity: true)
+            // Drop half rather than all, so a long session doesn't lose
+            // every height at once.
+            for stale in Array(heights.keys.prefix(limit / 2)) {
+                heights[stale] = nil
+            }
         }
         heights[document] = height
     }
@@ -393,9 +397,20 @@ private struct SafeMarkupWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(html: html) }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
+        private let html: String
+
+        init(html: String) {
+            self.html = html
+        }
+
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            // Same as the inline page: reload rather than stay blank.
+            webView.loadHTMLString(html, baseURL: MarkupHTML.baseURL)
+        }
+
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             decisionHandler(MarkupHTML.allowsNavigation(to: navigationAction.request.url) ? .allow : .cancel)
         }

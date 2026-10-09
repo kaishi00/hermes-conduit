@@ -376,8 +376,9 @@ struct RichBudgetedMarkdownBody: View {
     let selectionCoordinator: MarkdownSelectionCoordinator
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     var newestCharacterOpacities: [Double] = []
-    /// The reply is still streaming, so its last block may be half written.
-    var isStreaming = false
+    /// The reply is still streaming (or this is a cut preview), so its last
+    /// block may be half written.
+    var lastBlockMayBePartial = false
 
     @State private var mountedUnitBudget = MarkdownRichContentPolicy.eagerRichUnitBudget
 
@@ -542,7 +543,7 @@ struct RichBudgetedMarkdownBody: View {
             newestCharacterOpacities: index == blocks.count - 1
                 ? newestCharacterOpacities
                 : [],
-            isStreamingTail: isStreaming && index == blocks.count - 1
+            isStreamingTail: lastBlockMayBePartial && index == blocks.count - 1
         )
     }
 

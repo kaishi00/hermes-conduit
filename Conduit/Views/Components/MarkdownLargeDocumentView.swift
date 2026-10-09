@@ -61,7 +61,8 @@ struct LargeMarkdownDocumentView: View {
                 source: Self.previewSource(of: source),
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
-                gatewayMediaDataURL: gatewayMediaDataURL
+                gatewayMediaDataURL: gatewayMediaDataURL,
+                mayEndMidBlock: true
             )
 
             LargeDocumentBanner(
