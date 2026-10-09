@@ -79,8 +79,8 @@ struct VoiceConversationSheet: View {
                 VoiceInputLevelMeter(level: inputMeterLevel, isActive: isInputMeterActive)
                     .frame(height: 20)
                     .accessibilityHint(Text(isInputMeterActive
-                        ? "Shows audio reaching Conduit while the microphone is live."
-                        : "The microphone is not capturing right now."))
+                        ? AppLocalization.string("Shows audio reaching Conduit while the microphone is live.")
+                        : AppLocalization.string("The microphone is not capturing right now.")))
                 Spacer(minLength: 0)
             }
         }
@@ -192,7 +192,7 @@ struct VoiceConversationSheet: View {
                 .disabled(controller.state == .transcribing)
 
                 Button { controller.setOutputMuted(!controller.isOutputMuted) } label: {
-                    Label(controller.isOutputMuted ? "Unmute" : "Mute", systemImage: controller.isOutputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    Label(controller.isOutputMuted ? AppLocalization.string("Unmute") : AppLocalization.string("Mute"), systemImage: controller.isOutputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                         .frame(maxWidth: .infinity)
                         .frame(height: 48)
                 }

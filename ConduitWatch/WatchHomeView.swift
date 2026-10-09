@@ -139,7 +139,7 @@ struct WatchSettingsView: View {
             }
             Section {
                 Label {
-                    Text(link.isReachable ? "iPhone connected" : "iPhone not connected right now")
+                    Text(link.isReachable ? String(localized: "iPhone connected") : String(localized: "iPhone not connected right now"))
                 } icon: {
                     Image(systemName: link.isReachable ? "iphone" : "iphone.slash")
                 }

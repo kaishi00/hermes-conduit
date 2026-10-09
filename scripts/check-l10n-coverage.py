@@ -50,6 +50,9 @@ InfoPlist):
     parentheses at the end, "Runs (%lld)", or ending the string after a
     colon, "Jobs: %lld"); a count interpolated as String(...) in front of
     a plural noun is reported at its call site;
+  * a raw string literal passed as a ternary branch to a SwiftUI title
+    (Text(flag ? "A" : "B")) is reported at its call site: it binds the
+    verbatim String overload and is never looked up;
   * the printf placeholders of every value in ANY language, drafts
     included, must match the key's placeholder TYPE FAMILIES (object vs
     integer vs float) in count, order, and positional index validity -
@@ -353,6 +356,99 @@ def string_wrapped_counts(source: str):
         for expression, text in zip(expressions, after):
             if _STRING_WRAPPED_COUNT_RE.match(expression) and _COUNTED_NOUN_RE.match(text):
                 yield expression.strip(), offset
+
+
+def _skip_literal(source: str, i: int):
+    """Index just past the string literal starting at source[i] == '"'
+    (multi-line \"\"\" literals included), or None when unterminated."""
+    if source.startswith('"""', i):
+        end = source.find('"""', i + 3)
+        return None if end < 0 else end + 3
+    parsed = parse_swift_literal_parts(source, i)
+    return None if parsed is None else parsed[1]
+
+
+def _first_argument(source: str, start: int):
+    """The text of the first argument of the call whose '(' ends just
+    before `start`, up to its top-level ',' or ')'; None when unbalanced."""
+    depth = 0
+    i = start
+    while i < len(source):
+        ch = source[i]
+        if ch == '"':
+            i = _skip_literal(source, i)
+            if i is None:
+                return None
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if depth == 0:
+                return source[start:i]
+            depth -= 1
+        elif ch == "," and depth == 0:
+            return source[start:i]
+        i += 1
+    return None
+
+
+def _top_level(text: str, token: str, start: int = 0) -> int:
+    """Offset of the first ` token ` (spaced, outside brackets and string
+    literals) in `text` at or after `start`, or -1."""
+    depth = 0
+    i = start
+    while i < len(text):
+        ch = text[i]
+        if ch == '"':
+            i = _skip_literal(text, i)
+            if i is None:
+                return -1
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif (depth == 0 and ch == token and i > 0 and text[i - 1].isspace()
+              and i + 1 < len(text) and text[i + 1].isspace()):
+            return i
+        i += 1
+    return -1
+
+
+def _ternary_branch_literals(argument: str):
+    """Yield the skeleton of each raw string literal that is a branch of a
+    top-level ternary in `argument` (nested ternaries included)."""
+    question = _top_level(argument, "?")
+    if question < 0:
+        return
+    colon = _top_level(argument, ":", question + 1)
+    if colon < 0:
+        return
+    for branch in (argument[question + 1:colon], argument[colon + 1:]):
+        branch = branch.strip()
+        if branch.startswith('"') and not branch.startswith('"""'):
+            parsed = parse_swift_literal_parts(branch, 0)
+            if parsed is not None and parsed[1] == len(branch):
+                yield parsed[0]
+                continue
+        yield from _ternary_branch_literals(branch)
+
+
+def raw_ternary_literals(source: str):
+    """Yield (skeleton, offset) for each raw string literal that is a
+    ternary branch passed straight to a SwiftUI initializer or modifier.
+    Text(flag ? "A" : "B") binds the verbatim String overload, so neither
+    branch is looked up in the catalog: each branch needs
+    AppLocalization.string. Glyph-only literals ("•", "—") are text no
+    language translates, and are left alone."""
+    for regex in (SWIFTUI_RE, MODIFIER_RE):
+        for match in regex.finditer(source):
+            argument = _first_argument(source, match.end())
+            if argument is None or re.match(r"\s*\w+\s*:(?!:)", argument):
+                continue  # a labeled argument (verbatim:, value:) isn't a title
+            for skeleton in _ternary_branch_literals(argument):
+                if re.search(r"[^\W\d_]", skeleton.replace("%@", "")):
+                    yield skeleton, match.start()
 
 
 def _localized_literals(source: str):
@@ -1003,6 +1099,12 @@ def scan_sites(root: str, catalog_keys, repo_root: str, missing: dict, key_probl
                 key_problems.setdefault(f"{os.path.relpath(path, repo_root)}:{line}", []).append(
                     f"interpolates {expression} as text, so no plural form "
                     f"applies: interpolate the Int and give the key plural forms")
+            for skeleton, offset in raw_ternary_literals(source):
+                line = source.count("\n", 0, offset) + 1
+                key_problems.setdefault(f"{os.path.relpath(path, repo_root)}:{line}", []).append(
+                    f"passes \"{skeleton}\" as a ternary branch, which binds the "
+                    f"verbatim String overload and never localizes: wrap each "
+                    f"branch in AppLocalization.string")
             for skeleton, offset in extract_sites(source):
                 checked += 1
                 if skeleton in EXEMPT_KEYS:

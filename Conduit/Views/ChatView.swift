@@ -2908,7 +2908,7 @@ struct StreamingBubble: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                Text(active ? "Responding" : "Finishing")
+                Text(active ? AppLocalization.string("Responding") : AppLocalization.string("Finishing"))
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
 

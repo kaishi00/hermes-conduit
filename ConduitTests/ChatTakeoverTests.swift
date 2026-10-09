@@ -35,7 +35,13 @@ extension HermesClientTests {
         let defaults = UserDefaults.standard
         let previous = defaults.string(forKey: AppLanguageStore.defaultsKey)
         defaults.set(AppLanguage.source.rawValue, forKey: AppLanguageStore.defaultsKey)
-        defer { defaults.set(previous, forKey: AppLanguageStore.defaultsKey) }
+        defer {
+            if let previous {
+                defaults.set(previous, forKey: AppLanguageStore.defaultsKey)
+            } else {
+                defaults.removeObject(forKey: AppLanguageStore.defaultsKey)
+            }
+        }
         func state(_ surface: String?) -> ChatTakeoverState {
             ChatTakeoverState(sessionID: "s1", sessionIDs: ["s1"], surface: surface, phase: .offered)
         }
