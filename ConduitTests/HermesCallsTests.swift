@@ -322,6 +322,31 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(calls.holds.last?.seconds, 0)
     }
 
+    func testAWatchWhoseHandOverHoldFailsStaysWithTheNewCall() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+
+        // The next call begins during the release, and holding it again fails.
+        calls.onHold = { [weak supervisor, weak calls] seconds in
+            guard seconds > 0 else { supervisor?.beginLiveCall(); return }
+            calls?.holdError = URLError(.timedOut)
+        }
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+        calls.onHold = nil
+        calls.holdError = nil
+        XCTAssertEqual(Array(calls.holds.map(\.seconds).prefix(2)), [0, VoiceBackgroundJobSupervisor.callbackHoldSeconds])
+
+        // Still the new call's: its own hang-up lets go of it.
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+        XCTAssertEqual(calls.holds.last?.seconds, 0)
+        XCTAssertTrue(calls.notified.isEmpty)
+    }
+
     func testAWatchHandedToACallThatEndsMeanwhileIsLetGo() async {
         let (supervisor, _, calls) = hermesCallSupervisor()
         beginHermesCall(supervisor)

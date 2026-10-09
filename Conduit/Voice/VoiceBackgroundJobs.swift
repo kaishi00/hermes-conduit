@@ -773,11 +773,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 await callbacks.notify(target, entry.hostEndKind)
                 break
             }
+            var watchID = entry.watchID
             do {
-                var watchID = entry.watchID
                 // A call that began since hands the watch over still held, so
                 // Hermes can't call in between.
-                let holdSeconds = callbackCallID != nil ? Self.callbackHoldSeconds : 0
+                let heldThen = callbackCallID != nil
+                let holdSeconds = heldThen ? Self.callbackHoldSeconds : 0
                 var answer: HermesCallHoldAnswer
                 if let held = watchID {
                     answer = try await callbacks.hold(held, entry.profile, holdSeconds)
@@ -794,7 +795,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // the hold it took goes too, or Hermes would wait it out.
                 // One that began during a release holds it again at once.
                 let heldNow = callbackCallID != nil
-                if heldNow != (holdSeconds > 0), answer == .watching, let held = watchID {
+                if heldNow != heldThen, answer == .watching, let held = watchID {
                     answer = try await callbacks.hold(held, entry.profile, heldNow ? Self.callbackHoldSeconds : 0)
                 }
                 guard generation == self.generation else { return }
@@ -812,8 +813,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     break
                 }
             } catch {
-                // A held watch lapses and fires on the host by itself.
                 hermesCallbackLogger.notice("Call watch not settled at hang-up: \(error.localizedDescription, privacy: .public)")
+                // A call running now keeps holding it on its renewals;
+                // otherwise a held watch lapses and fires on the host.
+                if generation == self.generation, callbackCallID != nil, let watchID {
+                    callbackWatches[id] = CallbackWatch(callID: callbackCallID, profile: entry.profile, watchID: watchID)
+                    syncCallbacks()
+                    return
+                }
             }
         }
         guard generation == self.generation else { return }

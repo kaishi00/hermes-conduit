@@ -657,6 +657,10 @@ final class GPTLiveDelegationBridge {
         draft = nil
         droppedBesideReadBackAt = nil
         lastSentAt = nil
+        // Its delegation ids may come again, for other work.
+        lastTaker = nil
+        lastUntaken = nil
+        releaseCallsBack = false
         isEnding = false
     }
 
