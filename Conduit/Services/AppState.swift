@@ -3491,6 +3491,12 @@ final class AppState: ObservableObject {
         chatOwnSessionIDs(for: sessionId)
     }
 
+    /// The ids a call from Hermes' chat is known by (#449), so its spoken
+    /// answers reach cards in that chat only.
+    func hermesCallChatIDs(for sessionId: String) -> Set<String> {
+        chatOwnSessionIDs(for: sessionId)
+    }
+
     static func ownSessionIDs(for sessionId: String, in rows: [SessionSummary]) -> Set<String> {
         ownSessionIDs(for: [sessionId], in: rows)
     }

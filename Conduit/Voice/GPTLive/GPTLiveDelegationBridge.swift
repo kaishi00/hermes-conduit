@@ -152,8 +152,9 @@ final class GPTLiveDelegationBridge {
         if let decision = Self.decisionMarker(in: request), decision.answers(supervisor.callWaitsOn) {
             guard seenDelegations.insert(id).inserted, !isEnding else { return [] }
             let outcome: VoiceCallDecisionOutcome
-            if (spokenWords?.wordsMark() ?? 1) == 0 {
-                // Only ever the user's own answer, never the model's.
+            if (spokenWords?.wordsMark() ?? 0) == 0 {
+                // Only ever the user's own answer, never the model's. No
+                // record of their words counts as nothing said.
                 outcome = .userHasNotSpoken
             } else {
                 switch decision {

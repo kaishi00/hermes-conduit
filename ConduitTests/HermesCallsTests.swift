@@ -592,6 +592,7 @@ extension VoiceConversationControllerTests {
         let tools = approval.instructionBlock(delegation: false)
         XCTAssertTrue(tools.contains("<reason>Run 'rm -rf build' now</reason>"))
         XCTAssertTrue(tools.contains("call answer_approval with choice \"once\""))
+        XCTAssertTrue(tools.contains("only once the result comes back"), "The model never confirms before the card does")
         XCTAssertFalse(tools.contains("Earlier reply"), "The chat's last reply isn't what an approval call is about")
         let delegated = approval.instructionBlock(delegation: true)
         XCTAssertTrue(delegated.contains("delegate \"Approve:\""))
@@ -710,6 +711,11 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(decisions.answers, ["main"])
 
         let gpt = GPTLiveDelegationBridge(supervisor: supervisor)
+        let unheard = await gpt.handleDelegation(id: "d0", request: "Deny:", userWords: "no, don't")
+        XCTAssertEqual(unheard, [.delegationReply(delegationID: "d0", text: VoiceCallDecisionOutcome.userHasNotSpoken.modelMessage, channel: .commentary)], "No record of the user's words counts as nothing said")
+        let words = FakeGPTLiveSpokenWords()
+        gpt.spokenWords = words
+        words.mark = 1
         let denied = await gpt.handleDelegation(id: "d1", request: "Deny:", userWords: "no, don't")
         XCTAssertEqual(denied, [.delegationReply(delegationID: "d1", text: VoiceCallDecisionOutcome.denied.modelMessage, channel: .commentary)])
         decisions.waitsOn = .question

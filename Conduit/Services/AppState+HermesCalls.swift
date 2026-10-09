@@ -153,12 +153,15 @@ extension AppState {
         // announces it again.
         voiceBackgroundJobSupervisor.noteCallAnswered(sessionIDs: call.sessionIDs)
         let thread = liveVoiceThreadForOpenChat()
+        // Every id the chat is known by, so a spoken answer finds its cards
+        // there and nowhere else.
+        let chatIDs = activeSessionId.map { hermesCallChatIDs(for: $0) } ?? []
         let opening = HermesCallOpening(
             kind: call.kind,
             title: call.title ?? thread?.title,
             result: thread.flatMap { latestReplyInOpenChat($0) },
             reason: call.reason,
-            sessionIDs: call.sessionIDs
+            sessionIDs: call.sessionIDs + chatIDs.subtracting(call.sessionIDs).sorted()
         )
         let profile = activeProfile
         let intent = PendingVoiceIntent(profile: profile, startsFreshConversation: false, source: .hermesCall)
@@ -239,16 +242,28 @@ extension AppState {
 
     // MARK: Answering by voice (#449 step 4)
 
-    /// The open chat's newest approval waiting on the user, preferring the
-    /// call's own session.
-    private func hermesCallApprovalMessage(_ call: HermesCallOpening) -> ChatMessage? {
-        let waiting = messages.filter { $0.approval?.status == .pending || $0.approval?.status == .error }
-        return waiting.last(where: { call.sessionIDs.contains($0.approval?.sessionId ?? "") }) ?? waiting.last
+    /// The call's chat ids while that chat is still the open one; nil once
+    /// the user moved to another, whose cards the call never answers.
+    private func hermesCallOpenChatIDs(_ call: HermesCallOpening) -> Set<String>? {
+        guard let sessionId = activeSessionId, !sessionId.isEmpty else { return nil }
+        let open = hermesCallChatIDs(for: sessionId)
+        return open.isDisjoint(with: call.sessionIDs) ? nil : open.union(call.sessionIDs)
     }
 
-    /// The open chat's newest question waiting on the user.
-    private func hermesCallQuestionMessage() -> ChatMessage? {
-        messages.last { message in
+    /// The newest approval in the call's chat waiting on the user.
+    private func hermesCallApprovalMessage(_ call: HermesCallOpening) -> ChatMessage? {
+        guard let ids = hermesCallOpenChatIDs(call) else { return nil }
+        return messages.last { message in
+            guard let approval = message.approval, approval.status == .pending || approval.status == .error else { return false }
+            return ids.contains(approval.sessionId)
+        }
+    }
+
+    /// The newest question in the call's chat waiting on the user. A
+    /// question names no session: the open chat's are all its own.
+    private func hermesCallQuestionMessage(_ call: HermesCallOpening) -> ChatMessage? {
+        guard hermesCallOpenChatIDs(call) != nil else { return nil }
+        return messages.last { message in
             guard let clarify = message.clarify, !clarify.isExpired else { return false }
             return clarify.questions.contains { $0.status == .pending || $0.status == .error }
         }
@@ -278,7 +293,7 @@ extension AppState {
     /// answer.
     func answerHermesCallQuestion(_ answer: String) async -> VoiceCallDecisionOutcome {
         guard let call = liveHermesCall, call.kind == .question else { return .nothingPending }
-        guard let message = hermesCallQuestionMessage(), let clarify = message.clarify,
+        guard let message = hermesCallQuestionMessage(call), let clarify = message.clarify,
               let question = clarify.questions.first(where: { $0.status == .pending || $0.status == .error }) else { return .nothingPending }
         // The first question still open, as the card would answer it.
         await respondToClarify(requestId: clarify.requestId, questionId: clarify.questions.count == 1 ? nil : question.id, answer: answer)
