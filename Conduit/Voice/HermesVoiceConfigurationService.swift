@@ -707,12 +707,21 @@ enum VoiceConfigurationParser {
             let status: String
             if let text = row["status"] as? String { status = text }
             else if let object = row["status"] as? [String: Any] { status = object["state"] as? String ?? object["label"] as? String ?? AppLocalization.string("Unknown") }
-            else { status = AppLocalization.string("Unknown") }
+            else { status = legacyStatus(credentials) }
             // providerID resolves to "nous" only for the managed route (the
             // managed feature marker or the legacy managed-row label), so the
             // canonical ID doubles as the structured managed marker.
             return .init(id: id, kind: kind, status: status, isActive: row["is_active"] as? Bool ?? false, displayName: row["name"] as? String ?? id, isManagedNous: id == "nous", requiredCredentials: credentials)
         }
+    }
+
+    /// Hermes before 0.19 sends no readiness status, only each row's keys.
+    /// Its own picker then showed a row as ready once every key it lists was
+    /// set, keyless rows included, so Conduit judges those hosts the same way
+    /// instead of refusing Voice on a host that can speak. The real speech
+    /// attempt reports anything else (a logged-out Nous row, say).
+    private static func legacyStatus(_ credentials: [VoiceCredentialStatus]) -> String {
+        credentials.allSatisfy(\.isSet) ? "ready" : "needs_keys"
     }
 
     /// Hermes' toolset response keys each row by its picker label; only TTS
@@ -740,6 +749,10 @@ enum VoiceConfigurationParser {
         case "openai", "openai tts": return "openai"
         case "elevenlabs scribe": return "elevenlabs"
         case "microsoft edge tts": return "edge"
+        // Hermes before 0.19 sends TTS rows without `tts_provider`.
+        case "xai tts": return "xai"
+        case "mistral (voxtral tts)": return "mistral"
+        case "google gemini tts": return "gemini"
         default: break
         }
         return name
