@@ -824,7 +824,7 @@ final class GPTLiveDelegationBridge {
         guard !words.isEmpty else { return request }
         let own = Self.normalizedRequest(waiting.userWords)
         guard own.isEmpty || VoiceThreadRouting.heldRequestAnswer(waiting.userWords).isBare
-                || Self.normalizedRequest(words).contains(own) else { return request }
+                || (" " + Self.normalizedRequest(words) + " ").contains(" " + own + " ") else { return request }
         return words
     }
 

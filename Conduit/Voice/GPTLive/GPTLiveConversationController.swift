@@ -232,6 +232,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// request can mark how far their words had got.
     private var userEntryNumbers: [UUID: Int] = [:]
     private var userEntriesBegun = 0
+    /// The user's turns handled here (a read-back, a job command, #451):
+    /// a delegation's words leave them out unless they are all it has.
+    private var handledHere: Set<UUID> = []
     private var endRequestedAt: Date?
     private var endTask: Task<Void, Never>?
     private var activeEndPhrases: [String] = []
@@ -292,6 +295,7 @@ final class GPTLiveConversationController: ObservableObject {
         delegationWords = [:]
         userEntryNumbers = [:]
         userEntriesBegun = 0
+        handledHere = []
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
         hostIssue = nil
@@ -639,9 +643,11 @@ final class GPTLiveConversationController: ObservableObject {
     }
 
     /// The user's latest turn was handled here: its words never go to
-    /// Hermes with a later request.
+    /// Hermes with a later request, nor with the next delegation's.
     private func settleLatestUserTurn() {
-        if let latest = transcript.last(where: { $0.speaker == .user }) { settledEntries.insert(latest.id) }
+        guard let latest = transcript.last(where: { $0.speaker == .user }) else { return }
+        settledEntries.insert(latest.id)
+        handledHere.insert(latest.id)
     }
 
     /// Carries out what the user's words did to a held request. They are
@@ -674,13 +680,17 @@ final class GPTLiveConversationController: ObservableObject {
         let handled = delegatedEntries
         let recent = transcript.filter { !handled.contains($0.id) }
         delegatedEntries.formUnion(transcript.map(\.id))
-        let userWords = recent.filter { $0.speaker == .user }.map(\.text).joined(separator: " ")
+        // A turn handled here ("Read the last reply") isn't the request,
+        // unless a delegation made on it has nothing else (#451).
+        let said = recent.filter { $0.speaker == .user }
+        let fresh = said.filter { !handledHere.contains($0.id) }
+        let userWords = (fresh.isEmpty ? said : fresh).map(\.text).joined(separator: " ")
         let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
         let request = own.isEmpty ? userWords : own
         // Nothing new since the last delegation: no request, so Hermes asks
         // the user rather than redoing the one already passed on.
         guard !request.isEmpty else { return ("", userWords) }
-        let context = recentConversation(handled: handled)
+        let context = recentConversation(handled: handled.union(handledHere))
         guard !context.isEmpty else { return (request, userWords) }
         return (request + Self.delegationContextMarker + context, userWords)
     }

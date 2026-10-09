@@ -3337,6 +3337,30 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(own.contains("read what we said"), prompt)
         controller.stop()
     }
+
+    /// A read request handled here, then a request GPT-Live delegates with
+    /// no text: the read request isn't part of it (#451).
+    func testGPTLiveReadRequestHandledHereIsNotPartOfTheNextDelegation() async {
+        let current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, fake) = makeGPTController(clock: { current })
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Read the last reply."))
+        session.onEvent?(.turnDone(role: "user", transcript: "Book a table for Sam."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await waitForFollowUpState { controller.pendingContextCountForTesting > 0 }
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Shall I send that?"))
+        session.onEvent?(.turnDone(role: "user", transcript: "Yes."))
+        await waitForFollowUpState { fake.created == 1 }
+        XCTAssertEqual(fake.created, 1)
+        let prompt = fake.submissions.first?.1 ?? ""
+        let own = prompt.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? prompt
+        XCTAssertTrue(own.contains("Book a table for Sam."), prompt)
+        XCTAssertFalse(own.contains("Read the last reply"), prompt)
+        XCTAssertTrue(prompt.contains("User (handled separately): Read the last reply."), prompt)
+        controller.stop()
+    }
 }
 
 /// The call's record of the user's words, for the delegation bridge alone.
