@@ -57,7 +57,10 @@ extension AppState {
     @discardableResult
     func saveHermesCallSettings(_ settings: HermesCallSettings, profile: String, dashboardID: UUID?) async -> Bool {
         // Another server's host has no say over this one's profiles.
-        guard dashboardID == activeDashboardID else { return false }
+        guard dashboardID == activeDashboardID else {
+            hermesCallsStateLogger.notice("Call settings not saved: the server changed since the edit")
+            return false
+        }
         let key = hermesCallsKey(profile: profile)
         do {
             let saved = try await hermesCallsClient.save(settings, profile: profile)

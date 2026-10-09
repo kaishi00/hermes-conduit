@@ -499,6 +499,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     // that can't release the hold leaves it to lapse on the host, which
     // then calls as usual. A later live call holds the watches still
     // waiting, so Hermes never calls in the middle of one.
+    // A watch handed from one call to the next stays held all the way: a
+    // settle that races a call beginning or ending holds or releases again
+    // before it's stored, and a host step that fails keeps the watch with
+    // the running call (or for the next one) rather than dropping it.
     // (designs/hermes-calls-you-449.md)
 
     /// The host's call watches; nil when Hermes can't call.
@@ -815,10 +819,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             } catch {
                 hermesCallbackLogger.notice("Call watch not settled at hang-up: \(error.localizedDescription, privacy: .public)")
                 // A call running now keeps watching and holding it on its
-                // renewals; otherwise a held watch lapses and fires on the host.
-                if generation == self.generation, callbackCallID != nil {
+                // renewals. With none, a watch on the host waits for the
+                // next call like a settled one: a release that failed may
+                // leave it held, and it lapses and fires on the host.
+                if generation == self.generation, callbackCallID != nil || watchID != nil {
                     callbackWatches[id] = CallbackWatch(callID: callbackCallID, profile: entry.profile, watchID: watchID)
-                    syncCallbacks()
+                    if callbackCallID != nil { syncCallbacks() }
                     return
                 }
             }
