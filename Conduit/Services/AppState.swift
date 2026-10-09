@@ -1564,7 +1564,7 @@ final class AppState: ObservableObject {
     private var geminiLiveControllerCreated = false
 
     /// Whether a Gemini Live conversation is running, without creating one.
-    private var isGeminiLiveActive: Bool {
+    var isGeminiLiveActive: Bool {
         geminiLiveControllerCreated && geminiLiveController.isActive
     }
 
@@ -1584,7 +1584,7 @@ final class AppState: ObservableObject {
                         personality: self?.geminiLivePersonality,
                         answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
-                        + (self?.liveHermesCall?.instructionBlock ?? "")
+                        + (self?.liveHermesCall?.instructionBlock(delegation: false) ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
@@ -1592,7 +1592,8 @@ final class AppState: ObservableObject {
                         webSearch: search == .hermes,
                         memoryRecall: memory?.canRecall == true,
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
-                        callback: self?.supportsHermesCalls == true
+                        callback: self?.supportsHermesCalls == true,
+                        waitsOn: self?.liveHermesCall?.kind
                     ),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
@@ -1856,7 +1857,7 @@ final class AppState: ObservableObject {
     private var gptLiveControllerCreated = false
 
     /// Whether a GPT-Live conversation is running, without creating one.
-    private var isGPTLiveActive: Bool {
+    var isGPTLiveActive: Bool {
         gptLiveControllerCreated && gptLiveController.isActive
     }
 
@@ -1877,7 +1878,7 @@ final class AppState: ObservableObject {
                         answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     )
                         + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
-                        + (self?.liveHermesCall?.instructionBlock ?? "")
+                        + (self?.liveHermesCall?.instructionBlock(delegation: true) ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
                         + (self?.hermesCallsInstructions(delegation: true) ?? "")
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
@@ -1901,7 +1902,7 @@ final class AppState: ObservableObject {
                     answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                 )
                     + (self?.liveVoiceResumeContext?.summaryInstructionBlock ?? "")
-                    + (self?.liveHermesCall?.instructionBlock ?? "")
+                    + (self?.liveHermesCall?.instructionBlock(delegation: true) ?? "")
                     + (self?.liveVoiceThreadInstructions(delegation: true) ?? "")
                     + (self?.hermesCallsInstructions(delegation: true) ?? "")
                     + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
@@ -2118,7 +2119,7 @@ final class AppState: ObservableObject {
     private var grokLiveControllerCreated = false
 
     /// Whether a Grok Live conversation is running, without creating one.
-    private var isGrokLiveActive: Bool {
+    var isGrokLiveActive: Bool {
         grokLiveControllerCreated && grokLiveController.isActive
     }
 
@@ -2142,7 +2143,7 @@ final class AppState: ObservableObject {
                         personality: self?.grokLivePersonality,
                         answerLength: self?.liveVoiceStyle.answerLength ?? .standard
                     ) + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
-                        + (self?.liveHermesCall?.instructionBlock ?? "")
+                        + (self?.liveHermesCall?.instructionBlock(delegation: false) ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
@@ -2150,7 +2151,8 @@ final class AppState: ObservableObject {
                         webSearch: search == .hermes,
                         memoryRecall: memory?.canRecall == true,
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
-                        callback: self?.supportsHermesCalls == true
+                        callback: self?.supportsHermesCalls == true,
+                        waitsOn: self?.liveHermesCall?.kind
                     ),
                     voice: self?.grokLiveVoice
                 )
@@ -2406,6 +2408,11 @@ final class AppState: ObservableObject {
             }
         ))
         supervisor.callbacks = self.makeHermesCallbackBackend()
+        supervisor.callDecisions = VoiceCallDecisions(
+            waitsOn: { [weak self] in self?.liveHermesCall?.kind },
+            approve: { [weak self] choice in await self?.answerHermesCallApproval(choice: choice) ?? .failed },
+            answer: { [weak self] answer in await self?.answerHermesCallQuestion(answer) ?? .failed }
+        )
         supervisor.onNoticePending = { [weak self] in
             guard let self else { return }
             if self.isGeminiLiveActive {
@@ -2913,7 +2920,7 @@ final class AppState: ObservableObject {
     /// left a socket lost during suspension dead for the whole drive and
     /// CarPlay reporting Voice unavailable.
     private var canRunTransportRecovery: Bool {
-        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive
+        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive
     }
     /// A transport whose handshake completed but whose post-connect bootstrap
     /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
@@ -3484,6 +3491,12 @@ final class AppState: ObservableObject {
         chatOwnSessionIDs(for: sessionId)
     }
 
+    /// The ids a call from Hermes' chat is known by (#449), so its spoken
+    /// answers reach cards in that chat only.
+    func hermesCallChatIDs(for sessionId: String) -> Set<String> {
+        chatOwnSessionIDs(for: sessionId)
+    }
+
     static func ownSessionIDs(for sessionId: String, in rows: [SessionSummary]) -> Set<String> {
         ownSessionIDs(for: [sessionId], in: rows)
     }
@@ -3839,6 +3852,16 @@ final class AppState: ObservableObject {
     private(set) var liveHermesCall: HermesCallOpening?
     /// The engine of the live call whose work Hermes may call about.
     var hermesCallbackEngine: VoiceCallEngine?
+    /// Keeps the host's call presence while a live call runs (#449), and
+    /// the profile it was set for.
+    var hermesCallPresenceTask: Task<Void, Never>?
+    var hermesCallPresenceProfile: String?
+    /// The last call's "away", which a new call's presence goes after.
+    var hermesCallPresenceRelease: Task<Void, Never>?
+    /// A call from Hermes rings or runs in CallKit (HermesNativeCalls): like
+    /// a CarPlay or Watch call, it keeps transport recovery going with the
+    /// phone locked.
+    @Published var isNativeHermesCallActive = false
     /// A profile's call settings on the host (AppState+HermesCalls), for
     /// the dashboard and profile in `hermesCallsStatusKey`.
     @Published var hermesCallsStatus: HermesCallsStatus?
@@ -4130,6 +4153,7 @@ final class AppState: ObservableObject {
         liveHermesCall = pendingHermesCall
         pendingHermesCall = nil
         hermesCallbackEngine = engine
+        beginHermesCallPresence()
         // Read now, so "call me when it's done" knows whether Hermes can.
         if supportsHermesCalls { Task { await refreshHermesCallsStatus() } }
         guard voiceCallSavingEnabled else { return }
@@ -24274,8 +24298,9 @@ final class AppState: ObservableObject {
     /// transitions cannot keep a dead gateway on a fixed 0.1s retry.
     func recoverTransportForCarPlayIfNeeded(immediately: Bool = false) {
         // A conversation kept running while locked relies on the transport
-        // the same way, and so does a call the Apple Watch started.
-        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive,
+        // the same way, and so do a call the Apple Watch started and a call
+        // from Hermes answered in CallKit.
+        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive,
               !isSceneActive,
               connection != nil,
               !isConnected,

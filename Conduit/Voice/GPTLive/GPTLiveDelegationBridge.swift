@@ -8,7 +8,9 @@
 //  the same VoiceBackgroundJobSupervisor as the other voice modes, answers
 //  the delegation with quiet progress ("commentary"), and hands the job's
 //  outcome back on it as "speakable" context once it settles. Hermes stays
-//  the worker; approvals are never given by voice.
+//  the worker; a job's approvals are never given by voice. A call Hermes
+//  made about an approval or question it waits on (#449) is answered with
+//  "Approve:", "Deny:" or "Answer: …", only once the user has spoken.
 //
 //  A correction to work Hermes is still doing goes into it (#451): a
 //  delegation starting "Job 2:" into background job 2, one with no job
@@ -50,6 +52,9 @@ protocol GPTLiveSpokenWords: AnyObject {
     func unsentWords() -> String
     /// How far the user's words have got, for `.through`.
     func wordsMark() -> Int
+    /// The user's last line, as transcribed: a call from Hermes approves
+    /// only on their own yes (#449 step 4).
+    func lastUserLine() -> String
     func settleWords(_ words: GPTLiveDelegationBridge.SettledWords)
 }
 
@@ -110,6 +115,8 @@ final class GPTLiveDelegationBridge {
     /// The call's record of the user's words. Without one, a held request
     /// goes as held.
     weak var spokenWords: GPTLiveSpokenWords?
+    /// How long a yes still being transcribed is waited for.
+    var lateYesWait: Duration = .seconds(3)
 
     /// Words the call has handled (#451), so they never go with a later
     /// request.
@@ -144,6 +151,43 @@ final class GPTLiveDelegationBridge {
     /// user's own words since the last delegation: a follow-up to work
     /// Hermes is still doing hands it those (#451).
     func handleDelegation(id: String, request: String, userWords: String = "") async -> [Outgoing] {
+        // "Approve:", "Deny:" or "Answer: …" (#449 step 4): the user's answer
+        // to what a call from Hermes waits on. Never reaches Hermes as work.
+        // Only in such a call: anywhere else the words are a request.
+        if let decision = Self.decisionMarker(in: request), decision.answers(supervisor.callWaitsOn) {
+            guard seenDelegations.insert(id).inserted, !isEnding else { return [] }
+            let outcome: VoiceCallDecisionOutcome
+            if (spokenWords?.wordsMark() ?? 0) == 0 {
+                // Only ever the user's own answer, never the model's. No
+                // record of their words counts as nothing said.
+                outcome = .userHasNotSpoken
+            } else {
+                switch decision {
+                case .approve:
+                    // Never on the model's word for it: on the user's own yes.
+                    let saidYes = await VoiceCallDecisionOutcome.userSaysYes({ self.spokenWords?.lastUserLine() ?? "" }, wait: lateYesWait)
+                    if saidYes {
+                        outcome = await supervisor.answerApproval(choice: "once")
+                    } else {
+                        outcome = .notAYes
+                    }
+                case .deny: outcome = await supervisor.answerApproval(choice: "deny")
+                case .answer(let words):
+                    // The user's own words, as said since the last request;
+                    // the model's only when there are none.
+                    let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let answer = spoken.isEmpty ? words : spoken
+                    if answer.isEmpty {
+                        outcome = .userHasNotSpoken
+                    } else {
+                        outcome = await supervisor.answerQuestion(answer)
+                    }
+                }
+            }
+            guard !isEnding else { return [] }
+            spokenWords?.settleWords(.delegation(id))
+            return [.delegationReply(delegationID: id, text: outcome.modelMessage, channel: .commentary)]
+        }
         // "Call me:" (#449): Hermes calls the user once the call's newest
         // request is done (the job named, or all of them). Work that comes
         // with it is that request: it goes on as this delegation, and the
@@ -1127,6 +1171,37 @@ final class GPTLiveDelegationBridge {
             scope = .latest
         }
         return (scope, String(request[whole.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// A delegation answering what a call from Hermes waits on (#449).
+    enum DecisionMarker: Equatable {
+        case approve
+        case deny
+        /// The user's answer, without the delegation's added context; ""
+        /// when the model gave none.
+        case answer(String)
+
+        /// Whether it answers what the call waits on.
+        func answers(_ waitsOn: HermesCallRequest.Kind?) -> Bool {
+            switch self {
+            case .approve, .deny: return waitsOn == .approval
+            case .answer: return waitsOn == .question
+            }
+        }
+    }
+
+    /// "Approve:", "Deny:" or "Answer: the blue one".
+    static func decisionMarker(in request: String) -> DecisionMarker? {
+        guard let range = request.range(of: #"^\s*(approve|deny|answer)\s*:"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        let word = request[range].lowercased().trimmingCharacters(in: CharacterSet.letters.inverted)
+        let rest = String(request[range.upperBound...])
+        switch word {
+        case "approve": return .approve
+        case "deny": return .deny
+        default:
+            let own = rest.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? rest
+            return .answer(own.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
     }
 
     /// "New job: check the weather" → "check the weather": separate work

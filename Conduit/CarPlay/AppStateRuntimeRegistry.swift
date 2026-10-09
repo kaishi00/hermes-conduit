@@ -29,6 +29,10 @@ final class AppStateRuntimeRegistry {
         return created
     }
 
+    /// The AppState if one was created, without creating it: a call
+    /// reported from a VoIP push checks it before anything else runs.
+    var existing: AppState? { stored }
+
     internal init() {}
 
     /// Test isolation only.

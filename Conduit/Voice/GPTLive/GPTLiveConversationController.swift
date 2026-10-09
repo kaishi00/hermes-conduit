@@ -944,6 +944,10 @@ extension GPTLiveConversationController: GPTLiveSpokenWords {
 
     func wordsMark() -> Int { userEntriesBegun }
 
+    func lastUserLine() -> String {
+        transcript.last(where: { $0.speaker == .user })?.text ?? ""
+    }
+
     func settleWords(_ words: GPTLiveDelegationBridge.SettledWords) {
         switch words {
         case .all:

@@ -3470,9 +3470,11 @@ extension VoiceConversationControllerTests {
 final class FakeGPTLiveSpokenWords: GPTLiveSpokenWords {
     var words = ""
     var mark = 0
+    var lastLine = ""
     private(set) var settled: [GPTLiveDelegationBridge.SettledWords] = []
 
     func unsentWords() -> String { words }
     func wordsMark() -> Int { mark }
+    func lastUserLine() -> String { lastLine }
     func settleWords(_ words: GPTLiveDelegationBridge.SettledWords) { settled.append(words) }
 }

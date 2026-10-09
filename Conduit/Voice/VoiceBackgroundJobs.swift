@@ -507,6 +507,26 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// The host's call watches; nil when Hermes can't call.
     var callbacks: VoiceCallbackBackend?
+    /// Answers what a call from Hermes waits on (#449 step 4); nil before
+    /// AppState sets it.
+    var callDecisions: VoiceCallDecisions?
+
+    /// What the live call from Hermes waits on: an approval or a question.
+    var callWaitsOn: HermesCallRequest.Kind? {
+        callDecisions?.waitsOn()
+    }
+
+    /// The live model answered the approval the call is about with the
+    /// user's words.
+    func answerApproval(choice: String) async -> VoiceCallDecisionOutcome {
+        await callDecisions?.approve(choice) ?? .nothingPending
+    }
+
+    /// The live model answered the question the call is about.
+    func answerQuestion(_ answer: String) async -> VoiceCallDecisionOutcome {
+        await callDecisions?.answer(answer) ?? .nothingPending
+    }
+
     /// How long a watch stays held past its last renewal: the most a lost
     /// phone delays a call that is due.
     static let callbackHoldSeconds = 90
