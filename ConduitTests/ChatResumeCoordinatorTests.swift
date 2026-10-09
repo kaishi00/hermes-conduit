@@ -35,6 +35,71 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(request?.destination, .snapshot(reading))
     }
 
+    func testPendingClarifyOverridesSavedViewportAndRetainsItAsFallback() {
+        let harness = makeHarness()
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
+        let reading = ChatScrollSnapshot(anchorMessageID: "anchor-12", followsLatest: false)
+        harness.store.save(reading, for: key, at: Date())
+        harness.store.setLastSessionID("stored-a", for: "default")
+
+        _ = harness.coordinator.selectTarget(
+            in: [session("stored-b"), session("stored-a")],
+            profile: "default",
+            purpose: .automaticReturn,
+            currentSessionID: "stored-a"
+        )
+
+        let request = harness.coordinator.reconciliationSettled(
+            sessionKey: key,
+            pendingClarifyMessageID: "clarify-pending"
+        )
+        XCTAssertEqual(
+            request?.destination,
+            .pendingClarify(messageID: "clarify-pending", fallbackSnapshot: reading)
+        )
+    }
+
+    func testPendingClarifyMessageIDSelectsMostRecentAnswerableQuestion() {
+        let messages = [
+            clarifyMessage("first-pending", status: .pending),
+            clarifyMessage("submitting", status: .submitting),
+            clarifyMessage("answered", status: .answered),
+            clarifyMessage("expired", status: .expired),
+            clarifyMessage("retryable", status: .error)
+        ]
+
+        XCTAssertEqual(
+            ChatResumeCoordinator.pendingClarifyMessageID(in: messages),
+            "retryable"
+        )
+        XCTAssertNil(ChatResumeCoordinator.pendingClarifyMessageID(in: [
+            clarifyMessage("submitting", status: .submitting),
+            clarifyMessage("answered", status: .answered)
+        ]))
+    }
+
+    func testPendingClarifyOverridesLatestActivityBehavior() throws {
+        let harness = makeHarness()
+        harness.coordinator.setBehavior(.latestActivity)
+        let selected = harness.coordinator.selectTarget(
+            in: [session("stored-b"), session("stored-a")],
+            profile: "default",
+            purpose: .automaticReturn,
+            currentSessionID: "stored-a"
+        )
+        let selectedID = try XCTUnwrap(selected).id
+
+        let request = harness.coordinator.reconciliationSettled(
+            sessionKey: .init(profile: "default", sessionID: selectedID),
+            pendingClarifyMessageID: "clarify-pending"
+        )
+
+        XCTAssertEqual(
+            request?.destination,
+            .pendingClarify(messageID: "clarify-pending", fallbackSnapshot: nil)
+        )
+    }
+
     func testExplicitActionCancelsAnOlderGeneration() throws {
         let harness = makeHarness()
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
@@ -457,6 +522,24 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         }
         let store = ChatResumeStore(defaults: defaults)
         return (ChatResumeCoordinator(store: store), store, defaults, suite)
+    }
+
+    private func clarifyMessage(
+        _ id: String,
+        status: ClarifyQuestion.Status
+    ) -> ChatMessage {
+        ChatMessage(
+            id: id,
+            role: .assistant,
+            content: "",
+            timestamp: "",
+            clarify: ClarifyActivity(
+                requestId: id,
+                question: "Continue?",
+                choices: [],
+                status: status
+            )
+        )
     }
 
     private func session(_ id: String) -> SessionSummary {

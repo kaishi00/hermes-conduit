@@ -519,6 +519,20 @@ final class ChatScrollEngine: ObservableObject {
         refreshJumpButton()
     }
 
+    /// Jump to the answerable clarification in transcript order without
+    /// moving the card or converting browsing into follow-latest mode.
+    func explicitMessageRequested(id: String) {
+        guard !id.isEmpty, surface?.isTracking != true else { return }
+        restoration = nil
+        prependAnchor = nil
+        latestAnimationUntil = nil
+        cancelPastBottomCheck()
+        emit(.cancelAutomaticRestoration)
+        setMode(.browsing)
+        guard !isPaused else { return }
+        emit(.revealRow(id: id))
+    }
+
     /// The view calls this once an animated jump to latest has had time to
     /// land; pins the final position in case the content grew meanwhile.
     func latestAnimationFinished() {
@@ -909,19 +923,31 @@ final class ChatScrollEngine: ObservableObject {
         case .latest:
             return .latest
         case .snapshot(let snapshot):
-            // The resolver speaks semantic ids; rows are keyed by message id.
-            let resolved = ChatResumeViewportResolver.destination(
-                for: snapshot,
-                availableTargets: ChatScrollTargetAvailability(targets: targetCache.targets)
-            )
-            switch resolved {
-            case .latest:
-                return .latest
-            case .anchor(let semanticAnchor):
-                let sourceAnchor = targetCache.targets
-                    .first { $0.semanticID == semanticAnchor }?.id ?? semanticAnchor
-                return .anchor(sourceAnchor)
+            return resolveSnapshotRestorationDestination(snapshot)
+        case .pendingClarify(let messageID, let fallbackSnapshot):
+            if targetCache.targets.contains(where: { $0.id == messageID }) {
+                return .anchor(messageID)
             }
+            guard let fallbackSnapshot else { return .latest }
+            return resolveSnapshotRestorationDestination(fallbackSnapshot)
+        }
+    }
+
+    private func resolveSnapshotRestorationDestination(
+        _ snapshot: ChatScrollSnapshot
+    ) -> ChatResumeViewportDestination {
+        // The resolver speaks semantic ids; rows are keyed by message id.
+        let resolved = ChatResumeViewportResolver.destination(
+            for: snapshot,
+            availableTargets: ChatScrollTargetAvailability(targets: targetCache.targets)
+        )
+        switch resolved {
+        case .latest:
+            return .latest
+        case .anchor(let semanticAnchor):
+            let sourceAnchor = targetCache.targets
+                .first { $0.semanticID == semanticAnchor }?.id ?? semanticAnchor
+            return .anchor(sourceAnchor)
         }
     }
 }

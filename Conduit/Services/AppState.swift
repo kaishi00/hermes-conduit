@@ -9687,7 +9687,10 @@ final class AppState: ObservableObject {
         guard let sessionKey = activeChatScrollSessionIdentity.canonicalSessionKey else {
             return
         }
-        guard let request = chatResumeCoordinator.reconciliationSettled(sessionKey: sessionKey) else {
+        guard let request = chatResumeCoordinator.reconciliationSettled(
+            sessionKey: sessionKey,
+            pendingClarifyMessageID: ChatResumeCoordinator.pendingClarifyMessageID(in: messages)
+        ) else {
             // reconciliationSettled returned nil. If there was a pending
             // session key (mismatch path), clear the freeze so viewport
             // recording resumes. If there was no pending key, there's

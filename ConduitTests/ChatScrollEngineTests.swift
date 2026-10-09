@@ -218,6 +218,33 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(events.contains(.flushPersistence))
     }
 
+    func testAppendingPendingClarifyDoesNotAutoScrollWhileBrowsing() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        let pendingQuestion = ChatMessage(
+            id: "clarify-pending",
+            role: .clarify,
+            content: "Continue?",
+            timestamp: "2026-01-01T00:00:00Z",
+            clarify: ClarifyActivity(
+                requestId: "request-1",
+                question: "Continue?",
+                choices: [],
+                status: .pending
+            )
+        )
+
+        engine.transcriptChanged(
+            messages: Self.messages(0..<10) + [pendingQuestion],
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertTrue(engine.showsJumpToLatest)
+    }
+
     func testScrollingBackNearTheBottomResumesFollowing() {
         let (engine, surface) = makeEngine()
         surface.userScroll(to: 1000)
@@ -664,6 +691,70 @@ final class ChatScrollEngineTests: XCTestCase {
         )
     }
 
+    private func pendingClarifyRequest(
+        _ engine: ChatScrollEngine,
+        row index: Int,
+        fallbackRow fallbackIndex: Int,
+        generation: UInt64 = 9
+    ) -> ChatResumeRestorationRequest {
+        let target = engine.targets[index]
+        let fallback = engine.targets[fallbackIndex]
+        return ChatResumeRestorationRequest(
+            generation: generation,
+            sessionKey: keyA,
+            destination: .pendingClarify(
+                messageID: target.id,
+                fallbackSnapshot: ChatScrollSnapshot(
+                    anchorMessageID: fallback.semanticID,
+                    followsLatest: false,
+                    anchorMetadata: fallback.restorationMetadata,
+                    anchorSourceMessageID: fallback.id
+                )
+            )
+        )
+    }
+
+    func testPendingClarifyRestorationOverridesSavedViewport() {
+        let (engine, surface) = makeEngine()
+        surface.insetTop = 50
+        engine.rowFramesChanged([
+            "m2": ChatScrollRowFrame(minY: 300, maxY: 400, order: 2),
+            "m5": ChatScrollRowFrame(minY: 1000, maxY: 1200, order: 5)
+        ])
+        engine.restorationRequested(pendingClarifyRequest(engine, row: 5, fallbackRow: 2))
+
+        XCTAssertTrue(engine.restorationTick(transcriptRevision: 1))
+        XCTAssertEqual(surface.contentOffsetY, 968, "the pending question takes priority over m2")
+        XCTAssertFalse(engine.restorationTick(transcriptRevision: 1))
+        XCTAssertEqual(engine.topVisibleMessageID, "m5")
+    }
+
+    func testMissingPendingClarifyFallsBackToSavedViewport() {
+        let (engine, surface) = makeEngine()
+        engine.rowFramesChanged([
+            "m2": ChatScrollRowFrame(minY: 300, maxY: 400, order: 2)
+        ])
+        let fallback = engine.targets[2]
+        engine.restorationRequested(ChatResumeRestorationRequest(
+            generation: 10,
+            sessionKey: keyA,
+            destination: .pendingClarify(
+                messageID: "missing-question",
+                fallbackSnapshot: ChatScrollSnapshot(
+                    anchorMessageID: fallback.semanticID,
+                    followsLatest: false,
+                    anchorMetadata: fallback.restorationMetadata,
+                    anchorSourceMessageID: fallback.id
+                )
+            )
+        ))
+
+        XCTAssertTrue(engine.restorationTick(transcriptRevision: 1))
+        XCTAssertEqual(surface.contentOffsetY, 318, "m2 remains the fallback anchor")
+        XCTAssertFalse(engine.restorationTick(transcriptRevision: 1))
+        XCTAssertEqual(engine.topVisibleMessageID, "m2")
+    }
+
     func testRestorationPlacesTheSavedRowAtTheTop() {
         let (engine, surface) = makeEngine()
         surface.insetTop = 50
@@ -751,6 +842,31 @@ final class ChatScrollEngineTests: XCTestCase {
         surface.userScroll(to: 1000)
         surface.isTracking = true
         engine.explicitLatestRequested(animated: false)
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testExplicitMessageRequestRevealsTheExactRowWhileBrowsing() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        events = []
+
+        engine.explicitMessageRequested(id: "m5")
+
+        XCTAssertTrue(events.contains(.revealRow(id: "m5")))
+        XCTAssertEqual(surface.contentOffsetY, 1000, "the view routes the row reveal; the engine does not jump to latest")
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testExplicitMessageRequestDoesNotOverrideAFingerOnTheScreen() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        surface.isTracking = true
+        events = []
+
+        engine.explicitMessageRequested(id: "m5")
+
+        XCTAssertFalse(events.contains(.revealRow(id: "m5")))
         XCTAssertEqual(surface.contentOffsetY, 1000)
         XCTAssertEqual(engine.mode, .browsing)
     }

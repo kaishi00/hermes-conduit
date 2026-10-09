@@ -31,6 +31,10 @@ struct ChatView: View {
 
     private var viewportInputs: ChatScrollRenderInputs { scrollEngine.renderInputs }
 
+    private var pendingClarifyMessageID: String? {
+        ChatResumeCoordinator.pendingClarifyMessageID(in: appState.messages)
+    }
+
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewportInputs.renderedSessionKey }
 
     /// Single source of follow-latest truth: the engine's mode.
@@ -362,16 +366,46 @@ struct ChatView: View {
         }
         .overlay(alignment: .bottomTrailing) {
             if viewportInputs.showsJumpToLatest {
+                let hasPendingClarify = pendingClarifyMessageID != nil
                 Button {
-                    ChatViewportTrace.shared.log("event explicitLatest (button)")
-                    requestLatest(animated: true)
+                    ChatViewportTrace.shared.log(
+                        hasPendingClarify
+                            ? "event explicitPendingClarify (button)"
+                            : "event explicitLatest (button)"
+                    )
+                    if let pendingClarifyMessageID {
+                        scrollEngine.explicitMessageRequested(id: pendingClarifyMessageID)
+                    } else {
+                        requestLatest(animated: true)
+                    }
                 } label: {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(width: 44, height: 44)
+                    if hasPendingClarify {
+                        HStack(spacing: 7) {
+                            Image(systemName: "questionmark.bubble")
+                            Text(AppLocalization.string("NEEDS YOUR INPUT"))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            Image(systemName: "arrow.down")
+                                .font(.caption.weight(.bold))
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .frame(height: 44)
+                    } else {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 15, weight: .bold))
+                            .frame(width: 44, height: 44)
+                    }
                 }
-                .conduitGlassControl(cornerRadius: 22, tint: .conduitAccent.opacity(0.14))
-                .accessibilityLabel("Scroll to latest message")
+                .conduitGlassControl(
+                    cornerRadius: 22,
+                    tint: (hasPendingClarify ? Color.orange : Color.conduitAccent).opacity(0.14)
+                )
+                .accessibilityLabel(
+                    hasPendingClarify
+                        ? AppLocalization.string("NEEDS YOUR INPUT")
+                        : AppLocalization.string("Scroll to latest message")
+                )
                 .padding(.trailing, 18)
                 .padding(.bottom, 14)
             }
