@@ -125,7 +125,7 @@ struct WatchCallControls: View {
             }
             .tint(call.isMuted ? .watchAttention : .gray)
             .disabled(!call.isActive)
-            .accessibilityLabel(Text(call.isMuted ? "Unmute" : "Mute"))
+            .accessibilityLabel(Text(call.isMuted ? String(localized: "Unmute") : String(localized: "Mute")))
             Button(role: .destructive) {
                 call.end()
             } label: {
@@ -303,7 +303,7 @@ struct WatchCallSummary: View {
                 Image(systemName: WatchCallEnd.isNormal(reason) ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .font(.system(size: 36))
                     .foregroundStyle(WatchCallEnd.isNormal(reason) ? Color.watchAura : Color.watchAttention)
-                Text(WatchCallEnd.isNormal(reason) ? "Call ended" : "Call didn't work")
+                Text(WatchCallEnd.isNormal(reason) ? String(localized: "Call ended") : String(localized: "Call didn't work"))
                     .font(.headline)
                 if let reason, !WatchCallEnd.isNormal(reason) {
                     Text(verbatim: reason)

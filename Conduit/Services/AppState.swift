@@ -21184,7 +21184,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    func performCronAction(_ action: String, for job: CronJob) async -> Bool {
+    func performCronAction(_ action: CronJobAction, for job: CronJob) async -> Bool {
         guard cronJobActionID == nil else { return false }
         let profile = activeProfile
         cronJobActionID = job.id
@@ -21194,7 +21194,7 @@ final class AppState: ObservableObject {
         do {
             let encodedID = job.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? job.id
             let result = try await dashboardTicketBridge.requestJSON(
-                path: cronDashboardPath("/api/cron/jobs/\(encodedID)/\(action)", profile: profile),
+                path: cronDashboardPath("/api/cron/jobs/\(encodedID)/\(action.rawValue)", profile: profile),
                 method: "POST",
                 body: ["profile": profile]
             )
@@ -21210,10 +21210,9 @@ final class AppState: ObservableObject {
             // sentence can't be inflected in most languages.
             let reason = UserFacingError.message(for: error)
             switch action {
-            case "pause": errorMessage = AppLocalization.string("Could not pause scheduled job: \(reason)")
-            case "resume": errorMessage = AppLocalization.string("Could not resume scheduled job: \(reason)")
-            case "trigger": errorMessage = AppLocalization.string("Could not run scheduled job: \(reason)")
-            default: errorMessage = AppLocalization.string("Could not update scheduled job: \(reason)")
+            case .pause: errorMessage = AppLocalization.string("Could not pause scheduled job: \(reason)")
+            case .resume: errorMessage = AppLocalization.string("Could not resume scheduled job: \(reason)")
+            case .trigger: errorMessage = AppLocalization.string("Could not run scheduled job: \(reason)")
             }
             return false
         }

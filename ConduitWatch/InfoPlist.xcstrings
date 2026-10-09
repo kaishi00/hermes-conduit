@@ -28,10 +28,34 @@
             "value" : "Conduit utilise le micro pour parler avec Hermes depuis votre poignet."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit menggunakan mikrofon untuk berbicara dengan Hermes dari pergelangan tangan Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit usa il microfono per parlare con Hermes dal tuo polso."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit は手首から Hermes と話すためにマイクを使用します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 손목에서 Hermes와 대화하기 위해 마이크를 사용해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit używa mikrofonu do rozmów z Hermesem na zegarku."
           }
         },
         "pt-BR" : {
@@ -46,10 +70,22 @@
             "value" : "Conduit использует микрофон для разговоров с Hermes на часах."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, bileğinizden Hermes ile konuşmak için mikrofonu kullanır."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 使用麦克风让你在手腕上与 Hermes 交谈。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 會使用麥克風，讓你從手腕上與 Hermes 交談。"
           }
         }
       }

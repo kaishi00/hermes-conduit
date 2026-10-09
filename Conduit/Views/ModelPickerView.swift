@@ -620,7 +620,7 @@ struct ModelPickerView: View {
                         HStack {
                             Text(model.id).font(.footnote).lineLimit(2)
                             Spacer()
-                            Text(hidden ? "Hidden" : "Visible")
+                            Text(hidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible"))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(hidden ? Color.secondary : Color.green)
                         }

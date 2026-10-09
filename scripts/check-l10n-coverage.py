@@ -46,9 +46,15 @@ InfoPlist):
     or inside plural/device variations - must have state == "translated"
     and a non-empty value;
   * an integer placeholder is a count: the source varies it by plural,
-    a key holds at most one, and label numbers ("Runs (%lld)", "Jobs:
-    %lld") are exempt; a count interpolated as String(...) in front of a
-    plural noun is reported at its call site;
+    a key holds at most one, and label numbers are exempt (alone in
+    parentheses at the end, "Runs (%lld)", or ending the string after a
+    colon, "Jobs: %lld"); a count interpolated as String(...) in front of
+    a plural noun is reported at its call site;
+  * every permission prompt (NS...UsageDescription) in the app's and the
+    Watch's Info.plist has an entry in the InfoPlist catalog beside it;
+  * a raw string literal passed as a ternary branch to a SwiftUI title
+    (Text(flag ? "A" : "B")) is reported at its call site: it binds the
+    verbatim String overload and is never looked up;
   * the printf placeholders of every value in ANY language, drafts
     included, must match the key's placeholder TYPE FAMILIES (object vs
     integer vs float) in count, order, and positional index validity -
@@ -352,6 +358,99 @@ def string_wrapped_counts(source: str):
         for expression, text in zip(expressions, after):
             if _STRING_WRAPPED_COUNT_RE.match(expression) and _COUNTED_NOUN_RE.match(text):
                 yield expression.strip(), offset
+
+
+def _skip_literal(source: str, i: int):
+    """Index just past the string literal starting at source[i] == '"'
+    (multi-line \"\"\" literals included), or None when unterminated."""
+    if source.startswith('"""', i):
+        end = source.find('"""', i + 3)
+        return None if end < 0 else end + 3
+    parsed = parse_swift_literal_parts(source, i)
+    return None if parsed is None else parsed[1]
+
+
+def _first_argument(source: str, start: int):
+    """The text of the first argument of the call whose '(' ends just
+    before `start`, up to its top-level ',' or ')'; None when unbalanced."""
+    depth = 0
+    i = start
+    while i < len(source):
+        ch = source[i]
+        if ch == '"':
+            i = _skip_literal(source, i)
+            if i is None:
+                return None
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if depth == 0:
+                return source[start:i]
+            depth -= 1
+        elif ch == "," and depth == 0:
+            return source[start:i]
+        i += 1
+    return None
+
+
+def _top_level(text: str, token: str, start: int = 0) -> int:
+    """Offset of the first ` token ` (spaced, outside brackets and string
+    literals) in `text` at or after `start`, or -1."""
+    depth = 0
+    i = start
+    while i < len(text):
+        ch = text[i]
+        if ch == '"':
+            i = _skip_literal(text, i)
+            if i is None:
+                return -1
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif (depth == 0 and ch == token and i > 0 and text[i - 1].isspace()
+              and i + 1 < len(text) and text[i + 1].isspace()):
+            return i
+        i += 1
+    return -1
+
+
+def _ternary_branch_literals(argument: str):
+    """Yield the skeleton of each raw string literal that is a branch of a
+    top-level ternary in `argument` (nested ternaries included)."""
+    question = _top_level(argument, "?")
+    if question < 0:
+        return
+    colon = _top_level(argument, ":", question + 1)
+    if colon < 0:
+        return
+    for branch in (argument[question + 1:colon], argument[colon + 1:]):
+        branch = branch.strip()
+        if branch.startswith('"') and not branch.startswith('"""'):
+            parsed = parse_swift_literal_parts(branch, 0)
+            if parsed is not None and parsed[1] == len(branch):
+                yield parsed[0]
+                continue
+        yield from _ternary_branch_literals(branch)
+
+
+def raw_ternary_literals(source: str):
+    """Yield (skeleton, offset) for each raw string literal that is a
+    ternary branch passed straight to a SwiftUI initializer or modifier.
+    Text(flag ? "A" : "B") binds the verbatim String overload, so neither
+    branch is looked up in the catalog: each branch needs
+    AppLocalization.string. Glyph-only literals ("•", "—") are text no
+    language translates, and are left alone."""
+    for regex in (SWIFTUI_RE, MODIFIER_RE):
+        for match in regex.finditer(source):
+            argument = _first_argument(source, match.end())
+            if argument is None or re.match(r"\s*\w+\s*:(?!:)", argument):
+                continue  # a labeled argument (verbatim:, value:) isn't a title
+            for skeleton in _ternary_branch_literals(argument):
+                if re.search(r"[^\W\d_]", skeleton.replace("%@", "")):
+                    yield skeleton, match.start()
 
 
 def _localized_literals(source: str):
@@ -715,6 +814,13 @@ SECONDARY_CATALOGS = ("AppShortcuts.xcstrings", "InfoPlist.xcstrings")
 INFO_PLIST = os.path.join("Conduit", "Info.plist")
 # The Apple Watch app's sources and its own Localizable catalog.
 WATCH_DIRECTORY = "ConduitWatch"
+# Each Info.plist with the InfoPlist catalog iOS reads its permission
+# prompts (NS…UsageDescription) from.
+INFO_PLIST_CATALOGS = (
+    (INFO_PLIST, os.path.join("Conduit", "InfoPlist.xcstrings")),
+    (os.path.join(WATCH_DIRECTORY, "Info.plist"),
+     os.path.join(WATCH_DIRECTORY, "InfoPlist.xcstrings")),
+)
 # The Watch target's other sources (project.yml), whose strings the Watch
 # catalog must carry too.
 WATCH_SHARED_SOURCES = (
@@ -904,6 +1010,16 @@ class CatalogError(Exception):
     with merge-conflict markers)."""
 
 
+def usage_description_problems(info: dict, catalog: dict) -> list:
+    """The permission prompts in `info` (an Info.plist) that `catalog`
+    (its InfoPlist catalog) lacks: iOS shows those in English whatever
+    the language."""
+    keys = set(catalog.get("strings", {}))
+    return sorted(key for key in info
+                  if key.startswith("NS") and key.endswith("UsageDescription")
+                  and key not in keys)
+
+
 def check(repo_root: str):
     """Full check. Returns (checked_site_count, missing_sites,
     key_problems, language_plan). Raises CatalogError for a catalog that
@@ -970,6 +1086,40 @@ def check(repo_root: str):
             key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
     for key, problems in required_key_problems(catalog, REGRESSION_KEYS).items():
         key_problems.setdefault(key, []).extend(problems)
+
+    # Permission prompts: each one in an Info.plist needs its InfoPlist
+    # catalog entry. The Watch's InfoPlist catalog is checked here too.
+    for plist_name, catalog_name in INFO_PLIST_CATALOGS:
+        plist_path = os.path.join(repo_root, plist_name)
+        catalog_path = os.path.join(repo_root, catalog_name)
+        if not os.path.exists(plist_path):
+            continue
+        try:
+            with open(plist_path, "rb") as handle:
+                info = plistlib.load(handle)
+        except (OSError, plistlib.InvalidFileException,
+                xml.parsers.expat.ExpatError) as error:
+            key_problems.setdefault(plist_name, []).append(f"unreadable: {error}")
+            continue
+        if catalog_name == os.path.join("Conduit", SECONDARY_CATALOGS[1]):
+            prompts_catalog = catalogs.get(SECONDARY_CATALOGS[1], {})
+        elif os.path.exists(catalog_path):
+            try:
+                prompts_catalog, prompt_duplicates = load_catalog(catalog_path)
+            except (OSError, ValueError) as error:
+                raise CatalogError(f"{catalog_name}: {error}") from error
+            prefix = f"{catalog_name}: "
+            for key, problems in prompt_duplicates.items():
+                key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
+            for key, problems in catalog_problems(
+                    prompts_catalog, plan.shipped, plan.drafts).items():
+                key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
+        else:
+            prompts_catalog = {}
+        for key in usage_description_problems(info, prompts_catalog):
+            key_problems.setdefault(f"{plist_name}: {key}", []).append(
+                f"permission prompt missing from {catalog_name}, so iOS "
+                f"shows it in English in every language")
     return checked, missing, key_problems, plan
 
 
@@ -1002,6 +1152,12 @@ def scan_sites(root: str, catalog_keys, repo_root: str, missing: dict, key_probl
                 key_problems.setdefault(f"{os.path.relpath(path, repo_root)}:{line}", []).append(
                     f"interpolates {expression} as text, so no plural form "
                     f"applies: interpolate the Int and give the key plural forms")
+            for skeleton, offset in raw_ternary_literals(source):
+                line = source.count("\n", 0, offset) + 1
+                key_problems.setdefault(f"{os.path.relpath(path, repo_root)}:{line}", []).append(
+                    f"passes \"{skeleton}\" as a ternary branch, which binds the "
+                    f"verbatim String overload and never localizes: wrap each "
+                    f"branch in AppLocalization.string")
             for skeleton, offset in extract_sites(source):
                 checked += 1
                 if skeleton in EXEMPT_KEYS:

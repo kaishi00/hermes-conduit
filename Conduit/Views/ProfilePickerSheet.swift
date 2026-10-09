@@ -23,12 +23,12 @@ struct ProfilePickerSheet: View {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(alignment: .top, spacing: 12) {
                             Text(isReordering
-                                 ? "Use the arrows to choose the order profiles appear throughout Conduit."
-                                 : "Sessions and settings follow the active profile. Photos stay only on this device.")
+                                 ? AppLocalization.string("Use the arrows to choose the order profiles appear throughout Conduit.")
+                                 : AppLocalization.string("Sessions and settings follow the active profile. Photos stay only on this device."))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                             Spacer(minLength: 0)
-                            Button(isReordering ? "Done" : "Reorder") {
+                            Button(isReordering ? AppLocalization.string("Done") : AppLocalization.string("Reorder")) {
                                 Haptics.selection()
                                 withAnimation(ConduitMotion.response) { isReordering.toggle() }
                             }
