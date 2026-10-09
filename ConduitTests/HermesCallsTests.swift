@@ -289,6 +289,37 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(calls.holds.allSatisfy { $0.seconds == VoiceBackgroundJobSupervisor.callbackHoldSeconds }, "Never released between the calls")
         XCTAssertEqual(calls.watches.count, 1, "Handed over, not registered again")
         XCTAssertTrue(calls.notified.isEmpty)
+
+        // The new call owns it: its own hang-up lets go of it.
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+        XCTAssertEqual(calls.holds.last?.seconds, 0)
+    }
+
+    func testAWatchReleasedAsTheNextCallBeginsIsHeldAgainAtOnce() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+
+        // The next call begins while the hang-up's release is on its way.
+        calls.onHold = { [weak supervisor, weak calls] seconds in
+            guard seconds == 0 else { return }
+            calls?.onHold = nil
+            supervisor?.beginLiveCall()
+        }
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+
+        XCTAssertEqual(Array(calls.holds.map(\.seconds).prefix(2)), [0, VoiceBackgroundJobSupervisor.callbackHoldSeconds], "Held again before anything else")
+        XCTAssertEqual(calls.watches.count, 1)
+        XCTAssertTrue(calls.notified.isEmpty)
+
+        // The new call owns it: its own hang-up lets go of it.
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+        XCTAssertEqual(calls.holds.last?.seconds, 0)
     }
 
     func testAWatchHandedToACallThatEndsMeanwhileIsLetGo() async {
