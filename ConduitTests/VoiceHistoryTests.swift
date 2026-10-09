@@ -501,13 +501,13 @@ extension HermesVoiceGatewayTimeoutTests {
     func testVoiceFiltersJoinASavedOrderAfterChat() {
         XCTAssertEqual(
             AppState.normalizedSessionFilterOrder(["telegram", "chat", "discord", "api", "webhook", "other"]),
-            [.telegram, .chat, .voice, .voiceJob, .discord, .api, .webhook, .other]
+            [.telegram, .chat, .voice, .voiceJob, .discord, .api, .webhook, .cron, .other]
         )
         XCTAssertEqual(AppState.normalizedSessionFilterOrder([]), AppState.defaultSessionFilterOrder)
         // A moved Voice filter keeps its place.
         XCTAssertEqual(
             AppState.normalizedSessionFilterOrder(["voice", "chat", "voice_job", "discord", "telegram", "api", "webhook", "other"]),
-            [.voice, .chat, .voiceJob, .discord, .telegram, .api, .webhook, .other]
+            [.voice, .chat, .voiceJob, .discord, .telegram, .api, .webhook, .cron, .other]
         )
     }
 }

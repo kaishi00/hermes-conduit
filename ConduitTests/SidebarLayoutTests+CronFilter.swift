@@ -4,7 +4,8 @@
 //
 //  Coverage for the Cron tab's Active / Inactive / All filter (#392): what
 //  each filter keeps, the active-first order, search within a filter, and
-//  the empty-state wording.
+//  the empty-state wording. Also the collapsed Jobs list and the Sessions
+//  Cron filter with pinned runs in All (#485).
 //
 
 import XCTest
@@ -136,5 +137,77 @@ extension SidebarLayoutTests {
     func testCronFilterStoredValuesStayStable() {
         // The choice is remembered in AppStorage by raw value.
         XCTAssertEqual(CronJobFilter.allCases.map(\.rawValue), ["active", "inactive", "all"])
+    }
+
+    // MARK: - Collapsed Jobs list (#485)
+
+    func testJobsListCollapsesToItsFirstRowsUntilExpanded() {
+        let jobs = mixedCronJobs
+        XCTAssertEqual(CronJobFilter.shownJobs(jobs, showAll: false, isSearching: false).map(\.id), ["1", "2", "3"])
+        XCTAssertEqual(CronJobFilter.shownJobs(jobs, showAll: true, isSearching: false).count, jobs.count)
+        // A search shows every match, expanded or not.
+        XCTAssertEqual(CronJobFilter.shownJobs(jobs, showAll: false, isSearching: true).count, jobs.count)
+        XCTAssertEqual(CronJobFilter.shownJobs(Array(jobs.prefix(2)), showAll: false, isSearching: false).count, 2)
+    }
+
+    // MARK: - Cron runs on the Sessions list (#485)
+
+    private func sourceRowsSession(_ id: String, source: SessionSource, archived: Bool = false) -> SessionSummary {
+        SessionSummary(
+            id: id,
+            alternateIds: [],
+            title: id,
+            model: "Hermes",
+            updatedLabel: "now",
+            profile: "default",
+            source: source,
+            isActive: false,
+            isArchived: archived,
+            lineageRootId: nil
+        )
+    }
+
+    private func sourceRowIDs(_ source: SessionSource?, pinned: Set<String>) -> [String] {
+        let chats = [
+            sourceRowsSession("chat", source: .chat),
+            sourceRowsSession("telegram", source: .telegram),
+            sourceRowsSession("old-chat", source: .chat, archived: true)
+        ]
+        let runs = [
+            sourceRowsSession("brief", source: .cron),
+            sourceRowsSession("backup", source: .cron),
+            sourceRowsSession("old-run", source: .cron, archived: true)
+        ]
+        return SidebarSourceRows.rows(
+            sessions: chats,
+            cronSessions: runs,
+            source: source,
+            category: \.source,
+            isPinned: { pinned.contains($0.id) }
+        ).map(\.id)
+    }
+
+    func testCronRunsStayOutOfAllUnlessPinned() {
+        XCTAssertEqual(sourceRowIDs(nil, pinned: []), ["chat", "telegram"])
+        // A pinned run joins All ahead of the chats; archived runs never do.
+        XCTAssertEqual(sourceRowIDs(nil, pinned: ["backup", "old-run"]), ["backup", "chat", "telegram"])
+    }
+
+    func testCronFilterListsEveryRunAndOtherFiltersNone() {
+        XCTAssertEqual(sourceRowIDs(.cron, pinned: []), ["brief", "backup"])
+        XCTAssertEqual(sourceRowIDs(.telegram, pinned: ["brief"]), ["telegram"])
+        XCTAssertEqual(sourceRowIDs(.chat, pinned: ["brief"]), ["chat"])
+    }
+
+    func testCronFilterJoinsASavedOrderBeforeOther() {
+        XCTAssertEqual(
+            AppState.normalizedSessionFilterOrder(["telegram", "chat", "voice", "voice_job", "discord", "api", "webhook", "other"]),
+            [.telegram, .chat, .voice, .voiceJob, .discord, .api, .webhook, .cron, .other]
+        )
+        // A moved Cron filter keeps its place.
+        XCTAssertEqual(
+            AppState.normalizedSessionFilterOrder(["cron", "chat", "voice", "voice_job", "discord", "telegram", "api", "webhook", "other"]).first,
+            .cron
+        )
     }
 }

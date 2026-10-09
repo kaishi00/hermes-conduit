@@ -516,7 +516,7 @@ final class AppState: ObservableObject {
     @Published var isConnecting = false
     @Published var profiles: [String] = []
     @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
-    static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .other]
+    static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .cron, .other]
     /// Stable per-profile gateway-media resolver for settled row content.
     /// Created lazily on first read and reused while the active profile is
     /// unchanged, so ChatView's first body pass already has a resolver
@@ -21100,7 +21100,7 @@ final class AppState: ObservableObject {
                 result.append(source)
             }
         }
-        // Filters a saved order predates (Voice, Voice Jobs) take their
+        // Filters a saved order predates (Voice, Voice Jobs, Cron) take their
         // default place after the one before them, not the end of the row.
         for (position, source) in defaults.enumerated() where !unique.contains(source) {
             let after = defaults[..<position].last { unique.contains($0) }
