@@ -70,6 +70,8 @@ final class NotificationService: UNNotificationServiceExtension {
         content.subtitle = ""
         content.body = copy.body
         content.userInfo = [:]
+        // A call's Talk button would have nothing to open.
+        content.categoryIdentifier = ""
         return content
     }
 }

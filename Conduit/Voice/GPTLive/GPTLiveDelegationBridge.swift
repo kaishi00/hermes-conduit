@@ -130,6 +130,24 @@ final class GPTLiveDelegationBridge {
     /// user's own words since the last delegation: a follow-up to work
     /// Hermes is still doing hands it those (#451).
     func handleDelegation(id: String, request: String, userWords: String = "") async -> [Outgoing] {
+        // "Call me:" (#449): Hermes calls the user once the call's newest
+        // request is done (the job named, or all of them). Work that comes
+        // with it is that request: it goes on as this delegation, and the
+        // model hears how the call request went as quiet context.
+        if let marker = Self.callMeMarker(in: request) {
+            guard !seenDelegations.contains(id), !isEnding else { return [] }
+            let rest = marker.rest
+            let ownWords = rest.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? rest
+            let withWork = !ownWords.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let outcome = supervisor.requestCallback(marker.scope == .latest && withWork ? .next : marker.scope)
+            guard !withWork else {
+                let note = Outgoing.sessionContext(text: "[Call request: \(outcome.modelMessage)]", channel: .commentary, whenIdle: false, jobID: nil)
+                return [note] + (await handleDelegation(id: id, request: rest, userWords: userWords))
+            }
+            seenDelegations.insert(id)
+            spokenWords?.settleWords(.delegation(id))
+            return [.delegationReply(delegationID: id, text: outcome.modelMessage, channel: .commentary)]
+        }
         guard seenDelegations.insert(id).inserted, !isEnding else { return [] }
         dropStaleDraft()
         var instructions = request.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1012,6 +1030,26 @@ final class GPTLiveDelegationBridge {
     /// hear a reply again or in full (#451).
     static func isReadBackMarker(_ request: String) -> Bool {
         request.range(of: #"^\s*read[ -]?back\s*:"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// "Call me: check the server" → the newest request, "check the
+    /// server"; "Call me about job 2:" and "Call me about all:" name the
+    /// scope (#449). At the very start of a delegation; `rest` is empty for
+    /// a bare marker.
+    static func callMeMarker(in request: String) -> (scope: VoiceCallbackScope, rest: String)? {
+        let pattern = #"^\s*call\s+me(?:\s+about\s+(?:(all)|job\s*(\d{1,4})))?\s*:"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: request, range: NSRange(request.startIndex..., in: request)),
+              let whole = Range(match.range, in: request) else { return nil }
+        let scope: VoiceCallbackScope
+        if match.range(at: 1).location != NSNotFound {
+            scope = .all
+        } else if let numberRange = Range(match.range(at: 2), in: request), let number = Int(request[numberRange]) {
+            scope = .job(number: number)
+        } else {
+            scope = .latest
+        }
+        return (scope, String(request[whole.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     /// "New job: check the weather" → "check the weather": separate work

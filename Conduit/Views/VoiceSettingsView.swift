@@ -36,6 +36,7 @@ struct VoiceSettingsRoute: View {
     let lockedListening: VoiceLockedListeningSettingsModel?
     let speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     let callSaves: VoiceCallSaveStatusModel?
+    let hermesCalls: HermesCallSettingsModel?
 
     init(
         bridge: DashboardTicketBridge,
@@ -63,7 +64,8 @@ struct VoiceSettingsRoute: View {
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
-        callSaves: VoiceCallSaveStatusModel? = nil
+        callSaves: VoiceCallSaveStatusModel? = nil,
+        hermesCalls: HermesCallSettingsModel? = nil
     ) {
         self.geminiLive = geminiLive
         self.gptLive = gptLive
@@ -75,6 +77,7 @@ struct VoiceSettingsRoute: View {
         self.lockedListening = lockedListening
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
+        self.hermesCalls = hermesCalls
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
@@ -118,7 +121,8 @@ struct VoiceSettingsRoute: View {
             wake: wake,
             lockedListening: lockedListening,
             speakerTalkOver: speakerTalkOver,
-            callSaves: callSaves
+            callSaves: callSaves,
+            hermesCalls: hermesCalls
         )
     }
 }
@@ -188,6 +192,7 @@ struct VoiceSettingsView: View {
     var lockedListening: VoiceLockedListeningSettingsModel?
     var speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     var callSaves: VoiceCallSaveStatusModel?
+    var hermesCalls: HermesCallSettingsModel?
     @State private var keepListeningWhenLocked: Bool
     @State private var speakerTalkOverEnabled: Bool
 
@@ -216,7 +221,8 @@ struct VoiceSettingsView: View {
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
-        callSaves: VoiceCallSaveStatusModel? = nil
+        callSaves: VoiceCallSaveStatusModel? = nil,
+        hermesCalls: HermesCallSettingsModel? = nil
     ) {
         self.geminiLive = geminiLive
         self.gptLive = gptLive
@@ -228,6 +234,7 @@ struct VoiceSettingsView: View {
         self.lockedListening = lockedListening
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
+        self.hermesCalls = hermesCalls
         _keepListeningWhenLocked = State(initialValue: lockedListening?.enabled ?? false)
         _speakerTalkOverEnabled = State(initialValue: speakerTalkOver?.enabled ?? false)
         self.service = service
@@ -712,6 +719,10 @@ struct VoiceSettingsView: View {
         }
         if voiceMode != .classic, let liveStyle {
             LiveVoiceStyleSettingsSection(model: liveStyle)
+        }
+        // "Call me when it's done" is asked in a live call (#449).
+        if voiceMode != .classic, let hermesCalls {
+            HermesCallSettingsSection(model: hermesCalls)
         }
     }
 

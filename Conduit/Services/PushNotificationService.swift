@@ -34,6 +34,9 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
     /// the one-shot gateway stream event was missed while the app was
     /// backgrounded. Nil for non-decision notifications.
     let decision: PendingDecisionPayload?
+    /// The call a "Hermes wants to talk" notification carries (#449); nil
+    /// for every other notification.
+    let call: HermesCallRequest?
     var id: String { "\(dashboardID?.uuidString ?? "none"):\(relayGatewayID ?? "nogw"):\(profile ?? "default"):\(sessionId):\(type ?? "")" }
 
     init(
@@ -44,7 +47,8 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
         hasMalformedDashboardID: Bool = false,
         relayGatewayID: String? = nil,
         type: String?,
-        decision: PendingDecisionPayload? = nil
+        decision: PendingDecisionPayload? = nil,
+        call: HermesCallRequest? = nil
     ) {
         self.profile = profile
         self.sessionId = sessionId
@@ -54,6 +58,7 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
         self.relayGatewayID = relayGatewayID
         self.type = type
         self.decision = decision
+        self.call = call
     }
 }
 
@@ -1216,11 +1221,22 @@ final class PushNotificationService: ObservableObject {
                 hasMalformedDashboardID: target.hasMalformedDashboardID,
                 relayGatewayID: target.relayGatewayID,
                 type: target.type,
-                decision: nil
+                decision: nil,
+                call: target.call
             )
         }
         retainRelayGatewayID(for: target)
         if case .verified = evaluation { persistEncryptedGatewayID(for: target) }
+        route(target)
+    }
+
+    /// A "Hermes wants to talk" notification Conduit posted itself (#449).
+    func receiveLocalCallNotification(_ userInfo: [AnyHashable: Any]) {
+        guard let target = HermesCallNotifications.localTarget(from: userInfo) else { return }
+        route(target)
+    }
+
+    private func route(_ target: ConduitNotificationTarget) {
         navigationRetryTask?.cancel()
         navigationRetryTask = nil
         pendingTarget = target
@@ -1324,10 +1340,11 @@ final class PushNotificationService: ObservableObject {
         // carries a decision must win, nested first (that is where the
         // optimized layout puts it). Payloads without a decision anywhere
         // fall back to plain routing, preferring the legacy top-level copy.
+        // A call's details travel the same way (#449).
         let payload: [String: Any]
-        if nested?["decision"] is [String: Any] {
+        if nested?["decision"] is [String: Any] || nested?["call"] is [String: Any] {
             payload = nested ?? [:]
-        } else if direct?["decision"] is [String: Any] {
+        } else if direct?["decision"] is [String: Any] || direct?["call"] is [String: Any] {
             payload = direct ?? [:]
         } else {
             payload = direct ?? nested ?? [:]
@@ -1373,7 +1390,8 @@ final class PushNotificationService: ObservableObject {
             hasMalformedDashboardID: hasMalformedDashboardID,
             relayGatewayID: rawRelayGatewayID?.isEmpty == false ? rawRelayGatewayID : nil,
             type: type?.isEmpty == false ? type : nil,
-            decision: pendingDecision(from: payload)
+            decision: pendingDecision(from: payload),
+            call: HermesCallRequest.parse(payload["call"], type: type)
         )
     }
 

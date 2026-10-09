@@ -73,7 +73,10 @@ struct LiveVoiceJobCard: View {
 
     static func statusText(for job: VoiceBackgroundJob) -> String {
         switch job.status {
-        case .starting, .running: return AppLocalization.string("Working…")
+        case .starting, .running:
+            // Hermes calls once it's done, after the call (#449).
+            guard job.callsBackWhenDone else { return AppLocalization.string("Working…") }
+            return AppLocalization.string("Working…") + " · " + HermesCallCopy.jobCardNote
         case .needsInput: return AppLocalization.string("Waiting for you")
         case .finished:
             return hasResult(job) ? AppLocalization.string("Ready") : AppLocalization.string("Done")

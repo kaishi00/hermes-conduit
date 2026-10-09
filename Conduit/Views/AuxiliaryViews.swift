@@ -668,7 +668,18 @@ struct SettingsView: View {
                         isSaving: appState.isSavingQueuedVoiceCalls,
                         isWaitingOnCall: appState.isLiveVoiceCallActive,
                         saveNow: { await appState.saveQueuedVoiceCallsNow() }
-                    )
+                    ),
+                    hermesCalls: appState.supportsHermesCalls
+                        ? HermesCallSettingsModel(
+                            profile: appState.activeProfile,
+                            status: appState.activeHermesCallsStatus,
+                            load: {
+                                await appState.refreshHermesCallsStatus()
+                                return appState.activeHermesCallsStatus != nil
+                            },
+                            save: { await appState.saveHermesCallSettings($0) }
+                        )
+                        : nil
                 )
             } else {
                 SettingsDetailContainer {

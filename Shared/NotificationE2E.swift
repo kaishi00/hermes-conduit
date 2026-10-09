@@ -258,6 +258,7 @@ enum NotificationE2E {
         case "input.needed": return ("Input needed", "Hermes needs your response before it can continue.")
         case "turn.failed": return ("Turn failed", "A Hermes turn could not be completed.")
         case "background_task.finished": return ("Background task finished", "A delegated task has finished.")
+        case "call.requested": return ("Hermes wants to talk", "Tap to talk to Hermes.")
         default: return ("Response ready", "Hermes has finished responding.")
         }
     }

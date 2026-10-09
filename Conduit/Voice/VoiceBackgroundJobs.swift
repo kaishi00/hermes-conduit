@@ -10,6 +10,9 @@
 //
 
 import Foundation
+import OSLog
+
+private let hermesCallbackLogger = Logger(subsystem: "com.milim.relay", category: "HermesCalls")
 
 // MARK: - Spoken commands
 
@@ -156,6 +159,14 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// What a completion carried while a follow-up was settling: the
     /// result, if it turns out to have been the turn's last.
     var heldCompletion: String?
+    /// The user asked Hermes to call them when this is done (#449).
+    var callsBackWhenDone = false
+    /// When the request went to Hermes: a turn of its session that ended
+    /// before then was someone else's (#449).
+    var sentAt: Date?
+    /// Hermes calls the user about this job's outcome after its call
+    /// (#449), so no later voice conversation announces it as well.
+    var calledAbout = false
 
     func owns(sessionID: String) -> Bool {
         guard !sessionID.isEmpty else { return false }
@@ -425,24 +436,35 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         backend: VoiceBackgroundJobBackend,
         pollInterval: Duration = .seconds(20),
         threadWaitInterval: Duration = .seconds(1),
-        followUpRetryInterval: Duration = .seconds(1)
+        followUpRetryInterval: Duration = .seconds(1),
+        callbackRenewInterval: Duration = .seconds(30)
     ) {
         self.backend = backend
         self.pollInterval = pollInterval
         self.threadWaitInterval = threadWaitInterval
         self.followUpRetryInterval = followUpRetryInterval
+        self.callbackRenewInterval = callbackRenewInterval
     }
 
     deinit {
         pollTask?.cancel()
         threadTask?.cancel()
+        callbackSyncTask?.cancel()
+        callbackRenewTask?.cancel()
         for task in followUpsInFlight.values { task.cancel() }
     }
 
     /// A new live call begins: jobs started from now on are its own.
     func beginLiveCall(asksBeforeSending: Bool = false) {
-        liveCallID = UUID()
+        // A call that never hung up lets go of its work first (#449).
+        if callbackCallID != nil { finishCallbacks() }
+        let callID = UUID()
+        liveCallID = callID
         self.asksBeforeSending = asksBeforeSending
+        callbackCallID = callID
+        callbackLater = .none
+        callbackWordsChecked = 0
+        holdWaitingCallbacks(for: callID)
         // A switch the last call never heard about isn't this call's.
         chatNotes.removeAll { $0.text == Self.askFirstOnPrompt || $0.text == Self.askFirstOffPrompt }
         // Only the running call's cards are ever shown.
@@ -465,6 +487,370 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     static let askFirstOnPrompt = "[Background only. The user turned on asking first for this call: from now on, Hermes gets a new request only once the user OKs it. Don't respond to this note now.]"
     static let askFirstOffPrompt = "[Background only. The user turned off asking first for this call: new requests go to Hermes straight away again. Don't respond to this note now.]"
+
+    // MARK: Hermes calls you (#449)
+    //
+    // "Call me when it's done" marks one job of the running live call (its
+    // newest, unless the user names one or asks about all of them) and
+    // watches it on the Hermes host at once, held while the call goes on.
+    // The call renews the hold; a job whose outcome the call tells has its
+    // watch removed. At hang-up the hold is released, and a job that ended
+    // without the call telling it gets Conduit's own notification. A phone
+    // that can't release the hold leaves it to lapse on the host, which
+    // then calls as usual. A later live call holds the watches still
+    // waiting, so Hermes never calls in the middle of one.
+    // (designs/hermes-calls-you-449.md)
+
+    /// The host's call watches; nil when Hermes can't call.
+    var callbacks: VoiceCallbackBackend?
+    /// How long a watch stays held past its last renewal: the most a lost
+    /// phone delays a call that is due.
+    static let callbackHoldSeconds = 90
+    private let callbackRenewInterval: Duration
+    /// The live call whose work can ask for a call; cleared at hang-up.
+    private var callbackCallID: UUID?
+    /// What later work of the call calls too.
+    private var callbackLater: VoiceCallbackRequestOutcome.Later = .none
+    /// User lines of the call already checked for "call me when…".
+    private var callbackWordsChecked = 0
+
+    /// A marked job's watch on the host.
+    private struct CallbackWatch {
+        /// The live call holding it; nil once released, while the job runs.
+        var callID: UUID?
+        /// The job's profile, which scopes the watch.
+        let profile: String?
+        var watchID: String?
+        /// The host said the job's turn already ended (and how), so it kept
+        /// no watch.
+        var hostSawEnd = false
+        var hostEndKind: HermesCallRequest.Kind?
+        /// Whether the job had ended without the call telling it when the
+        /// call hung up (letting go of the call's chat marks its turns told).
+        var untoldAtHangUp: Bool?
+    }
+    private var callbackWatches: [UUID: CallbackWatch] = [:]
+    private var callbackSyncTask: Task<Void, Never>?
+    private var callbackSyncAgain = false
+    private var callbackRenewTask: Task<Void, Never>?
+
+    /// The live model (or the user's words) asked for a call when work of
+    /// the running call is done. Marks it and watches it on the host now.
+    func requestCallback(_ scope: VoiceCallbackScope = .latest) -> VoiceCallbackRequestOutcome {
+        guard let callID = callbackCallID, callID == liveCallID else { return .noCall }
+        let availability = callbacks?.availability() ?? .unsupported
+        guard availability == .available else { return .unavailable(availability) }
+        // The words that asked are answered: they never mark later work.
+        callbackWordsChecked = liveCallTranscript?()?.count ?? callbackWordsChecked
+        let callWork = jobs.indices.filter { jobs[$0].callAnchor?.callID == callID && !jobs[$0].isDetachedThreadTurn }
+        var marked: [Int] = []
+        var later = VoiceCallbackRequestOutcome.Later.none
+        switch scope {
+        case .latest:
+            if let newest = callWork.last, jobs[newest].status.isActive { marked = [newest] } else { later = .next }
+        case .next:
+            later = .next
+        case .all:
+            marked = callWork.filter { jobs[$0].status.isActive }
+            later = .all
+        case .job, .jobID:
+            let named = callWork.last { index in
+                guard !jobs[index].isThreadTurn else { return false }
+                if case .job(let number) = scope { return jobs[index].number == number }
+                if case .jobID(let id) = scope { return jobs[index].id == id }
+                return false
+            }
+            guard let index = named else { return .unknownJob }
+            guard jobs[index].status.isActive else { return .alreadyEnded(title: jobs[index].title) }
+            marked = [index]
+        }
+        // Asking about all of it stays that way for the call.
+        if later != .none, callbackLater != .all { callbackLater = later }
+        let titles = marked.map { jobs[$0].title }
+        for id in marked.map({ jobs[$0].id }) {
+            update(id) { $0.callsBackWhenDone = true }
+            armCallback(id)
+        }
+        return .marked(titles: titles, later: later == .none ? .none : callbackLater)
+    }
+
+    /// Marks a job the call just started when the call asked for its next
+    /// request (or all of them), or when the user's words since the call's
+    /// last request ask for a call and the model didn't.
+    private func markNewCallbackJob(_ job: inout VoiceBackgroundJob) {
+        guard let callID = callbackCallID, job.callAnchor?.callID == callID else { return }
+        switch callbackLater {
+        case .next:
+            callbackLater = .none
+            job.callsBackWhenDone = true
+        case .all:
+            job.callsBackWhenDone = true
+        case .none:
+            if userAskedForCallback(), callbacks?.availability() == .available { job.callsBackWhenDone = true }
+        }
+    }
+
+    /// Whether a user line since the last check asks for a call. The line
+    /// still being spoken is checked again next time.
+    private func userAskedForCallback() -> Bool {
+        guard let lines = liveCallTranscript?(), lines.count > callbackWordsChecked else { return false }
+        let asked = lines[callbackWordsChecked...].contains { $0.speaker == .user && VoiceCallbackPhrases.asksForCallback($0.text) }
+        callbackWordsChecked = asked ? lines.count : lines.count - 1
+        return asked
+    }
+
+    /// Watches a marked job on the host once its request went out.
+    private func armCallback(_ id: UUID) {
+        guard callbackWatches[id] == nil, let job = job(id), job.callsBackWhenDone, job.status.isActive,
+              Self.callbackTarget(job) != nil,
+              job.isThreadTurn ? job.threadTurnSubmitted : job.requestSent else { return }
+        // A job whose call already ended is settled at once, unheld.
+        callbackWatches[id] = CallbackWatch(callID: job.callAnchor?.callID ?? UUID(), profile: job.profile)
+        syncCallbacks()
+    }
+
+    /// Runs passes over the watches until none is asked for, one at a time,
+    /// and renews the holds while a call holds any.
+    private func syncCallbacks() {
+        callbackSyncAgain = true
+        let generation = generation
+        if callbackSyncTask == nil {
+            callbackSyncTask = Task { [weak self] in
+                while let self, generation == self.generation, self.callbackSyncAgain {
+                    self.callbackSyncAgain = false
+                    await self.runCallbackSync(generation: generation)
+                }
+                if let self, generation == self.generation { self.callbackSyncTask = nil }
+            }
+        }
+        guard callbackRenewTask == nil, callbackCallID != nil else { return }
+        callbackRenewTask = Task { [weak self, callbackRenewInterval] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: callbackRenewInterval)
+                guard let self, !Task.isCancelled, generation == self.generation else { return }
+                guard let callID = self.callbackCallID, self.callbackWatches.values.contains(where: { $0.callID == callID }) else {
+                    self.callbackRenewTask = nil
+                    return
+                }
+                self.syncCallbacks()
+            }
+        }
+    }
+
+    /// One pass: each watch the running call holds is registered, renewed
+    /// or removed; one whose call has ended is settled.
+    private func runCallbackSync(generation: UInt64) async {
+        guard let callbacks else { return }
+        for id in Array(callbackWatches.keys) {
+            guard generation == self.generation, let entry = callbackWatches[id] else { return }
+            guard let callID = entry.callID else { continue }
+            guard callID == callbackCallID else {
+                await settleCallback(id, generation: generation)
+                continue
+            }
+            let job = self.job(id)
+            let ended = job.map { !$0.status.isActive } ?? true
+            do {
+                if ended && !callbackOutcomeUntold(id) {
+                    // The call told it, or it was stopped: no call.
+                    if let watchID = entry.watchID { try await callbacks.cancel(watchID, entry.profile) }
+                    guard generation == self.generation else { return }
+                    callbackWatches[id] = nil
+                    update(id) { $0.callsBackWhenDone = false }
+                } else if let watchID = entry.watchID {
+                    // Still to tell, in this call or by Hermes after it.
+                    let answer = try await callbacks.hold(watchID, entry.profile, Self.callbackHoldSeconds)
+                    guard generation == self.generation else { return }
+                    if answer == .gone { callbackWatches[id]?.watchID = nil }
+                } else if !ended, !entry.hostSawEnd, let job, let target = Self.callbackTarget(job) {
+                    let answer = try await callbacks.watch(target, Self.callbackHoldSeconds, Self.secondsSince(job.sentAt))
+                    guard generation == self.generation else { return }
+                    switch answer {
+                    case .watching(let watchID):
+                        callbackWatches[id]?.watchID = watchID
+                    case .ended(let kind):
+                        // Its end reaches the call as usual.
+                        callbackWatches[id]?.hostSawEnd = true
+                        callbackWatches[id]?.hostEndKind = kind
+                    }
+                }
+            } catch let refusal as HermesCallRefusal {
+                guard generation == self.generation else { return }
+                callbackWatches[id] = nil
+                update(id) { $0.callsBackWhenDone = false }
+                if let job { queueChatNote(ChatNote(text: refusal.modelNote(title: job.title))) }
+            } catch {
+                // Tried again on the next renewal; the hold covers the gap.
+                hermesCallbackLogger.notice("Call watch step failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// The call hung up: what it asked to be called about is let go of on
+    /// the host, and a job that ended without the call telling it gets
+    /// Conduit's own notification. Called before the call lets go of its
+    /// chat; the task returned ends once every step was tried.
+    @discardableResult
+    func finishCallbacks() -> Task<Void, Never>? {
+        guard let callID = callbackCallID else { return nil }
+        // "Call me when it's done" the model didn't act on.
+        if callbackLater == .none, userAskedForCallback(), callbacks?.availability() == .available,
+           let newest = jobs.indices.last(where: { jobs[$0].callAnchor?.callID == callID && !jobs[$0].isDetachedThreadTurn }),
+           jobs[newest].status.isActive {
+            jobs[newest].callsBackWhenDone = true
+        }
+        callbackCallID = nil
+        callbackLater = .none
+        callbackRenewTask?.cancel()
+        callbackRenewTask = nil
+        // Marked work that has no watch yet is settled too.
+        for job in jobs where job.callsBackWhenDone && job.callAnchor?.callID == callID && callbackWatches[job.id] == nil {
+            callbackWatches[job.id] = CallbackWatch(callID: callID, profile: job.profile)
+        }
+        for (id, entry) in callbackWatches where entry.callID == callID {
+            callbackWatches[id]?.untoldAtHangUp = callbackOutcomeUntold(id)
+        }
+        guard callbackWatches.values.contains(where: { $0.callID == callID }) else { return nil }
+        syncCallbacks()
+        return callbackSyncTask
+    }
+
+    /// Whether the job ended without the user hearing how: no notice taken
+    /// for it yet, or one taken but not sent. Stopped work is never untold.
+    private func callbackOutcomeUntold(_ id: UUID) -> Bool {
+        guard let job = job(id), !job.status.isActive, job.status != .cancelled else { return false }
+        return !job.outcomeDelivered || noticesInFlight[id] != nil
+    }
+
+    /// A new live call holds the watches still waiting on the host, so
+    /// Hermes calls only once it ends; one whose job ended is dropped.
+    private func holdWaitingCallbacks(for callID: UUID) {
+        for (id, entry) in callbackWatches where entry.callID == nil {
+            guard let job = job(id), job.status.isActive, entry.watchID != nil else {
+                callbackWatches[id] = nil
+                continue
+            }
+            callbackWatches[id]?.callID = callID
+        }
+        if callbackWatches.values.contains(where: { $0.callID != nil }) { syncCallbacks() }
+    }
+
+    /// Settles one watch whose call has ended.
+    private func settleCallback(_ id: UUID, generation: UInt64) async {
+        guard let callbacks, let entry = callbackWatches[id] else { return }
+        callbackWatches[id] = nil
+        guard let job = job(id) else {
+            // Settled and told: nothing to call about.
+            if let watchID = entry.watchID { try? await callbacks.cancel(watchID, entry.profile) }
+            return
+        }
+        let target = Self.callbackTarget(job)
+        switch job.status {
+        case .cancelled:
+            if let watchID = entry.watchID { try? await callbacks.cancel(watchID, entry.profile) }
+        case .finished, .failed:
+            let untold = entry.untoldAtHangUp ?? callbackOutcomeUntold(id)
+            if let watchID = entry.watchID { try? await callbacks.cancel(watchID, entry.profile) }
+            guard generation == self.generation, untold, let target else { break }
+            // Ended without the call telling it: Conduit calls itself.
+            update(id) { $0.outcomeDelivered = true }
+            await callbacks.notify(target, job.status == .finished ? .done : .failed)
+        case .starting, .running, .needsInput:
+            // A chat request still waiting its turn goes with the call.
+            if job.isThreadTurn, !job.threadTurnSubmitted { break }
+            // A request still on its way is watched once it went.
+            guard let target, job.isThreadTurn || job.requestSent else { return }
+            if entry.hostSawEnd {
+                await callbacks.notify(target, entry.hostEndKind)
+                break
+            }
+            do {
+                var watchID = entry.watchID
+                let answer: HermesCallHoldAnswer
+                if let held = watchID {
+                    answer = try await callbacks.hold(held, entry.profile, 0)
+                } else {
+                    switch try await callbacks.watch(target, 0, Self.secondsSince(job.sentAt)) {
+                    case .watching(let newID):
+                        watchID = newID
+                        answer = .watching
+                    case .ended(let kind):
+                        answer = .ended(kind)
+                    }
+                }
+                guard generation == self.generation else { return }
+                switch answer {
+                case .watching:
+                    // Waits on the host; a later call holds it again.
+                    callbackWatches[id] = CallbackWatch(callID: nil, profile: entry.profile, watchID: watchID)
+                    return
+                case .ended(let kind):
+                    await callbacks.notify(target, kind)
+                case .gone:
+                    // It fired already, when a hold lapsed.
+                    break
+                }
+            } catch {
+                // A held watch lapses and fires on the host by itself.
+                hermesCallbackLogger.notice("Call watch not settled at hang-up: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        guard generation == self.generation else { return }
+        update(id) { $0.callsBackWhenDone = false }
+    }
+
+    /// Waits for the watches' passes under way to finish (tests).
+    func callbackPassesSettled() async {
+        while let task = callbackSyncTask { await task.value }
+    }
+
+    /// A job the running call holds a watch for was told or stopped: its
+    /// watch goes now rather than at the next renewal.
+    private func callbackJobMayHaveSettled(_ id: UUID) {
+        guard let callID = callbackWatches[id]?.callID, callID == callbackCallID else { return }
+        syncCallbacks()
+    }
+
+    /// Answering Hermes' call told the user how these sessions' jobs went:
+    /// no voice conversation announces them again.
+    func noteCallAnswered(sessionIDs: [String]) {
+        for index in jobs.indices where sessionIDs.contains(where: { jobs[index].owns(sessionID: $0) }) {
+            jobs[index].calledAbout = true
+            if !jobs[index].status.isActive { jobs[index].outcomeDelivered = true }
+            callbackWatches[jobs[index].id] = nil
+        }
+        pruneSettledJobs()
+    }
+
+    /// A job's watch target, once it has a session.
+    private static func callbackTarget(_ job: VoiceBackgroundJob) -> VoiceCallbackTarget? {
+        guard let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty else { return nil }
+        var sessionIDs = [runtimeID]
+        if let stored = job.storedSessionID, !stored.isEmpty, stored != runtimeID { sessionIDs.append(stored) }
+        return VoiceCallbackTarget(
+            title: job.title,
+            sessionIDs: sessionIDs,
+            runtimeSessionID: runtimeID,
+            storedSessionID: job.storedSessionID,
+            profile: job.profile
+        )
+    }
+
+    /// Seconds since `date`, rounded up, with slack for the host's clock;
+    /// nil without one.
+    private static func secondsSince(_ date: Date?) -> Int? {
+        guard let date else { return nil }
+        return Int(max(0, Date().timeIntervalSince(date)).rounded(.up)) + 2
+    }
+
+    /// Classic voice opened by a Hermes call says `text` first.
+    func queueCallOpening(_ text: String) {
+        callOpening = text
+    }
+
+    func clearCallOpening() {
+        callOpening = nil
+    }
 
     /// The jobs and chat requests the live call `callID` started, in order.
     func callJobs(_ callID: UUID?) -> [VoiceBackgroundJob] {
@@ -588,6 +974,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         )
         var anchored = job
         anchored.callAnchor = currentCallAnchor
+        markNewCallbackJob(&anchored)
         lastJobNumber += 1
         anchored.number = lastJobNumber
         jobs.append(anchored)
@@ -615,7 +1002,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // A follow-up said while the session was being made joined the
             // request (#451); from here on one interrupts it instead.
             let request = self.job(job.id)?.instructions ?? instructions
-            update(job.id) { $0.requestSent = true }
+            update(job.id) {
+                $0.requestSent = true
+                $0.sentAt = Date()
+            }
             try await backend.submit(runtimeID, Self.jobPrompt(for: request))
             // Events may legitimately move the job past .starting while
             // submit awaits; only a cancel or a reset retires it here. A
@@ -630,6 +1020,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if self.job(job.id)?.status == .starting {
                 update(job.id) { $0.status = .running }
             }
+            armCallback(job.id)
             startPollingIfNeeded()
             return startedReply(job)
         } catch {
@@ -814,7 +1205,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard inFlight < Self.maximumThreadTurns else {
             return (nil, AppLocalization.string("Hermes is still working on your earlier requests in this chat. Ask again once they finish."))
         }
-        let job = VoiceBackgroundJob(
+        var job = VoiceBackgroundJob(
             id: UUID(),
             title: Self.title(for: request),
             instructions: request,
@@ -827,6 +1218,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             isThreadTurn: true,
             callAnchor: currentCallAnchor
         )
+        markNewCallbackJob(&job)
         jobs.append(job)
         threadTargets[job.id] = thread
         onThreadTurnStarted?(job, thread)
@@ -894,6 +1286,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Only once it went out, so a notice handed back unsent is never read
     /// as heard. Kept to the read-back source limit.
     private func noteResultReported(_ job: VoiceBackgroundJob) {
+        // Told in the call: Hermes doesn't call about it (#449).
+        callbackJobMayHaveSettled(job.id)
         guard let callID = liveCallID else { return }
         if job.isThreadTurn {
             // The chat replied since: a read-back reads the chat again.
@@ -992,7 +1386,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // Only now does the turn own the chat's events. A follow-up
                 // said while it waited joined the request (#451).
                 let request = job(next.id)?.instructions ?? next.instructions
-                update(next.id) { $0.threadTurnSubmitted = true }
+                update(next.id) {
+                    $0.threadTurnSubmitted = true
+                    $0.sentAt = Date()
+                }
                 let runtimeID = try await backend.submitThreadTurn(thread, target, Self.threadTurnText(for: request))
                 guard generation == self.generation else { return }
                 update(next.id) {
@@ -1000,6 +1397,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     if !runtimeID.isEmpty { $0.runtimeSessionID = runtimeID }
                     if $0.status == .starting { $0.status = .running }
                 }
+                armCallback(next.id)
                 startPollingIfNeeded()
             } catch let error as VoiceThreadNotStartedError {
                 guard generation == self.generation else { return }
@@ -1027,6 +1425,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // Anything its events did to this turn meanwhile is undone.
                 update(next.id) {
                     $0.threadTurnSubmitted = false
+                    $0.sentAt = nil
                     $0.status = .starting
                     $0.result = nil
                     $0.inputRequestDelivered = false
@@ -1178,6 +1577,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             $0.status = .cancelled
             $0.outcomeDelivered = true
         }
+        callbackJobMayHaveSettled(job.id)
         guard let sessionID = job.runtimeSessionID else { return true }
         do {
             try await backend.cancel(sessionID)
@@ -1198,6 +1598,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// never announces it a second time.
     func markOutcomeDelivered(jobID: UUID) {
         update(jobID) { $0.outcomeDelivered = true }
+        callbackJobMayHaveSettled(jobID)
         pruneSettledJobs()
     }
 
@@ -1231,6 +1632,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         noticesInFlight.removeAll()
         liveThread = nil
         liveCallID = nil
+        callOpening = nil
+        // Watches the host holds lapse there and call as usual.
+        callbackCallID = nil
+        callbackLater = .none
+        callbackWordsChecked = 0
+        callbackWatches.removeAll()
+        callbackSyncTask?.cancel()
+        callbackSyncTask = nil
+        callbackSyncAgain = false
+        callbackRenewTask?.cancel()
+        callbackRenewTask = nil
         screenCards.removeAll()
         threadTargets.removeAll()
         chatNotes.removeAll()
@@ -1487,6 +1899,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     // MARK: Delivery
 
     func takePendingNotice() -> VoiceBackgroundJobNotice? {
+        // A call Hermes made opens with why it called (#449).
+        if let opening = callOpening {
+            callOpening = nil
+            return .speak(opening)
+        }
         defer { pruneSettledJobs() }
         guard let item = takeNotice(withReason: false) else { return nil }
         // Spoken at once: no confirmation follows.
@@ -1553,6 +1970,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             guard !job.status.isActive, !job.outcomeDelivered else { continue }
             jobs[index].outcomeDelivered = true
+            // Hermes' own call told it (#449).
+            if job.calledAbout { continue }
             switch job.status {
             case .finished:
                 let openChat = Self.finishedNotice(job.title)
