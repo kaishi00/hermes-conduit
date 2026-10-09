@@ -1624,6 +1624,9 @@ final class PushNotificationService: ObservableObject {
         registration?.voipToken = responseBody.installation.voip == true ? voipToken : nil
         preferences = registration!.preferences
         persistRegistration()
+        // A PushKit token that came while this was on its way goes next
+        // (at first launch both arrive together).
+        if self.voipToken != voipToken { updateVoIPToken(self.voipToken) }
     }
 
     private func updateRegistration(deviceToken: String? = nil) async throws {
