@@ -180,6 +180,7 @@ final class GPTLiveDelegationBridge {
                 }
                 return sent + [Self.callRequestNote(outcome.modelMessage)]
             }
+            let outcome = supervisor.requestCallback(marker.scope)
             seenDelegations.insert(id)
             spokenWords?.settleWords(.delegation(id))
             return [.delegationReply(delegationID: id, text: outcome.modelMessage, channel: .commentary)]
