@@ -222,11 +222,13 @@ final class ChatReadStateTests: XCTestCase {
         state.observe([session], profile: profile, now: t0)
         state.markUnread(session, profile: profile)
         state.recordServerWrite(session, profile: profile, unread: true, at: t0)
+        state.recordDesktopViews(["a": 100, "other": 100], profile: profile)
         state.forget(session, profile: profile)
         XCTAssertNil(state.ledger.seenCounts[profile]?["a"])
         XCTAssertFalse(state.isMarkedUnread(session, profile: profile))
         XCTAssertTrue(state.pendingServerValues.isEmpty)
         XCTAssertTrue(state.lastWriteAttempts.isEmpty)
+        XCTAssertEqual(state.desktopSeenThrough[profile], ["other": 100])
     }
 
     func testLedgerRoundTripsThroughJSON() throws {
