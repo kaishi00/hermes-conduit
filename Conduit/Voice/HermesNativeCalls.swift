@@ -283,7 +283,9 @@ final class HermesNativeCalls: NSObject {
             do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
         }
         guard calls[id] != nil else { return }
-        // Voice ended in the app, or never started: the CallKit call ends.
+        // Voice ended in the app, or never started: the CallKit call ends,
+        // and voice still opening for a missed call doesn't.
+        if !started { appState.endVoiceForNativeCall() }
         finish(id, reason: started ? .remoteEnded : .failed, notice: started ? .none : .missed)
     }
 

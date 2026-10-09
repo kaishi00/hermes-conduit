@@ -3847,6 +3847,9 @@ final class AppState: ObservableObject {
     private var pendingVoiceResume: (sessionID: String, context: VoiceResumeContext)?
     /// A call Hermes made (#449) that the live call now connecting answers.
     var pendingHermesCall: HermesCallOpening?
+    /// Opens the voice of a call answered in CallKit; the CallKit call's
+    /// end cancels it.
+    var hermesCallOpenTask: Task<Void, Never>?
     /// What the live call now connecting was called about, read by its
     /// session builders (reconnects included) until the call closes.
     private(set) var liveHermesCall: HermesCallOpening?

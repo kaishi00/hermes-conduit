@@ -167,8 +167,10 @@ extension AppState {
         )
         let profile = activeProfile
         let intent = PendingVoiceIntent(profile: profile, startsFreshConversation: false, source: .hermesCall)
-        Task { [weak self] in
-            guard let self else { return }
+        hermesCallOpenTask?.cancel()
+        hermesCallOpenTask = Task { [weak self] in
+            // Hung up before voice opened: it doesn't.
+            guard let self, !Task.isCancelled else { return }
             if self.configuredLiveVoiceEngine(profile: profile) != nil {
                 self.pendingHermesCall = opening
                 _ = await self.openVoiceConversation(intent)
@@ -180,6 +182,11 @@ extension AppState {
                 if !(await self.openVoiceConversation(intent)) || !self.showVoiceSheet {
                     self.voiceBackgroundJobSupervisor.clearCallOpening()
                 }
+            }
+            // Hung up while it opened: it ends as the call did.
+            if Task.isCancelled {
+                self.voiceBackgroundJobSupervisor.clearCallOpening()
+                self.endVoiceOfNativeCall()
             }
         }
         return true
@@ -333,8 +340,14 @@ extension AppState {
     }
 
     /// The user hung up the CallKit call: the voice conversation it opened
-    /// ends as its End button would.
+    /// ends as its End button would, and one still opening doesn't open.
     func endVoiceForNativeCall() {
+        hermesCallOpenTask?.cancel()
+        hermesCallOpenTask = nil
+        endVoiceOfNativeCall()
+    }
+
+    private func endVoiceOfNativeCall() {
         if isLiveVoiceCallActive || minimisedLiveVoice != nil {
             endLiveVoiceCall()
         } else if showVoiceSheet || voiceConversationController.hasLiveVoiceSession {
