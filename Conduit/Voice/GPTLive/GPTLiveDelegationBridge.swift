@@ -102,9 +102,13 @@ final class GPTLiveDelegationBridge {
     enum SettledWords: Equatable {
         /// All of the user's words so far: a request went or was turned down.
         case all
-        /// Just this delegation's own (a read-back, a correction into a job),
-        /// so a request still waiting for the user's OK keeps its words.
+        /// Just this delegation's own (a correction into a job), so a request
+        /// still waiting for the user's OK keeps its words.
         case delegation(String)
+        /// A read-back delegation's: none when the call already read the
+        /// read request among them (words after it may be a request), else
+        /// all of them, as the model took them for one.
+        case readBack(String)
         /// Those said by `wordsMark`'s mark: a request left waiting too long.
         case through(Int)
     }
@@ -183,9 +187,9 @@ final class GPTLiveDelegationBridge {
         // marks it "Read back:", and the user's own words catch one it
         // didn't mark (GPT-Live often leaves a delegation's text empty).
         if Self.isReadBackMarker(ownWords) || VoiceThreadRouting.wantsLastReply(ownWords)
-            || VoiceThreadRouting.wantsLastReply(spoken) {
+            || VoiceThreadRouting.endsWithLastReplyRequest(ownWords) || VoiceThreadRouting.wantsLastReply(spoken) {
             let dropped = answerHeldBesideReadBack(spoken)
-            spokenWords?.settleWords(.delegation(id))
+            spokenWords?.settleWords(.readBack(id))
             let read = await readBack(id: id, call: call)
             // The call ended meanwhile: nothing is answered.
             return read.isEmpty ? [] : dropped + read

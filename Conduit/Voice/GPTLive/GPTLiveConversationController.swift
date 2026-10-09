@@ -925,6 +925,12 @@ extension GPTLiveConversationController: GPTLiveSpokenWords {
             settledEntries.formUnion(transcript.filter { $0.speaker == .user }.map(\.id))
         case .delegation(let id):
             settledEntries.formUnion(delegationWords[id] ?? [])
+        case .readBack(let id):
+            let entries = transcript.filter { delegationWords[id]?.contains($0.id) == true }
+            guard !entries.contains(where: {
+                VoiceThreadRouting.wantsLastReply($0.text) || VoiceThreadRouting.endsWithLastReplyRequest($0.text)
+            }) else { return }
+            settledEntries.formUnion(entries.map(\.id))
         case .through(let mark):
             settledEntries.formUnion(userEntryNumbers.filter { $0.value <= mark }.map(\.key))
         }

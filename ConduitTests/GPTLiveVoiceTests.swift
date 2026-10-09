@@ -3361,6 +3361,43 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(prompt.contains("User (handled separately): Read the last reply."), prompt)
         controller.stop()
     }
+
+    /// GPT-Live delegated a read request the call already read only after
+    /// the user's next request: that request's words still go once OK'd.
+    func testGPTLiveLateReadBackDelegationLeavesTheNextRequestsWords() async {
+        let current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, fake) = makeGPTController(clock: { current })
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Read the last reply."))
+        session.onEvent?(.turnDone(role: "user", transcript: "Book a table for Sam."))
+        session.onEvent?(.delegation(id: "del_1", text: "Read back: the last reply"))
+        await waitForFollowUpState { controller.pendingContextCountForTesting > 0 }
+        session.onEvent?(.delegation(id: "del_2", text: "Reserve a table for Sam"))
+        await waitForFollowUpState { controller.pendingContextCountForTesting > 1 }
+        XCTAssertEqual(fake.created, 0, "held for the user's OK")
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Shall I send that?"))
+        session.onEvent?(.turnDone(role: "user", transcript: "Yes."))
+        await waitForFollowUpState { fake.created == 1 }
+        XCTAssertEqual(fake.created, 1)
+        let prompt = fake.submissions.first?.1 ?? ""
+        let own = prompt.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? prompt
+        XCTAssertTrue(own.contains("Book a table for Sam."), prompt)
+        XCTAssertFalse(own.contains("Read the last reply"), prompt)
+        controller.stop()
+    }
+
+    /// GPT-Live delegated a read request said after a sentence of the
+    /// user's own, word for word: it's read, never held for Hermes (#451).
+    func testGPTLiveAskingFirstReadsADelegatedReadRequestAfterOtherSentences() async {
+        let (_, fake, bridge) = makeAskingFirstBridge()
+        let read = await bridge.handleDelegation(id: "del_1", request: "I think you have it already. Could you just read what we said.")
+        guard case .delegationReply("del_1", let text, _)? = read.last else { return XCTFail("\(read)") }
+        XCTAssertNotEqual(text, GPTLiveDelegationBridge.heldForOKText)
+        XCTAssertNil(bridge.userFinishedSpeaking("Yes."), "nothing waits for an OK")
+        XCTAssertEqual(fake.created, 0)
+    }
 }
 
 /// The call's record of the user's words, for the delegation bridge alone.
