@@ -522,14 +522,16 @@ final class ChatScrollEngine: ObservableObject {
     /// Jump to the answerable clarification in transcript order without
     /// moving the card or converting browsing into follow-latest mode.
     func explicitMessageRequested(id: String) {
-        guard !id.isEmpty, surface?.isTracking != true else { return }
+        guard !id.isEmpty,
+              !isPaused,
+              surface?.isTracking != true,
+              targetCache.targets.contains(where: { $0.id == id }) else { return }
         restoration = nil
         prependAnchor = nil
         latestAnimationUntil = nil
         cancelPastBottomCheck()
         emit(.cancelAutomaticRestoration)
         setMode(.browsing)
-        guard !isPaused else { return }
         emit(.revealRow(id: id))
     }
 

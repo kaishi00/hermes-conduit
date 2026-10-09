@@ -170,6 +170,9 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
     /// True when the question offers no choices and expects typed text.
     var isFreeText: Bool { choices.isEmpty }
 
+    /// Whether this question can accept an answer or retry.
+    var isAnswerable: Bool { status == .pending || status == .error }
+
     init(
         id: String,
         question: String,

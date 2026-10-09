@@ -4,6 +4,51 @@ import XCTest
 
 @MainActor
 final class AppStateChatResumeTests: XCTestCase {
+    func testPendingClarifyMessageIDIsCachedWhenTranscriptChanges() {
+        let suite = "AppStateChatResumeTests.pendingClarifyCache.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            return XCTFail("Failed to create test UserDefaults suite")
+        }
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {}
+        )
+        let pending = ClarifyActivity(
+            requestId: "request-cache",
+            question: "Continue?",
+            choices: [],
+            status: .pending
+        )
+        appState.messages = [ChatMessage(
+            id: "clarify-cache",
+            role: .clarify,
+            content: "Continue?",
+            timestamp: "2026-01-01T00:00:00Z",
+            clarify: pending
+        )]
+        XCTAssertEqual(appState.pendingClarifyMessageID, "clarify-cache")
+
+        let answered = ClarifyActivity(
+            requestId: pending.requestId,
+            question: "Continue?",
+            choices: [],
+            status: .answered,
+            answer: "yes"
+        )
+        appState.messages = [ChatMessage(
+            id: "clarify-cache",
+            role: .clarify,
+            content: "Continue?",
+            timestamp: "2026-01-01T00:00:00Z",
+            clarify: answered
+        )]
+        XCTAssertNil(appState.pendingClarifyMessageID)
+    }
+
     func testResumeHydratesApprovalsQueuedBehindSnapshotHead() async {
         let pending: (String) -> ApprovalActivity = { requestID in
             ApprovalActivity(

@@ -41,9 +41,7 @@ final class ChatResumeCoordinator {
     static func pendingClarifyMessageID(in messages: [ChatMessage]) -> String? {
         messages.last { message in
             guard let clarify = message.clarify, !clarify.isExpired else { return false }
-            return clarify.questions.contains {
-                $0.status == .pending || $0.status == .error
-            }
+            return clarify.questions.contains(where: \.isAnswerable)
         }?.id
     }
 
@@ -265,7 +263,9 @@ final class ChatResumeCoordinator {
         }
 
         let destination: ChatResumeRestorationDestination
-        if let pendingClarifyMessageID, !pendingClarifyMessageID.isEmpty {
+        if isFallbackSelection || store.behavior == .latestActivity {
+            destination = .latest
+        } else if let pendingClarifyMessageID, !pendingClarifyMessageID.isEmpty {
             destination = .pendingClarify(
                 messageID: pendingClarifyMessageID,
                 fallbackSnapshot: fallbackSnapshot

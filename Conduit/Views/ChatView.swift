@@ -31,10 +31,6 @@ struct ChatView: View {
 
     private var viewportInputs: ChatScrollRenderInputs { scrollEngine.renderInputs }
 
-    private var pendingClarifyMessageID: String? {
-        ChatResumeCoordinator.pendingClarifyMessageID(in: appState.messages)
-    }
-
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewportInputs.renderedSessionKey }
 
     /// Single source of follow-latest truth: the engine's mode.
@@ -366,6 +362,7 @@ struct ChatView: View {
         }
         .overlay(alignment: .bottomTrailing) {
             if viewportInputs.showsJumpToLatest {
+                let pendingClarifyMessageID = appState.pendingClarifyMessageID
                 let hasPendingClarify = pendingClarifyMessageID != nil
                 Button {
                     ChatViewportTrace.shared.log(
@@ -383,14 +380,13 @@ struct ChatView: View {
                         HStack(spacing: 7) {
                             Image(systemName: "questionmark.bubble")
                             Text(AppLocalization.string("NEEDS YOUR INPUT"))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                            Image(systemName: "arrow.down")
-                                .font(.caption.weight(.bold))
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 14)
-                        .frame(height: 44)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 44)
                     } else {
                         Image(systemName: "arrow.down")
                             .font(.system(size: 15, weight: .bold))
@@ -403,8 +399,13 @@ struct ChatView: View {
                 )
                 .accessibilityLabel(
                     hasPendingClarify
-                        ? AppLocalization.string("NEEDS YOUR INPUT")
+                        ? AppLocalization.string("Go to the question that needs your answer")
                         : AppLocalization.string("Scroll to latest message")
+                )
+                .accessibilityHint(
+                    hasPendingClarify
+                        ? AppLocalization.string("Scrolls to the pending question in the conversation")
+                        : ""
                 )
                 .padding(.trailing, 18)
                 .padding(.bottom, 14)

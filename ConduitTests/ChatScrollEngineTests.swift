@@ -871,6 +871,31 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(engine.mode, .browsing)
     }
 
+    func testMissingExplicitMessageDoesNotCancelRestoration() {
+        let (engine, _) = makeEngine()
+        engine.restorationRequested(anchorRequest(engine, row: 5))
+        events = []
+
+        engine.explicitMessageRequested(id: "not-in-transcript")
+
+        XCTAssertEqual(engine.mode, .restoring)
+        XCTAssertFalse(events.contains(.cancelAutomaticRestoration))
+        XCTAssertFalse(events.contains(.revealRow(id: "not-in-transcript")))
+    }
+
+    func testExplicitMessageRequestWhilePausedDoesNotCancelRestoration() {
+        let (engine, _) = makeEngine()
+        engine.restorationRequested(anchorRequest(engine, row: 5))
+        engine.setPaused(true)
+        events = []
+
+        engine.explicitMessageRequested(id: "m5")
+
+        XCTAssertEqual(engine.mode, .restoring)
+        XCTAssertFalse(events.contains(.cancelAutomaticRestoration))
+        XCTAssertFalse(events.contains(.revealRow(id: "m5")))
+    }
+
     func testAReplacementRestorationPublishesItsGeneration() {
         let (engine, _) = makeEngine()
         engine.restorationRequested(anchorRequest(engine, row: 5))

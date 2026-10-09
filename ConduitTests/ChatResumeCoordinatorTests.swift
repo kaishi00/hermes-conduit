@@ -78,7 +78,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         ]))
     }
 
-    func testPendingClarifyOverridesLatestActivityBehavior() throws {
+    func testPendingClarifyDoesNotOverrideLatestActivityPreference() throws {
         let harness = makeHarness()
         harness.coordinator.setBehavior(.latestActivity)
         let selected = harness.coordinator.selectTarget(
@@ -96,8 +96,45 @@ final class ChatResumeCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(
             request?.destination,
-            .pendingClarify(messageID: "clarify-pending", fallbackSnapshot: nil)
+            .latest
         )
+    }
+
+    func testMixedExpiredAndPendingClarifyBatchUsesQuestionAnswerability() {
+        let message = ChatMessage(
+            id: "clarify-mixed",
+            role: .clarify,
+            content: "Two questions",
+            timestamp: "2026-01-01T00:00:00Z",
+            clarify: ClarifyActivity(
+                requestId: "request-mixed",
+                questions: [
+                    ClarifyQuestion(id: "expired", question: "Old?", choices: [], status: .expired),
+                    ClarifyQuestion(id: "pending", question: "New?", choices: [], status: .pending)
+                ]
+            )
+        )
+
+        XCTAssertEqual(message.clarify?.status, .expired)
+        XCTAssertEqual(ChatResumeCoordinator.pendingClarifyMessageID(in: [message]), "clarify-mixed")
+    }
+
+    func testFullyExpiredClarifyBatchIsNotAnswerable() {
+        let message = ChatMessage(
+            id: "clarify-expired",
+            role: .clarify,
+            content: "Expired request",
+            timestamp: "2026-01-01T00:00:00Z",
+            clarify: ClarifyActivity(
+                requestId: "request-expired",
+                questions: [
+                    ClarifyQuestion(id: "q1", question: "Old?", choices: [], status: .pending)
+                ],
+                isExpired: true
+            )
+        )
+
+        XCTAssertNil(ChatResumeCoordinator.pendingClarifyMessageID(in: [message]))
     }
 
     func testExplicitActionCancelsAnOlderGeneration() throws {

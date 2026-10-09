@@ -633,9 +633,15 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var activeChatScrollSessionIdentity = ChatScrollSessionIdentity.none
     @Published private(set) var chatTranscriptRevision: UInt64 = 0
+    /// Cached once per transcript mutation so view updates do not rescan the full history.
+    @Published private(set) var pendingClarifyMessageID: String?
     @Published var messages: [ChatMessage] = [] {
         didSet {
             chatTranscriptRevision &+= 1
+            let pendingClarify = ChatResumeCoordinator.pendingClarifyMessageID(in: messages)
+            if pendingClarifyMessageID != pendingClarify {
+                pendingClarifyMessageID = pendingClarify
+            }
             advanceChatViewportExpectedTranscriptRevisionIfNeeded()
             // A real transcript replaces the read-only offline copy wholesale;
             // the two are never mixed on screen.
@@ -9689,7 +9695,7 @@ final class AppState: ObservableObject {
         }
         guard let request = chatResumeCoordinator.reconciliationSettled(
             sessionKey: sessionKey,
-            pendingClarifyMessageID: ChatResumeCoordinator.pendingClarifyMessageID(in: messages)
+            pendingClarifyMessageID: pendingClarifyMessageID
         ) else {
             // reconciliationSettled returned nil. If there was a pending
             // session key (mismatch path), clear the freeze so viewport
