@@ -368,12 +368,12 @@ enum KanbanBoardAdminMessage {
     /// the authoritative pre-POST board list. Never fabricate more than that.
     static func createOutcomeMessage(knewSlugBeforeRequest: Bool, name: String) -> String {
         if knewSlugBeforeRequest {
-            return "Board \"\(name)\" already exists — opened it."
+            return AppLocalization.string("Board \"\(name)\" already exists — opened it.")
         }
-        return "Board \"\(name)\" created and selected."
+        return AppLocalization.string("Board \"\(name)\" created and selected.")
     }
 
     static func archiveRefreshFailureMessage(_ detail: String) -> String {
-        "The board was archived, but the board list could not be refreshed. " + detail
+        AppLocalization.string("The board was archived, but the board list could not be refreshed. \(detail)")
     }
 }

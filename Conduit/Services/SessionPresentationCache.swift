@@ -387,7 +387,7 @@ final class SessionPresentationCache {
                     timestamp: presentation.timestamp,
                     tool: ToolActivity(
                         id: presentation.toolID,
-                        name: presentation.toolDisplayName ?? presentation.toolName ?? "Tool",
+                        name: presentation.toolDisplayName ?? presentation.toolName ?? AppLocalization.string("Tool"),
                         input: presentation.toolPreview,
                         output: nil,
                         status: .running

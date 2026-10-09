@@ -1033,7 +1033,7 @@ struct KanbanTaskDetailView: View {
                     baselineStatus: baseline.status
                 )
                 if serverMoved && remoteChangeNotice == nil {
-                    remoteChangeNotice = "This task changed on the server. Your unsaved edits are preserved."
+                    remoteChangeNotice = AppLocalization.string("This task changed on the server. Your unsaved edits are preserved.")
                 }
             } else {
                 title = server.title
@@ -1294,7 +1294,7 @@ struct KanbanTaskDetailView: View {
             // Record the committed mutation BEFORE the refresh attempt (see
             // specifyTask - suppression must survive a failed refresh).
             completedTriageMutation = CompletedTriageMutation(taskID: expectedID, context: expectedContext)
-            let base = KanbanTriageActionsPolicy.successNotice(fanout: response.fanout, childCount: response.childIDs.count) ?? "Decompose succeeded"
+            let base = KanbanTriageActionsPolicy.successNotice(fanout: response.fanout, childCount: response.childIDs.count) ?? AppLocalization.string("Decompose succeeded")
             // PARTIAL SUCCESS distinction: the mutation landed, so any
             // failure the store recorded now is a REFRESH failure. Never
             // blame the decompose itself.
@@ -1578,7 +1578,7 @@ enum KanbanNoteAndRequeueFlow {
         case (false, _, let detail?):
             return detail
         case (true, false, let detail?):
-            return "The note was posted, but the task could not be requeued. (\(detail))"
+            return AppLocalization.string("The note was posted, but the task could not be requeued. (\(detail))")
         default:
             return nil
         }

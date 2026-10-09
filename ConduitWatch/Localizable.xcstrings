@@ -504,13 +504,13 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registro de llamadas"
+            "value" : "Registro"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Journal des appels"
+            "value" : "Journal"
           }
         },
         "id" : {
@@ -522,7 +522,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registro chiamate"
+            "value" : "Registro"
           }
         },
         "ja" : {
@@ -540,19 +540,19 @@
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dziennik połączeń"
+            "value" : "Dziennik"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registro de chamadas"
+            "value" : "Registro"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Журнал звонков"
+            "value" : "Журнал"
           }
         },
         "tr" : {

@@ -58,11 +58,11 @@ enum ChatTextSize: Int, CaseIterable, Equatable {
     /// Human-readable name, used by the Settings slider's accessibility value.
     var displayName: String {
         switch self {
-        case .smallest: "Smallest"
-        case .smaller: "Smaller"
-        case .default: "Default"
-        case .larger: "Larger"
-        case .largest: "Largest"
+        case .smallest: AppLocalization.string("Smallest")
+        case .smaller: AppLocalization.string("Smaller")
+        case .default: AppLocalization.string("Default")
+        case .larger: AppLocalization.string("Larger")
+        case .largest: AppLocalization.string("Largest")
         }
     }
 

@@ -601,10 +601,10 @@ final class PushNotificationService: ObservableObject {
 
     var isEnabled: Bool { registration != nil && preferences.enabled }
     var statusText: String {
-        if isWorking { return "Updating" }
+        if isWorking { return AppLocalization.string("Updating") }
         if isEnabled { return AppLocalization.string("Enabled") }
         if authorizationStatus == .denied { return AppLocalization.string("Notifications denied") }
-        return "Off"
+        return AppLocalization.string("Off")
     }
 
     init(retryDelay: Duration = .seconds(1.5)) {
@@ -1566,7 +1566,7 @@ final class PushNotificationService: ObservableObject {
 
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let detail = (try? JSONDecoder().decode(RelayError.self, from: data).message) ?? "Push relay request failed."
+            let detail = (try? JSONDecoder().decode(RelayError.self, from: data).message) ?? AppLocalization.string("Push relay request failed.")
             throw PushNotificationError.relay(detail)
         }
     }
@@ -1626,9 +1626,9 @@ private enum PushNotificationError: LocalizedError {
     case relay(String)
     var errorDescription: String? {
         switch self {
-        case .permissionDenied: return "Allow notifications in Settings to continue."
-        case .tokenTimeout: return "Apple didn't return a push token in time. Check your connection and try again."
-        case .tokenRequestPending: return "Still waiting for a push token from Apple. Try again in a moment."
+        case .permissionDenied: return AppLocalization.string("Allow notifications in Settings to continue.")
+        case .tokenTimeout: return AppLocalization.string("Apple didn't return a push token in time. Check your connection and try again.")
+        case .tokenRequestPending: return AppLocalization.string("Still waiting for a push token from Apple. Try again in a moment.")
         case .relay(let message): return message
         }
     }

@@ -491,7 +491,7 @@ enum VoiceConfigurationParser {
     static func catalogDescriptor(id: String, kind: VoiceProviderDescriptor.Kind) -> VoiceProviderDescriptor? {
         switch (id, kind) {
         case ("local", .stt):
-            return .init(id: id, displayName: "Local", kind: kind, models: ["base", "tiny", "small", "medium", "large-v3", "turbo"], supportsStreaming: false)
+            return .init(id: id, displayName: AppLocalization.string("Local"), kind: kind, models: ["base", "tiny", "small", "medium", "large-v3", "turbo"], supportsStreaming: false)
         case ("nous", .stt), ("openai", .stt):
             // The managed Nous route resolves models from the same
             // OpenAI-compatible catalog as the direct key.
@@ -605,7 +605,7 @@ enum VoiceConfigurationParser {
     /// Shared help copy for provider endpoint overrides: this redirects the
     /// provider Hermes calls, never Conduit's own dashboard connection.
     private static func customEndpointHelp(_ provider: String) -> String {
-        "Optional \(provider)-compatible speech endpoint Hermes should call (for example https://your-host/v1). Leave blank for the provider default. This does not change the server Conduit connects to."
+        AppLocalization.string("Optional \(provider)-compatible speech endpoint Hermes should call (for example https://your-host/v1). Leave blank for the provider default. This does not change the server Conduit connects to.")
     }
 
     private static func decimalField(for key: String) -> VoiceTypedField? {
@@ -631,10 +631,10 @@ enum VoiceConfigurationParser {
         let normalized = normalizedNumber(value)
         guard !normalized.isEmpty else { return nil }
         guard let parsed = Double(normalized) else {
-            return "\(field.label) must be a number between \(range.lowerBound) and \(range.upperBound), or leave blank to remove the override."
+            return AppLocalization.string("\(field.label) must be a number between \(String(range.lowerBound)) and \(String(range.upperBound)), or leave blank to remove the override.")
         }
         guard range.contains(parsed) else {
-            return "\(field.label) must be between \(range.lowerBound) and \(range.upperBound). Hermes clamps values into this range; Conduit refuses them instead of saving something upstream would silently rewrite."
+            return AppLocalization.string("\(field.label) must be between \(String(range.lowerBound)) and \(String(range.upperBound)). Hermes clamps values into this range; Conduit refuses them instead of saving something upstream would silently rewrite.")
         }
         return nil
     }

@@ -471,11 +471,11 @@ struct ConnectionSetupView: View {
         switch flow.credentialsAnswer {
         case .no:
             AskHermesPromptView(title: ConnectionSetupPrompt.credentialsMissing.title, prompt: ConnectionSetupPrompt.credentialsMissing.text)
-            continueButton("Credentials are ready") { flow.confirmCredentialsReady() }
+            continueButton(AppLocalization.string("Credentials are ready")) { flow.confirmCredentialsReady() }
                 .accessibilityIdentifier("setup.continue")
         case .unknown:
             AskHermesPromptView(title: ConnectionSetupPrompt.credentialsUnknown.title, prompt: ConnectionSetupPrompt.credentialsUnknown.text)
-            continueButton("Credentials are ready") { flow.confirmCredentialsReady() }
+            continueButton(AppLocalization.string("Credentials are ready")) { flow.confirmCredentialsReady() }
                 .accessibilityIdentifier("setup.continue")
         default:
             EmptyView()
@@ -574,7 +574,7 @@ struct ConnectionSetupView: View {
                 AppLocalization.string("You have dashboard login credentials."),
                 AppLocalization.string("You know the Hermes machine’s local IP address."),
                 AppLocalization.string("You know the dashboard port."),
-                "This device is on the same reachable network."
+                AppLocalization.string("This device is on the same reachable network.")
             ],
             prompt: .lanDetails
         )
@@ -609,7 +609,7 @@ struct ConnectionSetupView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             AskHermesPromptView(title: ConnectionSetupPrompt.tailscaleServe.title, prompt: ConnectionSetupPrompt.tailscaleServe.text)
-            continueButton("I have the connection details") { flow.confirmDetailsReady() }
+            continueButton(AppLocalization.string("I have the connection details")) { flow.confirmDetailsReady() }
                 .accessibilityIdentifier("setup.details-ready")
         }
     }
@@ -643,7 +643,7 @@ struct ConnectionSetupView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             AskHermesPromptView(title: ConnectionSetupPrompt.reverseProxyDetails.title, prompt: ConnectionSetupPrompt.reverseProxyDetails.text)
-            continueButton("I have the connection details") { flow.confirmDetailsReady() }
+            continueButton(AppLocalization.string("I have the connection details")) { flow.confirmDetailsReady() }
                 .accessibilityIdentifier("setup.details-ready")
         }
     }
@@ -824,7 +824,7 @@ struct ConnectionSetupView: View {
             .conduitGlassSurface(cornerRadius: 18, tint: .conduitAura.opacity(0.06))
 
             AskHermesPromptView(title: prompt.title, prompt: prompt.text)
-            continueButton("I have the connection details") { flow.confirmDetailsReady() }
+            continueButton(AppLocalization.string("I have the connection details")) { flow.confirmDetailsReady() }
                 .accessibilityIdentifier("setup.details-ready")
         }
     }
@@ -878,7 +878,7 @@ extension ConnectionHelpDestination {
         switch self {
         case .start: return AppLocalization.string("Getting started")
         case .dashboard: return AppLocalization.string("Dashboard address")
-        case .credentials: return "Credentials"
+        case .credentials: return AppLocalization.string("Credentials")
         case .network: return AppLocalization.string("Network & reachability")
         case .tls: return AppLocalization.string("HTTPS & certificates")
         case .cloudflare: return "Cloudflare Access"

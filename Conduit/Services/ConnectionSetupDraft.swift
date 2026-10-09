@@ -95,13 +95,13 @@ enum ConnectionSetupValidationError: Error, Equatable {
 
     var message: String {
         switch self {
-        case .methodRequired: return "Choose how this device will reach Hermes."
-        case .invalidHost: return "Enter a valid host or IP address."
-        case .invalidPort: return "Enter a port between 1 and 65535."
-        case .httpsRequired: return "Enter the full HTTPS dashboard address."
-        case .schemeRequired: return "Choose HTTP or HTTPS to match the address Hermes supplied."
-        case .credentialsRequired: return "Enter your Hermes dashboard username and password."
-        case .policy(let error): return error.errorDescription ?? "Enter a valid dashboard URL."
+        case .methodRequired: return AppLocalization.string("Choose how this device will reach Hermes.")
+        case .invalidHost: return AppLocalization.string("Enter a valid host or IP address.")
+        case .invalidPort: return AppLocalization.string("Enter a port between 1 and 65535.")
+        case .httpsRequired: return AppLocalization.string("Enter the full HTTPS dashboard address.")
+        case .schemeRequired: return AppLocalization.string("Choose HTTP or HTTPS to match the address Hermes supplied.")
+        case .credentialsRequired: return AppLocalization.string("Enter your Hermes dashboard username and password.")
+        case .policy(let error): return error.errorDescription ?? AppLocalization.string("Enter a valid dashboard URL.")
         }
     }
 }

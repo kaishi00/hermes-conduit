@@ -693,7 +693,7 @@ final class ImagePasteTextView: UITextView {
         let pasteEditorIdentity = pasteEditorIdentity ?? editorIdentity
         DispatchQueue.main.async { [weak self] in
             guard let self, self.editorIdentity == pasteEditorIdentity else { return }
-            self.onPastedImageError?("The image provider returned invalid image data.")
+            self.onPastedImageError?(AppLocalization.string("The image provider returned invalid image data."))
         }
     }
 

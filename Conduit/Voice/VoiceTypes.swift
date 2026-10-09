@@ -406,6 +406,11 @@ enum AppleSpeechRecognitionAvailability: Equatable {
         }
     }
 
+    var isReady: Bool {
+        if case .ready = self { return true }
+        return false
+    }
+
     var title: String {
         switch self {
         case .ready: return AppLocalization.string("Ready")

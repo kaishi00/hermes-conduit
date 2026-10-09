@@ -81,13 +81,15 @@ enum PendingVoiceLaunchPolicy {
 
     /// User-visible explanation when an external launch cannot start voice
     /// and AppState has no classified failure to show.
-    static let disconnectedFailureMessage =
-        "Conduit could not connect to Hermes, so voice did not start. Ask again after the connection is restored."
+    static var disconnectedFailureMessage: String {
+        AppLocalization.string("Conduit could not connect to Hermes, so voice did not start. Ask again after the connection is restored.")
+    }
 
     /// User-visible explanation when a pending Siri request outlived its
     /// launch window without a conclusive ready/failed outcome.
-    static let expiredFailureMessage =
-        "The Siri voice request expired before Hermes was ready. Ask Siri again now that Conduit is open."
+    static var expiredFailureMessage: String {
+        AppLocalization.string("The Siri voice request expired before Hermes was ready. Ask Siri again now that Conduit is open.")
+    }
 
     static func normalizedProfile(_ raw: String?) -> String? {
         guard let raw else { return nil }
@@ -119,8 +121,9 @@ enum PendingVoiceLaunchPolicy {
     /// Voice much later (and it must not hold the wake listener off).
     static let wakePhraseLaunchBudget: TimeInterval = 10
 
-    static let wakePhraseFailureMessage =
-        "Conduit lost the connection to Hermes, so voice did not start. Say the wake phrase again after the connection is restored."
+    static var wakePhraseFailureMessage: String {
+        AppLocalization.string("Conduit lost the connection to Hermes, so voice did not start. Say the wake phrase again after the connection is restored.")
+    }
 
     static func makeWakePhrasePendingIntent(
         profile: String,
@@ -184,7 +187,7 @@ enum PendingVoiceLaunchPolicy {
         for connection: VoiceLaunchConnectionSnapshot
     ) -> String {
         if let failure = connection.classifiedFailure {
-            return "\(failure.userTitle). \(failure.userMessage) Voice did not start — ask Siri again after reconnecting."
+            return AppLocalization.string("\(failure.userTitle). \(failure.userMessage) Voice did not start — ask Siri again after reconnecting.")
         }
         return disconnectedFailureMessage
     }

@@ -47,9 +47,9 @@ enum SessionSource: String, Codable, CaseIterable {
         case .discord: return "Discord"
         case .telegram: return "Telegram"
         case .api: return "API"
-        case .webhook: return "Webhook"
-        case .cron: return "Cron"
-        case .other: return "Other"
+        case .webhook: return AppLocalization.string("Webhook")
+        case .cron: return AppLocalization.string("Cron")
+        case .other: return AppLocalization.string("Other")
         }
     }
 
@@ -659,7 +659,15 @@ struct DelegateAgentActivity: Identifiable, Equatable {
     enum Status: String, Equatable {
         case queued, running, completed, failed, interrupted
 
-        var label: String { rawValue.capitalized }
+        var label: String {
+            switch self {
+            case .queued: return AppLocalization.string("Queued")
+            case .running: return AppLocalization.string("Running")
+            case .completed: return AppLocalization.string("Completed")
+            case .failed: return AppLocalization.string("Failed")
+            case .interrupted: return AppLocalization.string("Interrupted")
+            }
+        }
         var isActive: Bool { self == .queued || self == .running }
     }
 
