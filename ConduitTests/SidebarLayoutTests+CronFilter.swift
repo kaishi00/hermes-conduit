@@ -199,6 +199,7 @@ extension SidebarLayoutTests {
         XCTAssertEqual(sourceRowIDs(.chat, pinned: ["brief"]), ["chat"])
     }
 
+    @MainActor
     func testCronFilterJoinsASavedOrderBeforeOther() {
         XCTAssertEqual(
             AppState.normalizedSessionFilterOrder(["telegram", "chat", "voice", "voice_job", "discord", "api", "webhook", "other"]),
