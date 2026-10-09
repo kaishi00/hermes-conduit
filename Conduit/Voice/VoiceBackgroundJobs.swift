@@ -2038,23 +2038,23 @@ enum VoiceThreadRouting {
         "just a sec", "just a second", "just a moment", "hold it",
         "warte", "wart", "warten sie", "warten", "abwarten", "moment", "einen moment", "einen augenblick", "augenblick",
         "eine sekunde", "sekunde", "noch nicht", "jetzt nicht", "nicht jetzt",
-        "espera", "espere", "esperá", "un momento", "un momentito", "un segundo", "momento",
+        "espera", "espere", "esperá", "un momento", "un momentito", "un segundo", "un minuto", "un minutito", "momento",
         "todavía no", "todavia no", "aún no", "aun no", "ahora no", "por ahora no", "no todavía",
         "no todavia", "no ahora", "no por ahora",
         "attends", "attendez", "un instant", "une seconde", "une minute", "un moment", "pas encore",
         "pas maintenant", "pas tout de suite",
-        "segundo", "peraí", "perai", "pera", "aguarda", "aguarde", "ainda não", "ainda nao", "agora não", "agora nao",
+        "segundo", "minuto", "minutinho", "peraí", "perai", "pera", "aguarda", "aguarde", "ainda não", "ainda nao", "agora não", "agora nao",
         "não agora", "nao agora", "não ainda", "nao ainda",
         "подожди", "подождите", "погоди", "погодите", "секунду", "секундочку", "минуту", "минутку",
         "пока нет", "пока не надо", "не сейчас", "ещё нет", "еще нет", "ещё не", "еще не",
         "aspetta", "aspetti", "un attimo", "un secondo", "non ancora", "non adesso", "non ora", "adesso no",
         "ora no", "ancora no",
-        "czekaj", "poczekaj", "zaczekaj", "chwileczkę", "chwila", "sekundę", "jeszcze nie", "nie teraz",
-        "bir dakika", "bir saniye", "bekle", "bekleyin", "dur", "henüz değil", "şimdi değil", "daha değil",
-        "tunggu sebentar", "tunggu", "sebentar", "belum", "jangan sekarang", "nanti dulu", "nanti saja",
+        "czekaj", "poczekaj", "zaczekaj", "chwileczkę", "chwilkę", "chwilę", "chwila", "sekundę", "minutę", "momencik", "jeszcze nie", "nie teraz",
+        "bir dakika", "bir saniye", "biraz bekle", "bekle", "bekleyin", "dur", "henüz değil", "şimdi değil", "daha değil",
+        "tunggu sebentar", "tunggu dulu", "tunggu", "sebentar", "semenit", "sedetik", "belum", "jangan sekarang", "nanti dulu", "nanti saja",
         "nanti aja", "tidak sekarang", "nggak sekarang", "gak sekarang",
         "잠깐만요", "잠깐만", "잠깐", "잠시만요", "잠시만", "아직 아니요", "아직이요", "아직", "지금은 아니요",
-        "지금 말고",
+        "지금 말고", "기다려 주세요", "기다려요", "기다려",
     ]
     static let answerYesLeads = [
         "no problem", "no worries", "no rush", "yes", "yeah", "yep", "yup", "yea", "ya", "sure", "ok", "okay", "alright", "all right",
@@ -2084,7 +2084,7 @@ enum VoiceThreadRouting {
         "não se preocupe", "nao se preocupe", "fechado", "perfeito", "ótimo", "otimo", "isso mesmo",
         "isso aí", "isso ai", "exato",
         "не вопрос", "да", "ага", "угу", "конечно", "давай", "давайте", "хорошо", "ладно", "ок", "окей",
-        "отлично", "супер", "без проблем", "согласен", "согласна", "верно", "точно", "правильно",
+        "отлично", "супер", "без проблем", "нет проблем", "согласен", "согласна", "верно", "точно", "правильно",
         "именно", "пожалуйста", "отправляй", "отправляйте", "вперёд", "вперед", "годится", "пойдёт", "пойдет",
         "sì", "certamente", "va bene", "d'accordo", "perfetto", "esatto", "giusto", "volentieri",
         "vai pure", "vai avanti", "vai", "procedi", "invialo", "fallo", "assolutamente",
@@ -2144,7 +2144,7 @@ enum VoiceThreadRouting {
         "nicht", "kein", "keine", "keinen", "keiner", "nichts", "nie", "niemals", "ohne", "ob", "falls",
         "warum", "wieso", "weshalb", "wann", "wo", "wer", "vielleicht", "später", "warte",
         "abbrechen", "vergiss", "überlegen", "nachdenken",
-        "nunca", "sin", "quizás", "quizas", "quizá", "quiza", "luego", "después", "despues",
+        "nunca", "sin", "quizás", "quizas", "quizá", "quiza", "luego", "después", "despues", "tarde",
         "espera", "cancela", "cancelar", "olvida", "olvídalo", "olvidalo", "qué", "cómo", "cuándo",
         "dónde", "quién", "pensar", "pensarlo",
         "pas", "jamais", "rien", "sans", "peut", "tard", "attends", "attendez", "annule", "annuler",
@@ -2170,16 +2170,16 @@ enum VoiceThreadRouting {
         "the", "moment", "second", "sec", "one", "wait", "hold", "on", "i", "said", "go", "ahead",
         "and", "ok", "okay", "sure", "that's", "all", "about", "minute",
         "ja", "danke", "bitte", "schön", "sehr", "es", "das", "an", "jetzt", "noch", "mal", "eine", "einen",
-        "sekunde", "augenblick",
-        "sí", "que", "gracias", "por", "favor", "lo", "eso", "ahora", "todavía", "todavia", "un", "momento", "segundo",
+        "sekunde", "augenblick", "kurz",
+        "sí", "que", "gracias", "por", "favor", "lo", "eso", "ahora", "todavía", "todavia", "un", "momento", "segundo", "poco", "poquito",
         "oui", "merci", "beaucoup", "s'il", "te", "vous", "plaît", "plait", "le", "la", "ça", "ca", "à",
-        "maintenant", "encore", "une", "seconde", "instant",
-        "sim", "obrigado", "obrigada", "valeu", "isso", "agora", "ainda", "para", "pro", "ao", "o", "um",
-        "да", "спасибо", "пожалуйста", "это", "его", "сейчас", "ещё", "еще", "гермес", "гермесу",
+        "maintenant", "encore", "une", "seconde", "instant", "peu",
+        "sim", "obrigado", "obrigada", "valeu", "isso", "agora", "ainda", "para", "pro", "ao", "o", "um", "pouco", "pouquinho", "aí",
+        "да", "спасибо", "пожалуйста", "это", "его", "сейчас", "ещё", "еще", "гермес", "гермесу", "немного",
         "grazie", "mille", "per", "pure", "adesso", "ora", "ancora", "attimo", "sì",
         "tak", "dzięki", "dziękuję", "proszę", "teraz", "jeszcze",
         "evet", "teşekkürler", "teşekkür", "ederim", "sağ", "ol", "lütfen", "şimdi", "bunu", "onu",
-        "ya", "terima", "kasih", "makasih", "saja", "aja", "dong", "deh", "sekarang", "itu", "ini", "ke",
+        "ya", "terima", "kasih", "makasih", "saja", "aja", "dong", "deh", "sekarang", "itu", "ini", "ke", "dulu",
         "네", "감사합니다", "고마워요", "고마워", "주세요", "부탁해요", "지금", "그거", "이거",
     ]
     /// Words that negate ("not", "nicht", "pas", "não", "не", "non",
@@ -2253,8 +2253,10 @@ enum VoiceThreadRouting {
         }
         // "Wait, never mind", "Hold on, actually no": a no after it is the
         // answer.
+        // "Wait a minute", "Подожди секунду", "Bekle bir dakika": more wait
+        // words are still the wait.
         func notYet() -> HeldRequestAnswer {
-            while dropLead(answerJoiners) {}
+            while dropLead(answerJoiners) || dropLead(answerNotYetLeads) {}
             if dropNoLead() { return refusal() }
             return .notYet(change: change(words))
         }
