@@ -103,7 +103,8 @@ struct MarkdownText: View {
                     gatewayMediaDataURL: gatewayMediaDataURL,
                     selectionCoordinator: selectionCoordinator,
                     selectionSegments: selectionSegments,
-                    newestCharacterOpacities: newestCharacterOpacities
+                    newestCharacterOpacities: newestCharacterOpacities,
+                    isStreaming: isStreaming
                 )
             } else {
                 VStack(alignment: .leading, spacing: 10) {
@@ -118,7 +119,8 @@ struct MarkdownText: View {
                             selectionSegments: selectionSegments,
                             newestCharacterOpacities: index == rendering.blocks.count - 1
                                 ? newestCharacterOpacities
-                                : []
+                                : [],
+                            isStreamingTail: isStreaming && index == rendering.blocks.count - 1
                         )
                     }
                 }
@@ -647,6 +649,9 @@ struct MarkdownBlockView: View {
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     let newestCharacterOpacities: [Double]
+    /// The last block of a reply that is still streaming, which may be half
+    /// written: a diagram or formula there shows its source until it's done.
+    var isStreamingTail = false
     @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
@@ -750,7 +755,7 @@ struct MarkdownBlockView: View {
                     guardBytes: MarkdownLargeDocumentPolicy.mathGuardBytes
                 )
             } else {
-                MathBlock(source: source)
+                MarkupBlock(kind: .math, source: source, isComplete: !isStreamingTail)
             }
 
         case .callout(let kind, let text):
@@ -787,7 +792,7 @@ struct MarkdownBlockView: View {
                     guardBytes: MarkdownLargeDocumentPolicy.mermaidGuardBytes
                 )
             case .mermaid:
-                MermaidBlock(source: source)
+                MarkupBlock(kind: .mermaid, source: source, isComplete: !isStreamingTail)
             case .slicedCode:
                 LargeCodeBlockView(
                     source: source,
@@ -840,9 +845,9 @@ struct MarkdownBlockView: View {
     /// oversized-code safety independent of the whole-message threshold.
     enum CodePresentation: Equatable {
         /// Mermaid source beyond the #88 guard: bounded copyable card,
-        /// render action dropped.
+        /// never drawn.
         case guardedMermaid
-        /// Ordinary Mermaid diagram: render-card + on-demand preview.
+        /// Ordinary Mermaid diagram, drawn in the message.
         case mermaid
         /// Code at/above the #88 large-code threshold: bounded preview,
         /// then line/byte slices with off-main highlighting.
@@ -861,8 +866,8 @@ struct MarkdownBlockView: View {
         return MarkdownLargeDocumentPolicy.isLargeCodeBlock(source) ? .slicedCode : .code
     }
 
-    /// Oversized math sources drop the render action (#88 guard), applied
-    /// per block rather than per document.
+    /// Oversized math sources aren't drawn (#88 guard), applied per block
+    /// rather than per document.
     static func mathNeedsGuard(_ source: String) -> Bool {
         source.utf8.count > MarkdownLargeDocumentPolicy.mathGuardBytes
     }
@@ -1597,7 +1602,7 @@ struct LargeMarkdownTable: View {
 
 /// Fallback card for oversized math/Mermaid sources: the dedicated
 /// renderers are not chunkable, so past the guard size the presentation is
-/// a bounded source preview plus Copy (the render action is dropped).
+/// a bounded source preview plus Copy (it is never drawn).
 struct GuardedSourceCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let title: String
@@ -2234,202 +2239,6 @@ struct ChatCodeBlock: View {
             RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .strokeBorder(usesAccentSurface ? Color.white.opacity(0.28) : Color.secondary.opacity(0.20), lineWidth: 1)
         }
-    }
-}
-
-private struct MermaidBlock: View {
-    @ObservedObject var appLanguage = AppLanguageStore.shared
-    let source: String
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var preview: MarkupPreview?
-
-    var body: some View {
-        RenderCard(title: "Mermaid", icon: "point.3.connected.trianglepath.dotted", source: source, actionTitle: AppLocalization.string("Render diagram"), actionIcon: "play.fill") {
-            preview = MarkupPreview(kind: .mermaid, source: source, light: colorScheme == .light)
-        }
-        .sheet(item: $preview) { MarkupPreviewSheet(preview: $0) }
-    }
-}
-
-private struct MathBlock: View {
-    @ObservedObject var appLanguage = AppLanguageStore.shared
-    let source: String
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var preview: MarkupPreview?
-
-    var body: some View {
-        RenderCard(title: "LaTeX", icon: "function", source: source, actionTitle: AppLocalization.string("Render formula"), actionIcon: "function") {
-            preview = MarkupPreview(kind: .math, source: source, light: colorScheme == .light)
-        }
-        .sheet(item: $preview) { MarkupPreviewSheet(preview: $0) }
-    }
-}
-
-private struct RenderCard: View {
-    let title: String
-    let icon: String
-    let source: String
-    let actionTitle: String
-    let actionIcon: String
-    let action: () -> Void
-    @Environment(\.chatTextSize) private var chatTextSize
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label(title, systemImage: icon).font(.caption2.monospaced().weight(.semibold)).foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    UIPasteboard.general.string = source
-                    Haptics.light()
-                } label: { Label("Copy source", systemImage: "doc.on.doc").font(.caption2.weight(.semibold)) }
-                    .tint(.conduitAccent)
-            }
-            Button(action: action) { Label(actionTitle, systemImage: actionIcon).font(.caption.weight(.semibold)) }
-                .tint(.conduitAccent)
-            SelectableTextView(
-                text: source,
-                font: ChatTypography.font(for: .sourceCode, chatSize: chatTextSize),
-                textColor: .label,
-                maximumNumberOfLines: 5
-            )
-        }
-        .padding(12)
-        .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.secondary.opacity(0.20), lineWidth: 1) }
-    }
-}
-
-private struct MarkupPreview: Identifiable {
-    enum Kind { case mermaid, math }
-    let id = UUID()
-    let kind: Kind
-    let source: String
-    let light: Bool
-}
-
-private struct MarkupPreviewSheet: View {
-    let preview: MarkupPreview
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.chatTextSize) private var chatTextSize
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                SafeMarkupWebView(html: preview.kind == .mermaid ? MermaidHTML.render(source: preview.source, light: preview.light) : KaTeXHTML.render(source: preview.source, light: preview.light))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Divider()
-                ScrollView(.horizontal, showsIndicators: false) {
-                    SelectableTextView(
-                        text: preview.source,
-                        font: ChatTypography.font(for: .sourceCode, chatSize: chatTextSize),
-                        textColor: .label,
-                        wrapsLines: false
-                    )
-                    .padding(12)
-                }
-                    .frame(maxHeight: 96)
-            }
-            .navigationTitle(preview.kind == .mermaid ? AppLocalization.string("Diagram") : AppLocalization.string("Formula"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
-        }
-        .presentationDetents([.medium, .large])
-    }
-}
-
-private struct SafeMarkupWebView: UIViewRepresentable {
-    let html: String
-
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        let view = WKWebView(frame: .zero, configuration: configuration)
-        view.isOpaque = false
-        view.backgroundColor = .clear
-        view.scrollView.backgroundColor = .clear
-        view.navigationDelegate = context.coordinator
-        view.loadHTMLString(html, baseURL: URL(string: "https://conduit.local/"))
-        return view
-    }
-
-    func updateUIView(_ view: WKWebView, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    final class Coordinator: NSObject, WKNavigationDelegate {
-        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            let host = navigationAction.request.url?.host
-            decisionHandler(host == nil || host == "conduit.local" || host == "cdn.jsdelivr.net" ? .allow : .cancel)
-        }
-    }
-}
-
-/// Fixes slips models commonly make in Mermaid they write, where the intent
-/// is plain. An xychart axis range is `0 --> 20`; "0 to 20" is the usual
-/// slip and fails the whole chart.
-enum MermaidSourceRepair {
-    static func repaired(_ source: String) -> String {
-        let lines = source.components(separatedBy: "\n")
-        guard lines.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })?
-            .trimmingCharacters(in: .whitespaces).hasPrefix("xychart") == true else { return source }
-        return lines.map { line in
-            guard line.range(of: #"^\s*[xy]-axis\b"#, options: .regularExpression) != nil else { return line }
-            return line.replacingOccurrences(
-                of: #"(-?\d+(?:\.\d+)?)\s+(?:to|-|–|—|->|\.\.)\s+(-?\d+(?:\.\d+)?)\s*$"#,
-                with: "$1 --> $2",
-                options: .regularExpression
-            )
-        }.joined(separator: "\n")
-    }
-}
-
-private enum MermaidHTML {
-    static func render(source: String, light: Bool) -> String {
-        let palette = MarkupPalette(light: light)
-        return """
-        <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-        <style>html,body{margin:0;padding:0;background:\(palette.background);color:\(palette.foreground)}#diagram{padding:16px;box-sizing:border-box}svg{display:block;max-width:100%;height:auto;margin:auto}.error{font:14px -apple-system,sans-serif;color:#d14b4b;white-space:pre-wrap}</style>
-        </head><body><div id="diagram">Rendering diagram…</div>
-        <script src="https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js"></script>
-        <script>(async function(){try{mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'base',themeVariables:{background:'\(palette.background)',primaryColor:'\(palette.primary)',primaryTextColor:'\(palette.foreground)',primaryBorderColor:'\(palette.border)',lineColor:'\(palette.muted)',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif'}});const result=await mermaid.render('conduit-diagram',\(MarkupHTML.jsonString(MermaidSourceRepair.repaired(source))));document.getElementById('diagram').innerHTML=result.svg;}catch(error){document.getElementById('diagram').innerHTML='<div class="error">'+String(error&&error.message?error.message:error)+'</div>';}})();</script></body></html>
-        """
-    }
-}
-
-private enum KaTeXHTML {
-    static func render(source: String, light: Bool) -> String {
-        let palette = MarkupPalette(light: light)
-        return """
-        <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
-        <style>html,body{margin:0;padding:0;background:\(palette.background);color:\(palette.foreground)}#math{padding:24px;box-sizing:border-box;font-size:1.2em;overflow:auto}.error{font:14px -apple-system,sans-serif;color:#d14b4b;white-space:pre-wrap}</style>
-        </head><body><div id="math">Rendering formula…</div>
-        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
-        <script>try{katex.render(\(MarkupHTML.jsonString(source)),document.getElementById('math'),{displayMode:true,throwOnError:false,trust:false});}catch(error){document.getElementById('math').innerHTML='<div class="error">'+String(error&&error.message?error.message:error)+'</div>';}</script></body></html>
-        """
-    }
-}
-
-private struct MarkupPalette {
-    let background: String
-    let foreground: String
-    let muted: String
-    let primary: String
-    let border: String
-
-    init(light: Bool) {
-        (background, foreground, muted, primary, border) = light ? ("#ffffff", "#1b1d22", "#727780", "#f6f3eb", "#d4cdbf") : ("#16181e", "#f4f5f8", "#9ca1ac", "#20232b", "#454a57")
-    }
-}
-
-enum MarkupHTML {
-    static func jsonString(_ value: String) -> String {
-        let data = (try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])) ?? Data("\"\"".utf8)
-        let json = String(data: data, encoding: .utf8) ?? "\"\""
-        return json
-            .replacingOccurrences(of: "\\/", with: "/")
-            .replacingOccurrences(of: "<", with: "\\u003c")
-            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
-            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 }
 
