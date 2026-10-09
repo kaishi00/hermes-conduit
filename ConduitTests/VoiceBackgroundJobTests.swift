@@ -1368,6 +1368,10 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I think you have it already, could you just read what we said"))
         XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I think you have it already\ncould you just read what we said"))
         XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I think you have it already… could you just read what we said"))
+        // The request's own words after a comma stay with it.
+        XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I think you have it already. Could you just read what we said, please."))
+        XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I think you have it already, read what we said, word for word"))
+        XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("Hi. Read me the last, um, reply."))
         XCTAssertFalse(VoiceThreadRouting.endsWithLastReplyRequest("Read the last reply, then send it to Sam"))
         XCTAssertFalse(VoiceThreadRouting.endsWithLastReplyRequest("Book a table for Sam, then read me the last reply"), "a second request of its own")
     }

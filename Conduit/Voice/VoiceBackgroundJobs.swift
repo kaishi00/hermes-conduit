@@ -2528,11 +2528,14 @@ enum VoiceThreadRouting {
     /// finished turn only: words joined from several can hold a request of
     /// their own before it.
     static func endsWithLastReplyRequest(_ words: String) -> Bool {
-        let sentences = words.split(whereSeparator: { $0.isNewline || ".!?。！？,，…".contains($0) })
+        let parts = words.split(whereSeparator: { $0.isNewline || ".!?。！？,，…".contains($0) })
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        guard sentences.count > 1, let last = sentences.last else { return false }
-        return wantsLastReply(last)
+        // The request may run over several parts ("read what we said,
+        // please"), with at least one part of their own before it.
+        return (1..<max(parts.count, 1)).contains { start in
+            wantsLastReply(parts[start...].joined(separator: ", "))
+        }
     }
 
     /// "Read what we said", "read me what Hermes just wrote" (#451): what
