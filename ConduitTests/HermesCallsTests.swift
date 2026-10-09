@@ -771,7 +771,8 @@ extension VoiceConversationControllerTests {
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let call = HermesCallRequest(id: "", kind: .done, title: "Deploy", sessionIDs: ["st-1"])
 
-        // Voice is off here, so an open that runs says why.
+        // No bridge, so voice is off: an open that runs fails and says why
+        // (connected, so it can't defer).
         let answered = AppState(defaults: defaults, loadSavedConnection: false)
         answered.isConnected = true
         XCTAssertTrue(answered.answerHermesCall(call))

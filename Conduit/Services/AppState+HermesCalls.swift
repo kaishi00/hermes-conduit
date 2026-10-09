@@ -187,8 +187,10 @@ extension AppState {
                     self.voiceBackgroundJobSupervisor.clearCallOpening(opening.spokenBrief)
                 }
             }
+            // Only a hang-up or a newer call replaces this task, and both
+            // cancel it first.
             guard Task.isCancelled else {
-                if self.hermesCallOpenGeneration == generation { self.hermesCallOpenTask = nil }
+                self.hermesCallOpenTask = nil
                 return
             }
             // Hung up while it opened: what it opened ends as the call did.
@@ -197,8 +199,11 @@ extension AppState {
             // call's to end.
             guard self.hermesCallOpenGeneration == generation else { return }
             self.hermesCallOpenGeneration = nil
-            // The open's error isn't shown for a call the user left.
-            self.errorMessage = errorBefore
+            // Voice being off or unavailable isn't news for a call the user
+            // left; any other error stays.
+            if self.errorMessage != errorBefore, self.errorMessage == self.voiceUnavailableReason {
+                self.errorMessage = errorBefore
+            }
             self.endVoiceOfNativeCall()
         }
         return true
