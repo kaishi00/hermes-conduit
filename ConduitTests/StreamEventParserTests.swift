@@ -463,6 +463,17 @@ final class StreamEventParserTests: XCTestCase {
         }
         XCTAssertEqual(a.id, b.id)
         XCTAssertFalse(a.hasGatewayID)
+
+        let otherChat = parse(#"{"type": "subagent.tool", "session_id": "s2", "payload": {"goal": "Research", "task_index": 1, "text": "web_search"}}"#)
+        guard case .delegateAgent(_, let c) = otherChat else { return XCTFail("Expected delegateAgent") }
+        XCTAssertNotEqual(a.id, c.id)
+    }
+
+    func testEmptySubagentIDIsNotAGatewayID() {
+        let event = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"subagent_id": "", "goal": "Research", "task_index": 0}}"#)
+        guard case .delegateAgent(_, let activity) = event else { return XCTFail("Expected delegateAgent") }
+        XCTAssertFalse(activity.hasGatewayID)
+        XCTAssertFalse(activity.id.isEmpty)
     }
 
     func testSubagentErrorAndTimeoutAreFailures() {

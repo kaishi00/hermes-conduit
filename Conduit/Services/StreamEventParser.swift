@@ -186,7 +186,7 @@ enum StreamEventParser {
 
         case let eventType where eventType.hasPrefix("subagent."):
             guard let payload else { return nil }
-            let activity = Self.delegateAgentActivity(from: payload, eventType: eventType)
+            let activity = Self.delegateAgentActivity(from: payload, eventType: eventType, sessionId: sessionId)
             return .delegateAgent(sessionId: sessionId, activity: activity)
 
         default:
@@ -194,17 +194,21 @@ enum StreamEventParser {
         }
     }
 
-    private static func delegateAgentActivity(from payload: [String: AnyCodable], eventType: String) -> DelegateAgentActivity {
+    private static func delegateAgentActivity(from payload: [String: AnyCodable], eventType: String, sessionId: String) -> DelegateAgentActivity {
         // Hermes names the agent `subagent_id`; every subagent.* event for one
         // agent carries it. Without it each progress event became its own
         // "Running" card (#492). Older emitters omit it: their goal and slot
-        // in the batch still name one agent.
-        let gatewayID = payload["subagent_id"]?.stringValue ?? payload["id"]?.stringValue ?? payload["agent_id"]?.stringValue
+        // in the batch still name one agent, within this session.
+        func nonEmpty(_ key: String) -> String? {
+            payload[key]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+        }
+        let subagentID = nonEmpty("subagent_id")
         let goal = payload["goal"]?.stringValue ?? payload["task"]?.stringValue ?? ""
         let taskIndex = payload["task_index"]?.intValue ?? 0
-        let id = gatewayID ?? (goal.isEmpty
+        let delegationID = nonEmpty("delegation_id")
+        let id = subagentID ?? nonEmpty("id") ?? nonEmpty("agent_id") ?? (goal.isEmpty && delegationID == nil
             ? UUID().uuidString
-            : "\(payload["delegation_id"]?.stringValue ?? "")#\(taskIndex):\(goal)")
+            : "\(sessionId)/\(delegationID ?? "")#\(taskIndex):\(goal)")
         let statusValue = payload["status"]?.stringValue ?? {
             if eventType.contains("fail") { return "failed" }
             if eventType.contains("interrupt") { return "interrupted" }
@@ -232,7 +236,7 @@ enum StreamEventParser {
             currentTool: payload["tool_name"]?.stringValue ?? payload["tool"]?.stringValue ?? payload["current_tool"]?.stringValue,
             summary: payload["summary"]?.stringValue,
             stream: lines,
-            hasGatewayID: payload["subagent_id"]?.stringValue != nil
+            hasGatewayID: subagentID != nil
         )
     }
 }

@@ -730,7 +730,9 @@ struct DelegateAgentActivity: Identifiable, Equatable {
         var merged = update
         if merged.goal.isEmpty { merged.goal = goal }
         merged.model = update.model ?? model
-        if !status.isActive && update.status.isActive { merged.status = status }
+        // Finished stays finished, and a failure isn't overwritten by a
+        // later completion.
+        if !status.isActive && (update.status.isActive || status == .failed) { merged.status = status }
         // A finished agent is no longer in any tool.
         merged.currentTool = merged.status.isActive ? update.currentTool ?? currentTool : nil
         merged.summary = update.summary ?? summary
@@ -742,9 +744,9 @@ struct DelegateAgentActivity: Identifiable, Equatable {
 
     /// Agents a gateway roster no longer lists have ended; their
     /// `subagent.complete` was missed (app suspended, socket reconnect).
-    /// Only cards from `sessionId` with a gateway id that last changed
-    /// before `cutoff` are touched, so a just-spawned agent the roster
-    /// hasn't registered yet keeps its status.
+    /// Only cards from `sessionId` with a gateway id and no event since
+    /// `cutoff` are touched, so a just-spawned agent the roster hasn't
+    /// registered yet keeps its status.
     static func reconciled(
         _ agents: [DelegateAgentActivity],
         sessionId: String,

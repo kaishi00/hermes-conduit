@@ -630,7 +630,8 @@ struct ComposerBar: View {
                     Label("\(appState.activeAgents)", systemImage: "person.2")
                         .font(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.conduitAccent)
-                        .frame(minWidth: 44, minHeight: 44)
+                        .frame(minWidth: Self.controlSize, minHeight: Self.controlSize)
+                        .contentShape(Self.controlHitShape)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"))
