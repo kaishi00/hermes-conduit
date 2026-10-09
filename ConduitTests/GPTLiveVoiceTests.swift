@@ -2432,6 +2432,18 @@ extension VoiceConversationControllerTests {
             return XCTFail("\(repeated)")
         }
 
+        // Nothing to read yet: the model still hears it was dropped.
+        let (emptyFake, empty) = makeAskingFirstChatBridge()
+        emptyFake.threadReply = nil
+        _ = await empty.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        empty.modelFinishedTurn()
+        let none = await empty.handleDelegation(id: "del_2", request: "Read back: the last reply", userWords: "No, read me the last reply")
+        let nothingYet = GPTLiveDelegationBridge.relay("Hermes hasn't replied in this chat yet. " + GPTLiveDelegationBridge.droppedBesideReadBack)
+        guard case .delegationReply("del_2", nothingYet, .speakable)? = none.last else {
+            return XCTFail("\(none)")
+        }
+        XCTAssertTrue(emptyFake.threadSubmissions.isEmpty, "\(emptyFake.threadSubmissions)")
+
         // A new conversation never hears about a drop in the old one.
         let (_, replaced) = makeAskingFirstChatBridge()
         _ = await replaced.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")

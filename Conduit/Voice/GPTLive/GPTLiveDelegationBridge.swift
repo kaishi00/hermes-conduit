@@ -366,7 +366,11 @@ final class GPTLiveDelegationBridge {
         if reply == nil { lastReadBackAt = nil }
         readBackDelegationID = id
         guard let reply else {
-            let text = attached ? Self.relay("Hermes hasn't replied in this chat yet.") : Self.nothingToReadBack
+            // A no beside this read-back is still told, with nothing to read.
+            let drop = takeDroppedBesideReadBack() ? " " + Self.droppedBesideReadBack : ""
+            let text = attached
+                ? Self.relay("Hermes hasn't replied in this chat yet." + drop)
+                : String(Self.nothingToReadBack.dropLast()) + drop + "]"
             return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
         }
         // The whole reply goes in quietly first, then one cue starts the
@@ -392,7 +396,8 @@ final class GPTLiveDelegationBridge {
         guard callGeneration == call, !isEnding else { return [] }
         guard let reply else {
             lastReadBackAt = nil
-            return [.sessionContext(text: Self.relay("Hermes hasn't replied in this chat yet."), channel: .speakable, whenIdle: false, jobID: nil)]
+            let drop = takeDroppedBesideReadBack() ? " " + Self.droppedBesideReadBack : ""
+            return [.sessionContext(text: Self.relay("Hermes hasn't replied in this chat yet." + drop), channel: .speakable, whenIdle: false, jobID: nil)]
         }
         return [
             .sessionContext(text: Self.lastReplyText(reply), channel: .commentary, whenIdle: false, jobID: nil),
