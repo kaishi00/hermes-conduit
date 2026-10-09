@@ -1248,6 +1248,11 @@ final class AppState: ObservableObject {
     @Published private(set) var workspaceFileLoading = false
     @Published private(set) var gatewayDiagnostics: GatewayDiagnostics?
     @Published private(set) var gatewayDiagnosticsLoading = false
+    /// Restart Gateway's progress and outcome, and the dashboard it belongs
+    /// to (AppState+GatewayRestart.swift).
+    @Published var gatewayRestart: GatewayRestartState = .idle
+    var gatewayRestartDashboardID: UUID?
+    var gatewayRestartTask: Task<Void, Never>?
     @Published private(set) var modelVisibility = ModelVisibility()
 
     // MARK: - UI state
@@ -23528,6 +23533,11 @@ final class AppState: ObservableObject {
 
     func loadGatewayDiagnostics() async {
         showGatewaySheet = true
+        await refreshGatewayDiagnostics()
+    }
+
+    /// Reloads what the Gateway sheet shows without presenting it.
+    func refreshGatewayDiagnostics() async {
         gatewayDiagnosticsLoading = true
         defer { gatewayDiagnosticsLoading = false }
         guard let dashboardTicketBridge else {

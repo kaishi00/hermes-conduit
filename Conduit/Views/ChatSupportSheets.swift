@@ -14,6 +14,7 @@ struct GatewayDiagnosticsSheet: View {
     @EnvironmentObject private var appState: AppState
     /// The report copied last, so "Copied" clears once a newer step lands.
     @State private var copiedTimelineReport: String?
+    @State private var confirmingRestart = false
 
     var body: some View {
         NavigationStack {
@@ -33,7 +34,13 @@ struct GatewayDiagnosticsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { confirmingRestart = true } label: {
+                        Image(systemName: "restart")
+                    }
+                    .disabled(!appState.canRestartGateway)
+                    .accessibilityLabel("Restart Gateway")
+                    .accessibilityIdentifier("gateway.restart")
                     Button { Task { await appState.loadGatewayDiagnostics() } } label: {
                         if appState.gatewayDiagnosticsLoading {
                             ProgressView().controlSize(.small)
@@ -44,6 +51,7 @@ struct GatewayDiagnosticsSheet: View {
                     .accessibilityLabel("Refresh gateway diagnostics")
                 }
             }
+            .gatewayRestartConfirmation(isPresented: $confirmingRestart)
         }
         .task { await appState.loadGatewayDiagnostics() }
     }
@@ -58,7 +66,8 @@ struct GatewayDiagnosticsSheet: View {
             if let error = diagnostics?.error {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
-            if !running {
+            GatewayRestartStatusView()
+            if !running && !appState.activeGatewayRestart.isInProgress {
                 Button { Task { await appState.reconnect() } } label: {
                     Label("Retry connection", systemImage: "arrow.clockwise")
                         .font(.subheadline.weight(.semibold))
