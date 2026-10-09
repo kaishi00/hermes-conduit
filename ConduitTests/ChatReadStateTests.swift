@@ -285,6 +285,27 @@ final class ChatReadStateTests: XCTestCase {
         XCTAssertTrue(state.desktopSeenThrough.isEmpty)
     }
 
+    func testDesktopViewsReplyParsesSeenTimesAndAdvancesTheCursorOnSettledChatsOnly() {
+        let response: [String: Any] = [
+            "ok": true,
+            "observing": true,
+            "views": [
+                "settled": ["seen_through": 300, "opened_at": 200, "open": false] as [String: Any],
+                "selected": ["seen_through": 900, "opened_at": 800, "open": true] as [String: Any],
+                "infinite": ["seen_through": Double.infinity, "open": false] as [String: Any],
+                "garbled": "not an entry",
+            ] as [String: Any],
+        ]
+        let update = AppState.desktopViewsUpdate(from: response, cursor: 100)
+        XCTAssertEqual(update?.seen, ["settled": 300, "selected": 900])
+        XCTAssertEqual(update?.cursor, 300, "A chat still selected doesn't move the cursor")
+
+        XCTAssertEqual(AppState.desktopViewsUpdate(from: response, cursor: 400)?.cursor, 400)
+        XCTAssertEqual(AppState.desktopViewsUpdate(from: ["ok": true, "views": [:] as [String: Any]], cursor: nil)?.cursor, 0)
+        XCTAssertNil(AppState.desktopViewsUpdate(from: ["ok": false, "reason": "not observing"], cursor: 100))
+        XCTAssertNil(AppState.desktopViewsUpdate(from: ["ok": true], cursor: 100))
+    }
+
     func testDashboardRowsCarryHermesUnreadFlag() {
         let rows: [[String: Any]] = [
             ["id": "a", "title": "A", "message_count": 3, "unread": true, "profile": "default"],

@@ -614,9 +614,10 @@ final class AppState: ObservableObject {
     /// The client whose failed poll was already logged, so a flaky
     /// connection leaves one line rather than one per tick.
     private weak var activeListFailureLoggedClient: HermesClient?
-    /// The dashboard the Desktop views below came from, when each profile
-    /// was last asked, and the newest settled time it reported.
-    private weak var desktopViewsBridge: DashboardTicketBridge?
+    /// The host the Desktop views below came from, when each profile was
+    /// last asked, and the newest settled time it reported.
+    private var desktopViewsHost: String?
+    private var desktopViewsFailureLogged = false
     private var desktopViewsFetchedAt: [String: Date] = [:]
     private var desktopViewsCursor: [String: TimeInterval] = [:]
     @Published private(set) var sessionMutationID: String?
@@ -5180,14 +5181,16 @@ final class AppState: ObservableObject {
                 rows = try await client.activeSessions()
             }
             guard profile == activeProfile, self.client === client else { return }
-            liveSessionStatusAvailable = true
+            // Assigned only on a change: every publish redraws the chat list.
+            if !liveSessionStatusAvailable { liveSessionStatusAvailable = true }
+            activeListFailureLoggedClient = nil
             recordActiveListEvidence(rows, profile: profile)
         } catch {
             // Stop asking a gateway that doesn't have the method; a new
             // connection probes again. Other failures retry on the next tick.
             if isMethodUnavailable(error) {
                 activeListUnsupportedClient = client
-                if self.client === client { liveSessionStatusAvailable = false }
+                if self.client === client, liveSessionStatusAvailable { liveSessionStatusAvailable = false }
             } else if client !== activeListFailureLoggedClient {
                 activeListFailureLoggedClient = client
                 sessionCatalogLog.notice(
@@ -5197,23 +5200,25 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Whether the chat Desktop has selected stays seen for as long as it
-    /// stays selected there, or counts only at the moment it was opened.
-    static let desktopSelectionCountsAsSeen = true
     static let desktopViewsInterval: TimeInterval = 15
 
     /// Reads which chats Hermes Desktop (or the web dashboard) had on the
     /// host (notifier plugin 0.12+), so reading a chat there reads it here.
-    /// Hermes' own read flag stays untouched: writing it would put Desktop's
-    /// unread dot on the chat it has open.
+    /// The chat Desktop has selected stays seen for as long as it stays
+    /// selected there (Eric's call on #454). Hermes' own read flag stays
+    /// untouched: writing it would put Desktop's unread dot on the chat it
+    /// has open.
     func refreshDesktopViewsIfDue() async {
         guard isSceneActive, let bridge = dashboardTicketBridge,
               case .reported(_, let capabilities) = notifierPlugin.state,
               capabilities.contains("desktop-views") else { return }
-        if bridge !== desktopViewsBridge {
-            desktopViewsBridge = bridge
+        // Keyed by host, not bridge: a sign-in or header change rebuilds the
+        // bridge for the same host, whose record still holds.
+        if bridge.baseURL != desktopViewsHost {
+            desktopViewsHost = bridge.baseURL
             desktopViewsFetchedAt = [:]
             desktopViewsCursor = [:]
+            desktopViewsFailureLogged = false
             updateChatReadState { $0.forgetDesktopViews() }
         }
         let profile = activeProfile
@@ -5226,27 +5231,44 @@ final class AppState: ObservableObject {
         do {
             response = try await bridge.requestJSON(path: dashboardPath(path, profile: profile))
         } catch {
+            // The next tick past the interval asks again; one line per host.
+            if !desktopViewsFailureLogged {
+                desktopViewsFailureLogged = true
+                sessionCatalogLog.notice(
+                    "Desktop views read failed: \(String(describing: error), privacy: .public)"
+                )
+            }
             return
         }
         guard bridge === dashboardTicketBridge, profile == activeProfile,
-              response["ok"] as? Bool == true, let views = response["views"] as? [String: Any] else { return }
-        let field = Self.desktopSelectionCountsAsSeen ? "seen_through" : "opened_at"
+              let update = Self.desktopViewsUpdate(from: response, cursor: desktopViewsCursor[profile])
+        else { return }
+        desktopViewsFailureLogged = false
+        desktopViewsCursor[profile] = update.cursor
+        guard !update.seen.isEmpty else { return }
+        updateChatReadState { $0.recordDesktopViews(update.seen, profile: profile) }
+        observeChatReadState()
+    }
+
+    /// Parses the plugin's `desktop-views` reply into each chat's
+    /// `seen_through` time and the next `since` cursor, or nil when the reply
+    /// isn't a successful read.
+    nonisolated static func desktopViewsUpdate(
+        from response: [String: Any],
+        cursor: TimeInterval?
+    ) -> (seen: [String: TimeInterval], cursor: TimeInterval)? {
+        guard response["ok"] as? Bool == true, let views = response["views"] as? [String: Any] else { return nil }
         var seen: [String: TimeInterval] = [:]
-        var cursor = desktopViewsCursor[profile] ?? 0
+        var next = cursor ?? 0
         for (id, value) in views {
             guard let entry = value as? [String: Any],
-                  let time = (entry[field] as? NSNumber)?.doubleValue, time.isFinite else { continue }
+                  let time = (entry["seen_through"] as? NSNumber)?.doubleValue, time.isFinite else { continue }
             seen[id] = time
             // A chat still selected reports the moment of this read; only
             // settled times move the "newer than" cursor.
-            if entry["open"] as? Bool != true, let settled = (entry["seen_through"] as? NSNumber)?.doubleValue {
-                cursor = max(cursor, settled)
-            }
+            if entry["open"] as? Bool != true { next = max(next, time) }
         }
-        desktopViewsCursor[profile] = cursor
-        guard !seen.isEmpty else { return }
-        updateChatReadState { $0.recordDesktopViews(seen, profile: profile) }
-        observeChatReadState()
+        return (seen, next)
     }
 
     func markSessionRead(_ session: SessionSummary) {
