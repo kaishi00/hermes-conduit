@@ -312,35 +312,14 @@ struct ChatView: View {
                         }
                 }
 
-                // Live reasoning renders from the projection, not the settled
-                // transcript: per-publish reasoning changes re-render only
-                // this card, never the ForEach data or the scroll-target
-                // cache. Chronology matches the pre-projection transcript —
-                // thinking streams at the tail, before the assistant answer.
-                if let segment = appState.liveReasoningSegment {
-                    ThinkingCard(
-                        message: ChatMessage(
-                            id: segment.id,
-                            role: .reasoning,
-                            content: segment.content,
-                            timestamp: segment.timestamp,
-                            author: appState.activeProfile
-                        )
-                    )
-                    .id(segment.id)
-                }
-
-                if !appState.streamingText.isEmpty {
-                    StreamingBubble(
-                        text: appState.streamingText,
-                        active: appState.isBusy
-                    )
-                    .id("streaming")
-                }
-
-                if appState.isBusy && appState.streamingText.isEmpty {
-                    TypingIndicator().id("typing")
-                }
+                // The running turn's live tail observes only the live
+                // projection, so a streaming tick re-renders these rows and
+                // never this body, the composer, or an open sheet.
+                ChatLiveTurnRows(
+                    projection: appState.liveTurn,
+                    isBusy: appState.isBusy,
+                    author: appState.activeProfile
+                )
 
                 // Fallback target for ScrollViewProxy before the engine has
                 // found the scroll view.
@@ -2961,6 +2940,51 @@ struct InputPromptCard: View {
         case .submitted: return .green
         case .skipped: return .secondary
         case .expired, .error: return .red
+        }
+    }
+}
+
+// MARK: - Live Turn Rows
+
+/// The running turn's live tail at the end of the transcript: the open
+/// thinking card, the streaming reply, or the working indicator. It observes
+/// `LiveTurnProjection` directly, which publishes at streaming cadence, so
+/// those ticks stop here instead of re-running ChatView's body. The rows sit
+/// in the transcript's LazyVStack as its own children, as they did inline.
+struct ChatLiveTurnRows: View {
+    @ObservedObject var projection: LiveTurnProjection
+    let isBusy: Bool
+    let author: String
+
+    var body: some View {
+        // Live reasoning renders from the projection, not the settled
+        // transcript: per-publish reasoning changes re-render only this
+        // card, never the ForEach data or the scroll-target cache.
+        // Chronology matches the pre-projection transcript — thinking
+        // streams at the tail, before the assistant answer.
+        if let segment = projection.reasoningSegment {
+            ThinkingCard(
+                message: ChatMessage(
+                    id: segment.id,
+                    role: .reasoning,
+                    content: segment.content,
+                    timestamp: segment.timestamp,
+                    author: author
+                )
+            )
+            .id(segment.id)
+        }
+
+        if !projection.streamingText.isEmpty {
+            StreamingBubble(
+                text: projection.streamingText,
+                active: isBusy
+            )
+            .id("streaming")
+        }
+
+        if isBusy && projection.streamingText.isEmpty {
+            TypingIndicator().id("typing")
         }
     }
 }

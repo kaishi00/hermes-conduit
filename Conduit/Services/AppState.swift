@@ -889,15 +889,27 @@ final class AppState: ObservableObject {
     private var persistedOrderingFrontier = PersistedOrderingFrontier()
     @Published private(set) var busyInputMode: BusyInputMode = .steer
     @Published private(set) var displayPreferences = ProfileDisplayPreferences()
-    @Published var streamingText = ""
-    /// Live, frequently-changing reasoning projection. Streaming reasoning
-    /// renders from here at display cadence WITHOUT mutating the settled
-    /// `messages` array — per-publish transcript mutation (O(message count)
-    /// index scan + copy-on-write copy + revision bump + scroll-target cache
-    /// walk) is what made deep agent sessions burn CPU and battery. The card
-    /// commits into `messages` exactly once per segment boundary via
-    /// `settleReasoningSegmentIntoTranscript()`.
-    @Published private(set) var liveReasoningSegment: LiveReasoningSegment?
+    /// The running turn's live reply text and thinking card. They publish on
+    /// their own object, never on AppState: while a turn streams they change
+    /// 20 to 30 times a second, and an AppState publish re-renders every view
+    /// that observes it, so any open sheet re-rendered at that rate and lagged.
+    let liveTurn = LiveTurnProjection()
+    /// The live reply text as the chat shows it; stored in `liveTurn`.
+    var streamingText: String {
+        get { liveTurn.streamingText }
+        set { liveTurn.streamingText = newValue }
+    }
+    /// Live, frequently-changing reasoning projection, stored in `liveTurn`.
+    /// Streaming reasoning renders from here at display cadence WITHOUT
+    /// mutating the settled `messages` array — per-publish transcript
+    /// mutation (O(message count) index scan + copy-on-write copy + revision
+    /// bump + scroll-target cache walk) is what made deep agent sessions burn
+    /// CPU and battery. The card commits into `messages` exactly once per
+    /// segment boundary via `settleReasoningSegmentIntoTranscript()`.
+    private(set) var liveReasoningSegment: LiveReasoningSegment? {
+        get { liveTurn.reasoningSegment }
+        set { liveTurn.reasoningSegment = newValue }
+    }
     /// An explicit user-send request lets ChatView scroll after SwiftUI has
     /// inserted the outgoing bubble, even if the user previously browsed up.
     @Published private(set) var chatScrollRequest = 0
@@ -1261,9 +1273,10 @@ final class AppState: ObservableObject {
         didSet {
             // Closing the drawer uncovers the open chat (#454).
             if oldValue, !showSidebar { noteActiveChatSeen(respectingMarks: true) }
-            // Avoid driving the entire presentation hierarchy at streaming
-            // cadence while the drawer is animating. The live buffer remains
-            // authoritative and is republished as soon as the drawer closes.
+            // The drawer covers the chat, so its live rows need not redraw at
+            // streaming cadence while it is up or animating. The live buffer
+            // remains authoritative and is republished as soon as the drawer
+            // closes.
             if showSidebar {
                 streamingPublishTask?.cancel()
                 streamingPublishTask = nil
@@ -23593,7 +23606,11 @@ final class AppState: ObservableObject {
             recordLocalOrderingDebtForSettledTurn()
             locallyOwnedInFlightTurn = nil
         }
-        turnState = running ? .running : .idle
+        // Every message and reasoning delta re-affirms `.running`. Writing
+        // the same value would still publish AppState once per gateway frame
+        // and re-render every view and open sheet that observes it.
+        let next: TurnState = running ? .running : .idle
+        if turnState != next { turnState = next }
     }
 
     /// Records the minimum unresolved persisted-ordering obligation when a

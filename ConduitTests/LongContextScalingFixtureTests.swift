@@ -265,9 +265,10 @@ final class LongContextScalingFixtureTests: XCTestCase {
 
     // MARK: - 2. Hosted composer isolation
 
-    /// With user text in a focused editor, unrelated AppState publications
-    /// (reasoning, streaming, busy flips) reach `updateUIView` but must never
-    /// write text or selection back into UIKit.
+    /// With user text in a focused editor, unrelated publications (the busy
+    /// flip and other AppState publishes reach `updateUIView`; live reasoning
+    /// and streaming text publish only to the live rows) must never write
+    /// text or selection back into UIKit.
     func testComposerEditorIsUnaffectedByReasoningPublishes() throws {
         let appState = try makeAppState()
         installActiveSession(appState, id: "deep-session")
@@ -298,6 +299,11 @@ final class LongContextScalingFixtureTests: XCTestCase {
         host.view.layoutIfNeeded()
         RunLoop.current.run(until: Date())
         appState.streamingText = ""
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        // An unrelated AppState publish, so the seam below is reached however
+        // the harness's busy state started.
+        appState.objectWillChange.send()
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
         guard PerformanceFixtureWait.settleUntilCountersQuiet(quietFor: 0.6) else {
