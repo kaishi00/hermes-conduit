@@ -77,6 +77,8 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func setAsksBeforeSending(_ on: Bool, byModel: Bool)
     /// Hermes calls the user when the call's work is done (#449).
     func requestCallback(_ scope: VoiceCallbackScope) -> VoiceCallbackRequestOutcome
+    /// The request a call was asked for was dropped before it went.
+    func withdrawNextCallback()
 }
 
 /// Without follow-up support a request never takes one: the words go out
@@ -89,6 +91,7 @@ extension GeminiLiveJobSupervising {
     func setAsksBeforeSending(_ on: Bool, byModel: Bool) {}
     func readBackText() async -> String? { await lastThreadReply() }
     func requestCallback(_ scope: VoiceCallbackScope) -> VoiceCallbackRequestOutcome { .unavailable(.unsupported) }
+    func withdrawNextCallback() {}
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}

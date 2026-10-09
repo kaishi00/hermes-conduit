@@ -556,9 +556,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             marked = callWork.filter { jobs[$0].status.isActive }
             later = .all
         case .job, .jobID:
+            // Numbers are background jobs'; an id can be a chat turn's too.
             let named = callWork.last { index in
-                guard !jobs[index].isThreadTurn else { return false }
-                if case .job(let number) = scope { return jobs[index].number == number }
+                if case .job(let number) = scope { return !jobs[index].isThreadTurn && jobs[index].number == number }
                 if case .jobID(let id) = scope { return jobs[index].id == id }
                 return false
             }
@@ -574,6 +574,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             armCallback(id)
         }
         return .marked(titles: titles, later: later == .none ? .none : callbackLater)
+    }
+
+    /// The request the call asked to be called about was dropped before it
+    /// went: the call's next request doesn't call in its place.
+    func withdrawNextCallback() {
+        if callbackLater == .next { callbackLater = .none }
     }
 
     /// Marks a job the call just started when the call asked for its next

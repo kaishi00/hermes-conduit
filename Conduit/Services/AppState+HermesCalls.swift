@@ -51,14 +51,18 @@ extension AppState {
         }
     }
 
-    /// Saves the active profile's call settings. False when the host didn't
-    /// take them; the settings shown stay the host's.
+    /// Saves a profile's call settings: the one shown when they were
+    /// changed, even if another is active by the time the save goes. False
+    /// when the host didn't take them; the settings shown stay the host's.
     @discardableResult
-    func saveHermesCallSettings(_ settings: HermesCallSettings) async -> Bool {
-        let key = hermesCallsKey(profile: activeProfile)
+    func saveHermesCallSettings(_ settings: HermesCallSettings, profile: String, dashboardID: UUID?) async -> Bool {
+        // Another server's host has no say over this one's profiles.
+        guard dashboardID == activeDashboardID else { return false }
+        let key = hermesCallsKey(profile: profile)
         do {
-            let saved = try await hermesCallsClient.save(settings, profile: activeProfile)
-            guard key == hermesCallsKey(profile: activeProfile) else { return false }
+            let saved = try await hermesCallsClient.save(settings, profile: profile)
+            // Saved; shown only while that profile still is.
+            guard key == hermesCallsKey(profile: activeProfile) else { return true }
             if var status = activeHermesCallsStatus {
                 status.settings = saved
                 hermesCallsStatus = status

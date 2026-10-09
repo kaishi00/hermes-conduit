@@ -678,7 +678,9 @@ struct SettingsView: View {
                                 return appState.activeHermesCallsStatus != nil
                             },
                             current: { appState.activeHermesCallsStatus?.settings },
-                            save: { await appState.saveHermesCallSettings($0) }
+                            save: { [profile = appState.activeProfile, dashboardID = appState.activeDashboardID] settings in
+                                await appState.saveHermesCallSettings(settings, profile: profile, dashboardID: dashboardID)
+                            }
                         )
                         : nil
                 )

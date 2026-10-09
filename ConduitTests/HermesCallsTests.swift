@@ -352,6 +352,52 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(HermesCallsClient.refusal(from: URLError(.timedOut)))
     }
 
+    /// GPT-Live's "Call me: <work>" asks for the job that takes the work,
+    /// even a running one taking it as a change; never a later job.
+    func testGPTLiveCallMeWithAChangeCallsAboutTheJobThatTookIt() async {
+        let (supervisor, jobs, _) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        _ = await bridge.handleDelegation(id: "del_1", request: "check the server")
+
+        let changed = await bridge.handleDelegation(id: "del_2", request: "Call me: call me: make it the staging server")
+
+        XCTAssertEqual(jobs.redirects.map(\.0), ["rt-1"], "The change went into the running job")
+        let notes = changed.filter { if case .sessionContext(let text, _, _, _) = $0 { return text.hasPrefix("[Call request:") }; return false }
+        XCTAssertEqual(notes.count, 1, "Asked once: \(changed)")
+        XCTAssertEqual(supervisor.jobs.first?.callsBackWhenDone, true)
+
+        _ = await bridge.handleDelegation(id: "del_3", request: "New job: find a dinner recipe")
+        XCTAssertEqual(supervisor.jobs.count, 2)
+        XCTAssertEqual(supervisor.jobs.last?.callsBackWhenDone, false, "Unrelated work doesn't call")
+    }
+
+    func testGPTLiveCallMeOnAHeldRequestGoesWithItOrNotAtAll() async {
+        let (supervisor, _, _) = hermesCallSupervisor()
+        supervisor.liveCallTranscript = { [] }
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        let held = await bridge.handleDelegation(id: "del_1", request: "Call me: book a table for Sam", userWords: "book a table for Sam")
+        guard case .delegationReply("del_1", GPTLiveDelegationBridge.heldForOKText, .speakable)? = held.first else { return XCTFail("\(held)") }
+        let no = await bridge.handleDelegation(id: "del_2", request: "No thanks", userWords: "No thanks")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.dropped, .commentary)? = no.first else { return XCTFail("\(no)") }
+
+        supervisor.setAsksBeforeSending(false)
+        _ = await bridge.handleDelegation(id: "del_3", request: "find a dinner recipe")
+        XCTAssertEqual(supervisor.jobs.count, 1)
+        XCTAssertEqual(supervisor.jobs.first?.callsBackWhenDone, false, "The declined request's call went with it")
+
+        // OK'd, it calls.
+        let (okSupervisor, _, _) = hermesCallSupervisor()
+        okSupervisor.liveCallTranscript = { [] }
+        okSupervisor.beginLiveCall(asksBeforeSending: true)
+        let okBridge = GPTLiveDelegationBridge(supervisor: okSupervisor)
+        _ = await okBridge.handleDelegation(id: "del_1", request: "Call me: book a table for Sam", userWords: "book a table for Sam")
+        _ = await okBridge.handleDelegation(id: "del_2", request: "Send:", userWords: "yes please")
+        XCTAssertEqual(okSupervisor.jobs.count, 1)
+        XCTAssertEqual(okSupervisor.jobs.first?.callsBackWhenDone, true)
+    }
+
     func testCallSettingsGapChoicesKeepTheCurrentValue() {
         XCTAssertEqual(HermesCallSettingsFormat.gapChoices(bounds: 30...3_600, current: 120), [30, 60, 120, 300, 600, 1_800, 3_600])
         XCTAssertEqual(HermesCallSettingsFormat.gapChoices(bounds: 60...600, current: 90), [60, 90, 120, 300, 600])
