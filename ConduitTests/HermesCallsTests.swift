@@ -736,8 +736,8 @@ extension VoiceConversationControllerTests {
         decisions.waitsOn = .approval
         gpt.lateYesWait = .zero
         words.lastLine = "what is it?"
-        let unsure = await gpt.handleDelegation(id: "d4", request: "Approve:", userWords: "what is it?")
-        XCTAssertEqual(unsure, [.delegationReply(delegationID: "d4", text: VoiceCallDecisionOutcome.notAYes.modelMessage, channel: .commentary)])
+        let unclear = await gpt.handleDelegation(id: "d4", request: "Approve:", userWords: "what is it?")
+        XCTAssertEqual(unclear, [.delegationReply(delegationID: "d4", text: VoiceCallDecisionOutcome.notAYes.modelMessage, channel: .commentary)])
         words.lastLine = "yes"
         _ = await gpt.handleDelegation(id: "d5", request: "Approve:", userWords: "yes")
         XCTAssertEqual(decisions.choices, ["once", "deny", "once"], "Their yes approves")
