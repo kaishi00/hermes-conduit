@@ -2003,29 +2003,139 @@ enum VoiceThreadRouting {
         }
     }
 
+    /// The answer words in English, then German, Spanish, French,
+    /// Portuguese, Russian, Italian, Polish, Turkish, Indonesian and
+    /// Korean, the shipped languages with word breaks.
+    /// A lead is matched in order, so a longer one comes before a shorter
+    /// one it starts with ("claro que sí" before "claro"). Verbs that also
+    /// start a new request ("envoie", "manda", "отправь") are only leads
+    /// with their object, as "send it" is.
     static let answerNoLeads = [
         "no", "nope", "nah", "don't", "dont", "do not", "never mind", "nevermind",
         "cancel", "forget", "drop", "scrap", "skip", "ditch", "abort", "stop", "leave it", "leave that",
+        "nein", "nee", "nö", "auf keinen fall", "lieber nicht", "bloß nicht", "nicht nötig", "nicht senden",
+        "nicht schicken", "nicht abschicken", "vergiss es", "vergiss das", "vergiss", "lass es", "lass das",
+        "lass mal", "abbrechen", "brich ab", "stopp",
+        "nop", "mejor no", "cancela", "cancélalo", "cancelalo", "cancelar", "olvídalo", "olvidalo", "olvida",
+        "déjalo", "dejalo", "ni hablar",
+        "non", "pas besoin", "pas la peine", "surtout pas", "laisse tomber", "laissez tomber", "oublie",
+        "oubliez", "annule", "annulez", "annuler", "arrête", "arrete", "ne l'envoie pas", "ne l'envoyez pas",
+        "ne pas l'envoyer", "ne pas envoyer", "n'envoie pas", "n'envoyez pas", "ne le fais pas", "ne fais pas",
+        "não", "nao", "negativo", "melhor não", "melhor nao", "esquece", "esqueça", "esqueca",
+        "deixa pra lá", "deixa pra la", "cancele",
+        "нет", "неа", "не надо", "не нужно", "не стоит", "не отправляй", "не отправляйте", "отмена",
+        "отмени", "отмените", "забудь", "забудьте", "забей", "стоп",
+        "annulla", "lascia perdere", "lascia stare", "dimenticalo", "dimentica", "meglio di no",
+        "nie wysyłaj", "nie", "lepiej nie", "w żadnym wypadku", "anuluj", "zapomnij", "daj spokój", "nieważne",
+        "hayır", "yok", "iptal et", "iptal", "boş ver", "vazgeç", "gerek yok", "gönderme", "göndermeyin", "istemiyorum", "istemem", "unut gitsin", "unut",
+        "tidak usah", "tidak perlu", "tidak jadi", "tidak", "tak usah", "tak perlu", "tak jadi", "tak bisa", "tak mau", "tak akan", "tak ada", "tak boleh",
+        "tak payah", "nggak usah", "nggak perlu", "nggak jadi", "nggak",
+        "enggak", "gak usah", "gak perlu", "gak jadi", "gak", "ga usah", "ga jadi", "ga", "jangan dikirim",
+        "jangan", "batalkan", "batal", "lupakan",
+        "아니요", "아니오", "아뇨", "아니", "됐어요", "됐어", "취소해 주세요", "취소해", "취소", "보내지 마세요",
+        "보내지 마", "하지 마세요", "하지 마", "필요 없어요", "필요없어요", "안 돼요", "안 돼", "안돼요", "안돼",
+        "싫어요", "싫어", "그만해요", "그만해", "못 해요", "못 해", "못해요", "못해", "그만",
     ]
     static let answerNotYetLeads = [
         "wait", "hold on", "hang on", "not yet", "not now", "one sec", "one second", "one moment",
         "just a sec", "just a second", "just a moment", "hold it",
+        "warte", "wart", "warten sie", "warten", "abwarten", "moment", "einen moment", "einen augenblick", "augenblick",
+        "eine sekunde", "sekunde", "noch nicht", "jetzt nicht", "nicht jetzt",
+        "espera", "espere", "esperá", "un momento", "un momentito", "un segundo", "un minuto", "un minutito", "momento",
+        "todavía no", "todavia no", "aún no", "aun no", "ahora no", "por ahora no", "no todavía",
+        "no todavia", "no ahora", "no por ahora",
+        "attends", "attendez", "un instant", "une seconde", "une minute", "un moment", "pas encore",
+        "pas maintenant", "pas tout de suite",
+        "segundo", "minuto", "minutinho", "peraí", "perai", "pera", "aguarda", "aguarde", "ainda não", "ainda nao", "agora não", "agora nao",
+        "não agora", "nao agora", "não ainda", "nao ainda",
+        "подожди", "подождите", "погоди", "погодите", "секунду", "секундочку", "минуту", "минутку",
+        "пока нет", "пока не надо", "не сейчас", "ещё нет", "еще нет", "ещё не", "еще не",
+        "aspetta", "aspetti", "un attimo", "un secondo", "non ancora", "non adesso", "non ora", "adesso no",
+        "ora no", "ancora no",
+        "czekaj", "poczekaj", "zaczekaj", "chwileczkę", "chwilkę", "chwilę", "chwila", "sekundę", "minutę", "momencik", "jeszcze nie", "nie teraz",
+        "bir dakika", "bir saniye", "biraz bekle", "bekle", "bekleyin", "dur", "henüz değil", "şimdi değil", "daha değil",
+        "tunggu sebentar", "tunggu dulu", "tunggu", "sebentar", "semenit", "sedetik", "belum", "jangan sekarang", "nanti dulu", "nanti saja",
+        "nanti aja", "tidak sekarang", "nggak sekarang", "gak sekarang", "tak sekarang",
+        "잠깐만요", "잠깐만", "잠깐", "잠시만요", "잠시만", "아직 아니요", "아직이요", "아직", "지금은 아니요",
+        "지금 말고", "기다려 주세요", "기다려요", "기다려",
     ]
     static let answerYesLeads = [
         "no problem", "no worries", "no rush", "yes", "yeah", "yep", "yup", "yea", "ya", "sure", "ok", "okay", "alright", "all right",
         "go ahead", "go for it", "do it", "send it", "send that", "send this", "please", "correct", "right",
         "exactly", "absolutely", "definitely", "of course", "sounds good", "perfect", "great", "fine",
-        "good", "that's right", "that's it", "that works", "works for me", "that'll do", "sounds great",
+        "good", "that's right", "that's it", "that works", "works for me", "that'll do", "sounds great", "that's great",
         "go", "uh huh", "mhm", "why not",
+        "ja", "jawohl", "genau", "na klar", "alles klar", "klar", "sicher", "gerne", "gern",
+        "einverstanden", "in ordnung", "kein problem", "sehr gerne", "bitte", "selbstverständlich", "natürlich", "auf jeden fall",
+        "mach das", "mach es", "mach's", "machs", "schick es ab", "schick es", "schick's ab", "schick's",
+        "schicks", "schick ab", "abschicken", "absenden", "sehr gut", "gut", "super", "prima", "perfekt",
+        "no hay problema", "no te preocupes", "no pasa nada", "no hay prisa",
+        "sí", "claro que sí", "claro que si", "claro que sim", "claro", "vale", "de acuerdo", "por supuesto", "adelante",
+        "venga", "perfecto", "sin problema", "por favor", "hazlo", "envíalo", "envialo", "mándalo", "mandalo",
+        "envíaselo", "mándaselo", "me parece bien", "está bien", "esta bien", "muy bien", "genial",
+        "listo", "exacto", "correcto", "eso es",
+        "oui", "ouais", "d'accord", "bien sûr", "bien sur", "volontiers", "parfait", "allez y", "vas y",
+        "pas de problème", "pas de probleme", "pas de souci", "pas de soucis", "aucun problème",
+        "aucun probleme", "aucun souci", "envoie le", "envoie la", "envoie ça", "envoie ca",
+        "envoyez le", "envoyez la", "s'il te plaît", "s'il te plait", "s'il vous plaît",
+        "s'il vous plait", "c'est parfait", "ça marche", "ca marche", "ça me va",
+        "ca me va", "très bien", "tres bien", "entendu", "exactement", "évidemment", "evidemment",
+        "carrément", "carrement",
+        "sim", "com certeza", "certo", "beleza", "tá bom", "ta bom", "está bem",
+        "esta bem", "tudo bem", "tudo certo", "pode ser", "pode sim", "pode mandar", "pode enviar",
+        "manda ver", "sem problema", "sem problemas", "não tem problema", "nao tem problema",
+        "não se preocupe", "nao se preocupe", "fechado", "perfeito", "ótimo", "otimo", "isso mesmo",
+        "isso aí", "isso ai", "exato",
+        "не вопрос", "да", "ага", "угу", "конечно", "давай", "давайте", "хорошо", "ладно", "ок", "окей",
+        "отлично", "супер", "без проблем", "нет проблем", "согласен", "согласна", "верно", "точно", "правильно",
+        "именно", "пожалуйста", "отправляй", "отправляйте", "вперёд", "вперед", "годится", "пойдёт", "пойдет",
+        "sì", "certamente", "va bene", "d'accordo", "perfetto", "esatto", "giusto", "volentieri",
+        "vai pure", "vai avanti", "vai", "procedi", "invialo", "fallo", "assolutamente",
+        "ovviamente", "sicuro", "benissimo", "ottimo", "nessun problema", "come no", "per favore",
+        "nie ma problemu", "nie ma sprawy", "no jasne", "no pewnie", "no dobra", "no dobrze", "no tak",
+        "tak masalah", "tak", "jasne", "pewnie", "na pewno", "oczywiście", "dobrze", "dobra", "okej", "zgoda", "wyślij to",
+        "wysyłaj", "śmiało", "proszę", "świetnie", "idealnie", "zgadza się", "w porządku", "racja",
+        "dokładnie", "bez problemu",
+        "evet", "tamam", "olur", "tabii ki", "tabii", "elbette", "kesinlikle", "peki", "gönder", "yolla",
+        "hadi", "olsun", "harika", "mükemmel", "doğru", "aynen", "sorun yok", "problem yok", "lütfen",
+        "tidak apa apa", "tidak masalah", "nggak apa apa", "nggak masalah", "gak apa apa", "gak masalah",
+        "ga apa apa", "ga masalah", "iya", "oke", "baiklah", "baik", "boleh", "tentu saja",
+        "tentu", "pasti", "silakan", "kirim saja", "kirim aja", "kirimkan", "lanjutkan", "lanjut",
+        "setuju", "benar", "betul", "bagus", "sip", "mantap", "tolong",
+        "네", "예", "응", "좋아요", "좋아", "그래요", "그래", "그럼요", "물론이죠", "물론", "보내 주세요",
+        "보내주세요", "보내줘", "부탁해요", "부탁합니다", "알겠어요", "알겠습니다", "오케이",
     ]
     /// After a no, words that only decline politely ("no, I'm good", "yes,
-    /// leave it as is").
+    /// leave it as is", "no, no worries").
     static let answerRefusalTails = [
         "i'm good", "i'm fine", "i'm ok", "i'm okay", "we're good", "all good", "all set", "as is",
-        "it's fine", "it's ok", "it's okay", "that's fine", "that's ok", "that's okay",
+        "it's fine", "it's ok", "it's okay", "that's fine", "that's ok", "that's okay", "no problem",
+        "no worries", "no rush",
+        "schon gut", "passt schon", "passt so", "alles gut", "ist gut", "ist okay",
+        "así está bien", "asi esta bien", "está bien así", "esta bien asi", "estoy bien", "lo mandes",
+        "lo envíes", "lo envies", "lo hagas", "hace falta", "es necesario", "no hay problema",
+        "no te preocupes", "no pasa nada", "no hay prisa", "sin problema",
+        "ça va", "ca va", "c'est bon", "ça ira", "ca ira", "comme ça", "comme ca", "aucun problème",
+        "aucun probleme", "aucun souci",
+        "precisa não", "precisa nao", "precisa", "tô bem", "to bem", "estou bem", "tá bom", "ta bom",
+        "está bom", "esta bom", "tudo bem", "assim mesmo", "sem problema", "sem problemas",
+        "всё нормально", "все нормально", "всё хорошо", "все хорошо", "нормально", "так нормально",
+        "без проблем",
+        "serve", "c'è bisogno", "importa", "fa niente", "va bene così", "va bene", "sto bene",
+        "tutto a posto", "a posto", "nessun problema",
+        "trzeba", "ma potrzeby", "w porządku", "wszystko dobrze", "jest dobrze", "bez problemu",
+        "kalsın", "böyle iyi", "iyiyim",
+        "tidak apa apa", "nggak apa apa", "gak apa apa", "ga apa apa", "sudah cukup", "udah cukup", "cukup",
+        "tak masalah",
+        "괜찮아요", "괜찮습니다",
     ]
     /// Words between a yes and what decides it ("okay, but wait").
-    static let answerJoiners = ["but", "actually", "oh", "well"]
+    static let answerJoiners = [
+        "but", "actually", "oh", "well", "aber", "doch", "naja", "äh", "ähm", "pero", "bueno", "eh",
+        "mais", "bon", "euh", "mas", "então", "entao", "só", "но", "ну", "э", "эм", "ma", "beh", "allora",
+        "ehm", "ale", "właściwie", "cóż", "ama", "aslında", "şey", "yani", "tapi", "sebenarnya", "근데",
+        "그런데", "하지만", "음",
+    ]
     /// Words after a yes that turn it around or question it ("yeah, I don't
     /// think so", "sure, but why?", "okay, let me think", "yes, actually
     /// let's forget it"): asked again. Words that only add to it ("yes,
@@ -2034,6 +2144,26 @@ enum VoiceThreadRouting {
         "not", "never", "no", "dont", "without", "cannot", "whether", "if", "unless", "what", "why", "how", "where", "who",
         "should", "shall", "wait", "hold", "think", "later", "maybe", "nope", "nah",
         "cancel", "stop", "forget", "drop", "scrap", "skip", "ditch", "abort",
+        "nicht", "kein", "keine", "keinen", "keiner", "nichts", "nie", "niemals", "ohne", "ob", "falls",
+        "warum", "wieso", "weshalb", "wann", "wo", "wer", "vielleicht", "später", "warte",
+        "abbrechen", "vergiss", "überlegen", "nachdenken",
+        "nunca", "sin", "quizás", "quizas", "quizá", "quiza", "luego", "después", "despues", "tarde",
+        "espera", "cancela", "cancelar", "olvida", "olvídalo", "olvidalo", "qué", "cómo", "cuándo",
+        "dónde", "quién", "pensar", "pensarlo",
+        "pas", "jamais", "rien", "sans", "peut", "tard", "attends", "attendez", "annule", "annuler",
+        "oublie", "pourquoi", "comment", "quand", "où", "quoi", "réfléchir", "reflechir",
+        "não", "nao", "sem", "talvez", "depois", "esquece", "cancele", "quê", "onde",
+        "не", "нет", "ни", "никогда", "ничего", "без", "если", "ли", "почему", "зачем", "где", "кто",
+        "может", "потом", "позже", "подожди", "погоди", "отмена", "отмени", "забудь", "подумать",
+        "non", "mai", "niente", "nulla", "senza", "se", "forse", "dopo", "perché", "dove", "chi", "aspetta",
+        "annulla", "pensarci",
+        "nigdy", "nic", "jeśli", "czy", "może", "później", "potem", "dlaczego", "czemu", "gdzie",
+        "kto", "czekaj", "anuluj", "zapomnij", "pomyśleć", "zastanowić",
+        "değil", "hiç", "asla", "olmadan", "eğer", "belki", "sonra", "neden", "niye", "nasıl", "nerede",
+        "bekle", "iptal", "düşüneyim",
+        "tidak", "nggak", "gak", "jangan", "belum", "tanpa", "kalau", "jika", "apakah", "mungkin", "nanti",
+        "kenapa", "mengapa", "bagaimana", "mana", "siapa", "tunggu", "batal", "pikir", "pikirkan",
+        "안", "못", "말고", "없이", "만약", "왜", "어떻게", "어디", "누가", "나중에", "아마", "잠깐", "생각해",
     ]
     /// Words that add nothing to an answer ("no thanks", "yes, send it to
     /// Hermes now").
@@ -2041,12 +2171,62 @@ enum VoiceThreadRouting {
         "thanks", "thank", "you", "please", "yet", "now", "anymore", "it", "that", "this", "send",
         "sending", "to", "hermes", "do", "don't", "dont", "not", "no", "yes", "just", "right", "a",
         "the", "moment", "second", "sec", "one", "wait", "hold", "on", "i", "said", "go", "ahead",
-        "and", "ok", "okay", "sure", "that's", "all", "about",
+        "and", "ok", "okay", "sure", "that's", "all", "about", "minute",
+        "ja", "danke", "bitte", "schön", "sehr", "es", "das", "an", "jetzt", "noch", "mal", "eine", "einen",
+        "sekunde", "augenblick", "kurz",
+        "sí", "que", "gracias", "por", "favor", "lo", "eso", "ahora", "todavía", "todavia", "un", "momento", "segundo", "poco", "poquito",
+        "enviar", "mandar", "envíes", "envies", "mandes",
+        "oui", "merci", "beaucoup", "s'il", "te", "vous", "plaît", "plait", "le", "la", "ça", "ca", "à",
+        "maintenant", "encore", "une", "seconde", "instant", "peu", "envoie", "envoyer", "envoyez", "tout",
+        "sim", "obrigado", "obrigada", "valeu", "isso", "agora", "ainda", "para", "pro", "ao", "o", "um", "pouco", "pouquinho", "aí",
+        "mande", "envie", "manda", "envia",
+        "да", "спасибо", "пожалуйста", "это", "его", "сейчас", "ещё", "еще", "гермес", "гермесу", "немного", "отправлять", "отправляй",
+        "отправь", "отправить",
+        "grazie", "mille", "per", "pure", "adesso", "ora", "ancora", "attimo", "sì", "inviare", "inviarlo",
+        "inviarla", "mandare", "mandarlo", "mandarla",
+        "tak", "dzięki", "dziękuję", "proszę", "teraz", "jeszcze", "wysyłaj", "wysyłać", "wysłać", "tego",
+        "evet", "teşekkürler", "teşekkür", "ederim", "sağ", "ol", "lütfen", "şimdi", "bunu", "onu",
+        "ya", "terima", "kasih", "makasih", "saja", "aja", "dong", "deh", "sekarang", "itu", "ini", "ke", "dulu", "kirim", "dikirim", "mau", "bisa",
+        "네", "감사합니다", "고마워요", "고마워", "주세요", "부탁해요", "지금", "그거", "이거",
     ]
+    /// Words that negate ("not", "nicht", "pas", "não", "не", "non",
+    /// "tidak"). Not the English, Spanish and Italian "no": "No, no, make
+    /// it for Alex" is a change.
+    static let answerNegations: Set<String> = [
+        "not", "never", "dont", "nothing",
+        "nicht", "kein", "keine", "keinen", "nichts", "nie", "niemals",
+        "nunca", "nada", "ni", "pas", "rien", "jamais", "não", "nao", "не", "нет", "ничего", "никогда",
+        "non", "mai", "niente", "nulla", "nigdy", "nic", "değil", "yok", "hiç", "asla",
+        "tidak", "nggak", "enggak", "gak", "ga", "jangan", "belum", "bukan", "안", "못",
+    ]
+
+    /// Positive leads a no lead starts ("no problem", "não tem problema",
+    /// "no todavía"): said first, they are a yes or a not yet, not a no.
+    private static let answerLeadsStartingWithNo: [[String]] = (answerYesLeads + answerNotYetLeads).compactMap { lead in
+        let leadWords = lead.split(separator: " ").map(String.init)
+        let startsWithNo = leadWords.count > 1 && answerNoLeads.contains { noLead in
+            leadWords.starts(with: noLead.split(separator: " ").map(String.init))
+        }
+        return startsWithNo ? leadWords : nil
+    }
+
+    /// Send verbs that are a yes on their own ("Отправляй", "Gönder") but
+    /// open a new request with more after them ("Gönder dosyayı Ayşe'ye"),
+    /// as "Send an email to Sam" does.
+    static let answerBareSendLeads: Set<String> = [
+        "abschicken", "absenden", "pode mandar", "pode enviar", "отправляй", "отправляйте", "wysyłaj", "gönder",
+        "yolla", "kirimkan",
+    ]
+    private static let answerNoLeadWords = answerNoLeads.map { $0.split(separator: " ").map(String.init) }
+
+    /// The Polish yes that is also the Indonesian "not". Run into the next
+    /// word ("Tak tahu", "Ya, tak tahu"), it's the "not": no yes, and
+    /// after one, asked again. Set off ("Tak, proszę"), it's the yes.
+    static let answerYesAlsoNot = "tak"
 
     /// Whether these words negate ("don't", "not", "never", "can't").
     private static func negates(_ words: [String]) -> Bool {
-        words.contains { ["not", "never", "dont", "nothing"].contains($0) || $0.hasSuffix("n't") }
+        words.contains { answerNegations.contains($0) || $0.hasSuffix("n't") }
     }
 
     static func heldRequestAnswer(_ answer: String) -> HeldRequestAnswer {
@@ -2056,6 +2236,9 @@ enum VoiceThreadRouting {
             .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
             .map(String.init)
             .filter { !fillers.contains($0) }
+        let saysNot = fold(spoken).range(
+            of: "(^|[^\\p{L}\\p{N}'])\(answerYesAlsoNot)\\s+[\\p{L}\\p{N}]", options: .regularExpression) != nil
+        let yesLeads = saysNot ? answerYesLeads.filter { $0 != answerYesAlsoNot } : answerYesLeads
         // The answer when it says more than the lead and words like "thanks".
         func more(_ rest: [String]) -> String? {
             rest.contains { !answerFillerWords.contains($0) } ? spoken : nil
@@ -2070,11 +2253,13 @@ enum VoiceThreadRouting {
             }
             return false
         }
-        // "No problem" and "no worries" are a yes, not a no.
-        func dropNoLead() -> Bool {
-            !answerYesLeads.contains { $0.hasPrefix("no ") && words.starts(with: $0.split(separator: " ").map(String.init)) }
-                && dropLead(answerNoLeads)
+        // "No problem", "não tem problema" and "no todavía" are a yes or a not
+        // yet, not a no.
+        func startsWithNoLead() -> Bool {
+            !answerLeadsStartingWithNo.contains { words.starts(with: $0) }
+                && answerNoLeadWords.contains { words.starts(with: $0) }
         }
+        func dropNoLead() -> Bool { startsWithNoLead() && dropLead(answerNoLeads) }
         // "No, I don't want that": a negation in what follows is still the no.
         func change(_ rest: [String]) -> String? { negates(rest) ? nil : more(rest) }
         func dropFiller() -> Bool {
@@ -2082,17 +2267,20 @@ enum VoiceThreadRouting {
             words.removeFirst()
             return true
         }
-        // "No, forget about it", "Yes, scrap it", "No, thanks, I'm good":
-        // another no or a polite tail after it is still just the no.
+        // "No, forget about it", "Yes, scrap it", "No, thanks, I'm good",
+        // "No, ahora no": another no, a not yet or a polite tail after it
+        // is still just the no.
         func refusal() -> HeldRequestAnswer {
             let rest = words
-            while dropNoLead() || dropLead(answerRefusalTails) || dropFiller() {}
+            while dropNoLead() || dropLead(answerNotYetLeads) || dropLead(answerRefusalTails) || dropFiller() {}
             return .no(change: negates(rest) ? nil : more(words))
         }
         // "Wait, never mind", "Hold on, actually no": a no after it is the
         // answer.
+        // "Wait a minute", "Подожди секунду", "Bekle bir dakika": more wait
+        // words are still the wait.
         func notYet() -> HeldRequestAnswer {
-            while dropLead(answerJoiners) {}
+            while dropLead(answerJoiners) || dropLead(answerNotYetLeads) {}
             if dropNoLead() { return refusal() }
             return .notYet(change: change(words))
         }
@@ -2100,19 +2288,23 @@ enum VoiceThreadRouting {
         while dropLead(answerJoiners) {}
         if dropNoLead() { return refusal() }
         if dropLead(answerNotYetLeads) { return notYet() }
-        guard dropLead(answerYesLeads) else {
+        let unanswered = words
+        guard dropLead(yesLeads) else {
             // "Send to Hermes", or just "Send": a yes with nothing more.
             if words == ["send"] || saysSendToHermes(spoken) { return .yes(addition: more(words)) }
             return .other(spoken)
         }
+        let lead = unanswered.dropLast(words.count).joined(separator: " ")
+        if answerBareSendLeads.contains(lead), more(words) != nil, !saysSendToHermes(spoken) { return .other(spoken) }
         // "Okay, wait", "Yeah, but actually no", "Please don't": what
-        // follows decides.
-        while dropLead(answerYesLeads) || dropLead(answerJoiners) {}
+        // follows decides. A no that starts with a yes word ("Iya, tak
+        // usah") is still the no.
+        while !startsWithNoLead() && (dropLead(yesLeads) || dropLead(answerJoiners)) {}
         if dropNoLead() { return refusal() }
         if dropLead(answerNotYetLeads) { return notYet() }
         // A negation or a question anywhere after it: not a yes after all.
         let turned = words.contains { word in
-            answerTurnWords.contains(word) || word.hasSuffix("n't")
+            answerTurnWords.contains(word) || word.hasSuffix("n't") || (saysNot && word == answerYesAlsoNot)
                 || answerTurnWords.contains(String(word.prefix(while: { $0 != "'" })))
         }
         if !words.isEmpty, turned || spoken.contains("?") { return .other(spoken) }
@@ -2367,8 +2559,12 @@ enum VoiceThreadRouting {
         return lastReplyPhrases.contains { $0 == String(request) }
     }
 
+    /// Lowercased, with a curly apostrophe made straight and the Turkish
+    /// "İ" lowercased to a plain "i" ("İptal" is "iptal", not "i̇ptal").
     private static func fold(_ text: String) -> String {
-        text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+        text.lowercased()
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .replacingOccurrences(of: "i\u{307}", with: "i")
     }
 
     /// Whole-word match for Latin phrases ("read" isn't in "thread"); CJK

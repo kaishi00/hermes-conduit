@@ -410,13 +410,17 @@ private struct LiveVoiceAskFirstButton: View {
                 Text(verbatim: caption)
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.primary)
-                    // One line from the trailing edge: it must fit the width.
-                    .dynamicTypeSize(...DynamicTypeSize.xLarge)
-                    .lineLimit(1)
-                    .fixedSize()
+                    // Wraps rather than running off the leading edge, at
+                    // large text sizes and in longer languages. Capped since
+                    // it sits over the stage: larger, it would cover the orb
+                    // (the button itself says the same to VoiceOver).
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
                     .conduitGlassControl(cornerRadius: 16, interactive: false)
+                    .frame(width: 280, alignment: .trailing)
                     .offset(y: 52)
                     .transition(.opacity)
                     .accessibilityHidden(true)

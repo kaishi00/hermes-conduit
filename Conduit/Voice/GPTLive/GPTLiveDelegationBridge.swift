@@ -366,7 +366,11 @@ final class GPTLiveDelegationBridge {
         if reply == nil { lastReadBackAt = nil }
         readBackDelegationID = id
         guard let reply else {
-            let text = attached ? Self.relay("Hermes hasn't replied in this chat yet.") : Self.nothingToReadBack
+            // A no beside this read-back is still told, with nothing to read.
+            let drop = takeDroppedBesideReadBack() ? " " + Self.droppedBesideReadBack : ""
+            let text = attached
+                ? Self.relay("Hermes hasn't replied in this chat yet." + drop)
+                : "[" + GeminiLiveToolBridge.nothingToReadBack + drop + "]"
             return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
         }
         // The whole reply goes in quietly first, then one cue starts the
@@ -392,7 +396,8 @@ final class GPTLiveDelegationBridge {
         guard callGeneration == call, !isEnding else { return [] }
         guard let reply else {
             lastReadBackAt = nil
-            return [.sessionContext(text: Self.relay("Hermes hasn't replied in this chat yet."), channel: .speakable, whenIdle: false, jobID: nil)]
+            let drop = takeDroppedBesideReadBack() ? " " + Self.droppedBesideReadBack : ""
+            return [.sessionContext(text: Self.relay("Hermes hasn't replied in this chat yet." + drop), channel: .speakable, whenIdle: false, jobID: nil)]
         }
         return [
             .sessionContext(text: Self.lastReplyText(reply), channel: .commentary, whenIdle: false, jobID: nil),
@@ -491,11 +496,12 @@ final class GPTLiveDelegationBridge {
     /// The read-back is still queued for a quiet moment. Not UI copy.
     static let readBackOnItsWay = "Conduit is sending you the reply for this request as soon as the conversation is quiet. Wait for it, then read it word for word; don't answer from memory."
     /// Starts the reading once the whole reply is in. Not UI copy.
-    static let readBackCue = "[Read the reply Conduit just gave you, between <read_back> tags, to the user now: word for word from start to end, all of it, once, whatever your answer length. Don't summarize, shorten or add to it.]"
+    static let readBackCue = "[" + readBackCueBody + "]"
+    private static let readBackCueBody = "Read the reply Conduit just gave you, between <read_back> tags, to the user now: word for word from start to end, all of it, once, whatever your answer length. Don't summarize, shorten or add to it."
     /// Not UI copy.
-    static let readBackCueThenAskAgain = String(readBackCue.dropLast()) + " Then ask the user again whether to send the request that's still waiting for their OK.]"
+    static let readBackCueThenAskAgain = "[" + readBackCueBody + " Then ask the user again whether to send the request that's still waiting for their OK.]"
     /// Not UI copy.
-    static let readBackCueAfterDrop = String(readBackCue.dropLast()) + " " + droppedBesideReadBack + "]"
+    static let readBackCueAfterDrop = "[" + readBackCueBody + " " + droppedBesideReadBack + "]"
     /// Not UI copy.
     static let droppedBesideReadBack = "The request that was waiting for the user's OK wasn't sent: they said no, so Conduit dropped it and nothing is waiting now."
     /// A read-back in a call without a chat, before any job result came
@@ -660,6 +666,18 @@ final class GPTLiveDelegationBridge {
         guard !words.isEmpty else { return nil }
         let intoJob = VoiceThreadRouting.wantsNewWork(words) ? nil : waiting.intoJob
         if let pending = waiting.pendingDelegationID {
+            // Held from the user's words while they were still coming in,
+            // then delegated again before they finished: the finished ones
+            // are the request, and that delegation still waits for the
+            // answer.
+            if let finished = finishedRequest(waiting, with: words) {
+                if VoiceThreadRouting.saysSendToHermes(words) || !supervisor.asksBeforeSending {
+                    draft = nil
+                    lastSentAt = now()
+                    return .send(request: finished, intoJob: intoJob, delegationID: pending, call: callGeneration)
+                }
+                return keepFinished(finished, words: words, in: waiting)
+            }
             waiting.pendingDelegationID = nil
             draft = waiting
             switch decide(waiting, ownText: "", isSend: waiting.pendingIsSend, instructions: "", answer: words) {
@@ -689,8 +707,7 @@ final class GPTLiveDelegationBridge {
             lastSentAt = now()
             // Finishing the words it was held from ("Book a table for", then
             // "… for four, send it to Hermes"): they are the request.
-            if let finished = Self.finishing(waiting.request, heldFrom: waiting.userWords, with: words),
-               now().timeIntervalSince(waiting.heldAt) < Self.lateWordsWindow {
+            if let finished = finishedRequest(waiting, with: words) {
                 return .send(request: finished, intoJob: intoJob, delegationID: waiting.delegationID, call: callGeneration)
             }
             // "…, but make it for four" goes with it; the request's own
@@ -708,14 +725,27 @@ final class GPTLiveDelegationBridge {
         // Held from the user's words while they were still coming in ("Book
         // a table for"): the finished ones ("… for four") are the request
         // they OK.
-        if let finished = Self.finishing(waiting.request, heldFrom: waiting.userWords, with: words),
-           now().timeIntervalSince(waiting.heldAt) < Self.lateWordsWindow {
-            waiting.request = finished
-            waiting.userWords = words
-            draft = waiting
-            return .reply([])
+        if let finished = finishedRequest(waiting, with: words) {
+            return keepFinished(finished, words: words, in: waiting)
         }
         return nil
+    }
+
+    /// The held request finished by these words of the user's, while they
+    /// can still be its late words.
+    private func finishedRequest(_ waiting: Draft, with words: String) -> String? {
+        guard now().timeIntervalSince(waiting.heldAt) < Self.lateWordsWindow else { return nil }
+        return Self.finishing(waiting.request, heldFrom: waiting.userWords, with: words)
+    }
+
+    /// Holds the finished request in place of the one from unfinished words.
+    private func keepFinished(_ finished: String, words: String, in waiting: Draft) -> SpokenAnswer {
+        var waiting = waiting
+        waiting.request = finished
+        waiting.userWords = words
+        waiting.heldAt = now()
+        draft = waiting
+        return .reply([])
     }
 
     /// The user's words for a request still arrive this long after it was
