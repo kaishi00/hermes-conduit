@@ -13715,7 +13715,12 @@ final class AppState: ObservableObject {
                 clearActiveSessionIfNeeded(updated, replacement: .archive)
             } else {
                 archivedSessions.removeAll { sessionMatches($0, updated) }
-                sessions = [updated] + sessions.filter { !sessionMatches($0, updated) }
+                // A restored cron run goes back to the Cron list, not the chats.
+                if updated.source == .cron {
+                    cronSessions = [updated] + cronSessions.filter { !sessionMatches($0, updated) }
+                } else {
+                    sessions = [updated] + sessions.filter { !sessionMatches($0, updated) }
+                }
             }
             return true
         } catch {

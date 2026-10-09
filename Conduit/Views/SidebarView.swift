@@ -1682,35 +1682,25 @@ struct CronList: View {
             if !appState.activeProfileCronSessions.isEmpty {
                 Section("Recent runs") {
                     ForEach(appState.activeProfileCronSessions.prefix(20)) { session in
-                    let isPinned = appState.isSessionPinned(session)
-                    Button {
-                        appState.dismissSidebarDrawer()
-                        appState.requestOpenSession(session.id)
-                    } label: {
-                        SessionRow(session: session, isSelected: session.id == appState.activeSessionId, isPinned: isPinned).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    // A pinned run sits at the top of the Sessions list (#485).
-                    .contextMenu {
+                        let isPinned = appState.isSessionPinned(session)
                         Button {
-                            Haptics.light()
-                            appState.toggleSessionPinned(session)
+                            appState.dismissSidebarDrawer()
+                            appState.requestOpenSession(session.id)
                         } label: {
-                            Label(isPinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: isPinned ? "pin.slash" : "pin")
+                            SessionRow(session: session, isSelected: session.id == appState.activeSessionId, isPinned: isPinned).contentShape(Rectangle())
                         }
-                    }
-                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                        Button {
-                            Haptics.light()
-                            appState.toggleSessionPinned(session)
-                        } label: {
-                            Label(isPinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: isPinned ? "pin.slash" : "pin")
+                        .buttonStyle(.plain)
+                        // A pinned run sits at the top of the Sessions list (#485).
+                        .contextMenu {
+                            pinButton(session, isPinned: isPinned)
                         }
-                        .tint(.conduitAccent)
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            pinButton(session, isPinned: isPinned)
+                                .tint(.conduitAccent)
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
                     }
                 }
             }
@@ -1725,6 +1715,15 @@ struct CronList: View {
 
     private var isSearching: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func pinButton(_ session: SessionSummary, isPinned: Bool) -> some View {
+        Button {
+            Haptics.light()
+            appState.toggleSessionPinned(session)
+        } label: {
+            Label(isPinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: isPinned ? "pin.slash" : "pin")
+        }
     }
 
     private var activeJobCount: Int {
@@ -1914,9 +1913,6 @@ private struct CronJobDetailSheet: View {
     }
 }
 
-/// The Projects view's Pinned section (#338): every non-archived pinned chat
-/// in the profile, whatever its project or source, narrowed by the search
-/// field like the project list below it.
 /// Which rows a Sessions source filter lists (#485). Cron runs stay out of
 /// All and the other filters, like Hermes Desktop's main list: Cron lists
 /// every run, and a pinned run joins All at the top so it works like any
@@ -1942,6 +1938,9 @@ enum SidebarSourceRows {
     }
 }
 
+/// The Projects view's Pinned section (#338): every non-archived pinned chat
+/// in the profile, pinned cron runs included (#485), whatever its project or
+/// source, narrowed by the search field like the project list below it.
 enum SidebarPinnedSessions {
     static func forProjectsView(
         _ sessions: [SessionSummary],
