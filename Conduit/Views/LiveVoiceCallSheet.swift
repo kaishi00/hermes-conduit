@@ -330,7 +330,8 @@ struct LiveVoiceCallSheet: View {
                 // talks, so this is the way to cut in.
                 if let onInterrupt {
                     LiveVoiceCallButton(
-                        symbol: "hand.raised.fill",
+                        // Not a hand: that is asking first's (#451).
+                        symbol: "stop.fill",
                         title: AppLocalization.string("Interrupt"),
                         voiceOverHint: canInterrupt
                             ? AppLocalization.string("Stops the assistant so you can speak")
@@ -378,16 +379,21 @@ private struct LiveVoiceCallThreadLabel: View {
 }
 
 /// Asking first for this call (#451). It shows the call's own setting, so a
-/// switch the user asked for by voice shows here too.
+/// switch the user asked for by voice shows here too. A raised hand reads
+/// as "hold it for my OK"; a short caption says what it means whenever it
+/// switches, and the first time it shows.
 private struct LiveVoiceAskFirstButton: View {
     @ObservedObject var jobs: VoiceBackgroundJobSupervisor
+    @AppStorage("conduit.liveVoiceAskFirstHintShown") private var hintShown = false
+    @State private var caption: String?
+    @State private var captionTask: Task<Void, Never>?
 
     var body: some View {
         let isOn = jobs.asksBeforeSending
         Button {
             jobs.setAsksBeforeSending(!isOn)
         } label: {
-            Image(systemName: isOn ? "questionmark.bubble.fill" : "questionmark.bubble")
+            Image(systemName: isOn ? "hand.raised.fill" : "hand.raised.slash")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(isOn ? Color.conduitAccent : Color.secondary)
                 .frame(width: 44, height: 44)
@@ -398,6 +404,52 @@ private struct LiveVoiceAskFirstButton: View {
         .accessibilityLabel(Text("Ask before sending to Hermes"))
         .accessibilityValue(isOn ? Text("On") : Text("Off"))
         .accessibilityAddTraits(isOn ? .isSelected : [])
+        // Below the button, over the stage: it never moves the header.
+        .overlay(alignment: .topTrailing) {
+            if let caption {
+                Text(verbatim: caption)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.primary)
+                    // One line from the trailing edge: it must fit the width.
+                    .dynamicTypeSize(...DynamicTypeSize.xLarge)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .conduitGlassControl(cornerRadius: 16, interactive: false)
+                    .offset(y: 52)
+                    .transition(.opacity)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onChange(of: isOn) { _, on in
+            // Switched it: they've seen what it means.
+            hintShown = true
+            showCaption(for: on)
+        }
+        .onAppear {
+            guard !hintShown else { return }
+            showCaption(for: isOn)
+        }
+        .onDisappear { captionTask?.cancel() }
+    }
+
+    private func showCaption(for on: Bool) {
+        captionTask?.cancel()
+        let text = on
+            ? AppLocalization.string("Asking before sending to Hermes")
+            : AppLocalization.string("Sending straight to Hermes")
+        withAnimation(.easeOut(duration: 0.2)) { caption = text }
+        // The caption itself is hidden from VoiceOver: said once instead.
+        AccessibilityNotification.Announcement(text).post()
+        captionTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            // The first-time hint counts once it was on screen in full.
+            hintShown = true
+            withAnimation(.easeIn(duration: 0.3)) { caption = nil }
+        }
     }
 }
 

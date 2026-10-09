@@ -1903,8 +1903,15 @@ enum VoiceThreadRouting {
     ]
     /// Said as the request itself ("read me…", "can you repeat…"), not
     /// mentioned along the way ("they hear the last reply was wrong").
-    static let readVerbs = ["read", "repeat", "tell me", "let me hear", "play back", "say"]
+    static let readVerbs = ["read", "repeat", "tell me", "let me hear", "hear", "play back", "say"]
     static let politePrefixes = ["please ", "can you ", "could you ", "would you ", "hey, ", "hey ", "ok, ", "ok ", "okay, ", "okay ", "so "]
+    /// Said before a read request on a call, not part of it (#451): "no,
+    /// no, I want you to read back the last reply", "you need to read…".
+    static let readLeadIns = [
+        "no ", "nope ", "i want you to ", "i'd like you to ", "i would like you to ", "i need you to ",
+        "you need to ", "you have to ", "i asked you to ", "i said ", "i want to ", "i'd like to ",
+        "just ", "now ", "actually ", "well ",
+    ]
     /// A whole request to hear it again, with nothing naming the reply
     /// ("repeat that", "say it again"). What may follow is in
     /// `repeatTrailers`.
@@ -1962,6 +1969,249 @@ enum VoiceThreadRouting {
         "has", "have", "was", "were", "remind", "rather", "than", "instead",
     ]
 
+    /// How the user answered "send it?" while asking first (#451).
+    enum HeldRequestAnswer: Equatable {
+        /// Yes, led by a yes word or a send ("yes", "sure", "send it").
+        /// `addition` is the answer when it says more than that.
+        case yes(addition: String?)
+        /// Neither yes nor no ("for Sam", "actually make it Alex"): a
+        /// change, unless the model took it as a yes.
+        case other(String)
+        /// No: dropped. With more words, `change` is the answer.
+        case no(change: String?)
+        /// Not yet ("wait", "hold on"): it keeps waiting. With more words,
+        /// `change` is the answer.
+        case notYet(change: String?)
+
+        /// Led by a yes, a no or a "wait": shaped like an answer, not a
+        /// request.
+        var isAnswer: Bool {
+            if case .other = self { return false }
+            return true
+        }
+
+        /// Just a yes, with nothing more.
+        var isBareYes: Bool { self == .yes(addition: nil) }
+
+        /// A bare yes, no or "wait": nothing to send.
+        var isBare: Bool {
+            switch self {
+            case .yes(let addition): return addition == nil
+            case .no(let change), .notYet(let change): return change == nil
+            case .other: return false
+            }
+        }
+    }
+
+    static let answerNoLeads = [
+        "no", "nope", "nah", "don't", "dont", "do not", "never mind", "nevermind",
+        "cancel", "forget", "drop", "scrap", "skip", "ditch", "abort", "stop", "leave it", "leave that",
+    ]
+    static let answerNotYetLeads = [
+        "wait", "hold on", "hang on", "not yet", "not now", "one sec", "one second", "one moment",
+        "just a sec", "just a second", "just a moment", "hold it",
+    ]
+    static let answerYesLeads = [
+        "no problem", "no worries", "no rush", "yes", "yeah", "yep", "yup", "yea", "ya", "sure", "ok", "okay", "alright", "all right",
+        "go ahead", "go for it", "do it", "send it", "send that", "send this", "please", "correct", "right",
+        "exactly", "absolutely", "definitely", "of course", "sounds good", "perfect", "great", "fine",
+        "good", "that's right", "that's it", "that works", "works for me", "that'll do", "sounds great",
+        "go", "uh huh", "mhm", "why not",
+    ]
+    /// After a no, words that only decline politely ("no, I'm good", "yes,
+    /// leave it as is").
+    static let answerRefusalTails = [
+        "i'm good", "i'm fine", "i'm ok", "i'm okay", "we're good", "all good", "all set", "as is",
+        "it's fine", "it's ok", "it's okay", "that's fine", "that's ok", "that's okay",
+    ]
+    /// Words between a yes and what decides it ("okay, but wait").
+    static let answerJoiners = ["but", "actually", "oh", "well"]
+    /// Words after a yes that turn it around or question it ("yeah, I don't
+    /// think so", "sure, but why?", "okay, let me think", "yes, actually
+    /// let's forget it"): asked again. Words that only add to it ("yes,
+    /// remind me when it's done") don't.
+    static let answerTurnWords: Set<String> = [
+        "not", "never", "no", "dont", "without", "cannot", "whether", "if", "unless", "what", "why", "how", "where", "who",
+        "should", "shall", "wait", "hold", "think", "later", "maybe", "nope", "nah",
+        "cancel", "stop", "forget", "drop", "scrap", "skip", "ditch", "abort",
+    ]
+    /// Words that add nothing to an answer ("no thanks", "yes, send it to
+    /// Hermes now").
+    static let answerFillerWords: Set<String> = [
+        "thanks", "thank", "you", "please", "yet", "now", "anymore", "it", "that", "this", "send",
+        "sending", "to", "hermes", "do", "don't", "dont", "not", "no", "yes", "just", "right", "a",
+        "the", "moment", "second", "sec", "one", "wait", "hold", "on", "i", "said", "go", "ahead",
+        "and", "ok", "okay", "sure", "that's", "all", "about",
+    ]
+
+    /// Whether these words negate ("don't", "not", "never", "can't").
+    private static func negates(_ words: [String]) -> Bool {
+        words.contains { ["not", "never", "dont", "nothing"].contains($0) || $0.hasSuffix("n't") }
+    }
+
+    static func heldRequestAnswer(_ answer: String) -> HeldRequestAnswer {
+        let spoken = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let cjk = cjkHeldRequestAnswer(spoken) { return cjk }
+        var words = fold(spoken)
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
+            .map(String.init)
+            .filter { !fillers.contains($0) }
+        // The answer when it says more than the lead and words like "thanks".
+        func more(_ rest: [String]) -> String? {
+            rest.contains { !answerFillerWords.contains($0) } ? spoken : nil
+        }
+        func dropLead(_ leads: [String]) -> Bool {
+            for lead in leads {
+                let leadWords = lead.split(separator: " ").map(String.init)
+                if words.starts(with: leadWords) {
+                    words.removeFirst(leadWords.count)
+                    return true
+                }
+            }
+            return false
+        }
+        // "No problem" and "no worries" are a yes, not a no.
+        func dropNoLead() -> Bool {
+            !answerYesLeads.contains { $0.hasPrefix("no ") && words.starts(with: $0.split(separator: " ").map(String.init)) }
+                && dropLead(answerNoLeads)
+        }
+        // "No, I don't want that": a negation in what follows is still the no.
+        func change(_ rest: [String]) -> String? { negates(rest) ? nil : more(rest) }
+        func dropFiller() -> Bool {
+            guard let first = words.first, answerFillerWords.contains(first) else { return false }
+            words.removeFirst()
+            return true
+        }
+        // "No, forget about it", "Yes, scrap it", "No, thanks, I'm good":
+        // another no or a polite tail after it is still just the no.
+        func refusal() -> HeldRequestAnswer {
+            let rest = words
+            while dropNoLead() || dropLead(answerRefusalTails) || dropFiller() {}
+            return .no(change: negates(rest) ? nil : more(words))
+        }
+        // "Wait, never mind", "Hold on, actually no": a no after it is the
+        // answer.
+        func notYet() -> HeldRequestAnswer {
+            while dropLead(answerJoiners) {}
+            if dropNoLead() { return refusal() }
+            return .notYet(change: change(words))
+        }
+        // "Oh yes", "Well, no", "Actually, go ahead".
+        while dropLead(answerJoiners) {}
+        if dropNoLead() { return refusal() }
+        if dropLead(answerNotYetLeads) { return notYet() }
+        guard dropLead(answerYesLeads) else {
+            // "Send to Hermes", or just "Send": a yes with nothing more.
+            if words == ["send"] || saysSendToHermes(spoken) { return .yes(addition: more(words)) }
+            return .other(spoken)
+        }
+        // "Okay, wait", "Yeah, but actually no", "Please don't": what
+        // follows decides.
+        while dropLead(answerYesLeads) || dropLead(answerJoiners) {}
+        if dropNoLead() { return refusal() }
+        if dropLead(answerNotYetLeads) { return notYet() }
+        // A negation or a question anywhere after it: not a yes after all.
+        let turned = words.contains { word in
+            answerTurnWords.contains(word) || word.hasSuffix("n't")
+                || answerTurnWords.contains(String(word.prefix(while: { $0 != "'" })))
+        }
+        if !words.isEmpty, turned || spoken.contains("?") { return .other(spoken) }
+        // "Yes, send it to Hermes": the send is the yes.
+        let rest = saysSendToHermes(words.joined(separator: " ")) ? [] : words
+        return .yes(addition: more(rest))
+    }
+
+    /// Japanese and Chinese have no word breaks: an answer is read from how
+    /// it starts ("はい、お願いします", "好的", "不用了", "等一下").
+    static let cjkAnswerNoLeads = [
+        "いいえ", "いえ", "ううん", "いや", "やめて", "結構です", "けっこうです", "要らない", "いらない", "キャンセル",
+        "不要", "不用", "不了", "不是", "不对", "不行", "不需要", "算了", "取消", "别发",
+    ]
+    static let cjkAnswerNotYetLeads = [
+        "ちょっと待って", "待って", "まだ", "ちょっと", "等等", "等一下", "稍等", "先等", "先别", "先不", "还没", "暂时不",
+    ]
+    static let cjkAnswerYesLeads = [
+        "はい", "うん", "ええ", "お願いします", "オッケー", "オーケー", "どうぞ", "送って", "送信して", "そうして",
+        "好的", "好啊", "好呀", "好吧", "行吧", "行啊", "是的", "对的", "当然", "没问题", "发吧", "发送吧",
+    ]
+    /// Answers that count only as a clause of their own, since requests
+    /// start with them too: "好，改成四个人" and "可以，发吧" are a yes,
+    /// "好像不对" and "可以帮我改一下" aren't.
+    static let cjkAnswerClauseYes: Set<String> = ["好", "对", "嗯", "行", "是", "可以", "お願い"]
+    static let cjkAnswerClauseNo: Set<String> = ["不", "别"]
+    /// Words that add nothing to an answer ("好的，谢谢", "はい、お願いします").
+    static let cjkAnswerFillers = [
+        "ありがとうございます", "ありがとう", "お願いします", "お願い", "ください", "どうも", "です", "ます", "ね", "よ",
+        "送って", "没问题", "谢谢", "谢了", "发吧", "发送", "请", "吧", "了", "啊", "呀", "呢", "的",
+    ].sorted { $0.count > $1.count }
+    /// After a yes, these turn it around or question it ("好，但是…",
+    /// "嗯，让我想想", "はい、でも…"): asked again.
+    static let cjkAnswerTurns = ["不", "没", "别", "但", "等", "想", "考虑", "でも", "けど", "やめ", "待", "ない", "ません", "考え"]
+
+    /// A Japanese or Chinese answer, or nil for any other.
+    private static func cjkHeldRequestAnswer(_ spoken: String) -> HeldRequestAnswer? {
+        let clauses = spoken.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
+        let all = Substring(clauses.joined())
+        var rest = all
+        func dropLead(_ leads: [String]) -> Bool {
+            guard let lead = leads.first(where: { rest.hasPrefix($0) }) else { return false }
+            rest = rest.dropFirst(lead.count)
+            return true
+        }
+        func dropClause(_ answers: Set<String>) -> Bool {
+            guard rest == all, let first = clauses.first, let character = first.first else { return false }
+            // A one-character answer may come repeated ("对对对").
+            let repeated = answers.contains(String(character)) && first.allSatisfy { $0 == character }
+            guard answers.contains(first) || repeated else { return false }
+            rest = rest.dropFirst(first.count)
+            return true
+        }
+        // What's left once the lead and words like "谢谢" are gone.
+        func left() -> String {
+            cjkAnswerFillers.reduce(String(rest)) { $0.replacingOccurrences(of: $1, with: "") }
+        }
+        func turned(_ words: String) -> Bool { cjkAnswerTurns.contains { words.contains($0) } }
+        // "不用，我不需要": a negation in what follows is still the no.
+        func change() -> String? {
+            let words = left()
+            return words.isEmpty || turned(words) ? nil : spoken
+        }
+        // "等一下，不用了": a no after it is the answer.
+        func notYet() -> HeldRequestAnswer {
+            guard dropLead(cjkAnswerNoLeads) else { return .notYet(change: change()) }
+            while dropLead(cjkAnswerNoLeads) {}
+            return .no(change: change())
+        }
+        if dropClause(cjkAnswerClauseNo) || dropLead(cjkAnswerNoLeads) {
+            while dropLead(cjkAnswerNoLeads) {}
+            return .no(change: change())
+        }
+        if dropLead(cjkAnswerNotYetLeads) { return notYet() }
+        guard dropClause(cjkAnswerClauseYes) || dropLead(cjkAnswerYesLeads) else { return nil }
+        while dropLead(cjkAnswerYesLeads) {}
+        if dropLead(cjkAnswerNoLeads) { return .no(change: change()) }
+        if dropLead(cjkAnswerNotYetLeads) { return notYet() }
+        let words = left()
+        guard !words.isEmpty else { return .yes(addition: nil) }
+        let asks = spoken.contains("?") || spoken.contains("？") || rest.hasSuffix("吗") || rest.hasSuffix("か")
+        if turned(words) || asks { return .other(spoken) }
+        return .yes(addition: spoken)
+    }
+
+    /// The user asked for separate work while a job runs ("start a new
+    /// job", "in the meantime…"), so it isn't a follow-up to that job.
+    static let newWorkPhrases = [
+        "new job", "another job", "separate job", "second job", "new request", "another request",
+        "separately", "in the meantime", "meanwhile", "in parallel", "at the same time",
+        "while that runs", "while that's running", "while it runs", "while it's running",
+        "while you wait", "while we wait",
+    ]
+
+    static func wantsNewWork(_ request: String) -> Bool {
+        let folded = fold(request)
+        return newWorkPhrases.contains { contains(folded, phrase: $0) } || wantsBackgroundJob(request)
+    }
+
     static func wantsBackgroundJob(_ request: String) -> Bool {
         let folded = fold(request)
         return backgroundPhrases.contains { contains(folded, phrase: $0) } || startsQuick(folded: folded)
@@ -2011,15 +2261,13 @@ enum VoiceThreadRouting {
     }
 
     static func wantsLastReply(_ request: String) -> Bool {
-        // Commas set off fillers and asides ("the last, um, reply").
-        let folded = withoutFillers(fold(request).replacingOccurrences(of: ",", with: " "))
+        // Commas set off fillers and asides ("the last, um, reply"); stops
+        // end what was said before the request ("No. Read the last reply").
+        let folded = withoutFillers(fold(request).replacingOccurrences(of: "[,.!?;:]", with: " ", options: .regularExpression))
         if wantsRepeat(folded) { return true }
         guard lastReplyPhrases.contains(where: { contains(folded, phrase: $0) }) else { return false }
         if wantsCJKLastReply(folded) { return true }
-        var request = Substring(folded.trimmingCharacters(in: .whitespacesAndNewlines))
-        while let prefix = politePrefixes.first(where: { request.hasPrefix($0) }) {
-            request = request.dropFirst(prefix.count)
-        }
+        let request = withoutLeadIns(folded)
         let ledByReadVerb = readVerbs.contains { verb in
             guard request.hasPrefix(verb) else { return false }
             let rest = request.dropFirst(verb.count)
@@ -2033,6 +2281,8 @@ enum VoiceThreadRouting {
     static let lastReplyTrailers = repeatTrailers.union([
         "aloud", "now", "from", "hermes",
         "that", "sent", "wrote", "gave", "said", "posted", "you", "just",
+        // "…without sending it to Hermes first" (#451).
+        "without", "sending", "asking", "it", "first",
     ])
 
     /// Before the reply phrase: a second request, or one about the reply
@@ -2075,10 +2325,7 @@ enum VoiceThreadRouting {
     }
 
     private static func wantsRepeat(_ folded: String) -> Bool {
-        var request = Substring(folded.trimmingCharacters(in: .whitespacesAndNewlines))
-        while let prefix = politePrefixes.first(where: { request.hasPrefix($0) }) {
-            request = request.dropFirst(prefix.count)
-        }
+        let request = withoutLeadIns(folded)
         return repeatRequests.contains { phrase in
             guard request.hasPrefix(phrase) else { return false }
             let rest = request.dropFirst(phrase.count)
@@ -2086,6 +2333,16 @@ enum VoiceThreadRouting {
             return rest.split(whereSeparator: { !($0.isLetter || $0.isNumber) })
                 .allSatisfy { repeatTrailers.contains(String($0)) }
         }
+    }
+
+    /// A read request without what was said before it: polite prefixes
+    /// and lead-ins, in any order ("no, can you just read…").
+    private static func withoutLeadIns(_ folded: String) -> Substring {
+        var request = Substring(folded.trimmingCharacters(in: .whitespacesAndNewlines))
+        while let prefix = (politePrefixes + readLeadIns).first(where: { request.hasPrefix($0) }) {
+            request = request.dropFirst(prefix.count).drop(while: \.isWhitespace)
+        }
+        return request
     }
 
     /// Drops hesitation words so they don't break a phrase apart.
