@@ -263,7 +263,8 @@ final class HermesNativeCalls: NSObject {
         guard calls[id] != nil, !Task.isCancelled else { return }
         guard connected, await appState.openNotificationTarget(target), calls[id] != nil else {
             nativeCallsLogger.notice("Hermes call answered but not opened (connected: \(connected, privacy: .public))")
-            finish(id, reason: .failed, notice: .missed)
+            // The user picked up: what's left is "Hermes wants to talk".
+            finish(id, reason: .failed, notice: .talk)
             return
         }
         // Another voice conversation started while it rang: the job's news

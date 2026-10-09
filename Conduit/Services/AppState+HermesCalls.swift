@@ -178,26 +178,28 @@ extension AppState {
                 self.pendingHermesCall = opening
                 _ = await self.openVoiceConversation(intent)
                 // Starting the call took it; a later unrelated call must not.
-                if self.hermesCallOpenGeneration == generation { self.pendingHermesCall = nil }
+                if self.pendingHermesCall == opening { self.pendingHermesCall = nil }
             } else {
                 // Classic voice says it at its first listening window.
                 self.voiceBackgroundJobSupervisor.queueCallOpening(opening.spokenBrief)
                 let opened = await self.openVoiceConversation(intent)
-                if !opened || !self.showVoiceSheet, self.hermesCallOpenGeneration == generation {
-                    self.voiceBackgroundJobSupervisor.clearCallOpening()
+                if !opened || !self.showVoiceSheet {
+                    self.voiceBackgroundJobSupervisor.clearCallOpening(opening.spokenBrief)
                 }
             }
-            // What follows the open is this call's alone: a later call's
-            // voice is never touched.
-            guard self.hermesCallOpenGeneration == generation else { return }
-            self.hermesCallOpenTask = nil
-            // Hung up while it opened: it ends as the call did, and the
-            // open's error isn't shown for a call the user left.
-            if Task.isCancelled {
-                self.voiceBackgroundJobSupervisor.clearCallOpening()
-                self.errorMessage = errorBefore
-                self.endVoiceOfNativeCall()
+            guard Task.isCancelled else {
+                if self.hermesCallOpenGeneration == generation { self.hermesCallOpenTask = nil }
+                return
             }
+            // Hung up while it opened: what it opened ends as the call did.
+            self.voiceBackgroundJobSupervisor.clearCallOpening(opening.spokenBrief)
+            // Voice started since by another call or by the user isn't this
+            // call's to end.
+            guard self.hermesCallOpenGeneration == generation else { return }
+            self.hermesCallOpenGeneration = nil
+            // The open's error isn't shown for a call the user left.
+            self.errorMessage = errorBefore
+            self.endVoiceOfNativeCall()
         }
         return true
     }
@@ -354,7 +356,15 @@ extension AppState {
     func endVoiceForNativeCall() {
         hermesCallOpenTask?.cancel()
         hermesCallOpenTask = nil
+        // No voice started from now on takes the call's opening.
+        pendingHermesCall = nil
         endVoiceOfNativeCall()
+    }
+
+    /// Voice the user starts another way is theirs: an open still running
+    /// for a call they hung up no longer ends it.
+    func keepVoiceFromHermesCallCleanup() {
+        hermesCallOpenGeneration = nil
     }
 
     private func endVoiceOfNativeCall() {

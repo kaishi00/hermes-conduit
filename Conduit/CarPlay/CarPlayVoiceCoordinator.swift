@@ -1394,6 +1394,7 @@ final class CarPlayVoiceCoordinator {
         generation: UInt64,
         startsFreshConversation: Bool = false
     ) async -> AppState.VoiceConversationPrepareOutcome {
+        appState.keepVoiceFromHermesCallCleanup()
         let outcome = await appState.prepareVoiceConversation(
             profile: nil,
             startsFreshConversation: startsFreshConversation
