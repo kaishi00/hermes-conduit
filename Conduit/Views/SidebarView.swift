@@ -344,11 +344,12 @@ struct SessionList: View {
                 }
                 if layout.emptyState {
                     ContentUnavailableView(
-                        statusFilter == .unread
-                            ? AppLocalization.string("No Unread Chats")
-                            : selectedSource == nil ? AppLocalization.string("No Sessions") : AppLocalization.string("No \(selectedSource!.label) Sessions"),
-                        systemImage: statusFilter == .unread ? "envelope.open" : "tray",
-                        description: Text(searchText.isEmpty ? AppLocalization.string("Sessions will appear here once created.") : AppLocalization.string("Try a different search."))
+                        statusFilter?.emptyTitle
+                            ?? (selectedSource == nil ? AppLocalization.string("No Sessions") : AppLocalization.string("No \(selectedSource!.label) Sessions")),
+                        systemImage: statusFilter?.emptySystemImage ?? "tray",
+                        description: Text(searchText.isEmpty
+                            ? statusFilter?.emptyDescription ?? AppLocalization.string("Sessions will appear here once created.")
+                            : AppLocalization.string("Try a different search."))
                     )
                 }
 
@@ -393,6 +394,14 @@ struct SessionList: View {
         }
         .task(id: appState.activeProfile) {
             await appState.refreshProjects()
+        }
+        // Working / Needs input (#454) follow the gateway's live registry
+        // while the list is on screen.
+        .task(id: appState.activeProfile) {
+            while !Task.isCancelled {
+                await appState.refreshLiveSessionStatuses()
+                try? await Task.sleep(for: .seconds(4))
+            }
         }
         .sheet(item: $projectPendingRename) { project in
             RenameSheet(
@@ -443,21 +452,26 @@ struct SessionList: View {
         if let selectedSource {
             listed = listed.filter { appState.sessionCategory(for: $0) == selectedSource }
         }
-        switch statusFilter {
-        case .some(.unread):
-            listed = listed.filter { appState.isSessionUnread($0) }
-        case .none:
-            break
+        if let statusFilter {
+            listed = listed.filter { matches($0, statusFilter) }
         }
         return listed
     }
 
+    private func matches(_ session: SessionSummary, _ filter: SessionStatusFilter) -> Bool {
+        switch filter {
+        case .needsInput: return appState.sessionLiveStatus(session) == .needsInput
+        case .working: return appState.sessionLiveStatus(session) == .working
+        case .unread: return appState.isSessionUnread(session)
+        }
+    }
+
     /// Counted within the selected source, matching what the chip shows.
-    private var unreadCount: Int {
+    private func statusCount(_ filter: SessionStatusFilter) -> Int {
         appState.activeProfileSessions.filter {
             !$0.isArchived
                 && (selectedSource == nil || appState.sessionCategory(for: $0) == selectedSource)
-                && appState.isSessionUnread($0)
+                && matches($0, filter)
         }.count
     }
 
@@ -589,7 +603,9 @@ struct SessionList: View {
     private var sourceFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                statusFilterChip(.unread, count: unreadCount)
+                ForEach(SessionStatusFilter.allCases) { filter in
+                    statusFilterChip(filter, count: statusCount(filter))
+                }
                 Capsule()
                     .fill(Color.primary.opacity(0.12))
                     .frame(width: 1, height: 18)
@@ -680,6 +696,7 @@ struct SessionList: View {
                 isSelected: session.id == appState.activeSessionId,
                 isPinned: appState.isSessionPinned(session),
                 isUnread: appState.isSessionUnread(session),
+                liveStatus: appState.sessionLiveStatus(session),
                 isVoiceJob: appState.isVoiceJobSession(session),
                 category: appState.sessionCategory(for: session),
                 detail: appState.voiceSessionDetail(for: session)
@@ -883,6 +900,8 @@ struct SessionRow: View {
     var isPinned = false
     /// Has activity the user hasn't seen (#454).
     var isUnread = false
+    /// A turn is running, or it waits on the user (#454).
+    var liveStatus: SessionLiveStatus? = nil
     /// Started as a Voice background job (issue #163).
     var isVoiceJob = false
     /// The filter the row is filed under (a voice tag's, else its source).
@@ -916,11 +935,24 @@ struct SessionRow: View {
             }
 
             Spacer(minLength: 0)
+            switch liveStatus {
+            case .needsInput?:
+                Image(systemName: "exclamationmark.bubble.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(SessionStatusFilter.needsInput.color)
+                    .accessibilityLabel(SessionStatusFilter.needsInput.title)
+            case .working?:
+                ProgressView()
+                    .controlSize(.mini)
+                    .accessibilityLabel(SessionStatusFilter.working.title)
+            case nil:
+                EmptyView()
+            }
             if isUnread {
                 Circle()
                     .fill(SessionStatusFilter.unread.color)
                     .frame(width: 8, height: 8)
-                    .accessibilityLabel("Unread")
+                    .accessibilityLabel(SessionStatusFilter.unread.title)
             }
             if isVoiceJob, icon != .voiceJob {
                 Image(systemName: "waveform")
@@ -1052,25 +1084,57 @@ struct ReadStateToggleButton: View {
 
 /// Quick status filters in the session list (#454).
 enum SessionStatusFilter: String, CaseIterable, Identifiable {
+    case needsInput
+    case working
     case unread
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .needsInput: return AppLocalization.string("Needs input")
+        case .working: return AppLocalization.string("Working")
         case .unread: return AppLocalization.string("Unread")
         }
     }
 
     var color: Color {
         switch self {
+        case .needsInput: return .orange
+        case .working: return .green
         case .unread: return .blue
         }
     }
 
     var accessibilityHint: String {
         switch self {
+        case .needsInput: return AppLocalization.string("Shows only chats waiting on your answer or approval")
+        case .working: return AppLocalization.string("Shows only chats where Hermes is working")
         case .unread: return AppLocalization.string("Shows only chats with replies you haven't seen")
+        }
+    }
+
+    var emptyTitle: String {
+        switch self {
+        case .needsInput: return AppLocalization.string("Nothing Needs You")
+        case .working: return AppLocalization.string("Nothing Running")
+        case .unread: return AppLocalization.string("No Unread Chats")
+        }
+    }
+
+    var emptyDescription: String {
+        switch self {
+        case .needsInput: return AppLocalization.string("No chat is waiting on your answer.")
+        case .working: return AppLocalization.string("No chat has a reply in progress.")
+        case .unread: return AppLocalization.string("You're all caught up.")
+        }
+    }
+
+    var emptySystemImage: String {
+        switch self {
+        case .needsInput: return "checkmark.bubble"
+        case .working: return "moon.zzz"
+        case .unread: return "envelope.open"
         }
     }
 }
@@ -1188,6 +1252,7 @@ private struct ProjectSessionsSheet: View {
                                             isSelected: session.id == appState.activeSessionId,
                                             isPinned: appState.isSessionPinned(session),
                                             isUnread: appState.isSessionUnread(session),
+                                            liveStatus: appState.sessionLiveStatus(session),
                                             isVoiceJob: appState.isVoiceJobSession(session),
                                             category: appState.sessionCategory(for: session),
                                             detail: appState.voiceSessionDetail(for: session)

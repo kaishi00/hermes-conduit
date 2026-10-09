@@ -600,6 +600,13 @@ final class AppState: ObservableObject {
     @Published private(set) var pinnedSessionIDs: [String] = []
     /// What the user has and hasn't seen, per conversation (#454).
     @Published private(set) var chatReadState = ChatReadState()
+    /// The latest `session.active_list` snapshot and the profile it belongs
+    /// to (#454).
+    @Published private(set) var liveSessionStatusIndex = SessionLiveStatusIndex()
+    private var liveSessionStatusProfile: String?
+    /// The client whose gateway rejected `session.active_list`, so the chat
+    /// list's poll stops asking it.
+    private weak var activeListUnsupportedClient: HermesClient?
     @Published private(set) var sessionMutationID: String?
     @Published private(set) var isRefreshingSessionCatalog = false
     @Published var activeSessionId: String? {
@@ -714,7 +721,10 @@ final class AppState: ObservableObject {
     /// state. A stale idle state must not route the next input as a new-turn
     /// `prompt.submit` — Hermes would apply its busy policy to it and the
     /// message would silently join a turn the user never saw start.
-    private(set) var turnStateIsStale = false
+    /// Publishes its flips: the chat list's Working marker reads it.
+    private(set) var turnStateIsStale = false {
+        willSet { if newValue != turnStateIsStale { objectWillChange.send() } }
+    }
     /// Newest AUTHORITATIVE live turn-lifecycle evidence. Every `setRunning`
     /// edge (sessionBusy, message start/delta, completion, interruption,
     /// error, registry-probe corrections, buffered-event replay), the
@@ -5118,6 +5128,47 @@ final class AppState: ObservableObject {
         chatReadState.isUnread(session, profile: activeProfile)
     }
 
+    /// Whether a turn is running in the conversation or it waits on the user.
+    /// The open chat's own turn state is authoritative for "working"; the
+    /// registry snapshot can lag it by a poll.
+    func sessionLiveStatus(_ session: SessionSummary) -> SessionLiveStatus? {
+        // A snapshot from before a disconnect may be long stale.
+        let registry = isConnected && liveSessionStatusProfile == activeProfile
+            ? liveSessionStatusIndex.status(for: session)
+            : nil
+        if sessionMatchesActiveSession(session) {
+            if registry == .needsInput { return .needsInput }
+            // Once the open chat's own turn state is known it is fresher
+            // than a poll; while it is still syncing or stale, the registry
+            // decides.
+            let localStateKnown = !turnStateIsStale && (turnState == .idle || turnState == .running)
+            guard localStateKnown else { return registry }
+            return isBusy ? .working : nil
+        }
+        return registry
+    }
+
+    /// Re-reads the live registry while the chat list is on screen. Cheap: an
+    /// in-memory snapshot that resumes and changes nothing. Gateways without
+    /// `session.active_list` just leave the filters empty. The rows also go
+    /// through the identity index on purpose: each snapshot is the same
+    /// authoritative evidence the foreground probe records, and re-recording
+    /// an unchanged binding is a no-op.
+    func refreshLiveSessionStatuses() async {
+        guard isSceneActive, let client, isConnected,
+              client !== activeListUnsupportedClient else { return }
+        let profile = activeProfile
+        do {
+            let rows = try await client.activeSessions()
+            guard profile == activeProfile, self.client === client else { return }
+            recordActiveListEvidence(rows, profile: profile)
+        } catch {
+            // Stop asking a gateway that doesn't have the method; a new
+            // connection probes again.
+            if isMethodUnavailable(error) { activeListUnsupportedClient = client }
+        }
+    }
+
     func markSessionRead(_ session: SessionSummary) {
         let profile = activeProfile
         let flagged = chatReadState.serverUnread(session, profile: profile)
@@ -5165,7 +5216,8 @@ final class AppState: ObservableObject {
 
     private func observeChatReadState() {
         let profile = activeProfile
-        let listed = sessions.filter { sessionBelongsToProfile($0, profile: profile) && $0.source != .cron }
+        // The same rows every read-state query sees.
+        let listed = activeProfileSessions.filter { $0.source != .cron }
         updateChatReadState { $0.observe(listed, profile: profile) }
         noteActiveChatSeen(respectingMarks: true)
     }
@@ -6221,6 +6273,8 @@ final class AppState: ObservableObject {
         // Hermes servers whose strings collide. Same boundary that clears
         // the resume store, titles, pins, and review cache.
         conversationIdentityIndex.removeAll()
+        liveSessionStatusIndex = SessionLiveStatusIndex()
+        liveSessionStatusProfile = nil
         sessionYoloStore.clearAllOverrides()
         // Bot Mode state is per-server: the roster, the capability phase, and
         // the in-memory bot-chat profile registry all describe the outgoing
@@ -12589,6 +12643,16 @@ final class AppState: ObservableObject {
     /// conversation, and the healthy-foreground rule (observe the registry,
     /// never resume without cause) is untouched.
     func recordActiveListEvidence(_ rows: [LiveSessionStatus], profile: String) {
+        // Every active_list read is a full snapshot of the profile's live
+        // registry, so it also drives the chat list's Working / Needs input
+        // state (#454).
+        if profile == activeProfile {
+            let index = SessionLiveStatusIndex(rows: rows)
+            if index != liveSessionStatusIndex || liveSessionStatusProfile != profile {
+                liveSessionStatusIndex = index
+                liveSessionStatusProfile = profile
+            }
+        }
         for row in rows {
             conversationIdentityIndex.recordAuthoritative(
                 runtimeID: row.runtimeSessionId,

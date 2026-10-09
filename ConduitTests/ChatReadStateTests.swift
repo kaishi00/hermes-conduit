@@ -226,6 +226,7 @@ final class ChatReadStateTests: XCTestCase {
         XCTAssertNil(state.ledger.seenCounts[profile]?["a"])
         XCTAssertFalse(state.isMarkedUnread(session, profile: profile))
         XCTAssertTrue(state.pendingServerValues.isEmpty)
+        XCTAssertTrue(state.lastWriteAttempts.isEmpty)
     }
 
     func testLedgerRoundTripsThroughJSON() throws {
