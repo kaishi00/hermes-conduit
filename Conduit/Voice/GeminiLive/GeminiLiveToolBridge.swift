@@ -85,6 +85,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
     /// The request a call was asked for was dropped before it went.
     func withdrawNextCallback()
     /// Answers the approval or question a call from Hermes is about (#449).
+    var callWaitsOn: HermesCallRequest.Kind? { get }
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome
     func answerQuestion(_ answer: String) async -> VoiceCallDecisionOutcome
 }
@@ -100,6 +101,7 @@ extension GeminiLiveJobSupervising {
     func readBackText() async -> String? { await lastThreadReply() }
     func requestCallback(_ scope: VoiceCallbackScope) -> VoiceCallbackRequestOutcome { .unavailable(.unsupported) }
     func withdrawNextCallback() {}
+    var callWaitsOn: HermesCallRequest.Kind? { nil }
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome { .nothingPending }
     func answerQuestion(_ answer: String) async -> VoiceCallDecisionOutcome { .nothingPending }
 }

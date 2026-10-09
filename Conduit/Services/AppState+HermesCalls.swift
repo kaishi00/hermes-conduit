@@ -197,7 +197,11 @@ extension AppState {
         endHermesCallPresence()
         hermesCallPresenceProfile = profile
         let client = hermesCallsClient
+        // A call started right after the last one hung up: its "away" lands
+        // first, never over this call's presence.
+        let release = hermesCallPresenceRelease
         hermesCallPresenceTask = Task { [weak self] in
+            await release?.value
             while !Task.isCancelled {
                 do {
                     try await client.setPresence(profile: profile, seconds: Self.hermesCallPresenceSeconds)
@@ -206,13 +210,12 @@ extension AppState {
                 }
                 do { try await Task.sleep(for: Self.hermesCallPresenceRenewal) } catch { return }
                 // A call that ended some other way lets go too.
-                guard let self, self.isVoiceInUse else { break }
+                guard let self else { return }
+                if !self.isVoiceInUse {
+                    self.endHermesCallPresence()
+                    return
+                }
             }
-            guard !Task.isCancelled else { return }
-            try? await client.setPresence(profile: profile, seconds: 0)
-            guard let self, self.hermesCallPresenceProfile == profile else { return }
-            self.hermesCallPresenceTask = nil
-            self.hermesCallPresenceProfile = nil
         }
     }
 
@@ -225,7 +228,9 @@ extension AppState {
         hermesCallPresenceProfile = nil
         let client = hermesCallsClient
         let end = beginVoiceTranscriptBackgroundTask(named: "conduit.hermesCalls.presence")
-        Task {
+        let previous = hermesCallPresenceRelease
+        hermesCallPresenceRelease = Task {
+            await previous?.value
             await task.value
             try? await client.setPresence(profile: profile, seconds: 0)
             end()

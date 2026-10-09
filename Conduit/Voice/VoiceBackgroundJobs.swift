@@ -511,6 +511,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// AppState sets it.
     var callDecisions: VoiceCallDecisions?
 
+    /// What the live call from Hermes waits on: an approval or a question.
+    var callWaitsOn: HermesCallRequest.Kind? {
+        callDecisions?.waitsOn()
+    }
+
     /// The live model answered the approval the call is about with the
     /// user's words.
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome {

@@ -245,7 +245,11 @@ final class HermesNativeCalls: NSObject {
     /// Brings Hermes up, opens the call's chat and its voice, then keeps
     /// the CallKit call for as long as that voice conversation runs.
     private func connect(_ id: UUID) async {
-        guard let target = calls[id]?.target, let request = target.call else { return }
+        guard let target = calls[id]?.target else { return }
+        guard let request = target.call else {
+            finish(id, reason: .failed, notice: .missed)
+            return
+        }
         let appState = AppStateRuntimeRegistry.shared.appState
         appState.setNativeHermesCallActive(true)
         await waitForAudio()

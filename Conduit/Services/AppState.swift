@@ -2409,6 +2409,7 @@ final class AppState: ObservableObject {
         ))
         supervisor.callbacks = self.makeHermesCallbackBackend()
         supervisor.callDecisions = VoiceCallDecisions(
+            waitsOn: { [weak self] in self?.liveHermesCall?.kind },
             approve: { [weak self] choice in await self?.answerHermesCallApproval(choice: choice) ?? .failed },
             answer: { [weak self] answer in await self?.answerHermesCallQuestion(answer) ?? .failed }
         )
@@ -3849,6 +3850,8 @@ final class AppState: ObservableObject {
     /// the profile it was set for.
     var hermesCallPresenceTask: Task<Void, Never>?
     var hermesCallPresenceProfile: String?
+    /// The last call's "away", which a new call's presence goes after.
+    var hermesCallPresenceRelease: Task<Void, Never>?
     /// A call from Hermes rings or runs in CallKit (HermesNativeCalls): like
     /// a CarPlay or Watch call, it keeps transport recovery going with the
     /// phone locked.

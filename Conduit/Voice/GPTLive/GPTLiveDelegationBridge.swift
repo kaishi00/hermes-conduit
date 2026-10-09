@@ -148,7 +148,8 @@ final class GPTLiveDelegationBridge {
     func handleDelegation(id: String, request: String, userWords: String = "") async -> [Outgoing] {
         // "Approve:", "Deny:" or "Answer: …" (#449 step 4): the user's answer
         // to what a call from Hermes waits on. Never reaches Hermes as work.
-        if let decision = Self.decisionMarker(in: request) {
+        // Only in such a call: anywhere else the words are a request.
+        if let decision = Self.decisionMarker(in: request), decision.answers(supervisor.callWaitsOn) {
             guard seenDelegations.insert(id).inserted, !isEnding else { return [] }
             let outcome: VoiceCallDecisionOutcome
             if (spokenWords?.wordsMark() ?? 1) == 0 {
@@ -1164,6 +1165,14 @@ final class GPTLiveDelegationBridge {
         /// The user's answer, without the delegation's added context; ""
         /// when the model gave none.
         case answer(String)
+
+        /// Whether it answers what the call waits on.
+        func answers(_ waitsOn: HermesCallRequest.Kind?) -> Bool {
+            switch self {
+            case .approve, .deny: return waitsOn == .approval
+            case .answer: return waitsOn == .question
+            }
+        }
     }
 
     /// "Approve:", "Deny:" or "Answer: the blue one".

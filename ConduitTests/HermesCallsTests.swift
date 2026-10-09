@@ -55,11 +55,13 @@ final class FakeHermesCallbackBackend {
 /// Records the answers a call from Hermes gives (#449 step 4).
 @MainActor
 final class FakeCallDecisions {
+    var waitsOn: HermesCallRequest.Kind? = .approval
     private(set) var choices: [String] = []
     private(set) var answers: [String] = []
 
     var decisions: VoiceCallDecisions {
         VoiceCallDecisions(
+            waitsOn: { [self] in self.waitsOn },
             approve: { [self] choice in
                 self.choices.append(choice)
                 return choice == "deny" ? .denied : .approved
@@ -710,10 +712,14 @@ extension VoiceConversationControllerTests {
         let gpt = GPTLiveDelegationBridge(supervisor: supervisor)
         let denied = await gpt.handleDelegation(id: "d1", request: "Deny:", userWords: "no, don't")
         XCTAssertEqual(denied, [.delegationReply(delegationID: "d1", text: VoiceCallDecisionOutcome.denied.modelMessage, channel: .commentary)])
+        decisions.waitsOn = .question
         _ = await gpt.handleDelegation(id: "d2", request: "Answer:" + GPTLiveConversationController.delegationContextMarker + "earlier words", userWords: "the release branch")
         XCTAssertEqual(decisions.answers, ["main", "the release branch"], "With no answer in it, the user's own words go")
         XCTAssertEqual(decisions.choices, ["once", "deny"])
         XCTAssertTrue(supervisor.jobs.isEmpty, "None of it reached Hermes as work")
+        decisions.waitsOn = nil
+        _ = await gpt.handleDelegation(id: "d3", request: "Approve: the plan", userWords: "approve the plan")
+        XCTAssertEqual(decisions.choices, ["once", "deny"], "Outside a call waiting on it, the words are a request")
         XCTAssertEqual(GPTLiveDelegationBridge.decisionMarker(in: " approve: "), .approve)
         XCTAssertEqual(GPTLiveDelegationBridge.decisionMarker(in: "Answer: the blue one"), .answer("the blue one"))
         XCTAssertNil(GPTLiveDelegationBridge.decisionMarker(in: "Please approve: it"))

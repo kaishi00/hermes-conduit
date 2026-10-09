@@ -321,6 +321,8 @@ enum VoiceCallDecisionOutcome: Equatable {
 /// AppState's way to answer what a call from Hermes waits on: the pending
 /// approval (`once` or `deny`) or question in the call's chat.
 struct VoiceCallDecisions {
+    /// What the live call from Hermes waits on, if anything.
+    var waitsOn: @MainActor () -> HermesCallRequest.Kind?
     var approve: @MainActor (_ choice: String) async -> VoiceCallDecisionOutcome
     var answer: @MainActor (_ answer: String) async -> VoiceCallDecisionOutcome
 }
