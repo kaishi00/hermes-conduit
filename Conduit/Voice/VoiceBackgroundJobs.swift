@@ -2060,7 +2060,7 @@ enum VoiceThreadRouting {
         "no problem", "no worries", "no rush", "yes", "yeah", "yep", "yup", "yea", "ya", "sure", "ok", "okay", "alright", "all right",
         "go ahead", "go for it", "do it", "send it", "send that", "send this", "please", "correct", "right",
         "exactly", "absolutely", "definitely", "of course", "sounds good", "perfect", "great", "fine",
-        "good", "that's right", "that's it", "that works", "works for me", "that'll do", "sounds great",
+        "good", "that's right", "that's it", "that works", "works for me", "that'll do", "sounds great", "that's great",
         "go", "uh huh", "mhm", "why not",
         "ja", "jawohl", "genau", "na klar", "alles klar", "klar", "sicher", "gerne", "gern",
         "einverstanden", "in ordnung", "kein problem", "sehr gerne", "bitte", "selbstverständlich", "natürlich", "auf jeden fall",

@@ -2206,6 +2206,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yeah, no worries"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("That works"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sounds great"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("That's great"), .yes(addition: nil))
         // A no after a "wait" is the answer.
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Wait, never mind"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Hold on, no"), .no(change: nil))
