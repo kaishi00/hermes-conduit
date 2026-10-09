@@ -2181,6 +2181,15 @@ final class HermesClient: ObservableObject {
         }
     }
 
+    /// The `subagent_id`s Hermes still has running for one live session.
+    func liveSubagentIDs(sessionId: String) async throws -> Set<String> {
+        let result = try await rpc("subagent.list", params: ["session_id": sessionId])
+        guard let rows = result.objectValue?["subagents"]?.arrayValue else {
+            throw HermesError.invalidResponse
+        }
+        return Set(rows.compactMap { $0.objectValue?["subagent_id"]?.stringValue })
+    }
+
     func modelOptions(sessionId: String? = nil) async throws -> (model: String?, provider: String?, providers: [ProviderInfo]?) {
         var params: [String: Any] = ["explicit_only": true]
         if let sessionId { params["session_id"] = sessionId }

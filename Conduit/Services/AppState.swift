@@ -1230,6 +1230,9 @@ final class AppState: ObservableObject {
     @Published var runtime = RuntimeState()
     @Published var activeAgents = 0
     @Published private(set) var delegateAgents: [DelegateAgentActivity] = []
+    /// A card this fresh may belong to an agent the gateway roster hasn't
+    /// registered yet, so the roster check leaves it alone.
+    static let delegateAgentRosterGrace: TimeInterval = 30
     @Published private(set) var workspaceRoot = ""
     @Published private(set) var workspaceEntries: [String: [WorkspaceEntry]] = [:]
     @Published private(set) var expandedWorkspacePaths: Set<String> = []
@@ -22534,13 +22537,10 @@ final class AppState: ObservableObject {
         case .agentCount(_, let count):
             activeAgents = count
 
-        case .delegateAgent(_, let activity):
+        case .delegateAgent(let sessionId, var activity):
+            activity.sessionId = sessionId
             if let index = delegateAgents.firstIndex(where: { $0.id == activity.id }) {
-                var updated = activity
-                let existing = delegateAgents[index]
-                updated.goal = activity.goal.isEmpty ? existing.goal : activity.goal
-                updated.stream = (existing.stream + activity.stream).suffix(20).map { $0 }
-                delegateAgents[index] = updated
+                delegateAgents[index] = delegateAgents[index].merged(with: activity)
             } else {
                 delegateAgents.append(activity)
             }
@@ -22553,6 +22553,28 @@ final class AppState: ObservableObject {
 
         case .unparsed:
             break
+        }
+    }
+
+    /// Asks Hermes which delegate agents are still running and finishes
+    /// the cards it no longer lists, so a missed `subagent.complete` can't
+    /// leave an agent "Running" for good (#492). Gateways without
+    /// `subagent.list` leave the cards as they are.
+    func refreshDelegateAgents() async {
+        guard let client else { return }
+        let cutoff = Date().addingTimeInterval(-Self.delegateAgentRosterGrace)
+        let sessionIDs = Set(delegateAgents.lazy
+            .filter { $0.status.isActive && $0.hasGatewayID && !$0.sessionId.isEmpty }
+            .map(\.sessionId))
+        for sessionID in sessionIDs {
+            guard let liveIDs = try? await client.liveSubagentIDs(sessionId: sessionID) else { continue }
+            delegateAgents = DelegateAgentActivity.reconciled(
+                delegateAgents,
+                sessionId: sessionID,
+                liveIDs: liveIDs,
+                changedBefore: cutoff
+            )
+            activeAgents = delegateAgents.filter { $0.status.isActive }.count
         }
     }
 

@@ -340,6 +340,7 @@ struct DelegateAgentsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
         }
+        .task { await appState.refreshDelegateAgents() }
     }
 
     private var activeSummary: String {

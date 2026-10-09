@@ -716,6 +716,53 @@ struct DelegateAgentActivity: Identifiable, Equatable {
     var currentTool: String?
     var summary: String?
     var stream: [StreamLine]
+    /// True when `id` is Hermes' own `subagent_id`, so `subagent.list` can
+    /// confirm whether the agent is still running (#492).
+    var hasGatewayID = false
+    /// The live session whose events reported this agent.
+    var sessionId = ""
+    var updatedAt = Date()
+
+    /// Folds a later event for the same agent into the card: blank fields
+    /// keep what earlier events said, and a finished agent stays finished
+    /// when a late progress event (which carries no status) arrives.
+    func merged(with update: DelegateAgentActivity) -> DelegateAgentActivity {
+        var merged = update
+        if merged.goal.isEmpty { merged.goal = goal }
+        merged.model = update.model ?? model
+        if !status.isActive && update.status.isActive { merged.status = status }
+        // A finished agent is no longer in any tool.
+        merged.currentTool = merged.status.isActive ? update.currentTool ?? currentTool : nil
+        merged.summary = update.summary ?? summary
+        merged.hasGatewayID = hasGatewayID || update.hasGatewayID
+        if merged.sessionId.isEmpty { merged.sessionId = sessionId }
+        merged.stream = Array((stream + update.stream).suffix(20))
+        return merged
+    }
+
+    /// Agents a gateway roster no longer lists have ended; their
+    /// `subagent.complete` was missed (app suspended, socket reconnect).
+    /// Only cards from `sessionId` with a gateway id that last changed
+    /// before `cutoff` are touched, so a just-spawned agent the roster
+    /// hasn't registered yet keeps its status.
+    static func reconciled(
+        _ agents: [DelegateAgentActivity],
+        sessionId: String,
+        liveIDs: Set<String>,
+        changedBefore cutoff: Date
+    ) -> [DelegateAgentActivity] {
+        agents.map { agent in
+            guard agent.status.isActive,
+                  agent.hasGatewayID,
+                  agent.sessionId == sessionId,
+                  agent.updatedAt < cutoff,
+                  !liveIDs.contains(agent.id) else { return agent }
+            var ended = agent
+            ended.status = .completed
+            ended.currentTool = nil
+            return ended
+        }
+    }
 }
 
 // MARK: - Session
