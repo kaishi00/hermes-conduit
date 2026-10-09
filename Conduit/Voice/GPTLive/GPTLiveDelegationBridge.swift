@@ -496,12 +496,12 @@ final class GPTLiveDelegationBridge {
     /// The read-back is still queued for a quiet moment. Not UI copy.
     static let readBackOnItsWay = "Conduit is sending you the reply for this request as soon as the conversation is quiet. Wait for it, then read it word for word; don't answer from memory."
     /// Starts the reading once the whole reply is in. Not UI copy.
-    static let readBackCue = "[" + readBackCueText + "]"
-    private static let readBackCueText = "Read the reply Conduit just gave you, between <read_back> tags, to the user now: word for word from start to end, all of it, once, whatever your answer length. Don't summarize, shorten or add to it."
+    static let readBackCue = "[" + readBackCueBody + "]"
+    private static let readBackCueBody = "Read the reply Conduit just gave you, between <read_back> tags, to the user now: word for word from start to end, all of it, once, whatever your answer length. Don't summarize, shorten or add to it."
     /// Not UI copy.
-    static let readBackCueThenAskAgain = "[" + readBackCueText + " Then ask the user again whether to send the request that's still waiting for their OK.]"
+    static let readBackCueThenAskAgain = "[" + readBackCueBody + " Then ask the user again whether to send the request that's still waiting for their OK.]"
     /// Not UI copy.
-    static let readBackCueAfterDrop = "[" + readBackCueText + " " + droppedBesideReadBack + "]"
+    static let readBackCueAfterDrop = "[" + readBackCueBody + " " + droppedBesideReadBack + "]"
     /// Not UI copy.
     static let droppedBesideReadBack = "The request that was waiting for the user's OK wasn't sent: they said no, so Conduit dropped it and nothing is waiting now."
     /// A read-back in a call without a chat, before any job result came

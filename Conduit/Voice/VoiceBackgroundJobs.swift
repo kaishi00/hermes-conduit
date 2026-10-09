@@ -2019,19 +2019,22 @@ enum VoiceThreadRouting {
         "nop", "mejor no", "cancela", "cancélalo", "cancelalo", "cancelar", "olvídalo", "olvidalo", "olvida",
         "déjalo", "dejalo", "ni hablar",
         "non", "pas besoin", "pas la peine", "surtout pas", "laisse tomber", "laissez tomber", "oublie",
-        "oubliez", "annule", "annulez", "annuler", "arrête", "arrete",
+        "oubliez", "annule", "annulez", "annuler", "arrête", "arrete", "ne l'envoie pas", "ne l'envoyez pas",
+        "ne pas l'envoyer", "ne pas envoyer", "n'envoie pas", "n'envoyez pas", "ne le fais pas", "ne fais pas",
         "não", "nao", "negativo", "melhor não", "melhor nao", "esquece", "esqueça", "esqueca",
         "deixa pra lá", "deixa pra la", "cancele",
         "нет", "неа", "не надо", "не нужно", "не стоит", "не отправляй", "не отправляйте", "отмена",
         "отмени", "отмените", "забудь", "забудьте", "забей", "стоп",
         "annulla", "lascia perdere", "lascia stare", "dimenticalo", "dimentica", "meglio di no",
         "nie wysyłaj", "nie", "lepiej nie", "w żadnym wypadku", "anuluj", "zapomnij", "daj spokój", "nieważne",
-        "hayır", "yok", "iptal et", "iptal", "boş ver", "vazgeç", "gerek yok", "gönderme", "unut gitsin", "unut",
-        "tidak usah", "tidak perlu", "tidak jadi", "tidak", "tak usah", "tak perlu", "tak jadi", "nggak usah", "nggak perlu", "nggak jadi", "nggak",
+        "hayır", "yok", "iptal et", "iptal", "boş ver", "vazgeç", "gerek yok", "gönderme", "göndermeyin", "istemiyorum", "istemem", "unut gitsin", "unut",
+        "tidak usah", "tidak perlu", "tidak jadi", "tidak", "tak usah", "tak perlu", "tak jadi", "tak bisa", "tak mau", "tak akan", "tak ada", "tak boleh",
+        "tak payah", "nggak usah", "nggak perlu", "nggak jadi", "nggak",
         "enggak", "gak usah", "gak perlu", "gak jadi", "gak", "ga usah", "ga jadi", "ga", "jangan dikirim",
         "jangan", "batalkan", "batal", "lupakan",
         "아니요", "아니오", "아뇨", "아니", "됐어요", "됐어", "취소해 주세요", "취소해", "취소", "보내지 마세요",
-        "보내지 마", "하지 마세요", "하지 마", "필요 없어요", "필요없어요", "그만",
+        "보내지 마", "하지 마세요", "하지 마", "필요 없어요", "필요없어요", "안 돼요", "안 돼", "안돼요", "안돼",
+        "싫어요", "싫어", "그만해요", "그만해", "못 해요", "못 해", "못해요", "못해", "그만",
     ]
     static let answerNotYetLeads = [
         "wait", "hold on", "hang on", "not yet", "not now", "one sec", "one second", "one moment",
@@ -2052,7 +2055,7 @@ enum VoiceThreadRouting {
         "czekaj", "poczekaj", "zaczekaj", "chwileczkę", "chwilkę", "chwilę", "chwila", "sekundę", "minutę", "momencik", "jeszcze nie", "nie teraz",
         "bir dakika", "bir saniye", "biraz bekle", "bekle", "bekleyin", "dur", "henüz değil", "şimdi değil", "daha değil",
         "tunggu sebentar", "tunggu dulu", "tunggu", "sebentar", "semenit", "sedetik", "belum", "jangan sekarang", "nanti dulu", "nanti saja",
-        "nanti aja", "tidak sekarang", "nggak sekarang", "gak sekarang",
+        "nanti aja", "tidak sekarang", "nggak sekarang", "gak sekarang", "tak sekarang",
         "잠깐만요", "잠깐만", "잠깐", "잠시만요", "잠시만", "아직 아니요", "아직이요", "아직", "지금은 아니요",
         "지금 말고", "기다려 주세요", "기다려요", "기다려",
     ]
@@ -2172,14 +2175,18 @@ enum VoiceThreadRouting {
         "ja", "danke", "bitte", "schön", "sehr", "es", "das", "an", "jetzt", "noch", "mal", "eine", "einen",
         "sekunde", "augenblick", "kurz",
         "sí", "que", "gracias", "por", "favor", "lo", "eso", "ahora", "todavía", "todavia", "un", "momento", "segundo", "poco", "poquito",
+        "enviar", "mandar", "envíes", "envies", "mandes",
         "oui", "merci", "beaucoup", "s'il", "te", "vous", "plaît", "plait", "le", "la", "ça", "ca", "à",
-        "maintenant", "encore", "une", "seconde", "instant", "peu",
+        "maintenant", "encore", "une", "seconde", "instant", "peu", "envoie", "envoyer", "envoyez", "tout",
         "sim", "obrigado", "obrigada", "valeu", "isso", "agora", "ainda", "para", "pro", "ao", "o", "um", "pouco", "pouquinho", "aí",
-        "да", "спасибо", "пожалуйста", "это", "его", "сейчас", "ещё", "еще", "гермес", "гермесу", "немного",
-        "grazie", "mille", "per", "pure", "adesso", "ora", "ancora", "attimo", "sì",
-        "tak", "dzięki", "dziękuję", "proszę", "teraz", "jeszcze",
+        "mande", "envie", "manda", "envia",
+        "да", "спасибо", "пожалуйста", "это", "его", "сейчас", "ещё", "еще", "гермес", "гермесу", "немного", "отправлять", "отправляй",
+        "отправь", "отправить",
+        "grazie", "mille", "per", "pure", "adesso", "ora", "ancora", "attimo", "sì", "inviare", "inviarlo",
+        "inviarla", "mandare", "mandarlo", "mandarla",
+        "tak", "dzięki", "dziękuję", "proszę", "teraz", "jeszcze", "wysyłaj", "wysyłać", "wysłać", "tego",
         "evet", "teşekkürler", "teşekkür", "ederim", "sağ", "ol", "lütfen", "şimdi", "bunu", "onu",
-        "ya", "terima", "kasih", "makasih", "saja", "aja", "dong", "deh", "sekarang", "itu", "ini", "ke", "dulu",
+        "ya", "terima", "kasih", "makasih", "saja", "aja", "dong", "deh", "sekarang", "itu", "ini", "ke", "dulu", "kirim", "dikirim", "mau", "bisa",
         "네", "감사합니다", "고마워요", "고마워", "주세요", "부탁해요", "지금", "그거", "이거",
     ]
     /// Words that negate ("not", "nicht", "pas", "não", "не", "non",
@@ -2203,6 +2210,11 @@ enum VoiceThreadRouting {
         return startsWithNo ? leadWords : nil
     }
 
+    /// The Polish yes that is also the Indonesian "not". Run into the next
+    /// word ("Tak tahu", "Ya, tak tahu"), it's the "not": no yes, and
+    /// after one, asked again. Set off ("Tak, proszę"), it's the yes.
+    static let answerYesAlsoNot = "tak"
+
     /// Whether these words negate ("don't", "not", "never", "can't").
     private static func negates(_ words: [String]) -> Bool {
         words.contains { answerNegations.contains($0) || $0.hasSuffix("n't") }
@@ -2215,6 +2227,9 @@ enum VoiceThreadRouting {
             .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
             .map(String.init)
             .filter { !fillers.contains($0) }
+        let saysNot = fold(spoken).range(
+            of: "(^|[^\\p{L}\\p{N}'])\(answerYesAlsoNot)\\s+[\\p{L}\\p{N}]", options: .regularExpression) != nil
+        let yesLeads = saysNot ? answerYesLeads.filter { $0 != answerYesAlsoNot } : answerYesLeads
         // The answer when it says more than the lead and words like "thanks".
         func more(_ rest: [String]) -> String? {
             rest.contains { !answerFillerWords.contains($0) } ? spoken : nil
@@ -2264,7 +2279,7 @@ enum VoiceThreadRouting {
         while dropLead(answerJoiners) {}
         if dropNoLead() { return refusal() }
         if dropLead(answerNotYetLeads) { return notYet() }
-        guard dropLead(answerYesLeads) else {
+        guard dropLead(yesLeads) else {
             // "Send to Hermes", or just "Send": a yes with nothing more.
             if words == ["send"] || saysSendToHermes(spoken) { return .yes(addition: more(words)) }
             return .other(spoken)
@@ -2272,12 +2287,12 @@ enum VoiceThreadRouting {
         // "Okay, wait", "Yeah, but actually no", "Please don't": what
         // follows decides. A no that starts with a yes word ("Iya, tak
         // usah") is still the no.
-        while !startsWithNoLead() && (dropLead(answerYesLeads) || dropLead(answerJoiners)) {}
+        while !startsWithNoLead() && (dropLead(yesLeads) || dropLead(answerJoiners)) {}
         if dropNoLead() { return refusal() }
         if dropLead(answerNotYetLeads) { return notYet() }
         // A negation or a question anywhere after it: not a yes after all.
         let turned = words.contains { word in
-            answerTurnWords.contains(word) || word.hasSuffix("n't")
+            answerTurnWords.contains(word) || word.hasSuffix("n't") || (saysNot && word == answerYesAlsoNot)
                 || answerTurnWords.contains(String(word.prefix(while: { $0 != "'" })))
         }
         if !words.isEmpty, turned || spoken.contains("?") { return .other(spoken) }
