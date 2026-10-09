@@ -202,6 +202,10 @@ extension HermesClientTests {
         XCTAssertTrue(missingTakeover.needsUpdate)
         XCTAssertFalse(missingTakeover.mightSupport("session-takeover"))
         XCTAssertTrue(missingTakeover.mightSupport("voice-tags"))
+        var beforeDesktopViews = Set(NotifierPluginStatus.usedCapabilities)
+        beforeDesktopViews.remove("desktop-views")
+        XCTAssertTrue(NotifierPluginStatus(state: .reported(version: "0.11.0", capabilities: beforeDesktopViews)).needsUpdate,
+                      "Desktop read sync needs plugin 0.12")
         XCTAssertTrue(NotifierPluginStatus(state: .predatesCapabilities).mightSupport("session-takeover"),
                       "A plugin older than capability reporting may still serve the route")
     }

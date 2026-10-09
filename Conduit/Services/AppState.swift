@@ -5242,7 +5242,7 @@ final class AppState: ObservableObject {
             }
             return
         }
-        guard bridge === dashboardTicketBridge, profile == activeProfile,
+        guard isSceneActive, bridge === dashboardTicketBridge, profile == activeProfile,
               let update = Self.desktopViewsUpdate(from: response, cursor: desktopViewsCursor[profile])
         else { return }
         desktopViewsFailureLogged = false

@@ -313,5 +313,9 @@ struct ChatReadState: Equatable {
         pendingServerValues[key] = nil
         seenPendingRefresh[key] = nil
         lastWriteAttempts[key] = nil
+        let ids = [session.id, session.storedSessionId, session.lineageRootId].compactMap { $0 } + session.alternateIds
+        for id in ids where desktopSeenThrough[profile]?[id] != nil {
+            desktopSeenThrough[profile]?[id] = nil
+        }
     }
 }
