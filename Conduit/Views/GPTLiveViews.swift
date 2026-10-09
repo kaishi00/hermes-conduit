@@ -190,11 +190,13 @@ struct GPTLiveVoiceSheet: View {
             assistantLabel: { AppLocalization.string("GPT-Live: \($0)") },
             jobs: jobs,
             isMicrophoneMuted: controller.isMicrophoneMuted,
+            isSpeakerMuted: controller.isSpeakerMuted,
             canMute: controller.isActive && !controller.isEnding,
             // GPT-Live cuts in on its own when you speak over it: no
             // Interrupt button.
             canInterrupt: false,
             onToggleMute: { controller.setMicrophoneMuted(!controller.isMicrophoneMuted) },
+            onToggleSpeaker: { controller.setSpeakerMuted(!controller.isSpeakerMuted) },
             onEnd: onClose,
             onRetry: onRetry
         )
@@ -209,6 +211,12 @@ struct GPTLiveVoiceSheet: View {
             AccessibilityNotification.Announcement(muted
                 ? AppLocalization.string("Microphone muted")
                 : AppLocalization.string("Microphone unmuted")).post()
+        }
+        .onChange(of: controller.isSpeakerMuted) { _, muted in
+            guard controller.isActive, controller.phase != .connecting else { return }
+            AccessibilityNotification.Announcement(muted
+                ? AppLocalization.string("Assistant silenced")
+                : AppLocalization.string("Assistant's sound back on")).post()
         }
         .onChange(of: controller.voiceNote) { _, note in
             if let note { AccessibilityNotification.Announcement(note).post() }
@@ -239,7 +247,7 @@ struct GPTLiveVoiceSheet: View {
         case .idle: return AppLocalization.string("Not connected")
         case .connecting: return AppLocalization.string("Connecting to GPT-Live…")
         case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
-        case .speaking: return AppLocalization.string("Speaking")
+        case .speaking: return controller.isSpeakerMuted ? AppLocalization.string("Speaking, silenced") : AppLocalization.string("Speaking")
         case .paused: return AppLocalization.string("Paused while another sound plays")
         case .ending: return AppLocalization.string("Ending conversation…")
         case .failed(let message): return message

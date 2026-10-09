@@ -33,9 +33,12 @@ struct LiveVoiceCallSheet: View {
     /// progress doesn't redraw the whole call.
     let jobs: VoiceBackgroundJobSupervisor
     let isMicrophoneMuted: Bool
+    /// The assistant's voice is silenced (#487); the call carries on.
+    let isSpeakerMuted: Bool
     let canMute: Bool
     let canInterrupt: Bool
     let onToggleMute: () -> Void
+    let onToggleSpeaker: () -> Void
     /// Nil for an engine that is only interrupted by speaking over it: the
     /// sheet then has no Interrupt button.
     var onInterrupt: (() -> Void)?
@@ -326,6 +329,16 @@ struct LiveVoiceCallSheet: View {
                     action: onToggleMute
                 )
                 .disabled(!canMute)
+                LiveVoiceCallButton(
+                    symbol: isSpeakerMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                    title: isSpeakerMuted ? AppLocalization.string("Sound on") : AppLocalization.string("Silence"),
+                    style: isSpeakerMuted ? .selected : .normal,
+                    voiceOverLabel: isSpeakerMuted
+                        ? AppLocalization.string("Turn the assistant's sound back on")
+                        : AppLocalization.string("Silence the assistant"),
+                    action: onToggleSpeaker
+                )
+                .disabled(!canMute)
                 // On an open speaker the mic is closed while the assistant
                 // talks, so this is the way to cut in.
                 if let onInterrupt {
@@ -473,9 +486,9 @@ private struct LiveVoiceCallButton: View {
 
     @Environment(\.isEnabled) private var isEnabled
     @ScaledMetric(relativeTo: .title3) private var scaledDiameter: CGFloat = 62
-    /// Capped so four buttons still fit across a phone at the largest
+    /// Capped so five buttons still fit across a phone at the largest
     /// text sizes; the glyph inside keeps scaling.
-    private var diameter: CGFloat { min(scaledDiameter, 78) }
+    private var diameter: CGFloat { min(scaledDiameter, 66) }
 
     var body: some View {
         Button(action: action) {

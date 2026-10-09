@@ -149,6 +149,10 @@ final class GPTLiveSession {
         peer?.setMicrophoneEnabled(enabled)
     }
 
+    func setSpeakerEnabled(_ enabled: Bool) {
+        peer?.setSpeakerEnabled(enabled)
+    }
+
     // MARK: Connection
 
     private var isFailed: Bool {

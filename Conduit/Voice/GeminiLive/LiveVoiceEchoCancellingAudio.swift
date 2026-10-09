@@ -83,6 +83,10 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     var onChunk: (@MainActor (Data) -> Void)?
     var onInterrupted: (@MainActor () -> Void)?
     var isPlaying: Bool { pendingBuffers > 0 }
+    /// Plays silently while set (#487), across engine restarts.
+    var isOutputMuted = false {
+        didSet { player?.volume = isOutputMuted ? 0 : 1 }
+    }
 
     /// The controller's two seams over this one engine.
     var input: GeminiLiveAudioInput { Input(audio: self) }
@@ -303,6 +307,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         // cancels the speaker's echo.
         try input.setVoiceProcessingEnabled(true)
         let player = AVAudioPlayerNode()
+        player.volume = isOutputMuted ? 0 : 1
         engine.attach(player)
         // Connected up front so the speaker side is part of the graph (and
         // of the echo reference) from the start.
@@ -502,6 +507,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         func play(_ pcm: Data, sampleRate: Double) throws { try audio.play(pcm, sampleRate: sampleRate) }
         func interrupt() { audio.interrupt() }
         func stop() { audio.stopOutput() }
+        func setMuted(_ muted: Bool) { audio.isOutputMuted = muted }
     }
 }
 
@@ -525,6 +531,8 @@ final class LiveVoiceAudioSelector {
     private var echoCancelling: Pair?
     private var current: Pair?
     private var inputRunning = false
+    /// The speaker mute, given to whichever audio the call chooses.
+    private var outputMuted = false
 
     var onChunk: (@MainActor (Data) -> Void)? {
         didSet { current?.input.onChunk = onChunk }
@@ -565,6 +573,7 @@ final class LiveVoiceAudioSelector {
         let chosen = pair(echoCancelling: wantsEchoCancellation())
         chosen.input.onChunk = onChunk
         chosen.input.onInterrupted = { [weak self] in self?.inputInterrupted() }
+        chosen.output.setMuted(outputMuted)
         current = chosen
         return chosen
     }
@@ -621,6 +630,11 @@ final class LiveVoiceAudioSelector {
 
     fileprivate func interrupt() { current?.output.interrupt() }
 
+    fileprivate func setOutputMuted(_ muted: Bool) {
+        outputMuted = muted
+        current?.output.setMuted(muted)
+    }
+
     fileprivate func stopOutput() {
         current?.output.stop()
         release()
@@ -652,5 +666,6 @@ final class LiveVoiceAudioSelector {
         func play(_ pcm: Data, sampleRate: Double) throws { try selector.play(pcm, sampleRate: sampleRate) }
         func interrupt() { selector.interrupt() }
         func stop() { selector.stopOutput() }
+        func setMuted(_ muted: Bool) { selector.setOutputMuted(muted) }
     }
 }

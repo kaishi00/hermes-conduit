@@ -39,6 +39,7 @@ protocol GPTLiveSessionControlling: AnyObject {
     @discardableResult
     func appendContext(_ text: String, channel: GPTLiveProtocol.Channel, delegationID: String?) -> Bool
     func setMicrophoneEnabled(_ enabled: Bool)
+    func setSpeakerEnabled(_ enabled: Bool)
 }
 
 extension GPTLiveSessionControlling {
@@ -142,6 +143,10 @@ final class GPTLiveConversationController: ObservableObject {
     private(set) var hostIssue: LiveVoiceHostIssue?
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
+    /// The model's voice is silenced (#487). Its words still show in the
+    /// captions, and job news Conduit would have it say waits until the
+    /// speaker is back on.
+    @Published private(set) var isSpeakerMuted = false
     /// Why the chosen voice isn't the one speaking, when the host didn't use it.
     @Published private(set) var voiceNote: String?
 
@@ -261,6 +266,8 @@ final class GPTLiveConversationController: ObservableObject {
         // Cleared before the call goes active so the headset mute starts
         // the call unmuted too.
         isMicrophoneMuted = false
+        // So is the speaker mute.
+        isSpeakerMuted = false
         phase = .connecting
         transcript = []
         voiceNote = nil
@@ -330,6 +337,14 @@ final class GPTLiveConversationController: ObservableObject {
         isMicrophoneMuted = muted
         guard endRequestedAt == nil else { return }
         session?.setMicrophoneEnabled(!muted)
+    }
+
+    func setSpeakerMuted(_ muted: Bool) {
+        guard muted != isSpeakerMuted else { return }
+        isSpeakerMuted = muted
+        session?.setSpeakerEnabled(!muted)
+        // Back on: what waited for the speaker goes out once it's quiet.
+        if !muted { flushPendingContextIfIdle() }
     }
 
     /// Keeps the AirPods / headset mute gesture (#331) pointed at this
@@ -409,6 +424,7 @@ final class GPTLiveConversationController: ObservableObject {
         case .ready:
             voiceNote = session?.voiceNote
             session?.setMicrophoneEnabled(!isMicrophoneMuted && endRequestedAt == nil)
+            session?.setSpeakerEnabled(!isSpeakerMuted)
             // Given with the call when the host takes it there: appended after
             // the call starts, the model answers each piece out loud.
             if session?.briefingApplied != true {
@@ -690,8 +706,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// Whether Conduit may add a turn of its own now: connected, the model
     /// silent, and the user quiet (their turn finished, not just paused).
     var isConversationIdle: Bool {
-        // Paused: an update the user can't hear waits for the audio.
-        guard session?.isReady == true, !audioPaused, !modelTurnActive else { return false }
+        // Paused or silenced: an update the user can't hear waits for the audio.
+        guard session?.isReady == true, !audioPaused, !isSpeakerMuted, !modelTurnActive else { return false }
         let current = now()
         if let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userQuietInterval { return false }
         // Mid-sentence: the user's words are still coming in (a pause, an
