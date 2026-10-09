@@ -5298,7 +5298,9 @@ final class AppState: ObservableObject {
 
     func markAllSessionsRead() {
         let profile = activeProfile
-        let unread = activeProfileSessions.filter { !$0.isArchived && isSessionUnread($0) }
+        // Pinned cron runs sit in All too (#485).
+        let listed = activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) }
+        let unread = listed.filter { !$0.isArchived && isSessionUnread($0) }
         guard !unread.isEmpty else { return }
         let flagged = unread.filter { chatReadState.serverUnread($0, profile: profile) }
         // One ledger update (and one persisted encode) for the whole batch.

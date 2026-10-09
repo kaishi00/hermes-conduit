@@ -262,7 +262,7 @@ struct SessionList: View {
                     } label: {
                         Label("Mark all as read", systemImage: "envelope.open")
                     }
-                    .disabled(!appState.activeProfileSessions.contains { !$0.isArchived && appState.isSessionUnread($0) })
+                    .disabled(!sourceRows(nil).contains { appState.isSessionUnread($0) })
 
                     Button {
                         Haptics.selection()
