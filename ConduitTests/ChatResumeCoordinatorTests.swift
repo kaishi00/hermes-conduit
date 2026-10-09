@@ -165,7 +165,8 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         )
         let selectedID = try XCTUnwrap(selected).id
         let request = harness.coordinator.reconciliationSettled(
-            sessionKey: .init(profile: "default", sessionID: selectedID)
+            sessionKey: .init(profile: "default", sessionID: selectedID),
+            pendingClarifyMessageID: nil
         )
 
         XCTAssertEqual(selected?.id, "stored-b")
