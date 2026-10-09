@@ -49,4 +49,13 @@ extension ChatReadStateTests {
         XCTAssertEqual(index.status(for: listed("s-1")), .needsInput)
         XCTAssertEqual(index.status(for: listed("rt-b", alternates: ["s-1"])), .needsInput)
     }
+
+    func testLiveIndexMatchesTheLineageRoot() {
+        let index = SessionLiveStatusIndex(rows: [
+            LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "root", status: "waiting"),
+        ])
+        var continued = listed("continuation")
+        continued.lineageRootId = "root"
+        XCTAssertEqual(index.status(for: continued), .needsInput)
+    }
 }

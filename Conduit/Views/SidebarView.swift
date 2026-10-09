@@ -164,7 +164,16 @@ struct SessionList: View {
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
     /// Quick status filter (#454), layered on top of the source filter.
     @AppStorage("conduit.sessionStatusFilter") private var statusFilterRaw = ""
-    private var statusFilter: SessionStatusFilter? { SessionStatusFilter(rawValue: statusFilterRaw) }
+    /// A live filter saved while the gateway can't report live status reads
+    /// as no filter, so the list doesn't empty out behind a hidden chip.
+    private var statusFilter: SessionStatusFilter? {
+        guard let filter = SessionStatusFilter(rawValue: statusFilterRaw) else { return nil }
+        return visibleStatusFilters.contains(filter) ? filter : nil
+    }
+
+    private var visibleStatusFilters: [SessionStatusFilter] {
+        SessionStatusFilter.allCases.filter { !$0.isLive || appState.liveSessionStatusAvailable }
+    }
 
     private enum SessionPresentation: String {
         case sessions
@@ -603,7 +612,7 @@ struct SessionList: View {
     private var sourceFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(SessionStatusFilter.allCases) { filter in
+                ForEach(visibleStatusFilters) { filter in
                     statusFilterChip(filter, count: statusCount(filter))
                 }
                 Capsule()
@@ -944,6 +953,7 @@ struct SessionRow: View {
             case .working?:
                 ProgressView()
                     .controlSize(.mini)
+                    .tint(SessionStatusFilter.working.color)
                     .accessibilityLabel(SessionStatusFilter.working.title)
             case nil:
                 EmptyView()
@@ -1089,6 +1099,9 @@ enum SessionStatusFilter: String, CaseIterable, Identifiable {
     case unread
 
     var id: String { rawValue }
+
+    /// Filled from the gateway's `session.active_list`, not from local state.
+    var isLive: Bool { self != .unread }
 
     var title: String {
         switch self {

@@ -238,6 +238,91 @@ final class ChatReadStateTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ChatReadLedger.self, from: data), state.ledger)
     }
 
+    func testActivityWhileDesktopHadTheChatIsSeen() {
+        var state = ChatReadState()
+        state.observe([row("a", count: 4, lastActivityAt: 100)], profile: profile, now: t0)
+        state.recordDesktopViews(["a": 200], profile: profile)
+
+        let replyWhileOpen = row("a", count: 6, lastActivityAt: 150)
+        state.observe([replyWhileOpen], profile: profile, now: t0)
+        XCTAssertFalse(state.isUnread(replyWhileOpen, profile: profile, now: t0))
+
+        // A reply after Desktop moved on stays unread.
+        let replyAfter = row("a", count: 8, lastActivityAt: 250)
+        state.observe([replyAfter], profile: profile, now: t0)
+        XCTAssertTrue(state.isUnread(replyAfter, profile: profile, now: t0))
+    }
+
+    func testDesktopViewCoversHermesActivityFlagButNotItsMark() {
+        var state = ChatReadState()
+        // Conduit stamped both chats read at 100; replies landed at 150.
+        let flagged = row("a", count: 4, unread: true, lastActivityAt: 150, watermark: 100)
+        let marked = row("b", count: 4, unread: true, lastActivityAt: 150, watermark: 0)
+        state.observe([flagged, marked], profile: profile, now: t0)
+        XCTAssertTrue(state.isUnread(flagged, profile: profile, now: t0))
+
+        state.recordDesktopViews(["a": 200, "b": 200], profile: profile)
+        XCTAssertFalse(state.isUnread(flagged, profile: profile, now: t0), "Desktop had it when the reply landed")
+        XCTAssertTrue(state.serverUnread(flagged, profile: profile, now: t0), "Opening it here still clears Hermes' flag")
+        XCTAssertTrue(state.isUnread(marked, profile: profile, now: t0), "Mark as unread outranks Desktop")
+
+        let later = row("a", count: 4, unread: true, lastActivityAt: 250, watermark: 100)
+        XCTAssertTrue(state.isUnread(later, profile: profile, now: t0))
+    }
+
+    func testDesktopViewsMatchAStoredIdAliasAndKeepTheLatestTime() {
+        var state = ChatReadState()
+        state.observe([row("rt-1", count: 2, lastActivityAt: 100)], profile: profile, now: t0)
+        state.recordDesktopViews(["stored-1": 300], profile: profile)
+        state.recordDesktopViews(["stored-1": 200], profile: profile)
+        var grown = row("rt-1", count: 5, lastActivityAt: 290)
+        grown.storedSessionId = "stored-1"
+        state.observe([grown], profile: profile, now: t0)
+        XCTAssertFalse(state.isUnread(grown, profile: profile, now: t0))
+        XCTAssertEqual(state.desktopSeenTime(for: grown, profile: profile), 300)
+    }
+
+    func testADesktopViewNeedsAnActivityTimeAndLeavesMarksAlone() {
+        var state = ChatReadState()
+        state.observe([row("a", count: 2), row("b", count: 2, lastActivityAt: 100)], profile: profile, now: t0)
+        state.recordDesktopViews(["a": 500, "b": 500], profile: profile)
+        let undated = row("a", count: 4)
+        let marked = row("b", count: 2, lastActivityAt: 100)
+        state.markUnread(marked, profile: profile)
+        state.observe([undated, marked], profile: profile, now: t0)
+        XCTAssertTrue(state.isUnread(undated, profile: profile, now: t0))
+        XCTAssertTrue(state.isUnread(marked, profile: profile, now: t0))
+    }
+
+    func testForgettingDesktopViewsDropsThemForEveryProfile() {
+        var state = ChatReadState()
+        state.recordDesktopViews(["a": 100], profile: profile)
+        state.recordDesktopViews(["b": 100], profile: "work")
+        state.forgetDesktopViews()
+        XCTAssertTrue(state.desktopSeenThrough.isEmpty)
+    }
+
+    func testDesktopViewsReplyParsesSeenTimesAndAdvancesTheCursorOnSettledChatsOnly() {
+        let response: [String: Any] = [
+            "ok": true,
+            "observing": true,
+            "views": [
+                "settled": ["seen_through": 300, "opened_at": 200, "open": false] as [String: Any],
+                "selected": ["seen_through": 900, "opened_at": 800, "open": true] as [String: Any],
+                "infinite": ["seen_through": Double.infinity, "open": false] as [String: Any],
+                "garbled": "not an entry",
+            ] as [String: Any],
+        ]
+        let update = AppState.desktopViewsUpdate(from: response, cursor: 100)
+        XCTAssertEqual(update?.seen, ["settled": 300, "selected": 900])
+        XCTAssertEqual(update?.cursor, 300, "A chat still selected doesn't move the cursor")
+
+        XCTAssertEqual(AppState.desktopViewsUpdate(from: response, cursor: 400)?.cursor, 400)
+        XCTAssertEqual(AppState.desktopViewsUpdate(from: ["ok": true, "views": [:] as [String: Any]], cursor: nil)?.cursor, 0)
+        XCTAssertNil(AppState.desktopViewsUpdate(from: ["ok": false, "reason": "not observing"], cursor: 100))
+        XCTAssertNil(AppState.desktopViewsUpdate(from: ["ok": true], cursor: 100))
+    }
+
     func testDashboardRowsCarryHermesUnreadFlag() {
         let rows: [[String: Any]] = [
             ["id": "a", "title": "A", "message_count": 3, "unread": true, "profile": "default"],

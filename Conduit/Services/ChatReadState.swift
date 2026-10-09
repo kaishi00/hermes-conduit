@@ -70,6 +70,11 @@ struct ChatReadState: Equatable {
     /// comparing a row's activity with the moment the user looked at it.
     static let activityClockSlack: TimeInterval = 5
 
+    /// profile → stored chat id → until when Hermes Desktop (or the web
+    /// dashboard) on the host had the chat, in host time (notifier plugin
+    /// 0.12+). Runtime only: the host keeps the record and is asked again.
+    private(set) var desktopSeenThrough: [String: [String: TimeInterval]] = [:]
+
     init(ledger: ChatReadLedger = ChatReadLedger()) {
         self.ledger = ledger
     }
@@ -89,7 +94,19 @@ struct ChatReadState: Equatable {
 
     /// Whether the row has something the user hasn't seen.
     func isUnread(_ session: SessionSummary, profile: String, now: Date = Date()) -> Bool {
-        serverUnread(session, profile: profile, now: now) || locallyUnread(session, profile: profile)
+        if locallyUnread(session, profile: profile) { return true }
+        return serverUnread(session, profile: profile, now: now)
+            && !desktopSawFlaggedActivity(session, profile: profile, now: now)
+    }
+
+    /// Hermes' flag came from activity, not a mark, and Desktop had the chat
+    /// when that activity landed. Desktop doesn't clear the flag for a reply
+    /// it shows live, so its record answers for it. Both times are the host's.
+    func desktopSawFlaggedActivity(_ session: SessionSummary, profile: String, now: Date = Date()) -> Bool {
+        guard !isExplicitlyUnread(session, profile: profile, now: now),
+              let seenThrough = desktopSeenTime(for: session, profile: profile),
+              let activity = session.lastActivityAt else { return false }
+        return activity <= seenThrough
     }
 
     /// Hermes' shared flag, with Conduit's own recent write taking precedence.
@@ -127,6 +144,13 @@ struct ChatReadState: Equatable {
         return count > seen
     }
 
+    /// The latest time Desktop had this conversation, under any of its ids.
+    func desktopSeenTime(for session: SessionSummary, profile: String) -> TimeInterval? {
+        guard let views = desktopSeenThrough[profile], !views.isEmpty else { return nil }
+        let ids = [session.id, session.storedSessionId, session.lineageRootId].compactMap { $0 } + session.alternateIds
+        return ids.compactMap { views[$0] }.max()
+    }
+
     // MARK: Updating
 
     /// Folds a fresh listing in: seeds unknown rows as read, adopts counts for
@@ -152,6 +176,12 @@ struct ChatReadState: Equatable {
                         counts[id] = max(count, counts[id] ?? 0)
                     }
                     seenPendingRefresh[key] = nil
+                }
+                // Desktop had the chat when its latest activity landed, so
+                // everything in it was on a screen. Both times are the host's.
+                if let seenThrough = desktopSeenTime(for: session, profile: profile),
+                   let activity = session.lastActivityAt, activity <= seenThrough {
+                    counts[id] = max(count, counts[id] ?? 0)
                 }
             }
             if let pending = pendingServerValues[key], session.isUnread == pending.unread {
@@ -251,6 +281,27 @@ struct ChatReadState: Equatable {
         let key = Self.key(profile, Self.durableID(for: session))
         guard pendingServerValues[key]?.generation == generation else { return }
         pendingServerValues[key] = nil
+    }
+
+    /// Folds in what the host reported Desktop had; the next listing
+    /// applies it. Each chat keeps its latest time.
+    mutating func recordDesktopViews(_ views: [String: TimeInterval], profile: String) {
+        var current = desktopSeenThrough[profile] ?? [:]
+        for (id, seenThrough) in views where seenThrough > (current[id] ?? -.infinity) {
+            current[id] = seenThrough
+        }
+        if current.count > ChatReadLedger.maxSeenCountsPerProfile {
+            let newest = current.sorted { $0.value > $1.value }.prefix(ChatReadLedger.maxSeenCountsPerProfile)
+            current = Dictionary(uniqueKeysWithValues: newest.map { ($0.key, $0.value) })
+        }
+        if desktopSeenThrough[profile] != current {
+            desktopSeenThrough[profile] = current
+        }
+    }
+
+    /// Another host's Desktop record never applies to this one's chats.
+    mutating func forgetDesktopViews() {
+        if !desktopSeenThrough.isEmpty { desktopSeenThrough = [:] }
     }
 
     /// Forget a deleted conversation.

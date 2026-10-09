@@ -607,6 +607,19 @@ final class AppState: ObservableObject {
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
     private weak var activeListUnsupportedClient: HermesClient?
+    /// False once the gateway turned `session.active_list` down, so the chat
+    /// list hides the Working and Needs input chips instead of showing a 0 it
+    /// can't know. A successful poll turns it back on.
+    @Published private(set) var liveSessionStatusAvailable = true
+    /// The client whose failed poll was already logged, so a flaky
+    /// connection leaves one line rather than one per tick.
+    private weak var activeListFailureLoggedClient: HermesClient?
+    /// The host the Desktop views below came from, when each profile was
+    /// last asked, and the newest settled time it reported.
+    private var desktopViewsHost: String?
+    private var desktopViewsFailureLogged = false
+    private var desktopViewsFetchedAt: [String: Date] = [:]
+    private var desktopViewsCursor: [String: TimeInterval] = [:]
     @Published private(set) var sessionMutationID: String?
     @Published private(set) var isRefreshingSessionCatalog = false
     @Published var activeSessionId: String? {
@@ -5155,18 +5168,117 @@ final class AppState: ObservableObject {
     /// authoritative evidence the foreground probe records, and re-recording
     /// an unchanged binding is a no-op.
     func refreshLiveSessionStatuses() async {
+        // Its own task: a slow plugin read must not hold up live status.
+        Task { [weak self] in await self?.refreshDesktopViewsIfDue() }
         guard isSceneActive, let client, isConnected,
               client !== activeListUnsupportedClient else { return }
         let profile = activeProfile
         do {
-            let rows = try await client.activeSessions()
+            let rows: [LiveSessionStatus]
+            if let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions {
+                rows = try await probeActiveSessions(client)
+            } else {
+                rows = try await client.activeSessions()
+            }
             guard profile == activeProfile, self.client === client else { return }
+            // Assigned only on a change: every publish redraws the chat list.
+            if !liveSessionStatusAvailable { liveSessionStatusAvailable = true }
+            activeListFailureLoggedClient = nil
             recordActiveListEvidence(rows, profile: profile)
         } catch {
             // Stop asking a gateway that doesn't have the method; a new
-            // connection probes again.
-            if isMethodUnavailable(error) { activeListUnsupportedClient = client }
+            // connection probes again. Other failures retry on the next tick.
+            if isMethodUnavailable(error) {
+                activeListUnsupportedClient = client
+                if self.client === client, liveSessionStatusAvailable { liveSessionStatusAvailable = false }
+            } else if client !== activeListFailureLoggedClient {
+                activeListFailureLoggedClient = client
+                sessionCatalogLog.notice(
+                    "Live status poll failed: \(String(describing: error), privacy: .public)"
+                )
+            }
         }
+    }
+
+    static let desktopViewsInterval: TimeInterval = 15
+
+    /// Reads which chats Hermes Desktop (or the web dashboard) had on the
+    /// host (notifier plugin 0.12+), so reading a chat there reads it here.
+    /// The chat Desktop has selected stays seen for as long as it stays
+    /// selected there (Eric's call on #454). Hermes' own read flag stays
+    /// untouched: writing it would put Desktop's unread dot on the chat it
+    /// has open.
+    func refreshDesktopViewsIfDue() async {
+        guard isSceneActive, let bridge = dashboardTicketBridge else { return }
+        // Keyed by host, not bridge: a sign-in or header change rebuilds the
+        // bridge for the same host, whose record still holds.
+        if bridge.baseURL != desktopViewsHost { resetDesktopViews(host: bridge.baseURL) }
+        switch notifierPlugin.state {
+        case .reported(_, let capabilities) where capabilities.contains("desktop-views"):
+            break
+        case .unknown:
+            return
+        case .reported, .predatesCapabilities:
+            // The host answered without the route: its record goes too.
+            if !chatReadState.desktopSeenThrough.isEmpty { resetDesktopViews(host: bridge.baseURL) }
+            return
+        }
+        let profile = activeProfile
+        let now = Date()
+        if let last = desktopViewsFetchedAt[profile], now.timeIntervalSince(last) < Self.desktopViewsInterval { return }
+        desktopViewsFetchedAt[profile] = now
+        var path = "/api/plugins/conduit_push/sessions/desktop-views"
+        if let cursor = desktopViewsCursor[profile] { path += "?since=\(cursor)" }
+        let response: [String: Any]
+        do {
+            response = try await bridge.requestJSON(path: dashboardPath(path, profile: profile))
+        } catch {
+            // The next tick past the interval asks again; one line per host.
+            if !desktopViewsFailureLogged {
+                desktopViewsFailureLogged = true
+                sessionCatalogLog.notice(
+                    "Desktop views read failed: \(String(describing: error), privacy: .public)"
+                )
+            }
+            return
+        }
+        guard bridge === dashboardTicketBridge, profile == activeProfile,
+              let update = Self.desktopViewsUpdate(from: response, cursor: desktopViewsCursor[profile])
+        else { return }
+        desktopViewsFailureLogged = false
+        desktopViewsCursor[profile] = update.cursor
+        guard !update.seen.isEmpty else { return }
+        updateChatReadState { $0.recordDesktopViews(update.seen, profile: profile) }
+        observeChatReadState()
+    }
+
+    private func resetDesktopViews(host: String?) {
+        desktopViewsHost = host
+        desktopViewsFetchedAt = [:]
+        desktopViewsCursor = [:]
+        desktopViewsFailureLogged = false
+        updateChatReadState { $0.forgetDesktopViews() }
+    }
+
+    /// Parses the plugin's `desktop-views` reply into each chat's
+    /// `seen_through` time and the next `since` cursor, or nil when the reply
+    /// isn't a successful read.
+    nonisolated static func desktopViewsUpdate(
+        from response: [String: Any],
+        cursor: TimeInterval?
+    ) -> (seen: [String: TimeInterval], cursor: TimeInterval)? {
+        guard response["ok"] as? Bool == true, let views = response["views"] as? [String: Any] else { return nil }
+        var seen: [String: TimeInterval] = [:]
+        var next = cursor ?? 0
+        for (id, value) in views {
+            guard let entry = value as? [String: Any],
+                  let time = (entry["seen_through"] as? NSNumber)?.doubleValue, time.isFinite else { continue }
+            seen[id] = time
+            // A chat still selected reports the moment of this read; only
+            // settled times move the "newer than" cursor.
+            if entry["open"] as? Bool != true { next = max(next, time) }
+        }
+        return (seen, next)
     }
 
     func markSessionRead(_ session: SessionSummary) {
@@ -6275,6 +6387,8 @@ final class AppState: ObservableObject {
         conversationIdentityIndex.removeAll()
         liveSessionStatusIndex = SessionLiveStatusIndex()
         liveSessionStatusProfile = nil
+        liveSessionStatusAvailable = true
+        resetDesktopViews(host: nil)
         sessionYoloStore.clearAllOverrides()
         // Bot Mode state is per-server: the roster, the capability phase, and
         // the in-memory bot-chat profile registry all describe the outgoing
