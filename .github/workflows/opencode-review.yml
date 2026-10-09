@@ -22,8 +22,8 @@ jobs:
         include:
           - reviewer: DeepSeek V4.1 Flash
             model: go-custom/deepseek-flash
-          - reviewer: GLM-5.3-FlashX
-            model: zai-custom/glm-5.3-flashx
+          - reviewer: GLM-5.3-Flash
+            model: zai-custom/glm-5.3-flash
     permissions:
       id-token: write
       contents: read
