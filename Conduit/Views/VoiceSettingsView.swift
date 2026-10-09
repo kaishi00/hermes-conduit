@@ -454,7 +454,7 @@ struct VoiceSettingsView: View {
         case .notReady(let status):
             return setupStep(
                 title,
-                detail: AppLocalization.string("\(name) on Hermes isn't ready (\(VoiceProviderReadiness.statusLabel(status))). This iPhone can do it instead, with nothing to install."),
+                detail: AppLocalization.string("\(name) on Hermes isn't ready (\(VoiceProviderReadiness.label(forStatus: status))). This iPhone can do it instead, with nothing to install."),
                 state: .attention,
                 fix: useIPhone
             )

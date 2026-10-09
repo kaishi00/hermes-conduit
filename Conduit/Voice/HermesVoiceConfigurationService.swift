@@ -34,11 +34,11 @@ struct VoiceProviderReadiness: Equatable, Identifiable {
     let isManagedNous: Bool
     let requiredCredentials: [VoiceCredentialStatus]
 
-    var statusLabel: String { Self.statusLabel(status) }
+    var statusLabel: String { Self.label(forStatus: status) }
 
     /// A readiness status as a label. Hermes sends a code ("needs_keys");
-    /// one Conduit doesn't know is shown as Hermes wrote it.
-    static func statusLabel(_ status: String) -> String {
+    /// one Conduit doesn't know is shown capitalized, underscores as spaces.
+    static func label(forStatus status: String) -> String {
         switch status.lowercased() {
         case "ready": return AppLocalization.string("Ready")
         case "needs_keys": return AppLocalization.string("Needs an API key")

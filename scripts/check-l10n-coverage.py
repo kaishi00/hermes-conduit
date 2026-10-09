@@ -491,15 +491,52 @@ def _top_level(text: str, token: str, start: int = 0) -> int:
     return -1
 
 
+def _ternary_split(text: str):
+    """(offset of `?`, offset of its `:`) for the top-level ternary in
+    `text`, or None. A ternary in the true branch nests: in
+    `a ? b ? "Y" : c : "Z"` the outer `:` is the second one."""
+    question = _top_level(text, "?")
+    if question < 0:
+        return None
+    pending = 1
+    i = question + 1
+    while True:
+        colon = _top_level(text, ":", i)
+        if colon < 0:
+            return None
+        nested = _top_level(text, "?", i)
+        if 0 <= nested < colon:
+            pending += 1
+            i = nested + 1
+            continue
+        pending -= 1
+        if pending == 0:
+            return question, colon
+        i = colon + 1
+
+
+def _top_level_operands(text: str, token: str) -> list:
+    """The operands of a top-level ` token ` chain in `text`, or [] when
+    it has none."""
+    operands = []
+    start = 0
+    position = _top_level(text, token)
+    while position >= 0:
+        operands.append(text[start:position])
+        start = position + 1
+        position = _top_level(text, token, start)
+    if operands:
+        operands.append(text[start:])
+    return operands
+
+
 def _ternary_branch_literals(argument: str):
     """Yield the skeleton of each raw string literal that is a branch of a
     top-level ternary in `argument` (nested ternaries included)."""
-    question = _top_level(argument, "?")
-    if question < 0:
+    split = _ternary_split(argument)
+    if split is None:
         return
-    colon = _top_level(argument, ":", question + 1)
-    if colon < 0:
-        return
+    question, colon = split
     for branch in (argument[question + 1:colon], argument[colon + 1:]):
         branch = branch.strip()
         if branch.startswith('"') and not branch.startswith('"""'):
@@ -598,8 +635,9 @@ def _without_parentheses(expression: str) -> str:
 
 def _raw_literals(expression: str):
     """The skeleton of each raw string literal `expression` can evaluate
-    to: the expression itself, a ternary branch, any operand of a `??`
-    chain, or an element of an array literal, through parentheses."""
+    to or contain: the expression itself, a ternary branch, any operand of
+    a `??` chain or a `+` concatenation, or an element of an array
+    literal, through parentheses."""
     expression = expression.strip()
     if expression.startswith('"') and not expression.startswith('"""'):
         parsed = parse_swift_literal_parts(expression, 0)
@@ -614,15 +652,16 @@ def _raw_literals(expression: str):
     if inner != expression:
         yield from _raw_literals(inner)
         return
-    # A ternary binds looser than `??`, so a top-level one is the whole
-    # expression: its branches are what it evaluates to.
-    question = _top_level(expression, "?")
-    colon = _top_level(expression, ":", question + 1) if question >= 0 else -1
-    if colon >= 0:
+    # A ternary binds looser than `??`, and `??` looser than `+`, so a
+    # top-level ternary is the whole expression: its branches are what it
+    # evaluates to.
+    split = _ternary_split(expression)
+    if split is not None:
+        question, colon = split
         yield from _raw_literals(expression[question + 1:colon])
         yield from _raw_literals(expression[colon + 1:])
         return
-    for operand in _nil_coalescing_operands(expression):
+    for operand in _nil_coalescing_operands(expression) or _top_level_operands(expression, "+"):
         yield from _raw_literals(operand)
 
 

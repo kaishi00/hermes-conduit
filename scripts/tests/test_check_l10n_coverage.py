@@ -678,6 +678,7 @@ class RawTernaryTests(unittest.TestCase):
         self.assertEqual(self.literals('Text(a ? "One" : b ? "Two" : name)'), ["One", "Two"])
         self.assertEqual(self.literals('Text(name.isEmpty ? "Hi \\(user)" : name)'), ["Hi %@"])
         self.assertEqual(self.literals('Text((flag ? "Yes" : "No"))'), ["Yes", "No"])
+        self.assertEqual(self.literals('Text(a ? b ? "Y" : c : "Z")'), ["Y", "Z"])
 
     def test_wrapped_glyph_and_labeled_branches_are_not_reported(self):
         for source in (
@@ -729,6 +730,12 @@ class RawDisplayParameterTests(unittest.TestCase):
         self.assertEqual(self.literals(
             'SettingsMetricRow(label: label, value: a ?? (on ? "Raw" : nil) ?? "Fallback")'),
             [("SettingsMetricRow", "value", "Raw"), ("SettingsMetricRow", "value", "Fallback")])
+        self.assertEqual(self.literals(
+            'SettingsMetricRow(label: label, value: "Signed in. " + detail)'),
+            [("SettingsMetricRow", "value", "Signed in. ")])
+        self.assertEqual(self.literals(
+            'SettingsMetricRow(label: label, value: a ? b ? "Y" : c : "Z")'),
+            [("SettingsMetricRow", "value", "Y"), ("SettingsMetricRow", "value", "Z")])
         self.assertEqual(self.literals(
             'SettingsMetricRow(label: label, value: ((on ? "Yes" : "No")))'),
             [("SettingsMetricRow", "value", "Yes"), ("SettingsMetricRow", "value", "No")])
@@ -808,6 +815,8 @@ class RawInterpolatedLiteralTests(unittest.TestCase):
         self.assertEqual(self.literals('Text("\\(on ? "On" : "Off")")'), ["On", "Off"])
         self.assertEqual(self.literals('AppLocalization.string("Comment from \\(author ?? "someone")")'),
                          ["someone"])
+        self.assertEqual(self.literals('AppLocalization.string("Using \\(name + " (beta)")")'),
+                         [" (beta)"])
 
     def test_localized_glyph_and_brand_interpolations_pass(self):
         for source in (
