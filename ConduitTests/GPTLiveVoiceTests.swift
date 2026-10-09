@@ -3398,6 +3398,38 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(bridge.userFinishedSpeaking("Yes."), "nothing waits for an OK")
         XCTAssertEqual(fake.created, 0)
     }
+
+    /// GPT-Live delegated the same read-back again right after it was read:
+    /// the words said since aren't spoken for by it, so a request among
+    /// them still goes once OK'd (#451).
+    func testGPTLiveRepeatedReadBackDelegationLeavesTheWordsSaidSince() async {
+        let (fake, bridge) = makeAskingFirstChatBridge()
+        let words = FakeGPTLiveSpokenWords()
+        bridge.spokenWords = words
+        _ = await bridge.handleDelegation(id: "del_1", request: "Read back: the last reply", userWords: "Read the last reply")
+        let settledFirst = words.settled
+        XCTAssertTrue(settledFirst.contains(.readBack("del_1")), "\(settledFirst)")
+        let again = await bridge.handleDelegation(id: "del_2", request: "Read back: the last reply", userWords: "Book a table for Sam")
+        XCTAssertFalse(again.isEmpty)
+        XCTAssertEqual(words.settled, settledFirst, "a repeat leaves the words said since")
+        XCTAssertTrue(fake.threadSubmissions.isEmpty, "\(fake.threadSubmissions)")
+    }
+
+    /// A job command answered here, then a delegation GPT-Live made on it
+    /// with no text: no job starts with "Job status." as its request (#451).
+    func testGPTLiveJobCommandHandledHereIsNoRequestForAnEmptyDelegation() async {
+        let (controller, session, _, fake) = makeGPTController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Job status."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await waitForFollowUpState {
+            controller.pendingContextCountForTesting > 0 || session.appended.contains { $0.delegationID == "del_1" }
+        }
+        await settle(20)
+        XCTAssertEqual(fake.created, 0, "\(fake.submissions)")
+        controller.stop()
+    }
 }
 
 /// The call's record of the user's words, for the delegation bridge alone.

@@ -189,7 +189,9 @@ final class GPTLiveDelegationBridge {
         if Self.isReadBackMarker(ownWords) || VoiceThreadRouting.wantsLastReply(ownWords)
             || VoiceThreadRouting.endsWithLastReplyRequest(ownWords) || VoiceThreadRouting.wantsLastReply(spoken) {
             let dropped = answerHeldBesideReadBack(spoken)
-            spokenWords?.settleWords(.readBack(id))
+            // The same read-back again (the reply is still coming, or was
+            // just read): the words said since may be a request of their own.
+            if !readBackIsRecent, !readBackIsQueued { spokenWords?.settleWords(.readBack(id)) }
             let read = await readBack(id: id, call: call)
             // The call ended meanwhile: nothing is answered.
             return read.isEmpty ? [] : dropped + read

@@ -680,11 +680,16 @@ final class GPTLiveConversationController: ObservableObject {
         let handled = delegatedEntries
         let recent = transcript.filter { !handled.contains($0.id) }
         delegatedEntries.formUnion(transcript.map(\.id))
-        // A turn handled here ("Read the last reply") isn't the request,
-        // unless a delegation made on it has nothing else (#451).
+        // A turn handled here ("Read the last reply", "job status") isn't
+        // the request. A delegation made on a read request alone is that
+        // read-back, so it keeps those words; one made on a job command
+        // alone has no request (#451).
         let said = recent.filter { $0.speaker == .user }
         let fresh = said.filter { !handledHere.contains($0.id) }
-        let userWords = (fresh.isEmpty ? said : fresh).map(\.text).joined(separator: " ")
+        let reads = said.filter {
+            VoiceThreadRouting.wantsLastReply($0.text) || VoiceThreadRouting.endsWithLastReplyRequest($0.text)
+        }
+        let userWords = (fresh.isEmpty ? reads : fresh).map(\.text).joined(separator: " ")
         let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
         let request = own.isEmpty ? userWords : own
         // Nothing new since the last delegation: no request, so Hermes asks
