@@ -212,7 +212,7 @@ enum PendingVoiceLaunchPolicy {
             switch intent.source {
             case .wakePhrase: return .failed(message: wakePhraseFailureMessage)
             case .screenQuestion: return .failed(message: screenQuestionFailureMessage)
-            case .siri, .composer, .newCall: return .failed(message: expiredFailureMessage)
+            case .siri, .composer, .newCall, .hermesCall: return .failed(message: expiredFailureMessage)
             }
         }
         switch connection.phase {
@@ -226,7 +226,7 @@ enum PendingVoiceLaunchPolicy {
             case .siri: return .failed(message: stableFailureMessage(for: connection))
             case .wakePhrase: return .failed(message: wakePhraseFailureMessage)
             case .screenQuestion: return .failed(message: screenQuestionFailureMessage)
-            case .composer, .newCall: return .waiting
+            case .composer, .newCall, .hermesCall: return .waiting
             }
         }
     }
@@ -242,7 +242,7 @@ enum PendingVoiceLaunchPolicy {
         case .siri: return .terminal(message: disconnectedFailureMessage)
         case .wakePhrase: return .terminal(message: wakePhraseFailureMessage)
         case .screenQuestion: return .terminal(message: screenQuestionFailureMessage)
-        case .composer, .newCall: return .retryLater
+        case .composer, .newCall, .hermesCall: return .retryLater
         }
     }
 }

@@ -446,7 +446,9 @@ struct PendingVoiceIntent: Equatable {
 
     /// `newCall`: the sidebar's New voice call, never attached to a chat.
     /// `screenQuestion`: the Ask Hermes About Screen action.
-    enum Source: String, Equatable { case composer, wakePhrase, siri, newCall, screenQuestion }
+    /// `hermesCall`: Talk on a "Hermes wants to talk" notification (#449),
+    /// in the job's chat it opened.
+    enum Source: String, Equatable { case composer, wakePhrase, siri, newCall, screenQuestion, hermesCall }
 }
 
 /// How the chat opened by Ask Hermes About Screen takes the question.

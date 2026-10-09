@@ -29,6 +29,11 @@
 //  and send_request sends it once the user spoke after the ask. The latest
 //  request replaces the draft; "send it to Hermes" sends at once.
 //
+//  call_me_when_done (#449, offered when the Hermes host takes call
+//  watches) has Hermes call the user once the call's newest request (or
+//  the job named, or all of them when the user says so) is done, after the
+//  call ends. A quick local answer, BLOCKING.
+//
 //  Grok Live has no NON_BLOCKING calls, so its bridge answers start_job
 //  as soon as the job is running (`holdsJobCalls` false); the outcome
 //  arrives later as a text update, like a withdrawn call's.
@@ -70,6 +75,8 @@ protocol GeminiLiveJobSupervising: AnyObject {
     /// Whether the call holds new requests for the user's OK (#451).
     var asksBeforeSending: Bool { get }
     func setAsksBeforeSending(_ on: Bool, byModel: Bool)
+    /// Hermes calls the user when the call's work is done (#449).
+    func requestCallback(_ scope: VoiceCallbackScope) -> VoiceCallbackRequestOutcome
 }
 
 /// Without follow-up support a request never takes one: the words go out
@@ -81,6 +88,7 @@ extension GeminiLiveJobSupervising {
     var asksBeforeSending: Bool { false }
     func setAsksBeforeSending(_ on: Bool, byModel: Bool) {}
     func readBackText() async -> String? { await lastThreadReply() }
+    func requestCallback(_ scope: VoiceCallbackScope) -> VoiceCallbackRequestOutcome { .unavailable(.unsupported) }
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -100,6 +108,7 @@ final class GeminiLiveToolBridge {
         case askThread = "ask_thread"
         case readLastReply = "read_last_reply"
         case showOnScreen = "show_on_screen"
+        case callMeWhenDone = "call_me_when_done"
     }
 
     /// What the bridge asks the session to send.
@@ -123,13 +132,14 @@ final class GeminiLiveToolBridge {
     }
 
     /// The declarations for a session, with web_search when its lookups run
-    /// on the Hermes host and recall_memory when its memory provider can be
-    /// searched.
-    static func declarations(webSearch: Bool, memoryRecall: Bool = false, thread: Bool = false) -> [GeminiLiveProtocol.FunctionDeclaration] {
+    /// on the Hermes host, recall_memory when its memory provider can be
+    /// searched, and call_me_when_done when the host takes call watches.
+    static func declarations(webSearch: Bool, memoryRecall: Bool = false, thread: Bool = false, callback: Bool = false) -> [GeminiLiveProtocol.FunctionDeclaration] {
         functionDeclarations
             + (webSearch ? [webSearchDeclaration] : [])
             + (memoryRecall ? [recallMemoryDeclaration] : [])
             + (thread ? threadDeclarations : [])
+            + (callback ? [callMeWhenDoneDeclaration] : [])
     }
 
     /// A Watch call's tools: no attached chat, no asking first, which
@@ -137,7 +147,7 @@ final class GeminiLiveToolBridge {
     /// no read-back, whose results the phone's own call keeps (#451).
     static func watchDeclarations(webSearch: Bool, memoryRecall: Bool) -> [GeminiLiveProtocol.FunctionDeclaration] {
         // No screen on the Watch: show_on_screen would only ever fail.
-        let phoneOnly: Set<String> = [Tool.sendRequest.rawValue, Tool.setAskFirst.rawValue, Tool.readLastReply.rawValue, Tool.showOnScreen.rawValue]
+        let phoneOnly: Set<String> = [Tool.sendRequest.rawValue, Tool.setAskFirst.rawValue, Tool.readLastReply.rawValue, Tool.showOnScreen.rawValue, Tool.callMeWhenDone.rawValue]
         return declarations(webSearch: webSearch, memoryRecall: memoryRecall, thread: false)
             .filter { !phoneOnly.contains($0.name) }
     }
@@ -177,6 +187,35 @@ final class GeminiLiveToolBridge {
                 ],
             ],
             "required": ["title", "markdown"],
+        ],
+        behavior: .blocking
+    )
+
+    /// call_me_when_done's scope: a job_id names one job, scope all asks
+    /// about everything; anything else is the newest request.
+    static func callbackScope(_ arguments: [String: String]) -> VoiceCallbackScope {
+        if let raw = arguments["job_id"]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+            return UUID(uuidString: raw).map(VoiceCallbackScope.jobID) ?? .job(number: Int(raw) ?? 0)
+        }
+        return arguments["scope"]?.trimmingCharacters(in: .whitespaces).lowercased() == "all" ? .all : .latest
+    }
+
+    static let callMeWhenDoneDeclaration = GeminiLiveProtocol.FunctionDeclaration(
+        name: Tool.callMeWhenDone.rawValue,
+        description: "Have Hermes call the user back once their request is done, after this call has ended. Use it when the user asks to be called, phoned or rung when it's done (\"call me when it's done\"). When they ask for new work and the call in the same breath, start the work first, then call this. It covers this call's newest request, unless you pass the job_id of the job they mean. Pass scope all only when they ask to be called about all of their jobs: each job then calls. Then tell the user what it says, in a few words.",
+        parameters: [
+            "type": "OBJECT",
+            "properties": [
+                "job_id": [
+                    "type": "STRING",
+                    "description": "The job's id from start_job or list_jobs, when the user means a particular job.",
+                ],
+                "scope": [
+                    "type": "STRING",
+                    "enum": ["newest", "all"],
+                    "description": "newest (the default): the newest request. all: every job this call has running and starts from now on, only when the user asks for that.",
+                ],
+            ],
         ],
         behavior: .blocking
     )
@@ -568,6 +607,17 @@ final class GeminiLiveToolBridge {
             return [.toolResponse(id: call.id, name: call.name, result: result, scheduling: .whenIdle)]
         case .recallMemory:
             return [.toolResponse(id: call.id, name: call.name, result: await recallResult(call.arguments["query"]), scheduling: .whenIdle)]
+        case .callMeWhenDone:
+            guard !isEnding else { return [] }
+            let outcome = supervisor.requestCallback(Self.callbackScope(call.arguments))
+            let status: String
+            switch outcome {
+            case .marked: status = "will_call"
+            case .alreadyEnded: status = "already_ended"
+            case .unknownJob: status = "unknown_job"
+            case .unavailable, .noCall: status = "unavailable"
+            }
+            return [.toolResponse(id: call.id, name: call.name, result: ["status": status, "message": outcome.modelMessage], scheduling: nil)]
         case .endConversation:
             // Deliberately unanswered: a response would prompt another turn
             // after the goodbye, and the connection closes anyway.

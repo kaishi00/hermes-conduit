@@ -13,6 +13,8 @@ import UserNotifications
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // A "Hermes wants to talk" notification's Talk button (#449).
+        HermesCallNotifications.registerCategory()
         // Set up before launch returns: a call the Apple Watch starts can
         // launch Conduit in the background, and its message waits on this.
         MainActor.assumeIsolated {
@@ -46,8 +48,14 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let request = response.notification.request
         Task { @MainActor in
-            PushNotificationService.shared.receiveNotificationPayload(response.notification.request.content.userInfo)
+            if request.trigger is UNPushNotificationTrigger {
+                PushNotificationService.shared.receiveNotificationPayload(request.content.userInfo)
+            } else {
+                // Conduit posts only "Hermes wants to talk" itself (#449).
+                PushNotificationService.shared.receiveLocalCallNotification(request.content.userInfo)
+            }
         }
         completionHandler()
     }
@@ -59,7 +67,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     ) {
         // The active conversation is already visible while Conduit is in the
         // foreground. Keep remote pushes quiet here and reserve banners/sound
-        // for when the app is not being actively used.
+        // for when the app is not being actively used. A call from Hermes
+        // (#449) still shows: it asks for the user, wherever they are.
+        if notification.request.content.categoryIdentifier == HermesCallNotifications.categoryIdentifier {
+            completionHandler([.banner, .list, .sound])
+            return
+        }
         completionHandler([])
     }
 }
@@ -116,6 +129,7 @@ struct ConduitApp: App {
                 // re-resolve outside SwiftUI state, so view re-renders alone
                 // cannot refresh them.
                 appState.appLanguageDidChange()
+                HermesCallNotifications.registerCategory()
             }
             .preferredColorScheme(appState.themePreference.colorScheme)
             .tint(.conduitAccent)
@@ -132,6 +146,9 @@ struct ConduitApp: App {
             .task(id: notificationRouteKey) {
                 guard appState.isConnected, let target = notifications.pendingTarget else { return }
                 if await appState.openNotificationTarget(target) {
+                    // A call from Hermes (#449) opens voice in its chat.
+                    // Started before the route clears, which ends this task.
+                    if let call = target.call { appState.answerHermesCall(call) }
                     notifications.clearPendingTarget(target)
                 } else {
                     notifications.handleFailedNotificationRoute(target)
