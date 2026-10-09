@@ -707,7 +707,7 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse(_, _, let unsureResult, _)? = unsure.first else { return XCTFail("\(unsure)") }
         XCTAssertEqual(unsureResult["status"], "not_approved")
         XCTAssertTrue(decisions.choices.isEmpty, "Only the user's own yes approves")
-        bridge.lastUserWords = { "Yes, go ahead" }
+        bridge.lastUserWords = { "Yeah, go ahead." }
         let approved = await bridge.handle(.init(id: "c3", name: "answer_approval", arguments: ["choice": "Once"]))
         guard case .toolResponse(_, _, let result, _)? = approved.first else { return XCTFail("\(approved)") }
         XCTAssertEqual(result["status"], "approved")
@@ -747,8 +747,11 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(VoiceCallDecisionOutcome.isYes("approve it"))
         XCTAssertTrue(VoiceCallDecisionOutcome.isYes("allow it"))
         XCTAssertTrue(VoiceCallDecisionOutcome.isYes("Sí"))
-        XCTAssertTrue(VoiceCallDecisionOutcome.isYes("好的"))
+        XCTAssertTrue(VoiceCallDecisionOutcome.isYes("好的，谢谢"))
         XCTAssertFalse(VoiceCallDecisionOutcome.isYes("yes?"))
+        XCTAssertFalse(VoiceCallDecisionOutcome.isYes("go to the store"), "Only a plain yes")
+        XCTAssertFalse(VoiceCallDecisionOutcome.isYes("please repeat that"))
+        XCTAssertFalse(VoiceCallDecisionOutcome.isYes("approve the other one too"))
         XCTAssertFalse(VoiceCallDecisionOutcome.isYes("no, don't"))
         XCTAssertFalse(VoiceCallDecisionOutcome.isYes("allow me a minute"))
         XCTAssertFalse(VoiceCallDecisionOutcome.isYes(""))

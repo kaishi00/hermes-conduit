@@ -338,16 +338,20 @@ extension VoiceCallDecisionOutcome {
         return true
     }
 
-    /// A yes as an answer reads ("yes", "go ahead", "sure", in the app's
-    /// languages), or "approve" / "allow it". Never a question.
+    /// A plain yes as an answer reads ("yes", "go ahead", "sure", in the
+    /// app's languages), or just "approve" / "allow it": nothing more, so
+    /// "go to the store" or "please repeat that" never approves. Never a
+    /// question.
     static func isYes(_ words: String) -> Bool {
         guard !words.contains("?"), !words.contains("？") else { return false }
-        if case .yes = VoiceThreadRouting.heldRequestAnswer(words) { return true }
+        if VoiceThreadRouting.heldRequestAnswer(words).isBareYes { return true }
         let said = words.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
-        return approvalLeads.contains { said.starts(with: $0) }
+        return approvalPhrases.contains(said)
     }
 
-    private static let approvalLeads = [["approve"], ["approved"], ["allow", "it"], ["allow", "that"], ["allow", "this"]]
+    private static let approvalPhrases: Set<[String]> = [
+        ["approve"], ["approve", "it"], ["approve", "that"], ["approved"], ["allow", "it"], ["allow", "that"], ["allow", "this"],
+    ]
 }
 
 /// AppState's way to answer what a call from Hermes waits on: the pending

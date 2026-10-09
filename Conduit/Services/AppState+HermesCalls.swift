@@ -262,13 +262,24 @@ extension AppState {
         }
     }
 
-    /// The newest question in the call's chat waiting on the user. A
-    /// question names no session: the open chat's are all its own.
+    /// The question in the call's chat the call is about. A question names
+    /// no session: the open chat's are all its own. With more than one
+    /// waiting, only the one Hermes' reason quotes.
     private func hermesCallQuestionMessage(_ call: HermesCallOpening) -> ChatMessage? {
         guard hermesCallOpenChatIDs(call) != nil else { return nil }
-        return messages.last { message in
+        let waiting = messages.filter { message in
             guard let clarify = message.clarify, !clarify.isExpired else { return false }
             return clarify.questions.contains { $0.status == .pending || $0.status == .error }
+        }
+        guard waiting.count > 1 else { return waiting.first }
+        guard let reason = call.reason else { return nil }
+        return waiting.last { message in
+            message.clarify?.questions.contains { question in
+                // The reason is the question, or "2 questions, first: …",
+                // cleaned and clipped as a reason is.
+                guard let quoted = HermesCallRequest.cleanedReason(question.question) else { return false }
+                return reason.contains(String(quoted.prefix(40)))
+            } ?? false
         }
     }
 
