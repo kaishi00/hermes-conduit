@@ -782,6 +782,7 @@ final class GPTLiveDelegationBridge {
         // an answer to a question the model hasn't asked yet.
         if !waiting.asked, waiting.userWords.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             waiting.userWords = words
+            waiting.mark = spokenWords?.wordsMark()
             draft = waiting
             return .reply([])
         }
@@ -837,9 +838,29 @@ final class GPTLiveDelegationBridge {
     }
 
     /// Words the model may take for a yes that Conduit can't read as one
-    /// ("sounds like a plan"): short, and no question (#451).
+    /// ("sounds like a plan"): short, and no question (#451). Words
+    /// written without spaces between them (Chinese, Japanese, Thai) can't
+    /// be counted, so there only a yes Conduit reads as one goes.
     static func couldBeAYes(_ words: String) -> Bool {
-        !words.contains("?") && !words.contains("？") && normalizedRequest(words).split(separator: " ").count <= 5
+        guard !words.contains("?"), !words.contains("？") else { return false }
+        let request = normalizedRequest(words)
+        guard !request.unicodeScalars.contains(where: { Self.isUnspacedScript($0) }) else { return false }
+        return request.split(separator: " ").count <= 5
+    }
+
+    /// Scripts written without spaces between words.
+    private static func isUnspacedScript(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x0E00...0x0EFF, // Thai, Lao
+             0x1000...0x109F, // Myanmar
+             0x1780...0x17FF, // Khmer
+             0x3040...0x30FF, // Hiragana, Katakana
+             0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF, // CJK ideographs
+             0xFF66...0xFF9F: // Half-width Katakana
+            return true
+        default:
+            return false
+        }
     }
 
     /// The held request finished by these words of the user's, while they
@@ -855,6 +876,8 @@ final class GPTLiveDelegationBridge {
         waiting.request = finished
         waiting.userWords = words
         waiting.heldAt = now()
+        // Its words now run to these: left too long, they go with it.
+        waiting.mark = spokenWords?.wordsMark()
         draft = waiting
         return .reply([])
     }

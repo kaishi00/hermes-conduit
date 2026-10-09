@@ -3182,8 +3182,34 @@ extension VoiceConversationControllerTests {
         let longer = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "also tell Alex to call me back tomorrow")
         guard case .delegationReply("del_3", GPTLiveDelegationBridge.heldForOKText, .speakable)? = longer.first else { return XCTFail("\(longer)") }
         XCTAssertEqual(fake.created, 0)
+        // Chinese and Japanese words can't be counted: a change is asked about.
+        for (index, change) in ["改成四个人", "四人にして"].enumerated() {
+            let id = "del_cjk\(index)"
+            let changed = await bridge.handleDelegation(id: id, request: "Send:", userWords: change)
+            guard case .delegationReply(id, GPTLiveDelegationBridge.heldForOKText, .speakable)? = changed.first else { return XCTFail("\(change): \(changed)") }
+        }
+        XCTAssertEqual(fake.created, 0)
+        XCTAssertTrue(GPTLiveDelegationBridge.couldBeAYes("sounds like a plan"))
+        XCTAssertFalse(GPTLiveDelegationBridge.couldBeAYes("改成四个人"))
         _ = await bridge.handleDelegation(id: "del_4", request: "Send:", userWords: "yes")
         XCTAssertEqual(fake.created, 1)
+    }
+
+    /// A request finished by the user's later words and then left: those
+    /// words go with it, never with the next request (#451).
+    func testGPTLiveAskingFirstLeftRequestTakesTheWordsThatFinishedIt() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (_, fake, bridge) = makeAskingFirstBridge(clock: { current })
+        let words = FakeGPTLiveSpokenWords()
+        bridge.spokenWords = words
+        words.mark = 1
+        _ = await bridge.handleDelegation(id: "del_1", request: "Book a table for", userWords: "Book a table for")
+        words.mark = 2
+        XCTAssertEqual(bridge.userFinishedSpeaking("Book a table for four"), .reply([]), "the finished words are the request")
+        current += GPTLiveDelegationBridge.draftLifetime + 1
+        XCTAssertNil(bridge.userFinishedSpeaking("What's the weather like?"))
+        XCTAssertEqual(words.settled.last, .through(2))
+        XCTAssertEqual(fake.created, 0)
     }
 
     /// Neal's build 190 (#451): his "Send Hermes" sent the request, and
@@ -3283,4 +3309,16 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(fake.threadSubmissions.isEmpty, "a read-back asks Hermes nothing")
         controller.stop()
     }
+}
+
+/// The call's record of the user's words, for the delegation bridge alone.
+@MainActor
+final class FakeGPTLiveSpokenWords: GPTLiveSpokenWords {
+    var words = ""
+    var mark = 0
+    private(set) var settled: [GPTLiveDelegationBridge.SettledWords] = []
+
+    func unsentWords() -> String { words }
+    func wordsMark() -> Int { mark }
+    func settleWords(_ words: GPTLiveDelegationBridge.SettledWords) { settled.append(words) }
 }
