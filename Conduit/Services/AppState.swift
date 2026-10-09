@@ -10974,10 +10974,10 @@ final class AppState: ObservableObject {
 
     static func hasPendingDecision(in messages: [ChatMessage]) -> Bool {
         messages.contains { message in
-            // A retryable `.error` question/decision is still unresolved —
-            // the card remains answerable and must not read as completed.
+            // A retryable `.error` or in-flight `.submitting` question stays
+            // unresolved; an expired sibling does not erase an active answer.
             let clarifyPending = message.clarify.map {
-                SessionPresentationCache.isPendingDecision($0.status)
+                SessionPresentationCache.isPendingDecision($0)
             } ?? false
             let approvalPending = message.approval.map {
                 SessionPresentationCache.isPendingDecision($0.status)
@@ -22816,7 +22816,7 @@ final class AppState: ObservableObject {
         messages.removeAll { message in
             guard let clarify = message.clarify,
                   clarify.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
-                  clarify.status == .pending,
+                  clarify.presentationStatus == .pending,
                   Self.pushCardSupersededBy(clarify, live: activity) else {
                 return false
             }

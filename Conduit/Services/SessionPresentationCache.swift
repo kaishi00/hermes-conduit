@@ -19,12 +19,12 @@ final class SessionPresentationCache {
     static let shared = SessionPresentationCache(writesAsynchronously: true)
     static let maxUnconfirmedPendingDecisionAge: TimeInterval = 24 * 60 * 60
 
-    /// Returns whether a clarification presentation still needs a user
-    /// decision. Keep this rule shared by resume pruning and cache saves. A
-    /// retryable `.error` question is still unanswered — it must survive as
-    /// an unresolved decision, never be pruned as completed.
-    static func isPendingDecision(_ status: ClarifyActivity.Status) -> Bool {
-        status == .pending || status == .submitting || status == .error
+    /// Returns whether a clarification still holds an unresolved decision.
+    /// Use the activity rather than its aggregate status: an expired sibling
+    /// must not hide an answerable question, and a submitting question must
+    /// survive until its outcome is known.
+    static func isPendingDecision(_ clarify: ClarifyActivity) -> Bool {
+        clarify.hasPendingDecision
     }
 
     static func isPendingDecision(_ status: ApprovalActivity.Status) -> Bool {
@@ -48,7 +48,7 @@ final class SessionPresentationCache {
     }
 
     static func pendingDecisionKey(for message: ChatMessage) -> String? {
-        if let clarify = message.clarify, isPendingDecision(clarify.status) {
+        if let clarify = message.clarify, isPendingDecision(clarify) {
             return "clarify:\(clarify.requestId)"
         }
         if let approval = message.approval, isPendingDecision(approval.status) {
@@ -71,7 +71,7 @@ final class SessionPresentationCache {
         messages.compactMap { original in
             var message = original
             if let clarify = message.clarify,
-               isPendingDecision(clarify.status),
+               isPendingDecision(clarify),
                keys.contains("clarify:\(clarify.requestId)") {
                 message.clarify = nil
             }
@@ -338,7 +338,7 @@ final class SessionPresentationCache {
 
             if message.clarify == nil,
                let cachedClarify = presentation.clarify,
-               !Self.isPendingDecision(cachedClarify.status) || includePendingClarifications {
+               !Self.isPendingDecision(cachedClarify) || includePendingClarifications {
                 message.clarify = cachedClarify
             }
 
@@ -398,7 +398,7 @@ final class SessionPresentationCache {
 
         if includePendingClarifications {
             let pendingClarifications = cached.compactMap(\.clarify).filter {
-                Self.isPendingDecision($0.status)
+                Self.isPendingDecision($0)
             }
 
             // A gateway resume can retain the preceding transcript or generic
@@ -940,7 +940,7 @@ final class SessionPresentationCache {
         messages.compactMap { original in
             var message = original
             if let clarify = message.clarify,
-               Self.isPendingDecision(clarify.status),
+               Self.isPendingDecision(clarify),
                !keys.contains("clarify:\(clarify.requestId)") {
                 message.clarify = nil
             }
@@ -968,7 +968,7 @@ final class SessionPresentationCache {
     }
 
     private func pendingDecisionKey(for message: CachedMessage) -> String? {
-        if let clarify = message.clarify, Self.isPendingDecision(clarify.status) {
+        if let clarify = message.clarify, Self.isPendingDecision(clarify) {
             return "clarify:\(clarify.requestId)"
         }
         if let approval = message.approval, Self.isPendingDecision(approval.status) {
@@ -1616,7 +1616,7 @@ final class SessionPresentationCache {
             }
             if merged.clarify == nil,
                let priorClarify = prior.clarify,
-               !Self.isPendingDecision(priorClarify.status) || preservePendingDecisionCards {
+               !Self.isPendingDecision(priorClarify) || preservePendingDecisionCards {
                 merged.clarify = prior.clarify
             }
             if merged.approval == nil,

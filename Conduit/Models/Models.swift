@@ -325,10 +325,25 @@ struct ClarifyActivity: Codable, Equatable {
         return .pending
     }
 
+    /// Whether any question is currently answerable. Request-level expiry
+    /// suppresses every sibling, while an expired sibling does not suppress
+    /// active questions in the same batch.
+    var needsAnswer: Bool {
+        !isExpired && questions.contains(where: \.isAnswerable)
+    }
+
+    /// Whether the card is unresolved for persistence/pruning. Submitting
+    /// questions are not answerable yet, but must survive until their result
+    /// is known (or resume resets them to pending).
+    var hasPendingDecision: Bool {
+        !isExpired && questions.contains { $0.isAnswerable || $0.status == .submitting }
+    }
+
     /// The card's user-facing state. A partially active batch can have an
     /// expired sibling while another question still accepts an answer.
     var presentationStatus: Status {
-        guard status == .expired, !isExpired else { return status }
+        guard status == .expired, hasPendingDecision else { return status }
+        if questions.contains(where: { $0.status == .submitting }) { return .submitting }
         if questions.contains(where: { $0.status == .pending }) { return .pending }
         if questions.contains(where: { $0.status == .error }) { return .error }
         return .expired

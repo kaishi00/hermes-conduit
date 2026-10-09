@@ -1021,7 +1021,7 @@ final class ClarifyBatchStateTests: XCTestCase {
             sessionIDs: ["stored-a"]
         )
         XCTAssertTrue(
-            SessionPresentationCache.isPendingDecision(card.status),
+            SessionPresentationCache.isPendingDecision(card),
             "A partially answered batch with retryable errors is still unresolved"
         )
 
@@ -1046,7 +1046,7 @@ final class ClarifyBatchStateTests: XCTestCase {
             status: .error,
             error: "Hermes did not accept that answer."
         )
-        XCTAssertTrue(SessionPresentationCache.isPendingDecision(card.status))
+        XCTAssertTrue(SessionPresentationCache.isPendingDecision(card))
         cache.recordPendingDecision(
             ChatMessage(id: "clarify-req-solo", role: .clarify, content: "Pick", timestamp: "1", clarify: card),
             profile: appState.activeProfile,
@@ -1059,6 +1059,46 @@ final class ClarifyBatchStateTests: XCTestCase {
             includePendingClarifications: true
         )
         XCTAssertEqual(restored.first { $0.clarify?.requestId == "req-solo" }?.clarify?.questions[0].status, .error)
+    }
+
+    func testMixedExpiredAndPendingBatchSurvivesPendingDecisionPersistence() throws {
+        let (appState, cache) = makeAppState()
+        var card = makeBatchActivity()
+        card.questions[0].status = .expired
+        card.questions[1].status = .pending
+        card.questions[2].status = .answered
+        card.questions[2].answer = "done"
+        let message = ChatMessage(
+            id: "clarify-req-batch",
+            role: .clarify,
+            content: "batch",
+            timestamp: "1",
+            clarify: card
+        )
+
+        XCTAssertEqual(card.status, .expired)
+        XCTAssertEqual(card.presentationStatus, .pending)
+        XCTAssertTrue(card.needsAnswer)
+        XCTAssertTrue(SessionPresentationCache.isPendingDecision(card))
+        XCTAssertEqual(
+            SessionPresentationCache.pendingDecisionKey(for: message),
+            "clarify:req-batch"
+        )
+
+        cache.recordPendingDecision(message, profile: appState.activeProfile, sessionIDs: ["stored-a"])
+        let restored = cache.merge(
+            [],
+            profile: appState.activeProfile,
+            sessionIDs: ["stored-a"],
+            includePendingClarifications: true
+        )
+        let restoredCard = try XCTUnwrap(restored.first { $0.clarify?.requestId == "req-batch" }?.clarify)
+        XCTAssertEqual(restoredCard.questions[0].status, .expired)
+        XCTAssertEqual(restoredCard.questions[1].status, .pending)
+
+        card.isExpired = true
+        XCTAssertFalse(card.needsAnswer)
+        XCTAssertFalse(SessionPresentationCache.isPendingDecision(card))
     }
 
     func testResolvedClarifyIsNotRestoredAsAnswerable() throws {
@@ -1076,8 +1116,8 @@ final class ClarifyBatchStateTests: XCTestCase {
             choices: [ClarifyChoice(label: "b", value: "b")],
             status: .expired
         )
-        XCTAssertFalse(SessionPresentationCache.isPendingDecision(answered.status))
-        XCTAssertFalse(SessionPresentationCache.isPendingDecision(expired.status))
+        XCTAssertFalse(SessionPresentationCache.isPendingDecision(answered))
+        XCTAssertFalse(SessionPresentationCache.isPendingDecision(expired))
         for card in [answered, expired] {
             cache.recordPendingDecision(
                 ChatMessage(id: "clarify-\(card.requestId)", role: .clarify, content: "x", timestamp: "1", clarify: card),

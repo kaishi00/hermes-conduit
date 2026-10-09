@@ -2170,6 +2170,46 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(clarifyCards.first?.clarify?.requestId, "gateway-rid-1")
     }
 
+    func testLiveClarifyEventSupersedesMixedExpiredPendingPushCard() async {
+        let harness = makeHarness()
+        harness.appState.activeSessionId = "stored-a"
+        let pushed = ClarifyActivity(
+            requestId: "conduit-push-mixed",
+            questions: [
+                ClarifyQuestion(id: "old", question: "Which color?", choices: [], status: .expired),
+                ClarifyQuestion(id: "active", question: "Which region?", choices: [], status: .pending)
+            ]
+        )
+        XCTAssertEqual(pushed.status, .expired)
+        XCTAssertEqual(pushed.presentationStatus, .pending)
+        harness.appState.messages = [
+            ChatMessage(
+                id: "clarify-conduit-push-mixed",
+                role: .clarify,
+                content: pushed.displayQuestion,
+                timestamp: "1",
+                clarify: pushed
+            )
+        ]
+
+        harness.appState.handleStreamEvent(
+            .clarify(
+                sessionId: "stored-a",
+                activity: ClarifyActivity(
+                    requestId: "gateway-rid-mixed",
+                    questions: [
+                        ClarifyQuestion(id: "color", question: "Which color?", choices: []),
+                        ClarifyQuestion(id: "region", question: "Which region?", choices: [])
+                    ]
+                )
+            )
+        )
+
+        let cards = harness.appState.messages.filter { $0.role == .clarify }
+        XCTAssertEqual(cards.count, 1, "An answerable mixed push card must be superseded by the live batch")
+        XCTAssertEqual(cards.first?.clarify?.requestId, "gateway-rid-mixed")
+    }
+
     func testLiveClarifyEventSupersedeMatchesNormalizedQuestion() async {
         // The push question is flattened plugin-side while the live event
         // carries the gateway's text; formatting drift (whitespace, case)

@@ -42,8 +42,8 @@ final class ChatResumeCoordinator {
     /// remains answerable; only request-level expiry makes the whole card stale.
     static func pendingClarifyMessageID(in messages: [ChatMessage]) -> String? {
         messages.last { message in
-            guard let clarify = message.clarify, !clarify.isExpired else { return false }
-            return clarify.questions.contains(where: \.isAnswerable)
+            guard let clarify = message.clarify else { return false }
+            return clarify.needsAnswer
         }?.id
     }
 

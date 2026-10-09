@@ -974,8 +974,7 @@ final class ChatScrollEngine: ObservableObject {
         case .pendingClarify(let messageID, let fallbackSnapshot):
             if let target = targetCache.targets.first(where: { $0.id == messageID }),
                let clarify = target.message.clarify,
-               !clarify.isExpired,
-               clarify.questions.contains(where: \.isAnswerable) {
+               clarify.needsAnswer {
                 return .anchor(messageID)
             }
             // The answer may have landed after reconciliation selected this
