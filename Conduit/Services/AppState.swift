@@ -5135,8 +5135,6 @@ final class AppState: ObservableObject {
         }
         pinnedSessionIDsByProfile[activeProfile] = pinnedSessionIDs
         persistPinnedSessions()
-        // A newly pinned cron run joins the read-state rows.
-        if session.source == .cron { observeChatReadState() }
     }
 
     // MARK: - Read state (#454)
@@ -5304,7 +5302,9 @@ final class AppState: ObservableObject {
 
     func markAllSessionsRead() {
         let profile = activeProfile
-        let unread = readStateSessions.filter { !$0.isArchived && isSessionUnread($0) }
+        // What All lists: the chats and pinned cron runs (#485).
+        let listed = activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) }
+        let unread = listed.filter { !$0.isArchived && isSessionUnread($0) }
         guard !unread.isEmpty else { return }
         let flagged = unread.filter { chatReadState.serverUnread($0, profile: profile) }
         // One ledger update (and one persisted encode) for the whole batch.
@@ -5332,10 +5332,10 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// The rows the chat list shows with read state: the chats plus pinned
-    /// cron runs, which sit in All too (#485).
+    /// The rows the chat list shows with read state: the chats plus cron
+    /// runs, which the Cron filter lists (#485).
     private var readStateSessions: [SessionSummary] {
-        activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) }
+        activeProfileSessions + activeProfileCronSessions
     }
 
     private func observeChatReadState() {
