@@ -272,7 +272,9 @@ enum KanbanDraftValidationError: LocalizedError, Equatable {
         case .emptyTitle:
             return AppLocalization.string("A title is required.")
         case .invalidWorkspacePath:
-            // Only scratch tasks refuse a path (allowsPathOverride).
+            // Only scratch tasks refuse a path (allowsPathOverride), so the
+            // sentence names the kinds that take one instead of inserting a
+            // translated kind name. The payload stays for Equatable.
             return AppLocalization.string("A workspace path can only be set for Worktree and Directory tasks. Hermes scratch tasks resolve their own directory.")
         case .invalidReasoningEffort(let value):
             return AppLocalization.string("\"\(value)\" is not a valid reasoning effort for a Hermes worker.")

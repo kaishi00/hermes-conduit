@@ -754,8 +754,13 @@ final class KanbanStore: ObservableObject {
         do {
             let result = try await context.service.archiveBoard(slug: slug)
             if result.action != "archived" {
+                if let action = result.action {
+                    throw KanbanServiceError.invalidResponse(
+                        AppLocalization.string("Hermes answered the board delete with an unexpected result: \(action)")
+                    )
+                }
                 throw KanbanServiceError.invalidResponse(
-                    AppLocalization.string("Hermes answered the board delete with an unexpected result: \(result.action ?? "—")")
+                    AppLocalization.string("Hermes answered the board delete without a result.")
                 )
             }
             if configurationGeneration == generation {

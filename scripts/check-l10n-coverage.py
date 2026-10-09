@@ -185,9 +185,11 @@ STRING_DISPLAY_PARAMETERS = {
 # VoiceOver word, an error's description). A raw literal one returns is
 # never looked up, whichever view shows it.
 STRING_DISPLAY_PROPERTIES = (
-    "displayName", "statusText", "objectiveLabel", "runningLabel",
-    "successLabel", "accessibilityState", "errorDescription",
-    "failureReason", "recoverySuggestion",
+    "displayName", "label", "title", "message", "statusText",
+    "statusLabel", "statusTitle", "stateDescription", "subtitleText",
+    "objectiveLabel", "runningLabel", "successLabel", "accessibilityState",
+    "userTitle", "userMessage", "errorDescription", "failureReason",
+    "recoverySuggestion",
 )
 
 # Names no language translates, allowed as a raw display literal (the
@@ -520,7 +522,7 @@ def raw_ternary_literals(source: str):
             argument = _first_argument(source, match.end())
             if argument is None or re.match(r"\s*\w+\s*:(?!:)", argument):
                 continue  # a labeled argument (verbatim:, value:) isn't a title
-            for skeleton in _ternary_branch_literals(argument):
+            for skeleton in _ternary_branch_literals(_without_parentheses(argument)):
                 if re.search(r"[^\W\d_]", skeleton.replace("%@", "")):
                     yield skeleton, match.start()
 
@@ -553,34 +555,51 @@ def _arguments(source: str, start: int) -> list:
         start = end + 1
 
 
-def _nil_coalescing_fallback(expression: str):
-    """The operand after the last top-level `??` in `expression`, or None."""
+def _nil_coalescing_operands(expression: str) -> list:
+    """Each operand of a top-level `??` chain in `expression`, or [] when
+    it has none."""
     depth = 0
-    fallback = None
+    operands = []
+    start = 0
     i = 0
     while i < len(expression):
         ch = expression[i]
         if ch == '"':
             i = _skip_literal(expression, i)
             if i is None:
-                return None
+                return []
             continue
         if ch in "([{":
             depth += 1
         elif ch in ")]}":
             depth -= 1
         elif depth == 0 and expression.startswith("??", i):
-            fallback = expression[i + 2:]
+            operands.append(expression[start:i])
+            start = i + 2
             i += 2
             continue
         i += 1
-    return fallback
+    if operands:
+        operands.append(expression[start:])
+    return operands
+
+
+def _without_parentheses(expression: str) -> str:
+    """`expression` without the parentheses wrapping all of it:
+    `(on ? "A" : "B")` is the ternary inside."""
+    expression = expression.strip()
+    while expression.startswith("(") and expression.endswith(")"):
+        inner = _first_argument(expression, 1)
+        if inner is None or len(inner) != len(expression) - 2:
+            break
+        expression = inner.strip()
+    return expression
 
 
 def _raw_literals(expression: str):
     """The skeleton of each raw string literal `expression` can evaluate
-    to: the expression itself, a ternary branch, a `??` fallback, or an
-    element of an array literal."""
+    to: the expression itself, a ternary branch, any operand of a `??`
+    chain, or an element of an array literal, through parentheses."""
     expression = expression.strip()
     if expression.startswith('"') and not expression.startswith('"""'):
         parsed = parse_swift_literal_parts(expression, 0)
@@ -591,10 +610,20 @@ def _raw_literals(expression: str):
         for element in _arguments(expression, 1):
             yield from _raw_literals(element)
         return
-    yield from _ternary_branch_literals(expression)
-    fallback = _nil_coalescing_fallback(expression)
-    if fallback is not None:
-        yield from _raw_literals(fallback)
+    inner = _without_parentheses(expression)
+    if inner != expression:
+        yield from _raw_literals(inner)
+        return
+    # A ternary binds looser than `??`, so a top-level one is the whole
+    # expression: its branches are what it evaluates to.
+    question = _top_level(expression, "?")
+    colon = _top_level(expression, ":", question + 1) if question >= 0 else -1
+    if colon >= 0:
+        yield from _raw_literals(expression[question + 1:colon])
+        yield from _raw_literals(expression[colon + 1:])
+        return
+    for operand in _nil_coalescing_operands(expression):
+        yield from _raw_literals(operand)
 
 
 def raw_display_literals(source: str):
@@ -642,8 +671,9 @@ def _block_end(source: str, start: int):
 def raw_display_property_literals(source: str):
     """Yield (property, skeleton, offset) for each raw string literal a
     STRING_DISPLAY_PROPERTIES getter returns: after `return`, as a `case`
-    or `default` result, as the getter's single expression, or as a
-    ternary branch or `??` fallback, outside any call's parentheses."""
+    or `default` result, as the getter's single expression, as a ternary
+    branch or `??` fallback, or joined on with `+`, outside any call's
+    parentheses."""
     for match in DISPLAY_PROPERTY_RE.finditer(source):
         end = _block_end(source, match.end())
         if end is None:
@@ -658,7 +688,7 @@ def raw_display_property_literals(source: str):
                     break
                 before = source[match.end():i].rstrip()
                 if (depth == 0 and not source.startswith('"""', i)
-                        and (not before or re.search(r"(?:\breturn|[?:{])$", before))):
+                        and (not before or re.search(r"(?:\breturn|[?:{+])$", before))):
                     parsed = parse_swift_literal_parts(source, i)
                     if parsed is not None and _is_display_text(parsed[0]):
                         yield match.group(1), parsed[0], i

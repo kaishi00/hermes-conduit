@@ -131,9 +131,10 @@ availability`, not `availability.title == "Ready"`).
   parameters (`STRING_DISPLAY_PARAMETERS` in the checker:
   `SettingsMetricRow(label:value:)`, `ConduitSettingsSection(title:)`,
   `homeSection(_:)` and other views and helpers that show a `String` with
-  `Text(title)`), directly, as a ternary branch, as a `??` fallback or in
-  an array; no display property (`STRING_DISPLAY_PROPERTIES`:
-  `displayName`, `errorDescription`, …) returns one; and no ternary or `??`
+  `Text(title)`), directly, as a ternary branch, as an operand of a `??`
+  chain or in an array; no display property (`STRING_DISPLAY_PROPERTIES`:
+  `displayName`, `label`, `errorDescription`, …) returns one or joins one
+  on with `+`; and no ternary or `??`
   inside an interpolation of a localized string produces one
   (`"\(isUser ? "You" : name): \(text)"`). Brand names are allowed
   (`DISPLAY_BRAND_NAMES`). A new view or helper that shows a `String`
