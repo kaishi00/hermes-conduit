@@ -25,7 +25,9 @@ name: CI
 #   ci-gate    (ubuntu)  the single stable branch-protection check.
 #
 # Three macOS jobs per run: GitHub allows 5 concurrent macOS jobs per account,
-# and superseded runs are cancelled, so a run must leave room for the next.
+# and a PR's superseded runs are cancelled, so a run must leave room for the
+# next. Runs on main are never cancelled, so back-to-back merges overlap and one
+# macOS job queues behind the ceiling.
 
 on:
   push:
