@@ -223,7 +223,10 @@ enum StreamEventParser {
         case "error", "timeout": status = .failed
         // An end event's status always means the agent ended.
         case let value: status = DelegateAgentActivity.Status(rawValue: value)
-            ?? (eventType.contains("complete") || eventType.contains("finish") ? .completed : .running)
+            ?? (eventType.contains("fail") ? .failed
+                : eventType.contains("interrupt") ? .interrupted
+                : eventType.contains("complete") || eventType.contains("finish") ? .completed
+                : .running)
         }
         let text = payload["text"]?.stringValue ?? payload["message"]?.stringValue ?? payload["summary"]?.stringValue ?? ""
         let kind: DelegateAgentActivity.StreamLine.Kind = eventType.contains("tool") ? .tool : eventType.contains("thinking") ? .thinking : eventType.contains("progress") ? .progress : .summary

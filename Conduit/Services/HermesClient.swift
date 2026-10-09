@@ -2187,7 +2187,9 @@ final class HermesClient: ObservableObject {
         guard let rows = result.objectValue?["subagents"]?.arrayValue else {
             throw HermesError.invalidResponse
         }
-        let ids = rows.compactMap { $0.objectValue?["subagent_id"]?.stringValue }
+        let ids = rows.compactMap { row in
+            row.objectValue?["subagent_id"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+        }
         // A row without an id could be any running agent: trust none of it.
         guard ids.count == rows.count else { throw HermesError.invalidResponse }
         return Set(ids)

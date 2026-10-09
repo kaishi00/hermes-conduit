@@ -499,6 +499,10 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"{"type": "subagent.complete", "session_id": "s1", "payload": {"subagent_id": "a", "goal": "g", "status": "cancelled"}}"#)
         guard case .delegateAgent(_, let activity) = event else { return XCTFail("Expected delegateAgent") }
         XCTAssertEqual(activity.status, .completed)
+
+        let failed = parse(#"{"type": "subagent.fail", "session_id": "s1", "payload": {"subagent_id": "a", "goal": "g", "status": "cancelled"}}"#)
+        guard case .delegateAgent(_, let failedActivity) = failed else { return XCTFail("Expected delegateAgent") }
+        XCTAssertEqual(failedActivity.status, .failed)
     }
 
     func testSubagentWithoutAnyKeyStillSharesACard() {
