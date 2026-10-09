@@ -361,7 +361,7 @@ struct SessionList: View {
                 }
 
                 if layout.liveSections && !unpinnedSessions.isEmpty {
-                    Section(pinnedSessions.isEmpty ? "Sessions" : "Recent") {
+                    Section(pinnedSessions.isEmpty ? AppLocalization.string("Sessions") : AppLocalization.string("Recent")) {
                         ForEach(unpinnedSessions) { session in
                             sessionRow(session)
                         }
@@ -1733,15 +1733,15 @@ private struct CronJobDetailSheet: View {
                             // A finished one-shot job has nothing left to pause
                             // or resume.
                             if !job.isFinished {
-                                Button { Task { _ = await appState.performCronAction(job.enabled ? "pause" : "resume", for: job) } } label: {
-                                    Label(job.enabled ? "Pause" : "Resume", systemImage: job.enabled ? "pause.fill" : "play.fill").frame(maxWidth: .infinity)
+                                Button { Task { _ = await appState.performCronAction(job.enabled ? .pause : .resume, for: job) } } label: {
+                                    Label(job.enabled ? AppLocalization.string("Pause") : AppLocalization.string("Resume"), systemImage: job.enabled ? "pause.fill" : "play.fill").frame(maxWidth: .infinity)
                                 }
                                 .disabled(appState.cronJobActionID != nil)
                                 .frame(minHeight: 48)
                                 .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.18))
                             }
-                            Button { Task { _ = await appState.performCronAction("trigger", for: job); await appState.loadCronRuns(for: job) } } label: {
-                                Label(appState.cronJobActionID == job.id ? "Working…" : AppLocalization.string("Run now"), systemImage: "play.fill")
+                            Button { Task { _ = await appState.performCronAction(.trigger, for: job); await appState.loadCronRuns(for: job) } } label: {
+                                Label(appState.cronJobActionID == job.id ? AppLocalization.string("Working…") : AppLocalization.string("Run now"), systemImage: "play.fill")
                                     .frame(maxWidth: .infinity)
                                     .foregroundStyle(Color.white)
                             }

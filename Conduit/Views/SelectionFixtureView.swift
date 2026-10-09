@@ -54,7 +54,7 @@ struct SelectionFixtureView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
             Divider()
-            Text(pasteboardText.isEmpty ? "pasteboard:empty" : "pasteboard:\(pasteboardText)")
+            Text(verbatim: pasteboardText.isEmpty ? "pasteboard:empty" : "pasteboard:\(pasteboardText)")
                 .accessibilityIdentifier("fixture.pasteboard")
                 .font(.footnote.monospaced())
                 .foregroundStyle(.secondary)

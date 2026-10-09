@@ -23,13 +23,33 @@ extension HermesClientTests {
         XCTAssertNil(details.surface)
     }
 
-    func testOwnerNames() {
+    func testOwnerMapping() {
         XCTAssertEqual(ChatTakeoverState.owner("desktop"), .desktop)
         XCTAssertEqual(ChatTakeoverState.owner("tui"), .terminal)
         XCTAssertEqual(ChatTakeoverState.owner("CLI"), .terminal)
         XCTAssertEqual(ChatTakeoverState.owner(nil), .otherWindow)
-        let terminal = ChatTakeoverState(sessionID: "s1", sessionIDs: ["s1"], surface: "cli", phase: .offered)
-        XCTAssertEqual(terminal.stillReplyingMessage, "A Hermes terminal is still replying in this chat. Try again when it finishes.")
+    }
+
+    /// Each owner has its own whole sentences, read in the source language.
+    func testOwnerSentences() {
+        let defaults = UserDefaults.standard
+        let previous = defaults.string(forKey: AppLanguageStore.defaultsKey)
+        defaults.set(AppLanguage.source.rawValue, forKey: AppLanguageStore.defaultsKey)
+        defer {
+            if let previous {
+                defaults.set(previous, forKey: AppLanguageStore.defaultsKey)
+            } else {
+                defaults.removeObject(forKey: AppLanguageStore.defaultsKey)
+            }
+        }
+        func state(_ surface: String?) -> ChatTakeoverState {
+            ChatTakeoverState(sessionID: "s1", sessionIDs: ["s1"], surface: surface, phase: .offered)
+        }
+        XCTAssertEqual(state("desktop").stillReplyingMessage, "Hermes Desktop is still replying in this chat. Try again when it finishes.")
+        XCTAssertEqual(state("cli").stillReplyingMessage, "A Hermes terminal is still replying in this chat. Try again when it finishes.")
+        XCTAssertEqual(state(nil).stillReplyingMessage, "Another Hermes window is still replying in this chat. Try again when it finishes.")
+        XCTAssertEqual(state("desktop").openElsewhereMessage, "This chat is open in Hermes Desktop. Take it over to send from here.")
+        XCTAssertEqual(state("tui").takingOverMessage, "Taking this chat over from a Hermes terminal. If it's replying, Conduit waits for the reply to finish.")
     }
 
     func testRpcErrorDecodesTheRefusalReason() throws {

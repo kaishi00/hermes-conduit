@@ -48,7 +48,7 @@ Start a conversation on desktop, pick it up on your phone. The session list is t
 - Inline approvals so you can approve or reject tool calls without typing
 - Face ID lock and Keychain credential storage
 - iPhone and iPad (iOS 17+)
-- In English, German, Spanish, French, Brazilian Portuguese, Russian, Japanese and Simplified Chinese
+- Available in English, French, German, Indonesian, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Simplified Chinese, Spanish, Traditional Chinese and Turkish
 
 ## Requirements
 
