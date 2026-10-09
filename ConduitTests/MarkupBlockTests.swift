@@ -50,6 +50,48 @@ extension MarkdownFallbackTests {
 
         let halfWrittenFormula = "Intro.\n\n$$\na^2 +"
         XCTAssertEqual(markupPageCount(in: MarkdownText(source: halfWrittenFormula, isStreaming: true)), 0)
+
+        let diagram = "Intro.\n\n```mermaid\nflowchart TD\n  A --> B\n```"
+        XCTAssertEqual(
+            markupPageCount(in: MarkdownText(source: diagram).environment(\.markupDrawsInPlace, false)),
+            0,
+            "where drawing waits, the block shows its source"
+        )
+    }
+
+    @MainActor
+    func testALargeStreamingReplyShowsSourcesUntilItSettles() {
+        // Finished chunks of a very large stream pile up as it grows, so
+        // none of their diagrams draws until the reply settles.
+        var source = ""
+        var diagram = 0
+        while source.utf8.count < MarkdownLargeDocumentPolicy.documentThresholdBytes + 20_000 {
+            for _ in 0..<8 {
+                source += String(repeating: "Plain prose about the system. ", count: 14) + "\n\n"
+            }
+            source += "```mermaid\nflowchart TD\n  A\(diagram) --> B\(diagram)\n```\n\n"
+            diagram += 1
+        }
+        let host = UIHostingController(rootView: StreamingText(text: source, active: true))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.isHidden = false
+        let deadline = Date().addingTimeInterval(1.0)
+        while Date() < deadline {
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+
+        let textViews = Self.subviews(of: UITextView.self, in: host.view)
+        XCTAssertTrue(
+            textViews.contains { ($0.text ?? "").contains("flowchart TD") },
+            "the stream's diagrams show their source"
+        )
+        XCTAssertEqual(Self.subviews(of: WKWebView.self, in: host.view).count, 0)
+
+        window.isHidden = true
+        window.rootViewController = nil
     }
 
     // MARK: Pages
@@ -96,12 +138,25 @@ extension MarkdownFallbackTests {
         XCTAssertTrue(MarkupHTML.allowsNavigation(to: MarkupHTML.baseURL))
         XCTAssertTrue(MarkupHTML.allowsNavigation(to: URL(string: "about:blank")))
         XCTAssertTrue(MarkupHTML.allowsNavigation(to: URL(string: "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js")))
+        XCTAssertTrue(MarkupHTML.allowsNavigation(to: URL(string: "https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css")))
+        XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "https://cdn.jsdelivr.net/npm/other@1.0.0/index.js")))
+        XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "https://conduit.local/elsewhere")))
         XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "https://example.com/")))
         XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "http://conduit.local/")))
         XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "javascript:alert(1)")))
         XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "data:text/html,<p>")))
         XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "file:///etc/hosts")))
         XCTAssertFalse(MarkupHTML.allowsNavigation(to: nil))
+    }
+
+    func testAPageThatKeepsLosingItsProcessStopsReloading() {
+        var reloads = MarkupReloads()
+        for _ in 0..<MarkupReloads.limit {
+            XCTAssertTrue(reloads.mayReload())
+        }
+        XCTAssertFalse(reloads.mayReload(), "the block shows the failure card instead")
+        reloads.pageDrew()
+        XCTAssertTrue(reloads.mayReload(), "a page that drew may lose its process again later")
     }
 
     // MARK: Mount budget
@@ -119,12 +174,51 @@ extension MarkdownFallbackTests {
         XCTAssertGreaterThan(policy.richUnits(.code(language: "mermaid", source: huge)), policy.diagramUnits)
     }
 
+    func testTenDiagramsShowWithoutAContinueTap() {
+        // The first diagrams fit the eager budget and the last ones the live
+        // tail, so a reply with up to ten of them hides nothing.
+        let policy = MarkdownRichContentPolicy.self
+        func reply(diagrams: Int) -> [Int] {
+            (0..<diagrams).flatMap { _ in [0, policy.diagramUnits] }
+        }
+        XCTAssertEqual(policy.hiddenBlockCount(unitsByBlock: reply(diagrams: 6), unitBudget: policy.eagerRichUnitBudget), 0)
+        XCTAssertEqual(policy.hiddenBlockCount(unitsByBlock: reply(diagrams: 10), unitBudget: policy.eagerRichUnitBudget), 0)
+        XCTAssertGreaterThan(policy.hiddenBlockCount(unitsByBlock: reply(diagrams: 11), unitBudget: policy.eagerRichUnitBudget), 0)
+    }
+
+    func testLargeDocumentWindowsBoundTheirDiagramsAndFormulas() {
+        let view = LargeMarkdownExpandedView.self
+        let diagram = MarkdownRichContentPolicy.diagramUnits
+
+        // Nothing but diagrams: each window mounts a budget's worth.
+        let diagrams = Array(repeating: diagram, count: 40)
+        XCTAssertEqual(view.initialWindowCount(webPageUnitsByChunk: diagrams), 5)
+        XCTAssertEqual(view.nextWindowCount(current: 5, webPageUnitsByChunk: diagrams), 10)
+
+        // A diagram every fourth chunk: the first batch is whole, the next
+        // ends before its sixth diagram.
+        let mixed = (0..<30).flatMap { _ in [0, 0, 0, diagram] }
+        XCTAssertEqual(view.initialWindowCount(webPageUnitsByChunk: mixed), view.initialChunkBatch)
+        XCTAssertEqual(view.nextWindowCount(current: 12, webPageUnitsByChunk: mixed), 35)
+
+        // Every window moves on, even past a chunk over the budget alone.
+        let heavy = [20, 20, 0]
+        XCTAssertEqual(view.initialWindowCount(webPageUnitsByChunk: heavy), 1)
+        XCTAssertEqual(view.nextWindowCount(current: 1, webPageUnitsByChunk: heavy), 3)
+
+        // The prepared document counts diagrams and formulas, not text.
+        XCTAssertEqual(MarkdownRichContentPolicy.webPageUnits(.math("E = mc^2")), MarkdownRichContentPolicy.formulaUnits)
+        XCTAssertEqual(MarkdownRichContentPolicy.webPageUnits(.code(language: "Mermaid", source: "flowchart TD")), diagram)
+        XCTAssertEqual(MarkdownRichContentPolicy.webPageUnits(.code(language: "swift", source: "let x = 1")), 0)
+        XCTAssertEqual(MarkdownRichContentPolicy.webPageUnits(.paragraph("Text")), 0)
+    }
+
     // MARK: Helpers
 
     /// Hosts the message in a phone-sized window and counts the pages its
     /// diagrams and formulas draw in.
     @MainActor
-    private func markupPageCount(in view: MarkdownText) -> Int {
+    private func markupPageCount(in view: some View) -> Int {
         let host = UIHostingController(rootView: view)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
@@ -132,7 +226,7 @@ extension MarkdownFallbackTests {
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        let count = Self.webViews(in: host.view).count
+        let count = Self.subviews(of: WKWebView.self, in: host.view).count
 
         window.isHidden = true
         window.rootViewController = nil
@@ -145,8 +239,8 @@ extension MarkdownFallbackTests {
     }
 
     @MainActor
-    private static func webViews(in view: UIView) -> [WKWebView] {
-        if let webView = view as? WKWebView { return [webView] }
-        return view.subviews.flatMap { webViews(in: $0) }
+    private static func subviews<Match: UIView>(of type: Match.Type, in view: UIView) -> [Match] {
+        if let match = view as? Match { return [match] }
+        return view.subviews.flatMap { subviews(of: type, in: $0) }
     }
 }

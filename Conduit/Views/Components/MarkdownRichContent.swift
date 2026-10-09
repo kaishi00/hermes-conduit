@@ -163,6 +163,20 @@ enum MarkdownRichContentPolicy {
         }
     }
 
+    /// Units of the web pages a block draws in (diagrams, formulas). The
+    /// large-document chunk windows bound these too; their tables, code
+    /// and text have bounded presentations of their own.
+    static func webPageUnits(_ block: MarkdownBlock) -> Int {
+        switch block {
+        case .code(let language, _) where MarkdownLanguage.normalized(language) == "mermaid":
+            return diagramUnits
+        case .math:
+            return formulaUnits
+        default:
+            return 0
+        }
+    }
+
     /// Per-block rich-unit vector for a whole parsed message. Computed
     /// once per source and cached with the rendering, so body
     /// re-evaluations reuse it instead of re-walking every table's

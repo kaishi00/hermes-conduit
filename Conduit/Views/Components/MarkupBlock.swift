@@ -10,6 +10,9 @@
 //  While a reply streams, its last block may still be half written, so a
 //  diagram or formula there shows its source until more text follows it or
 //  the reply settles. Drawing a half-written chart only produces errors.
+//  A very large reply (see MarkdownLargeDocumentPolicy) shows every source
+//  while it streams and draws once it settles, where its chunk windows
+//  bound how many pages mount.
 //
 
 import SwiftUI
@@ -39,6 +42,7 @@ struct MarkupBlock: View {
     /// False while the streaming reply may still be writing this block.
     var isComplete = true
 
+    @Environment(\.markupDrawsInPlace) private var drawsInPlace
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.chatTextSize) private var chatTextSize
     @State private var report: MarkupDrawReport?
@@ -67,6 +71,9 @@ struct MarkupBlock: View {
 
     private var key: MarkupDrawKey { MarkupDrawKey(document: document, attempt: attempt) }
 
+    /// Whether the block draws now, or shows its source until it can.
+    private var draws: Bool { isComplete && drawsInPlace }
+
     /// What the current page reported; nil while it's still drawing.
     private var outcome: MarkupDrawReport.Outcome? {
         report?.key == key ? report?.outcome : nil
@@ -75,7 +82,7 @@ struct MarkupBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            if !isComplete {
+            if !draws {
                 sourcePreview
             } else if case .failed(let detail) = outcome {
                 failure(detail)
@@ -90,7 +97,7 @@ struct MarkupBlock: View {
         .sheet(isPresented: $showsFullScreen) {
             MarkupPreviewSheet(document: document)
         }
-        .task(id: MarkupDrawTask(key: key, isComplete: isComplete)) {
+        .task(id: MarkupDrawTask(key: key, draws: draws)) {
             await offerRetryIfStillDrawing()
         }
     }
@@ -102,7 +109,7 @@ struct MarkupBlock: View {
             Label(title, systemImage: kind == .mermaid ? "point.3.connected.trianglepath.dotted" : "function")
                 .font(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(.secondary)
-            if !isComplete {
+            if !draws {
                 ProgressView().controlSize(.mini)
             }
             Spacer()
@@ -111,7 +118,8 @@ struct MarkupBlock: View {
                 Haptics.light()
             } label: { Label("Copy source", systemImage: "doc.on.doc").font(.caption2.weight(.semibold)) }
                 .tint(.conduitAccent)
-            if isComplete {
+            // A failed page has nothing to zoom; Try again is the way on.
+            if draws, !hasFailed {
                 Button {
                     showsFullScreen = true
                 } label: {
@@ -127,6 +135,11 @@ struct MarkupBlock: View {
     private var drawnHeight: CGFloat? {
         if case .drawn(let height) = outcome { return height }
         return nil
+    }
+
+    private var hasFailed: Bool {
+        if case .failed = outcome { return true }
+        return false
     }
 
     @ViewBuilder
@@ -205,7 +218,7 @@ struct MarkupBlock: View {
     /// A page that never reports (the renderer didn't download, WebKit
     /// stalled) turns into the failure card instead of spinning forever.
     private func offerRetryIfStillDrawing() async {
-        guard isComplete, outcome == nil else { return }
+        guard draws, outcome == nil else { return }
         let key = self.key
         try? await Task.sleep(for: Self.drawTimeout)
         guard !Task.isCancelled, report?.key != key else { return }
@@ -220,7 +233,20 @@ struct MarkupDrawKey: Hashable {
 
 private struct MarkupDrawTask: Hashable {
     let key: MarkupDrawKey
-    let isComplete: Bool
+    let draws: Bool
+}
+
+/// False where diagrams and formulas show their source instead of drawing:
+/// a very large streaming reply, whose finished chunks pile up as it grows.
+struct MarkupDrawsInPlaceKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    var markupDrawsInPlace: Bool {
+        get { self[MarkupDrawsInPlaceKey.self] }
+        set { self[MarkupDrawsInPlaceKey.self] = newValue }
+    }
 }
 
 /// What a block's page last reported, and for which page.
@@ -309,12 +335,14 @@ struct MarkupWebView: UIViewRepresentable {
         var onEvent: ((Event) -> Void)?
         private var loaded: MarkupDocument?
         private var html = ""
+        private var reloads = MarkupReloads()
 
         /// Loads the page once per document; SwiftUI calls this on every
         /// update, which during a stream is every frame.
         func load(_ document: MarkupDocument, into view: WKWebView) {
             guard document != loaded else { return }
             loaded = document
+            reloads = MarkupReloads()
             html = MarkupHTML.page(document, presentation: .inline)
             view.loadHTMLString(html, baseURL: MarkupHTML.baseURL)
         }
@@ -322,6 +350,7 @@ struct MarkupWebView: UIViewRepresentable {
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any] else { return }
             if let height = body["height"] as? Double {
+                reloads.pageDrew()
                 onEvent?(.height(CGFloat(height)))
             } else if let detail = body["failed"] as? String {
                 onEvent?(.failed(detail.isEmpty ? nil : detail))
@@ -330,14 +359,38 @@ struct MarkupWebView: UIViewRepresentable {
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             // WebKit can end an off-screen page's process under memory
-            // pressure, which leaves the block blank until it reloads.
+            // pressure, which leaves the block blank until it reloads. A
+            // page that keeps ending it before it draws gets the failure
+            // card instead of reloading forever.
             guard !html.isEmpty else { return }
-            webView.loadHTMLString(html, baseURL: MarkupHTML.baseURL)
+            if reloads.mayReload() {
+                webView.loadHTMLString(html, baseURL: MarkupHTML.baseURL)
+            } else {
+                onEvent?(.failed(nil))
+            }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             decisionHandler(MarkupHTML.allowsNavigation(to: navigationAction.request.url) ? .allow : .cancel)
         }
+    }
+}
+
+/// Reloads after WebKit ends a page's process. A page that draws starts
+/// counting again; one that keeps losing its process before it draws stops
+/// reloading.
+struct MarkupReloads {
+    static let limit = 2
+    private(set) var sinceLastDraw = 0
+
+    mutating func mayReload() -> Bool {
+        guard sinceLastDraw < Self.limit else { return false }
+        sinceLastDraw += 1
+        return true
+    }
+
+    mutating func pageDrew() {
+        sinceLastDraw = 0
     }
 }
 
@@ -402,18 +455,29 @@ private struct SafeMarkupWebView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ view: WKWebView, context: Context) {}
+    /// A new page while the sheet is open (light or dark switched) reloads.
+    func updateUIView(_ view: WKWebView, context: Context) {
+        guard context.coordinator.html != html else { return }
+        context.coordinator.html = html
+        context.coordinator.reloads = MarkupReloads()
+        view.loadHTMLString(html, baseURL: MarkupHTML.baseURL)
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator(html: html) }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
-        private let html: String
+        var html: String
+        var reloads = MarkupReloads()
 
         init(html: String) {
             self.html = html
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            // Same as the inline page: reload rather than stay blank.
+            // Same as the inline page: reload rather than stay blank, a
+            // couple of times. This page doesn't report when it has drawn,
+            // so the count only starts again with a new page.
+            guard reloads.mayReload() else { return }
             webView.loadHTMLString(html, baseURL: MarkupHTML.baseURL)
         }
 
@@ -469,14 +533,24 @@ enum MarkupHTML {
     /// to fit, and full screen shows it at size.
     static let inlineDiagramMaximumHeight = 480
 
-    /// The page itself and the renderer's CDN; anything else (a link in a
-    /// diagram, a javascript:, data: or file: URL) stays out.
+    /// The page itself and the renderers' files on the CDN; anything else (a
+    /// link in a diagram, another path, a javascript:, data: or file: URL)
+    /// stays out.
     static func allowsNavigation(to url: URL?) -> Bool {
         guard let url, let scheme = url.scheme?.lowercased() else { return false }
         if scheme == "about" { return url.absoluteString.lowercased() == "about:blank" }
         guard scheme == "https", let host = url.host?.lowercased() else { return false }
-        return host == "conduit.local" || host == "cdn.jsdelivr.net"
+        switch host {
+        case "conduit.local":
+            return url.path.isEmpty || url.path == "/"
+        case "cdn.jsdelivr.net":
+            return rendererPathPrefixes.contains { url.path.hasPrefix($0) }
+        default:
+            return false
+        }
     }
+
+    private static let rendererPathPrefixes = ["/npm/mermaid@", "/npm/katex@"]
 
     static func page(_ document: MarkupDocument, presentation: Presentation) -> String {
         switch document.kind {
