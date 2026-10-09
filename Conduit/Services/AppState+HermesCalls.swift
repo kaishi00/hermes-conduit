@@ -150,7 +150,10 @@ extension AppState {
     func answerHermesCall(_ call: HermesCallRequest) -> Bool {
         // Voice already running (or no gateway): the job's news reaches the
         // user the usual way.
-        guard isConnected, !isVoiceInUse else { return false }
+        guard isConnected, !isVoiceInUse else {
+            HermesCallTrace.shared.note("Voice not opened (connected: \(isConnected), voice in use: \(isVoiceInUse))")
+            return false
+        }
         // The call tells the user how the job went; no voice conversation
         // announces it again.
         voiceBackgroundJobSupervisor.noteCallAnswered(sessionIDs: call.sessionIDs)
@@ -172,21 +175,31 @@ extension AppState {
         hermesCallOpenGeneration = generation
         hermesCallOpenTask = Task { [weak self] in
             // Hung up before voice opened: it doesn't.
-            guard let self, !Task.isCancelled else { return }
+            guard let self, !Task.isCancelled else {
+                HermesCallTrace.shared.note("Voice open cancelled before it ran")
+                return
+            }
             let errorBefore = self.errorMessage
-            if self.configuredLiveVoiceEngine(profile: profile) != nil {
+            let opened: Bool
+            if let engine = self.configuredLiveVoiceEngine(profile: profile) {
+                HermesCallTrace.shared.note("Opening live voice (\(engine))")
                 self.pendingHermesCall = opening
-                _ = await self.openVoiceConversation(intent)
+                opened = await self.openVoiceConversation(intent)
                 // Starting the call took it; a later unrelated call must not.
                 if self.pendingHermesCall == opening { self.pendingHermesCall = nil }
             } else {
+                HermesCallTrace.shared.note("Opening classic voice")
                 // Classic voice says it at its first listening window.
                 self.voiceBackgroundJobSupervisor.queueCallOpening(opening.spokenBrief)
-                let opened = await self.openVoiceConversation(intent)
+                opened = await self.openVoiceConversation(intent)
                 if !opened || !self.showVoiceSheet {
                     self.voiceBackgroundJobSupervisor.clearCallOpening(opening.spokenBrief)
                 }
             }
+            let shown = self.errorMessage != nil && self.errorMessage != errorBefore
+            HermesCallTrace.shared.note(
+                "Voice open \(opened ? "done" : "not done")\(shown ? ", error shown" : "") (\(self.hermesCallVoiceTraceSummary))"
+            )
             // Only a hang-up or a newer call replaces this task, and both
             // cancel it first.
             guard Task.isCancelled else {
@@ -378,6 +391,13 @@ extension AppState {
         } else if showVoiceSheet || voiceConversationController.hasLiveVoiceSession {
             closeVoiceConversation()
         }
+    }
+
+    /// What the call trace says of voice: which surfaces are up and running.
+    var hermesCallVoiceTraceSummary: String {
+        let liveSheet = showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet
+        return "voice sheet: \(showVoiceSheet), live sheet: \(liveSheet), live call: \(isLiveVoiceCallActive), "
+            + "classic session: \(voiceConversationController.hasLiveVoiceSession), app on screen: \(isSceneActive)"
     }
 
     /// The CallKit call's mute button.

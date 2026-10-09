@@ -11987,6 +11987,8 @@ final class AppState: ObservableObject {
     /// a reconnect begins; every step after it lands in this one.
     private func beginConnectionTimeline(_ trigger: String) {
         connectionTimeline = ConnectionTimeline(trigger: trigger)
+        // A call from Hermes races these (#449).
+        HermesCallTrace.shared.note("Connection: \(trigger)")
     }
 
     /// Starts a timeline only when none is still recording, so a reconnect
@@ -12001,6 +12003,7 @@ final class AppState: ObservableObject {
     /// back except Gateway Diagnostics.
     private func noteConnectionStep(_ label: String, since startedAt: Date? = nil, error: Error? = nil) {
         connectionTimeline?.record(label, since: startedAt, error: error)
+        HermesCallTrace.shared.note("Connection: \(label)", since: startedAt, error: error)
     }
 
     private func mintChatResumeTicket(for connection: HermesConnection) async throws -> String {
@@ -12113,6 +12116,7 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func handleScenePhase(_ phase: ScenePhase) -> Task<Void, Never>? {
+        HermesCallTrace.shared.note("App \(phase)")
         if phase != .active {
             responseHapticConclusionTask?.cancel()
             responseHapticConclusionTask = nil
@@ -15144,6 +15148,9 @@ final class AppState: ObservableObject {
     /// Routes a notification to its originating profile/session without
     /// allowing the ordinary cold-start session restoration to win first.
     func openNotificationTarget(_ target: ConduitNotificationTarget) async -> Bool {
+        // Where an open for a call from Hermes stopped (#449).
+        var traceStage = "dashboard check"
+        defer { HermesCallTrace.shared.note("Chat open ended at: \(traceStage)") }
         // Dashboard ownership gate (#148 / B3): a push from dashboard A is
         // never processed against active dashboard B, even when profile,
         // session, and request ids all collide. A push belonging to another
@@ -15177,6 +15184,7 @@ final class AppState: ObservableObject {
             }
             return false
         }
+        traceStage = "open start"
         let notificationAttemptID = UUID()
         activeNotificationOpenAttemptID = notificationAttemptID
         isOpeningNotificationSession = true
@@ -15214,6 +15222,7 @@ final class AppState: ObservableObject {
             // user-initiated decision (single-flight, epoch-fenced) closes it,
             // and a refresh that fails leaves the evidence unverifiable, which
             // refuses.
+            traceStage = "bot roster"
             await refreshBotRoster()
             // The refresh ALWAYS suspends (it creates or joins a task), so
             // this attempt must re-prove it still owns the route before it
@@ -15246,6 +15255,7 @@ final class AppState: ObservableObject {
             // server-side, so a Bot Chat that compacted since the roster was
             // read is still recognized here, BEFORE the switch rather than
             // after it. A failed lookup proves nothing and fails closed.
+            traceStage = "bot chat lookup"
             let pushesCanonicalChat: Bool
             do {
                 pushesCanonicalChat = try await notificationTargetIsCanonicalChat(
@@ -15279,6 +15289,7 @@ final class AppState: ObservableObject {
             // the session catalog, so only the canonical lookup can name its
             // tip. No profile is adopted here, so a failed lookup does not
             // block the push; the catalog check below still applies.
+            traceStage = "bot chat lookup"
             let pushesCanonicalChat = (try? await notificationTargetIsCanonicalChat(
                 target,
                 of: targetProfile
@@ -15293,6 +15304,7 @@ final class AppState: ObservableObject {
             }
         }
         if let targetProfile, targetProfile != activeProfile {
+            traceStage = "profile switch"
             guard await switchProfile(
                 to: targetProfile,
                 reusing: transitionGeneration
@@ -15316,10 +15328,12 @@ final class AppState: ObservableObject {
         // Do not share the sidebar refresh guard here. The notification route
         // needs one authoritative read even if a visual refresh is already in
         // progress, otherwise it can resolve against the stale catalog.
+        traceStage = "session list"
         guard await loadSessions(
             forceRefresh: true,
             requiredViewportTransitionGeneration: transitionGeneration
         ) else { return false }
+        traceStage = "bot chat check"
         guard notificationOpenAttemptIsCurrent(
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
@@ -15380,7 +15394,8 @@ final class AppState: ObservableObject {
                 cacheSessionIDs: [requestedID]
             )
         }
-        let opened = await performSessionOpen(
+        traceStage = "session open"
+        let outcome = await performSessionOpen(
             route.resumeTargetID,
             reusing: transitionGeneration,
             // The push-named runtime id is a PRESENTATION MIGRATION SOURCE,
@@ -15390,7 +15405,9 @@ final class AppState: ObservableObject {
             // rejected open nothing migrates (the hook only runs on
             // admission success).
             presentationMigrationSessionIDs: [requestedID]
-        ) == .opened
+        )
+        let opened = outcome == .opened
+        traceStage = "session open, \(outcome)"
         // Commit the payload's dual identity as positive evidence only once
         // the open actually succeeded — a failed resume (e.g. the durable
         // conversation was deleted server-side) must not leave a mapping
@@ -15544,8 +15561,14 @@ final class AppState: ObservableObject {
         id: UUID,
         transitionGeneration: UInt64
     ) -> Bool {
-        activeNotificationOpenAttemptID == id
+        let current = activeNotificationOpenAttemptID == id
             && chatViewportTransitionIsCurrent(generation: transitionGeneration)
+        if !current {
+            HermesCallTrace.shared.note(
+                "Chat open superseded (newer open: \(activeNotificationOpenAttemptID != id), chat view moved: \(!chatViewportTransitionIsCurrent(generation: transitionGeneration)))"
+            )
+        }
+        return current
     }
 
     private func finishNotificationOpenAttempt(id: UUID) {

@@ -789,4 +789,18 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(hungUp.pendingHermesCall)
         XCTAssertFalse(hungUp.showVoiceSheet)
     }
+
+    func testTheCallTraceRecordsTheStepsOfOneCall() throws {
+        let trace = HermesCallTrace()
+        trace.note("Answered")
+        XCTAssertNil(trace.timeline, "No call, no trace")
+        trace.begin("Push received: \(HermesNativeCallPlan.ring.traceLabel)")
+        trace.note("Chat opened", since: Date().addingTimeInterval(-1))
+        let report = try XCTUnwrap(trace.timeline?.report)
+        XCTAssertTrue(report.hasPrefix("Conduit connection timeline: call from Hermes"))
+        XCTAssertTrue(report.contains("Push received: ring"))
+        XCTAssertTrue(report.contains("Chat opened (1."), report)
+        trace.begin("Push received: \(HermesNativeCallPlan.endAtOnce(.talk).traceLabel)")
+        XCTAssertFalse(trace.timeline?.report.contains("Chat opened") ?? true, "A new call starts a new trace")
+    }
 }

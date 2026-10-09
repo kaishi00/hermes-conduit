@@ -87,9 +87,16 @@ struct GatewayDiagnosticsSheet: View {
         }
     }
 
+    /// The connection timeline, then the last call from Hermes (#449), so
+    /// one Copy takes both.
+    private var lastConnectionReport: String? {
+        let reports = [appState.connectionTimeline?.report, HermesCallTrace.shared.timeline?.report].compactMap { $0 }
+        return reports.isEmpty ? nil : reports.joined(separator: "\n\n")
+    }
+
     @ViewBuilder
     private var lastConnectionContent: some View {
-        if let report = appState.connectionTimeline?.report {
+        if let report = lastConnectionReport {
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(verbatim: report)
                     .font(.caption.monospaced())
