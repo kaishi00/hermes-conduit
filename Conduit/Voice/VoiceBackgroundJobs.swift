@@ -814,9 +814,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 }
             } catch {
                 hermesCallbackLogger.notice("Call watch not settled at hang-up: \(error.localizedDescription, privacy: .public)")
-                // A call running now keeps holding it on its renewals;
-                // otherwise a held watch lapses and fires on the host.
-                if generation == self.generation, callbackCallID != nil, let watchID {
+                // A call running now keeps watching and holding it on its
+                // renewals; otherwise a held watch lapses and fires on the host.
+                if generation == self.generation, callbackCallID != nil {
                     callbackWatches[id] = CallbackWatch(callID: callbackCallID, profile: entry.profile, watchID: watchID)
                     syncCallbacks()
                     return

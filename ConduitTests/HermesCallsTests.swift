@@ -347,6 +347,26 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(calls.notified.isEmpty)
     }
 
+    func testAWatchWhoseRegistrationFailsAtHandOverIsTriedAgain() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        calls.watchError = URLError(.timedOut)
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+
+        // The next call takes it over while the host still can't be reached.
+        beginHermesCall(supervisor)
+        await supervisor.callbackPassesSettled()
+        calls.watchError = nil
+
+        // Still the new call's: its hang-up registers it, released.
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+        XCTAssertEqual(calls.watches.last?.hold, 0)
+        XCTAssertTrue(calls.notified.isEmpty)
+    }
+
     func testAWatchHandedToACallThatEndsMeanwhileIsLetGo() async {
         let (supervisor, _, calls) = hermesCallSupervisor()
         beginHermesCall(supervisor)
