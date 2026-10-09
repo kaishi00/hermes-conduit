@@ -120,6 +120,64 @@ final class GatewayRestartTests: XCTestCase {
         XCTAssertEqual(monitor.observe(action: nil, gateway: nil, elapsed: 40), .waiting(.stopping))
     }
 
+    // MARK: - Slot
+
+    func testRestartBelongsToItsDashboard() {
+        let a = UUID(), b = UUID()
+        var slot = GatewayRestartSlot()
+        let restart = slot.start(on: a)
+        XCTAssertEqual(slot.state(on: a), .requesting)
+        XCTAssertEqual(slot.state(on: b), .idle)
+
+        slot.update(.restarting(.stopping, detail: nil), restart: restart)
+        slot.finish(.restarted(sharedProfiles: []), restart: restart, activeDashboardID: a)
+        XCTAssertEqual(slot.state(on: a), .restarted(sharedProfiles: []))
+    }
+
+    func testRestartEndingOnAnotherDashboardLeavesNothingInProgress() {
+        // The user switched dashboards while the restart request was out:
+        // going back mustn't find a spinner that never ends.
+        let a = UUID(), b = UUID()
+        var slot = GatewayRestartSlot()
+        let restart = slot.start(on: a)
+        slot.finish(.failed(detail: "Conduit is still connecting"), restart: restart, activeDashboardID: b)
+        XCTAssertEqual(slot.state(on: a), .idle)
+        XCTAssertNil(slot.dashboardID)
+    }
+
+    func testDroppedRestartClears() {
+        let a = UUID()
+        var slot = GatewayRestartSlot()
+        let restart = slot.start(on: a)
+        slot.finish(.idle, restart: restart, activeDashboardID: a)
+        XCTAssertEqual(slot, GatewayRestartSlot())
+    }
+
+    func testOlderRestartNeverLandsOnANewerOne() {
+        let a = UUID(), b = UUID()
+        var slot = GatewayRestartSlot()
+        let older = slot.start(on: a)
+        let newer = slot.start(on: b)
+        slot.update(.restarting(.starting, detail: nil), restart: older)
+        slot.finish(.notBackYet, restart: older, activeDashboardID: b)
+        XCTAssertEqual(slot.state(on: b), .requesting)
+
+        slot.update(.restarting(.starting, detail: "✓"), restart: newer)
+        XCTAssertEqual(slot.state(on: b), .restarting(.starting, detail: "✓"))
+    }
+
+    func testDismissClearsAnOutcomeButNotARestartInProgress() {
+        let a = UUID()
+        var slot = GatewayRestartSlot()
+        let restart = slot.start(on: a)
+        slot.dismiss()
+        XCTAssertEqual(slot.state(on: a), .requesting)
+
+        slot.finish(.unsupported, restart: restart, activeDashboardID: a)
+        slot.dismiss()
+        XCTAssertEqual(slot, GatewayRestartSlot())
+    }
+
     // MARK: - Parsing
 
     func testGatewayStatusParsesTheStatusRoute() throws {

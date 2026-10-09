@@ -41,6 +41,58 @@ enum GatewayRestartState: Equatable {
     }
 }
 
+/// Restart Gateway's state and the dashboard it belongs to. A restart
+/// belongs to the dashboard it started on, and every other dashboard sees
+/// nothing. Each restart gets its own id, so a step or an outcome from an
+/// older restart never lands on a newer one.
+struct GatewayRestartSlot: Equatable {
+    private(set) var state: GatewayRestartState = .idle
+    private(set) var dashboardID: UUID?
+    private var restartID: UUID?
+
+    func state(on activeDashboardID: UUID?) -> GatewayRestartState {
+        dashboardID == activeDashboardID ? state : .idle
+    }
+
+    /// Starts a restart on `dashboardID` and returns its id.
+    mutating func start(on dashboardID: UUID?) -> UUID {
+        let id = UUID()
+        restartID = id
+        self.dashboardID = dashboardID
+        state = .requesting
+        return id
+    }
+
+    mutating func update(_ newState: GatewayRestartState, restart id: UUID) {
+        guard restartID == id else { return }
+        state = newState
+    }
+
+    /// How restart `id` ended. When another dashboard is in use by then, or
+    /// the restart was dropped (`.idle`), nothing is kept: going back to
+    /// that dashboard mustn't find a restart stuck in progress.
+    mutating func finish(_ outcome: GatewayRestartState, restart id: UUID, activeDashboardID: UUID?) {
+        guard restartID == id else { return }
+        if outcome != .idle, dashboardID == activeDashboardID {
+            state = outcome
+        } else {
+            clear()
+        }
+    }
+
+    /// Clears a finished restart's outcome. A restart in progress stays.
+    mutating func dismiss() {
+        guard !state.isInProgress else { return }
+        clear()
+    }
+
+    private mutating func clear() {
+        state = .idle
+        dashboardID = nil
+        restartID = nil
+    }
+}
+
 enum GatewayRestartStage: Equatable {
     /// The old gateway is finishing running work before it stops.
     case draining

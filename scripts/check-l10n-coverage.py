@@ -178,7 +178,7 @@ STRING_DISPLAY_PARAMETERS = {
     "continueButton": ("_",),
     "nextButton": ("_",),
     "appendSlashOutput": ("_",),
-    "gatewayRestartRow": ("_", "detail"),
+    "GatewayRestartRow": ("title", "detail"),
 }
 
 # Computed String properties whose value is shown as text (a label, a

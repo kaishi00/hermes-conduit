@@ -38,45 +38,70 @@ struct GatewayRestartStatusView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        switch appState.activeGatewayRestart {
+        Group {
+            if let row = Self.row(for: appState.activeGatewayRestart) {
+                rowView(row)
+            }
+        }
+        // VoiceOver hears each step and the outcome as they land, once per
+        // step: a new log line under the same step isn't announced.
+        .onChange(of: appState.activeGatewayRestart) { previous, state in
+            guard let row = Self.row(for: state), row.title != Self.row(for: previous)?.title else { return }
+            AccessibilityNotification.Announcement(row.title).post()
+        }
+    }
+
+    private struct GatewayRestartRow {
+        var title: String
+        var detail: String?
+        /// The detail is Hermes' own words, shown verbatim.
+        var logDetail = false
+        /// Nil while the restart is still going: a spinner shows instead,
+        /// and there's nothing to dismiss.
+        var symbol: String?
+        var tint: Color = .secondary
+    }
+
+    private static func row(for state: GatewayRestartState) -> GatewayRestartRow? {
+        switch state {
         case .idle:
-            EmptyView()
+            return nil
         case .requesting:
-            gatewayRestartRow(AppLocalization.string("Asking Hermes to restart the gateway…"), detail: nil)
+            return GatewayRestartRow(title: AppLocalization.string("Asking Hermes to restart the gateway…"))
         case .restarting(let stage, let detail):
-            gatewayRestartRow(Self.title(for: stage), detail: detail, logDetail: true)
+            return GatewayRestartRow(title: title(for: stage), detail: detail, logDetail: true)
         case .restarted(let sharedProfiles):
-            gatewayRestartRow(
-                AppLocalization.string("Gateway restarted"),
-                detail: sharedProfiles.isEmpty ? nil : AppLocalization.string("Profiles on this gateway: \(Self.list(sharedProfiles))"),
+            return GatewayRestartRow(
+                title: AppLocalization.string("Gateway restarted"),
+                detail: sharedProfiles.isEmpty ? nil : AppLocalization.string("Profiles on this gateway: \(list(sharedProfiles))"),
                 symbol: "checkmark.circle.fill",
                 tint: .green
             )
         case .failed(let detail):
-            gatewayRestartRow(
-                AppLocalization.string("Couldn't restart the gateway"),
+            return GatewayRestartRow(
+                title: AppLocalization.string("Couldn't restart the gateway"),
                 detail: detail,
                 logDetail: true,
                 symbol: "exclamationmark.triangle.fill",
                 tint: .red
             )
         case .failedToStart:
-            gatewayRestartRow(
-                AppLocalization.string("The gateway didn't start"),
+            return GatewayRestartRow(
+                title: AppLocalization.string("The gateway didn't start"),
                 detail: AppLocalization.string("Run hermes gateway status on the host to see why."),
                 symbol: "exclamationmark.triangle.fill",
                 tint: .red
             )
         case .notBackYet:
-            gatewayRestartRow(
-                AppLocalization.string("The gateway isn't back yet"),
+            return GatewayRestartRow(
+                title: AppLocalization.string("The gateway isn't back yet"),
                 detail: AppLocalization.string("It may still be finishing running tasks. Run hermes gateway status on the host to check."),
                 symbol: "clock.badge.exclamationmark",
                 tint: .orange
             )
         case .unsupported:
-            gatewayRestartRow(
-                AppLocalization.string("This Hermes can't restart its gateway from Conduit"),
+            return GatewayRestartRow(
+                title: AppLocalization.string("This Hermes can't restart its gateway from Conduit"),
                 detail: AppLocalization.string("Update Hermes, or run hermes gateway restart on the host."),
                 symbol: "exclamationmark.circle.fill",
                 tint: .orange
@@ -84,32 +109,26 @@ struct GatewayRestartStatusView: View {
         }
     }
 
-    /// One status row. Without `symbol` it shows a spinner (still going);
-    /// with one, a finished outcome the user can dismiss. A `logDetail` is
-    /// Hermes' own log line, shown verbatim.
-    private func gatewayRestartRow(
-        _ title: String,
-        detail: String?,
-        logDetail: Bool = false,
-        symbol: String? = nil,
-        tint: Color = .secondary
-    ) -> some View {
+    private func rowView(_ row: GatewayRestartRow) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
+            // The icon and text read as one VoiceOver element; the dismiss
+            // button beside them stays its own.
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                if let symbol {
-                    Image(systemName: symbol).foregroundStyle(tint).accessibilityHidden(true)
+                if let symbol = row.symbol {
+                    Image(systemName: symbol).foregroundStyle(row.tint).accessibilityHidden(true)
                 } else {
                     ProgressView().controlSize(.small)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: title)
+                    Text(verbatim: row.title)
                         .font(.subheadline.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
-                    if let detail, !detail.isEmpty {
+                    if let detail = row.detail, !detail.isEmpty {
+                        // A log line is at most 240 characters, so it wraps
+                        // in full at any text size.
                         Text(verbatim: detail)
-                            .font(logDetail ? .caption.monospaced() : .footnote)
+                            .font(row.logDetail ? .caption.monospaced() : .footnote)
                             .foregroundStyle(.secondary)
-                            .lineLimit(logDetail ? 3 : nil)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -117,9 +136,12 @@ struct GatewayRestartStatusView: View {
             }
             .accessibilityElement(children: .combine)
             Spacer(minLength: 0)
-            if symbol != nil {
+            if row.symbol != nil {
                 Button { appState.dismissGatewayRestartOutcome() } label: {
-                    Image(systemName: "xmark").font(.footnote.weight(.semibold))
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)

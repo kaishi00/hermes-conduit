@@ -41,7 +41,7 @@ struct GatewayDiagnosticsSheet: View {
                     .disabled(!appState.canRestartGateway)
                     .accessibilityLabel("Restart Gateway")
                     .accessibilityIdentifier("gateway.restart")
-                    Button { Task { await appState.loadGatewayDiagnostics() } } label: {
+                    Button { Task { await appState.refreshGatewayDiagnostics() } } label: {
                         if appState.gatewayDiagnosticsLoading {
                             ProgressView().controlSize(.small)
                         } else {

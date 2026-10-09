@@ -1250,8 +1250,7 @@ final class AppState: ObservableObject {
     @Published private(set) var gatewayDiagnosticsLoading = false
     /// Restart Gateway's progress and outcome, and the dashboard it belongs
     /// to (AppState+GatewayRestart.swift).
-    @Published var gatewayRestart: GatewayRestartState = .idle
-    var gatewayRestartDashboardID: UUID?
+    @Published var gatewayRestart = GatewayRestartSlot()
     var gatewayRestartTask: Task<Void, Never>?
     @Published private(set) var modelVisibility = ModelVisibility()
 
@@ -8418,6 +8417,9 @@ final class AppState: ObservableObject {
         composerDraftStore.removeAll()
         // So do screenshots waiting for a question.
         discardScreenQuestions()
+        // A restart already handed to Hermes carries on there; Conduit
+        // stops following it.
+        stopFollowingGatewayRestart()
         cancelScenePhaseAttempt()
         owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
