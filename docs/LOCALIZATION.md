@@ -138,7 +138,8 @@ availability`, not `availability.title == "Ready"`).
   inside an interpolation of a localized string produces one
   (`"\(isUser ? "You" : name): \(text)"`). Brand names are allowed
   (`DISPLAY_BRAND_NAMES`). A new view or helper that shows a `String`
-  parameter belongs in the list;
+  parameter belongs in the list, and a computed string only written to
+  logs takes a name outside it (`logLabel`, not `label`);
 - where the English source varies a key by plural, every shipped language
   provides each plural form its own rules use (French: one, many, other;
   Japanese: other). The table is `PLURAL_CATEGORIES` in the checker,

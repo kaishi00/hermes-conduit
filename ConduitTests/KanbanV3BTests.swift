@@ -310,6 +310,26 @@ final class KanbanV3BTests: XCTestCase {
         XCTAssertFalse(store.isMutating)
     }
 
+    func testArchiveResultWithoutActionFailsClosed() async {
+        let requester = V3BMockRequester(responsesByPath: routes())
+        requester.deleteBoardResponse = [
+            "result": ["slug": "alpha", "new_path": ""],
+            "current": "alpha",
+        ]
+        let store = makeStore(requester: requester)
+        await store.reload()
+        guard let stampA = store.loadedContextStamp else { return XCTFail("expected context") }
+
+        do {
+            _ = try await store.archiveBoard(slug: "alpha", expectedContext: stampA)
+            XCTFail("a result without an action must fail closed")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("without a result"), "missing action surfaced: \(error.localizedDescription)")
+        }
+        XCTAssertNotNil(store.mutationErrorMessage)
+        XCTAssertFalse(store.isMutating)
+    }
+
     func testCreateServerChangeFailsClosed() async {
         let requesterA = V3BMockRequester(responsesByPath: routes())
         let store = makeStore(requester: requesterA)
