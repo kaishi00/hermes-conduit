@@ -206,8 +206,10 @@ enum StreamEventParser {
         let goal = payload["goal"]?.stringValue ?? payload["task"]?.stringValue ?? ""
         let taskIndex = payload["task_index"]?.intValue ?? 0
         let delegationID = nonEmpty("delegation_id")
+        // A delegation id and slot name the agent alone, so a frame that
+        // omits the goal still lands on its card.
         let id = subagentID ?? nonEmpty("id") ?? nonEmpty("agent_id")
-            ?? "\(sessionId)/\(delegationID ?? "")#\(taskIndex):\(goal)"
+            ?? (delegationID.map { "\(sessionId)/\($0)#\(taskIndex)" } ?? "\(sessionId)/#\(taskIndex):\(goal)")
         let statusValue = payload["status"]?.stringValue ?? {
             if eventType.contains("fail") { return "failed" }
             if eventType.contains("interrupt") { return "interrupted" }

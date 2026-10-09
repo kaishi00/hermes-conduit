@@ -469,6 +469,15 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNotEqual(a.id, c.id)
     }
 
+    func testSubagentWithDelegationIDKeysWithoutGoal() {
+        let first = parse(#"{"type": "subagent.start", "session_id": "s1", "payload": {"delegation_id": "d1", "task_index": 2, "goal": "Research"}}"#)
+        let second = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"delegation_id": "d1", "task_index": 2, "goal": ""}}"#)
+        guard case .delegateAgent(_, let a) = first, case .delegateAgent(_, let b) = second else {
+            return XCTFail("Expected delegateAgent")
+        }
+        XCTAssertEqual(a.id, b.id)
+    }
+
     func testEmptySubagentIDIsNotAGatewayID() {
         let event = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"subagent_id": "", "goal": "Research", "task_index": 0}}"#)
         guard case .delegateAgent(_, let activity) = event else { return XCTFail("Expected delegateAgent") }
