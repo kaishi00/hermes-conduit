@@ -282,7 +282,8 @@ extension VoiceConversationControllerTests {
         beginHermesCall(supervisor)
         await supervisor.callbackPassesSettled()
 
-        XCTAssertEqual(calls.holds.map(\.seconds), [0, VoiceBackgroundJobSupervisor.callbackHoldSeconds], "Held again for the new call")
+        XCTAssertFalse(calls.holds.isEmpty)
+        XCTAssertTrue(calls.holds.allSatisfy { $0.seconds == VoiceBackgroundJobSupervisor.callbackHoldSeconds }, "Never released between the calls")
         XCTAssertTrue(calls.notified.isEmpty)
     }
 

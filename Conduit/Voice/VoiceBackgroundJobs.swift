@@ -644,8 +644,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private func runCallbackSync(generation: UInt64) async {
         guard let callbacks else { return }
         for id in Array(callbackWatches.keys) {
-            guard generation == self.generation, let entry = callbackWatches[id] else { return }
-            guard let callID = entry.callID else { continue }
+            guard generation == self.generation else { return }
+            // Settled or answered while an earlier step was awaited.
+            guard let entry = callbackWatches[id], let callID = entry.callID else { continue }
             guard callID == callbackCallID else {
                 await settleCallback(id, generation: generation)
                 continue
@@ -768,11 +769,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             do {
                 var watchID = entry.watchID
+                // A call that began since hands the watch over still held, so
+                // Hermes can't call in between.
+                let holdSeconds = callbackCallID != nil ? Self.callbackHoldSeconds : 0
                 let answer: HermesCallHoldAnswer
                 if let held = watchID {
-                    answer = try await callbacks.hold(held, entry.profile, 0)
+                    answer = try await callbacks.hold(held, entry.profile, holdSeconds)
                 } else {
-                    switch try await callbacks.watch(target, 0, Self.secondsSince(job.sentAt)) {
+                    switch try await callbacks.watch(target, holdSeconds, Self.secondsSince(job.sentAt)) {
                     case .watching(let newID):
                         watchID = newID
                         answer = .watching
