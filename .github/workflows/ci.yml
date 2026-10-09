@@ -33,8 +33,12 @@ on:
   pull_request:
     branches: [main]
 
+# A PR's newer push supersedes its older run. A push to main is grouped by its
+# own commit instead, so every merge gets a full run: branch protection does
+# not require PRs to be up to date with main, so this run is what catches two
+# PRs that pass alone but break together.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 permissions:
