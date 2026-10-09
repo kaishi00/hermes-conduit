@@ -131,10 +131,12 @@ extension AppState {
     /// Answers a call from Hermes (#449). Its chat is on screen: voice opens
     /// there and starts with what came of the job instead of a greeting.
     func answerHermesCall(_ call: HermesCallRequest) {
+        // Voice already running (or no gateway): the job's news reaches the
+        // user the usual way.
+        guard isConnected, !isVoiceInUse else { return }
         // The call tells the user how the job went; no voice conversation
         // announces it again.
         voiceBackgroundJobSupervisor.noteCallAnswered(sessionIDs: call.sessionIDs)
-        guard isConnected, !isVoiceInUse else { return }
         let thread = liveVoiceThreadForOpenChat()
         let opening = HermesCallOpening(
             kind: call.kind,

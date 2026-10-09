@@ -533,6 +533,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private var callbackSyncTask: Task<Void, Never>?
     private var callbackSyncAgain = false
     private var callbackRenewTask: Task<Void, Never>?
+    /// What classic voice says first when a call from Hermes opened it.
+    private var callOpening: String?
 
     /// The live model (or the user's words) asked for a call when work of
     /// the running call is done. Marks it and watches it on the host now.
@@ -781,8 +783,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 guard generation == self.generation else { return }
                 switch answer {
                 case .watching:
-                    // Waits on the host; a later call holds it again.
-                    callbackWatches[id] = CallbackWatch(callID: nil, profile: entry.profile, watchID: watchID)
+                    // Waits on the host; a later call holds it again, as
+                    // does one that began before this pass got here.
+                    callbackWatches[id] = CallbackWatch(callID: callbackCallID, profile: entry.profile, watchID: watchID)
+                    if callbackCallID != nil { syncCallbacks() }
                     return
                 case .ended(let kind):
                     await callbacks.notify(target, kind)

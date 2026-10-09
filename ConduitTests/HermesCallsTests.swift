@@ -271,6 +271,21 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(calls.cancels, ["w1"])
     }
 
+    func testACallThatNeverHungUpHandsItsWatchToTheNextCall() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+
+        // The next call begins before the first one's release went out.
+        beginHermesCall(supervisor)
+        await supervisor.callbackPassesSettled()
+
+        XCTAssertEqual(calls.holds.map(\.seconds), [0, VoiceBackgroundJobSupervisor.callbackHoldSeconds], "Held again for the new call")
+        XCTAssertTrue(calls.notified.isEmpty)
+    }
+
     func testAnsweringHermesCallSilencesTheJobsNotice() async {
         let (supervisor, _, _) = hermesCallSupervisor()
         beginHermesCall(supervisor)

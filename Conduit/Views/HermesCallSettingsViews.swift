@@ -53,16 +53,23 @@ struct HermesCallSettingsSection: View {
     }
 
     /// Saved once the user stops tapping, so a stepper run is one save.
+    /// Saves go one at a time, so the newest change lands last; one the host
+    /// didn't take puts back what it holds.
     private func change(_ edit: (inout HermesCallSettings) -> Void) {
         edit(&draft)
-        saveTask?.cancel()
+        let previous = saveTask
+        previous?.cancel()
         let settings = draft
         let save = model.save
+        let hostSettings = model.status?.settings
         saveTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(500))
+            await previous?.value
+            guard !Task.isCancelled else { return }
+            let saved = await save(settings)
             guard !Task.isCancelled else { return }
             saveTask = nil
-            _ = await save(settings)
+            if !saved, let hostSettings { draft = hostSettings }
         }
     }
 
@@ -126,17 +133,10 @@ struct HermesCallSettingsSection: View {
         .task(id: model.profile) { await load() }
         .onChange(of: model.status) { _, newValue in
             // The host's answer, unless a change of this view is on its way.
+            // (A change still waiting when the view goes is saved anyway:
+            // its task outlives the view.)
             guard saveTask == nil, let settings = newValue?.settings else { return }
             draft = settings
-        }
-        .onDisappear {
-            // A change still waiting is saved, not dropped.
-            guard let pending = saveTask else { return }
-            pending.cancel()
-            saveTask = nil
-            let settings = draft
-            let save = model.save
-            Task { @MainActor in _ = await save(settings) }
         }
     }
 
