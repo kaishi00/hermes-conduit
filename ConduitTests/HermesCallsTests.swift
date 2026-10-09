@@ -425,6 +425,25 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.last?.callsBackWhenDone, false, "Unrelated work doesn't call")
     }
 
+    func testGPTLiveCallMeWithRefusedWorkCallsAboutNothingElse() async {
+        let (supervisor, _, _) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        for number in 1...VoiceBackgroundJobSupervisor.maximumActiveJobs {
+            _ = await bridge.handleDelegation(id: "del_\(number)", request: "New job: task \(number)")
+        }
+
+        let refused = await bridge.handleDelegation(id: "del_call", request: "Call me: New job: check the news")
+
+        XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumActiveJobs)
+        XCTAssertTrue(supervisor.jobs.allSatisfy { !$0.callsBackWhenDone }, "No other job calls in its place")
+        let notes = refused.compactMap { outgoing -> String? in
+            if case .sessionContext(let text, _, _, _) = outgoing { return text }
+            return nil
+        }
+        XCTAssertEqual(notes, ["[Call request: \(GPTLiveDelegationBridge.callRequestNotSet)]"])
+    }
+
     func testGPTLiveCallMeOnAHeldRequestGoesWithItOrNotAtAll() async {
         let (supervisor, _, _) = hermesCallSupervisor()
         supervisor.liveCallTranscript = { [] }

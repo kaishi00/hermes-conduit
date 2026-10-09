@@ -91,6 +91,9 @@ final class GPTLiveDelegationBridge {
     /// The job that took a delegation's work last: a new one, or a running
     /// one taking it as a change. "Call me" (#449) asks for that job.
     private var lastTaker: (delegationID: String, jobID: UUID)?
+    /// The delegation whose work Hermes last didn't take (refused, or the
+    /// job it was for had ended): no job calls about it.
+    private var lastUntaken: String?
     /// The held request being released carries "call me".
     private var releaseCallsBack = false
     /// When a held request last went to Hermes (set as it is released, so
@@ -169,10 +172,13 @@ final class GPTLiveDelegationBridge {
                 } else if draft?.delegationID == id {
                     outcome = supervisor.requestCallback(.next)
                     if case .marked = outcome { draft?.callsBack = true }
+                } else if lastUntaken == id {
+                    // Not another job's call in its place.
+                    return sent + [Self.callRequestNote(Self.callRequestNotSet)]
                 } else {
                     outcome = supervisor.requestCallback(.latest)
                 }
-                return sent + [.sessionContext(text: "[Call request: \(outcome.modelMessage)]", channel: .commentary, whenIdle: false, jobID: nil)]
+                return sent + [Self.callRequestNote(outcome.modelMessage)]
             }
             seenDelegations.insert(id)
             spokenWords?.settleWords(.delegation(id))
@@ -378,6 +384,7 @@ final class GPTLiveDelegationBridge {
             let sent = supervisor.startThreadTurn(request: instructions)
             guard let jobID = sent.jobID else {
                 if confirmed { lastSentAt = nil }
+                lastUntaken = id
                 return [.delegationReply(delegationID: id, text: Self.relay(sent.refusal ?? ""), channel: .speakable)]
             }
             openDelegations[jobID] = id
@@ -412,6 +419,7 @@ final class GPTLiveDelegationBridge {
         guard let jobID = createdJobID else {
             // Refused (too many jobs): tell the user now. Nothing went.
             if confirmed { lastSentAt = nil }
+            lastUntaken = id
             return [.delegationReply(delegationID: id, text: Self.relay(reply), channel: .speakable)]
         }
         lastTaker = (id, jobID)
@@ -440,11 +448,15 @@ final class GPTLiveDelegationBridge {
         let callsBack = releaseCallsBack
         releaseCallsBack = false
         let sent = await sendReleased(request, intoJob: intoJob, delegationID: id, call: call)
-        // "Call me" came with it (#449): the job that took it calls.
-        if callsBack, callGeneration == call, !isEnding, let taker = lastTaker, taker.delegationID == id {
-            _ = supervisor.requestCallback(.jobID(taker.jobID))
+        // "Call me" came with it (#449): the job that took it calls. The
+        // model heard so when it was held; it hears again only if not.
+        guard callsBack, callGeneration == call, !isEnding else { return sent }
+        guard let taker = lastTaker, taker.delegationID == id else {
+            return lastUntaken == id ? sent + [Self.callRequestNote(Self.callRequestNotSet)] : sent
         }
-        return sent
+        let outcome = supervisor.requestCallback(.jobID(taker.jobID))
+        if case .marked = outcome { return sent }
+        return sent + [Self.callRequestNote(outcome.modelMessage)]
     }
 
     private func sendReleased(_ request: String, intoJob: UUID?, delegationID id: String, call: UInt64) async -> [Outgoing] {
@@ -1055,6 +1067,7 @@ final class GPTLiveDelegationBridge {
     static let answerOnLaterDelegation = "Nothing more follows on this delegation: what happens to the waiting request is told on your later one."
     static let notReadyYet = "Not sent: the user isn't ready yet. It keeps waiting for their OK; don't say it's sent."
     static let dropped = "Not sent: the user said no, so Conduit dropped the waiting request. Nothing is waiting now."
+    static let callRequestNotSet = "not set. Hermes didn't take that work, so there's nothing to call about."
     static let alreadySent = "Conduit already sent that request to Hermes; its reply follows on the delegation that sent it. Don't send it again or ask what to send."
     static let alreadySentUnlessNew = "Conduit already sent that request to Hermes; its reply follows on the delegation that sent it. Don't send it again. If the user's yes was to something new you asked them since, delegate that new request with its words in your text."
     /// Starts every "it went" answer, so it isn't read as a result.
@@ -1173,11 +1186,16 @@ final class GPTLiveDelegationBridge {
     /// Settled delegations whose answer is on its way, by delegation.
     private var deliveredReplies: [String: UUID] = [:]
 
+    /// How a "call me" went, for the model as quiet context (#449).
+    private static func callRequestNote(_ text: String) -> Outgoing {
+        .sessionContext(text: "[Call request: \(text)]", channel: .commentary, whenIdle: false, jobID: nil)
+    }
+
     /// A running job took a delegation's words as a change.
     private func noteTaker(_ outcome: VoiceFollowUpOutcome, jobID: UUID, delegationID id: String) {
         switch outcome {
         case .interrupted, .queued, .joined: lastTaker = (id, jobID)
-        case .finished, .failed: break
+        case .finished, .failed: lastUntaken = id
         }
     }
 
