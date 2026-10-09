@@ -1688,6 +1688,8 @@ final class AppState: ObservableObject {
         if isGeminiLiveActive {
             closeGeminiLiveConversation()
         } else {
+            // Its work lets go of the call too (#449).
+            finishHermesCallbacks(engine: .geminiLive)
             dropGeminiLiveHostContext()
             if voiceCallRecorder?.engine == .geminiLive { finishVoiceCallRecording() }
             // A minimised call that failed has nothing left to show.
@@ -1971,6 +1973,8 @@ final class AppState: ObservableObject {
         if isGPTLiveActive {
             closeGPTLiveConversation()
         } else {
+            // Its work lets go of the call too (#449).
+            finishHermesCallbacks(engine: .gptLive)
             dropGPTLiveHostContext()
             if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
             // A minimised call that failed has nothing left to show.
@@ -2241,6 +2245,8 @@ final class AppState: ObservableObject {
         if isGrokLiveActive {
             closeGrokLiveConversation()
         } else {
+            // Its work lets go of the call too (#449).
+            finishHermesCallbacks(engine: .grokLive)
             dropGrokLiveHostContext()
             if voiceCallRecorder?.engine == .grokLive { finishVoiceCallRecording() }
             // A minimised call that failed has nothing left to show.

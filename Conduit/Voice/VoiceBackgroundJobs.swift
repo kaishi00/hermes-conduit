@@ -556,9 +556,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             marked = callWork.filter { jobs[$0].status.isActive }
             later = .all
         case .job, .jobID:
+            // Numbers are background jobs'; an id can be a chat turn's too.
             let named = callWork.last { index in
-                guard !jobs[index].isThreadTurn else { return false }
-                if case .job(let number) = scope { return jobs[index].number == number }
+                if case .job(let number) = scope { return !jobs[index].isThreadTurn && jobs[index].number == number }
                 if case .jobID(let id) = scope { return jobs[index].id == id }
                 return false
             }
@@ -574,6 +574,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             armCallback(id)
         }
         return .marked(titles: titles, later: later == .none ? .none : callbackLater)
+    }
+
+    /// The request the call asked to be called about was dropped before it
+    /// went: the call's next request doesn't call in its place.
+    func withdrawNextCallback() {
+        if callbackLater == .next { callbackLater = .none }
     }
 
     /// Marks a job the call just started when the call asked for its next
@@ -644,8 +650,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private func runCallbackSync(generation: UInt64) async {
         guard let callbacks else { return }
         for id in Array(callbackWatches.keys) {
-            guard generation == self.generation, let entry = callbackWatches[id] else { return }
-            guard let callID = entry.callID else { continue }
+            guard generation == self.generation else { return }
+            // Settled or answered while an earlier step was awaited.
+            guard let entry = callbackWatches[id], let callID = entry.callID else { continue }
             guard callID == callbackCallID else {
                 await settleCallback(id, generation: generation)
                 continue
@@ -766,19 +773,30 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 await callbacks.notify(target, entry.hostEndKind)
                 break
             }
+            var watchID = entry.watchID
             do {
-                var watchID = entry.watchID
-                let answer: HermesCallHoldAnswer
+                // A call that began since hands the watch over still held, so
+                // Hermes can't call in between.
+                let heldThen = callbackCallID != nil
+                let holdSeconds = heldThen ? Self.callbackHoldSeconds : 0
+                var answer: HermesCallHoldAnswer
                 if let held = watchID {
-                    answer = try await callbacks.hold(held, entry.profile, 0)
+                    answer = try await callbacks.hold(held, entry.profile, holdSeconds)
                 } else {
-                    switch try await callbacks.watch(target, 0, Self.secondsSince(job.sentAt)) {
+                    switch try await callbacks.watch(target, holdSeconds, Self.secondsSince(job.sentAt)) {
                     case .watching(let newID):
                         watchID = newID
                         answer = .watching
                     case .ended(let kind):
                         answer = .ended(kind)
                     }
+                }
+                // The call it was handed to ended during that round trip:
+                // the hold it took goes too, or Hermes would wait it out.
+                // One that began during a release holds it again at once.
+                let heldNow = callbackCallID != nil
+                if heldNow != heldThen, answer == .watching, let held = watchID {
+                    answer = try await callbacks.hold(held, entry.profile, heldNow ? Self.callbackHoldSeconds : 0)
                 }
                 guard generation == self.generation else { return }
                 switch answer {
@@ -795,8 +813,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     break
                 }
             } catch {
-                // A held watch lapses and fires on the host by itself.
                 hermesCallbackLogger.notice("Call watch not settled at hang-up: \(error.localizedDescription, privacy: .public)")
+                // A call running now keeps watching and holding it on its
+                // renewals; otherwise a held watch lapses and fires on the host.
+                if generation == self.generation, callbackCallID != nil {
+                    callbackWatches[id] = CallbackWatch(callID: callbackCallID, profile: entry.profile, watchID: watchID)
+                    syncCallbacks()
+                    return
+                }
             }
         }
         guard generation == self.generation else { return }

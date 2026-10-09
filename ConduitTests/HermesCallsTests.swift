@@ -21,6 +21,8 @@ final class FakeHermesCallbackBackend {
     var watchError: Error?
     var holdAnswers: [Int: HermesCallHoldAnswer] = [:]
     var holdError: Error?
+    /// Runs as each hold reaches the host, before it answers.
+    var onHold: (@MainActor (Int) -> Void)?
     private(set) var watches: [(target: VoiceCallbackTarget, hold: Int, within: Int?)] = []
     private(set) var holds: [(id: String, seconds: Int)] = []
     private(set) var cancels: [String] = []
@@ -37,6 +39,7 @@ final class FakeHermesCallbackBackend {
             },
             hold: { [self] id, _, seconds in
                 self.holds.append((id, seconds))
+                self.onHold?(seconds)
                 if let error = self.holdError { throw error }
                 return self.holdAnswers[seconds] ?? .watching
             },
@@ -282,7 +285,103 @@ extension VoiceConversationControllerTests {
         beginHermesCall(supervisor)
         await supervisor.callbackPassesSettled()
 
-        XCTAssertEqual(calls.holds.map(\.seconds), [0, VoiceBackgroundJobSupervisor.callbackHoldSeconds], "Held again for the new call")
+        XCTAssertFalse(calls.holds.isEmpty)
+        XCTAssertTrue(calls.holds.allSatisfy { $0.seconds == VoiceBackgroundJobSupervisor.callbackHoldSeconds }, "Never released between the calls")
+        XCTAssertEqual(calls.watches.count, 1, "Handed over, not registered again")
+        XCTAssertTrue(calls.notified.isEmpty)
+
+        // The new call owns it: its own hang-up lets go of it.
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+        XCTAssertEqual(calls.holds.last?.seconds, 0)
+    }
+
+    func testAWatchReleasedAsTheNextCallBeginsIsHeldAgainAtOnce() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+
+        // The next call begins while the hang-up's release is on its way.
+        calls.onHold = { [weak supervisor, weak calls] seconds in
+            guard seconds == 0 else { return }
+            calls?.onHold = nil
+            supervisor?.beginLiveCall()
+        }
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+
+        XCTAssertEqual(Array(calls.holds.map(\.seconds).prefix(2)), [0, VoiceBackgroundJobSupervisor.callbackHoldSeconds], "Held again before anything else")
+        XCTAssertEqual(calls.watches.count, 1)
+        XCTAssertTrue(calls.notified.isEmpty)
+
+        // The new call owns it: its own hang-up lets go of it.
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+        XCTAssertEqual(calls.holds.last?.seconds, 0)
+    }
+
+    func testAWatchWhoseHandOverHoldFailsStaysWithTheNewCall() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+
+        // The next call begins during the release, and holding it again fails.
+        calls.onHold = { [weak supervisor, weak calls] seconds in
+            guard seconds > 0 else { supervisor?.beginLiveCall(); return }
+            calls?.holdError = URLError(.timedOut)
+        }
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+        calls.onHold = nil
+        calls.holdError = nil
+        XCTAssertEqual(Array(calls.holds.map(\.seconds).prefix(2)), [0, VoiceBackgroundJobSupervisor.callbackHoldSeconds])
+
+        // Still the new call's: its own hang-up lets go of it.
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+        XCTAssertEqual(calls.holds.last?.seconds, 0)
+        XCTAssertTrue(calls.notified.isEmpty)
+    }
+
+    func testAWatchWhoseRegistrationFailsAtHandOverIsTriedAgain() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        calls.watchError = URLError(.timedOut)
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+
+        // The next call takes it over while the host still can't be reached.
+        beginHermesCall(supervisor)
+        await supervisor.callbackPassesSettled()
+        calls.watchError = nil
+
+        // Still the new call's: its hang-up registers it, released.
+        supervisor.finishCallbacks()
+        await supervisor.callbackPassesSettled()
+        XCTAssertEqual(calls.watches.last?.hold, 0)
+        XCTAssertTrue(calls.notified.isEmpty)
+    }
+
+    func testAWatchHandedToACallThatEndsMeanwhileIsLetGo() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+
+        // The next call hangs up while its hold of the watch is on its way.
+        calls.onHold = { [weak supervisor] seconds in
+            if seconds > 0 { supervisor?.finishCallbacks() }
+        }
+        beginHermesCall(supervisor)
+        await supervisor.callbackPassesSettled()
+
+        XCTAssertEqual(calls.holds.map(\.seconds), [VoiceBackgroundJobSupervisor.callbackHoldSeconds, 0], "Released, so Hermes doesn't wait the hold out")
         XCTAssertTrue(calls.notified.isEmpty)
     }
 
@@ -349,6 +448,71 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(HermesCallsClient.refusal(from: DashboardTicketBridgeError.http(status: 429, detail: "Too many jobs are already waiting to call you")), .tooMany)
         XCTAssertNil(HermesCallsClient.refusal(from: DashboardTicketBridgeError.http(status: 429, detail: "Too many call requests; try again shortly")))
         XCTAssertNil(HermesCallsClient.refusal(from: URLError(.timedOut)))
+    }
+
+    /// GPT-Live's "Call me: <work>" asks for the job that takes the work,
+    /// even a running one taking it as a change; never a later job.
+    func testGPTLiveCallMeWithAChangeCallsAboutTheJobThatTookIt() async {
+        let (supervisor, jobs, _) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        _ = await bridge.handleDelegation(id: "del_1", request: "check the server")
+
+        let changed = await bridge.handleDelegation(id: "del_2", request: "Call me: call me: make it the staging server")
+
+        XCTAssertEqual(jobs.redirects.map(\.0), ["rt-1"], "The change went into the running job")
+        let notes = changed.filter { if case .sessionContext(let text, _, _, _) = $0 { return text.hasPrefix("[Call request:") }; return false }
+        XCTAssertEqual(notes.count, 1, "Asked once: \(changed)")
+        XCTAssertEqual(supervisor.jobs.first?.callsBackWhenDone, true)
+
+        _ = await bridge.handleDelegation(id: "del_3", request: "New job: find a dinner recipe")
+        XCTAssertEqual(supervisor.jobs.count, 2)
+        XCTAssertEqual(supervisor.jobs.last?.callsBackWhenDone, false, "Unrelated work doesn't call")
+    }
+
+    func testGPTLiveCallMeWithRefusedWorkCallsAboutNothingElse() async {
+        let (supervisor, _, _) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        for number in 1...VoiceBackgroundJobSupervisor.maximumActiveJobs {
+            _ = await bridge.handleDelegation(id: "del_\(number)", request: "New job: task \(number)")
+        }
+
+        let refused = await bridge.handleDelegation(id: "del_call", request: "Call me: New job: check the news")
+
+        XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumActiveJobs)
+        XCTAssertTrue(supervisor.jobs.allSatisfy { !$0.callsBackWhenDone }, "No other job calls in its place")
+        let notes = refused.compactMap { outgoing -> String? in
+            if case .sessionContext(let text, _, _, _) = outgoing { return text }
+            return nil
+        }
+        XCTAssertEqual(notes, ["[Call request: \(GPTLiveDelegationBridge.callRequestNotSet)]"])
+    }
+
+    func testGPTLiveCallMeOnAHeldRequestGoesWithItOrNotAtAll() async {
+        let (supervisor, _, _) = hermesCallSupervisor()
+        supervisor.liveCallTranscript = { [] }
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        let held = await bridge.handleDelegation(id: "del_1", request: "Call me: book a table for Sam", userWords: "book a table for Sam")
+        guard case .delegationReply("del_1", GPTLiveDelegationBridge.heldForOKText, .speakable)? = held.first else { return XCTFail("\(held)") }
+        let no = await bridge.handleDelegation(id: "del_2", request: "No thanks", userWords: "No thanks")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.dropped, .commentary)? = no.first else { return XCTFail("\(no)") }
+
+        supervisor.setAsksBeforeSending(false)
+        _ = await bridge.handleDelegation(id: "del_3", request: "find a dinner recipe")
+        XCTAssertEqual(supervisor.jobs.count, 1)
+        XCTAssertEqual(supervisor.jobs.first?.callsBackWhenDone, false, "The declined request's call went with it")
+
+        // OK'd, it calls.
+        let (okSupervisor, _, _) = hermesCallSupervisor()
+        okSupervisor.liveCallTranscript = { [] }
+        okSupervisor.beginLiveCall(asksBeforeSending: true)
+        let okBridge = GPTLiveDelegationBridge(supervisor: okSupervisor)
+        _ = await okBridge.handleDelegation(id: "del_1", request: "Call me: book a table for Sam", userWords: "book a table for Sam")
+        _ = await okBridge.handleDelegation(id: "del_2", request: "Send:", userWords: "yes please")
+        XCTAssertEqual(okSupervisor.jobs.count, 1)
+        XCTAssertEqual(okSupervisor.jobs.first?.callsBackWhenDone, true)
     }
 
     func testCallSettingsGapChoicesKeepTheCurrentValue() {

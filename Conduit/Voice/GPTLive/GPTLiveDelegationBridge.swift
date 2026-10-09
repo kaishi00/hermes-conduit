@@ -81,7 +81,21 @@ final class GPTLiveDelegationBridge {
     private let now: () -> Date
     /// A new request held for the user's OK while asking first is on
     /// (#451). The latest replaces it.
-    private var draft: Draft?
+    private var draft: Draft? {
+        didSet {
+            // Dropped with "call me" on it (#449): the call's next request
+            // doesn't call in its place. One that goes asks again as it goes.
+            if oldValue?.callsBack == true, draft?.callsBack != true { supervisor.withdrawNextCallback() }
+        }
+    }
+    /// The job that took a delegation's work last: a new one, or a running
+    /// one taking it as a change. "Call me" (#449) asks for that job.
+    private var lastTaker: (delegationID: String, jobID: UUID)?
+    /// The delegation whose work Hermes last didn't take (refused, or the
+    /// job it was for had ended): no job calls about it.
+    private var lastUntaken: String?
+    /// The held request being released carries "call me".
+    private var releaseCallsBack = false
     /// When a held request last went to Hermes (set as it is released, so
     /// a delegation racing the send already sees it).
     private var lastSentAt: Date?
@@ -134,16 +148,39 @@ final class GPTLiveDelegationBridge {
         // request is done (the job named, or all of them). Work that comes
         // with it is that request: it goes on as this delegation, and the
         // model hears how the call request went as quiet context.
-        if let marker = Self.callMeMarker(in: request) {
+        if var marker = Self.callMeMarker(in: request) {
             guard !seenDelegations.contains(id), !isEnding else { return [] }
+            // "Call me: call me: …" asks once.
+            while let again = Self.callMeMarker(in: marker.rest) {
+                marker = (scope: marker.scope == .latest ? again.scope : marker.scope, rest: again.rest)
+            }
             let rest = marker.rest
             let ownWords = rest.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? rest
             let withWork = !ownWords.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            let outcome = supervisor.requestCallback(marker.scope == .latest && withWork ? .next : marker.scope)
             guard !withWork else {
-                let note = Outgoing.sessionContext(text: "[Call request: \(outcome.modelMessage)]", channel: .commentary, whenIdle: false, jobID: nil)
-                return [note] + (await handleDelegation(id: id, request: rest, userWords: userWords))
+                // The work goes first, so the call is asked for the job that
+                // takes it: a new one, or a running one taking it as a
+                // change. Held for the user's OK, it asks once it goes.
+                let call = callGeneration
+                let sent = await handleDelegation(id: id, request: rest, userWords: userWords)
+                guard callGeneration == call, !isEnding else { return sent }
+                let outcome: VoiceCallbackRequestOutcome
+                if marker.scope != .latest {
+                    outcome = supervisor.requestCallback(marker.scope)
+                } else if let taker = lastTaker, taker.delegationID == id {
+                    outcome = supervisor.requestCallback(.jobID(taker.jobID))
+                } else if draft?.delegationID == id {
+                    outcome = supervisor.requestCallback(.next)
+                    if case .marked = outcome { draft?.callsBack = true }
+                } else if lastUntaken == id {
+                    // Not another job's call in its place.
+                    return sent + [Self.callRequestNote(Self.callRequestNotSet)]
+                } else {
+                    outcome = supervisor.requestCallback(.latest)
+                }
+                return sent + [Self.callRequestNote(outcome.modelMessage)]
             }
+            let outcome = supervisor.requestCallback(marker.scope)
             seenDelegations.insert(id)
             spokenWords?.settleWords(.delegation(id))
             return [.delegationReply(delegationID: id, text: outcome.modelMessage, channel: .commentary)]
@@ -162,6 +199,7 @@ final class GPTLiveDelegationBridge {
                 spokenWords?.settleWords(.delegation(id))
                 let outcome = await supervisor.followUp(jobID: job.id, words: Self.followUpWords(userWords: spoken, delegated: marker.rest))
                 guard callGeneration == call, !isEnding else { return [] }
+                noteTaker(outcome, jobID: job.id, delegationID: id)
                 return [Self.followUpReply(delegationID: id, outcome)]
             }
             instructions = marker.rest
@@ -298,6 +336,7 @@ final class GPTLiveDelegationBridge {
             if let target = supervisor.threadFollowUpTarget() {
                 let outcome = await supervisor.followUp(jobID: target, words: Self.followUpWords(userWords: spoken, delegated: ownWords))
                 guard callGeneration == call, !isEnding else { return [] }
+                noteTaker(outcome, jobID: target, delegationID: id)
                 // Finished meanwhile: it is the chat's next turn after all.
                 if !outcome.foundRequestFinished {
                     spokenWords?.settleWords(.delegation(id))
@@ -315,6 +354,7 @@ final class GPTLiveDelegationBridge {
             if let held = heldForOK(id: id, request: words, userWords: spoken, intoJob: job.id) { return held }
             let outcome = await supervisor.followUp(jobID: job.id, words: words)
             guard callGeneration == call, !isEnding else { return [] }
+            noteTaker(outcome, jobID: job.id, delegationID: id)
             if !outcome.foundRequestFinished {
                 spokenWords?.settleWords(.delegation(id))
                 return [Self.followUpReply(delegationID: id, outcome, guessed: true)] + settleOpenDelegations()
@@ -345,9 +385,11 @@ final class GPTLiveDelegationBridge {
             let sent = supervisor.startThreadTurn(request: instructions)
             guard let jobID = sent.jobID else {
                 if confirmed { lastSentAt = nil }
+                lastUntaken = id
                 return [.delegationReply(delegationID: id, text: Self.relay(sent.refusal ?? ""), channel: .speakable)]
             }
             openDelegations[jobID] = id
+            lastTaker = (id, jobID)
             return [.delegationReply(
                 delegationID: id,
                 text: confirmed ? Self.sentToChat : "Hermes is working on this in the chat. Its reply will follow on this delegation; don't guess it.",
@@ -378,8 +420,10 @@ final class GPTLiveDelegationBridge {
         guard let jobID = createdJobID else {
             // Refused (too many jobs): tell the user now. Nothing went.
             if confirmed { lastSentAt = nil }
+            lastUntaken = id
             return [.delegationReply(delegationID: id, text: Self.relay(reply), channel: .speakable)]
         }
+        lastTaker = (id, jobID)
         guard openDelegations[jobID] == id else { return [] }
         var outgoing: [Outgoing] = []
         if let job = supervisor.jobs.first(where: { $0.id == jobID }), job.status.isActive {
@@ -402,6 +446,21 @@ final class GPTLiveDelegationBridge {
     /// Sends the held request the user OK'd: into the job it was held for,
     /// or as new work.
     private func release(_ request: String, intoJob: UUID?, delegationID id: String, call: UInt64) async -> [Outgoing] {
+        let callsBack = releaseCallsBack
+        releaseCallsBack = false
+        let sent = await sendReleased(request, intoJob: intoJob, delegationID: id, call: call)
+        // "Call me" came with it (#449): the job that took it calls. The
+        // model heard so when it was held; it hears again only if not.
+        guard callsBack, callGeneration == call, !isEnding else { return sent }
+        guard let taker = lastTaker, taker.delegationID == id else {
+            return lastUntaken == id ? sent + [Self.callRequestNote(Self.callRequestNotSet)] : sent
+        }
+        let outcome = supervisor.requestCallback(.jobID(taker.jobID))
+        if case .marked = outcome { return sent }
+        return sent + [Self.callRequestNote(outcome.modelMessage)]
+    }
+
+    private func sendReleased(_ request: String, intoJob: UUID?, delegationID id: String, call: UInt64) async -> [Outgoing] {
         lastSentRequest = request
         guard let jobID = intoJob else { return await send(request, delegationID: id, call: call, confirmed: true) }
         guard callGeneration == call, !isEnding else { return [] }
@@ -410,6 +469,7 @@ final class GPTLiveDelegationBridge {
         let own = request.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? request
         let outcome = await supervisor.followUp(jobID: jobID, words: own.trimmingCharacters(in: .whitespacesAndNewlines))
         guard callGeneration == call, !isEnding else { return [] }
+        noteTaker(outcome, jobID: jobID, delegationID: id)
         let number = supervisor.jobs.first(where: { $0.id == jobID })?.number
         switch outcome {
         case .interrupted(let title), .queued(let title), .joined(let title):
@@ -597,6 +657,10 @@ final class GPTLiveDelegationBridge {
         draft = nil
         droppedBesideReadBackAt = nil
         lastSentAt = nil
+        // Its delegation ids may come again, for other work.
+        lastTaker = nil
+        lastUntaken = nil
+        releaseCallsBack = false
         isEnding = false
     }
 
@@ -634,6 +698,8 @@ final class GPTLiveDelegationBridge {
         var intoJob: UUID?
         /// How far the user's words had got when it was held.
         var mark: Int?
+        /// The user asked to be called once it's done (#449).
+        var callsBack = false
     }
 
     /// A request held this long was left: what the user says next is new.
@@ -698,7 +764,9 @@ final class GPTLiveDelegationBridge {
             draft = nil
             return nil
         }
-        draft = Draft(request: request, userWords: userWords, delegationID: id, heldAt: now(), intoJob: intoJob, mark: spokenWords?.wordsMark())
+        // A change to a held request keeps its "call me".
+        draft = Draft(request: request, userWords: userWords, delegationID: id, heldAt: now(), intoJob: intoJob, mark: spokenWords?.wordsMark(),
+                      callsBack: draft?.callsBack ?? false)
         return [.delegationReply(delegationID: id, text: heldText(intoJob: intoJob), channel: .speakable)]
     }
 
@@ -785,7 +853,8 @@ final class GPTLiveDelegationBridge {
                     lastSentAt = now()
                     return .send(request: released(request, from: waiting), intoJob: intoJob, delegationID: pending, call: callGeneration)
                 }
-                draft = Draft(request: request, userWords: words, delegationID: pending, heldAt: now(), intoJob: intoJob, mark: spokenWords?.wordsMark())
+                draft = Draft(request: request, userWords: words, delegationID: pending, heldAt: now(), intoJob: intoJob, mark: spokenWords?.wordsMark(),
+                              callsBack: waiting.callsBack)
                 return .reply([.delegationReply(delegationID: pending, text: heldText(intoJob: intoJob), channel: .speakable)])
             }
         }
@@ -843,6 +912,7 @@ final class GPTLiveDelegationBridge {
     /// words are spoken for from here.
     private func released(_ request: String, from waiting: Draft) -> String {
         lastHeldRequest = waiting.request
+        releaseCallsBack = waiting.callsBack
         let words = spokenWords?.unsentWords() ?? ""
         spokenWords?.settleWords(.all)
         guard !words.isEmpty else { return request }
@@ -1002,6 +1072,7 @@ final class GPTLiveDelegationBridge {
     static let answerOnLaterDelegation = "Nothing more follows on this delegation: what happens to the waiting request is told on your later one."
     static let notReadyYet = "Not sent: the user isn't ready yet. It keeps waiting for their OK; don't say it's sent."
     static let dropped = "Not sent: the user said no, so Conduit dropped the waiting request. Nothing is waiting now."
+    static let callRequestNotSet = "not set. Hermes didn't take that work, so there's nothing to call about."
     static let alreadySent = "Conduit already sent that request to Hermes; its reply follows on the delegation that sent it. Don't send it again or ask what to send."
     static let alreadySentUnlessNew = "Conduit already sent that request to Hermes; its reply follows on the delegation that sent it. Don't send it again. If the user's yes was to something new you asked them since, delegate that new request with its words in your text."
     /// Starts every "it went" answer, so it isn't read as a result.
@@ -1119,6 +1190,19 @@ final class GPTLiveDelegationBridge {
 
     /// Settled delegations whose answer is on its way, by delegation.
     private var deliveredReplies: [String: UUID] = [:]
+
+    /// How a "call me" went, for the model as quiet context (#449).
+    private static func callRequestNote(_ text: String) -> Outgoing {
+        .sessionContext(text: "[Call request: \(text)]", channel: .commentary, whenIdle: false, jobID: nil)
+    }
+
+    /// A running job took a delegation's words as a change.
+    private func noteTaker(_ outcome: VoiceFollowUpOutcome, jobID: UUID, delegationID id: String) {
+        switch outcome {
+        case .interrupted, .queued, .joined: lastTaker = (id, jobID)
+        case .finished, .failed: lastUntaken = id
+        }
+    }
 
     private func settleOpenDelegations() -> [Outgoing] {
         guard !isEnding else { return [] }
