@@ -31,7 +31,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         )
         XCTAssertNil(harness.coordinator.pendingRestoration)
 
-        let request = harness.coordinator.reconciliationSettled(sessionKey: key)
+        let request = harness.coordinator.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil)
         XCTAssertEqual(request?.destination, .snapshot(reading))
     }
 
@@ -116,6 +116,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         )
 
         XCTAssertEqual(message.clarify?.status, .expired)
+        XCTAssertEqual(message.clarify?.presentationStatus, .pending)
         XCTAssertEqual(ChatResumeCoordinator.pendingClarifyMessageID(in: [message]), "clarify-mixed")
     }
 
@@ -146,7 +147,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key))
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil))
 
         harness.coordinator.cancelViewportRestoration()
 
@@ -187,7 +188,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             currentSessionID: nil
         )
 
-        XCTAssertEqual(recreated.reconciliationSettled(sessionKey: key)?.destination, .snapshot(snapshot))
+        XCTAssertEqual(recreated.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil)?.destination, .snapshot(snapshot))
     }
 
     func testCompletingCurrentRequestAllowsViewportWritesAgain() throws {
@@ -199,7 +200,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key))
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil))
         harness.coordinator.completeRestoration(generation: request.generation)
         harness.coordinator.recordViewport(.latest, for: key)
         harness.coordinator.flush()
@@ -216,7 +217,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key))
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil))
 
         harness.coordinator.abandonRestoration(generation: request.generation)
         harness.coordinator.recordViewport(.latest, for: key)
@@ -252,7 +253,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "deleted-a"
         )
-        let request = harness.coordinator.reconciliationSettled(sessionKey: fallbackKey)
+        let request = harness.coordinator.reconciliationSettled(sessionKey: fallbackKey, pendingClarifyMessageID: nil)
 
         XCTAssertEqual(selected?.id, "stored-b")
         XCTAssertEqual(request?.destination, .latest)
@@ -282,7 +283,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             currentSessionID: nil
         )
         let createdKey = ChatScrollSessionKey(profile: "default", sessionID: created.id)
-        let request = harness.coordinator.reconciliationSettled(sessionKey: createdKey)
+        let request = harness.coordinator.reconciliationSettled(sessionKey: createdKey, pendingClarifyMessageID: nil)
         harness.coordinator.flush()
 
         XCTAssertEqual(harness.store.snapshot(for: oldKey), oldReading)
@@ -315,7 +316,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         )
 
         XCTAssertEqual(selected?.id, "stored-a")
-        XCTAssertNil(harness.coordinator.reconciliationSettled(sessionKey: key))
+        XCTAssertNil(harness.coordinator.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil))
     }
 
     func testRecoverySyncPreservesCurrentWhileAutomaticReturnUsesPreference() {
@@ -350,7 +351,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key))
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil))
 
         harness.coordinator.setBehavior(.latestActivity)
 
@@ -370,7 +371,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-a"
         )
-        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key))
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil))
 
         harness.coordinator.clearResumeState()
 
@@ -433,7 +434,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
 
         // Settle with the wrong key → nil. pendingSessionKey stays set
         // so the caller can detect the mismatch and clean up.
-        XCTAssertNil(harness.coordinator.reconciliationSettled(sessionKey: wrongKey))
+        XCTAssertNil(harness.coordinator.reconciliationSettled(sessionKey: wrongKey, pendingClarifyMessageID: nil))
 
         // Caller detects pending key and unfreezes.
         harness.coordinator.abandonPendingAutomaticSyncIfPending()
@@ -477,7 +478,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             "Deletion is scoped: another profile's pointer survives"
         )
         // Settling the (now-deleted) conversation can produce no restoration.
-        XCTAssertNil(harness.coordinator.reconciliationSettled(sessionKey: keyB))
+        XCTAssertNil(harness.coordinator.reconciliationSettled(sessionKey: keyB, pendingClarifyMessageID: nil))
         // The viewport must not be left permanently frozen.
         harness.coordinator.recordViewport(.latest, for: keyOther)
         XCTAssertEqual(harness.store.snapshot(for: keyOther), .latest)
@@ -499,7 +500,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-b"
         )
-        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: keyB))
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: keyB, pendingClarifyMessageID: nil))
 
         harness.coordinator.removeSessions(profile: "default", sessionIDs: ["stored-b"])
 
@@ -535,7 +536,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
             purpose: .automaticReturn,
             currentSessionID: "stored-b"
         )
-        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: keyB))
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: keyB, pendingClarifyMessageID: nil))
 
         harness.coordinator.removeSessions(profile: "default", sessionIDs: ["stored-a"])
 
@@ -567,7 +568,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
     ) -> ChatMessage {
         ChatMessage(
             id: id,
-            role: .assistant,
+            role: .clarify,
             content: "",
             timestamp: "",
             clarify: ClarifyActivity(

@@ -90168,6 +90168,23 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "前往等待您回答的問題" } }
       }
     },
+    "Go to your question" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Zu deiner Frage gehen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Ir a tu pregunta" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aller à votre question" } },
+        "id" : { "stringUnit" : { "state" : "translated", "value" : "Buka pertanyaan Anda" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Vai alla tua domanda" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "質問に移動" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "질문으로 이동" } },
+        "pl" : { "stringUnit" : { "state" : "translated", "value" : "Przejdź do pytania" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Ir para sua pergunta" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Перейти к вашему вопросу" } },
+        "tr" : { "stringUnit" : { "state" : "translated", "value" : "Sorunuza git" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "前往您的问题" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "前往您的問題" } }
+      }
+    },
     "Goal Mode" : {
       "localizations" : {
         "de" : {

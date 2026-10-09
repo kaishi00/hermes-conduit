@@ -691,6 +691,27 @@ final class ChatScrollEngineTests: XCTestCase {
         )
     }
 
+    private func messagesWithClarify(
+        status: ClarifyQuestion.Status,
+        answer: String? = nil
+    ) -> [ChatMessage] {
+        var messages = Self.messages(0..<10)
+        messages[5] = ChatMessage(
+            id: "m5",
+            role: .clarify,
+            content: "Continue?",
+            timestamp: "2026-01-01T00:00:00Z",
+            clarify: ClarifyActivity(
+                requestId: "request-m5",
+                question: "Continue?",
+                choices: [],
+                status: status,
+                answer: answer
+            )
+        )
+        return messages
+    }
+
     private func pendingClarifyRequest(
         _ engine: ChatScrollEngine,
         row index: Int,
@@ -717,16 +738,47 @@ final class ChatScrollEngineTests: XCTestCase {
     func testPendingClarifyRestorationOverridesSavedViewport() {
         let (engine, surface) = makeEngine()
         surface.insetTop = 50
+        engine.transcriptChanged(
+            messages: messagesWithClarify(status: .pending),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
         engine.rowFramesChanged([
             "m2": ChatScrollRowFrame(minY: 300, maxY: 400, order: 2),
             "m5": ChatScrollRowFrame(minY: 1000, maxY: 1200, order: 5)
         ])
         engine.restorationRequested(pendingClarifyRequest(engine, row: 5, fallbackRow: 2))
 
-        XCTAssertTrue(engine.restorationTick(transcriptRevision: 1))
+        XCTAssertTrue(engine.restorationTick(transcriptRevision: 2))
         XCTAssertEqual(surface.contentOffsetY, 968, "the pending question takes priority over m2")
-        XCTAssertFalse(engine.restorationTick(transcriptRevision: 1))
+        XCTAssertFalse(engine.restorationTick(transcriptRevision: 2))
         XCTAssertEqual(engine.topVisibleMessageID, "m5")
+    }
+
+    func testAnsweredPendingClarifyFallsBackToSavedViewportBeforePlacement() {
+        let (engine, surface) = makeEngine()
+        surface.insetTop = 50
+        engine.transcriptChanged(
+            messages: messagesWithClarify(status: .pending),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        engine.rowFramesChanged([
+            "m2": ChatScrollRowFrame(minY: 300, maxY: 400, order: 2),
+            "m5": ChatScrollRowFrame(minY: 1000, maxY: 1200, order: 5)
+        ])
+        engine.restorationRequested(pendingClarifyRequest(engine, row: 5, fallbackRow: 2))
+
+        engine.transcriptChanged(
+            messages: messagesWithClarify(status: .answered, answer: "yes"),
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1
+        )
+
+        XCTAssertTrue(engine.restorationTick(transcriptRevision: 3))
+        XCTAssertEqual(surface.contentOffsetY, 268, "a resolved card should not replace the saved viewport")
+        XCTAssertFalse(engine.restorationTick(transcriptRevision: 3))
+        XCTAssertEqual(engine.topVisibleMessageID, "m2")
     }
 
     func testMissingPendingClarifyFallsBackToSavedViewport() {
@@ -883,6 +935,19 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertFalse(events.contains(.revealRow(id: "not-in-transcript")))
     }
 
+    func testValidExplicitMessageCancelsRestorationAndRevealsTheRow() {
+        let (engine, _) = makeEngine()
+        engine.restorationRequested(anchorRequest(engine, row: 5))
+        events = []
+
+        engine.explicitMessageRequested(id: "m5")
+
+        XCTAssertNil(engine.restoration)
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertTrue(events.contains(.cancelAutomaticRestoration))
+        XCTAssertTrue(events.contains(.revealRow(id: "m5")))
+    }
+
     func testExplicitMessageRequestWhilePausedDoesNotCancelRestoration() {
         let (engine, _) = makeEngine()
         engine.restorationRequested(anchorRequest(engine, row: 5))
@@ -994,6 +1059,29 @@ final class ChatScrollEngineTests: XCTestCase {
 
         engine.explicitLatestRequested(animated: false)
         XCTAssertTrue(engine.renderInputs.isFollowingLatest, "a SwiftUI-driven command publishes directly")
+    }
+
+    func testTrackedMessageVisibilityPublishesOnlyAtViewportTransitions() {
+        let (engine, surface) = makeEngine()
+        engine.trackMessageVisibility(of: "m5")
+        XCTAssertEqual(engine.renderInputs.visibilityTrackedMessageID, "m5")
+        XCTAssertTrue(engine.renderInputs.isVisibilityTrackedMessageOffscreen)
+
+        engine.rowFramesChanged(["m5": ChatScrollRowFrame(minY: 3200, maxY: 3300, order: 5)])
+        drainMainQueue()
+        XCTAssertFalse(engine.renderInputs.isVisibilityTrackedMessageOffscreen)
+
+        surface.userScroll(to: 100)
+        drainMainQueue()
+        XCTAssertTrue(engine.renderInputs.isVisibilityTrackedMessageOffscreen)
+
+        engine.rowFramesChanged(["m5": ChatScrollRowFrame(minY: 200, maxY: 400, order: 5)])
+        drainMainQueue()
+        XCTAssertFalse(engine.renderInputs.isVisibilityTrackedMessageOffscreen)
+
+        engine.trackMessageVisibility(of: nil)
+        XCTAssertNil(engine.renderInputs.visibilityTrackedMessageID)
+        XCTAssertFalse(engine.renderInputs.isVisibilityTrackedMessageOffscreen)
     }
 
     func testReduceMotionSnapsTheJumpToLatest() {

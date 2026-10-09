@@ -66,6 +66,8 @@ struct ChatScrollRenderInputs: Equatable {
     var isFollowingLatest = true
     var renderedScrollScope: ChatRenderedScrollScope?
     var showsJumpToLatest = false
+    var visibilityTrackedMessageID: String? = nil
+    var isVisibilityTrackedMessageOffscreen = false
     /// The target cache's rendering revision. The scope above carries it
     /// too, but only while a session is rendered; rows without a session
     /// key must still re-run the body when they change.
@@ -167,6 +169,8 @@ final class ChatScrollEngine: ObservableObject {
     private(set) var isDragging = false
     private var latestAnimationUntil: TimeInterval?
     private var rowFrames: [String: ChatScrollRowFrame] = [:]
+    private var visibilityTrackedMessageID: String?
+    private var isVisibilityTrackedMessageOffscreen = false
     private(set) weak var surface: ChatScrollSurface?
     private var surfaceCallbackDepth = 0
     private var lastObservedOffsetY: CGFloat?
@@ -188,6 +192,17 @@ final class ChatScrollEngine: ObservableObject {
     // MARK: - Derived facts
 
     var targets: [ChatMessageScrollTarget] { targetCache.targets }
+
+    /// Track one row's visibility without publishing on every scroll tick;
+    /// render inputs change only when it crosses the viewport edge.
+    func trackMessageVisibility(of id: String?) {
+        guard visibilityTrackedMessageID != id else {
+            refreshTrackedMessageVisibility()
+            return
+        }
+        visibilityTrackedMessageID = id
+        refreshTrackedMessageVisibility(forcePublish: true)
+    }
 
     var isFollowingLatest: Bool { mode == .following }
 
@@ -241,6 +256,7 @@ final class ChatScrollEngine: ObservableObject {
         if canPinWhileFollowing(surface) {
             pin(surface)
         }
+        refreshTrackedMessageVisibility()
         refreshJumpButton()
     }
 
@@ -292,11 +308,15 @@ final class ChatScrollEngine: ObservableObject {
             }
             schedulePastBottomCheck()
         }
+        refreshTrackedMessageVisibility()
         refreshJumpButton()
     }
 
     func rowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
+        surfaceCallbackDepth += 1
+        defer { surfaceCallbackDepth -= 1 }
         rowFrames = frames
+        refreshTrackedMessageVisibility()
         guard mode == .browsing, !isPaused else { return }
         if prependAnchor?.landedAt != nil, let surface {
             holdPrependAnchor(on: surface)
@@ -382,6 +402,7 @@ final class ChatScrollEngine: ObservableObject {
         latestAnimationUntil = nil
         topVisibleMessageID = nil
         rowFrames = [:]
+        refreshTrackedMessageVisibility()
         guard !isDragging else {
             mode = .browsing
             return
@@ -516,11 +537,14 @@ final class ChatScrollEngine: ObservableObject {
             latestAnimationUntil = nil
             pin(surface)
         }
+        refreshTrackedMessageVisibility()
         refreshJumpButton()
     }
 
     /// Jump to the answerable clarification in transcript order without
-    /// moving the card or converting browsing into follow-latest mode.
+    /// moving the card or converting browsing into follow-latest mode. The
+    /// pause guard is defensive: backgrounded UI cannot be tapped, and a stale
+    /// row reveal is intentionally not replayed when the app returns.
     func explicitMessageRequested(id: String) {
         guard !id.isEmpty,
               !isPaused,
@@ -650,6 +674,7 @@ final class ChatScrollEngine: ObservableObject {
             state.placed = true
             restoration = state
             surface.setContentOffsetY(target, animated: false)
+            refreshTrackedMessageVisibility()
             return true
         }
     }
@@ -724,6 +749,8 @@ final class ChatScrollEngine: ObservableObject {
             isFollowingLatest: isFollowingLatest,
             renderedScrollScope: renderedScrollScope,
             showsJumpToLatest: showsJumpToLatest,
+            visibilityTrackedMessageID: visibilityTrackedMessageID,
+            isVisibilityTrackedMessageOffscreen: isVisibilityTrackedMessageOffscreen,
             targetsRevision: targetCache.renderingRevision
         )
         if inputs != renderInputs {
@@ -918,6 +945,24 @@ final class ChatScrollEngine: ObservableObject {
         renderInputsMayHaveChanged()
     }
 
+    private func refreshTrackedMessageVisibility(forcePublish: Bool = false) {
+        let isOffscreen: Bool
+        if let id = visibilityTrackedMessageID,
+           let surface,
+           let frame = rowFrames[id] {
+            let visible = visibleStackRange(of: surface)
+            isOffscreen = !(frame.maxY > visible.lowerBound && frame.minY < visible.upperBound)
+        } else {
+            // A row without a laid-out frame is outside the visible viewport
+            // (or has not been rendered yet), so the jump remains useful.
+            isOffscreen = visibilityTrackedMessageID != nil
+        }
+        let visibilityChanged = isVisibilityTrackedMessageOffscreen != isOffscreen
+        isVisibilityTrackedMessageOffscreen = isOffscreen
+        guard forcePublish || visibilityChanged else { return }
+        renderInputsMayHaveChanged()
+    }
+
     private func resolveRestorationDestination(
         for request: ChatResumeRestorationRequest
     ) -> ChatResumeViewportDestination {
@@ -927,9 +972,14 @@ final class ChatScrollEngine: ObservableObject {
         case .snapshot(let snapshot):
             return resolveSnapshotRestorationDestination(snapshot)
         case .pendingClarify(let messageID, let fallbackSnapshot):
-            if targetCache.targets.contains(where: { $0.id == messageID }) {
+            if let target = targetCache.targets.first(where: { $0.id == messageID }),
+               let clarify = target.message.clarify,
+               !clarify.isExpired,
+               clarify.questions.contains(where: \.isAnswerable) {
                 return .anchor(messageID)
             }
+            // The answer may have landed after reconciliation selected this
+            // row; prefer the saved viewport to restoring a resolved card.
             guard let fallbackSnapshot else { return .latest }
             return resolveSnapshotRestorationDestination(fallbackSnapshot)
         }

@@ -325,6 +325,15 @@ struct ClarifyActivity: Codable, Equatable {
         return .pending
     }
 
+    /// The card's user-facing state. A partially active batch can have an
+    /// expired sibling while another question still accepts an answer.
+    var presentationStatus: Status {
+        guard status == .expired, !isExpired else { return status }
+        if questions.contains(where: { $0.status == .pending }) { return .pending }
+        if questions.contains(where: { $0.status == .error }) { return .error }
+        return .expired
+    }
+
     /// Visible question text for the transcript row: the joined question
     /// texts, identical to the legacy scalar text for one-question batches.
     var displayQuestion: String {

@@ -38,6 +38,8 @@ final class ChatResumeCoordinator {
         self.store = store
     }
 
+    /// A mixed batch may retain an expired sibling while another question
+    /// remains answerable; only request-level expiry makes the whole card stale.
     static func pendingClarifyMessageID(in messages: [ChatMessage]) -> String? {
         messages.last { message in
             guard let clarify = message.clarify, !clarify.isExpired else { return false }
@@ -238,7 +240,7 @@ final class ChatResumeCoordinator {
 
     func reconciliationSettled(
         sessionKey: ChatScrollSessionKey,
-        pendingClarifyMessageID: String? = nil
+        pendingClarifyMessageID: String?
     ) -> ChatResumeRestorationRequest? {
         guard pendingSessionKey == sessionKey, pendingRestoration == nil else {
             // Mismatch: leave pendingSessionKey intact so the caller
