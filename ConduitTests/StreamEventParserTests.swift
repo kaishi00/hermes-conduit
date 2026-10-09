@@ -516,6 +516,10 @@ final class StreamEventParserTests: XCTestCase {
         let lateFail = DelegateAgentActivity(id: "a", goal: "g", status: .failed, taskCount: 1, taskIndex: 0, stream: [])
         XCTAssertEqual(done.merged(with: lateFail).status, .completed)
         XCTAssertEqual(lateFail.merged(with: done).status, .failed)
+
+        let running = DelegateAgentActivity(id: "a", goal: "g", status: .running, taskCount: 1, taskIndex: 0, stream: [])
+        let lateSpawn = DelegateAgentActivity(id: "a", goal: "g", status: .queued, taskCount: 1, taskIndex: 0, stream: [])
+        XCTAssertEqual(running.merged(with: lateSpawn).status, .running)
     }
 
     func testFinishedSubagentStaysFinishedOnLateProgress() {

@@ -732,6 +732,8 @@ struct DelegateAgentActivity: Identifiable, Equatable {
         merged.model = update.model ?? model
         // The first end an agent reports is its end.
         if !status.isActive { merged.status = status }
+        // A late spawn event doesn't send a running agent back to the queue.
+        if status == .running && update.status == .queued { merged.status = .running }
         // A finished agent is no longer in any tool.
         merged.currentTool = merged.status.isActive ? update.currentTool ?? currentTool : nil
         merged.summary = update.summary ?? summary

@@ -22568,12 +22568,15 @@ final class AppState: ObservableObject {
             .map(\.sessionId))
         for sessionID in sessionIDs {
             guard let liveIDs = try? await client.liveSubagentIDs(sessionId: sessionID) else { continue }
-            delegateAgents = DelegateAgentActivity.reconciled(
+            let reconciled = DelegateAgentActivity.reconciled(
                 delegateAgents,
                 sessionId: sessionID,
                 liveIDs: liveIDs,
                 changedBefore: cutoff
             )
+            // Unchanged cards leave the gateway's own agent count alone.
+            guard reconciled != delegateAgents else { continue }
+            delegateAgents = reconciled
             activeAgents = delegateAgents.filter { $0.status.isActive }.count
         }
     }
