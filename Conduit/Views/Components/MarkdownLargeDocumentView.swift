@@ -61,7 +61,8 @@ struct LargeMarkdownDocumentView: View {
                 source: Self.previewSource(of: source),
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
-                gatewayMediaDataURL: gatewayMediaDataURL
+                gatewayMediaDataURL: gatewayMediaDataURL,
+                mayEndMidBlock: true
             )
 
             LargeDocumentBanner(
@@ -344,6 +345,17 @@ struct LargeMarkdownPreparedDocument {
     static func identity(of source: String) -> String {
         "\(source.utf8.count)-\(source.hashValue)"
     }
+
+    /// Web-page units per chunk (diagrams and formulas are chunks of
+    /// their own), which bound the expanded view's windows.
+    var webPageUnitsByChunk: [Int] {
+        chunks.map { chunk in
+            if case .block(let block, _) = chunk {
+                return MarkdownRichContentPolicy.webPageUnits(block)
+            }
+            return 0
+        }
+    }
 }
 
 /// Text projection of a chunk used for reference-label scanning — every
@@ -426,7 +438,9 @@ struct LargeSpecializedRichContent {
 /// initial batch mounts immediately; every further batch requires an
 /// explicit Continue action — a plain VStack fires onAppear on insertion
 /// rather than on visibility, so any automatic growth would cascade through
-/// hundreds of chunks without the user ever scrolling.
+/// hundreds of chunks without the user ever scrolling. A batch also ends
+/// early at the rich-unit budget's worth of diagrams and formulas, which
+/// each draw in their own web page.
 struct LargeMarkdownExpandedView: View {
     let source: String
     let foregroundStyle: Color
@@ -481,7 +495,7 @@ struct LargeMarkdownExpandedView: View {
                 // Clamped: a large document can legitimately produce fewer
                 // chunks than one batch, and chunkView indexes
                 // prepared.chunks directly.
-                renderedChunkCount = min(Self.initialChunkBatch, plan.chunks.count)
+                renderedChunkCount = Self.initialWindowCount(webPageUnitsByChunk: plan.webPageUnitsByChunk)
             }
         }
         .onAppear {
@@ -589,10 +603,10 @@ struct LargeMarkdownExpandedView: View {
         }
     }
 
-    /// Total chunk count read through @State: dynamic, so a button action
-    /// firing twice before SwiftUI rebuilds still sees the live value.
-    private var preparedChunkTotal: Int {
-        prepared?.chunks.count ?? 0
+    /// Read through @State: dynamic, so a button action firing twice before
+    /// SwiftUI rebuilds still sees the live document.
+    private var preparedWebPageUnits: [Int] {
+        prepared?.webPageUnitsByChunk ?? []
     }
 
     @ViewBuilder
@@ -602,7 +616,7 @@ struct LargeMarkdownExpandedView: View {
             // directly, and the remaining chunks can be fewer than a batch.
             renderedChunkCount = Self.nextWindowCount(
                 current: renderedChunkCount,
-                total: preparedChunkTotal
+                webPageUnitsByChunk: preparedWebPageUnits
             )
         } label: {
             Label(
@@ -616,10 +630,48 @@ struct LargeMarkdownExpandedView: View {
         .padding(.vertical, 4)
     }
 
+    /// Chunks mounted before any Continue action.
+    static func initialWindowCount(webPageUnitsByChunk: [Int]) -> Int {
+        windowEnd(
+            start: 0,
+            chunkBatch: initialChunkBatch,
+            unitBudget: MarkdownRichContentPolicy.eagerRichUnitBudget,
+            webPageUnitsByChunk: webPageUnitsByChunk
+        )
+    }
+
     /// Next mounted-chunk count: one batch more, clamped to the document's
     /// chunk count.
-    static func nextWindowCount(current: Int, total: Int) -> Int {
-        min(current + continueChunkBatch, total)
+    static func nextWindowCount(current: Int, webPageUnitsByChunk: [Int]) -> Int {
+        windowEnd(
+            start: current,
+            chunkBatch: continueChunkBatch,
+            unitBudget: MarkdownRichContentPolicy.revealUnitBatch,
+            webPageUnitsByChunk: webPageUnitsByChunk
+        )
+    }
+
+    /// End of a window starting at `start`: up to `chunkBatch` chunks,
+    /// stopping before the diagram or formula that would take the window's
+    /// web pages past `unitBudget`. Always at least one chunk, so every
+    /// Continue action moves on.
+    static func windowEnd(
+        start: Int,
+        chunkBatch: Int,
+        unitBudget: Int,
+        webPageUnitsByChunk: [Int]
+    ) -> Int {
+        let total = webPageUnitsByChunk.count
+        guard start < total else { return total }
+        var end = start
+        var units = 0
+        while end < total, end - start < chunkBatch {
+            let next = webPageUnitsByChunk[end]
+            if end > start, next > 0, units + next > unitBudget { break }
+            units += next
+            end += 1
+        }
+        return end
     }
 }
 

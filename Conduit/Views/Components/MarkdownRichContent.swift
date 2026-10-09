@@ -125,6 +125,11 @@ enum MarkdownRichContentPolicy {
     /// a bounded preview first, so their initial cost stays near one
     /// screenful.
     static let codeBytesPerUnit = MarkdownLargeDocumentPolicy.chunkTargetBytes
+    /// A Mermaid diagram draws in its own web page in the message, which
+    /// costs more than an image.
+    static let diagramUnits = 3
+    /// A formula draws in its own (smaller) web page too.
+    static let formulaUnits = 2
 
     /// Eagerly mounted layout cost of one block, in rich-layout units.
     /// Flow blocks (paragraphs, headings, lists, quotes) are plain
@@ -142,15 +147,32 @@ enum MarkdownRichContentPolicy {
             }
             let cellCount = max((rows.count + 1) * columnCount, 1)
             return max(1, units(forCells: cellCount))
-        case .code(_, let source):
+        case .code(let language, let source):
             let byteCount = source.utf8.count
-            return max(1, (byteCount + codeBytesPerUnit - 1) / codeBytesPerUnit)
+            let codeUnits = max(1, (byteCount + codeBytesPerUnit - 1) / codeBytesPerUnit)
+            return MarkdownLanguage.normalized(language) == "mermaid"
+                ? max(diagramUnits, codeUnits)
+                : codeUnits
         case .math:
-            return 1
+            return formulaUnits
         case .image:
             return imageUnits
         case .heading, .paragraph, .quote, .unorderedList, .orderedList,
              .callout, .columns, .divider:
+            return 0
+        }
+    }
+
+    /// Units of the web pages a block draws in (diagrams, formulas). The
+    /// large-document chunk windows bound these too; their tables, code
+    /// and text have bounded presentations of their own.
+    static func webPageUnits(_ block: MarkdownBlock) -> Int {
+        switch block {
+        case .code(let language, _) where MarkdownLanguage.normalized(language) == "mermaid":
+            return diagramUnits
+        case .math:
+            return formulaUnits
+        default:
             return 0
         }
     }
@@ -368,6 +390,9 @@ struct RichBudgetedMarkdownBody: View {
     let selectionCoordinator: MarkdownSelectionCoordinator
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     var newestCharacterOpacities: [Double] = []
+    /// The reply is still streaming (or this is a cut preview), so its last
+    /// block may be half written.
+    var lastBlockMayBePartial = false
 
     @State private var mountedUnitBudget = MarkdownRichContentPolicy.eagerRichUnitBudget
 
@@ -531,7 +556,8 @@ struct RichBudgetedMarkdownBody: View {
             selectionSegments: selectionSegments,
             newestCharacterOpacities: index == blocks.count - 1
                 ? newestCharacterOpacities
-                : []
+                : [],
+            isStreamingTail: lastBlockMayBePartial && index == blocks.count - 1
         )
     }
 

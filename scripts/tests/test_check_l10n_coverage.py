@@ -752,7 +752,7 @@ class RawDisplayParameterTests(unittest.TestCase):
             'SettingsMetricRow(label: AppLocalization.string("Server"), value: server ?? "—")',
             'ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield", tint: .accent) {}',
             'homeSection("Hermes", tint: .aura) {}',
-            'RenderCard(title: "Mermaid", icon: "function", source: s, actionTitle: AppLocalization.string("Render"), actionIcon: "play.fill")',
+            'GuardedSourceCard(title: "Mermaid", icon: "function", source: s, guardBytes: MarkdownLargeDocumentPolicy.mermaidGuardBytes)',
             'settingsLink(.profile, icon: "person.crop.circle", title: name, detail: AppLocalization.string("Prefs"), identifier: "settings.profile")',
             'private func homeSection(_ title: String, tint: Color) -> some View {}',
             'private func continueButton(_ label: String, action: @escaping () -> Void) -> some View {}',

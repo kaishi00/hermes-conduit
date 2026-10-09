@@ -482,7 +482,7 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         // count (the same clamp the preparation task applies). Rich-chunk
         // RENDERING under this shape is covered by the dedicated table and
         // expansion tests; this test pins the overflow invariant itself.
-        let initialWindow = min(LargeMarkdownExpandedView.initialChunkBatch, prepared.chunks.count)
+        let initialWindow = LargeMarkdownExpandedView.initialWindowCount(webPageUnitsByChunk: prepared.webPageUnitsByChunk)
         XCTAssertEqual(initialWindow, prepared.chunks.count, "fewer-than-batch documents render every chunk at once")
     }
 
@@ -626,9 +626,11 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         // Fewer remaining chunks than one batch past the cap: the next
         // window count must clamp to the total, since chunkView indexes
         // prepared.chunks directly.
-        XCTAssertEqual(LargeMarkdownExpandedView.nextWindowCount(current: 25, total: 30), 30)
-        XCTAssertEqual(LargeMarkdownExpandedView.nextWindowCount(current: 25, total: 600), 50)
-        XCTAssertEqual(LargeMarkdownExpandedView.nextWindowCount(current: 0, total: 5), 5)
+        func textChunks(_ count: Int) -> [Int] { Array(repeating: 0, count: count) }
+        XCTAssertEqual(LargeMarkdownExpandedView.nextWindowCount(current: 25, webPageUnitsByChunk: textChunks(30)), 30)
+        XCTAssertEqual(LargeMarkdownExpandedView.nextWindowCount(current: 25, webPageUnitsByChunk: textChunks(600)), 50)
+        XCTAssertEqual(LargeMarkdownExpandedView.nextWindowCount(current: 0, webPageUnitsByChunk: textChunks(5)), 5)
+        XCTAssertEqual(LargeMarkdownExpandedView.nextWindowCount(current: 5, webPageUnitsByChunk: textChunks(5)), 5)
     }
 
     func testSimulatedStreamKeepsTailBoundedAndContentIntact() {

@@ -242,6 +242,10 @@ struct StreamingText: View {
                 )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Finished chunks pile up for the whole stream, so diagrams and
+            // formulas show their source until the reply settles; the
+            // settled large-document view draws them, a window at a time.
+            .environment(\.markupDrawsInPlace, false)
         }
         .onChange(of: reduceMotion) { _, shouldReduceMotion in
             if shouldReduceMotion {
