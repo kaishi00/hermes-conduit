@@ -69,7 +69,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// Read-backs (#451): the phone's delegation bridge answers "Read back:"
     /// itself, so a Watch call (whose delegations go to the relay) leaves
     /// it out, like asking first below.
-    static let phoneReadBack = "When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory or in your own words: delegate \"Read back:\". Conduit takes the reply from the chat or the job itself: a read-back never goes to Hermes and never needs the user's OK, so never ask whether to send it. Conduit gives you the reply, then tells you to read it: read it word for word, all of it, once."
+    static let phoneReadBack = "When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory or in your own words: delegate \"Read back:\". Conduit takes the reply from the chat or the job itself: a read-back never goes to Hermes and never needs the user's OK, so never ask whether to send it. Conduit gives you the reply, then tells you to read it: read it word for word, all of it, once. When the user asks whether Hermes replied or what it said, and you don't have that reply, that's a read-back too: delegate \"Read back:\" rather than asking Hermes."
 
     /// Job corrections ("Job 2: …", #455): the phone's delegation bridge
     /// and the Watch's (through the relay's interrupt_job) both route them.
@@ -85,7 +85,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// first holds a request (#451): only the phone's delegation bridge
     /// does either, so a Watch call leaves them out.
     static let phoneFollowUps = jobFollowUps + " In a call not attached to a chat, while just one background job is running, Conduit puts a delegation without that start into it too; to start separate new work while it runs, start the delegation with \"New job:\"."
-        + "\nAsking first: when it is on for this call, a new delegation waits for the user's OK, and Conduit answers that it is waiting. Then tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, delegate \"Send:\". When they change it, delegate the new request; it replaces the waiting one. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Until Conduit says a request went to Hermes, don't say it's sent, being sent or on its way: acknowledge with something like \"Okay\" instead. Corrections (\"Job 2: …\") and read-backs never wait; one Conduit puts into the only running job does, and Conduit says which job. When the user asks you to check with them before sending things to Hermes, delegate \"Mode: ask first\"; to stop checking, delegate \"Mode: send directly\"."
+        + "\nAsking first: when it is on for this call, a new delegation waits for the user's OK, and Conduit answers that it is waiting. Then tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, delegate \"Send:\". When they change it, delegate the new request; Conduit holds it again, and Hermes gets the user's own words, changes included. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Until Conduit says a request went to Hermes, don't say it's sent, being sent or on its way: acknowledge with something like \"Okay\" instead. Corrections (\"Job 2: …\") and read-backs never wait; one Conduit puts into the only running job does, and Conduit says which job. When the user asks you to check with them before sending things to Hermes, delegate \"Mode: ask first\"; to stop checking, delegate \"Mode: send directly\"."
         + "\nMarkers like \"Send:\", \"Read back:\", \"Job 2:\", \"New job:\" and \"Mode:\" are for Conduit only: never say them aloud."
 
     /// Conduit's rules for the live model. They travel with the session
@@ -225,6 +225,21 @@ final class GPTLiveConversationController: ObservableObject {
     /// Transcript entries already handed to a delegation. A set, not a
     /// boundary entry: a finished turn can fold the boundary away.
     private var delegatedEntries: Set<UUID> = []
+    /// The user's entries whose words went to Hermes, were turned down, or
+    /// were handled here (#451): a held request the user OKs goes as the
+    /// words after them. Unlike `delegatedEntries`, a delegation that did
+    /// nothing with its words leaves them for the next request.
+    private var settledEntries: Set<UUID> = []
+    /// Each delegation's own user entries (those since the one before it),
+    /// so one that only reads back or corrects a job settles just those.
+    private var delegationWords: [String: Set<UUID>] = [:]
+    /// The user's entries numbered in the order they began, so a held
+    /// request can mark how far their words had got.
+    private var userEntryNumbers: [UUID: Int] = [:]
+    private var userEntriesBegun = 0
+    /// The user's turns handled here (a read-back, a job command, #451):
+    /// a delegation's words leave them out unless they are all it has.
+    private var handledHere: Set<UUID> = []
     private var endRequestedAt: Date?
     private var endTask: Task<Void, Never>?
     private var activeEndPhrases: [String] = []
@@ -252,6 +267,7 @@ final class GPTLiveConversationController: ObservableObject {
         // Resolved here, not as a default argument: those are evaluated
         // outside the main actor.
         self.headsetMute = headsetMute ?? .shared
+        bridge.spokenWords = self
     }
 
     // MARK: Lifecycle
@@ -282,6 +298,11 @@ final class GPTLiveConversationController: ObservableObject {
         lastModelOutputAt = nil
         lastModelTurnEndedAt = nil
         delegatedEntries = []
+        settledEntries = []
+        delegationWords = [:]
+        userEntryNumbers = [:]
+        userEntriesBegun = 0
+        handledHere = []
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
         hostIssue = nil
@@ -560,6 +581,9 @@ final class GPTLiveConversationController: ObservableObject {
             if delegationUserEntries[id] == nil {
                 delegationUserEntries[id] = Set(transcript.filter { $0.speaker == .user }.map(\.id))
             }
+            if delegationWords[id] == nil {
+                delegationWords[id] = Set(transcript.filter { $0.speaker == .user && !delegatedEntries.contains($0.id) }.map(\.id))
+            }
             let parts = delegationRequest(itemText: text)
             Task { [weak self] in
                 guard let self else { return }
@@ -585,29 +609,24 @@ final class GPTLiveConversationController: ObservableObject {
         }
         // Asked to hear the chat's last reply: Hermes' own words follow,
         // even when the model answers from memory instead of delegating.
-        if VoiceThreadRouting.wantsLastReply(text) {
+        // Also when asked for after sentences of their own ("I think you
+        // have it already. Could you just read what we said?", #451).
+        if VoiceThreadRouting.wantsLastReply(text) || VoiceThreadRouting.endsWithLastReplyRequest(text) {
+            // Words that ask for it never go to Hermes (#451). A request
+            // waiting for their OK is asked about again once it's read.
+            settleLatestUserTurn()
             // A delegation GPT-Live made on these words before they arrived
             // reads it too, rather than waiting to be sent to Hermes (#451).
             if let answer = bridge.userAskedToHearAReply(text) { deliver(answer) }
-            Task { [weak self] in
-                guard let self else { return }
-                let outgoing = await self.bridge.userAskedForLastReply()
-                guard self.isActive, self.endRequestedAt == nil else { return }
-                for case .sessionContext(let text, let channel, _, _) in outgoing {
-                    // Not ready yet: asking again must still be heard, and
-                    // the cue never goes without the reply it reads.
-                    if self.session?.appendContext(text, channel: channel, delegationID: nil) != true {
-                        self.bridge.readBackNotDelivered()
-                        break
-                    }
-                }
-            }
+            readLastReply()
             return
         }
         switch VoiceBackgroundJobCommands.parse(text) {
         case .status?:
+            settleLatestUserTurn()
             session?.appendContext(bridge.statusContext(), channel: .commentary, delegationID: nil)
         case .cancelAll?:
+            settleLatestUserTurn()
             Task { [weak self] in
                 guard let self else { return }
                 let reply = await self.supervisor.cancelAll()
@@ -620,6 +639,31 @@ final class GPTLiveConversationController: ObservableObject {
             // answer it, or send it ("send it to Hermes").
             if let answer = bridge.userFinishedSpeaking(text) { deliver(answer) }
         }
+    }
+
+    /// Sends the chat's last reply to be read out, with its cue.
+    private func readLastReply() {
+        Task { [weak self] in
+            guard let self else { return }
+            let outgoing = await self.bridge.userAskedForLastReply()
+            guard self.isActive, self.endRequestedAt == nil else { return }
+            for case .sessionContext(let text, let channel, _, _) in outgoing {
+                // Not ready yet: asking again must still be heard, and
+                // the cue never goes without the reply it reads.
+                if self.session?.appendContext(text, channel: channel, delegationID: nil) != true {
+                    self.bridge.readBackNotDelivered()
+                    break
+                }
+            }
+        }
+    }
+
+    /// The user's latest turn was handled here: its words never go to
+    /// Hermes with a later request, nor with the next delegation's.
+    private func settleLatestUserTurn() {
+        guard let latest = transcript.last(where: { $0.speaker == .user }) else { return }
+        settledEntries.insert(latest.id)
+        handledHere.insert(latest.id)
     }
 
     /// Carries out what the user's words did to a held request. They are
@@ -652,12 +696,29 @@ final class GPTLiveConversationController: ObservableObject {
         let handled = delegatedEntries
         let recent = transcript.filter { !handled.contains($0.id) }
         delegatedEntries.formUnion(transcript.map(\.id))
-        let userWords = recent.filter { $0.speaker == .user }.map(\.text).joined(separator: " ")
+        // A turn handled here ("Read the last reply", "job status") isn't
+        // the request. A delegation made on a read request alone is that
+        // read-back, so it keeps those words; one made on a job command
+        // alone has no request (#451).
+        let said = recent.filter { $0.speaker == .user }
+        let fresh = said.filter { !handledHere.contains($0.id) }
+        let reads = said.filter {
+            VoiceThreadRouting.wantsLastReply($0.text) || VoiceThreadRouting.endsWithLastReplyRequest($0.text)
+        }
+        let userWords = (fresh.isEmpty ? reads : fresh).map(\.text).joined(separator: " ")
         let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
         let request = own.isEmpty ? userWords : own
         // Nothing new since the last delegation: no request, so Hermes asks
         // the user rather than redoing the one already passed on.
         guard !request.isEmpty else { return ("", userWords) }
+        let context = recentConversation(handled: handled.union(handledHere))
+        guard !context.isEmpty else { return (request, userWords) }
+        return (request + Self.delegationContextMarker + context, userWords)
+    }
+
+    /// The last few lines of the call, for context: the user's words
+    /// marked when they were `handled` already.
+    private func recentConversation(handled: Set<UUID>) -> String {
         var context = ""
         for entry in transcript.suffix(8).reversed() {
             let speaker = entry.speaker == .user
@@ -667,8 +728,7 @@ final class GPTLiveConversationController: ObservableObject {
             guard context.count + line.count <= Self.delegationContextCharacters else { break }
             context = line + context
         }
-        guard !context.isEmpty else { return (request, userWords) }
-        return (request + Self.delegationContextMarker + context, userWords)
+        return context
     }
 
     private func sendJobStatus() {
@@ -806,6 +866,7 @@ final class GPTLiveConversationController: ObservableObject {
         let entry = VoiceConversationTranscriptEntry(speaker: speaker, text: trimmed)
         transcript.append(entry)
         if speaker == .user {
+            numberUserEntry(entry.id)
             openUserEntry = entry.id
             userTurnEntries.append(entry.id)
             openAssistantEntry = nil
@@ -823,7 +884,9 @@ final class GPTLiveConversationController: ObservableObject {
         let final = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let first = entries.first, let index = transcript.firstIndex(where: { $0.id == first }) else {
             guard !final.isEmpty else { return nil }
-            transcript.append(VoiceConversationTranscriptEntry(speaker: speaker, text: final))
+            let entry = VoiceConversationTranscriptEntry(speaker: speaker, text: final)
+            transcript.append(entry)
+            if speaker == .user { numberUserEntry(entry.id) }
             return final
         }
         guard !final.isEmpty else { return transcript[index].text }
@@ -831,6 +894,11 @@ final class GPTLiveConversationController: ObservableObject {
         let later = Set(entries.dropFirst())
         if !later.isEmpty { transcript.removeAll { later.contains($0.id) } }
         return final
+    }
+
+    private func numberUserEntry(_ id: UUID) {
+        userEntriesBegun += 1
+        userEntryNumbers[id] = userEntriesBegun
     }
 
     private func closeOpenEntries() {
@@ -845,5 +913,47 @@ final class GPTLiveConversationController: ObservableObject {
     /// them to settle.
     var unsettledTranscriptEntryIDs: Set<UUID> {
         Set([openUserEntry, openAssistantEntry].compactMap { $0 } + userTurnEntries + assistantTurnEntries)
+    }
+}
+
+// MARK: - The user's words (#451)
+
+extension GPTLiveConversationController: GPTLiveSpokenWords {
+    /// Everything the user said since the last request that went to Hermes
+    /// (or was turned down, or handled here), word for word, leaving out
+    /// answers that only say yes, no or wait, with the recent conversation
+    /// for context. The latest words when there are more than a request
+    /// carries. Not UI copy.
+    func unsentWords() -> String {
+        var words = transcript
+            .filter { $0.speaker == .user && !settledEntries.contains($0.id) }
+            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !VoiceThreadRouting.heldRequestAnswer($0).isBare }
+            .joined(separator: " ")
+        guard !words.isEmpty else { return "" }
+        if words.count > Self.delegationContextCharacters {
+            words = "…" + String(words.suffix(Self.delegationContextCharacters))
+        }
+        let context = recentConversation(handled: settledEntries)
+        return context.isEmpty ? words : words + Self.delegationContextMarker + context
+    }
+
+    func wordsMark() -> Int { userEntriesBegun }
+
+    func settleWords(_ words: GPTLiveDelegationBridge.SettledWords) {
+        switch words {
+        case .all:
+            settledEntries.formUnion(transcript.filter { $0.speaker == .user }.map(\.id))
+        case .delegation(let id):
+            settledEntries.formUnion(delegationWords[id] ?? [])
+        case .readBack(let id):
+            let entries = transcript.filter { delegationWords[id]?.contains($0.id) == true }
+            guard !entries.contains(where: {
+                VoiceThreadRouting.wantsLastReply($0.text) || VoiceThreadRouting.endsWithLastReplyRequest($0.text)
+            }) else { return }
+            settledEntries.formUnion(entries.map(\.id))
+        case .through(let mark):
+            settledEntries.formUnion(userEntryNumbers.filter { $0.value <= mark }.map(\.key))
+        }
     }
 }

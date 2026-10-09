@@ -1401,7 +1401,7 @@ final class GeminiLiveConversationController: ObservableObject {
     private func noteSendToHermesIfSaid() {
         guard let openUserEntry, openUserEntry != sendToHermesEntry,
               let entry = transcript.last(where: { $0.id == openUserEntry }),
-              VoiceThreadRouting.saysSendToHermes(entry.text) else { return }
+              VoiceThreadRouting.saysSendToHermes(entry.text, finished: false) else { return }
         sendToHermesEntry = openUserEntry
         tools.noteSendToHermes()
     }
