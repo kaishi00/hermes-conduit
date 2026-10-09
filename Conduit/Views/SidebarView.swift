@@ -944,6 +944,7 @@ struct SessionRow: View {
             case .working?:
                 ProgressView()
                     .controlSize(.mini)
+                    .tint(SessionStatusFilter.working.color)
                     .accessibilityLabel(SessionStatusFilter.working.title)
             case nil:
                 EmptyView()
