@@ -109,7 +109,9 @@ struct MarkupBlock: View {
             Label(title, systemImage: kind == .mermaid ? "point.3.connected.trianglepath.dotted" : "function")
                 .font(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(.secondary)
-            if !draws {
+            // Only for a block still being written; one waiting for a large
+            // reply to settle isn't working on anything yet.
+            if !isComplete {
                 ProgressView().controlSize(.mini)
             }
             Spacer()
@@ -172,6 +174,9 @@ struct MarkupBlock: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityHint(Text("Open full screen"))
         .accessibilityAction { showsFullScreen = true }
+        // Like the tap, only once there's something to see; the header
+        // still names the block while it draws.
+        .accessibilityHidden(drawnHeight == nil)
     }
 
     private func failure(_ detail: String?) -> some View {
@@ -412,6 +417,7 @@ private final class MarkupMessageProxy: NSObject, WKScriptMessageHandler {
 
 /// A diagram or formula full screen, where it can be zoomed, with its source.
 struct MarkupPreviewSheet: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     let document: MarkupDocument
     @Environment(\.dismiss) private var dismiss
     @Environment(\.chatTextSize) private var chatTextSize
@@ -437,7 +443,6 @@ struct MarkupPreviewSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
         }
-        .presentationDetents([.medium, .large])
     }
 }
 
