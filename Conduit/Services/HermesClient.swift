@@ -2187,7 +2187,10 @@ final class HermesClient: ObservableObject {
         guard let rows = result.objectValue?["subagents"]?.arrayValue else {
             throw HermesError.invalidResponse
         }
-        return Set(rows.compactMap { $0.objectValue?["subagent_id"]?.stringValue })
+        let ids = rows.compactMap { $0.objectValue?["subagent_id"]?.stringValue }
+        // A row without an id could be any running agent: trust none of it.
+        guard ids.count == rows.count else { throw HermesError.invalidResponse }
+        return Set(ids)
     }
 
     func modelOptions(sessionId: String? = nil) async throws -> (model: String?, provider: String?, providers: [ProviderInfo]?) {

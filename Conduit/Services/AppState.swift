@@ -1230,8 +1230,8 @@ final class AppState: ObservableObject {
     @Published var runtime = RuntimeState()
     @Published var activeAgents = 0
     @Published private(set) var delegateAgents: [DelegateAgentActivity] = []
-    /// A card this fresh may belong to an agent the gateway roster hasn't
-    /// registered yet, so the roster check leaves it alone.
+    /// A card with an event this recent may belong to an agent the gateway
+    /// roster hasn't registered yet, so the roster check leaves it alone.
     static let delegateAgentRosterGrace: TimeInterval = 30
     @Published private(set) var workspaceRoot = ""
     @Published private(set) var workspaceEntries: [String: [WorkspaceEntry]] = [:]
@@ -22564,7 +22564,7 @@ final class AppState: ObservableObject {
         guard let client else { return }
         let cutoff = Date().addingTimeInterval(-Self.delegateAgentRosterGrace)
         let sessionIDs = Set(delegateAgents.lazy
-            .filter { $0.status.isActive && $0.hasGatewayID && !$0.sessionId.isEmpty }
+            .filter { $0.status == .running && $0.hasGatewayID && !$0.sessionId.isEmpty }
             .map(\.sessionId))
         for sessionID in sessionIDs {
             guard let liveIDs = try? await client.liveSubagentIDs(sessionId: sessionID) else { continue }

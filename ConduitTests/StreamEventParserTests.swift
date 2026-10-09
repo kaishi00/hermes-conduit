@@ -486,6 +486,29 @@ final class StreamEventParserTests: XCTestCase {
         }
     }
 
+    func testSubagentCompleteWithUnknownStatusEnds() {
+        let event = parse(#"{"type": "subagent.complete", "session_id": "s1", "payload": {"subagent_id": "a", "goal": "g", "status": "cancelled"}}"#)
+        guard case .delegateAgent(_, let activity) = event else { return XCTFail("Expected delegateAgent") }
+        XCTAssertEqual(activity.status, .completed)
+    }
+
+    func testSubagentWithoutAnyKeyStillSharesACard() {
+        let first = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"text": "a"}}"#)
+        let second = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"text": "b", "model": ""}}"#)
+        guard case .delegateAgent(_, let a) = first, case .delegateAgent(_, let b) = second else {
+            return XCTFail("Expected delegateAgent")
+        }
+        XCTAssertEqual(a.id, b.id)
+        XCTAssertNil(b.model)
+    }
+
+    func testFirstReportedEndWins() {
+        let done = DelegateAgentActivity(id: "a", goal: "g", status: .completed, taskCount: 1, taskIndex: 0, stream: [])
+        let lateFail = DelegateAgentActivity(id: "a", goal: "g", status: .failed, taskCount: 1, taskIndex: 0, stream: [])
+        XCTAssertEqual(done.merged(with: lateFail).status, .completed)
+        XCTAssertEqual(lateFail.merged(with: done).status, .failed)
+    }
+
     func testFinishedSubagentStaysFinishedOnLateProgress() {
         let done = DelegateAgentActivity(id: "a", goal: "g", status: .completed, taskCount: 1, taskIndex: 0, stream: [])
         let late = DelegateAgentActivity(id: "a", goal: "", status: .running, taskCount: 1, taskIndex: 0, currentTool: "terminal", stream: [])
@@ -509,8 +532,10 @@ final class StreamEventParserTests: XCTestCase {
             agent("legacy", gatewayID: false),
             agent("fresh", at: Date(timeIntervalSince1970: 300)),
         ]
-        let result = DelegateAgentActivity.reconciled(agents, sessionId: "s1", liveIDs: ["live"], changedBefore: cutoff)
-        XCTAssertEqual(result.map(\.status), [.completed, .running, .running, .running, .running])
+        var queued = agent("queued")
+        queued.status = .queued
+        let result = DelegateAgentActivity.reconciled(agents + [queued], sessionId: "s1", liveIDs: ["live"], changedBefore: cutoff)
+        XCTAssertEqual(result.map(\.status), [.completed, .running, .running, .running, .running, .queued])
     }
 
     // MARK: - clarify.request

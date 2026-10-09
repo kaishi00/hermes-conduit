@@ -730,9 +730,8 @@ struct DelegateAgentActivity: Identifiable, Equatable {
         var merged = update
         if merged.goal.isEmpty { merged.goal = goal }
         merged.model = update.model ?? model
-        // Finished stays finished, and a failure isn't overwritten by a
-        // later completion.
-        if !status.isActive && (update.status.isActive || status == .failed) { merged.status = status }
+        // The first end an agent reports is its end.
+        if !status.isActive { merged.status = status }
         // A finished agent is no longer in any tool.
         merged.currentTool = merged.status.isActive ? update.currentTool ?? currentTool : nil
         merged.summary = update.summary ?? summary
@@ -744,9 +743,9 @@ struct DelegateAgentActivity: Identifiable, Equatable {
 
     /// Agents a gateway roster no longer lists have ended; their
     /// `subagent.complete` was missed (app suspended, socket reconnect).
-    /// Only cards from `sessionId` with a gateway id and no event since
-    /// `cutoff` are touched, so a just-spawned agent the roster hasn't
-    /// registered yet keeps its status.
+    /// Only running cards from `sessionId` with a gateway id and no event
+    /// since `cutoff` are touched. Hermes lists an agent once it starts,
+    /// so queued cards are left alone.
     static func reconciled(
         _ agents: [DelegateAgentActivity],
         sessionId: String,
@@ -754,7 +753,7 @@ struct DelegateAgentActivity: Identifiable, Equatable {
         changedBefore cutoff: Date
     ) -> [DelegateAgentActivity] {
         agents.map { agent in
-            guard agent.status.isActive,
+            guard agent.status == .running,
                   agent.hasGatewayID,
                   agent.sessionId == sessionId,
                   agent.updatedAt < cutoff,

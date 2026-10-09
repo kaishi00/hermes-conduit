@@ -206,9 +206,8 @@ enum StreamEventParser {
         let goal = payload["goal"]?.stringValue ?? payload["task"]?.stringValue ?? ""
         let taskIndex = payload["task_index"]?.intValue ?? 0
         let delegationID = nonEmpty("delegation_id")
-        let id = subagentID ?? nonEmpty("id") ?? nonEmpty("agent_id") ?? (goal.isEmpty && delegationID == nil
-            ? UUID().uuidString
-            : "\(sessionId)/\(delegationID ?? "")#\(taskIndex):\(goal)")
+        let id = subagentID ?? nonEmpty("id") ?? nonEmpty("agent_id")
+            ?? "\(sessionId)/\(delegationID ?? "")#\(taskIndex):\(goal)"
         let statusValue = payload["status"]?.stringValue ?? {
             if eventType.contains("fail") { return "failed" }
             if eventType.contains("interrupt") { return "interrupted" }
@@ -220,7 +219,9 @@ enum StreamEventParser {
         switch statusValue.lowercased() {
         // Hermes' other terminal states.
         case "error", "timeout": status = .failed
-        case let value: status = DelegateAgentActivity.Status(rawValue: value) ?? .running
+        // An end event's status always means the agent ended.
+        case let value: status = DelegateAgentActivity.Status(rawValue: value)
+            ?? (eventType.contains("complete") || eventType.contains("finish") ? .completed : .running)
         }
         let text = payload["text"]?.stringValue ?? payload["message"]?.stringValue ?? payload["summary"]?.stringValue ?? ""
         let kind: DelegateAgentActivity.StreamLine.Kind = eventType.contains("tool") ? .tool : eventType.contains("thinking") ? .thinking : eventType.contains("progress") ? .progress : .summary
@@ -229,12 +230,12 @@ enum StreamEventParser {
             id: id,
             // Empty when the event names no goal: the card says "Delegate agent".
             goal: goal,
-            model: payload["model"]?.stringValue,
+            model: nonEmpty("model"),
             status: status,
             taskCount: payload["task_count"]?.intValue ?? 1,
             taskIndex: taskIndex,
-            currentTool: payload["tool_name"]?.stringValue ?? payload["tool"]?.stringValue ?? payload["current_tool"]?.stringValue,
-            summary: payload["summary"]?.stringValue,
+            currentTool: nonEmpty("tool_name") ?? nonEmpty("tool") ?? nonEmpty("current_tool"),
+            summary: nonEmpty("summary"),
             stream: lines,
             hasGatewayID: subagentID != nil
         )
