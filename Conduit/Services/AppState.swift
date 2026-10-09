@@ -5209,17 +5209,19 @@ final class AppState: ObservableObject {
     /// untouched: writing it would put Desktop's unread dot on the chat it
     /// has open.
     func refreshDesktopViewsIfDue() async {
-        guard isSceneActive, let bridge = dashboardTicketBridge,
-              case .reported(_, let capabilities) = notifierPlugin.state,
-              capabilities.contains("desktop-views") else { return }
+        guard isSceneActive, let bridge = dashboardTicketBridge else { return }
         // Keyed by host, not bridge: a sign-in or header change rebuilds the
         // bridge for the same host, whose record still holds.
-        if bridge.baseURL != desktopViewsHost {
-            desktopViewsHost = bridge.baseURL
-            desktopViewsFetchedAt = [:]
-            desktopViewsCursor = [:]
-            desktopViewsFailureLogged = false
-            updateChatReadState { $0.forgetDesktopViews() }
+        if bridge.baseURL != desktopViewsHost { resetDesktopViews(host: bridge.baseURL) }
+        switch notifierPlugin.state {
+        case .reported(_, let capabilities) where capabilities.contains("desktop-views"):
+            break
+        case .unknown:
+            return
+        case .reported, .predatesCapabilities:
+            // The host answered without the route: its record goes too.
+            if !chatReadState.desktopSeenThrough.isEmpty { resetDesktopViews(host: bridge.baseURL) }
+            return
         }
         let profile = activeProfile
         let now = Date()
@@ -5248,6 +5250,14 @@ final class AppState: ObservableObject {
         guard !update.seen.isEmpty else { return }
         updateChatReadState { $0.recordDesktopViews(update.seen, profile: profile) }
         observeChatReadState()
+    }
+
+    private func resetDesktopViews(host: String?) {
+        desktopViewsHost = host
+        desktopViewsFetchedAt = [:]
+        desktopViewsCursor = [:]
+        desktopViewsFailureLogged = false
+        updateChatReadState { $0.forgetDesktopViews() }
     }
 
     /// Parses the plugin's `desktop-views` reply into each chat's
@@ -6378,6 +6388,7 @@ final class AppState: ObservableObject {
         liveSessionStatusIndex = SessionLiveStatusIndex()
         liveSessionStatusProfile = nil
         liveSessionStatusAvailable = true
+        resetDesktopViews(host: nil)
         sessionYoloStore.clearAllOverrides()
         // Bot Mode state is per-server: the roster, the capability phase, and
         // the in-memory bot-chat profile registry all describe the outgoing

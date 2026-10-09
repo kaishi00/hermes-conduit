@@ -253,6 +253,23 @@ final class ChatReadStateTests: XCTestCase {
         XCTAssertTrue(state.isUnread(replyAfter, profile: profile, now: t0))
     }
 
+    func testDesktopViewCoversHermesActivityFlagButNotItsMark() {
+        var state = ChatReadState()
+        // Conduit stamped both chats read at 100; replies landed at 150.
+        let flagged = row("a", count: 4, unread: true, lastActivityAt: 150, watermark: 100)
+        let marked = row("b", count: 4, unread: true, lastActivityAt: 150, watermark: 0)
+        state.observe([flagged, marked], profile: profile, now: t0)
+        XCTAssertTrue(state.isUnread(flagged, profile: profile, now: t0))
+
+        state.recordDesktopViews(["a": 200, "b": 200], profile: profile)
+        XCTAssertFalse(state.isUnread(flagged, profile: profile, now: t0), "Desktop had it when the reply landed")
+        XCTAssertTrue(state.serverUnread(flagged, profile: profile, now: t0), "Opening it here still clears Hermes' flag")
+        XCTAssertTrue(state.isUnread(marked, profile: profile, now: t0), "Mark as unread outranks Desktop")
+
+        let later = row("a", count: 4, unread: true, lastActivityAt: 250, watermark: 100)
+        XCTAssertTrue(state.isUnread(later, profile: profile, now: t0))
+    }
+
     func testDesktopViewsMatchAStoredIdAliasAndKeepTheLatestTime() {
         var state = ChatReadState()
         state.observe([row("rt-1", count: 2, lastActivityAt: 100)], profile: profile, now: t0)

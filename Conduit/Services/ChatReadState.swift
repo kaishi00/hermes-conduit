@@ -94,7 +94,19 @@ struct ChatReadState: Equatable {
 
     /// Whether the row has something the user hasn't seen.
     func isUnread(_ session: SessionSummary, profile: String, now: Date = Date()) -> Bool {
-        serverUnread(session, profile: profile, now: now) || locallyUnread(session, profile: profile)
+        if locallyUnread(session, profile: profile) { return true }
+        return serverUnread(session, profile: profile, now: now)
+            && !desktopSawFlaggedActivity(session, profile: profile, now: now)
+    }
+
+    /// Hermes' flag came from activity, not a mark, and Desktop had the chat
+    /// when that activity landed. Desktop doesn't clear the flag for a reply
+    /// it shows live, so its record answers for it. Both times are the host's.
+    func desktopSawFlaggedActivity(_ session: SessionSummary, profile: String, now: Date = Date()) -> Bool {
+        guard !isExplicitlyUnread(session, profile: profile, now: now),
+              let seenThrough = desktopSeenTime(for: session, profile: profile),
+              let activity = session.lastActivityAt else { return false }
+        return activity <= seenThrough
     }
 
     /// Hermes' shared flag, with Conduit's own recent write taking precedence.
