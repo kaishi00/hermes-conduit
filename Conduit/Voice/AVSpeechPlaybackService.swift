@@ -73,6 +73,11 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// player→mixer path voice conversations use; any other rate inserts a
     /// pitch-preserving time stretch.
     var playbackRate: Float = 1.0
+    /// Plays silently while set (a live call's speaker mute, #487), across
+    /// engine rebuilds. Playback and its drains run as usual.
+    var isMuted = false {
+        didSet { player.volume = isMuted ? 0 : 1 }
+    }
     private(set) var isPlaying = false
 
     /// Optional injection instead of a default `.shared` argument: default
@@ -360,6 +365,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         stopObservingEngineConfiguration()
         engine = makeEngine()
         player = AVAudioPlayerNode()
+        player.volume = isMuted ? 0 : 1
         engine.attach(player)
         observeEngineConfiguration()
     }

@@ -47,6 +47,10 @@ protocol GeminiLiveAudioOutput: AnyObject {
     /// Drop everything queued now (the user started speaking).
     func interrupt()
     func stop()
+    /// Silences the speaker (#487) without stopping playback, so the
+    /// call's timing (turns, echo tail, drains) is unchanged. Kept until
+    /// set again.
+    func setMuted(_ muted: Bool)
 }
 
 /// 16 kHz PCM16 microphone stream over the shared capture service.
@@ -111,6 +115,7 @@ final class PlaybackServiceGeminiLiveOutput: GeminiLiveAudioOutput {
 
     func interrupt() { playback.stop() }
     func stop() { playback.stop() }
+    func setMuted(_ muted: Bool) { playback.isMuted = muted }
 }
 
 // MARK: - Controller
@@ -247,6 +252,10 @@ final class GeminiLiveConversationController: ObservableObject {
     private(set) var hostIssue: LiveVoiceHostIssue?
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
+    /// The model's voice is silenced (#487). Its words still show in the
+    /// captions, and job news Conduit would have it say waits until the
+    /// speaker is back on.
+    @Published private(set) var isSpeakerMuted = false
 
     /// A transcript line that just finished, with its final text: what
     /// VoiceOver announces (the streamed fragments before it aren't).
@@ -425,6 +434,9 @@ final class GeminiLiveConversationController: ObservableObject {
         // Cleared before the call goes active so the headset mute starts
         // the call unmuted too.
         isMicrophoneMuted = false
+        // So is the speaker mute.
+        isSpeakerMuted = false
+        output.setMuted(false)
         phase = .connecting
         transcript = []
         finishedTurn = nil
@@ -556,6 +568,14 @@ final class GeminiLiveConversationController: ObservableObject {
             // the call pauses instead of failing.
             startInput(pausingOnFailure: true)
         }
+    }
+
+    func setSpeakerMuted(_ muted: Bool) {
+        guard muted != isSpeakerMuted else { return }
+        isSpeakerMuted = muted
+        output.setMuted(muted)
+        // Back on: what waited for the speaker goes out once it's quiet.
+        if !muted { flushPendingTextIfIdle() }
     }
 
     /// Keeps the AirPods / headset mute gesture (#331) pointed at this
@@ -1123,8 +1143,8 @@ final class GeminiLiveConversationController: ObservableObject {
     /// Whether Conduit may start a turn of its own right now: connected,
     /// the model silent (and done playing), and the user quiet.
     var isConversationIdle: Bool {
-        // Paused: an update the user can't hear waits for the audio.
-        guard session?.isReady == true, !audioPaused, !modelTurnActive, !output.isPlaying else { return false }
+        // Paused or silenced: an update the user can't hear waits for the audio.
+        guard session?.isReady == true, !audioPaused, !isSpeakerMuted, !modelTurnActive, !output.isPlaying else { return false }
         let current = now()
         if let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userQuietInterval { return false }
         if let lastModelTurnEndedAt, current.timeIntervalSince(lastModelTurnEndedAt) < Self.modelQuietInterval { return false }
