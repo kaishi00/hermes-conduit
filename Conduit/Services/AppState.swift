@@ -5298,9 +5298,7 @@ final class AppState: ObservableObject {
 
     func markAllSessionsRead() {
         let profile = activeProfile
-        // Pinned cron runs sit in All too (#485).
-        let listed = activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) }
-        let unread = listed.filter { !$0.isArchived && isSessionUnread($0) }
+        let unread = readStateSessions.filter { !$0.isArchived && isSessionUnread($0) }
         guard !unread.isEmpty else { return }
         let flagged = unread.filter { chatReadState.serverUnread($0, profile: profile) }
         // One ledger update (and one persisted encode) for the whole batch.
@@ -5328,10 +5326,16 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The rows the chat list shows with read state: the chats plus pinned
+    /// cron runs, which sit in All too (#485).
+    private var readStateSessions: [SessionSummary] {
+        activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) }
+    }
+
     private func observeChatReadState() {
         let profile = activeProfile
         // The same rows every read-state query sees.
-        let listed = activeProfileSessions.filter { $0.source != .cron }
+        let listed = readStateSessions
         updateChatReadState { $0.observe(listed, profile: profile) }
         noteActiveChatSeen(respectingMarks: true)
     }
@@ -5345,7 +5349,7 @@ final class AppState: ObservableObject {
     /// you open it again.
     private func noteActiveChatSeen(respectingMarks: Bool = false) {
         guard isSceneActive, !showSidebar,
-              let session = activeProfileSessions.first(where: sessionMatchesActiveSession) else { return }
+              let session = readStateSessions.first(where: sessionMatchesActiveSession) else { return }
         let profile = activeProfile
         if respectingMarks {
             if chatReadState.isExplicitlyUnread(session, profile: profile) { return }
@@ -5369,7 +5373,7 @@ final class AppState: ObservableObject {
     private func noteChatLeft(_ sessionID: String?) {
         guard isSceneActive,
               let sessionID,
-              let session = activeProfileSessions.first(where: { ([$0.id] + $0.alternateIds).contains(sessionID) }),
+              let session = readStateSessions.first(where: { ([$0.id] + $0.alternateIds).contains(sessionID) }),
               !chatReadState.isExplicitlyUnread(session, profile: activeProfile) else { return }
         let profile = activeProfile
         updateChatReadState { $0.markSeen(session, profile: profile) }

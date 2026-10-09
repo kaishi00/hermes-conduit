@@ -1693,6 +1693,7 @@ struct CronList: View {
                             SessionRow(session: session, isSelected: session.id == appState.activeSessionId, isPinned: isPinned).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityHint("Swipe or touch and hold for conversation actions.")
                         // A pinned run sits at the top of the Sessions list (#485).
                         .contextMenu {
                             pinButton(session, isPinned: isPinned)
