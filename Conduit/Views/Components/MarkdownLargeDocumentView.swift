@@ -754,11 +754,11 @@ struct LargeMarkdownCallout: View {
 
     private var detail: (title: String, icon: String, color: Color) {
         switch calloutKind.lowercased() {
-        case "tip", "hint": ("Tip", "lightbulb.fill", .green)
-        case "warning", "caution": ("Warning", "exclamationmark.triangle.fill", .orange)
-        case "danger", "error": ("Important", "exclamationmark.octagon.fill", .red)
-        case "important": ("Important", "exclamationmark.circle.fill", .purple)
-        default: ("Note", "info.circle.fill", .blue)
+        case "tip", "hint": (AppLocalization.string("Tip"), "lightbulb.fill", .green)
+        case "warning", "caution": (AppLocalization.string("Warning"), "exclamationmark.triangle.fill", .orange)
+        case "danger", "error": (AppLocalization.string("Important"), "exclamationmark.octagon.fill", .red)
+        case "important": (AppLocalization.string("Important"), "exclamationmark.circle.fill", .purple)
+        default: (AppLocalization.string("Note"), "info.circle.fill", .blue)
         }
     }
 

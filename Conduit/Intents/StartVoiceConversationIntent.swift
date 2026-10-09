@@ -34,7 +34,7 @@ struct ConduitProfileEntityQuery: EntityQuery {
             if !normalized.isEmpty, !result.contains(normalized) { result.append(normalized) }
         }
         return (unique.isEmpty ? ["default"] : unique).map {
-            ConduitProfileEntity(id: $0, displayName: $0 == "default" ? "Default" : $0)
+            ConduitProfileEntity(id: $0, displayName: $0 == "default" ? AppLocalization.string("Default") : $0)
         }
     }
 }

@@ -692,6 +692,119 @@ class RawTernaryTests(unittest.TestCase):
             self.assertEqual(self.literals(source), [], source)
 
 
+class RawDisplayParameterTests(unittest.TestCase):
+    """SettingsMetricRow(label: "Readiness", …) shows a String with
+    Text(label), so a raw literal passed to a String display parameter is
+    never looked up in the catalog."""
+
+    def literals(self, source):
+        return [(callee, label, skeleton) for callee, label, skeleton, _offset
+                in check_l10n_coverage.raw_display_literals(source)]
+
+    def test_raw_literals_are_reported(self):
+        self.assertEqual(self.literals('SettingsMetricRow(label: "Readiness", value: status)'),
+                         [("SettingsMetricRow", "label", "Readiness")])
+        self.assertEqual(self.literals('homeSection("Profile", tint: .accent) { row }'),
+                         [("homeSection", "_", "Profile")])
+        self.assertEqual(self.literals(
+            'ConduitSettingsSection(\n    title: "Links",\n    symbol: "link",\n    tint: .accent\n) {}'),
+            [("ConduitSettingsSection", "title", "Links")])
+        self.assertEqual(self.literals('self.appendSlashOutput("Too many aliases.", context: context)'),
+                         [("appendSlashOutput", "_", "Too many aliases.")])
+        self.assertEqual(self.literals('continueButton("Hi \\(name)") { go() }'),
+                         [("continueButton", "_", "Hi %@")])
+
+    def test_ternary_branches_fallbacks_and_arrays_are_reported(self):
+        self.assertEqual(self.literals(
+            'SettingsMetricRow(label: AppLocalization.string("Status"), value: on ? "Connected" : "Disconnected")'),
+            [("SettingsMetricRow", "value", "Connected"), ("SettingsMetricRow", "value", "Disconnected")])
+        self.assertEqual(self.literals(
+            'SettingsMetricRow(label: AppLocalization.string("Delivery"), value: job.deliver ?? "Local")'),
+            [("SettingsMetricRow", "value", "Local")])
+        self.assertEqual(self.literals(
+            'SettingsMetricRow(label: label, value: a ?? b ?? (on ? "x" : "y") ?? "None")'),
+            [("SettingsMetricRow", "value", "None")])
+        self.assertEqual(self.literals(
+            'branchShell(title: t, intro: i, needs: [AppLocalization.string("A"), "Same network."], prompt: .lan)'),
+            [("branchShell", "needs", "Same network.")])
+
+    def test_localized_brand_glyph_and_other_parameters_pass(self):
+        for source in (
+            'SettingsMetricRow(label: AppLocalization.string("Readiness"), value: readiness)',
+            'SettingsMetricRow(label: AppLocalization.string("Server"), value: server ?? "—")',
+            'ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield", tint: .accent) {}',
+            'homeSection("Hermes", tint: .aura) {}',
+            'RenderCard(title: "Mermaid", icon: "function", source: s, actionTitle: AppLocalization.string("Render"), actionIcon: "play.fill")',
+            'settingsLink(.profile, icon: "person.crop.circle", title: name, detail: AppLocalization.string("Prefs"), identifier: "settings.profile")',
+            'private func homeSection(_ title: String, tint: Color) -> some View {}',
+            'private func continueButton(_ label: String, action: @escaping () -> Void) -> some View {}',
+            'notificationToggle(AppLocalization.string("Replies"), detail: AppLocalization.string("When Hermes answers."), keyPath: \\.replies)',
+            'SettingsMetricRow(label: AppLocalization.string("Status"), value: "\\(count)")',
+        ):
+            self.assertEqual(self.literals(source), [], source)
+
+
+class RawDisplayPropertyTests(unittest.TestCase):
+    """var displayName: String { "Smallest" } returns text no view looks
+    up: every view that shows it shows English."""
+
+    def literals(self, source):
+        return [(name, skeleton) for name, skeleton, _offset
+                in check_l10n_coverage.raw_display_property_literals(source)]
+
+    def test_raw_results_are_reported(self):
+        self.assertEqual(self.literals(
+            'var displayName: String {\n    switch self {\n    case .small: "Smallest"\n'
+            '    case .large: return "Largest"\n    default: return AppLocalization.string("Default")\n    }\n}'),
+            [("displayName", "Smallest"), ("displayName", "Largest")])
+        self.assertEqual(self.literals('var errorDescription: String? { "That photo could not be read." }'),
+                         [("errorDescription", "That photo could not be read.")])
+        self.assertEqual(self.literals(
+            'var statusText: String {\n    if isWorking { return "Updating" }\n    return on ? AppLocalization.string("On") : "Off"\n}'),
+            [("statusText", "Updating"), ("statusText", "Off")])
+        self.assertEqual(self.literals(
+            'var errorDescription: String? {\n    switch self {\n    case .read(let name): return "Could not read \\(name)."\n    }\n}'),
+            [("errorDescription", "Could not read %@.")])
+
+    def test_localized_brand_and_other_properties_pass(self):
+        for source in (
+            'var displayName: String { AppLocalization.string("Smallest") }',
+            'var displayName: String {\n    switch self {\n    case .discord: return "Discord"\n    case .gemini: return "Gemini Live"\n    }\n}',
+            'var errorDescription: String? {\n    switch self {\n    case .http(let detail): return describe(detail: "none")\n    case .relay(let message): return message\n    }\n}',
+            'var errorDescription: String? {\n    if kind == "timeout" { return AppLocalization.string("Timed out.") }\n    return nil\n}',
+            'var iconName: String { "bubble.left.fill" }',
+            'var identifierName: String {\n    switch self {\n    case .server: return "server"\n    }\n}',
+            'var displayName: String { names.map { $0 }.joined(separator: ", ") }',
+        ):
+            self.assertEqual(self.literals(source), [], source)
+
+
+class RawInterpolatedLiteralTests(unittest.TestCase):
+    """.accessibilityLabel("\\(isUser ? "You" : "Hermes"): \\(text)") looks
+    up "%@: %@"; the "You" it puts in the first argument stays English."""
+
+    def literals(self, source):
+        return [skeleton for skeleton, _offset
+                in check_l10n_coverage.raw_interpolated_literals(source)]
+
+    def test_raw_branches_and_fallbacks_in_an_interpolation_are_reported(self):
+        self.assertEqual(self.literals('.accessibilityLabel("\\(isUser ? "You" : "Hermes"): \\(entry.text)")'),
+                         ["You"])
+        self.assertEqual(self.literals('Text("\\(on ? "On" : "Off")")'), ["On", "Off"])
+        self.assertEqual(self.literals('AppLocalization.string("Comment from \\(author ?? "someone")")'),
+                         ["someone"])
+
+    def test_localized_glyph_and_brand_interpolations_pass(self):
+        for source in (
+            '.accessibilityLabel("\\(isUser ? AppLocalization.string("You") : "Hermes"): \\(entry.text)")',
+            'AppLocalization.string("Moved to \\(status("status") ?? "?")")',
+            'AppLocalization.string("Unable to start\\(status == 0 ? "" : " (\\(status))")")',
+            'AppLocalization.string("Removes \\(project?.title ?? "") from Hermes.")',
+            'Text("Max turns: \\(turns.map(String.init) ?? AppLocalization.string("Unlimited"))")',
+        ):
+            self.assertEqual(self.literals(source), [], source)
+
+
 class UsageDescriptionTests(unittest.TestCase):
     """A permission prompt without an InfoPlist catalog entry shows in
     English whatever the language."""

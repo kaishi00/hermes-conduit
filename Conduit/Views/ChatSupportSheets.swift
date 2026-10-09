@@ -280,7 +280,7 @@ private struct WorkspaceFilePreviewSheet: View {
                     .padding(16)
                 }
             }
-            .navigationTitle(appState.workspaceSelectedFile?.name ?? "File")
+            .navigationTitle(appState.workspaceSelectedFile?.name ?? AppLocalization.string("File"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -359,7 +359,7 @@ private struct DelegateAgentCard: View {
                 HStack(spacing: 10) {
                     Circle().fill(statusColor).frame(width: 9, height: 9)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(agent.goal).font(.subheadline.weight(.semibold)).lineLimit(2)
+                        Text(agent.goal.isEmpty ? AppLocalization.string("Delegate agent") : agent.goal).font(.subheadline.weight(.semibold)).lineLimit(2)
                         Text([agent.model, agent.currentTool, agent.status.label].compactMap { $0 }.joined(separator: " · "))
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }

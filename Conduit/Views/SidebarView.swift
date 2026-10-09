@@ -1416,7 +1416,7 @@ private struct ProjectCreateSheet: View {
                         Button {
                             validationMessage = nil
                             guard !appState.projectFolderPickerRoot.isEmpty else {
-                                validationMessage = "Open a chat with a workspace before choosing a project folder."
+                                validationMessage = AppLocalization.string("Open a chat with a workspace before choosing a project folder.")
                                 return
                             }
                             showFolderPicker = true
@@ -1476,7 +1476,7 @@ private struct ProjectCreateSheet: View {
         if created {
             dismiss()
         } else if validationMessage == nil {
-            validationMessage = "Hermes could not create this project."
+            validationMessage = AppLocalization.string("Hermes could not create this project.")
         }
     }
 }
@@ -1792,7 +1792,7 @@ private struct CronJobDetailSheet: View {
                             SettingsMetricRow(label: AppLocalization.string("Schedule"), value: job.scheduleDisplay ?? job.schedule?.display ?? job.schedule?.expr ?? "—")
                             SettingsMetricRow(label: AppLocalization.string("Next run"), value: job.isFinished ? "—" : job.nextRunAt ?? "—")
                             SettingsMetricRow(label: AppLocalization.string("Last run"), value: job.lastRunAt ?? "—")
-                            SettingsMetricRow(label: AppLocalization.string("Delivery"), value: job.deliver ?? "Local")
+                            SettingsMetricRow(label: AppLocalization.string("Delivery"), value: job.deliver ?? AppLocalization.string("Local"))
                         }
                         HStack(spacing: 10) {
                             // A finished one-shot job has nothing left to pause

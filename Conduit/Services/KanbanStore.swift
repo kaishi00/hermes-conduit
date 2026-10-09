@@ -326,7 +326,7 @@ final class KanbanStore: ObservableObject {
                     throw KanbanServiceError.taskCreatedButMoveFailed(
                         taskID: nil,
                         targetStatus: targetStatus,
-                        reason: "Hermes did not return the created task ID."
+                        reason: AppLocalization.string("Hermes did not return the created task ID.")
                     )
                 }
                 do {
@@ -755,7 +755,7 @@ final class KanbanStore: ObservableObject {
             let result = try await context.service.archiveBoard(slug: slug)
             if result.action != "archived" {
                 throw KanbanServiceError.invalidResponse(
-                    "Hermes answered the board delete with an unexpected result: " + (result.action ?? "unknown")
+                    AppLocalization.string("Hermes answered the board delete with an unexpected result: \(result.action ?? "—")")
                 )
             }
             if configurationGeneration == generation {

@@ -1711,7 +1711,7 @@ private struct ModelChangeSummaryCard: View {
                     .tracking(0.6)
                     .foregroundStyle(.secondary)
                 SelectableTextView(
-                    text: "Model has been changed to \(provider)/\(model)",
+                    text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
                     font: .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold),
                     textColor: .label
                 )
@@ -2595,38 +2595,28 @@ struct ApprovalCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    HStack(spacing: 8) {
-                        Button {
-                            send("once", for: approval)
-                        } label: {
-                            Label("Run", systemImage: "play.fill")
+                    // Longer translations (German, Russian, French) don't fit
+                    // four buttons on one phone-width row, so the buttons fall
+                    // back to two rows instead of truncating their titles.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            runButton(approval)
+                            allowButtons(approval)
+                            Spacer(minLength: 0)
+                            rejectButton(approval)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!allows("once", for: approval) || !canRespond(approval.status))
-
-                        if allows("session", for: approval) {
-                            Button("Allow session") {
-                                send("session", for: approval)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                runButton(approval)
+                                Spacer(minLength: 0)
+                                rejectButton(approval)
                             }
-                            .buttonStyle(.bordered)
-                            .disabled(!canRespond(approval.status))
-                        }
-
-                        if allows("always", for: approval) {
-                            Button("Always allow") {
-                                confirmAlways = true
+                            if allows("session", for: approval) || allows("always", for: approval) {
+                                HStack(spacing: 8) {
+                                    allowButtons(approval)
+                                }
                             }
-                            .buttonStyle(.bordered)
-                            .disabled(!canRespond(approval.status))
                         }
-
-                        Spacer(minLength: 0)
-
-                        Button("Reject", role: .destructive) {
-                            send("deny", for: approval)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(!allows("deny", for: approval) || !canRespond(approval.status))
                     }
                     .font(.subheadline.weight(.medium))
                 }
@@ -2651,6 +2641,43 @@ struct ApprovalCard: View {
                 Text("Hermes will save this approval pattern for future commands.")
             }
         }
+    }
+
+    private func runButton(_ approval: ApprovalActivity) -> some View {
+        Button {
+            send("once", for: approval)
+        } label: {
+            Label("Run", systemImage: "play.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(!allows("once", for: approval) || !canRespond(approval.status))
+    }
+
+    @ViewBuilder
+    private func allowButtons(_ approval: ApprovalActivity) -> some View {
+        if allows("session", for: approval) {
+            Button("Allow session") {
+                send("session", for: approval)
+            }
+            .buttonStyle(.bordered)
+            .disabled(!canRespond(approval.status))
+        }
+
+        if allows("always", for: approval) {
+            Button("Always allow") {
+                confirmAlways = true
+            }
+            .buttonStyle(.bordered)
+            .disabled(!canRespond(approval.status))
+        }
+    }
+
+    private func rejectButton(_ approval: ApprovalActivity) -> some View {
+        Button("Reject", role: .destructive) {
+            send("deny", for: approval)
+        }
+        .buttonStyle(.bordered)
+        .disabled(!allows("deny", for: approval) || !canRespond(approval.status))
     }
 
     private func allows(_ choice: String, for approval: ApprovalActivity) -> Bool {

@@ -635,7 +635,7 @@ final class AppState: ObservableObject {
     /// server has not answered yet (#99). Presentation only: it never feeds
     /// `messages`, `sessions`, or any resume/selection/routing decision.
     @Published private(set) var offlineChatPresentation: OfflineChatPresentation?
-    @Published private(set) var activeSessionTitle = "New conversation"
+    @Published private(set) var activeSessionTitle = AppLocalization.string("New conversation")
     /// Persisted-history pagination window of the active conversation.
     /// Drives the "Load earlier messages" affordance; nil means the current
     /// transcript is either a legacy one-shot hydration or not persisted-
@@ -17991,7 +17991,7 @@ final class AppState: ObservableObject {
     ) async {
         guard isCurrentComposerSubmission(context) else { return }
         guard depth < 4 else {
-            appendSlashOutput("⚠️ Too many command aliases.", context: context)
+            appendSlashOutput(AppLocalization.string("⚠️ Too many command aliases."), context: context)
             return
         }
 
@@ -18082,7 +18082,7 @@ final class AppState: ObservableObject {
     }
 
     private static func formatSlashHelp() -> String {
-        return "**Slash Commands**\n\nType `/` followed by a command name.\n\n**Built-in:**\n• `/new` — Start a new conversation\n• `/model` — Open the model picker\n• `/yolo` — Toggle auto-approve mode\n• `/help` — Show this help\n\nUse the suggestions list to discover gateway commands."
+        AppLocalization.string("**Slash Commands**\n\nType `/` followed by a command name.\n\n**Built-in:**\n• `/new` — Start a new conversation\n• `/model` — Open the model picker\n• `/yolo` — Toggle auto-approve mode\n• `/help` — Show this help\n\nUse the suggestions list to discover gateway commands.")
     }
 
     // MARK: - Session compression (`session.compress`)
@@ -22406,7 +22406,7 @@ final class AppState: ObservableObject {
             if let index = delegateAgents.firstIndex(where: { $0.id == activity.id }) {
                 var updated = activity
                 let existing = delegateAgents[index]
-                updated.goal = activity.goal == "Delegate agent" ? existing.goal : activity.goal
+                updated.goal = activity.goal.isEmpty ? existing.goal : activity.goal
                 updated.stream = (existing.stream + activity.stream).suffix(20).map { $0 }
                 delegateAgents[index] = updated
             } else {
@@ -23287,7 +23287,7 @@ final class AppState: ObservableObject {
         let connectors = ((platforms?["platforms"] as? [[String: Any]]) ?? []).enumerated().map { index, item in
             GatewayConnector(
                 id: item["id"] as? String ?? item["name"] as? String ?? "connector-\(index)",
-                name: item["name"] as? String ?? item["platform"] as? String ?? "Connector",
+                name: item["name"] as? String ?? item["platform"] as? String ?? AppLocalization.string("Connector"),
                 state: item["state"] as? String ?? item["status"] as? String ?? "unknown",
                 error: item["error"] as? String,
                 configured: item["configured"] as? Bool,
@@ -25278,7 +25278,7 @@ private enum AttachmentError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unreadableFile(let name): return "Could not read \(name)."
+        case .unreadableFile(let name): return AppLocalization.string("Could not read \(name).")
         }
     }
 }

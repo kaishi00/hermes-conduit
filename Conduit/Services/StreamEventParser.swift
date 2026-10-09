@@ -209,7 +209,8 @@ enum StreamEventParser {
         let lines = text.isEmpty ? [] : [DelegateAgentActivity.StreamLine(kind: kind, text: text, isError: status == .failed)]
         return DelegateAgentActivity(
             id: id,
-            goal: payload["goal"]?.stringValue ?? payload["task"]?.stringValue ?? "Delegate agent",
+            // Empty when the event names no goal: the card says "Delegate agent".
+            goal: payload["goal"]?.stringValue ?? payload["task"]?.stringValue ?? "",
             model: payload["model"]?.stringValue,
             status: status,
             taskCount: payload["task_count"]?.intValue ?? 1,

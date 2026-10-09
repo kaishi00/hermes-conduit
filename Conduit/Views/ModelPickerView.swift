@@ -522,9 +522,9 @@ struct ModelPickerView: View {
 
     private var yoloHelpText: String {
         if globalYoloFloor {
-            return "Profile approval mode is off, so Hermes auto-approves this conversation regardless. This toggle is locked on until you change the profile mode in Workspace & safety."
+            return AppLocalization.string("Profile approval mode is off, so Hermes auto-approves this conversation regardless. This toggle is locked on until you change the profile mode in Workspace & safety.")
         }
-        return "YOLO automatically approves tool actions for this conversation only. Set the profile default in Workspace & safety."
+        return AppLocalization.string("YOLO automatically approves tool actions for this conversation only. Set the profile default in Workspace & safety.")
     }
 
     private var visibleProviders: [ProviderInfo] {

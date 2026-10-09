@@ -875,9 +875,9 @@ struct VoiceSettingsView: View {
 
     private var appleOnDeviceDetail: some View {
         VStack(alignment: .leading, spacing: 8) {
-            let isReady = appleSpeechAvailability.title == "Ready"
+            let isReady = appleSpeechAvailability.isReady
             SettingsMetricRow(
-                label: "Readiness",
+                label: AppLocalization.string("Readiness"),
                 value: appleSpeechAvailability.title,
                 valueColor: isReady ? .green : (appleSpeechAvailability.canAttemptRecognition ? .orange : .secondary),
                 statusDot: isReady ? .green : nil
@@ -915,7 +915,7 @@ struct VoiceSettingsView: View {
         if let readiness = provider.readiness {
             let isReady = readiness.status.caseInsensitiveCompare("ready") == .orderedSame
             SettingsMetricRow(
-                label: "Readiness",
+                label: AppLocalization.string("Readiness"),
                 value: readiness.status.capitalized,
                 valueColor: isReady ? .green : .secondary,
                 statusDot: isReady ? .green : nil
@@ -1013,7 +1013,7 @@ struct VoiceSettingsView: View {
     }
 
     private var spokenControlsSection: some View {
-        ConduitSettingsSection(title: "Spoken Controls", symbol: "text.bubble", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Spoken Controls"), symbol: "text.bubble", tint: .conduitAura) {
             Text("Phrases you can say during a Voice conversation. A phrase matches only when it is the entire spoken utterance — the same words inside a longer sentence do nothing.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)

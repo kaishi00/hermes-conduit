@@ -182,9 +182,9 @@ enum KanbanWorkspaceKind: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .scratch: return "Scratch"
-        case .worktree: return "Worktree"
-        case .dir: return "Directory"
+        case .scratch: return AppLocalization.string("Scratch")
+        case .worktree: return AppLocalization.string("Worktree")
+        case .dir: return AppLocalization.string("Directory")
         }
     }
 
@@ -270,17 +270,18 @@ enum KanbanDraftValidationError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .emptyTitle:
-            return "A title is required."
-        case .invalidWorkspacePath(let kind):
-            return "A workspace path can only be set for \(kind.displayName) tasks. Hermes scratch tasks resolve their own directory."
+            return AppLocalization.string("A title is required.")
+        case .invalidWorkspacePath:
+            // Only scratch tasks refuse a path (allowsPathOverride).
+            return AppLocalization.string("A workspace path can only be set for Worktree and Directory tasks. Hermes scratch tasks resolve their own directory.")
         case .invalidReasoningEffort(let value):
-            return "\"\(value)\" is not a valid reasoning effort for a Hermes worker."
+            return AppLocalization.string("\"\(value)\" is not a valid reasoning effort for a Hermes worker.")
         case .invalidSkill(let skill):
-            return "\"\(skill)\" is not a usable skill name."
+            return AppLocalization.string("\"\(skill)\" is not a usable skill name.")
         case .duplicateParent(let id):
-            return "Task \(id) is already listed as a parent."
+            return AppLocalization.string("Task \(id) is already listed as a parent.")
         case .invalidGoalMaxTurns(let turns):
-            return "Goal Mode max turns must be at least 1 (got \(turns))."
+            return AppLocalization.string("Goal Mode max turns must be at least 1 (got \(String(turns))).")
         }
     }
 }

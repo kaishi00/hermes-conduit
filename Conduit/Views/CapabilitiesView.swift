@@ -137,7 +137,7 @@ struct CapabilitiesView: View {
     private var skillsByCategory: [(String, [CapabilitySkill])] {
         Dictionary(grouping: filteredSkills) { skill in
             let category = skill.category?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return category.isEmpty ? "Other" : category
+            return category.isEmpty ? AppLocalization.string("Other") : category
         }
         .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
     }
@@ -178,7 +178,7 @@ struct CapabilitiesView: View {
         case .failed(_, let message):
             return message
         case .unavailable:
-            return "Connect to a Hermes dashboard to load capabilities."
+            return AppLocalization.string("Connect to a Hermes dashboard to load capabilities.")
         case .superseded:
             return nil
         }

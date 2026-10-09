@@ -235,7 +235,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                 orchestratorProfile: orchestratorProfile,
                 defaultAssignee: defaultAssignee
             )
-            notice = "Orchestration settings saved."
+            notice = AppLocalization.string("Orchestration settings saved.")
         } catch {
             if liveness.owns(operationID) { isSaving = false }
             guard store.isCurrentConfiguration(generation) else { return }

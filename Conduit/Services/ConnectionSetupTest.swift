@@ -49,7 +49,7 @@ enum ConnectionSetupTestStage: Equatable, CaseIterable, Identifiable {
         switch self {
         case .server: return AppLocalization.string("Dashboard reachable")
         case .dashboard: return AppLocalization.string("Hermes dashboard found")
-        case .authentication: return "Authentication"
+        case .authentication: return AppLocalization.string("Authentication")
         }
     }
 
@@ -58,7 +58,7 @@ enum ConnectionSetupTestStage: Equatable, CaseIterable, Identifiable {
         switch self {
         case .server: return AppLocalization.string("Checking server…")
         case .dashboard: return AppLocalization.string("Checking dashboard…")
-        case .authentication: return "Authenticating…"
+        case .authentication: return AppLocalization.string("Authenticating…")
         }
     }
 
@@ -105,12 +105,12 @@ enum ConnectionSetupStageState: Equatable {
     /// icon or color alone.
     var accessibilityState: String {
         switch self {
-        case .pending: return "waiting"
-        case .running: return "checking"
-        case .succeeded: return "passed"
+        case .pending: return AppLocalization.string("waiting")
+        case .running: return AppLocalization.string("checking")
+        case .succeeded: return AppLocalization.string("passed")
         case .requiresInteractiveSignIn: return AppLocalization.string("browser sign-in required")
         case .requiresCredentials: return AppLocalization.string("credentials required")
-        case .failed: return "failed"
+        case .failed: return AppLocalization.string("failed")
         }
     }
 }
@@ -145,28 +145,31 @@ struct ConnectionSetupTestState: Equatable {
     var authentication = ConnectionSetupStageState.pending
 
     /// The completion announcement (one per run, not per stage transition).
-    static let readyMessage = "This connection is ready to use."
+    static var readyMessage: String { AppLocalization.string("This connection is ready to use.") }
 
     /// The interactive-auth completion announcement and Review copy. The
     /// user has NOT authenticated: the message says what happens next
     /// instead of claiming success. Never may this state render "Login
     /// successful".
-    static let interactiveReadyMessage = "This dashboard uses browser-based sign-in. "
-        + "Conduit will open the sign-in page after you return to the login screen."
+    static var interactiveReadyMessage: String {
+        AppLocalization.string("This dashboard uses browser-based sign-in. Conduit will open the sign-in page after you return to the login screen.")
+    }
 
     /// The credentials-required partial outcome's copy: server and dashboard
     /// passed, but testing native login needs the user's credentials first.
     /// Names the dashboard's auth mode (learned from provider discovery) and
     /// asks for the missing secret — never a success, failure, or
     /// "connection ready" claim.
-    static let credentialsRequiredMessage = "This dashboard uses username and password sign-in. "
-        + "Enter your credentials to finish testing the connection."
+    static var credentialsRequiredMessage: String {
+        AppLocalization.string("This dashboard uses username and password sign-in. Enter your credentials to finish testing the connection.")
+    }
 
     /// Round 6 (Repair): the interactive-auth message in the Repair context,
     /// where the next step is signing in over the existing AuthWebView —
     /// not returning to the login screen.
-    static let repairInteractiveMessage = "This dashboard uses browser-based sign-in. "
-        + "Sign in now to reconnect to it."
+    static var repairInteractiveMessage: String {
+        AppLocalization.string("This dashboard uses browser-based sign-in. Sign in now to reconnect to it.")
+    }
 
     subscript(stage: ConnectionSetupTestStage) -> ConnectionSetupStageState {
         get {
