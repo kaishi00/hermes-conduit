@@ -49,6 +49,8 @@ struct MarkupBlock: View {
     /// How long a page may take before the block offers Try again. Covers
     /// a slow first download of the renderer.
     static let drawTimeout: Duration = .seconds(20)
+    /// How much of the source VoiceOver reads as the block's value.
+    static let accessibilitySourceLimit = 2_000
     /// Space held for a page that hasn't measured itself yet.
     static func placeholderHeight(for kind: MarkupKind) -> CGFloat {
         kind == .mermaid ? 180 : 56
@@ -152,7 +154,8 @@ struct MarkupBlock: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(kind == .mermaid ? AppLocalization.string("Diagram") : AppLocalization.string("Formula")))
-        .accessibilityValue(kind == .math ? Text(verbatim: source) : Text(verbatim: ""))
+        // The source is the only text form of what's drawn.
+        .accessibilityValue(Text(verbatim: String(source.prefix(Self.accessibilitySourceLimit))))
         .accessibilityAddTraits(.isButton)
         .accessibilityHint(Text("Open full screen"))
         .accessibilityAction { showsFullScreen = true }
@@ -234,25 +237,28 @@ struct MarkupDrawReport: Equatable {
 
 /// Measured heights by document. The chat list rebuilds a row it scrolls
 /// back to, and its diagram reserves its real height instead of growing
-/// from the placeholder while it redraws.
+/// from the placeholder while it redraws. Keyed by the document's hash so
+/// the cache holds no sources; a collision only misplaces a placeholder,
+/// which the page's own report corrects.
 @MainActor
 enum MarkupHeights {
-    private static var heights: [MarkupDocument: CGFloat] = [:]
+    private static var heights: [Int: CGFloat] = [:]
     private static let limit = 256
 
     static func height(for document: MarkupDocument) -> CGFloat? {
-        heights[document]
+        heights[document.hashValue]
     }
 
     static func store(_ height: CGFloat, for document: MarkupDocument) {
-        if heights[document] == nil, heights.count >= limit {
+        let key = document.hashValue
+        if heights[key] == nil, heights.count >= limit {
             // Drop half rather than all, so a long session doesn't lose
             // every height at once.
             for stale in Array(heights.keys.prefix(limit / 2)) {
                 heights[stale] = nil
             }
         }
-        heights[document] = height
+        heights[key] = height
     }
 }
 
@@ -464,10 +470,12 @@ enum MarkupHTML {
     static let inlineDiagramMaximumHeight = 480
 
     /// The page itself and the renderer's CDN; anything else (a link in a
-    /// diagram) stays out.
+    /// diagram, a javascript:, data: or file: URL) stays out.
     static func allowsNavigation(to url: URL?) -> Bool {
-        let host = url?.host
-        return host == nil || host == "conduit.local" || host == "cdn.jsdelivr.net"
+        guard let url, let scheme = url.scheme?.lowercased() else { return false }
+        if scheme == "about" { return url.absoluteString.lowercased() == "about:blank" }
+        guard scheme == "https", let host = url.host?.lowercased() else { return false }
+        return host == "conduit.local" || host == "cdn.jsdelivr.net"
     }
 
     static func page(_ document: MarkupDocument, presentation: Presentation) -> String {
@@ -513,6 +521,7 @@ enum MarkupHTML {
         let contentStyle = inline
             ? "#content{padding:4px 0;box-sizing:border-box;overflow:hidden}.katex-display{margin:0;overflow:visible}"
             : "#content{padding:24px;box-sizing:border-box;overflow:auto}"
+        let throwsOnError = inline ? "true" : "false"
         let fitting = inline
             ? "function fit(){content.style.fontSize='';const formula=content.querySelector('.katex')||content;const overflow=formula.scrollWidth/Math.max(content.clientWidth,1);if(overflow>1){content.style.fontSize=Math.max(0.5,1/overflow)+'em';}}"
             : "function fit(){}"
@@ -523,7 +532,7 @@ enum MarkupHTML {
         </head><body><div id="content"></div>
         <script src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
         <script>\(reportingScript(failureTitle: AppLocalization.string("Couldn't draw this formula.")))
-        (function(){const content=document.getElementById('content');if(typeof katex==='undefined'){fail('');return;}try{katex.render(\(jsonString(document.source)),content,{displayMode:true,throwOnError:false,trust:false});}catch(error){fail(String(error&&error.message?error.message:error));return;}\(fitting)const send=()=>{fit();report({height:Math.ceil(content.getBoundingClientRect().height)});};new ResizeObserver(send).observe(content);document.fonts.ready.then(send);send();})();</script></body></html>
+        (function(){const content=document.getElementById('content');if(typeof katex==='undefined'){fail('');return;}try{katex.render(\(jsonString(document.source)),content,{displayMode:true,throwOnError:\(throwsOnError),trust:false});}catch(error){fail(String(error&&error.message?error.message:error));return;}\(fitting)const send=()=>{fit();report({height:Math.ceil(content.getBoundingClientRect().height)});};new ResizeObserver(send).observe(content);document.fonts.ready.then(send);send();})();</script></body></html>
         """
     }
 

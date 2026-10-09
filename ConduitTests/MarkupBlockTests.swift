@@ -82,12 +82,14 @@ extension MarkdownFallbackTests {
         )
         XCTAssertTrue(page.contains("body{font-size:21px}"))
         XCTAssertTrue(page.contains("function fit(){content.style.fontSize=''"), "a wide formula shrinks to fit")
+        XCTAssertTrue(page.contains("throwOnError:true"), "a parse error reaches the failure card")
 
         let fullScreen = MarkupHTML.page(
             MarkupDocument(kind: .math, source: "E = mc^2", light: true, fontSize: 21.4),
             presentation: .fullScreen
         )
         XCTAssertTrue(fullScreen.contains("body{font-size:1.2em}"))
+        XCTAssertTrue(fullScreen.contains("throwOnError:false"), "full screen shows KaTeX's own error")
     }
 
     func testMarkupPagesOnlyNavigateToThemselvesAndTheRendererCDN() {
@@ -95,6 +97,11 @@ extension MarkdownFallbackTests {
         XCTAssertTrue(MarkupHTML.allowsNavigation(to: URL(string: "about:blank")))
         XCTAssertTrue(MarkupHTML.allowsNavigation(to: URL(string: "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js")))
         XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "https://example.com/")))
+        XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "http://conduit.local/")))
+        XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "javascript:alert(1)")))
+        XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "data:text/html,<p>")))
+        XCTAssertFalse(MarkupHTML.allowsNavigation(to: URL(string: "file:///etc/hosts")))
+        XCTAssertFalse(MarkupHTML.allowsNavigation(to: nil))
     }
 
     // MARK: Mount budget
