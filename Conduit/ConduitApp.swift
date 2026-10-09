@@ -19,6 +19,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         // launch Conduit in the background, and its message waits on this.
         MainActor.assumeIsolated {
             WatchVoiceLink.shared.activate()
+            // Calls from Hermes ring through PushKit (#449): a call that
+            // launched Conduit is delivered once the registry is up.
+            HermesNativeCalls.shared.activate()
         }
         Task.detached(priority: .background) {
             AttachmentStaging.sweepStaleFiles()

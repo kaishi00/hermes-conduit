@@ -1230,6 +1230,64 @@ final class PushNotificationService: ObservableObject {
         route(target)
     }
 
+    // MARK: Ringing calls (#449 step 2)
+
+    /// What a VoIP push rings for (HermesNativeCalls).
+    struct VoIPCall {
+        /// The call, routed like a tap on its notification; nil when the
+        /// push routes nowhere (no call in it, or it can't be trusted).
+        let target: ConduitNotificationTarget?
+        /// When the relay sent it; nil from a relay that didn't say.
+        let sentAt: Date?
+        /// A sealed push that already rang once.
+        let replayed: Bool
+    }
+
+    /// The call a VoIP push carries, under the same end-to-end rules as a
+    /// notification tap (`receiveNotificationPayload`). Synchronous: the
+    /// PushKit callback reports the call before it returns.
+    func receiveVoIPCall(_ userInfo: [AnyHashable: Any], now: Date = Date()) -> VoIPCall {
+        let evaluation = NotificationE2E.evaluate(
+            userInfo,
+            records: Self.e2eKeyStore.records(),
+            knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
+            keysProvisioned: NotificationSharedSettings.keysProvisioned,
+            now: now
+        )
+        let sentAt = Self.voipSentAt(userInfo)
+        guard let target = Self.target(for: evaluation, userInfo: userInfo), target.call != nil else {
+            return VoIPCall(target: nil, sentAt: sentAt, replayed: false)
+        }
+        if case .verified(let verified) = evaluation {
+            guard Self.e2eSeenStore.insert(verified.envelope.replayKey, namespace: "rang") else {
+                return VoIPCall(target: target, sentAt: sentAt, replayed: true)
+            }
+            persistEncryptedGatewayID(for: target)
+        }
+        return VoIPCall(target: target, sentAt: sentAt, replayed: false)
+    }
+
+    /// The relay's `sent_at` (seconds since 1970), outside any sealed
+    /// envelope.
+    static func voipSentAt(_ userInfo: [AnyHashable: Any]) -> Date? {
+        let direct = userInfo["conduit"] as? [String: Any]
+        let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
+        guard let seconds = (direct?["sent_at"] as? NSNumber) ?? (nested?["sent_at"] as? NSNumber) else { return nil }
+        return Date(timeIntervalSince1970: seconds.doubleValue)
+    }
+
+    /// The PushKit token calls ring on; nil while the phone can't ring
+    /// (CallKit is off in this storefront, or PushKit has given none).
+    private(set) var voipToken: String?
+
+    /// HermesNativeCalls has a new PushKit token, or none any more: the
+    /// relay learns it with the registration.
+    func updateVoIPToken(_ token: String?) {
+        voipToken = token
+        guard let registration, registration.voipToken != token else { return }
+        Task { try? await updateRegistration() }
+    }
+
     /// A "Hermes wants to talk" notification Conduit posted itself (#449).
     func receiveLocalCallNotification(_ userInfo: [AnyHashable: Any]) {
         guard let target = HermesCallNotifications.localTarget(from: userInfo) else { return }
@@ -1545,23 +1603,33 @@ final class PushNotificationService: ObservableObject {
         guard RelayTransportPolicy.allowsCredentialTransport(issuer) else {
             throw RelayDecisionError.insecureTransport
         }
-        let body = RegistrationRequest(bundleID: bundleID, deviceToken: deviceToken, environment: "production", preferences: preferences)
+        let voipToken = self.voipToken
+        let body = RegistrationRequest(bundleID: bundleID, deviceToken: deviceToken, environment: "production", preferences: preferences, voipToken: voipToken)
         var request = try jsonRequest(path: "/v1/installations", method: "POST", body: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
         let responseBody = try JSONDecoder().decode(RegistrationResponse.self, from: data)
         registration = StoredRegistration(credential: responseBody.credential, installationID: responseBody.installation.id, preferences: responseBody.installation.preferences ?? preferences, relayURL: issuer.absoluteString)
+        // Only a relay that rings (0.9+) keeps it; an older one is asked
+        // again at the next update.
+        registration?.voipToken = responseBody.installation.voip == true ? voipToken : nil
         preferences = registration!.preferences
         persistRegistration()
     }
 
     private func updateRegistration(deviceToken: String? = nil) async throws {
         guard let registration else { return }
-        let body = UpdateRegistrationRequest(deviceToken: deviceToken ?? self.deviceToken, preferences: preferences)
+        let voipToken = self.voipToken
+        let voipChange: VoIPTokenChange = registration.voipToken == voipToken ? .keep : (voipToken.map(VoIPTokenChange.set) ?? .clear)
+        let body = UpdateRegistrationRequest(deviceToken: deviceToken ?? self.deviceToken, preferences: preferences, voipToken: voipChange)
         var request = try jsonRequest(path: "/v1/installations/\(registration.installationID)", method: "PUT", body: body, credential: registration.credential)
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
         self.registration?.preferences = preferences
+        if voipChange != .keep {
+            let rings = (try? JSONDecoder().decode(UpdateRegistrationResponse.self, from: data))?.installation?.voip == true
+            self.registration?.voipToken = rings ? voipToken : nil
+        }
         persistRegistration()
     }
 
@@ -1602,6 +1670,8 @@ private struct StoredRegistration: Codable {
     /// The relay that issued `credential`. Optional so registrations saved
     /// before it was recorded still decode.
     var relayURL: String?
+    /// The PushKit token the relay rings (#449); nil when it has none.
+    var voipToken: String? = nil
 }
 
 private struct RegistrationRequest: Encodable {
@@ -1609,19 +1679,45 @@ private struct RegistrationRequest: Encodable {
     let deviceToken: String
     let environment: String
     let preferences: ConduitNotificationPreferences
-    enum CodingKeys: String, CodingKey { case bundleID = "bundle_id", deviceToken = "device_token", environment, preferences }
+    var voipToken: String? = nil
+    enum CodingKeys: String, CodingKey { case bundleID = "bundle_id", deviceToken = "device_token", environment, preferences, voipToken = "voip_token" }
 }
 
-private struct UpdateRegistrationRequest: Encodable {
+/// What an update does to the relay's PushKit token.
+enum VoIPTokenChange: Equatable {
+    case keep
+    case clear
+    case set(String)
+}
+
+struct UpdateRegistrationRequest: Encodable {
     let deviceToken: String?
     let preferences: ConduitNotificationPreferences
-    enum CodingKeys: String, CodingKey { case deviceToken = "device_token", preferences }
+    var voipToken: VoIPTokenChange = .keep
+    enum CodingKeys: String, CodingKey { case deviceToken = "device_token", preferences, voipToken = "voip_token" }
+
+    /// `voip_token` is left out to keep it, null to clear it.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(deviceToken, forKey: .deviceToken)
+        try container.encode(preferences, forKey: .preferences)
+        switch voipToken {
+        case .keep: break
+        case .clear: try container.encodeNil(forKey: .voipToken)
+        case .set(let token): try container.encode(token, forKey: .voipToken)
+        }
+    }
 }
 
 private struct RegistrationResponse: Decodable {
-    struct Installation: Decodable { let id: String; let preferences: ConduitNotificationPreferences? }
+    struct Installation: Decodable { let id: String; let preferences: ConduitNotificationPreferences?; let voip: Bool? }
     let credential: String
     let installation: Installation
+}
+
+private struct UpdateRegistrationResponse: Decodable {
+    struct Installation: Decodable { let voip: Bool? }
+    let installation: Installation?
 }
 
 private struct PairingCreateRequest: Encodable {

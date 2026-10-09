@@ -214,6 +214,20 @@ final class VoiceAudioSessionCoordinator {
         )
     }
 
+    /// A call from Hermes answered in CallKit (#449): CallKit activates the
+    /// session itself, so it only gets the conversation's category now. The
+    /// voice conversation's acquire then applies it in full on the session
+    /// CallKit activated.
+    func configureForIncomingCall() {
+        let configuration = VoiceAudioSessionConfiguration.capture
+        do {
+            try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
+            needsReapply = true
+        } catch {
+            audioSessionLogger.error("incoming call category failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
     /// Reapplies the dominant policy after the system may have deactivated
     /// the session underneath a live lease (route change restarting capture).
     func reassert() throws {

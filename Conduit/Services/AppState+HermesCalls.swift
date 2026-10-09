@@ -14,6 +14,13 @@ import OSLog
 private let hermesCallsStateLogger = Logger(subsystem: "com.milim.relay", category: "HermesCalls")
 
 extension AppState {
+    /// Whether the host holds calls back while the user is in a live call
+    /// (plugin 0.14+).
+    var supportsHermesCallPresence: Bool {
+        if case .reported(_, let capabilities) = notifierPlugin.state { return capabilities.contains("hermes-call-presence") }
+        return false
+    }
+
     /// Whether the host's notifier plugin takes call watches (plugin 0.13+).
     var supportsHermesCalls: Bool {
         if case .reported(_, let capabilities) = notifierPlugin.state { return capabilities.contains("hermes-calls") }
@@ -127,6 +134,7 @@ extension AppState {
     func finishHermesCallbacks(engine: VoiceCallEngine) {
         guard hermesCallbackEngine == engine else { return }
         hermesCallbackEngine = nil
+        endHermesCallPresence()
         guard let task = voiceBackgroundJobSupervisor.finishCallbacks() else { return }
         let end = beginVoiceTranscriptBackgroundTask(named: "conduit.hermesCalls.hangUp")
         Task {
@@ -148,7 +156,9 @@ extension AppState {
         let opening = HermesCallOpening(
             kind: call.kind,
             title: call.title ?? thread?.title,
-            result: thread.flatMap { latestReplyInOpenChat($0) }
+            result: thread.flatMap { latestReplyInOpenChat($0) },
+            reason: call.reason,
+            sessionIDs: call.sessionIDs
         )
         let profile = activeProfile
         let intent = PendingVoiceIntent(profile: profile, startsFreshConversation: false, source: .hermesCall)
@@ -165,6 +175,143 @@ extension AppState {
                 if !(await self.openVoiceConversation(intent)) || !self.showVoiceSheet {
                     self.voiceBackgroundJobSupervisor.clearCallOpening()
                 }
+            }
+        }
+    }
+
+    // MARK: Presence (#449)
+
+    /// How long the host holds calls back past a renewal: the most a lost
+    /// phone keeps Hermes from calling.
+    static let hermesCallPresenceSeconds = 90
+    static let hermesCallPresenceRenewal: Duration = .seconds(30)
+
+    /// A live call is starting: nothing Hermes calls about rings over it
+    /// (it sends the usual notification instead). Renewed while voice is
+    /// in use.
+    func beginHermesCallPresence() {
+        guard supportsHermesCallPresence else { return }
+        let profile = activeProfile
+        // The same call reconnecting keeps the presence it has.
+        if hermesCallPresenceTask != nil, hermesCallPresenceProfile == profile { return }
+        endHermesCallPresence()
+        hermesCallPresenceProfile = profile
+        let client = hermesCallsClient
+        hermesCallPresenceTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await client.setPresence(profile: profile, seconds: Self.hermesCallPresenceSeconds)
+                } catch {
+                    hermesCallsStateLogger.notice("Call presence not set: \(error.localizedDescription, privacy: .public)")
+                }
+                do { try await Task.sleep(for: Self.hermesCallPresenceRenewal) } catch { return }
+                // A call that ended some other way lets go too.
+                guard let self, self.isVoiceInUse else { break }
+            }
+            guard !Task.isCancelled else { return }
+            try? await client.setPresence(profile: profile, seconds: 0)
+            guard let self, self.hermesCallPresenceProfile == profile else { return }
+            self.hermesCallPresenceTask = nil
+            self.hermesCallPresenceProfile = nil
+        }
+    }
+
+    /// The live call hung up: Hermes may call again. Sent after any renewal
+    /// still on its way, so it lands last.
+    func endHermesCallPresence() {
+        guard let task = hermesCallPresenceTask, let profile = hermesCallPresenceProfile else { return }
+        task.cancel()
+        hermesCallPresenceTask = nil
+        hermesCallPresenceProfile = nil
+        let client = hermesCallsClient
+        let end = beginVoiceTranscriptBackgroundTask(named: "conduit.hermesCalls.presence")
+        Task {
+            await task.value
+            try? await client.setPresence(profile: profile, seconds: 0)
+            end()
+        }
+    }
+
+    // MARK: Answering by voice (#449 step 4)
+
+    /// The open chat's newest approval waiting on the user, preferring the
+    /// call's own session.
+    private func hermesCallApprovalMessage(_ call: HermesCallOpening) -> ChatMessage? {
+        let waiting = messages.filter { $0.approval?.status == .pending || $0.approval?.status == .error }
+        return waiting.last(where: { call.sessionIDs.contains($0.approval?.sessionId ?? "") }) ?? waiting.last
+    }
+
+    /// The open chat's newest question waiting on the user.
+    private func hermesCallQuestionMessage() -> ChatMessage? {
+        messages.last { message in
+            guard let clarify = message.clarify, !clarify.isExpired else { return false }
+            return clarify.questions.contains { $0.status == .pending || $0.status == .error }
+        }
+    }
+
+    /// The live call Hermes made about an approval answers it with the
+    /// user's spoken decision: `once` or `deny`.
+    func answerHermesCallApproval(choice: String) async -> VoiceCallDecisionOutcome {
+        guard let call = liveHermesCall, call.kind == .approval, choice == "once" || choice == "deny" else { return .nothingPending }
+        guard let message = hermesCallApprovalMessage(call) else { return .nothingPending }
+        await respondToApproval(messageId: message.id, choice: choice)
+        switch messages.first(where: { $0.id == message.id })?.approval?.status {
+        case .approved?: return .approved
+        case .rejected?: return .denied
+        case .expired?: return .expired
+        default: return .failed
+        }
+    }
+
+    /// The live call Hermes made about a question gives it the user's
+    /// answer.
+    func answerHermesCallQuestion(_ answer: String) async -> VoiceCallDecisionOutcome {
+        guard let call = liveHermesCall, call.kind == .question else { return .nothingPending }
+        guard let message = hermesCallQuestionMessage(), let clarify = message.clarify,
+              let question = clarify.questions.first(where: { $0.status == .pending || $0.status == .error }) else { return .nothingPending }
+        // The first question still open, as the card would answer it.
+        await respondToClarify(requestId: clarify.requestId, questionId: clarify.questions.count == 1 ? nil : question.id, answer: answer)
+        guard let after = messages.first(where: { $0.id == message.id })?.clarify else { return .failed }
+        switch after.questions.first(where: { $0.id == question.id })?.status {
+        case .answered?: return .answered
+        case .expired?: return .expired
+        default: return after.isExpired ? .expired : .failed
+        }
+    }
+
+    // MARK: Native calls (#449 step 2)
+
+    /// A call from Hermes rings or runs in CallKit: transport recovery runs
+    /// with the phone locked until it's over.
+    func setNativeHermesCallActive(_ active: Bool) {
+        guard isNativeHermesCallActive != active else { return }
+        isNativeHermesCallActive = active
+        if active { recoverTransportForCarPlayIfNeeded(immediately: true) }
+    }
+
+    /// The user hung up the CallKit call: the voice conversation it opened
+    /// ends as its End button would.
+    func endVoiceForNativeCall() {
+        if isLiveVoiceCallActive || minimisedLiveVoice != nil {
+            endLiveVoiceCall()
+        } else if showVoiceSheet || voiceConversationController.hasLiveVoiceSession {
+            closeVoiceConversation()
+        }
+    }
+
+    /// The CallKit call's mute button.
+    func setVoiceMutedForNativeCall(_ muted: Bool) {
+        if isGeminiLiveActive {
+            geminiLiveController.setMicrophoneMuted(muted)
+        } else if isGPTLiveActive {
+            gptLiveController.setMicrophoneMuted(muted)
+        } else if isGrokLiveActive {
+            grokLiveController.setMicrophoneMuted(muted)
+        } else if voiceConversationController.hasLiveVoiceSession {
+            if muted {
+                voiceConversationController.pauseMicrophone()
+            } else {
+                Task { await voiceConversationController.resumeMicrophone() }
             }
         }
     }

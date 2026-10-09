@@ -3,8 +3,10 @@
 //  Conduit
 //
 //  Voice settings for Hermes calls you (#449): whether Hermes may call,
-//  whether "call me when it's done" works, and the profile's limits. The
-//  settings live with the notifier plugin on the Hermes host, per profile.
+//  whether "call me when it's done" works, whether Hermes may decide to
+//  call and call about approvals and questions (plugin 0.14+), and the
+//  profile's limits. The settings live with the notifier plugin on the
+//  Hermes host, per profile.
 //
 
 import SwiftUI
@@ -84,12 +86,20 @@ struct HermesCallSettingsSection: View {
         )
     }
 
+    /// A setting only newer hosts have: shown only when the host has it.
+    private func optionalBinding(_ keyPath: WritableKeyPath<HermesCallSettings, Bool?>) -> Binding<Bool> {
+        Binding(
+            get: { draft[keyPath: keyPath] ?? false },
+            set: { value in change { $0[keyPath: keyPath] = value } }
+        )
+    }
+
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Calls from Hermes"), symbol: "phone.arrow.down.left", tint: .green) {
             if let status = model.status {
                 Toggle("Hermes can call me", isOn: binding(\.enabled))
                     .disabled(!status.paired)
-                Text("When a job you asked about is done, Hermes calls you so you can talk it through. For now the call arrives as a “Hermes wants to talk” notification: tap Talk to answer.")
+                Text("When a job you asked about is done, Hermes calls you so you can talk it through. Your iPhone rings like a phone call; where it can't, a “Hermes wants to talk” notification comes instead: tap Talk to answer.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !status.paired {
@@ -99,9 +109,21 @@ struct HermesCallSettingsSection: View {
                 }
                 if draft.enabled {
                     Toggle("Call when I ask", isOn: binding(\.whenAsked))
-                    Text("Say “call me when it's done” during a live call. Hermes calls about that job once the call has ended; if it finishes while you're still talking, you hear about it in the call instead.")
+                    Text("Say “call me when it's done” during a live call, or ask Hermes in a chat to call you. Hermes calls about that job once the call has ended; if it finishes while you're still talking, you hear about it in the call instead.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if draft.decides != nil {
+                        Toggle("Hermes decides when to call", isOn: optionalBinding(\.decides))
+                        Text("Hermes may also call on its own when news can't wait, within your limits. It never calls for routine updates.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if draft.alerts != nil {
+                        Toggle("Call about approvals and questions", isOn: optionalBinding(\.alerts))
+                        Text("Hermes calls when it has waited a minute for your OK or an answer, or when a request fails. In a live call you can answer out loud.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Picker("Time between calls", selection: binding(\.minGapSeconds)) {
                         ForEach(HermesCallSettingsFormat.gapChoices(bounds: status.minGapBounds, current: draft.minGapSeconds), id: \.self) { seconds in
                             Text(verbatim: HermesCallSettingsFormat.gap(seconds: seconds)).tag(seconds)

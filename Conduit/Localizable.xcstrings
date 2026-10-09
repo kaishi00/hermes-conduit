@@ -200604,84 +200604,84 @@
         }
       }
     },
-    "When a job you asked about is done, Hermes calls you so you can talk it through. For now the call arrives as a “Hermes wants to talk” notification: tap Talk to answer." : {
+    "When a job you asked about is done, Hermes calls you so you can talk it through. Your iPhone rings like a phone call; where it can't, a “Hermes wants to talk” notification comes instead: tap Talk to answer." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn ein Job fertig ist, nach dem du gefragt hast, ruft Hermes dich an, damit ihr darüber sprechen könnt. Vorerst kommt der Anruf als Mitteilung „Hermes möchte sprechen“: Tippe auf „Sprechen“, um anzunehmen."
+            "value" : "Wenn ein Job fertig ist, nach dem du gefragt hast, ruft Hermes dich an, damit ihr darüber sprechen könnt. Dein iPhone klingelt wie bei einem Telefonanruf; wo das nicht geht, kommt stattdessen die Mitteilung „Hermes möchte sprechen“: Tippe auf „Sprechen“, um anzunehmen."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cuando termina un trabajo por el que preguntaste, Hermes te llama para que lo comenten. Por ahora, la llamada llega como una notificación «Hermes quiere hablar»: toca Hablar para contestar."
+            "value" : "Cuando termina un trabajo por el que preguntaste, Hermes te llama para que lo comenten. Tu iPhone suena como una llamada telefónica; donde no puede, llega en su lugar una notificación «Hermes quiere hablar»: toca Hablar para contestar."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quand un job dont vous avez demandé des nouvelles est terminé, Hermes vous appelle pour en parler. Pour l'instant, l'appel arrive sous forme de notification « Hermes veut vous parler » : touchez Parler pour répondre."
+            "value" : "Quand un job dont vous avez demandé des nouvelles est terminé, Hermes vous appelle pour en parler. Votre iPhone sonne comme pour un appel téléphonique ; quand ce n'est pas possible, une notification « Hermes veut vous parler » arrive à la place : touchez Parler pour répondre."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saat pekerjaan yang Anda tanyakan selesai, Hermes menelepon Anda agar bisa membahasnya. Untuk saat ini, panggilan datang sebagai pemberitahuan “Hermes ingin bicara”: ketuk Bicara untuk menjawab."
+            "value" : "Saat pekerjaan yang Anda tanyakan selesai, Hermes menelepon Anda agar bisa membahasnya. iPhone Anda berdering seperti panggilan telepon; jika tidak bisa, pemberitahuan “Hermes ingin bicara” muncul sebagai gantinya: ketuk Bicara untuk menjawab."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando un job di cui hai chiesto è terminato, Hermes ti chiama per parlarne. Per ora la chiamata arriva come notifica «Hermes vuole parlarti»: tocca Parla per rispondere."
+            "value" : "Quando un job di cui hai chiesto è terminato, Hermes ti chiama per parlarne. L'iPhone squilla come per una telefonata; dove non è possibile, arriva invece la notifica «Hermes vuole parlarti»: tocca Parla per rispondere."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "依頼したジョブが完了すると、Hermesが電話をかけてきて、結果について話せます。現在、通話は「Hermesが話したがっています」という通知で届きます。「話す」をタップして応答してください。"
+            "value" : "依頼したジョブが完了すると、Hermesが電話をかけてきて、結果について話せます。iPhoneは通常の電話のように着信します。着信できない場合は、代わりに「Hermesが話したがっています」という通知が届きます。「話す」をタップして応答してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "물어본 작업이 끝나면 Hermes가 전화해서 결과를 함께 이야기할 수 있어요. 지금은 “Hermes가 이야기하고 싶어 해요” 알림으로 전화가 와요. 대화를 탭해 받으세요."
+            "value" : "물어본 작업이 끝나면 Hermes가 전화해서 결과를 함께 이야기할 수 있어요. iPhone이 일반 전화처럼 울리고, 그럴 수 없을 때는 대신 “Hermes가 이야기하고 싶어 해요” 알림이 와요. 대화를 탭해 받으세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gdy zlecenie, o które pytasz, zostanie zakończone, Hermes dzwoni, żebyście mogli o nim porozmawiać. Na razie połączenie przychodzi jako powiadomienie „Hermes chce porozmawiać”: stuknij Rozmawiaj, aby odebrać."
+            "value" : "Gdy zlecenie, o które pytasz, zostanie zakończone, Hermes dzwoni, żebyście mogli o nim porozmawiać. iPhone dzwoni jak przy zwykłym połączeniu; gdy to niemożliwe, przychodzi zamiast tego powiadomienie „Hermes chce porozmawiać”: stuknij Rozmawiaj, aby odebrać."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando um trabalho sobre o qual você perguntou termina, o Hermes liga para você para conversarem sobre ele. Por enquanto, a chamada chega como uma notificação “O Hermes quer conversar”: toque em Conversar para atender."
+            "value" : "Quando um trabalho sobre o qual você perguntou termina, o Hermes liga para você para conversarem sobre ele. Seu iPhone toca como em uma ligação telefônica; quando não é possível, chega no lugar uma notificação “O Hermes quer conversar”: toque em Conversar para atender."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Когда задание, о котором вы просили, будет готово, Hermes позвонит, чтобы вы могли его обсудить. Пока звонок приходит уведомлением «Hermes хочет поговорить»: нажмите «Говорить», чтобы ответить."
+            "value" : "Когда задание, о котором вы просили, будет готово, Hermes позвонит, чтобы вы могли его обсудить. iPhone звонит, как при обычном телефонном звонке; если это невозможно, вместо этого приходит уведомление «Hermes хочет поговорить»: нажмите «Говорить», чтобы ответить."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sorduğunuz bir iş bittiğinde, Hermes sonucu konuşabilmeniz için sizi arar. Şimdilik arama “Hermes konuşmak istiyor” bildirimi olarak gelir: yanıtlamak için Konuş'a dokunun."
+            "value" : "Sorduğunuz bir iş bittiğinde, Hermes sonucu konuşabilmeniz için sizi arar. iPhone'unuz normal bir telefon araması gibi çalar; bunun mümkün olmadığı yerlerde bunun yerine “Hermes konuşmak istiyor” bildirimi gelir: yanıtlamak için Konuş'a dokunun."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你询问的任务完成后，Hermes 会给你打电话，方便你们聊聊结果。目前来电会以“Hermes 想和你通话”通知的形式出现：轻点“通话”即可接听。"
+            "value" : "你询问的任务完成后，Hermes 会给你打电话，方便你们聊聊结果。你的 iPhone 会像普通来电一样响铃；无法响铃时，会改为收到“Hermes 想和你通话”通知：轻点“通话”即可接听。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你詢問的工作完成後，Hermes 會打電話給你，方便你們聊聊結果。目前來電會以「Hermes 想跟你通話」通知的形式出現：點一下「通話」即可接聽。"
+            "value" : "你詢問的工作完成後，Hermes 會打電話給你，方便你們聊聊結果。你的 iPhone 會像一般來電一樣響鈴；無法響鈴時，會改為收到「Hermes 想跟你通話」通知：點一下「通話」即可接聽。"
           }
         }
       }
@@ -200850,84 +200850,84 @@
         }
       }
     },
-    "Say “call me when it's done” during a live call. Hermes calls about that job once the call has ended; if it finishes while you're still talking, you hear about it in the call instead." : {
+    "Say “call me when it's done” during a live call, or ask Hermes in a chat to call you. Hermes calls about that job once the call has ended; if it finishes while you're still talking, you hear about it in the call instead." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sag während eines Live-Anrufs „Ruf mich an, wenn es fertig ist“. Hermes ruft wegen dieses Jobs an, sobald der Anruf beendet ist. Wird er fertig, während ihr noch sprecht, erfährst du es stattdessen im Anruf."
+            "value" : "Sag während eines Live-Anrufs „Ruf mich an, wenn es fertig ist“ oder bitte Hermes in einem Chat, dich anzurufen. Hermes ruft wegen dieses Jobs an, sobald der Anruf beendet ist. Wird er fertig, während ihr noch sprecht, erfährst du es stattdessen im Anruf."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Di «llámame cuando esté listo» durante una llamada en vivo. Hermes te llama por ese trabajo cuando termine la llamada; si termina mientras siguen hablando, te enteras en la llamada."
+            "value" : "Di «llámame cuando esté listo» durante una llamada en vivo, o pídele a Hermes en un chat que te llame. Hermes te llama por ese trabajo cuando termine la llamada; si termina mientras siguen hablando, te enteras en la llamada."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dites « appelle-moi quand c'est fini » pendant un appel en direct. Hermes vous appelle au sujet de ce job une fois l'appel terminé ; s'il se termine pendant que vous parlez encore, vous l'apprenez dans l'appel."
+            "value" : "Dites « appelle-moi quand c'est fini » pendant un appel en direct, ou demandez à Hermes de vous appeler dans une discussion. Hermes vous appelle au sujet de ce job une fois l'appel terminé ; s'il se termine pendant que vous parlez encore, vous l'apprenez dans l'appel."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ucapkan “telepon saya kalau sudah selesai” saat panggilan langsung. Hermes menelepon tentang pekerjaan itu setelah panggilan berakhir; jika selesai saat Anda masih berbicara, Anda akan mendengarnya di panggilan."
+            "value" : "Ucapkan “telepon saya kalau sudah selesai” saat panggilan langsung, atau minta Hermes menelepon Anda di obrolan. Hermes menelepon tentang pekerjaan itu setelah panggilan berakhir; jika selesai saat Anda masih berbicara, Anda akan mendengarnya di panggilan."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Durante una chiamata live, di' «chiamami quando hai finito». Hermes ti chiama per quel job una volta terminata la chiamata; se finisce mentre state ancora parlando, lo saprai nella chiamata."
+            "value" : "Durante una chiamata live, di' «chiamami quando hai finito», oppure chiedi a Hermes in una chat di chiamarti. Hermes ti chiama per quel job una volta terminata la chiamata; se finisce mentre state ancora parlando, lo saprai nella chiamata."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ライブ通話中に「終わったら電話して」と言ってください。通話が終わった後、Hermesがそのジョブについて電話します。話している間に完了した場合は、その通話の中でお知らせします。"
+            "value" : "ライブ通話中に「終わったら電話して」と言うか、チャットでHermesに電話を頼んでください。通話が終わった後、Hermesがそのジョブについて電話します。話している間に完了した場合は、その通話の中でお知らせします。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "라이브 통화 중에 “끝나면 전화해 줘”라고 말하세요. 통화가 끝난 뒤 Hermes가 그 작업에 대해 전화해요. 아직 이야기하는 중에 끝나면 대신 통화에서 알려 드려요."
+            "value" : "라이브 통화 중에 “끝나면 전화해 줘”라고 말하거나, 채팅에서 Hermes에게 전화해 달라고 부탁하세요. 통화가 끝난 뒤 Hermes가 그 작업에 대해 전화해요. 아직 이야기하는 중에 끝나면 대신 통화에서 알려 드려요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Podczas połączenia Live powiedz „zadzwoń, jak skończysz”. Hermes zadzwoni w sprawie tego zlecenia po zakończeniu połączenia; jeśli skończy się, gdy jeszcze rozmawiacie, usłyszysz o tym w trakcie połączenia."
+            "value" : "Podczas połączenia Live powiedz „zadzwoń, jak skończysz” albo poproś Hermesa na czacie, żeby do Ciebie zadzwonił. Hermes zadzwoni w sprawie tego zlecenia po zakończeniu połączenia; jeśli skończy się, gdy jeszcze rozmawiacie, usłyszysz o tym w trakcie połączenia."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diga “me liga quando terminar” durante uma chamada ao vivo. O Hermes liga sobre esse trabalho quando a chamada terminar; se ele terminar enquanto vocês ainda conversam, você fica sabendo na própria chamada."
+            "value" : "Diga “me liga quando terminar” durante uma chamada ao vivo, ou peça ao Hermes em um chat para ligar para você. O Hermes liga sobre esse trabalho quando a chamada terminar; se ele terminar enquanto vocês ainda conversam, você fica sabendo na própria chamada."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Скажите во время Live-звонка «позвони, когда будет готово». Hermes позвонит по этому заданию после окончания звонка; если оно завершится, пока вы ещё говорите, вы узнаете об этом прямо в звонке."
+            "value" : "Скажите во время Live-звонка «позвони, когда будет готово» или попросите Hermes в чате вам позвонить. Hermes позвонит по этому заданию после окончания звонка; если оно завершится, пока вы ещё говорите, вы узнаете об этом прямо в звонке."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Canlı arama sırasında “bitince beni ara” deyin. Hermes, arama bittikten sonra o iş hakkında sizi arar; siz hâlâ konuşurken biterse bunu aramada öğrenirsiniz."
+            "value" : "Canlı arama sırasında “bitince beni ara” deyin ya da bir sohbette Hermes'ten sizi aramasını isteyin. Hermes, arama bittikten sonra o iş hakkında sizi arar; siz hâlâ konuşurken biterse bunu aramada öğrenirsiniz."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在实时通话中说“完成后给我打电话”。通话结束后，Hermes 会就该任务给你打电话；如果在你们还在通话时就完成了，你会直接在通话中听到结果。"
+            "value" : "在实时通话中说“完成后给我打电话”，或在聊天中请 Hermes 给你打电话。通话结束后，Hermes 会就该任务给你打电话；如果在你们还在通话时就完成了，你会直接在通话中听到结果。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在即時通話中說「完成後打電話給我」。通話結束後，Hermes 會就該工作打電話給你；如果在你們還在通話時就完成了，你會直接在通話中聽到結果。"
+            "value" : "在即時通話中說「完成後打電話給我」，或在聊天中請 Hermes 打電話給你。通話結束後，Hermes 會就該工作打電話給你；如果在你們還在通話時就完成了，你會直接在通話中聽到結果。"
           }
         }
       }
@@ -201420,6 +201420,580 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在載入來電設定…"
+          }
+        }
+      }
+    },
+    "Missed call from Hermes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verpasster Anruf von Hermes"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llamada perdida de Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appel manqué de Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan tak terjawab dari Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamata persa da Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesからの不在着信"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes의 부재중 전화"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nieodebrane połączenie od Hermesa"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chamada perdida do Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пропущенный звонок от Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'ten cevapsız arama"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 的未接来电"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 的未接來電"
+          }
+        }
+      }
+    },
+    "Hermes needs your OK." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes braucht dein OK."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes necesita tu aprobación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes a besoin de votre accord."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes perlu persetujuan Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha bisogno del tuo OK."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesがあなたの承認を待っています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 승인을 기다리고 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes potrzebuje Twojej zgody."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes precisa da sua aprovação."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes нужно ваше одобрение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes onayınızı bekliyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 需要你的批准。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 需要你的核准。"
+          }
+        }
+      }
+    },
+    "Hermes has a question for you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hat eine Frage an dich."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tiene una pregunta para ti."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes a une question pour vous."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes punya pertanyaan untuk Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha una domanda per te."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesから質問があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 물어볼 게 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ma do Ciebie pytanie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes tem uma pergunta para você."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У Hermes есть к вам вопрос."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in size bir sorusu var."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 有个问题要问你。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 有個問題要問你。"
+          }
+        }
+      }
+    },
+    "Hermes decides when to call" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes entscheidet, wann er anruft"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes decide cuándo llamar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes décide quand appeler"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes memutuskan kapan menelepon"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes decide quando chiamare"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電話するタイミングをHermesに任せる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전화할 때를 Hermes가 결정"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes decyduje, kiedy dzwonić"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes decide quando ligar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes сам решает, когда звонить"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ne zaman arayacağına Hermes karar verir"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 Hermes 决定何时来电"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 Hermes 決定何時來電"
+          }
+        }
+      }
+    },
+    "Hermes may also call on its own when news can't wait, within your limits. It never calls for routine updates." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes darf auch von sich aus anrufen, wenn Neuigkeiten nicht warten können, im Rahmen deiner Limits. Für Routine-Updates ruft er nie an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes también puede llamarte por su cuenta cuando una noticia no puede esperar, dentro de tus límites. Nunca llama por novedades rutinarias."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes peut aussi appeler de lui-même quand une nouvelle ne peut pas attendre, dans le respect de vos limites. Il n'appelle jamais pour des mises à jour courantes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes juga boleh menelepon atas inisiatifnya sendiri saat ada kabar yang tidak bisa menunggu, sesuai batas Anda. Hermes tidak pernah menelepon untuk kabar rutin."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes può anche chiamarti di sua iniziativa quando una notizia non può aspettare, entro i tuoi limiti. Non chiama mai per aggiornamenti di routine."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待てない知らせがあるときは、上限の範囲内でHermesが自分の判断で電話することもあります。定期的な報告で電話することはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기다릴 수 없는 소식이 있으면 Hermes가 한도 안에서 스스로 전화할 수도 있어요. 일상적인 소식으로는 전화하지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes może też zadzwonić sam, gdy wiadomość nie może czekać, w ramach Twoich limitów. Nigdy nie dzwoni z rutynowymi informacjami."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes também pode ligar por conta própria quando uma notícia não pode esperar, dentro dos seus limites. Ele nunca liga para atualizações de rotina."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes может позвонить и сам, если новость не терпит отлагательств, в пределах ваших лимитов. Ради обычных обновлений он не звонит."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekleyemeyecek bir haber olduğunda Hermes, sınırlarınız içinde kendiliğinden de arayabilir. Rutin güncellemeler için asla aramaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有等不及的消息时，Hermes 也可以在你的限制范围内主动来电。它绝不会为例行更新打电话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有等不及的消息時，Hermes 也可以在你的限制範圍內主動來電。它絕不會為例行更新打電話。"
+          }
+        }
+      }
+    },
+    "Call about approvals and questions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei Freigaben und Fragen anrufen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llamar por aprobaciones y preguntas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appeler pour les approbations et les questions"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Telepon untuk persetujuan dan pertanyaan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiama per approvazioni e domande"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "承認や質問があるときに電話"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "승인과 질문이 있을 때 전화"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dzwoń w sprawie zgód i pytań"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligar sobre aprovações e perguntas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонить по одобрениям и вопросам"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onaylar ve sorular için ara"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要批准或回答时来电"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要核准或回答時來電"
+          }
+        }
+      }
+    },
+    "Hermes calls when it has waited a minute for your OK or an answer, or when a request fails. In a live call you can answer out loud." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ruft an, wenn er eine Minute auf dein OK oder eine Antwort gewartet hat oder wenn eine Anfrage fehlschlägt. In einem Live-Anruf kannst du laut antworten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes llama cuando lleva un minuto esperando tu aprobación o una respuesta, o cuando falla una solicitud. En una llamada en vivo puedes responder en voz alta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes appelle quand il attend votre accord ou une réponse depuis une minute, ou quand une demande échoue. Pendant un appel en direct, vous pouvez répondre à voix haute."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes menelepon saat sudah menunggu persetujuan atau jawaban Anda selama satu menit, atau saat permintaan gagal. Dalam panggilan langsung, Anda bisa menjawab dengan suara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes chiama quando aspetta da un minuto il tuo OK o una risposta, o quando una richiesta non va a buon fine. In una chiamata live puoi rispondere a voce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "承認や回答を1分待っても返事がないとき、またはリクエストが失敗したときにHermesが電話します。ライブ通話では声で答えられます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "승인이나 답변을 1분 동안 기다렸거나 요청이 실패하면 Hermes가 전화해요. 라이브 통화에서는 말로 답할 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes dzwoni, gdy przez minutę czeka na Twoją zgodę lub odpowiedź albo gdy prośba się nie powiedzie. W połączeniu Live możesz odpowiedzieć na głos."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes liga quando já esperou um minuto pela sua aprovação ou resposta, ou quando um pedido falha. Em uma chamada ao vivo, você pode responder em voz alta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes звонит, если минуту ждёт вашего одобрения или ответа, или если запрос не удался. В Live-звонке можно ответить вслух."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, onayınızı ya da yanıtınızı bir dakika beklediğinde veya bir istek başarısız olduğunda arar. Canlı aramada sesli yanıt verebilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 等你批准或回答满一分钟，或请求失败时，会给你打电话。在实时通话中可以直接开口回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 等你核准或回答滿一分鐘，或請求失敗時，會打電話給你。在即時通話中可以直接開口回答。"
           }
         }
       }
