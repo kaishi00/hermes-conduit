@@ -33,6 +33,20 @@ struct VoiceProviderReadiness: Equatable, Identifiable {
     /// must fail closed, never fall back to a raw config write of "nous".
     let isManagedNous: Bool
     let requiredCredentials: [VoiceCredentialStatus]
+
+    var statusLabel: String { Self.statusLabel(status) }
+
+    /// A readiness status as a label. Hermes sends a code ("needs_keys");
+    /// one Conduit doesn't know is shown as Hermes wrote it.
+    static func statusLabel(_ status: String) -> String {
+        switch status.lowercased() {
+        case "ready": return AppLocalization.string("Ready")
+        case "needs_keys": return AppLocalization.string("Needs an API key")
+        case "needs_auth": return AppLocalization.string("Needs sign-in")
+        case "needs_install": return AppLocalization.string("Not installed")
+        default: return status.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
 }
 
 struct VoiceTypedField: Equatable, Identifiable {

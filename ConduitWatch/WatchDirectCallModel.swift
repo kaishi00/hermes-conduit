@@ -798,14 +798,14 @@ final class WatchDirectCallModel: ObservableObject {
         let outcome = await relay.run(name: WatchLiveToken.tool, arguments: [:])
         guard callID == id, isActive else {
             WatchCallLog.shared.note("directRelayTokenAbandoned", [
-                "outcome": outcome.label,
+                "outcome": outcome.logLabel,
                 "reason": isActive ? "replaced" : "callEnded",
             ])
             throw WatchDirectError.ended
         }
         var fields: [String: Any] = [
             "ms": Int((now - sentAt) * 1000),
-            "outcome": outcome.label,
+            "outcome": outcome.logLabel,
             "screen": "\(scenePhase)",
             "reachable": link.isReachable,
             "grantCalls": relay.callsSent,
@@ -2159,7 +2159,7 @@ final class WatchDirectCallModel: ObservableObject {
 
     /// A relay lookup whose answer came after its call was over.
     private static func relayToolAbandoned(_ call: WatchVoiceWire.DirectToolCall, outcome: WatchToolRelayClient.Outcome, callEnded: Bool) {
-        var fields: [String: Any] = ["name": call.name, "outcome": outcome.label, "reason": callEnded ? "callEnded" : "replaced"]
+        var fields: [String: Any] = ["name": call.name, "outcome": outcome.logLabel, "reason": callEnded ? "callEnded" : "replaced"]
         if case .unavailable(let why, let grantGone, let sent) = outcome {
             fields["why"] = why
             fields["grantGone"] = grantGone
@@ -2171,7 +2171,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// An approval's answer that came after its call was over: Hermes may
     /// have taken it, and the log says how it went.
     private static func approvalAbandoned(choice: String, byVoice: Bool, outcome: WatchToolRelayClient.Outcome, callEnded: Bool) {
-        var fields: [String: Any] = ["choice": choice, "byVoice": byVoice, "outcome": outcome.label, "reason": callEnded ? "callEnded" : "replaced"]
+        var fields: [String: Any] = ["choice": choice, "byVoice": byVoice, "outcome": outcome.logLabel, "reason": callEnded ? "callEnded" : "replaced"]
         if case .answered(let body) = outcome {
             let result = WatchJobAnswer.result(body: body)
             fields["status"] = result["status"] ?? (result["error"] == nil ? "" : "error")

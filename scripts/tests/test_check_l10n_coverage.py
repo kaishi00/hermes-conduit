@@ -677,6 +677,7 @@ class RawTernaryTests(unittest.TestCase):
             ["Mic is live.", "Mic is off."])
         self.assertEqual(self.literals('Text(a ? "One" : b ? "Two" : name)'), ["One", "Two"])
         self.assertEqual(self.literals('Text(name.isEmpty ? "Hi \\(user)" : name)'), ["Hi %@"])
+        self.assertEqual(self.literals('Text((flag ? "Yes" : "No"))'), ["Yes", "No"])
 
     def test_wrapped_glyph_and_labeled_branches_are_not_reported(self):
         for source in (
@@ -723,7 +724,17 @@ class RawDisplayParameterTests(unittest.TestCase):
             [("SettingsMetricRow", "value", "Local")])
         self.assertEqual(self.literals(
             'SettingsMetricRow(label: label, value: a ?? b ?? (on ? "x" : "y") ?? "None")'),
-            [("SettingsMetricRow", "value", "None")])
+            [("SettingsMetricRow", "value", "x"), ("SettingsMetricRow", "value", "y"),
+             ("SettingsMetricRow", "value", "None")])
+        self.assertEqual(self.literals(
+            'SettingsMetricRow(label: label, value: a ?? (on ? "Raw" : nil) ?? "Fallback")'),
+            [("SettingsMetricRow", "value", "Raw"), ("SettingsMetricRow", "value", "Fallback")])
+        self.assertEqual(self.literals(
+            'SettingsMetricRow(label: label, value: ((on ? "Yes" : "No")))'),
+            [("SettingsMetricRow", "value", "Yes"), ("SettingsMetricRow", "value", "No")])
+        self.assertEqual(self.literals(
+            'SettingsMetricRow(label: label, value: on ? (a ?? "Unset") : "Off")'),
+            [("SettingsMetricRow", "value", "Unset"), ("SettingsMetricRow", "value", "Off")])
         self.assertEqual(self.literals(
             'branchShell(title: t, intro: i, needs: [AppLocalization.string("A"), "Same network."], prompt: .lan)'),
             [("branchShell", "needs", "Same network.")])
@@ -765,6 +776,10 @@ class RawDisplayPropertyTests(unittest.TestCase):
         self.assertEqual(self.literals(
             'var errorDescription: String? {\n    switch self {\n    case .read(let name): return "Could not read \\(name)."\n    }\n}'),
             [("errorDescription", "Could not read %@.")])
+        self.assertEqual(self.literals('var message: String { return "Signed in. " + "Tap Test." }'),
+                         [("message", "Signed in. "), ("message", "Tap Test.")])
+        self.assertEqual(self.literals('var label: String { name + " (beta)" }'),
+                         [("label", " (beta)")])
 
     def test_localized_brand_and_other_properties_pass(self):
         for source in (

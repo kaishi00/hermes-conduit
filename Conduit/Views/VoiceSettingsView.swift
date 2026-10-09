@@ -454,7 +454,7 @@ struct VoiceSettingsView: View {
         case .notReady(let status):
             return setupStep(
                 title,
-                detail: AppLocalization.string("\(name) on Hermes isn't ready (\(status)). This iPhone can do it instead, with nothing to install."),
+                detail: AppLocalization.string("\(name) on Hermes isn't ready (\(VoiceProviderReadiness.statusLabel(status))). This iPhone can do it instead, with nothing to install."),
                 state: .attention,
                 fix: useIPhone
             )
@@ -916,7 +916,7 @@ struct VoiceSettingsView: View {
             let isReady = readiness.status.caseInsensitiveCompare("ready") == .orderedSame
             SettingsMetricRow(
                 label: AppLocalization.string("Readiness"),
-                value: readiness.status.capitalized,
+                value: readiness.statusLabel,
                 valueColor: isReady ? .green : .secondary,
                 statusDot: isReady ? .green : nil
             )

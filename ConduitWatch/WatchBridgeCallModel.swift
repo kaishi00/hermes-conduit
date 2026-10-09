@@ -396,7 +396,7 @@ final class WatchBridgeCallModel: ObservableObject {
             // The grant ran out (it isn't renewed: the bridge belongs to it),
             // so no card can be answered from the Watch any more.
             if case .unavailable(let reason, let grantGone, _) = outcome, Self.grantRanOut(reason: reason, grantGone: grantGone) {
-                self.note("bridgeApproval", ["choice": choice, "taken": false, "outcome": outcome.label, "reason": reason])
+                self.note("bridgeApproval", ["choice": choice, "taken": false, "outcome": outcome.logLabel, "reason": reason])
                 self.approvalsRanOut()
                 return
             }
@@ -409,7 +409,7 @@ final class WatchBridgeCallModel: ObservableObject {
                 taken = result["error"] == nil && result["status"] != "failed"
                 refused = !taken
             }
-            self.note("bridgeApproval", ["choice": choice, "taken": taken, "outcome": outcome.label])
+            self.note("bridgeApproval", ["choice": choice, "taken": taken, "outcome": outcome.logLabel])
             if taken {
                 self.approvalsAnswered += 1
                 let what = approve ? "approved" : "denied"
@@ -1136,7 +1136,7 @@ final class WatchBridgeCallModel: ObservableObject {
         Task { [weak self] in
             let outcome = await relay.run(name: WatchJobAnswer.startJob, arguments: arguments)
             guard let self, self.callID == id, self.isActive else { return }
-            var fields: [String: Any] = ["outcome": outcome.label, "ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
+            var fields: [String: Any] = ["outcome": outcome.logLabel, "ms": Int((self.now - sentAt) * 1000), "screen": "\(self.scenePhase)"]
             switch outcome {
             case .answered(let body):
                 let result = WatchJobAnswer.result(body: body)
@@ -1214,7 +1214,7 @@ final class WatchBridgeCallModel: ObservableObject {
                     : sent ? "Hermes didn't confirm it got the words" : "Hermes couldn't be reached from the Watch")
             }
             let reply = WatchBridgeDelegation.followUpReply(result)
-            self.note("bridgeFollowUp", ["outcome": outcome.label, "result": Self.label(result), "ms": Int((self.now - sentAt) * 1000)])
+            self.note("bridgeFollowUp", ["outcome": outcome.logLabel, "result": Self.label(result), "ms": Int((self.now - sentAt) * 1000)])
             self.answer(delegationID, reply.text, channel: reply.speakable ? .speakable : .commentary)
         }
     }
@@ -1253,7 +1253,7 @@ final class WatchBridgeCallModel: ObservableObject {
                     text = WatchBridgeDelegation.relay("Hermes couldn't be reached from the Watch for the lookup.")
                 }
             }
-            self.note("bridgeLookup", ["outcome": outcome.label, "ms": Int((self.now - sentAt) * 1000)])
+            self.note("bridgeLookup", ["outcome": outcome.logLabel, "ms": Int((self.now - sentAt) * 1000)])
             self.answer(delegationID, text, channel: .speakable)
         }
     }

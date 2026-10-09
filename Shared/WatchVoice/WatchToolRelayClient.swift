@@ -27,7 +27,7 @@ final class WatchToolRelayClient {
         case unavailable(reason: String, grantGone: Bool, sent: Bool)
 
         /// For logs.
-        var label: String {
+        var logLabel: String {
             switch self {
             case .answered: return "answered"
             case .timedOut: return "timedOut"
