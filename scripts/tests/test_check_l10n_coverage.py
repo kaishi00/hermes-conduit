@@ -568,7 +568,8 @@ class CountRuleTests(unittest.TestCase):
             self.assertEqual(self.count_problems(key), [], key)
 
     def test_a_label_inside_a_sentence_still_counts(self):
-        self.assertTrue(self.count_problems("Jobs: %lld waiting"))
+        for key in ("Jobs: %lld waiting", "(%lld) jobs remaining", "Runs (%lld) now"):
+            self.assertTrue(self.count_problems(key), key)
 
     def test_text_placeholders_are_not_counts(self):
         self.assertEqual(self.count_problems("HTTP %@ failed"), [])

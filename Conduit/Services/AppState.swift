@@ -13539,8 +13539,10 @@ final class AppState: ObservableObject {
             return true
         } catch {
             guard profile == activeProfile else { return false }
-            let archivedAction = AppLocalization.string(archived ? "archive" : "restore")
-            errorMessage = AppLocalization.string("Could not \(archivedAction) this conversation: \(UserFacingError.message(for: error))")
+            let reason = UserFacingError.message(for: error)
+            errorMessage = archived
+                ? AppLocalization.string("Could not archive this conversation: \(reason)")
+                : AppLocalization.string("Could not restore this conversation: \(reason)")
             return false
         }
     }
@@ -16534,9 +16536,7 @@ final class AppState: ObservableObject {
                 case .busy:
                     transientFailures = 0
                     guard clock.now < deadline else {
-                        return .failed(AppLocalization.string(
-                            "\(state.ownerName) is still replying in this chat. Try again when it finishes."
-                        ))
+                        return .failed(state.stillReplyingMessage)
                     }
                 }
             } catch {
@@ -21142,10 +21142,15 @@ final class AppState: ObservableObject {
             }
             return true
         } catch {
-            // The wire token stays raw for the URL path; the sentence shows
-            // the localized verb.
-            let actionVerb = AppLocalization.string(String.LocalizationValue(action))
-            errorMessage = AppLocalization.string("Could not \(actionVerb) scheduled job: \(UserFacingError.message(for: error))")
+            // One whole sentence per action: a verb dropped into a shared
+            // sentence can't be inflected in most languages.
+            let reason = UserFacingError.message(for: error)
+            switch action {
+            case "pause": errorMessage = AppLocalization.string("Could not pause scheduled job: \(reason)")
+            case "resume": errorMessage = AppLocalization.string("Could not resume scheduled job: \(reason)")
+            case "trigger": errorMessage = AppLocalization.string("Could not run scheduled job: \(reason)")
+            default: errorMessage = AppLocalization.string("Could not update scheduled job: \(reason)")
+            }
             return false
         }
     }
