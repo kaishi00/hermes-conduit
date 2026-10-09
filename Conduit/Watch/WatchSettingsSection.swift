@@ -49,7 +49,7 @@ struct WatchSettingsSection: View {
             .accessibilityIdentifier("voice.watchApprovals")
             Text(voiceApprovals
                 ? AppLocalization.string("A job's approval request shows on the Watch, and Gemini Live or Grok can also take your answer by voice. Voice only ever approves once. Text in a web page or a job's output could try to talk it into approving.")
-                : AppLocalization.string("A job's approval request shows on the Watch with Approve and Deny."))
+                : AppLocalization.string("A job's approval request shows on the Watch with Approve once and Deny."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -69,10 +69,10 @@ struct WatchSettingsSection: View {
                     Button(role: .destructive) {
                         confirmingClear = true
                     } label: {
-                        Text("Clear")
+                        Text("Clear Log")
                     }
                     .confirmationDialog(AppLocalization.string("Clear the Watch call log?"), isPresented: $confirmingClear, titleVisibility: .visible) {
-                        Button(AppLocalization.string("Clear"), role: .destructive) { log.clear() }
+                        Button(AppLocalization.string("Clear Log"), role: .destructive) { log.clear() }
                     }
                 }
                 .font(.subheadline)

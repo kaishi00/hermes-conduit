@@ -85,7 +85,7 @@ final class ConnectionSetupUITests: XCTestCase {
         XCTAssertEqual(server.value as? String, "http://192.168.1.28:9119")
         XCTAssertEqual(app.textFields["login.username"].value as? String, "round3-user")
         XCTAssertTrue(app.buttons["Connect"].isEnabled)
-        XCTAssertFalse(app.staticTexts["Connecting..."].exists)
+        XCTAssertFalse(app.staticTexts["Connecting…"].exists)
         // Reopening uses the in-memory login fields, including the password.
         openSetup(app)
         tapVisible(app.buttons[Identity.answerYes], in: app)

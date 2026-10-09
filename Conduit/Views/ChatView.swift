@@ -1098,7 +1098,7 @@ private struct UserImageAttachmentPreview: View {
         HStack(spacing: 8) {
             ProgressView()
                 .tint(.white)
-            Text("Loading image...")
+            Text("Loading image…")
         }
         .font(.caption.weight(.medium))
         .foregroundStyle(.white)
