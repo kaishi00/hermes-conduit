@@ -1344,6 +1344,8 @@ extension VoiceConversationControllerTests {
             "No, no, I want you to read back the last reply without sending Hermes",
             "No, you need to read back in full the last reply", "No. Read the last reply.",
             "Just read the last message", "I want to hear the last reply again", "read the last reply without sending it to Hermes first",
+            // Build 190 (#451).
+            "Could you just read what we said", "read me what Hermes just wrote", "repeat what was said, please",
         ] {
             XCTAssertTrue(VoiceThreadRouting.wantsLastReply(request), request)
         }
@@ -1352,9 +1354,16 @@ extension VoiceConversationControllerTests {
             "the last message was wrong, fix it", "summarize the last message", "umbrella forecast",
             "read the last message from Sam and draft a reply", "say the last message in Spanish", "say the last message to the chat", "read the file and then say the last message", "tell me about the last message", "tell me what you think of the last message Hermes sent", "tell me what you thought of the last message", "tell me your take on the last message", "tell me your thoughts on the last reply", "tell me what you liked about the last reply",
             "I want you to read the last reply and summarize it", "no, read the last message without the code", "don't read the last reply",
+            "read what Hermes said about the trip and book it",
+            "I think you should have the last reply without having to check with Hermes. Could you just read what we said.",
         ] {
             XCTAssertFalse(VoiceThreadRouting.wantsLastReply(request), request)
         }
+        // A read request after sentences of the user's own (#451).
+        XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I think you should have the last reply without having to check with Hermes. Could you just read what we said."))
+        XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I can't hear you well. Read me the last reply?"))
+        XCTAssertFalse(VoiceThreadRouting.endsWithLastReplyRequest("Read the last reply. Then send it to Sam."))
+        XCTAssertFalse(VoiceThreadRouting.endsWithLastReplyRequest("Read the last reply"), "one sentence is the whole request")
     }
 
     func testThreadRoutingPhrases() {
@@ -2065,6 +2074,17 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("how do I send this to Hermes"))
         XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("read it out rather than send it to Hermes"))
         XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("can you send it to Hermes"))
+        // Neal's "Send Hermes" (#451): without the "to", only when nothing
+        // follows, and only in finished words.
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("Send Hermes"))
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("Okay, send it, Hermes."))
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("send Hermes now"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("Send Hermes a note about lunch"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("Send Hermes?"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("should I send Hermes"))
+        XCTAssertFalse(VoiceThreadRouting.saysSendToHermes("Send Hermes", finished: false), "the words may go on")
+        XCTAssertTrue(VoiceThreadRouting.saysSendToHermes("send it to Hermes", finished: false))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Send Hermes"), .yes(addition: nil))
     }
 
     func testGeminiAskingFirstHoldsANewJobUntilTheUserSaysYes() async throws {

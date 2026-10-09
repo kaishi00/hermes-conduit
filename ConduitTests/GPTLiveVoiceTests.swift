@@ -3126,4 +3126,161 @@ extension VoiceConversationControllerTests {
         guard case .delegationReply("del_again", let text, _)? = again.first else { return XCTFail("\(again)") }
         XCTAssertNotEqual(text, GPTLiveDelegationBridge.alreadySent, "nothing went")
     }
+
+    /// Neal's build 190 (#451): "Send it" went unheard until GPT-Live
+    /// delegated again, which it often didn't. Once the model asked, the
+    /// user's own plain yes sends it, a plain no drops it, and "hold on"
+    /// keeps it.
+    func testGPTLiveAskingFirstActsOnAPlainAnswerOnceTheModelAsked() async {
+        let (_, fake, bridge) = makeAskingFirstBridge()
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        XCTAssertNil(bridge.userFinishedSpeaking("Send it, yeah"), "the model hasn't asked yet")
+        bridge.modelFinishedTurn()
+        guard let yes = bridge.userFinishedSpeaking("Send it, yeah"), case .send(_, nil, "del_1", _) = yes else {
+            return XCTFail("a plain yes sends it on the held delegation")
+        }
+        let sent = await bridge.deliver(yes)
+        XCTAssertEqual(fake.created, 1)
+        XCTAssertTrue(fake.submissions.first?.1.hasSuffix("book a table for Sam") == true, fake.submissions.first?.1 ?? "")
+        guard case .delegationReply("del_1", let sentText, .speakable)? = sent.first, sentText.hasPrefix(GPTLiveDelegationBridge.sentPrefix) else {
+            return XCTFail("\(sent)")
+        }
+        // GPT-Live delegating on the same yes afterwards sends nothing more.
+        let echo = await bridge.handleDelegation(id: "del_2", request: "Send:")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.alreadySent, .commentary)? = echo.first else { return XCTFail("\(echo)") }
+        XCTAssertEqual(fake.created, 1)
+
+        let (_, refusedFake, refusing) = makeAskingFirstBridge()
+        _ = await refusing.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        refusing.modelFinishedTurn()
+        XCTAssertEqual(refusing.userFinishedSpeaking("No."), .reply([.delegationReply(delegationID: "del_1", text: GPTLiveDelegationBridge.dropped, channel: .commentary)]))
+        let after = await refusing.handleDelegation(id: "del_2", request: "Send:", userWords: "yes")
+        guard case .delegationReply("del_2", let nothing, .speakable)? = after.first, nothing.contains("Nothing is waiting") else {
+            return XCTFail("\(after)")
+        }
+        XCTAssertEqual(refusedFake.created, 0)
+
+        let (_, keptFake, kept) = makeAskingFirstBridge()
+        _ = await kept.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        kept.modelFinishedTurn()
+        XCTAssertEqual(kept.userFinishedSpeaking("Hold on"), .reply([]), "it keeps waiting")
+        XCTAssertNil(kept.userFinishedSpeaking("Yes, and make it for four"), "more than a yes is the model's to read")
+        XCTAssertEqual(keptFake.created, 0)
+        _ = await kept.handleDelegation(id: "del_2", request: "Send:", userWords: "Yes, and make it for four")
+        XCTAssertEqual(keptFake.created, 1)
+    }
+
+    /// Neal's build 190 (#451): GPT-Live said "Send:" on the user's next,
+    /// separate question, which went to Hermes glued to the waiting request.
+    /// A question or a new request is asked about first.
+    func testGPTLiveAskingFirstNeverSendsAQuestionTheModelTookForAYes() async {
+        let (_, fake, bridge) = makeAskingFirstBridge()
+        _ = await bridge.handleDelegation(id: "del_1", request: "ask Sam where the order is", userWords: "ask Sam where the order is")
+        let asked = await bridge.handleDelegation(id: "del_2", request: "Send:", userWords: "What did he send exactly? What was the message he wrote to Alex")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.heldForOKText, .speakable)? = asked.first else { return XCTFail("\(asked)") }
+        XCTAssertEqual(fake.created, 0)
+        let longer = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "also tell Alex to call me back tomorrow")
+        guard case .delegationReply("del_3", GPTLiveDelegationBridge.heldForOKText, .speakable)? = longer.first else { return XCTFail("\(longer)") }
+        XCTAssertEqual(fake.created, 0)
+        _ = await bridge.handleDelegation(id: "del_4", request: "Send:", userWords: "yes")
+        XCTAssertEqual(fake.created, 1)
+    }
+
+    /// Neal's build 190 (#451): his "Send Hermes" sent the request, and
+    /// GPT-Live's delegation on it, carrying just "Hermes", is that
+    /// request again, never a change to it in the chat.
+    func testGPTLiveAskingFirstTakesADelegationNamingOnlyHermesAfterTheSendAsTheSameRequest() async {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Missive")
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        _ = await bridge.handleDelegation(id: "del_1", request: "tell Sam he can decide", userWords: "Tell Sam he can decide")
+        bridge.modelFinishedTurn()
+        guard let send = bridge.userFinishedSpeaking("Send Hermes") else { return XCTFail("said to send it") }
+        _ = await bridge.deliver(send)
+        await waitForFollowUpState { supervisor.jobs.first?.status == .running }
+        XCTAssertEqual(fake.threadSubmissions.count, 1)
+
+        let echo = await bridge.handleDelegation(id: "del_2", request: "Hermes")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.alreadySent, .commentary)? = echo.first else { return XCTFail("\(echo)") }
+        XCTAssertTrue(fake.redirects.isEmpty, "\(fake.redirects)")
+        XCTAssertEqual(fake.threadSubmissions.count, 1)
+    }
+
+    /// Neal's build 190 (#451): the request that reached Hermes was GPT-Live's
+    /// "Hermes", with his real one marked as handled. Once OK'd, a held
+    /// request goes as the user's own words since the last one that went.
+    func testGPTLiveAskingFirstSendsTheUsersOwnWordsNotTheModelsSummary() async {
+        let current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, fake) = makeGPTController(clock: { current })
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Tell Sam he can decide, and ask Hermes for the two Missive links."))
+        session.onEvent?(.delegation(id: "del_1", text: "Tell Sam he can decide"))
+        await waitForFollowUpState { controller.pendingContextCountForTesting > 0 }
+        XCTAssertEqual(fake.created, 0, "held for the user's OK")
+
+        // "Send Hermes" while the voice is still asking, and GPT-Live's
+        // delegation on it carries just "Hermes".
+        session.onEvent?(.outputTranscript("I'll send Hermes a request to tell Sam he can decide, and"))
+        session.onEvent?(.inputTranscript("Send Hermes"))
+        session.onEvent?(.delegation(id: "del_2", text: "Hermes"))
+        await waitForFollowUpState { fake.created == 1 }
+        XCTAssertEqual(fake.created, 1)
+        let prompt = fake.submissions.first?.1 ?? ""
+        let own = prompt.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? prompt
+        XCTAssertTrue(own.contains("Tell Sam he can decide, and ask Hermes for the two Missive links."), prompt)
+        XCTAssertFalse(own.contains("Send Hermes"), "a bare send isn't part of it: \(prompt)")
+        XCTAssertFalse(prompt.contains("the user said"), prompt)
+        XCTAssertFalse(prompt.contains("User (handled separately)"), "it hadn't gone before: \(prompt)")
+        controller.stop()
+    }
+
+    /// Neal's build 190 (#451): a delegation that did nothing with the
+    /// start of a request ("As soon as he replies, we'll send") left the
+    /// request that went with only its end.
+    func testGPTLiveAskingFirstSendsARequestWithTheStartADelegationLeftUnused() async {
+        let current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, fake) = makeGPTController(clock: { current })
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.inputTranscript("As soon as he replies, we'll send"))
+        session.onEvent?(.delegation(id: "del_1", text: "Send:"))
+        await waitForFollowUpState { controller.pendingContextCountForTesting > 0 }
+        // The voice talks over the rest, which lands in a line of its own.
+        session.onEvent?(.outputTranscript("Sorry, "))
+        session.onEvent?(.inputTranscript("him the question about the order."))
+        session.onEvent?(.delegation(id: "del_2", text: "him the question about the order"))
+        await waitForFollowUpState { controller.pendingContextCountForTesting > 1 }
+        XCTAssertEqual(fake.created, 0, "held for the user's OK")
+        session.onEvent?(.turnDone(role: "user", transcript: "As soon as he replies, we'll send him the question about the order."))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Sorry, I'll ask him about the order. Send it?"))
+
+        session.onEvent?(.turnDone(role: "user", transcript: "Yes."))
+        await waitForFollowUpState { fake.created == 1 }
+        XCTAssertEqual(fake.created, 1, "the user's own yes sends it")
+        let prompt = fake.submissions.first?.1 ?? ""
+        let own = prompt.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? prompt
+        XCTAssertTrue(own.contains("As soon as he replies, we'll send him the question about the order."), prompt)
+        controller.stop()
+    }
+
+    /// Neal's build 190 (#451): a read request after sentences of his own
+    /// went to Hermes. It is read from the chat.
+    func testGPTLiveReadBackAskedForAfterOtherSentencesIsReadFromTheChat() async {
+        let (controller, session, supervisor, fake) = makeGPTController(clock: Date.init)
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Holidays")
+        fake.threadReply = "The office is closed on the 24th."
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "I think you should have the last reply without checking with Hermes. Could you just read what we said."))
+        await waitForFollowUpState { session.appended.contains { $0.text.contains("The office is closed on the 24th.") } }
+        XCTAssertTrue(session.appended.contains { $0.channel == .commentary && $0.text.contains("The office is closed on the 24th.") }, "\(session.appended)")
+        XCTAssertEqual(session.speakable.last?.text, GPTLiveDelegationBridge.readBackCue)
+        XCTAssertTrue(fake.threadSubmissions.isEmpty, "a read-back asks Hermes nothing")
+        controller.stop()
+    }
 }

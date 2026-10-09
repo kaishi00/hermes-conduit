@@ -1943,18 +1943,24 @@ enum VoiceThreadRouting {
     /// its clause say not to ("don't just send it to Hermes") or only ask or
     /// wonder about it ("did you send it to Hermes?", "should I send it to
     /// Hermes?"). Spaces are optional: transcript pieces can lose the one
-    /// between them ("send itto Hermes").
-    static func saysSendToHermes(_ words: String) -> Bool {
+    /// between them ("send itto Hermes"). Without the "to" ("Send Hermes")
+    /// it counts only when nothing follows (#451), and only once the words
+    /// are `finished`: "send Hermes the file" is a request.
+    static func saysSendToHermes(_ words: String, finished: Bool = true) -> Bool {
         let folded = fold(words)
-        let pattern = #"\bsend\s*(it|this|that|this one|that one)?\s*(straight|right|over|directly)?\s*to\s*hermes\b"#
-        var searchStart = folded.startIndex
-        while let match = folded.range(of: pattern, options: .regularExpression, range: searchStart..<folded.endIndex) {
-            let clause = folded[..<match.lowerBound]
-                .split(omittingEmptySubsequences: false, whereSeparator: { ",.;:!?".contains($0) })
-                .last ?? ""
-            let vetoed = clause.split(whereSeparator: \.isWhitespace).contains { sendVetoes.contains(String($0)) }
-            if !vetoed { return true }
-            searchStart = match.upperBound
+        let send = #"\bsend\s*(it|this|that|this one|that one)?\s*(straight|right|over|directly)?"#
+        var patterns = [send + #"\s*to\s*hermes\b"#]
+        if finished { patterns.append(send + #"[\s,]*hermes\s*(now|please)?[\s.!]*$"#) }
+        for pattern in patterns {
+            var searchStart = folded.startIndex
+            while let match = folded.range(of: pattern, options: .regularExpression, range: searchStart..<folded.endIndex) {
+                let clause = folded[..<match.lowerBound]
+                    .split(omittingEmptySubsequences: false, whereSeparator: { ",.;:!?".contains($0) })
+                    .last ?? ""
+                let vetoed = clause.split(whereSeparator: \.isWhitespace).contains { sendVetoes.contains(String($0)) }
+                if !vetoed { return true }
+                searchStart = match.upperBound
+            }
         }
         return false
     }
@@ -2456,7 +2462,7 @@ enum VoiceThreadRouting {
         // Commas set off fillers and asides ("the last, um, reply"); stops
         // end what was said before the request ("No. Read the last reply").
         let folded = withoutFillers(fold(request).replacingOccurrences(of: "[,.!?;:]", with: " ", options: .regularExpression))
-        if wantsRepeat(folded) { return true }
+        if wantsRepeat(folded) || wantsWhatWasSaid(folded) { return true }
         guard lastReplyPhrases.contains(where: { contains(folded, phrase: $0) }) else { return false }
         if wantsCJKLastReply(folded) { return true }
         let request = withoutLeadIns(folded)
@@ -2514,6 +2520,30 @@ enum VoiceThreadRouting {
             }
         }
         return tail.allSatisfy { lastReplyTrailers.contains($0) }
+    }
+
+    /// A request to hear it again that ends what the user said, after
+    /// sentences of their own ("I think you have it already. Could you just
+    /// read what we said?", #451). For one finished turn only: words joined
+    /// from several can hold a request of their own before it.
+    static func endsWithLastReplyRequest(_ words: String) -> Bool {
+        let sentences = words.split(whereSeparator: { ".!?。！？".contains($0) })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard sentences.count > 1, let last = sentences.last else { return false }
+        return wantsLastReply(last)
+    }
+
+    /// "Read what we said", "read me what Hermes just wrote" (#451): what
+    /// was said last, read again. Not "what Hermes said about the trip",
+    /// which asks for one reply in particular.
+    static let whatWasSaidPattern = #"^(read|repeat)( it| that)?( back| out)?( to)?( me| us)? what ((we|you|he|she|it|they|hermes) (just )?(said|wrote|sent|replied|answered)|was (just )?said)\b"#
+
+    private static func wantsWhatWasSaid(_ folded: String) -> Bool {
+        let request = String(withoutLeadIns(folded))
+        guard let match = request.range(of: whatWasSaidPattern, options: .regularExpression) else { return false }
+        return request[match.upperBound...].split(whereSeparator: { !($0.isLetter || $0.isNumber) })
+            .allSatisfy { repeatTrailers.contains(String($0)) }
     }
 
     private static func wantsRepeat(_ folded: String) -> Bool {
