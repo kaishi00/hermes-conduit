@@ -2027,7 +2027,7 @@ enum VoiceThreadRouting {
         "annulla", "lascia perdere", "lascia stare", "dimenticalo", "dimentica", "meglio di no",
         "nie wysyłaj", "nie", "lepiej nie", "w żadnym wypadku", "anuluj", "zapomnij", "daj spokój", "nieważne",
         "hayır", "yok", "iptal et", "iptal", "boş ver", "vazgeç", "gerek yok", "gönderme", "unut gitsin", "unut",
-        "tidak usah", "tidak perlu", "tidak jadi", "tidak", "nggak usah", "nggak perlu", "nggak jadi", "nggak",
+        "tidak usah", "tidak perlu", "tidak jadi", "tidak", "tak usah", "tak perlu", "tak jadi", "nggak usah", "nggak perlu", "nggak jadi", "nggak",
         "enggak", "gak usah", "gak perlu", "gak jadi", "gak", "ga usah", "ga jadi", "ga", "jangan dikirim",
         "jangan", "batalkan", "batal", "lupakan",
         "아니요", "아니오", "아뇨", "아니", "됐어요", "됐어", "취소해 주세요", "취소해", "취소", "보내지 마세요",
@@ -2036,7 +2036,7 @@ enum VoiceThreadRouting {
     static let answerNotYetLeads = [
         "wait", "hold on", "hang on", "not yet", "not now", "one sec", "one second", "one moment",
         "just a sec", "just a second", "just a moment", "hold it",
-        "warte", "wart", "warten sie", "warten", "moment", "einen moment", "einen augenblick", "augenblick",
+        "warte", "wart", "warten sie", "warten", "abwarten", "moment", "einen moment", "einen augenblick", "augenblick",
         "eine sekunde", "sekunde", "noch nicht", "jetzt nicht", "nicht jetzt",
         "espera", "espere", "esperá", "un momento", "un momentito", "un segundo", "momento",
         "todavía no", "todavia no", "aún no", "aun no", "ahora no", "por ahora no", "no todavía",
@@ -2231,9 +2231,11 @@ enum VoiceThreadRouting {
         }
         // "No problem", "não tem problema" and "no todavía" are a yes or a not
         // yet, not a no.
-        func dropNoLead() -> Bool {
-            !answerLeadsStartingWithNo.contains { words.starts(with: $0) } && dropLead(answerNoLeads)
+        func startsWithNoLead() -> Bool {
+            !answerLeadsStartingWithNo.contains { words.starts(with: $0) }
+                && answerNoLeads.contains { words.starts(with: $0.split(separator: " ").map(String.init)) }
         }
+        func dropNoLead() -> Bool { startsWithNoLead() && dropLead(answerNoLeads) }
         // "No, I don't want that": a negation in what follows is still the no.
         func change(_ rest: [String]) -> String? { negates(rest) ? nil : more(rest) }
         func dropFiller() -> Bool {
@@ -2266,8 +2268,9 @@ enum VoiceThreadRouting {
             return .other(spoken)
         }
         // "Okay, wait", "Yeah, but actually no", "Please don't": what
-        // follows decides.
-        while dropLead(answerYesLeads) || dropLead(answerJoiners) {}
+        // follows decides. A no that starts with a yes word ("Iya, tak
+        // usah") is still the no.
+        while !startsWithNoLead() && (dropLead(answerYesLeads) || dropLead(answerJoiners)) {}
         if dropNoLead() { return refusal() }
         if dropLead(answerNotYetLeads) { return notYet() }
         // A negation or a question anywhere after it: not a yes after all.
