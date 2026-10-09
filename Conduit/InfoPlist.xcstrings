@@ -28,10 +28,34 @@
             "value" : "Conduit utilise Face ID pour déverrouiller les identifiants Hermes enregistrés."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit menggunakan Face ID untuk membuka kredensial Hermes yang tersimpan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit usa Face ID per sbloccare le credenziali Hermes salvate."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduitは、保存されたHermesの認証情報のロックを解除するためにFace IDを使用します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 저장된 Hermes 자격 증명을 잠금 해제하는 데 Face ID를 사용해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit używa Face ID do odblokowywania zapisanych danych logowania Hermes."
           }
         },
         "pt-BR" : {
@@ -46,10 +70,22 @@
             "value" : "Conduit использует Face ID, чтобы разблокировать сохранённые учётные данные Hermes."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, kayıtlı Hermes kimlik bilgilerinin kilidini açmak için Face ID'yi kullanır."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 使用面容 ID 解锁已保存的 Hermes 凭据。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 會使用 Face ID 解鎖已儲存的 Hermes 認證資訊。"
           }
         }
       }
@@ -81,10 +117,34 @@
             "value" : "Conduit utilise le micro pour les conversations vocales et les phrases d'activation au premier plan."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit menggunakan mikrofon untuk percakapan suara dan frasa pemicu saat app terbuka."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit usa il microfono per le conversazioni vocali e per le frasi di attivazione in primo piano."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduitは、音声会話とフォアグラウンドでのウェイクフレーズにマイクを使用します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 음성 대화와 포그라운드 호출어 감지에 마이크를 사용해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit używa mikrofonu do rozmów głosowych i fraz aktywujących, gdy aplikacja jest na pierwszym planie."
           }
         },
         "pt-BR" : {
@@ -99,10 +159,22 @@
             "value" : "Conduit использует микрофон для голосовых разговоров и распознавания фраз активации, пока приложение открыто."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, mikrofonu sesli konuşmalar ve uygulama açıkken uyandırma ifadeleri için kullanır."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 在语音对话和前台唤醒词场景中使用麦克风。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 會將麥克風用於語音對話，以及 App 在前景時偵測喚醒詞。"
           }
         }
       }
@@ -134,10 +206,34 @@
             "value" : "Conduit enregistre les images et vidéos de vos discussions dans Photos lorsque vous choisissez Enregistrer dans le menu de partage."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit menyimpan gambar dan video dari obrolan Anda ke Foto saat Anda memilih Simpan di lembar bagikan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit salva in Foto le immagini e i video delle tue chat quando scegli Salva nel menu di condivisione."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "共有シートで「保存」を選ぶと、Conduitはチャット内の画像やビデオを「写真」に保存します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유 시트에서 ‘저장’을 선택하면 Conduit이 채팅의 이미지와 비디오를 사진 앱에 저장해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit zachowuje obrazki i wideo z czatów w aplikacji Zdjęcia, gdy wybierzesz „Zachowaj” w arkuszu udostępniania."
           }
         },
         "pt-BR" : {
@@ -152,10 +248,22 @@
             "value" : "Conduit сохраняет фото и видео из ваших чатов в «Фото», когда вы выбираете «Сохранить» в меню «Поделиться»."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, paylaşma sayfasında Kaydet'i seçtiğinizde sohbetlerinizdeki görüntüleri ve videoları Fotoğraflar'a kaydeder."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "当你在分享菜单中选择存储时，Conduit 会将聊天中的图片和视频保存到“照片”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當你在分享表單中選擇「儲存」時，Conduit 會將聊天中的影像和影片儲存到「照片」。"
           }
         }
       }
@@ -187,10 +295,34 @@
             "value" : "Conduit utilise la reconnaissance vocale d'Apple sur l'appareil pour transformer votre voix en texte lorsque vous sélectionnez Sur cet iPhone."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit menggunakan pengenalan ucapan Apple di perangkat untuk mengubah suara Anda menjadi teks saat Anda memilih Di iPhone ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit usa il riconoscimento vocale di Apple sul dispositivo per trasformare la tua voce in testo quando selezioni Su questo iPhone."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "「このiPhone上」を選択すると、ConduitはデバイスでAppleの音声認識を使用して、話した内容をテキストに変換します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‘이 iPhone에서’를 선택하면 Conduit이 기기 내 Apple 음성 인식을 사용해 음성을 텍스트로 변환해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit używa rozpoznawania mowy Apple na urządzeniu, aby zamieniać Twój głos na tekst, gdy wybierzesz opcję „Na tym iPhonie”."
           }
         },
         "pt-BR" : {
@@ -205,10 +337,22 @@
             "value" : "Conduit использует распознавание речи Apple на устройстве, чтобы преобразовывать ваш голос в текст, если выбран вариант «На этом iPhone»."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, “Bu iPhone'da” seçeneğini seçtiğinizde sesinizi metne dönüştürmek için Apple'ın cihaz üzerinde konuşma tanımasını kullanır."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "当你选择「在这台 iPhone 上」时，Conduit 使用 Apple 设备端语音识别将你的语音转换为文字。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當你選擇「在這部 iPhone 上」時，Conduit 會使用裝置上的 Apple 語音辨識，將你的語音轉換為文字。"
           }
         }
       }

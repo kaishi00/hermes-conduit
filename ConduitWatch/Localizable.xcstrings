@@ -21,10 +21,34 @@
             "value" : "Ajoutez une clé API Gemini sur votre serveur Hermes."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambahkan kunci API Gemini di server Hermes Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi una chiave API Gemini sul tuo server Hermes."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "HermesサーバにGemini APIキーを追加してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 서버에 Gemini API 키를 추가하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj klucz API Gemini na swoim serwerze Hermes."
           }
         },
         "pt-BR" : {
@@ -39,10 +63,22 @@
             "value" : "Добавьте ключ API Gemini на вашем сервере Hermes."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sunucunuza bir Gemini API anahtarı ekleyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "请在 Hermes 服务器上添加 Gemini API 密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在你的 Hermes 伺服器上加入 Gemini API 金鑰。"
           }
         }
       }
@@ -67,10 +103,34 @@
             "value" : "Approuver une fois"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setujui sekali"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approva una volta"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "1回だけ承認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "한 번 승인"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zatwierdź raz"
           }
         },
         "pt-BR" : {
@@ -85,10 +145,22 @@
             "value" : "Разрешить один раз"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir kez onayla"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "批准一次"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核准一次"
           }
         }
       }
@@ -113,10 +185,34 @@
             "value" : "Approuver cette commande ?"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setujui perintah ini?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approvare questo comando?"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "このコマンドを承認しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 명령을 승인할까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zatwierdzić to polecenie?"
           }
         },
         "pt-BR" : {
@@ -131,10 +227,22 @@
             "value" : "Разрешить эту команду?"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu komut onaylansın mı?"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "批准此命令？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要核准此指令嗎？"
           }
         }
       }
@@ -159,10 +267,34 @@
             "value" : "Demande à votre iPhone de configurer l'appel"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meminta iPhone Anda menyiapkan panggilan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richiesta a iPhone di configurare la chiamata"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone に通話の準備を依頼しています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone에 통화 설정을 요청하는 중"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prośba do iPhone’a o przygotowanie połączenia"
           }
         },
         "pt-BR" : {
@@ -177,10 +309,22 @@
             "value" : "Запрос настройки звонка у iPhone"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'unuzdan aramayı kurması isteniyor"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在请 iPhone 设置通话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在請 iPhone 設定通話"
           }
         }
       }
@@ -205,10 +349,34 @@
             "value" : "L'appel a échoué"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan tidak berhasil"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamata non riuscita"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通話できませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화 실패"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenie nie powiodło się"
           }
         },
         "pt-BR" : {
@@ -223,10 +391,22 @@
             "value" : "Звонок не удался"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arama başarısız oldu"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通话失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話失敗"
           }
         }
       }
@@ -251,10 +431,34 @@
             "value" : "Appel terminé"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan berakhir"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamata terminata"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通話が終了しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화 종료됨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenie zakończone"
           }
         },
         "pt-BR" : {
@@ -269,10 +473,22 @@
             "value" : "Звонок завершён"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arama sona erdi"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通话已结束"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話已結束"
           }
         }
       }
@@ -297,10 +513,34 @@
             "value" : "Journal des appels"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Log panggilan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registro chiamate"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通話ログ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화 로그"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dziennik połączeń"
           }
         },
         "pt-BR" : {
@@ -315,10 +555,22 @@
             "value" : "Журнал звонков"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arama günlüğü"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通话日志"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話記錄"
           }
         }
       }
@@ -343,10 +595,34 @@
             "value" : "Les appels ont besoin de Conduit sur votre iPhone pour démarrer. Une fois lancé, un appel se poursuit poignet baissé et iPhone verrouillé."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan memerlukan Conduit di iPhone Anda untuk dimulai. Setelah panggilan berjalan, panggilan tetap berlanjut meskipun pergelangan tangan diturunkan dan iPhone terkunci."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per avviare le chiamate serve Conduit su iPhone. Una volta avviata, la chiamata continua con il polso abbassato e iPhone bloccato."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通話の開始には iPhone の Conduit が必要です。通話が始まれば、手首を下ろしても iPhone がロックされても続きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화를 시작하려면 iPhone의 Conduit이 필요해요. 통화가 시작되면 손목을 내리거나 iPhone이 잠겨 있어도 계속돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Do rozpoczęcia połączenia potrzebny jest Conduit na iPhonie. Trwające połączenie działa dalej po opuszczeniu nadgarstka i zablokowaniu iPhone’a."
           }
         },
         "pt-BR" : {
@@ -361,10 +637,22 @@
             "value" : "Чтобы начать звонок, нужен Conduit на iPhone. Начавшийся звонок продолжается, даже когда рука опущена, а iPhone заблокирован."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramaların başlaması için iPhone'unuzda Conduit gerekir. Arama başladıktan sonra bileğiniz aşağıdayken ve iPhone'unuz kilitliyken de devam eder."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "开始通话需要 iPhone 上的 Conduit。通话开始后，即使放下手腕、iPhone 锁定，通话也会继续。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話需要 iPhone 上的 Conduit 才能開始。通話開始後，即使放下手腕、iPhone 已鎖定，通話仍會繼續。"
           }
         }
       }
@@ -389,10 +677,34 @@
             "value" : "Effacer"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancella"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "消去"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지우기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyczyść"
           }
         },
         "pt-BR" : {
@@ -407,7 +719,19 @@
             "value" : "Очистить"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temizle"
+          }
+        },
         "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除"
@@ -435,10 +759,34 @@
             "value" : "Effacer le journal des appels de l'Apple Watch ?"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus log panggilan Watch?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancellare il registro chiamate di Apple Watch?"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Watch の通話ログを消去しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 통화 로그를 지울까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyczyścić dziennik połączeń zegarka?"
           }
         },
         "pt-BR" : {
@@ -453,10 +801,22 @@
             "value" : "Очистить журнал звонков на часах?"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch arama günlüğü temizlensin mi?"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除 Watch 通话日志？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要清除 Apple Watch 通話記錄嗎？"
           }
         }
       }
@@ -497,10 +857,34 @@
             "value" : "Conduit a besoin du micro. Autorisez-le dans Réglages sur votre Apple Watch."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit memerlukan mikrofon. Izinkan di Pengaturan di Watch Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ha bisogno del microfono. Consentilo in Impostazioni su Apple Watch."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit にはマイクが必要です。Watch の設定で許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit에 마이크가 필요해요. Watch의 설정에서 허용하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit potrzebuje mikrofonu. Zezwól na to w Ustawieniach na zegarku."
           }
         },
         "pt-BR" : {
@@ -515,10 +899,22 @@
             "value" : "Conduit нужен доступ к микрофону. Разрешите его в приложении «Настройки» на часах."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit'in mikrofona erişmesi gerekiyor. Watch'unuzdaki Ayarlar'dan izin verin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 需要使用麦克风。请在 Watch 的设置中允许。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 需要使用麥克風。請在 Apple Watch 的「設定」中允許。"
           }
         }
       }
@@ -543,10 +939,34 @@
             "value" : "Conduit sur l'iPhone n'a pas répondu à temps."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit di iPhone tidak menjawab tepat waktu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit su iPhone non ha risposto in tempo."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone の Conduit が時間内に応答しませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone의 Conduit이 제시간에 응답하지 않았어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit na iPhonie nie odpowiedział na czas."
           }
         },
         "pt-BR" : {
@@ -561,10 +981,22 @@
             "value" : "Conduit на iPhone не ответил вовремя."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'daki Conduit zamanında yanıt vermedi."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone 上的 Conduit 未及时响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 上的 Conduit 未及時回應。"
           }
         }
       }
@@ -589,10 +1021,34 @@
             "value" : "Conduit sur l'iPhone a envoyé des données que cette app Apple Watch ne peut pas lire."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit di iPhone mengirim sesuatu yang tidak dapat dibaca app Watch ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit su iPhone ha inviato dati che questa app per Apple Watch non riesce a leggere."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone の Conduit から、この Watch アプリが読み取れないデータが届きました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone의 Conduit이 이 Watch 앱에서 읽을 수 없는 데이터를 보냈어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit na iPhonie wysłał dane, których ta aplikacja na zegarek nie potrafi odczytać."
           }
         },
         "pt-BR" : {
@@ -607,10 +1063,22 @@
             "value" : "Conduit на iPhone отправил данные, которые это приложение для часов не может прочитать."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'daki Conduit, bu Watch uygulamasının okuyamadığı bir şey gönderdi."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone 上的 Conduit 发送了此 Watch App 无法读取的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 上的 Conduit 傳送了此 Apple Watch App 無法讀取的內容。"
           }
         }
       }
@@ -635,10 +1103,34 @@
             "value" : "Conduit sur l'iPhone a envoyé des données que cette app Apple Watch ne peut pas lire. Mettez à jour les deux."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit di iPhone mengirim sesuatu yang tidak dapat dibaca app Watch ini. Perbarui keduanya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit su iPhone ha inviato dati che questa app per Apple Watch non riesce a leggere. Aggiorna entrambe."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone の Conduit から、この Watch アプリが読み取れないデータが届きました。両方をアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone의 Conduit이 이 Watch 앱에서 읽을 수 없는 데이터를 보냈어요. 둘 다 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit na iPhonie wysłał dane, których ta aplikacja na zegarek nie potrafi odczytać. Zaktualizuj obie aplikacje."
           }
         },
         "pt-BR" : {
@@ -653,10 +1145,22 @@
             "value" : "Conduit на iPhone отправил данные, которые это приложение для часов не может прочитать. Обновите оба приложения."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'daki Conduit, bu Watch uygulamasının okuyamadığı bir şey gönderdi. İkisini de güncelleyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone 上的 Conduit 发送了此 Watch App 无法读取的内容。请同时更新两者。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 上的 Conduit 傳送了此 Apple Watch App 無法讀取的內容。請同時更新兩者。"
           }
         }
       }
@@ -681,10 +1185,34 @@
             "value" : "Conduit sur votre iPhone n'a pas répondu."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit di iPhone Anda tidak menjawab."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit su iPhone non ha risposto."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone の Conduit が応答しませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone의 Conduit이 응답하지 않았어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit na Twoim iPhonie nie odpowiedział."
           }
         },
         "pt-BR" : {
@@ -699,10 +1227,22 @@
             "value" : "Conduit на вашем iPhone не ответил."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'unuzdaki Conduit yanıt vermedi."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone 上的 Conduit 没有响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 上的 Conduit 沒有回應。"
           }
         }
       }
@@ -727,10 +1267,34 @@
             "value" : "Connexion…"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menghubungkan…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connessione…"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "接続中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 중…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Łączenie…"
           }
         },
         "pt-BR" : {
@@ -745,10 +1309,22 @@
             "value" : "Подключение…"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlanıyor…"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在连接…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線中…"
           }
         }
       }
@@ -773,10 +1349,34 @@
             "value" : "Connexion perdue"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koneksi terputus"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connessione persa"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "接続が切れました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 끊김"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utracono połączenie"
           }
         },
         "pt-BR" : {
@@ -791,10 +1391,22 @@
             "value" : "Соединение потеряно"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı koptu"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "连接已断开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線已中斷"
           }
         }
       }
@@ -819,10 +1431,34 @@
             "value" : "Continuer"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lanjutkan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continua"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "続ける"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계속"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dalej"
           }
         },
         "pt-BR" : {
@@ -837,10 +1473,22 @@
             "value" : "Продолжить"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Devam"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "继续"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "繼續"
           }
         }
       }
@@ -865,10 +1513,34 @@
             "value" : "Impossible de se connecter à Gemini Live."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat terhubung ke Gemini Live."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile connettersi a Gemini Live."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemini Liveに接続できませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live에 연결할 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się połączyć z Gemini Live."
           }
         },
         "pt-BR" : {
@@ -883,10 +1555,22 @@
             "value" : "Не удалось подключиться к Gemini Live."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live'a bağlanılamadı."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法连接到 Gemini Live。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到 Gemini Live。"
           }
         }
       }
@@ -911,10 +1595,34 @@
             "value" : "Impossible de se connecter à Gemini Live : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat terhubung ke Gemini Live: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile connettersi a Gemini Live: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemini Liveに接続できませんでした：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live에 연결할 수 없어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się połączyć z Gemini Live: %@"
           }
         },
         "pt-BR" : {
@@ -929,10 +1637,22 @@
             "value" : "Не удалось подключиться к Gemini Live: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live'a bağlanılamadı: %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法连接到 Gemini Live：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到 Gemini Live：%@"
           }
         }
       }
@@ -957,10 +1677,34 @@
             "value" : "Impossible de se connecter à Grok Live."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat terhubung ke Grok Live."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile connettersi a Grok Live."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok Liveに接続できませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live에 연결할 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się połączyć z Grok Live."
           }
         },
         "pt-BR" : {
@@ -975,10 +1719,22 @@
             "value" : "Не удалось подключиться к Grok Live."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live'a bağlanılamadı."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法连接到 Grok Live。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到 Grok Live。"
           }
         }
       }
@@ -1003,10 +1759,34 @@
             "value" : "Impossible de se connecter à Grok Live : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat terhubung ke Grok Live: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile connettersi a Grok Live: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok Liveに接続できませんでした：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live에 연결할 수 없어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się połączyć z Grok Live: %@"
           }
         },
         "pt-BR" : {
@@ -1021,10 +1801,22 @@
             "value" : "Не удалось подключиться к Grok Live: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live'a bağlanılamadı: %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法连接到 Grok Live：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到 Grok Live：%@"
           }
         }
       }
@@ -1049,10 +1841,34 @@
             "value" : "Impossible de joindre Conduit sur votre iPhone."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat menghubungi Conduit di iPhone Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile raggiungere Conduit su iPhone."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone の Conduit に接続できませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone의 Conduit에 연결할 수 없었어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się połączyć z Conduit na Twoim iPhonie."
           }
         },
         "pt-BR" : {
@@ -1067,10 +1883,22 @@
             "value" : "Не удалось связаться с Conduit на вашем iPhone."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'unuzdaki Conduit'e ulaşılamadı."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法连接 iPhone 上的 Conduit。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到 iPhone 上的 Conduit。"
           }
         }
       }
@@ -1095,10 +1923,34 @@
             "value" : "Impossible de se reconnecter à Hermes."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat terhubung kembali ke Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile riconnettersi a Hermes."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes に再接続できませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에 다시 연결할 수 없었어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się ponownie połączyć z Hermesem."
           }
         },
         "pt-BR" : {
@@ -1113,10 +1965,22 @@
             "value" : "Не удалось переподключиться к Hermes."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'e yeniden bağlanılamadı."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法重新连接 Hermes。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法重新連線到 Hermes。"
           }
         }
       }
@@ -1141,10 +2005,34 @@
             "value" : "Refuser"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tolak"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rifiuta"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "拒否"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "거부"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odrzuć"
           }
         },
         "pt-BR" : {
@@ -1159,10 +2047,22 @@
             "value" : "Отклонить"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reddet"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "拒绝"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒絕"
           }
         }
       }
@@ -1187,10 +2087,34 @@
             "value" : "OK"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selesai"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fine"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "完了"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "완료"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gotowe"
           }
         },
         "pt-BR" : {
@@ -1205,7 +2129,19 @@
             "value" : "Готово"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitti"
+          }
+        },
         "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "完成"
@@ -1233,10 +2169,34 @@
             "value" : "Raccrocher"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akhiri panggilan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina chiamata"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通話を終了"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화 종료"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zakończ połączenie"
           }
         },
         "pt-BR" : {
@@ -1251,10 +2211,22 @@
             "value" : "Завершить звонок"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramayı bitir"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "结束通话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結束通話"
           }
         }
       }
@@ -1279,10 +2251,34 @@
             "value" : "Fin…"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mengakhiri…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiusura…"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "終了中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "종료 중…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kończenie…"
           }
         },
         "pt-BR" : {
@@ -1297,10 +2293,22 @@
             "value" : "Завершение…"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonlanıyor…"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在结束…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在結束…"
           }
         }
       }
@@ -1325,10 +2333,34 @@
             "value" : "Le journal de chaque appel est aussi envoyé à votre iPhone, où Réglages Voix > Apple Watch permet de le partager."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Log setiap panggilan juga dikirim ke iPhone Anda, tempat pengaturan Suara > Apple Watch dapat membagikannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il registro di ogni chiamata arriva anche su iPhone, dove puoi condividerlo da Impostazioni Voce > Apple Watch."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "各通話のログは iPhone にも届き、音声設定 > Apple Watch から共有できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "각 통화의 로그는 iPhone에도 전송되며, ‘음성’ 설정 > ‘Apple Watch’에서 공유할 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dziennik każdego połączenia trafia też na Twój iPhone, gdzie można go udostępnić w sekcji Ustawienia głosu > Apple Watch."
           }
         },
         "pt-BR" : {
@@ -1343,10 +2375,22 @@
             "value" : "Журнал каждого звонка также передаётся на iPhone, где им можно поделиться в разделе «Настройки › Голос › Apple Watch»."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her aramanın günlüğü iPhone'unuza da ulaşır; orada Ses ayarları > Apple Watch bölümünden paylaşılabilir."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "每次通话的日志也会发送到 iPhone，可在“语音设置 > Apple Watch”中共享。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次通話的記錄也會傳送到你的 iPhone，你可以在「語音」設定 >「Apple Watch」中分享。"
           }
         }
       }
@@ -1371,7 +2415,31 @@
             "value" : "GPT-Live"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live"
+          }
+        },
         "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live"
+          }
+        },
+        "pl" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "GPT-Live"
@@ -1389,7 +2457,19 @@
             "value" : "GPT-Live"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live"
+          }
+        },
         "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "GPT-Live"
@@ -1417,10 +2497,34 @@
             "value" : "GPT-Live a échoué sur Hermes."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live gagal di Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live non è riuscito su Hermes."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 上で GPT-Live が失敗しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에서 GPT-Live가 실패했어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live nie zadziałał w Hermesie."
           }
         },
         "pt-BR" : {
@@ -1435,10 +2539,22 @@
             "value" : "Ошибка GPT-Live на сервере Hermes."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live, Hermes'te başarısız oldu."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "GPT-Live 在 Hermes 上运行失败。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 在 Hermes 上執行失敗。"
           }
         }
       }
@@ -1463,7 +2579,31 @@
             "value" : "Gemini Live"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live"
+          }
+        },
         "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live"
+          }
+        },
+        "pl" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemini Live"
@@ -1481,7 +2621,19 @@
             "value" : "Gemini Live"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live"
+          }
+        },
         "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemini Live"
@@ -1509,10 +2661,34 @@
             "value" : "Gemini Live n'est pas disponible sur ce serveur Hermes."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live tidak tersedia di server Hermes ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live non è disponibile su questo server Hermes."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "このHermesサーバではGemini Liveを利用できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes 서버에서는 Gemini Live를 사용할 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live nie jest dostępny na tym serwerze Hermes."
           }
         },
         "pt-BR" : {
@@ -1527,10 +2703,22 @@
             "value" : "Gemini Live недоступен на этом сервере Hermes."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live bu Hermes sunucusunda kullanılamıyor."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "此 Hermes 服务器不支持 Gemini Live。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法在此 Hermes 伺服器上使用 Gemini Live。"
           }
         }
       }
@@ -1555,10 +2743,34 @@
             "value" : "Gemini Live n'est pas disponible sur ce serveur Hermes : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live tidak tersedia di server Hermes ini: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live non è disponibile su questo server Hermes: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "このHermesサーバではGemini Liveを利用できません：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes 서버에서는 Gemini Live를 사용할 수 없어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live nie jest dostępny na tym serwerze Hermes: %@"
           }
         },
         "pt-BR" : {
@@ -1573,10 +2785,22 @@
             "value" : "Gemini Live недоступен на этом сервере Hermes: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live bu Hermes sunucusunda kullanılamıyor: %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "此 Hermes 服务器不支持 Gemini Live：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法在此 Hermes 伺服器上使用 Gemini Live：%@"
           }
         }
       }
@@ -1601,10 +2825,34 @@
             "value" : "Gemini Live a refusé la connexion : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live menolak koneksi: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live ha rifiutato la connessione: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemini Liveが接続を拒否しました：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live가 연결을 거부했어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live odrzucił połączenie: %@"
           }
         },
         "pt-BR" : {
@@ -1619,10 +2867,22 @@
             "value" : "Gemini Live отклонил подключение: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live bağlantıyı reddetti: %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemini Live 拒绝了连接：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini Live 拒絕了連線：%@"
           }
         }
       }
@@ -1647,10 +2907,34 @@
             "value" : "Gemini n'est pas revenu après la coupure de la connexion."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini tidak kembali setelah koneksi terputus."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini non è tornato dopo l'interruzione della connessione."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "接続が切れた後、Gemini が復帰しませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결이 끊긴 후 Gemini가 돌아오지 않았어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini nie wrócił po zerwaniu połączenia."
           }
         },
         "pt-BR" : {
@@ -1665,10 +2949,22 @@
             "value" : "Gemini не восстановил связь после обрыва соединения."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı koptuktan sonra Gemini geri gelmedi."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "连接断开后，Gemini 没有恢复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線中斷後，Gemini 未能恢復。"
           }
         }
       }
@@ -1693,10 +2989,34 @@
             "value" : "Gemini a cessé de répondre."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini berhenti menjawab."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini ha smesso di rispondere."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemini が応答しなくなりました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini가 응답을 멈췄어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini przestał odpowiadać."
           }
         },
         "pt-BR" : {
@@ -1711,10 +3031,22 @@
             "value" : "Gemini перестал отвечать."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini yanıt vermeyi bıraktı."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gemini 停止了响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini 停止回應了。"
           }
         }
       }
@@ -1739,7 +3071,31 @@
             "value" : "Grok"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok"
+          }
+        },
         "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok"
+          }
+        },
+        "pl" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok"
@@ -1757,7 +3113,19 @@
             "value" : "Grok"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok"
+          }
+        },
         "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok"
@@ -1785,10 +3153,34 @@
             "value" : "Grok Live n'est pas disponible sur ce serveur Hermes."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live tidak tersedia di server Hermes ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live non è disponibile su questo server Hermes."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "このHermesサーバではGrok Liveを利用できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes 서버에서는 Grok Live를 사용할 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live nie jest dostępny na tym serwerze Hermes."
           }
         },
         "pt-BR" : {
@@ -1803,10 +3195,22 @@
             "value" : "Grok Live недоступен на этом сервере Hermes."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live bu Hermes sunucusunda kullanılamıyor."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "此 Hermes 服务器上无法使用 Grok Live。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法在此 Hermes 伺服器上使用 Grok Live。"
           }
         }
       }
@@ -1831,10 +3235,34 @@
             "value" : "Grok Live n'est pas disponible sur ce serveur Hermes : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live tidak tersedia di server Hermes ini: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live non è disponibile su questo server Hermes: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "このHermesサーバではGrok Liveを利用できません：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes 서버에서는 Grok Live를 사용할 수 없어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live nie jest dostępny na tym serwerze Hermes: %@"
           }
         },
         "pt-BR" : {
@@ -1849,10 +3277,22 @@
             "value" : "Grok Live недоступен на этом сервере Hermes: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live bu Hermes sunucusunda kullanılamıyor: %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "此 Hermes 服务器上无法使用 Grok Live：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法在此 Hermes 伺服器上使用 Grok Live：%@"
           }
         }
       }
@@ -1877,10 +3317,34 @@
             "value" : "Grok Live a refusé la connexion."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live menolak koneksi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live ha rifiutato la connessione."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok Liveが接続を拒否しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live가 연결을 거부했어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live odrzucił połączenie."
           }
         },
         "pt-BR" : {
@@ -1895,10 +3359,22 @@
             "value" : "Grok Live отклонил подключение."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live bağlantıyı reddetti."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok Live 拒绝了连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live 拒絕了連線。"
           }
         }
       }
@@ -1923,10 +3399,34 @@
             "value" : "Grok Live a refusé la connexion : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live menolak koneksi: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live ha rifiutato la connessione: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok Liveが接続を拒否しました：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live가 연결을 거부했어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live odrzucił połączenie: %@"
           }
         },
         "pt-BR" : {
@@ -1941,10 +3441,22 @@
             "value" : "Grok Live отклонил подключение: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live bağlantıyı reddetti: %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok Live 拒绝了连接：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Live 拒絕了連線：%@"
           }
         }
       }
@@ -1969,10 +3481,34 @@
             "value" : "Grok n'est pas revenu après la coupure de la connexion."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok tidak kembali setelah koneksi terputus."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok non è tornato dopo l'interruzione della connessione."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "接続が切れた後、Grok が復帰しませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결이 끊긴 후 Grok이 돌아오지 않았어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok nie wrócił po zerwaniu połączenia."
           }
         },
         "pt-BR" : {
@@ -1987,10 +3523,22 @@
             "value" : "Grok не восстановил связь после обрыва соединения."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı koptuktan sonra Grok geri gelmedi."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "连接断开后，Grok 没有恢复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線中斷後，Grok 未能恢復。"
           }
         }
       }
@@ -2015,10 +3563,34 @@
             "value" : "Grok a cessé de répondre."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok berhenti menjawab."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok ha smesso di rispondere."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok が応答しなくなりました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok이 응답을 멈췄어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok przestał odpowiadać."
           }
         },
         "pt-BR" : {
@@ -2033,10 +3605,22 @@
             "value" : "Grok перестал отвечать."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok yanıt vermeyi bıraktı."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok 停止了响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok 停止回應了。"
           }
         }
       }
@@ -2061,10 +3645,34 @@
             "value" : "Hermes n'a pas répondu à temps."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak menjawab tepat waktu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non ha risposto in tempo."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes が時間内に応答しませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 제시간에 응답하지 않았어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie odpowiedział na czas."
           }
         },
         "pt-BR" : {
@@ -2079,10 +3687,22 @@
             "value" : "Hermes не ответил вовремя."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes zamanında yanıt vermedi."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 未及时响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未及時回應。"
           }
         }
       }
@@ -2107,10 +3727,34 @@
             "value" : "Hermes n'a pas démarré Grok à temps."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak memulai Grok tepat waktu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non ha avviato Grok in tempo."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes が時間内に Grok を開始しませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 제시간에 Grok을 시작하지 않았어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie uruchomił Groka na czas."
           }
         },
         "pt-BR" : {
@@ -2125,10 +3769,22 @@
             "value" : "Hermes не запустил Grok вовремя."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, Grok'u zamanında başlatmadı."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 未能及时启动 Grok。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未及時啟動 Grok。"
           }
         }
       }
@@ -2153,10 +3809,34 @@
             "value" : "Hermes a renvoyé un jeton Gemini Live non valide."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes mengembalikan token Gemini Live yang tidak valid."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha restituito un token Gemini Live non valido."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermesから無効なGemini Liveトークンが返されました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 유효하지 않은 Gemini Live 토큰을 반환했어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes zwrócił nieprawidłowy token Gemini Live."
           }
         },
         "pt-BR" : {
@@ -2171,10 +3851,22 @@
             "value" : "Hermes вернул недействительный токен Gemini Live."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes geçersiz bir Gemini Live token'ı döndürdü."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 返回了无效的 Gemini Live 令牌。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 傳回了無效的 Gemini Live 權杖。"
           }
         }
       }
@@ -2199,10 +3891,34 @@
             "value" : "Hermes envoie l'audio de GPT-Live dans un format que cette version de l'app Apple Watch ne peut pas lire. Mettez à jour Conduit et le plugin conduit_push en même temps."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes mengirim audio GPT-Live dalam format yang tidak dapat diputar build Watch ini. Perbarui Conduit dan plugin conduit_push bersamaan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes invia l'audio di GPT-Live in un formato che questa build per Apple Watch non può riprodurre. Aggiorna insieme Conduit e il plugin conduit_push."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes が送る GPT-Live の音声は、このバージョンの Watch アプリでは再生できない形式です。Conduit と conduit_push プラグインを一緒にアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 이 Watch 빌드에서 재생할 수 없는 형식으로 GPT-Live 오디오를 보내요. Conduit과 conduit_push 플러그인을 함께 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes wysyła dźwięk GPT-Live w formacie, którego ta wersja aplikacji na zegarek nie potrafi odtworzyć. Zaktualizuj razem Conduit i wtyczkę conduit_push."
           }
         },
         "pt-BR" : {
@@ -2217,10 +3933,22 @@
             "value" : "Hermes передаёт звук GPT-Live в формате, который эта сборка для часов не может воспроизвести. Обновите Conduit и плагин conduit_push одновременно."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, GPT-Live sesini bu Watch sürümünün oynatamadığı bir biçimde gönderiyor. Conduit'i ve conduit_push eklentisini birlikte güncelleyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 发送的 GPT-Live 音频格式无法在此版本的 Watch App 上播放。请同时更新 Conduit 和 conduit_push 插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 傳送的 GPT-Live 音訊格式，此版本的 Apple Watch App 無法播放。請同時更新 Conduit 和 conduit_push 外掛程式。"
           }
         }
       }
@@ -2245,10 +3973,34 @@
             "value" : "Hermes envoie l'audio de Grok dans un format que cette version de l'app Apple Watch ne peut pas lire. Mettez à jour Conduit et le plugin conduit_push en même temps."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes mengirim audio Grok dalam format yang tidak dapat diputar build Watch ini. Perbarui Conduit dan plugin conduit_push bersamaan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes invia l'audio di Grok in un formato che questa build per Apple Watch non può riprodurre. Aggiorna insieme Conduit e il plugin conduit_push."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes が送る Grok の音声は、このバージョンの Watch アプリでは再生できない形式です。Conduit と conduit_push プラグインを一緒にアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 이 Watch 빌드에서 재생할 수 없는 형식으로 Grok 오디오를 보내요. Conduit과 conduit_push 플러그인을 함께 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes wysyła dźwięk Groka w formacie, którego ta wersja aplikacji na zegarek nie potrafi odtworzyć. Zaktualizuj razem Conduit i wtyczkę conduit_push."
           }
         },
         "pt-BR" : {
@@ -2263,10 +4015,22 @@
             "value" : "Hermes передаёт звук Grok в формате, который эта сборка для часов не может воспроизвести. Обновите Conduit и плагин conduit_push одновременно."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, Grok sesini bu Watch sürümünün oynatamadığı bir biçimde gönderiyor. Conduit'i ve conduit_push eklentisini birlikte güncelleyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 发送的 Grok 音频格式无法在此版本的 Watch App 上播放。请同时更新 Conduit 和 conduit_push 插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 傳送的 Grok 音訊格式，此版本的 Apple Watch App 無法播放。請同時更新 Conduit 和 conduit_push 外掛程式。"
           }
         }
       }
@@ -2291,10 +4055,34 @@
             "value" : "Hermes n'a envoyé aucun jeton Gemini utilisable."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak mengirim token Gemini yang dapat digunakan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non ha inviato un token Gemini utilizzabile."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes から使用可能な Gemini トークンが届きませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 사용할 수 있는 Gemini 토큰을 보내지 않았어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie wysłał użytecznego tokenu Gemini."
           }
         },
         "pt-BR" : {
@@ -2309,10 +4097,22 @@
             "value" : "Hermes не прислал пригодный токен Gemini."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes kullanılabilir bir Gemini token'ı göndermedi."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 未发送可用的 Gemini 令牌。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未傳送可用的 Gemini 權杖。"
           }
         }
       }
@@ -2337,10 +4137,34 @@
             "value" : "Hermes : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
           }
         },
         "pt-BR" : {
@@ -2355,7 +4179,19 @@
             "value" : "Hermes: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
         "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes：%@"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes：%@"
@@ -2383,10 +4219,34 @@
             "value" : "Installez ou mettez à jour le plugin de notification Hermes sur votre serveur Hermes."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instal atau perbarui plugin notifier Hermes di server Hermes Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installa o aggiorna il plugin di notifica di Hermes sul tuo server Hermes."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "HermesサーバにHermes通知プラグインをインストールまたはアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 서버에 Hermes 알림 플러그인을 설치하거나 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zainstaluj lub zaktualizuj wtyczkę powiadomień Hermes na swoim serwerze Hermes."
           }
         },
         "pt-BR" : {
@@ -2401,10 +4261,22 @@
             "value" : "Установите или обновите плагин уведомлений Hermes на вашем сервере Hermes."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sunucunuza Hermes bildirim eklentisini yükleyin veya güncelleyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "请在 Hermes 服务器上安装或更新 Hermes 通知插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在你的 Hermes 伺服器上安裝或更新 Hermes 通知外掛程式。"
           }
         }
       }
@@ -2429,10 +4301,34 @@
             "value" : "Interrompre"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interupsi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interrompi"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "割り込む"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "중단"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przerwij"
           }
         },
         "pt-BR" : {
@@ -2447,10 +4343,22 @@
             "value" : "Прервать"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yarıda Kes"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "打断"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中斷"
           }
         }
       }
@@ -2475,10 +4383,34 @@
             "value" : "Jobs en cours : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pekerjaan berjalan: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Job in esecuzione: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "実行中のジョブ：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행 중인 작업: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zlecenia w toku: %@"
           }
         },
         "pt-BR" : {
@@ -2493,10 +4425,22 @@
             "value" : "Выполняется заданий: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Çalışan işler: %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在运行的任务：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "執行中的工作：%@"
           }
         }
       }
@@ -2521,10 +4465,34 @@
             "value" : "À l'écoute"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mendengarkan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In ascolto"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "聞き取り中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "듣는 중"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Słucha"
           }
         },
         "pt-BR" : {
@@ -2539,10 +4507,22 @@
             "value" : "Слушает"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dinliyor"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在聆听"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在聆聽"
           }
         }
       }
@@ -2567,10 +4547,34 @@
             "value" : "Connexion à Hermes perdue."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koneksi ke Hermes terputus."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connessione a Hermes persa."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes との接続が切れました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes와의 연결이 끊어졌어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utracono połączenie z Hermesem."
           }
         },
         "pt-BR" : {
@@ -2585,10 +4589,22 @@
             "value" : "Соединение с Hermes потеряно."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bağlantısı koptu."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "与 Hermes 的连接已断开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與 Hermes 的連線已中斷。"
           }
         }
       }
@@ -2613,10 +4629,34 @@
             "value" : "Couper"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bisukan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silenzia"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "消音"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음소거"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wycisz"
           }
         },
         "pt-BR" : {
@@ -2631,10 +4671,22 @@
             "value" : "Выкл. звук"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sessiz"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "静音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "靜音"
           }
         }
       }
@@ -2659,10 +4711,34 @@
             "value" : "Micro coupé"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dibisukan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silenziato"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "消音中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음소거됨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyciszono"
           }
         },
         "pt-BR" : {
@@ -2677,10 +4753,22 @@
             "value" : "Микрофон выключен"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sessizde"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "已静音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已靜音"
           }
         }
       }
@@ -2705,10 +4793,34 @@
             "value" : "Aucun jeton Gemini via le relais : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada token Gemini melalui relai: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessun token Gemini tramite il relay: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "リレー経由で Gemini トークンを取得できません：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "릴레이를 통한 Gemini 토큰 없음: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak tokenu Gemini przez przekaźnik: %@"
           }
         },
         "pt-BR" : {
@@ -2723,10 +4835,22 @@
             "value" : "Не удалось получить токен Gemini через ретранслятор: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktarıcı üzerinden Gemini token'ı alınamadı: %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法通过中继获取 Gemini 令牌：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法透過中繼取得 Gemini 權杖：%@"
           }
         }
       }
@@ -2751,10 +4875,34 @@
             "value" : "En pause"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dijeda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In pausa"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "一時停止中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "일시 정지됨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wstrzymano"
           }
         },
         "pt-BR" : {
@@ -2769,10 +4917,22 @@
             "value" : "Приостановлено"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duraklatıldı"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "已暂停"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已暫停"
           }
         }
       }
@@ -2797,10 +4957,34 @@
             "value" : "Levez le poignet pour vous reconnecter"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angkat pergelangan tangan untuk terhubung kembali"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alza il polso per riconnetterti"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "手首を上げると再接続します"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 연결하려면 손목을 드세요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podnieś nadgarstek, aby połączyć ponownie"
           }
         },
         "pt-BR" : {
@@ -2815,10 +4999,22 @@
             "value" : "Поднимите запястье, чтобы переподключиться"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeniden bağlanmak için bileğinizi kaldırın"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "抬起手腕以重新连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "抬起手腕以重新連線"
           }
         }
       }
@@ -2843,10 +5039,34 @@
             "value" : "Reconnexion…"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menghubungkan ulang…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riconnessione…"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "再接続中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 연결 중…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ponowne łączenie…"
           }
         },
         "pt-BR" : {
@@ -2861,10 +5081,22 @@
             "value" : "Переподключение…"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeniden bağlanıyor…"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在重新连接…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重新連線…"
           }
         }
       }
@@ -2889,10 +5121,34 @@
             "value" : "S'exécute sur votre hôte Hermes"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berjalan di host Hermes Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funziona sul tuo host Hermes"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes ホスト上で動作"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 호스트에서 실행"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Działa na Twoim hoście Hermes"
           }
         },
         "pt-BR" : {
@@ -2907,10 +5163,22 @@
             "value" : "Работает на вашем хосте Hermes"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ana makinenizde çalışır"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "在你的 Hermes 主机上运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你的 Hermes 主機上執行"
           }
         }
       }
@@ -2935,10 +5203,34 @@
             "value" : "S'exécute sur votre Apple Watch"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berjalan di Watch Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funziona su Apple Watch"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Watch 上で動作"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch에서 실행"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Działa na Twoim zegarku"
           }
         },
         "pt-BR" : {
@@ -2953,10 +5245,22 @@
             "value" : "Работает на часах"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch'unuzda çalışır"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "在你的 Watch 上运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你的 Apple Watch 上執行"
           }
         }
       }
@@ -2981,10 +5285,34 @@
             "value" : "Réglages"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pengaturan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impostazioni"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "設定"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ustawienia"
           }
         },
         "pt-BR" : {
@@ -2999,10 +5327,22 @@
             "value" : "Настройки"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ayarlar"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定"
           }
         }
       }
@@ -3027,10 +5367,34 @@
             "value" : "Parle"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berbicara"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sta parlando"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "発話中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "말하는 중"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mówi"
           }
         },
         "pt-BR" : {
@@ -3045,10 +5409,22 @@
             "value" : "Говорит"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşuyor"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在说话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在說話"
           }
         }
       }
@@ -3073,10 +5449,34 @@
             "value" : "Lancer un appel"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mulai panggilan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avvia una chiamata"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通話を開始"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화 시작"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozpocznij połączenie"
           }
         },
         "pt-BR" : {
@@ -3091,10 +5491,22 @@
             "value" : "Начать звонок"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arama başlat"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "开始通话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始通話"
           }
         }
       }
@@ -3119,10 +5531,34 @@
             "value" : "Démarrage…"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memulai…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avvio…"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "開始中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시작 중…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uruchamianie…"
           }
         },
         "pt-BR" : {
@@ -3137,10 +5573,22 @@
             "value" : "Запуск…"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlıyor…"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在开始…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在開始…"
           }
         }
       }
@@ -3165,10 +5613,34 @@
             "value" : "Parler à Hermes"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bicara dengan Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parla con Hermes"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes と話す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes와 대화하기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Porozmawiaj z Hermesem"
           }
         },
         "pt-BR" : {
@@ -3183,10 +5655,22 @@
             "value" : "Поговорить с Hermes"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ile konuş"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "与 Hermes 交谈"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與 Hermes 交談"
           }
         }
       }
@@ -3211,10 +5695,34 @@
             "value" : "Touchez pour continuer"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ketuk untuk melanjutkan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tocca per continuare"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "タップして続ける"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "탭하여 계속"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stuknij, aby kontynuować"
           }
         },
         "pt-BR" : {
@@ -3229,10 +5737,22 @@
             "value" : "Коснитесь, чтобы продолжить"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Devam etmek için dokunun"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "轻点以继续"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點一下以繼續"
           }
         }
       }
@@ -3257,10 +5777,34 @@
             "value" : "Touchez pour interrompre"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ketuk untuk menginterupsi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tocca per interrompere"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "タップして割り込む"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "탭하여 중단"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stuknij, aby przerwać"
           }
         },
         "pt-BR" : {
@@ -3275,10 +5819,22 @@
             "value" : "Коснитесь, чтобы прервать"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yarıda kesmek için dokunun"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "轻点以打断"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點一下以中斷"
           }
         }
       }
@@ -3303,10 +5859,34 @@
             "value" : "L'audio de l'Apple Watch n'a pas démarré. Réessayez."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio Watch tidak dimulai. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'audio di Apple Watch non si è avviato. Riprova."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Watch のオーディオが開始しませんでした。再試行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 오디오가 시작되지 않았어요. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dźwięk zegarka nie uruchomił się. Spróbuj ponownie."
           }
         },
         "pt-BR" : {
@@ -3321,10 +5901,22 @@
             "value" : "Звук на часах не запустился. Повторите попытку."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch'un sesi başlamadı. Yeniden deneyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Watch 的音频未能启动。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch 的音訊未能啟動。請再試一次。"
           }
         }
       }
@@ -3349,10 +5941,34 @@
             "value" : "La session audio de l'Apple Watch n'a pas démarré. Réessayez."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesi audio Watch tidak dimulai. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sessione audio di Apple Watch non si è avviata. Riprova."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Watch のオーディオセッションが開始しませんでした。再試行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 오디오 세션이 시작되지 않았어요. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesja audio zegarka nie uruchomiła się. Spróbuj ponownie."
           }
         },
         "pt-BR" : {
@@ -3367,10 +5983,22 @@
             "value" : "Аудиосеанс на часах не запустился. Повторите попытку."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch'un ses oturumu başlamadı. Yeniden deneyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Watch 的音频会话未能启动。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch 的音訊工作階段未能啟動。請再試一次。"
           }
         }
       }
@@ -3395,10 +6023,34 @@
             "value" : "L'appel est terminé."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan berakhir."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La chiamata è terminata."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通話が終了しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화가 종료됐어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenie zostało zakończone."
           }
         },
         "pt-BR" : {
@@ -3413,10 +6065,22 @@
             "value" : "Звонок завершён."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arama sona erdi."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通话已结束。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話已結束。"
           }
         }
       }
@@ -3441,10 +6105,34 @@
             "value" : "L'accès de l'appel à Hermes a pris fin."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akses panggilan ke Hermes berakhir."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'accesso della chiamata a Hermes è terminato."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "この通話の Hermes へのアクセスが終了しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 통화의 Hermes 접근 권한이 종료됐어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dostęp połączenia do Hermesa wygasł."
           }
         },
         "pt-BR" : {
@@ -3459,10 +6147,22 @@
             "value" : "Доступ звонка к Hermes закончился."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramanın Hermes erişimi sona erdi."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "此通话对 Hermes 的访问已结束。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此通話對 Hermes 的存取權已結束。"
           }
         }
       }
@@ -3487,10 +6187,34 @@
             "value" : "L'appel GPT-Live de l'iPhone n'a pas pu être lu. Mettez à jour Conduit sur les deux appareils."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan GPT-Live dari iPhone tidak dapat dibaca. Perbarui Conduit di kedua perangkat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile leggere la chiamata GPT-Live di iPhone. Aggiorna Conduit su entrambi i dispositivi."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone からの GPT-Live 通話を読み取れませんでした。両方のデバイスで Conduit をアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone의 GPT-Live 통화 정보를 읽을 수 없었어요. 두 기기 모두에서 Conduit을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się odczytać połączenia GPT-Live z iPhone’a. Zaktualizuj Conduit na obu urządzeniach."
           }
         },
         "pt-BR" : {
@@ -3505,10 +6229,22 @@
             "value" : "Не удалось прочитать звонок GPT-Live с iPhone. Обновите Conduit на обоих устройствах."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'daki GPT-Live araması okunamadı. Conduit'i iki cihazda da güncelleyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法读取 iPhone 的 GPT-Live 通话。请在两台设备上更新 Conduit。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取 iPhone 的 GPT-Live 通話。請在兩部裝置上更新 Conduit。"
           }
         }
       }
@@ -3533,10 +6269,34 @@
             "value" : "La session de l'iPhone n'a pas pu être lue. Mettez à jour Conduit sur les deux appareils."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesi dari iPhone tidak dapat dibaca. Perbarui Conduit di kedua perangkat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile leggere la sessione di iPhone. Aggiorna Conduit su entrambi i dispositivi."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone からのセッションを読み取れませんでした。両方のデバイスで Conduit をアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone의 세션 정보를 읽을 수 없었어요. 두 기기 모두에서 Conduit을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się odczytać sesji z iPhone’a. Zaktualizuj Conduit na obu urządzeniach."
           }
         },
         "pt-BR" : {
@@ -3551,10 +6311,22 @@
             "value" : "Не удалось прочитать сеанс с iPhone. Обновите Conduit на обоих устройствах."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'un oturumu okunamadı. Conduit'i iki cihazda da güncelleyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法读取 iPhone 的会话。请在两台设备上更新 Conduit。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取 iPhone 的工作階段資料。請在兩部裝置上更新 Conduit。"
           }
         }
       }
@@ -3579,10 +6351,34 @@
             "value" : "La liaison avec votre iPhone n'est pas prête."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tautan ke iPhone Anda belum siap."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il collegamento con iPhone non è pronto."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone との接続の準備ができていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone과의 연결이 준비되지 않았어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenie z Twoim iPhone’em nie jest gotowe."
           }
         },
         "pt-BR" : {
@@ -3597,10 +6393,22 @@
             "value" : "Связь с вашим iPhone ещё не готова."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'unuzla bağlantı hazır değil."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "与 iPhone 的连接尚未就绪。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與 iPhone 的連結尚未就緒。"
           }
         }
       }
@@ -3625,10 +6433,34 @@
             "value" : "Le micro n'a pas démarré : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon tidak dimulai: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il microfono non si è avviato: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "マイクが開始しませんでした：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마이크가 시작되지 않았어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon nie uruchomił się: %@"
           }
         },
         "pt-BR" : {
@@ -3643,10 +6475,22 @@
             "value" : "Микрофон не запустился: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon başlamadı: %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "麦克风未能启动：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麥克風未能啟動：%@"
           }
         }
       }
@@ -3671,10 +6515,34 @@
             "value" : "Le micro n'est pas prêt."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon belum siap."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il microfono non è pronto."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "マイクの準備ができていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마이크가 준비되지 않았어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon nie jest gotowy."
           }
         },
         "pt-BR" : {
@@ -3689,10 +6557,22 @@
             "value" : "Микрофон не готов."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon hazır değil."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "麦克风尚未就绪。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麥克風尚未就緒。"
           }
         }
       }
@@ -3717,10 +6597,34 @@
             "value" : "Le micro a été interrompu avant la connexion de l'appel. Réessayez."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon terganggu sebelum panggilan terhubung. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il microfono è stato interrotto prima che la chiamata si connettesse. Riprova."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通話が接続する前にマイクが中断されました。再試行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화가 연결되기 전에 마이크가 중단됐어요. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon został przerwany przed nawiązaniem połączenia. Spróbuj ponownie."
           }
         },
         "pt-BR" : {
@@ -3735,10 +6639,22 @@
             "value" : "Работа микрофона была прервана до подключения звонка. Повторите попытку."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arama bağlanmadan önce mikrofon kesintiye uğradı. Yeniden deneyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "通话连接前麦克风被中断。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話接通前，麥克風遭到中斷。請再試一次。"
           }
         }
       }
@@ -3763,10 +6679,34 @@
             "value" : "Le relais n'a pas pu joindre Hermes (%@)."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relai tidak dapat menghubungi Hermes (%@)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il relay non è riuscito a raggiungere Hermes (%@)."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "リレーが Hermes に接続できませんでした（%@）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "릴레이가 Hermes에 연결할 수 없었어요(%@)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przekaźnik nie mógł połączyć się z Hermesem (%@)."
           }
         },
         "pt-BR" : {
@@ -3781,10 +6721,22 @@
             "value" : "Ретранслятору не удалось связаться с Hermes (%@)."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktarıcı Hermes'e ulaşamadı (%@)."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "中继无法连接 Hermes（%@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中繼無法連線到 Hermes（%@）。"
           }
         }
       }
@@ -3809,10 +6761,34 @@
             "value" : "Cet appel ne peut pas obtenir de jeton Gemini via le relais."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan ini tidak bisa mendapatkan token Gemini melalui relai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa chiamata non può ottenere un token Gemini tramite il relay."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "この通話はリレー経由で Gemini トークンを取得できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 통화는 릴레이를 통해 Gemini 토큰을 받을 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To połączenie nie może uzyskać tokenu Gemini przez przekaźnik."
           }
         },
         "pt-BR" : {
@@ -3827,10 +6803,22 @@
             "value" : "Этот звонок не может получить токен Gemini через ретранслятор."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu arama, aktarıcı üzerinden Gemini token'ı alamıyor."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "此通话无法通过中继获取 Gemini 令牌。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此通話無法透過中繼取得 Gemini 權杖。"
           }
         }
       }
@@ -3855,10 +6843,34 @@
             "value" : "L'accès de cet appel à Hermes a expiré : il ne peut donc pas répondre à la demande du job."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akses panggilan ini ke Hermes telah habis, jadi panggilan tidak dapat menjawab permintaan pekerjaan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'accesso di questa chiamata a Hermes è scaduto, quindi non può rispondere alla richiesta del job."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "この通話の Hermes へのアクセス期限が切れたため、ジョブのリクエストに回答できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 통화의 Hermes 접근 권한이 만료되어 작업의 요청에 답할 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dostęp tego połączenia do Hermesa wygasł, więc nie może ono odpowiedzieć na prośbę zlecenia."
           }
         },
         "pt-BR" : {
@@ -3873,10 +6885,22 @@
             "value" : "Доступ этого звонка к Hermes истёк, поэтому он не может ответить на запрос задания."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu aramanın Hermes erişimi sona erdi; bu nedenle işin isteğini yanıtlayamıyor."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "此通话对 Hermes 的访问已过期，因此无法回复任务的请求。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此通話對 Hermes 的存取權已到期，因此無法回答工作的要求。"
           }
         }
       }
@@ -3901,10 +6925,34 @@
             "value" : "Réessayer"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coba lagi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riprova"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "再試行"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 시도"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spróbuj ponownie"
           }
         },
         "pt-BR" : {
@@ -3919,10 +6967,22 @@
             "value" : "Повторить"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeniden Dene"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "重试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再試一次"
           }
         }
       }
@@ -3947,10 +7007,34 @@
             "value" : "Réactiver"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunyikan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riattiva"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "消音を解除"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음소거 해제"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odcisz"
           }
         },
         "pt-BR" : {
@@ -3965,10 +7049,22 @@
             "value" : "Вкл. звук"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesi Aç"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "取消静音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消靜音"
           }
         }
       }
@@ -3993,10 +7089,34 @@
             "value" : "Mettez à jour le plugin de notification Hermes et Conduit vers des versions compatibles."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perbarui plugin notifier Hermes dan Conduit ke versi yang sesuai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiorna il plugin di notifica di Hermes e Conduit a versioni compatibili."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 通知プラグインと Conduit を対応するバージョンにアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 알림 플러그인과 Conduit을 서로 맞는 버전으로 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaktualizuj wtyczkę powiadomień Hermes i Conduit do zgodnych wersji."
           }
         },
         "pt-BR" : {
@@ -4011,10 +7131,22 @@
             "value" : "Обновите плагин уведомлений Hermes и Conduit до совместимых версий."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bildirim eklentisini ve Conduit'i birbiriyle uyumlu sürümlere güncelleyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "请将 Hermes 通知插件和 Conduit 更新到匹配的版本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請將 Hermes 通知外掛程式和 Conduit 更新為相符的版本。"
           }
         }
       }
@@ -4039,10 +7171,34 @@
             "value" : "Version %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versi %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versione %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "バージョン %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "버전 %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wersja %@"
           }
         },
         "pt-BR" : {
@@ -4057,7 +7213,19 @@
             "value" : "Версия %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sürüm %@"
+          }
+        },
         "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本 %@"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "版本 %@"
@@ -4085,10 +7253,34 @@
             "value" : "Voix"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suara"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voce"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "音声"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Głos"
           }
         },
         "pt-BR" : {
@@ -4103,10 +7295,22 @@
             "value" : "Голос"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ses"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "语音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音"
           }
         }
       }
@@ -4131,10 +7335,34 @@
             "value" : "Voix : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suara: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voce: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "音声：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Głos: %@"
           }
         },
         "pt-BR" : {
@@ -4149,10 +7377,22 @@
             "value" : "Голос: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ses: %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "语音：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音：%@"
           }
         }
       }
@@ -4177,10 +7417,34 @@
             "value" : "Ce que vous et Hermes dites s'affiche ici."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apa yang Anda dan Hermes ucapkan muncul di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qui appare ciò che dite tu e Hermes."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "あなたと Hermes の会話がここに表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나와 Hermes가 말하는 내용이 여기에 표시돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tutaj pojawi się to, co mówicie Ty i Hermes."
           }
         },
         "pt-BR" : {
@@ -4195,10 +7459,22 @@
             "value" : "Здесь появится то, что говорите вы и Hermes."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sizin ve Hermes'in söyledikleri burada görünür."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "你和 Hermes 的对话会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你和 Hermes 說的話會顯示在這裡。"
           }
         }
       }
@@ -4223,10 +7499,34 @@
             "value" : "Vous : %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anda: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu: %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "あなた：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ty: %@"
           }
         },
         "pt-BR" : {
@@ -4241,7 +7541,19 @@
             "value" : "Вы: %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siz: %@"
+          }
+        },
         "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你：%@"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "你：%@"
@@ -4269,10 +7581,34 @@
             "value" : "Votre iPhone configure chaque appel avec la mémoire, le persona et les réglages vocaux de votre profil Hermes. Les appels sont enregistrés dans l'historique vocal de votre iPhone."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone Anda menyiapkan setiap panggilan dengan memori, persona, dan pengaturan suara profil Hermes Anda. Panggilan disimpan ke riwayat suara iPhone Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone configura ogni chiamata con la memoria, la personalità e le impostazioni vocali del tuo profilo Hermes. Le chiamate vengono salvate nella cronologia vocale di iPhone."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone が Hermes プロファイルのメモリ、ペルソナ、音声設定で各通話を準備します。通話は iPhone の音声履歴に保存されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone이 Hermes 프로필의 메모리, 페르소나, 음성 설정으로 각 통화를 준비해요. 통화는 iPhone의 음성 기록에 저장돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój iPhone przygotowuje każde połączenie z pamięcią, personą i ustawieniami głosu Twojego profilu Hermes. Połączenia są zapisywane w historii głosowej iPhone’a."
           }
         },
         "pt-BR" : {
@@ -4287,10 +7623,22 @@
             "value" : "iPhone настраивает каждый звонок с учётом памяти, персоны и настроек голоса вашего профиля Hermes. Звонки сохраняются в истории голосовых разговоров на iPhone."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone'unuz her aramayı Hermes profilinizin belleği, personası ve ses ayarlarıyla hazırlar. Aramalar iPhone'unuzun ses geçmişine kaydedilir."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone 会使用你的 Hermes 配置中的记忆、人设和语音设置来准备每次通话。通话会保存到 iPhone 的语音记录中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 iPhone 會使用 Hermes 設定檔中的記憶、角色設定和語音設定來準備每一通通話。通話會儲存到你 iPhone 上的語音記錄中。"
           }
         }
       }
@@ -4315,10 +7663,34 @@
             "value" : "code de fermeture %@"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kode penutupan %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "codice di chiusura %@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "終了コード%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "종료 코드 %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kod zamknięcia %@"
           }
         },
         "pt-BR" : {
@@ -4333,10 +7705,22 @@
             "value" : "код закрытия %@"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kapanış kodu %@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "关闭代码 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉代碼 %@"
           }
         }
       }
@@ -4361,10 +7745,34 @@
             "value" : "iPhone connecté"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone terhubung"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone connesso"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone に接続中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 연결됨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone połączony"
           }
         },
         "pt-BR" : {
@@ -4379,10 +7787,22 @@
             "value" : "iPhone подключён"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone bağlı"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone 已连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 已連線"
           }
         }
       }
@@ -4407,10 +7827,34 @@
             "value" : "iPhone non connecté pour le moment"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone sedang tidak terhubung"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone non connesso al momento"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "現在 iPhone に接続されていません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지금 iPhone이 연결되어 있지 않음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone nie jest teraz połączony"
           }
         },
         "pt-BR" : {
@@ -4425,10 +7869,22 @@
             "value" : "iPhone сейчас не подключён"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone şu anda bağlı değil"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone 当前未连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 目前未連線"
           }
         }
       }
@@ -4453,10 +7909,34 @@
             "value" : "Hermes a démarré %@, et non Grok. Mettez à jour Conduit et le plugin conduit_push en même temps."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes memulai %@, bukan Grok. Perbarui Conduit dan plugin conduit_push bersamaan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha avviato %@, non Grok. Aggiorna insieme Conduit e il plugin conduit_push."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes が Grok ではなく %@ を開始しました。Conduit と conduit_push プラグインを一緒にアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 Grok이 아닌 다른 엔진(%@)을 시작했어요. Conduit과 conduit_push 플러그인을 함께 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes uruchomił %@ zamiast Groka. Zaktualizuj razem Conduit i wtyczkę conduit_push."
           }
         },
         "pt-BR" : {
@@ -4471,10 +7951,22 @@
             "value" : "Hermes запустил %@, а не Grok. Обновите Conduit и плагин conduit_push одновременно."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, Grok yerine %@ motorunu başlattı. Conduit'i ve conduit_push eklentisini birlikte güncelleyin."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hermes 启动的是 %@，而不是 Grok。请同时更新 Conduit 和 conduit_push 插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 啟動的是 %@，而不是 Grok。請同時更新 Conduit 和 conduit_push 外掛程式。"
           }
         }
       }
@@ -4499,10 +7991,34 @@
             "value" : "Appel à l'ouverture"
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggil saat dibuka"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiama all'apertura"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "開いたら通話"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "열면 통화 시작"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dzwoń po otwarciu"
           }
         },
         "pt-BR" : {
@@ -4517,10 +8033,22 @@
             "value" : "Звонок при открытии"
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Açılışta ara"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开即通话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開即通話"
           }
         }
       }
@@ -4545,10 +8073,34 @@
             "value" : "Ouvrir Conduit lance immédiatement un appel. Désactivez cette option pour lancer chaque appel d'un toucher."
           }
         },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membuka Conduit langsung memulai panggilan. Matikan ini untuk memulai setiap panggilan dengan ketukan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aprendo Conduit si avvia subito una chiamata. Disattiva questa opzione per avviare ogni chiamata con un tocco."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduitを開くとすぐに通話が始まります。オフにすると、通話はタップで始めます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit을 열면 바로 통화가 시작돼요. 끄면 통화를 매번 탭해서 시작해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwarcie Conduit od razu rozpoczyna połączenie. Wyłącz tę opcję, aby każde połączenie rozpoczynać stuknięciem."
           }
         },
         "pt-BR" : {
@@ -4563,10 +8115,22 @@
             "value" : "При открытии Conduit звонок начинается сразу. Выключите, чтобы начинать каждый звонок касанием."
           }
         },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit'i açmak hemen bir arama başlatır. Her aramayı bir dokunuşla başlatmak için bunu kapatın."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开 Conduit 即立刻开始通话。关闭后，每次通话需轻点开始。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開 Conduit 會立即開始通話。關閉此選項後，每次通話都要點一下才會開始。"
           }
         }
       }
