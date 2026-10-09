@@ -1364,6 +1364,12 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I can't hear you well. Read me the last reply?"))
         XCTAssertFalse(VoiceThreadRouting.endsWithLastReplyRequest("Read the last reply. Then send it to Sam."))
         XCTAssertFalse(VoiceThreadRouting.endsWithLastReplyRequest("Read the last reply"), "one sentence is the whole request")
+        // The same set off by a comma, a line break or an ellipsis.
+        XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I think you have it already, could you just read what we said"))
+        XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I think you have it already\ncould you just read what we said"))
+        XCTAssertTrue(VoiceThreadRouting.endsWithLastReplyRequest("I think you have it already… could you just read what we said"))
+        XCTAssertFalse(VoiceThreadRouting.endsWithLastReplyRequest("Read the last reply, then send it to Sam"))
+        XCTAssertFalse(VoiceThreadRouting.endsWithLastReplyRequest("Book a table for Sam, then read me the last reply"), "a second request of its own")
     }
 
     func testThreadRoutingPhrases() {

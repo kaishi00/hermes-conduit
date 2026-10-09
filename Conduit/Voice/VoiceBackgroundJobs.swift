@@ -2523,11 +2523,12 @@ enum VoiceThreadRouting {
     }
 
     /// A request to hear it again that ends what the user said, after
-    /// sentences of their own ("I think you have it already. Could you just
-    /// read what we said?", #451). For one finished turn only: words joined
-    /// from several can hold a request of their own before it.
+    /// sentences or a clause of their own ("I think you have it already.
+    /// Could you just read what we said?", or with a comma, #451). For one
+    /// finished turn only: words joined from several can hold a request of
+    /// their own before it.
     static func endsWithLastReplyRequest(_ words: String) -> Bool {
-        let sentences = words.split(whereSeparator: { ".!?。！？".contains($0) })
+        let sentences = words.split(whereSeparator: { $0.isNewline || ".!?。！？,，…".contains($0) })
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard sentences.count > 1, let last = sentences.last else { return false }

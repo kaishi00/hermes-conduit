@@ -838,10 +838,13 @@ final class GPTLiveDelegationBridge {
     /// again: the request restated, or only Hermes named ("Hermes", "Send
     /// Hermes"), never anything new.
     static func restatesSent(_ text: String, held: String?, sent: String?) -> Bool {
-        let rest = normalizedRequest(text).split(separator: " ").filter { !["hermes", "send", "to", "it"].contains($0) }
+        let rest = normalizedRequest(text).split(separator: " ").filter { !sendWords.contains(String($0)) }
         if rest.isEmpty { return true }
         return [held, sent].contains { $0.map { sameRequest(text, $0) } ?? false }
     }
+
+    /// Words that only name the send ("Send it to Hermes").
+    private static let sendWords: Set<String> = ["hermes", "send", "to", "it"]
 
     /// Words the model may take for a yes that Conduit can't read as one
     /// ("sounds like a plan"): short, and no question (#451). Words
