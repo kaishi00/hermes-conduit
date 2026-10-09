@@ -143,7 +143,9 @@ final class HermesNativeCalls: NSObject {
             // A Hermes call can't be called back from the Phone app.
             configuration.includesCallsInRecents = false
             let provider = CXProvider(configuration: configuration)
-            provider.setDelegate(self, queue: nil)
+            // On the main queue, like the PushKit registry: the delegate
+            // methods below assume it.
+            provider.setDelegate(self, queue: .main)
             self.provider = provider
         }
         let registry = PKPushRegistry(queue: .main)
@@ -162,6 +164,9 @@ final class HermesNativeCalls: NSObject {
             nativeCallsLogger.info("Hermes calls don't ring in this storefront")
         }
         PushNotificationService.shared.updateVoIPToken(nil)
+        if calls.values.contains(where: \.answered) {
+            AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall()
+        }
         for id in Array(calls.keys) { finish(id, reason: .failed, notice: .missed) }
     }
 

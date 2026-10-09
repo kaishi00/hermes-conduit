@@ -259,11 +259,17 @@ extension AppState {
     func answerHermesCallApproval(choice: String) async -> VoiceCallDecisionOutcome {
         guard let call = liveHermesCall, call.kind == .approval, choice == "once" || choice == "deny" else { return .nothingPending }
         guard let message = hermesCallApprovalMessage(call) else { return .nothingPending }
+        let requestID = message.approval?.requestId
         await respondToApproval(messageId: message.id, choice: choice)
-        switch messages.first(where: { $0.id == message.id })?.approval?.status {
-        case .approved?: return .approved
-        case .rejected?: return .denied
-        case .expired?: return .expired
+        // The chat may have reloaded meanwhile: the same approval, by its
+        // request id. Gone from it, nothing waits any more.
+        let after = messages.first { $0.id == message.id }
+            ?? requestID.flatMap { id in messages.first { $0.approval?.requestId == id } }
+        guard let approval = after?.approval else { return .nothingPending }
+        switch approval.status {
+        case .approved: return .approved
+        case .rejected: return .denied
+        case .expired: return .expired
         default: return .failed
         }
     }
@@ -276,7 +282,10 @@ extension AppState {
               let question = clarify.questions.first(where: { $0.status == .pending || $0.status == .error }) else { return .nothingPending }
         // The first question still open, as the card would answer it.
         await respondToClarify(requestId: clarify.requestId, questionId: clarify.questions.count == 1 ? nil : question.id, answer: answer)
-        guard let after = messages.first(where: { $0.id == message.id })?.clarify else { return .failed }
+        // The chat may have reloaded meanwhile: the same question, by its
+        // request id. Gone from it, nothing waits any more.
+        let reloaded = messages.first { $0.id == message.id } ?? messages.first { $0.clarify?.requestId == clarify.requestId }
+        guard let after = reloaded?.clarify else { return .nothingPending }
         switch after.questions.first(where: { $0.id == question.id })?.status {
         case .answered?: return .answered
         case .expired?: return .expired

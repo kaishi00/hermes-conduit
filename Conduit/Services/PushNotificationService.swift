@@ -1285,8 +1285,14 @@ final class PushNotificationService: ObservableObject {
     func updateVoIPToken(_ token: String?) {
         voipToken = token
         guard let registration, registration.voipToken != token else { return }
-        Task { try? await updateRegistration() }
+        // One after another, each sending the token as it is by then.
+        let previous = voipTokenUpdate
+        voipTokenUpdate = Task {
+            await previous?.value
+            try? await updateRegistration()
+        }
     }
+    private var voipTokenUpdate: Task<Void, Never>?
 
     /// A "Hermes wants to talk" notification Conduit posted itself (#449).
     func receiveLocalCallNotification(_ userInfo: [AnyHashable: Any]) {
