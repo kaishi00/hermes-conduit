@@ -430,6 +430,131 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(activity.status, .failed)
     }
 
+    /// #492: Hermes names the agent `subagent_id` on every event, so its
+    /// start, tool and complete events land on one card that ends Completed.
+    func testSubagentEventsShareHermesSubagentID() {
+        let frames = [
+            #"{"type": "subagent.start", "session_id": "s1", "payload": {"goal": "Check requests", "task_count": 1, "task_index": 0, "subagent_id": "sa-0-abc", "model": "m1", "text": "Check requests"}}"#,
+            #"{"type": "subagent.tool", "session_id": "s1", "payload": {"goal": "Check requests", "task_count": 1, "task_index": 0, "subagent_id": "sa-0-abc", "tool_name": "skill_view", "text": "SKILL.md"}}"#,
+            #"{"type": "subagent.complete", "session_id": "s1", "payload": {"goal": "Check requests", "task_count": 1, "task_index": 0, "subagent_id": "sa-0-abc", "status": "completed", "summary": "Both approved"}}"#,
+        ]
+        let activities: [DelegateAgentActivity] = frames.compactMap {
+            guard case .delegateAgent(_, let activity) = parse($0) else { return nil }
+            return activity
+        }
+        XCTAssertEqual(activities.count, 3)
+        XCTAssertEqual(Set(activities.map(\.id)), ["sa-0-abc"])
+        XCTAssertTrue(activities.allSatisfy(\.hasGatewayID))
+        XCTAssertEqual(activities[1].currentTool, "skill_view")
+
+        let card = activities.dropFirst().reduce(activities[0]) { $0.merged(with: $1) }
+        XCTAssertEqual(card.status, .completed)
+        XCTAssertNil(card.currentTool)
+        XCTAssertEqual(card.model, "m1")
+        XCTAssertEqual(card.summary, "Both approved")
+        XCTAssertEqual(card.stream.map(\.text), ["Check requests", "SKILL.md", "Both approved"])
+    }
+
+    func testSubagentWithoutIDKeysOnGoalAndSlot() {
+        let first = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"goal": "Research", "task_index": 1, "text": "web_search"}}"#)
+        let second = parse(#"{"type": "subagent.progress", "session_id": "s1", "payload": {"goal": "Research", "task_index": 1, "text": "2 tools"}}"#)
+        guard case .delegateAgent(_, let a) = first, case .delegateAgent(_, let b) = second else {
+            return XCTFail("Expected delegateAgent")
+        }
+        XCTAssertEqual(a.id, b.id)
+        XCTAssertFalse(a.hasGatewayID)
+
+        let otherChat = parse(#"{"type": "subagent.tool", "session_id": "s2", "payload": {"goal": "Research", "task_index": 1, "text": "web_search"}}"#)
+        guard case .delegateAgent(_, let c) = otherChat else { return XCTFail("Expected delegateAgent") }
+        XCTAssertNotEqual(a.id, c.id)
+    }
+
+    func testSubagentWithDelegationIDKeysWithoutGoal() {
+        let first = parse(#"{"type": "subagent.start", "session_id": "s1", "payload": {"delegation_id": "d1", "task_index": 2, "goal": "Research"}}"#)
+        let second = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"delegation_id": "d1", "task_index": 2, "goal": ""}}"#)
+        guard case .delegateAgent(_, let a) = first, case .delegateAgent(_, let b) = second else {
+            return XCTFail("Expected delegateAgent")
+        }
+        XCTAssertEqual(a.id, b.id)
+    }
+
+    func testEmptySubagentIDIsNotAGatewayID() {
+        let event = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"subagent_id": "", "goal": "Research", "task_index": 0}}"#)
+        guard case .delegateAgent(_, let activity) = event else { return XCTFail("Expected delegateAgent") }
+        XCTAssertFalse(activity.hasGatewayID)
+        XCTAssertFalse(activity.id.isEmpty)
+    }
+
+    func testSubagentErrorAndTimeoutAreFailures() {
+        for status in ["error", "timeout"] {
+            let event = parse(#"{"type": "subagent.complete", "session_id": "s1", "payload": {"subagent_id": "a", "goal": "g", "status": "\#(status)"}}"#)
+            guard case .delegateAgent(_, let activity) = event else {
+                return XCTFail("Expected delegateAgent")
+            }
+            XCTAssertEqual(activity.status, .failed, status)
+        }
+    }
+
+    func testSubagentCompleteWithUnknownStatusEnds() {
+        let event = parse(#"{"type": "subagent.complete", "session_id": "s1", "payload": {"subagent_id": "a", "goal": "g", "status": "cancelled"}}"#)
+        guard case .delegateAgent(_, let activity) = event else { return XCTFail("Expected delegateAgent") }
+        XCTAssertEqual(activity.status, .completed)
+
+        let failed = parse(#"{"type": "subagent.fail", "session_id": "s1", "payload": {"subagent_id": "a", "goal": "g", "status": "cancelled"}}"#)
+        guard case .delegateAgent(_, let failedActivity) = failed else { return XCTFail("Expected delegateAgent") }
+        XCTAssertEqual(failedActivity.status, .failed)
+    }
+
+    func testSubagentWithoutAnyKeyStillSharesACard() {
+        let first = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"text": "a"}}"#)
+        let second = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"text": "b", "model": ""}}"#)
+        guard case .delegateAgent(_, let a) = first, case .delegateAgent(_, let b) = second else {
+            return XCTFail("Expected delegateAgent")
+        }
+        XCTAssertEqual(a.id, b.id)
+        XCTAssertNil(b.model)
+    }
+
+    func testFirstReportedEndWins() {
+        let done = DelegateAgentActivity(id: "a", goal: "g", status: .completed, taskCount: 1, taskIndex: 0, stream: [])
+        let lateFail = DelegateAgentActivity(id: "a", goal: "g", status: .failed, taskCount: 1, taskIndex: 0, stream: [])
+        XCTAssertEqual(done.merged(with: lateFail).status, .completed)
+        XCTAssertEqual(lateFail.merged(with: done).status, .failed)
+
+        let running = DelegateAgentActivity(id: "a", goal: "g", status: .running, taskCount: 1, taskIndex: 0, stream: [])
+        let lateSpawn = DelegateAgentActivity(id: "a", goal: "g", status: .queued, taskCount: 1, taskIndex: 0, stream: [])
+        XCTAssertEqual(running.merged(with: lateSpawn).status, .running)
+    }
+
+    func testFinishedSubagentStaysFinishedOnLateProgress() {
+        let done = DelegateAgentActivity(id: "a", goal: "g", status: .completed, taskCount: 1, taskIndex: 0, stream: [])
+        let late = DelegateAgentActivity(id: "a", goal: "", status: .running, taskCount: 1, taskIndex: 0, currentTool: "terminal", stream: [])
+        let merged = done.merged(with: late)
+        XCTAssertEqual(merged.status, .completed)
+        XCTAssertNil(merged.currentTool)
+        XCTAssertEqual(merged.goal, "g")
+    }
+
+    func testRosterFinishesAgentsHermesNoLongerRuns() {
+        let old = Date(timeIntervalSince1970: 100)
+        let cutoff = Date(timeIntervalSince1970: 200)
+        func agent(_ id: String, session: String = "s1", gatewayID: Bool = true, at date: Date = old) -> DelegateAgentActivity {
+            DelegateAgentActivity(id: id, goal: id, status: .running, taskCount: 1, taskIndex: 0, stream: [],
+                                  hasGatewayID: gatewayID, sessionId: session, updatedAt: date)
+        }
+        let agents = [
+            agent("ended"),
+            agent("live"),
+            agent("other-session", session: "s2"),
+            agent("legacy", gatewayID: false),
+            agent("fresh", at: Date(timeIntervalSince1970: 300)),
+        ]
+        var queued = agent("queued")
+        queued.status = .queued
+        let result = DelegateAgentActivity.reconciled(agents + [queued], sessionId: "s1", liveIDs: ["live"], changedBefore: cutoff)
+        XCTAssertEqual(result.map(\.status), [.completed, .running, .running, .running, .running, .queued])
+    }
+
     // MARK: - clarify.request
 
     func testClarifyWithStringChoices() {
