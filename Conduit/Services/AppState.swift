@@ -9693,6 +9693,9 @@ final class AppState: ObservableObject {
         guard let sessionKey = activeChatScrollSessionIdentity.canonicalSessionKey else {
             return
         }
+        // This id is derived from the adopted transcript and can briefly lag
+        // during a session handoff; ChatScrollEngine revalidates it against
+        // rendered targets and falls back if it belongs to the prior session.
         guard let request = chatResumeCoordinator.reconciliationSettled(
             sessionKey: sessionKey,
             pendingClarifyMessageID: pendingClarifyMessageID
@@ -23553,7 +23556,7 @@ final class AppState: ObservableObject {
 
     private var responseAwaitsUserInput: Bool {
         messages.contains { message in
-            message.clarify.map { $0.status == .pending || $0.status == .submitting } == true
+            message.clarify.map { $0.hasPendingDecision } == true
                 || message.approval.map { $0.status == .pending || $0.status == .submitting } == true
                 || message.inputPrompt.map { $0.isAnswerable || $0.status == .submitting } == true
         }

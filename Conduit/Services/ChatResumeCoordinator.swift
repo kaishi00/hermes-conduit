@@ -255,8 +255,9 @@ final class ChatResumeCoordinator {
         pendingSessionKey = nil
         let isFallbackSelection = pendingFallbackSelection
         pendingFallbackSelection = false
+        let latestActivityTakesPrecedence = isFallbackSelection || store.behavior == .latestActivity
         let fallbackSnapshot: ChatScrollSnapshot?
-        if isFallbackSelection || store.behavior == .latestActivity {
+        if latestActivityTakesPrecedence {
             fallbackSnapshot = nil
         } else if let snapshot = store.snapshot(for: sessionKey), !snapshot.followsLatest {
             fallbackSnapshot = snapshot
@@ -265,7 +266,7 @@ final class ChatResumeCoordinator {
         }
 
         let destination: ChatResumeRestorationDestination
-        if isFallbackSelection || store.behavior == .latestActivity {
+        if latestActivityTakesPrecedence {
             destination = .latest
         } else if let pendingClarifyMessageID, !pendingClarifyMessageID.isEmpty {
             destination = .pendingClarify(

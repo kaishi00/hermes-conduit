@@ -447,6 +447,36 @@ final class ClarifyBatchStateTests: XCTestCase {
         }
     }
 
+    func testMixedExpiredPendingClarifyStillAwaitsUserInputForHaptics() throws {
+        let (appState, _) = makeAppState()
+        var batch = makeBatchActivity()
+        batch.questions[0].status = .expired
+        batch.questions[2].status = .answered
+        let activeMessage = ChatMessage(
+            id: "clarify-req-batch",
+            role: .clarify,
+            content: "batch",
+            timestamp: "1",
+            clarify: batch
+        )
+        appState.messages = [activeMessage]
+        XCTAssertTrue(appState.responseAwaitsUserInputForTesting,
+                      "An answerable question must keep haptic completion suppressed despite an expired sibling")
+
+        batch.isExpired = true
+        appState.messages = [
+            ChatMessage(
+                id: "clarify-req-batch",
+                role: .clarify,
+                content: "batch",
+                timestamp: "1",
+                clarify: batch
+            )
+        ]
+        XCTAssertFalse(appState.responseAwaitsUserInputForTesting,
+                       "Request-level expiry makes every sibling inactive")
+    }
+
     func testRetryableInputPromptStillAwaitsUserInput() throws {
         let (appState, _) = makeAppState()
         appState.messages = [try inputPromptMessage(status: .error)]

@@ -378,6 +378,8 @@ struct ChatView: View {
             let hasPendingClarify = pendingClarifyMessageID != nil
                 && viewportInputs.visibilityTrackedMessageID == pendingClarifyMessageID
                 && viewportInputs.isVisibilityTrackedMessageOffscreen
+            // Both actions share this overlay slot; the offscreen pending
+            // question takes priority, and latest reappears when it is visible.
             if viewportInputs.showsJumpToLatest || hasPendingClarify {
                 Button {
                     ChatViewportTrace.shared.log(
