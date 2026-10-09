@@ -46,9 +46,10 @@ InfoPlist):
     or inside plural/device variations - must have state == "translated"
     and a non-empty value;
   * an integer placeholder is a count: the source varies it by plural,
-    a key holds at most one, and label numbers ("Runs (%lld)", "Jobs:
-    %lld") are exempt; a count interpolated as String(...) in front of a
-    plural noun is reported at its call site;
+    a key holds at most one, and label numbers are exempt (alone in
+    parentheses at the end, "Runs (%lld)", or ending the string after a
+    colon, "Jobs: %lld"); a count interpolated as String(...) in front of
+    a plural noun is reported at its call site;
   * the printf placeholders of every value in ANY language, drafts
     included, must match the key's placeholder TYPE FAMILIES (object vs
     integer vs float) in count, order, and positional index validity -

@@ -1733,14 +1733,14 @@ private struct CronJobDetailSheet: View {
                             // A finished one-shot job has nothing left to pause
                             // or resume.
                             if !job.isFinished {
-                                Button { Task { _ = await appState.performCronAction(job.enabled ? "pause" : "resume", for: job) } } label: {
+                                Button { Task { _ = await appState.performCronAction(job.enabled ? .pause : .resume, for: job) } } label: {
                                     Label(job.enabled ? "Pause" : "Resume", systemImage: job.enabled ? "pause.fill" : "play.fill").frame(maxWidth: .infinity)
                                 }
                                 .disabled(appState.cronJobActionID != nil)
                                 .frame(minHeight: 48)
                                 .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.18))
                             }
-                            Button { Task { _ = await appState.performCronAction("trigger", for: job); await appState.loadCronRuns(for: job) } } label: {
+                            Button { Task { _ = await appState.performCronAction(.trigger, for: job); await appState.loadCronRuns(for: job) } } label: {
                                 Label(appState.cronJobActionID == job.id ? "Working…" : AppLocalization.string("Run now"), systemImage: "play.fill")
                                     .frame(maxWidth: .infinity)
                                     .foregroundStyle(Color.white)
