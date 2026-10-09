@@ -52,6 +52,9 @@ protocol GPTLiveSpokenWords: AnyObject {
     func unsentWords() -> String
     /// How far the user's words have got, for `.through`.
     func wordsMark() -> Int
+    /// The user's last line, as transcribed: a call from Hermes approves
+    /// only on their own yes (#449 step 4).
+    func lastUserLine() -> String
     func settleWords(_ words: GPTLiveDelegationBridge.SettledWords)
 }
 
@@ -112,6 +115,8 @@ final class GPTLiveDelegationBridge {
     /// The call's record of the user's words. Without one, a held request
     /// goes as held.
     weak var spokenWords: GPTLiveSpokenWords?
+    /// How long a yes still being transcribed is waited for.
+    var lateYesWait: Duration = .seconds(3)
 
     /// Words the call has handled (#451), so they never go with a later
     /// request.
@@ -158,11 +163,20 @@ final class GPTLiveDelegationBridge {
                 outcome = .userHasNotSpoken
             } else {
                 switch decision {
-                case .approve: outcome = await supervisor.answerApproval(choice: "once")
+                case .approve:
+                    // Never on the model's word for it: on the user's own yes.
+                    let saidYes = await VoiceCallDecisionOutcome.userSaysYes({ self.spokenWords?.lastUserLine() ?? "" }, wait: lateYesWait)
+                    if saidYes {
+                        outcome = await supervisor.answerApproval(choice: "once")
+                    } else {
+                        outcome = .notAYes
+                    }
                 case .deny: outcome = await supervisor.answerApproval(choice: "deny")
                 case .answer(let words):
+                    // The user's own words, as said since the last request;
+                    // the model's only when there are none.
                     let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let answer = words.isEmpty ? spoken : words
+                    let answer = spoken.isEmpty ? words : spoken
                     if answer.isEmpty {
                         outcome = .userHasNotSpoken
                     } else {

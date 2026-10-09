@@ -167,7 +167,8 @@ final class HermesNativeCalls: NSObject {
         if calls.values.contains(where: \.answered) {
             AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall()
         }
-        for id in Array(calls.keys) { finish(id, reason: .failed, notice: .missed) }
+        // Only a call that never connected was missed.
+        for (id, call) in Array(calls) { finish(id, reason: .failed, notice: call.answered ? .none : .missed) }
     }
 
     // MARK: Ringing
@@ -265,7 +266,12 @@ final class HermesNativeCalls: NSObject {
             finish(id, reason: .failed, notice: .missed)
             return
         }
-        appState.answerHermesCall(request)
+        // Another voice conversation started while it rang: the job's news
+        // reaches the user there, never as this call.
+        guard appState.answerHermesCall(request) else {
+            finish(id, reason: .failed, notice: .missed)
+            return
+        }
         var started = false
         let startBy = ContinuousClock.now + Self.voiceStartTimeout
         while calls[id] != nil, !Task.isCancelled {
@@ -383,6 +389,8 @@ extension HermesNativeCalls: CXProviderDelegate {
             for call in self.calls.values {
                 call.unanswered?.cancel()
                 call.work?.cancel()
+                // A call still ringing leaves its trace, as on every other end.
+                if !call.answered { self.post(.missed, for: call.target) }
             }
             self.calls = [:]
             self.audioActive = false

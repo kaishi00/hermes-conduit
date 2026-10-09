@@ -289,6 +289,8 @@ enum VoiceCallDecisionOutcome: Equatable {
     case nothingPending
     /// The user hasn't said anything in the call yet.
     case userHasNotSpoken
+    /// The user's own last words weren't a yes, so nothing was approved.
+    case notAYes
     /// Hermes didn't take it (no connection, or it refused).
     case failed
 
@@ -300,6 +302,7 @@ enum VoiceCallDecisionOutcome: Equatable {
         case .expired: return "expired"
         case .nothingPending: return "nothing_pending"
         case .userHasNotSpoken: return "not_answered"
+        case .notAYes: return "not_approved"
         case .failed: return "failed"
         }
     }
@@ -314,9 +317,37 @@ enum VoiceCallDecisionOutcome: Equatable {
         case .expired: return "Too late: Hermes stopped waiting and went on without it." + tell
         case .nothingPending: return "Nothing in this chat is waiting on the user any more (or it isn't showing yet). They can answer in the chat." + tell
         case .userHasNotSpoken: return "Not answered: the user hasn't said anything yet. Ask them, and answer only with their own words."
+        case .notAYes: return "Not approved: the user's last words weren't a clear yes. Ask them again for a plain yes or no, or tell them they can approve it in the chat."
         case .failed: return "Hermes didn't take the answer. They can answer in the chat." + tell
         }
     }
+}
+
+extension VoiceCallDecisionOutcome {
+    /// Whether the user's own last words in the call say yes: an approval
+    /// goes through on nothing less, never on the model's word for it.
+    /// Their words reach Conduit a moment after the model heard them, so a
+    /// yes still on its way is waited for, up to `wait`.
+    @MainActor
+    static func userSaysYes(_ lastWords: @MainActor () -> String, wait: Duration) async -> Bool {
+        let deadline = ContinuousClock.now + wait
+        while !isYes(lastWords()) {
+            guard ContinuousClock.now < deadline else { return false }
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return false }
+        }
+        return true
+    }
+
+    /// A yes as an answer reads ("yes", "go ahead", "sure", in the app's
+    /// languages), or "approve" / "allow it". Never a question.
+    static func isYes(_ words: String) -> Bool {
+        guard !words.contains("?"), !words.contains("？") else { return false }
+        if case .yes = VoiceThreadRouting.heldRequestAnswer(words) { return true }
+        let said = words.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
+        return approvalLeads.contains { said.starts(with: $0) }
+    }
+
+    private static let approvalLeads = [["approve"], ["approved"], ["allow", "it"], ["allow", "that"], ["allow", "this"]]
 }
 
 /// AppState's way to answer what a call from Hermes waits on: the pending

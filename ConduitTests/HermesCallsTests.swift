@@ -701,6 +701,13 @@ extension VoiceConversationControllerTests {
         let bad = await bridge.handle(.init(id: "c2", name: "answer_approval", arguments: ["choice": "always"]))
         guard case .toolResponse(_, _, let refused, _)? = bad.first else { return XCTFail("\(bad)") }
         XCTAssertNotNil(refused["error"], "Voice approves once at most")
+        bridge.lateYesWait = .zero
+        bridge.lastUserWords = { "hmm, what does it do" }
+        let unsure = await bridge.handle(.init(id: "c2b", name: "answer_approval", arguments: ["choice": "once"]))
+        guard case .toolResponse(_, _, let unsureResult, _)? = unsure.first else { return XCTFail("\(unsure)") }
+        XCTAssertEqual(unsureResult["status"], "not_approved")
+        XCTAssertTrue(decisions.choices.isEmpty, "Only the user's own yes approves")
+        bridge.lastUserWords = { "Yes, go ahead" }
         let approved = await bridge.handle(.init(id: "c3", name: "answer_approval", arguments: ["choice": "Once"]))
         guard case .toolResponse(_, _, let result, _)? = approved.first else { return XCTFail("\(approved)") }
         XCTAssertEqual(result["status"], "approved")
@@ -726,6 +733,25 @@ extension VoiceConversationControllerTests {
         decisions.waitsOn = nil
         _ = await gpt.handleDelegation(id: "d3", request: "Approve: the plan", userWords: "approve the plan")
         XCTAssertEqual(decisions.choices, ["once", "deny"], "Outside a call waiting on it, the words are a request")
+        decisions.waitsOn = .approval
+        gpt.lateYesWait = .zero
+        words.lastLine = "what is it?"
+        let unsure = await gpt.handleDelegation(id: "d4", request: "Approve:", userWords: "what is it?")
+        XCTAssertEqual(unsure, [.delegationReply(delegationID: "d4", text: VoiceCallDecisionOutcome.notAYes.modelMessage, channel: .commentary)])
+        words.lastLine = "yes"
+        _ = await gpt.handleDelegation(id: "d5", request: "Approve:", userWords: "yes")
+        XCTAssertEqual(decisions.choices, ["once", "deny", "once"], "Their yes approves")
+        decisions.waitsOn = .question
+        _ = await gpt.handleDelegation(id: "d6", request: "Answer: main", userWords: "um, main please")
+        XCTAssertEqual(decisions.answers.last, "um, main please", "The user's own words go, not the model's")
+        XCTAssertTrue(VoiceCallDecisionOutcome.isYes("approve it"))
+        XCTAssertTrue(VoiceCallDecisionOutcome.isYes("allow it"))
+        XCTAssertTrue(VoiceCallDecisionOutcome.isYes("Sí"))
+        XCTAssertTrue(VoiceCallDecisionOutcome.isYes("好的"))
+        XCTAssertFalse(VoiceCallDecisionOutcome.isYes("yes?"))
+        XCTAssertFalse(VoiceCallDecisionOutcome.isYes("no, don't"))
+        XCTAssertFalse(VoiceCallDecisionOutcome.isYes("allow me a minute"))
+        XCTAssertFalse(VoiceCallDecisionOutcome.isYes(""))
         XCTAssertEqual(GPTLiveDelegationBridge.decisionMarker(in: " approve: "), .approve)
         XCTAssertEqual(GPTLiveDelegationBridge.decisionMarker(in: "Answer: the blue one"), .answer("the blue one"))
         XCTAssertNil(GPTLiveDelegationBridge.decisionMarker(in: "Please approve: it"))

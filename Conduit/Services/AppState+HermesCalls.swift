@@ -145,10 +145,12 @@ extension AppState {
 
     /// Answers a call from Hermes (#449). Its chat is on screen: voice opens
     /// there and starts with what came of the job instead of a greeting.
-    func answerHermesCall(_ call: HermesCallRequest) {
+    /// False when it can't open the call's own voice.
+    @discardableResult
+    func answerHermesCall(_ call: HermesCallRequest) -> Bool {
         // Voice already running (or no gateway): the job's news reaches the
         // user the usual way.
-        guard isConnected, !isVoiceInUse else { return }
+        guard isConnected, !isVoiceInUse else { return false }
         // The call tells the user how the job went; no voice conversation
         // announces it again.
         voiceBackgroundJobSupervisor.noteCallAnswered(sessionIDs: call.sessionIDs)
@@ -180,6 +182,7 @@ extension AppState {
                 }
             }
         }
+        return true
     }
 
     // MARK: Presence (#449)

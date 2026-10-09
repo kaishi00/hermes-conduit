@@ -403,6 +403,8 @@ final class GeminiLiveConversationController: ObservableObject {
         self.headsetMute = headsetMute ?? .shared
         // Asking first (#451) sends a draft only on words said after it.
         tools.lastUserSpeechAt = { [weak self] in self?.lastUserSpeechAt }
+        // A call from Hermes approves only on the user's own yes (#449).
+        tools.lastUserWords = { [weak self] in self?.transcript.last(where: { $0.speaker == .user })?.text ?? "" }
     }
 
     /// The Interrupt button: stop the model now. On an open speaker this is

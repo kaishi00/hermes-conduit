@@ -431,6 +431,11 @@ final class GeminiLiveToolBridge {
     /// When the user last spoke, on the controller's clock. A draft is sent
     /// only once they spoke after it was held.
     var lastUserSpeechAt: @MainActor () -> Date? = { nil }
+    /// The user's last line in the call, as transcribed: an approval goes
+    /// through only on their own yes (#449 step 4).
+    var lastUserWords: @MainActor () -> String = { "" }
+    /// How long a yes still being transcribed is waited for.
+    var lateYesWait: Duration = .seconds(3)
     private let now: () -> Date
 
     /// How long "send it to Hermes" counts for the next request.
@@ -677,7 +682,15 @@ final class GeminiLiveToolBridge {
             guard choice == "once" || choice == "deny" else {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "choice must be once or deny"], scheduling: .whenIdle)]
             }
-            return await answerDecision(call) { await self.supervisor.answerApproval(choice: choice) }
+            return await answerDecision(call) {
+                // A deny never needs their yes; letting it through is never
+                // the risk.
+                if choice == "once" {
+                    let saidYes = await VoiceCallDecisionOutcome.userSaysYes(self.lastUserWords, wait: self.lateYesWait)
+                    guard saidYes else { return .notAYes }
+                }
+                return await self.supervisor.answerApproval(choice: choice)
+            }
         case .answerQuestion:
             guard !isEnding else { return [] }
             let answer = call.arguments["answer"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -695,8 +708,8 @@ final class GeminiLiveToolBridge {
     }
 
     /// Answers what a call from Hermes waits on, only once the user has
-    /// spoken in the call: never from the model's own judgment or the
-    /// reason Hermes gave.
+    /// spoken in the call (an approval, only on their yes): never from the
+    /// model's own judgment or the reason Hermes gave.
     private func answerDecision(_ call: GeminiLiveProtocol.FunctionCall, _ answer: () async -> VoiceCallDecisionOutcome) async -> [Outgoing] {
         let outcome: VoiceCallDecisionOutcome
         if lastUserSpeechAt() == nil {

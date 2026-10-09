@@ -1284,11 +1284,14 @@ final class PushNotificationService: ObservableObject {
     /// relay learns it with the registration.
     func updateVoIPToken(_ token: String?) {
         voipToken = token
-        guard let registration, registration.voipToken != token else { return }
-        // One after another, each sending the token as it is by then.
+        guard registration != nil else { return }
+        // One after another, each sending the token as it is by then. An
+        // update still on its way may carry another token, so whether this
+        // one is new is decided when its turn comes.
         let previous = voipTokenUpdate
         voipTokenUpdate = Task {
             await previous?.value
+            guard let registration, registration.voipToken != voipToken else { return }
             try? await updateRegistration()
         }
     }
