@@ -168,24 +168,34 @@ extension AppState {
         let profile = activeProfile
         let intent = PendingVoiceIntent(profile: profile, startsFreshConversation: false, source: .hermesCall)
         hermesCallOpenTask?.cancel()
+        let generation = UUID()
+        hermesCallOpenGeneration = generation
         hermesCallOpenTask = Task { [weak self] in
             // Hung up before voice opened: it doesn't.
             guard let self, !Task.isCancelled else { return }
+            let errorBefore = self.errorMessage
             if self.configuredLiveVoiceEngine(profile: profile) != nil {
                 self.pendingHermesCall = opening
                 _ = await self.openVoiceConversation(intent)
                 // Starting the call took it; a later unrelated call must not.
-                self.pendingHermesCall = nil
+                if self.hermesCallOpenGeneration == generation { self.pendingHermesCall = nil }
             } else {
                 // Classic voice says it at its first listening window.
                 self.voiceBackgroundJobSupervisor.queueCallOpening(opening.spokenBrief)
-                if !(await self.openVoiceConversation(intent)) || !self.showVoiceSheet {
+                let opened = await self.openVoiceConversation(intent)
+                if !opened || !self.showVoiceSheet, self.hermesCallOpenGeneration == generation {
                     self.voiceBackgroundJobSupervisor.clearCallOpening()
                 }
             }
-            // Hung up while it opened: it ends as the call did.
+            // What follows the open is this call's alone: a later call's
+            // voice is never touched.
+            guard self.hermesCallOpenGeneration == generation else { return }
+            self.hermesCallOpenTask = nil
+            // Hung up while it opened: it ends as the call did, and the
+            // open's error isn't shown for a call the user left.
             if Task.isCancelled {
                 self.voiceBackgroundJobSupervisor.clearCallOpening()
+                self.errorMessage = errorBefore
                 self.endVoiceOfNativeCall()
             }
         }
