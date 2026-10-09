@@ -48,11 +48,15 @@ stall reappears, lower `UNIT_BATCH_SIZE` in `ci.yml` and root-cause the test.
 The repository is public, so standard hosted runners cost nothing, but GitHub
 allows **5 concurrent macOS jobs** per account. A PR run uses 3 (2 unit shards
 + UI smoke), and `cancel-in-progress` retires a PR's superseded runs, which
-leaves room for the next push. Pushes to main are never cancelled: each merge
-gets its own run, because branch protection does not require PRs to be up to
-date with main, and the main run is what catches two PRs that are green alone
-but break together. Whoever merged the breaking PR fixes main forward. Two
-merges close together overlap, so one macOS job queues behind the ceiling. Raise `unit_shards` only with that ceiling in mind.
+leaves room for the next push. A newer push to main never cancels an older
+one's run: each merge gets its own run, because branch protection does not
+require PRs to be up to date with main, and the main run is what catches two
+PRs that are green alone but break together. Whoever merged the breaking PR
+fixes main forward. Two merges close together overlap, so their macOS jobs
+queue behind the ceiling and can delay PR runs for a while; that is accepted,
+since merges are minutes apart at most a few times a day.
+
+Raise `unit_shards` only with that ceiling in mind.
 A nightly run schedules up to 6 macOS jobs (3 timing repeats + 3 UI shards),
 so one of them queues behind the ceiling, and a nightly that overlaps a PR run
 slows both. That is accepted: nightly results are not time-critical.
