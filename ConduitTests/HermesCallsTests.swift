@@ -274,6 +274,24 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(calls.cancels, ["w1"])
     }
 
+    func testAWatchWhoseReleaseFailsIsHeldByTheNextCall() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+        calls.holdError = URLError(.timedOut)
+        await supervisor.finishCallbacks()?.value
+        XCTAssertEqual(calls.holds.map(\.seconds), [0])
+        XCTAssertTrue(supervisor.jobs.first?.callsBackWhenDone ?? false, "The host may still hold it")
+
+        calls.holdError = nil
+        beginHermesCall(supervisor)
+        await supervisor.callbackPassesSettled()
+        XCTAssertEqual(calls.holds.map(\.seconds), [0, VoiceBackgroundJobSupervisor.callbackHoldSeconds], "Hermes never calls mid-call")
+        XCTAssertEqual(calls.watches.count, 1)
+    }
+
     func testACallThatNeverHungUpHandsItsWatchToTheNextCall() async {
         let (supervisor, _, calls) = hermesCallSupervisor()
         beginHermesCall(supervisor)
@@ -513,6 +531,25 @@ extension VoiceConversationControllerTests {
         _ = await okBridge.handleDelegation(id: "del_2", request: "Send:", userWords: "yes please")
         XCTAssertEqual(okSupervisor.jobs.count, 1)
         XCTAssertEqual(okSupervisor.jobs.first?.callsBackWhenDone, true)
+    }
+
+    /// "Call me" said while a request waits for the user's OK is that
+    /// request's call: dropped, it calls about nothing later.
+    func testGPTLiveCallMeWhileARequestIsHeldGoesWithIt() async {
+        let (supervisor, _, _) = hermesCallSupervisor()
+        supervisor.liveCallTranscript = { [] }
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
+        let kept = await bridge.handleDelegation(id: "del_2", request: "Call me: not yet", userWords: "not yet")
+        guard case .delegationReply("del_2", GPTLiveDelegationBridge.notReadyYet, .commentary)? = kept.first else { return XCTFail("\(kept)") }
+        let no = await bridge.handleDelegation(id: "del_3", request: "No thanks", userWords: "No thanks")
+        guard case .delegationReply("del_3", GPTLiveDelegationBridge.dropped, .commentary)? = no.first else { return XCTFail("\(no)") }
+
+        supervisor.setAsksBeforeSending(false)
+        _ = await bridge.handleDelegation(id: "del_4", request: "find a dinner recipe")
+        XCTAssertEqual(supervisor.jobs.count, 1)
+        XCTAssertEqual(supervisor.jobs.first?.callsBackWhenDone, false, "The dropped request's call went with it")
     }
 
     func testCallSettingsGapChoicesKeepTheCurrentValue() {

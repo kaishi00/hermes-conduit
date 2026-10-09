@@ -177,6 +177,9 @@ final class GPTLiveDelegationBridge {
                     return sent + [Self.callRequestNote(Self.callRequestNotSet)]
                 } else {
                     outcome = supervisor.requestCallback(.latest)
+                    // Nothing running yet: the next request is the held one,
+                    // so the call goes with it if the user drops it.
+                    if draft != nil, case .marked(let titles, _) = outcome, titles.isEmpty { draft?.callsBack = true }
                 }
                 return sent + [Self.callRequestNote(outcome.modelMessage)]
             }
@@ -672,6 +675,9 @@ final class GPTLiveDelegationBridge {
         draft = nil
         droppedBesideReadBackAt = nil
         lastSentAt = nil
+        lastTaker = nil
+        lastUntaken = nil
+        releaseCallsBack = false
         isEnding = true
     }
 
