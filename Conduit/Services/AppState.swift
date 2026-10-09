@@ -571,7 +571,11 @@ final class AppState: ObservableObject {
         }
     }
     @Published var cronSessions: [SessionSummary] = [] {
-        didSet { refreshActiveChatScrollSessionIdentity() }
+        didSet {
+            refreshActiveChatScrollSessionIdentity()
+            // Pinned runs carry read state too (#485).
+            observeChatReadState()
+        }
     }
     @Published private(set) var projects: [ProjectSummary] = []
     @Published private(set) var supportsProjects = false
@@ -5131,6 +5135,8 @@ final class AppState: ObservableObject {
         }
         pinnedSessionIDsByProfile[activeProfile] = pinnedSessionIDs
         persistPinnedSessions()
+        // A newly pinned cron run joins the read-state rows.
+        if session.source == .cron { observeChatReadState() }
     }
 
     // MARK: - Read state (#454)
