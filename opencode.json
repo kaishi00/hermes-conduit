@@ -22,8 +22,8 @@
         "apiKey": "{env:ZAI_API_KEY}"
       },
       "models": {
-        "glm-5.3-flashx": {
-          "name": "GLM-5.3-FlashX"
+        "glm-5.3-flash": {
+          "name": "GLM-5.3-Flash"
         }
       }
     }
