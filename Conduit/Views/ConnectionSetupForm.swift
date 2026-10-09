@@ -109,7 +109,7 @@ struct ConnectionSetupForm: View {
                     .accessibilityIdentifier("setup.address-preview")
             }
             validationNotice
-            nextButton("Continue") { flow.submitDetails() }
+            nextButton(AppLocalization.string("Continue")) { flow.submitDetails() }
         }
     }
 
@@ -141,7 +141,7 @@ struct ConnectionSetupForm: View {
                     .accessibilityLabel("Dashboard password")
             }.id(Field.password)
             validationNotice
-            nextButton("Continue") { flow.submitCredentials() }
+            nextButton(AppLocalization.string("Continue")) { flow.submitCredentials() }
         }
     }
 

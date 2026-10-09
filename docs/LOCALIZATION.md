@@ -108,6 +108,13 @@ literal is looked up. Write `Text(active ? AppLocalization.string("Responding")
 : AppLocalization.string("Finishing"))` (`String(localized:)` in the Watch
 app).
 
+The same holds for any `String` that ends up on screen: a custom view's
+`title: String`, a helper's `_ title: String`, a `?? "Fallback"`, an
+error's `errorDescription`, a state variable shown with `Text(error)`.
+Wrap the literal where it is written, and compare enum cases or other
+language-independent values, never displayed text (`if case .ready =
+availability`, not `availability.title == "Ready"`).
+
 ## What CI checks
 
 `check-l10n-coverage.py` runs in the `Plan & validate` job:
@@ -120,6 +127,17 @@ app).
   key (labels excepted, see above), and no count is passed as
   `String(count)` in front of a plural noun;
 - no SwiftUI title gets a raw string literal as a ternary branch;
+- no raw string literal reaches one of Conduit's own String display
+  parameters (`STRING_DISPLAY_PARAMETERS` in the checker:
+  `SettingsMetricRow(label:value:)`, `ConduitSettingsSection(title:)`,
+  `homeSection(_:)` and other views and helpers that show a `String` with
+  `Text(title)`), directly, as a ternary branch, as a `??` fallback or in
+  an array; no display property (`STRING_DISPLAY_PROPERTIES`:
+  `displayName`, `errorDescription`, …) returns one; and no ternary or `??`
+  inside an interpolation of a localized string produces one
+  (`"\(isUser ? "You" : name): \(text)"`). Brand names are allowed
+  (`DISPLAY_BRAND_NAMES`). A new view or helper that shows a `String`
+  parameter belongs in the list;
 - where the English source varies a key by plural, every shipped language
   provides each plural form its own rules use (French: one, many, other;
   Japanese: other). The table is `PLURAL_CATEGORIES` in the checker,

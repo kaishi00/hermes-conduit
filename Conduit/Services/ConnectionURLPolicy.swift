@@ -7,9 +7,9 @@ enum ConnectionURLPolicyError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "Enter a valid dashboard URL."
+            return AppLocalization.string("Enter a valid dashboard URL.")
         case .insecureTransport:
-            return "Remote dashboards must use HTTPS; HTTP is allowed only for local networks (localhost, private LAN, and Tailscale)."
+            return AppLocalization.string("Remote dashboards must use HTTPS; HTTP is allowed only for local networks (localhost, private LAN, and Tailscale).")
         }
     }
 }

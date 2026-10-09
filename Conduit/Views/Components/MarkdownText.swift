@@ -1094,11 +1094,11 @@ private struct MarkdownCallout: View {
 
     private var detail: (title: String, icon: String, color: Color) {
         switch kind.lowercased() {
-        case "tip", "hint": ("Tip", "lightbulb.fill", .green)
-        case "warning", "caution": ("Warning", "exclamationmark.triangle.fill", .orange)
-        case "danger", "error": ("Important", "exclamationmark.octagon.fill", .red)
-        case "important": ("Important", "exclamationmark.circle.fill", .purple)
-        default: ("Note", "info.circle.fill", .blue)
+        case "tip", "hint": (AppLocalization.string("Tip"), "lightbulb.fill", .green)
+        case "warning", "caution": (AppLocalization.string("Warning"), "exclamationmark.triangle.fill", .orange)
+        case "danger", "error": (AppLocalization.string("Important"), "exclamationmark.octagon.fill", .red)
+        case "important": (AppLocalization.string("Important"), "exclamationmark.circle.fill", .purple)
+        default: (AppLocalization.string("Note"), "info.circle.fill", .blue)
         }
     }
 
@@ -2763,7 +2763,7 @@ enum MarkdownParser {
         GatewayMediaTags.soleMediaPath(value)
     }
     private static func mediaName(_ path: String) -> String {
-        path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? "Image"
+        path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? AppLocalization.string("Image")
     }
     private static func quoteLine(_ value: String) -> MarkdownQuoteLine? {
         var remainder = value.trimmingCharacters(in: .whitespaces)

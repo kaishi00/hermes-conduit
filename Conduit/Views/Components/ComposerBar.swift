@@ -175,7 +175,7 @@ struct ComposerBar: View {
     }
 
     static func pastedImageErrorMessage(_ message: String) -> String {
-        "Could not paste image: \(message)"
+        AppLocalization.string("Could not paste image: \(message)")
     }
 
     private var hasText: Bool {

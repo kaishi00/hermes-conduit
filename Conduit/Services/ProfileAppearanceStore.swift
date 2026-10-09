@@ -230,5 +230,5 @@ final class ProfileAppearanceStore {
 
 enum ProfileAppearanceError: LocalizedError {
     case invalidImage
-    var errorDescription: String? { "That photo could not be read." }
+    var errorDescription: String? { AppLocalization.string("That photo could not be read.") }
 }

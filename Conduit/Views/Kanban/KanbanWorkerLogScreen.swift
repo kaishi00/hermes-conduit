@@ -132,7 +132,7 @@ struct KanbanWorkerLogScreen: View {
     /// not.
     static func renderTail(_ content: String) -> String {
         guard content.count > maxRenderedCharacters else { return content }
-        let marker = "[older output omitted]"
+        let marker = AppLocalization.string("[older output omitted]")
         // Reserve room for the marker up front so no path can exceed budget.
         // Clamped so even a hypothetical tiny budget cannot underflow.
         let suffix = String(content.suffix(max(0, maxRenderedCharacters - marker.count)))

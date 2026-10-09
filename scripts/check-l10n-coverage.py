@@ -25,7 +25,7 @@ Scans Conduit Swift sources for sites that look up String Catalog keys -
      Int interpolation against a %@ catalog key (or vice versa) fails.
   2. SwiftUI literal initializers (Text/Button/Label/TextField/SecureField/
      Toggle/NavigationLink/Picker/ProgressView/ContentUnavailableView/
-     Section/Menu/GroupBox) - a leading string literal is a
+     Section/Menu/GroupBox/Stepper/LabeledContent) - a leading string literal is a
      LocalizedStringKey and is checked the same way.
   3. LocalizedStringKey modifiers (.alert / .confirmationDialog /
      .navigationTitle / .accessibilityLabel / .accessibilityHint /
@@ -55,6 +55,15 @@ InfoPlist):
   * a raw string literal passed as a ternary branch to a SwiftUI title
     (Text(flag ? "A" : "B")) is reported at its call site: it binds the
     verbatim String overload and is never looked up;
+  * the same goes for Conduit's own String display parameters
+    (STRING_DISPLAY_PARAMETERS: SettingsMetricRow(label:value:),
+    homeSection(_:), ...) and display properties (STRING_DISPLAY_PROPERTIES:
+    displayName, errorDescription, ...): a raw letter-bearing literal passed
+    to one or returned from one - directly, as a ternary branch, as a `??`
+    fallback or in an array - is reported, brand names excepted
+    (DISPLAY_BRAND_NAMES, EXEMPT_KEYS); so is one a ternary or `??` inside
+    an interpolation of a localized literal produces
+    ("\\(isUser ? "You" : name): %@");
   * the printf placeholders of every value in ANY language, drafts
     included, must match the key's placeholder TYPE FAMILIES (object vs
     integer vs float) in count, order, and positional index validity -
@@ -89,6 +98,7 @@ SWIFTUI_LOCALIZED_INITIALIZERS = (
     "Text", "Button", "Label", "TextField", "SecureField",
     "Toggle", "NavigationLink", "Picker",
     "ProgressView", "ContentUnavailableView", "Section", "Menu", "GroupBox",
+    "Stepper", "LabeledContent",
 )
 
 # Modifier-style APIs whose first argument is a LocalizedStringKey when a
@@ -124,6 +134,68 @@ EXEMPT_KEYS = frozenset({
     "Conduit", "GitHub", "Hermes", "HTTP", "HTTPS",  # brand/protocol names
     "https://hermes.example", "https://push.milim.dev",  # literal URLs
     "skill-name",    # example placeholder token
+})
+
+# Conduit's own views and view helpers that show a String parameter as text
+# (Text(title), Label(title, systemImage:), Button(title)). A String binds
+# no LocalizedStringKey, so a raw literal passed to one is never looked up
+# and shows English in every language: the call site wraps it in
+# AppLocalization.string. Callee -> the labels of its display parameters,
+# "_" for an unlabeled first parameter. A parameter that takes an array
+# ([String]) has each element checked.
+STRING_DISPLAY_PARAMETERS = {
+    # Views
+    "ConduitSettingsSection": ("title",),
+    "ConduitSheetHeader": ("title",),
+    "SettingsMetricRow": ("label", "value"),
+    "NotificationSetupCommand": ("title",),
+    "ModelPickerSection": ("title",),
+    "BotModeNoticeRow": ("message",),
+    "LiveVoiceCallSheet": ("title", "statusText", "note"),
+    "GeminiLiveBarContent": ("name",),
+    "LiveVoiceBarRow": ("name", "status"),
+    "GuardedSourceCard": ("title",),
+    "RenderCard": ("title", "actionTitle"),
+    "SelectableTextView": ("text",),
+    # View helpers
+    "homeSection": ("_",),
+    "settingsLink": ("title", "detail"),
+    "settingsActionRow": ("title", "detail"),
+    "themeChoice": ("title",),
+    "busyModeChoice": ("detail",),
+    "displayToggle": ("title", "detail"),
+    "compatibilityRow": ("title", "detail"),
+    "notificationToggle": ("_", "detail"),
+    "providerSection": ("title",),
+    "dependencyGroup": ("title",),
+    "loadFailureView": ("_",),
+    "managementNoticeCard": ("_",),
+    "createCard": ("title",),
+    "labeled": ("_",),
+    "answerRow": ("_",),
+    "methodCard": ("title", "supporting", "badge"),
+    "branchShell": ("title", "intro", "needs"),
+    "guidanceBullet": ("_",),
+    "continueButton": ("_",),
+    "nextButton": ("_",),
+    "appendSlashOutput": ("_",),
+}
+
+# Computed String properties whose value is shown as text (a label, a
+# VoiceOver word, an error's description). A raw literal one returns is
+# never looked up, whichever view shows it.
+STRING_DISPLAY_PROPERTIES = (
+    "displayName", "statusText", "objectiveLabel", "runningLabel",
+    "successLabel", "accessibilityState", "errorDescription",
+    "failureReason", "recoverySuggestion",
+)
+
+# Names no language translates, allowed as a raw display literal (the
+# EXEMPT_KEYS brand names count too).
+DISPLAY_BRAND_NAMES = frozenset({
+    "Cloudflare Access", "Hermes Conduit", "Gemini Live", "Grok Live",
+    "GPT-Live", "LaTeX", "Mermaid", "Discord", "Telegram", "API",
+    "Tailscale",
 })
 
 # Dynamic sites the extractor cannot see: variable-key lookups where the
@@ -451,6 +523,164 @@ def raw_ternary_literals(source: str):
             for skeleton in _ternary_branch_literals(argument):
                 if re.search(r"[^\W\d_]", skeleton.replace("%@", "")):
                     yield skeleton, match.start()
+
+
+DISPLAY_CALL_RE = re.compile(
+    r"\b(" + "|".join(sorted(STRING_DISPLAY_PARAMETERS, key=len, reverse=True)) + r")\s*\(")
+DISPLAY_PROPERTY_RE = re.compile(
+    r"\bvar\s+(" + "|".join(STRING_DISPLAY_PROPERTIES) + r")\s*:\s*String\??\s*\{")
+
+
+def _is_display_text(skeleton: str) -> bool:
+    """Text some language translates: it has a letter, and it isn't a
+    brand or protocol name (EXEMPT_KEYS, DISPLAY_BRAND_NAMES)."""
+    return (bool(re.search(r"[^\W\d_]", skeleton.replace("%@", "")))
+            and skeleton not in EXEMPT_KEYS and skeleton not in DISPLAY_BRAND_NAMES)
+
+
+def _arguments(source: str, start: int) -> list:
+    """The text of each top-level argument of the call (or array literal)
+    whose bracket ends just before `start`."""
+    arguments = []
+    while True:
+        argument = _first_argument(source, start)
+        if argument is None:
+            return arguments
+        arguments.append(argument)
+        end = start + len(argument)
+        if end >= len(source) or source[end] != ",":
+            return arguments
+        start = end + 1
+
+
+def _nil_coalescing_fallback(expression: str):
+    """The operand after the last top-level `??` in `expression`, or None."""
+    depth = 0
+    fallback = None
+    i = 0
+    while i < len(expression):
+        ch = expression[i]
+        if ch == '"':
+            i = _skip_literal(expression, i)
+            if i is None:
+                return None
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif depth == 0 and expression.startswith("??", i):
+            fallback = expression[i + 2:]
+            i += 2
+            continue
+        i += 1
+    return fallback
+
+
+def _raw_literals(expression: str):
+    """The skeleton of each raw string literal `expression` can evaluate
+    to: the expression itself, a ternary branch, a `??` fallback, or an
+    element of an array literal."""
+    expression = expression.strip()
+    if expression.startswith('"') and not expression.startswith('"""'):
+        parsed = parse_swift_literal_parts(expression, 0)
+        if parsed is not None and parsed[1] == len(expression):
+            yield parsed[0]
+            return
+    if expression.startswith("[") and expression.endswith("]"):
+        for element in _arguments(expression, 1):
+            yield from _raw_literals(element)
+        return
+    yield from _ternary_branch_literals(expression)
+    fallback = _nil_coalescing_fallback(expression)
+    if fallback is not None:
+        yield from _raw_literals(fallback)
+
+
+def raw_display_literals(source: str):
+    """Yield (callee, label, skeleton, offset) for each raw string literal
+    passed to a STRING_DISPLAY_PARAMETERS parameter, directly, as a ternary
+    branch, as a `??` fallback or in an array. The callee shows it with
+    Text(String), which is never looked up in the catalog."""
+    for match in DISPLAY_CALL_RE.finditer(source):
+        if re.search(r"\bfunc\s+$", source[max(0, match.start() - 40):match.start()]):
+            continue  # the declaration, not a call
+        wanted = STRING_DISPLAY_PARAMETERS[match.group(1)]
+        for position, argument in enumerate(_arguments(source, match.end())):
+            labeled = re.match(r"\s*(\w+)\s*:(?!:)", argument)
+            label = labeled.group(1) if labeled else ("_" if position == 0 else None)
+            if label not in wanted:
+                continue
+            value = argument[labeled.end():] if labeled else argument
+            for skeleton in _raw_literals(value):
+                if _is_display_text(skeleton):
+                    yield match.group(1), label, skeleton, match.start()
+
+
+def _block_end(source: str, start: int):
+    """Index of the '}' closing the block whose '{' ends just before
+    `start`, or None when unbalanced."""
+    depth = 1
+    i = start
+    while i < len(source):
+        ch = source[i]
+        if ch == '"':
+            i = _skip_literal(source, i)
+            if i is None:
+                return None
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return None
+
+
+def raw_display_property_literals(source: str):
+    """Yield (property, skeleton, offset) for each raw string literal a
+    STRING_DISPLAY_PROPERTIES getter returns: after `return`, as a `case`
+    or `default` result, as the getter's single expression, or as a
+    ternary branch or `??` fallback, outside any call's parentheses."""
+    for match in DISPLAY_PROPERTY_RE.finditer(source):
+        end = _block_end(source, match.end())
+        if end is None:
+            continue
+        depth = 0
+        i = match.end()
+        while i < end:
+            ch = source[i]
+            if ch == '"':
+                after = _skip_literal(source, i)
+                if after is None:
+                    break
+                before = source[match.end():i].rstrip()
+                if (depth == 0 and not source.startswith('"""', i)
+                        and (not before or re.search(r"(?:\breturn|[?:{])$", before))):
+                    parsed = parse_swift_literal_parts(source, i)
+                    if parsed is not None and _is_display_text(parsed[0]):
+                        yield match.group(1), parsed[0], i
+                i = after
+                continue
+            if ch in "([":
+                depth += 1
+            elif ch in ")]":
+                depth -= 1
+            i += 1
+
+
+def raw_interpolated_literals(source: str):
+    """Yield (skeleton, offset) for each raw string literal an
+    interpolation of a localized literal can produce, as a ternary branch
+    or `??` fallback: "\\(isUser ? "You" : name): \\(text)" looks up
+    "%@: %@", and the "You" it inserts is never translated."""
+    for _key, expressions, offset in _localized_literals(source):
+        for expression in expressions:
+            for skeleton in _raw_literals(expression):
+                if _is_display_text(skeleton):
+                    yield skeleton, offset
 
 
 def _localized_literals(source: str):
@@ -1158,6 +1388,24 @@ def scan_sites(root: str, catalog_keys, repo_root: str, missing: dict, key_probl
                     f"passes \"{skeleton}\" as a ternary branch, which binds the "
                     f"verbatim String overload and never localizes: wrap each "
                     f"branch in AppLocalization.string")
+            rel = os.path.relpath(path, repo_root)
+            for callee, label, skeleton, offset in raw_display_literals(source):
+                line = source.count("\n", 0, offset) + 1
+                key_problems.setdefault(f"{rel}:{line}", []).append(
+                    f"passes \"{skeleton}\" to {callee}({label}:), which shows a "
+                    f"String as is and never localizes it: wrap it in "
+                    f"AppLocalization.string")
+            for prop, skeleton, offset in raw_display_property_literals(source):
+                line = source.count("\n", 0, offset) + 1
+                key_problems.setdefault(f"{rel}:{line}", []).append(
+                    f"{prop} returns \"{skeleton}\", a String shown as is that "
+                    f"never localizes: wrap it in AppLocalization.string")
+            for skeleton, offset in raw_interpolated_literals(source):
+                line = source.count("\n", 0, offset) + 1
+                key_problems.setdefault(f"{rel}:{line}", []).append(
+                    f"interpolates \"{skeleton}\" into a localized string, where "
+                    f"it is an argument and never localizes: wrap it in "
+                    f"AppLocalization.string")
             for skeleton, offset in extract_sites(source):
                 checked += 1
                 if skeleton in EXEMPT_KEYS:

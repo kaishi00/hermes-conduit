@@ -188,7 +188,7 @@ private struct LegacySettingsView: View {
             SettingsMetricRow(label: AppLocalization.string("Server"), value: snapshot.server ?? "—", lineLimit: 1)
             SettingsMetricRow(
                 label: AppLocalization.string("Status"),
-                value: isConnected ? "Connected" : "Disconnected",
+                value: isConnected ? AppLocalization.string("Connected") : AppLocalization.string("Disconnected"),
                 valueColor: isConnected ? .green : .red,
                 statusDot: isConnected ? .green : .red
             )
@@ -392,7 +392,7 @@ private struct LegacySettingsView: View {
             guard !Task.isCancelled else { return }
             if !didSave {
                 displayPreferences = previous
-                displayPreferenceError = "Could not save this setting. Restored the previous choice."
+                displayPreferenceError = AppLocalization.string("Could not save this setting. Restored the previous choice.")
             }
             savingDisplayPreference = nil
         }
@@ -423,7 +423,7 @@ private struct LegacySettingsView: View {
                 withAnimation(ConduitMotion.response) {
                     busyInputMode = previousValue
                 }
-                busyInputModeError = "Could not save this setting. Restored the previous choice."
+                busyInputModeError = AppLocalization.string("Could not save this setting. Restored the previous choice.")
             }
             isSavingBusyInputMode = false
         }
@@ -771,7 +771,7 @@ private struct SettingsHome: View {
                     if appState.notifierPlugin.needsUpdate {
                         NotifierPluginUpdateNotice(status: appState.notifierPlugin, dashboardLabel: notifierDashboardLabel)
                     }
-                    homeSection("Profile", tint: .conduitAccent) {
+                    homeSection(AppLocalization.string("Profile"), symbol: "person.crop.circle", tint: .conduitAccent) {
                         settingsLink(.profile, icon: "person.crop.circle", title: profileDisplayName, detail: AppLocalization.string("Profile-specific preferences"))
                     }
                     homeSection("Hermes", tint: .conduitAura) {
@@ -782,7 +782,7 @@ private struct SettingsHome: View {
                         settingsLink(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
                         settingsLink(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, toolsets, and categories"))
                     }
-                    homeSection("Connection", tint: .conduitAura) {
+                    homeSection(AppLocalization.string("Connection"), tint: .conduitAura) {
                         settingsLink(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards")
                         settingsLink(.gateway, icon: "radio", title: AppLocalization.string("Gateway"), detail: snapshot.server ?? AppLocalization.string("Not connected"), identifier: "settings.gateway")
                         settingsActionRow(
@@ -802,7 +802,7 @@ private struct SettingsHome: View {
                             )
                         }
                     }
-                    homeSection("On this device", tint: .conduitAccent) {
+                    homeSection(AppLocalization.string("On this device"), tint: .conduitAccent) {
                         settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
                         settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
                         settingsLink(.screenQuestion, icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question")
@@ -891,8 +891,8 @@ private struct SettingsHome: View {
         snapshot.profile == "default" ? appState.defaultProfileName : snapshot.profile.capitalized
     }
 
-    private func homeSection<Content: View>(_ title: String, tint: Color, @ViewBuilder content: () -> Content) -> some View {
-        ConduitSettingsSection(title: title, symbol: title == "Profile" ? "person.crop.circle" : "gearshape.2", tint: tint, content: content)
+    private func homeSection<Content: View>(_ title: String, symbol: String = "gearshape.2", tint: Color, @ViewBuilder content: () -> Content) -> some View {
+        ConduitSettingsSection(title: title, symbol: symbol, tint: tint, content: content)
     }
 
     private func settingsLink(_ destination: SettingsDestination, icon: String, title: String, detail: String, identifier: String = "") -> some View {
@@ -1355,7 +1355,7 @@ private struct ResponseBehaviorSettings: View {
             saving = true
             guard await save(next) else {
                 mode = previous
-                error = "Could not save this setting. Restored the previous choice."
+                error = AppLocalization.string("Could not save this setting. Restored the previous choice.")
                 saving = false
                 return
             }
@@ -1483,7 +1483,7 @@ private struct ProfileModelSettingsDetail: View {
             saving = true
             error = nil
             if !(await save(provider, model, reasoning)) {
-                error = "Could not save model defaults."
+                error = AppLocalization.string("Could not save model defaults.")
             }
             saving = false
         }
@@ -1581,7 +1581,7 @@ private struct DelegationModelSettings: View {
             let providerSaved = await save("delegation.provider", .text(provider))
             let modelSaved = providerSaved ? await save("delegation.model", .text(model)) : false
             let reasoningSaved = modelSaved ? await save("delegation.reasoning_effort", .text(reasoning)) : false
-            if !reasoningSaved { error = "Could not save delegate defaults." }
+            if !reasoningSaved { error = AppLocalization.string("Could not save delegate defaults.") }
             saving = false
         }
     }
@@ -1728,7 +1728,7 @@ struct ProfileConfigSettingsPage: View {
             Button("Save") {
                 let raw = drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue)
                 if case .number = field.control, let number = Double(raw) { save(field, value: .number(number)) }
-                else if case .number = field.control { error = "Enter a valid number for \(field.label)." }
+                else if case .number = field.control { error = AppLocalization.string("Enter a valid number for \(field.label).") }
                 else { save(field, value: .text(raw)) }
             }
             .buttonStyle(.borderedProminent).tint(.conduitAccent).disabled(savingKey != nil)
@@ -1750,7 +1750,7 @@ struct ProfileConfigSettingsPage: View {
             savingKey = field.key
             guard await save(field.key, value) else {
                 values[field.key] = previous
-                error = "Could not save \(field.label)."
+                error = AppLocalization.string("Could not save \(field.label).")
                 savingKey = nil
                 return
             }
@@ -1793,7 +1793,7 @@ private struct GatewaySettingsDetail: View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Connection"), symbol: "radio", tint: .conduitAura) {
                 SettingsMetricRow(label: AppLocalization.string("Server"), value: snapshot.server ?? "—", lineLimit: 1)
-                SettingsMetricRow(label: AppLocalization.string("Status"), value: connected ? "Connected" : "Disconnected", valueColor: connected ? .green : .red, statusDot: connected ? .green : .red)
+                SettingsMetricRow(label: AppLocalization.string("Status"), value: connected ? AppLocalization.string("Connected") : AppLocalization.string("Disconnected"), valueColor: connected ? .green : .red, statusDot: connected ? .green : .red)
                 Button { Task { reconnecting = true; connected = await reconnect(); reconnecting = false } } label: { Label(reconnecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Reconnect"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity).frame(height: 44) }
                     .disabled(reconnecting).conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
             }
@@ -2504,7 +2504,7 @@ private struct AboutSettingsDetail: View {
                 Text("Conduit connects to the dashboard and gateway you configure. Conversations and attachments are handled by that Hermes installation.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            ConduitSettingsSection(title: "Links", symbol: "link", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Links"), symbol: "link", tint: .conduitAccent) {
                 Link(destination: URL(string: "https://kaishi00.github.io/hermes-conduit-notifier/privacy/")!) {
                     HStack {
                         Image(systemName: "lock.shield")

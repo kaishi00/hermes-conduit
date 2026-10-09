@@ -3500,7 +3500,7 @@ enum MessageNormalizer {
             return body.isEmpty ? nil : body
         }
         if isUserCorrectionInterruptionNotice(trimmed) {
-            return "Response interrupted by a user correction."
+            return AppLocalization.string("Response interrupted by a user correction.")
         }
         return nil
     }

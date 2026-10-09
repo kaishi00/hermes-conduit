@@ -35,7 +35,7 @@ enum AuthClientError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "Invalid dashboard URL."
+            return AppLocalization.string("Invalid dashboard URL.")
         case .loginFailed(let status, _):
             // Never expose a bare "HTTP 401" as the credential-rejection
             // message; other statuses keep the status for diagnosis (the

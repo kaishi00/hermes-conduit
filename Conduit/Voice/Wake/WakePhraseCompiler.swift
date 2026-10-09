@@ -44,12 +44,12 @@ enum WakePhraseValidationError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .emptyPhrase: return "Enter a wake phrase."
-        case .missingGatewayOrProfile: return "Wake phrases must belong to a gateway and profile."
-        case .duplicatePhrase(let phrase): return "The wake phrase ‘\(phrase)’ is already enabled."
-        case .unsupportedEnglishWord(let word): return "‘\(word)’ is not available in the English pronunciation lexicon."
-        case .unsupportedCharacter(let character): return "‘\(character)’ is not supported by the bundled wake model."
-        case .missingChinesePronunciation(let character): return "No pinyin token is available for ‘\(character)’."
+        case .emptyPhrase: return AppLocalization.string("Enter a wake phrase.")
+        case .missingGatewayOrProfile: return AppLocalization.string("Wake phrases must belong to a gateway and profile.")
+        case .duplicatePhrase(let phrase): return AppLocalization.string("The wake phrase ‘\(phrase)’ is already enabled.")
+        case .unsupportedEnglishWord(let word): return AppLocalization.string("‘\(word)’ is not available in the English pronunciation lexicon.")
+        case .unsupportedCharacter(let character): return AppLocalization.string("‘\(character)’ is not supported by the bundled wake model.")
+        case .missingChinesePronunciation(let character): return AppLocalization.string("No pinyin token is available for ‘\(character)’.")
         }
     }
 }

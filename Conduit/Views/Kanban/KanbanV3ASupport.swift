@@ -258,7 +258,7 @@ enum KanbanOrchestrationDisplay {
     /// effective profile named by the backend.
     static func defaultOptionLabel(configured: String, resolved: String) -> String {
         if resolved.trimmingCharacters(in: .whitespaces).isEmpty {
-            return "Default"
+            return AppLocalization.string("Default")
         }
         return AppLocalization.string("Default (\(resolved.trimmingCharacters(in: .whitespaces)))")
     }
@@ -270,11 +270,11 @@ enum KanbanOrchestrationDisplay {
         let configuredName = configured.trimmingCharacters(in: .whitespaces)
         if configuredName.isEmpty {
             if resolvedName.isEmpty {
-                return "Default inherits the active Hermes profile."
+                return AppLocalization.string("Default inherits the active Hermes profile.")
             }
-            return "Default resolves to \(resolvedName)."
+            return AppLocalization.string("Default resolves to \(resolvedName).")
         }
-        return "Pinned to \(configuredName)."
+        return AppLocalization.string("Pinned to \(configuredName).")
     }
 }
 
@@ -323,6 +323,6 @@ enum KanbanTriageActionsPolicy {
     static func successNoticeWithRefreshFailure(base: String, storeRefreshError: String?) -> String {
         guard let storeRefreshError,
               !storeRefreshError.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return base }
-        return "\(base), but the board could not be refreshed. \(storeRefreshError)"
+        return AppLocalization.string("\(base), but the board could not be refreshed. \(storeRefreshError)")
     }
 }
