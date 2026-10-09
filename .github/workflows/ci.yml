@@ -25,7 +25,9 @@ name: CI
 #   ci-gate    (ubuntu)  the single stable branch-protection check.
 #
 # Three macOS jobs per run: GitHub allows 5 concurrent macOS jobs per account,
-# and superseded runs are cancelled, so a run must leave room for the next.
+# and a PR's superseded runs are cancelled, so a run must leave room for the
+# next. A newer push to main never cancels an older one's run, so back-to-back
+# merges overlap and their macOS jobs queue behind the ceiling.
 
 on:
   push:
@@ -33,8 +35,12 @@ on:
   pull_request:
     branches: [main]
 
+# A PR's newer push supersedes its older run. A push to main is grouped by its
+# own commit instead, so every merge gets a full run: branch protection does
+# not require PRs to be up to date with main, so this run is what catches two
+# PRs that pass alone but break together.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 permissions:
