@@ -76,7 +76,8 @@ count. Everything else stays out of plural rules:
   number in its own string and join them in code ("Show %lld more rows"
   then "(%@ of %@ left)"; "%lld active" · "%lld inactive").
 - A number shown as a label needs no plural forms: alone in parentheses
-  ("Runs (%lld)") or ending the string after a colon ("Jobs: %lld").
+  at the end ("Runs (%lld)") or ending the string after a colon
+  ("Jobs: %lld").
 
 Never build the singular in code (`count == 1 ? "1 task" : "…tasks"`):
 put both forms in the catalog. The checker reads an interpolation as an
@@ -87,6 +88,19 @@ finds its key at runtime.
 Durations and lists Conduit formats itself use
 `AppLocalization.formattingLocale`, so they follow the UI language
 (`DateComponentsFormatter`, `.formatted(.list(…))`).
+
+## Whole sentences
+
+Give each sentence its own key. A verb or a name dropped into a shared
+sentence ("Could not %@ this conversation" with "archive", "open in %@"
+with "a Hermes terminal") can't be translated well: most languages
+change the inserted word's form for each sentence it lands in. Write one
+key per case and pick it in code (`ChatTakeoverState.openElsewhereMessage`).
+`%@` is for names and values the user or server supplies.
+
+One key has one translation, so a word used in two unrelated places
+needs two wordings: the "Clear" voice style is an adjective, so the
+Watch call log's button says "Clear Log".
 
 ## What CI checks
 

@@ -24,9 +24,12 @@ extension HermesClientTests {
     }
 
     func testOwnerNames() {
-        XCTAssertEqual(ChatTakeoverState.ownerName("desktop"), "Hermes Desktop")
-        XCTAssertEqual(ChatTakeoverState.ownerName("tui"), "a Hermes terminal")
-        XCTAssertEqual(ChatTakeoverState.ownerName(nil), "another Hermes window")
+        XCTAssertEqual(ChatTakeoverState.owner("desktop"), .desktop)
+        XCTAssertEqual(ChatTakeoverState.owner("tui"), .terminal)
+        XCTAssertEqual(ChatTakeoverState.owner("CLI"), .terminal)
+        XCTAssertEqual(ChatTakeoverState.owner(nil), .otherWindow)
+        let terminal = ChatTakeoverState(sessionID: "s1", sessionIDs: ["s1"], surface: "cli", phase: .offered)
+        XCTAssertEqual(terminal.stillReplyingMessage, "A Hermes terminal is still replying in this chat. Try again when it finishes.")
     }
 
     func testRpcErrorDecodesTheRefusalReason() throws {

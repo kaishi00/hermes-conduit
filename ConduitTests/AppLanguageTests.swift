@@ -266,14 +266,14 @@ final class AppLanguageTests: XCTestCase {
 
     func testInterpolatedSkeletonResolvesUnderSelectedLanguage() throws {
         for language in translatedLanguages {
-            let format = try XCTUnwrap(catalogValue("Voice on %@", in: language))
+            let format = try XCTUnwrap(catalogValue("Could not load scheduled jobs: %@", in: language))
             XCTAssertEqual(
-                AppLocalization.string("Voice on \(String("Phy"))", language: language),
+                AppLocalization.string("Could not load scheduled jobs: \(String("Phy"))", language: language),
                 String(format: format, "Phy"))
         }
         XCTAssertEqual(
-            AppLocalization.string("Voice on \(String("Phy"))", language: .source),
-            "Voice on Phy")
+            AppLocalization.string("Could not load scheduled jobs: \(String("Phy"))", language: .source),
+            "Could not load scheduled jobs: Phy")
     }
 
     // MARK: - Fallback behavior (the source language is the fallback)

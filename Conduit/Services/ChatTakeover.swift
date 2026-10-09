@@ -44,13 +44,48 @@ struct ChatTakeoverState: Equatable {
     /// Changes every time a takeover finishes, so the composer resends once.
     var readyToken = 0
 
-    var ownerName: String { Self.ownerName(surface) }
+    /// The app that holds the chat, as the sentences below name it.
+    enum Owner: Equatable {
+        case desktop, terminal, otherWindow
+    }
 
-    static func ownerName(_ surface: String?) -> String {
+    var owner: Owner { Self.owner(surface) }
+
+    static func owner(_ surface: String?) -> Owner {
         switch surface?.lowercased() {
-        case "desktop": return AppLocalization.string("Hermes Desktop")
-        case "cli", "tui": return AppLocalization.string("a Hermes terminal")
-        default: return AppLocalization.string("another Hermes window")
+        case "desktop": return .desktop
+        case "cli", "tui": return .terminal
+        default: return .otherWindow
+        }
+    }
+
+    // Each sentence names its owner whole: languages with case endings
+    // inflect the owner differently after "in", "from" and as the subject.
+
+    /// The offer, while another app holds the chat.
+    var openElsewhereMessage: String {
+        switch owner {
+        case .desktop: return AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.")
+        case .terminal: return AppLocalization.string("This chat is open in a Hermes terminal. Take it over to send from here.")
+        case .otherWindow: return AppLocalization.string("This chat is open in another Hermes window. Take it over to send from here.")
+        }
+    }
+
+    /// Progress, while Conduit waits for the other app to let go.
+    var takingOverMessage: String {
+        switch owner {
+        case .desktop: return AppLocalization.string("Taking this chat over from Hermes Desktop. If it's replying, Conduit waits for the reply to finish.")
+        case .terminal: return AppLocalization.string("Taking this chat over from a Hermes terminal. If it's replying, Conduit waits for the reply to finish.")
+        case .otherWindow: return AppLocalization.string("Taking this chat over from another Hermes window. If it's replying, Conduit waits for the reply to finish.")
+        }
+    }
+
+    /// The failure when the other app is still running a turn at the deadline.
+    var stillReplyingMessage: String {
+        switch owner {
+        case .desktop: return AppLocalization.string("Hermes Desktop is still replying in this chat. Try again when it finishes.")
+        case .terminal: return AppLocalization.string("A Hermes terminal is still replying in this chat. Try again when it finishes.")
+        case .otherWindow: return AppLocalization.string("Another Hermes window is still replying in this chat. Try again when it finishes.")
         }
     }
 
