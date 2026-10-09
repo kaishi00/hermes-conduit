@@ -452,7 +452,7 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNil(card.currentTool)
         XCTAssertEqual(card.model, "m1")
         XCTAssertEqual(card.summary, "Both approved")
-        XCTAssertEqual(card.stream.count, 2)
+        XCTAssertEqual(card.stream.map(\.text), ["Check requests", "SKILL.md", "Both approved"])
     }
 
     func testSubagentWithoutIDKeysOnGoalAndSlot() {
