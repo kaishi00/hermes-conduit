@@ -2067,7 +2067,9 @@ extension VoiceConversationControllerTests {
         let sent = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "yes please")
         XCTAssertEqual(fake.created, 1)
         XCTAssertTrue(fake.submissions.first?.1.hasSuffix("book a table for Sam") == true, "a bare yes adds nothing")
-        guard case .delegationReply("del_3", let sentText, .speakable)? = sent.first else { return XCTFail("\(sent)") }
+        // The delegation that waited hears the answer went on this one.
+        XCTAssertEqual(sent.first, .delegationReply(delegationID: "del_2", text: GPTLiveDelegationBridge.answerOnLaterDelegation, channel: .commentary))
+        guard case .delegationReply("del_3", let sentText, .speakable)? = sent.dropFirst().first else { return XCTFail("\(sent)") }
         XCTAssertTrue(sentText.hasPrefix(GPTLiveDelegationBridge.sentPrefix), "the model hears it went, and only now: \(sentText)")
         XCTAssertTrue(GPTLiveDelegationBridge.isStatus(sentText))
 
