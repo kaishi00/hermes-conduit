@@ -43,6 +43,9 @@ protocol GPTLivePeer: AnyObject {
     /// Mute is the local track disabled: the subscription protocol has no
     /// mute event.
     func setMicrophoneEnabled(_ enabled: Bool)
+    /// Speaker mute (#487) is the model's incoming track disabled: WebRTC
+    /// plays silence while the call carries on.
+    func setSpeakerEnabled(_ enabled: Bool)
     func close()
 }
 
@@ -79,6 +82,7 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
     private var connection: RTCPeerConnection?
     private var channel: RTCDataChannel?
     private var microphone: RTCAudioTrack?
+    private var isSpeakerEnabled = true
     private var isClosed = false
 
     /// Optional rather than defaulted: default arguments are evaluated
@@ -155,6 +159,9 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
             gptLivePeerLogger.error("GPT-Live answer rejected: \(String(describing: error), privacy: .public)")
             throw GPTLivePeerError.answerRejected
         }
+        // The model's track exists once the answer is in: a speaker muted
+        // while connecting stays muted.
+        applySpeakerEnabled()
     }
 
     @discardableResult
@@ -165,6 +172,18 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
 
     func setMicrophoneEnabled(_ enabled: Bool) {
         microphone?.isEnabled = enabled
+    }
+
+    func setSpeakerEnabled(_ enabled: Bool) {
+        isSpeakerEnabled = enabled
+        applySpeakerEnabled()
+    }
+
+    private func applySpeakerEnabled() {
+        guard let connection, !isClosed else { return }
+        for receiver in connection.receivers {
+            (receiver.track as? RTCAudioTrack)?.isEnabled = isSpeakerEnabled
+        }
     }
 
     func close() {
@@ -225,6 +244,10 @@ extension WebRTCGPTLivePeer: RTCPeerConnectionDelegate {
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
+
+    nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didAdd rtpReceiver: RTCRtpReceiver, streams mediaStreams: [RTCMediaStream]) {
+        Task { @MainActor [weak self] in self?.applySpeakerEnabled() }
+    }
 
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
         Task { @MainActor [weak self] in self?.connectionStateChanged(newState) }

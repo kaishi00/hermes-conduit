@@ -53,6 +53,7 @@ final class FakeGPTLivePeer: GPTLivePeer {
     private(set) var acceptedAnswers: [String] = []
     private(set) var sent: [[String: Any]] = []
     private(set) var microphoneEnabled = true
+    private(set) var speakerEnabled = true
     private(set) var closed = false
 
     func makeOffer() async throws -> String {
@@ -70,6 +71,7 @@ final class FakeGPTLivePeer: GPTLivePeer {
     }
 
     func setMicrophoneEnabled(_ enabled: Bool) { microphoneEnabled = enabled }
+    func setSpeakerEnabled(_ enabled: Bool) { speakerEnabled = enabled }
     func close() { closed = true }
 
     func deliver(_ object: [String: Any]) {
@@ -92,6 +94,7 @@ final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
     private(set) var stopped = 0
     private(set) var appended: [(text: String, channel: GPTLiveProtocol.Channel, delegationID: String?)] = []
     private(set) var microphoneEnabled: Bool?
+    private(set) var speakerEnabled: Bool?
 
     func start() { started += 1 }
     func stop() { stopped += 1; isReady = false }
@@ -103,6 +106,7 @@ final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
     }
 
     func setMicrophoneEnabled(_ enabled: Bool) { microphoneEnabled = enabled }
+    func setSpeakerEnabled(_ enabled: Bool) { speakerEnabled = enabled }
 
     func becomeReady() {
         isReady = true
@@ -692,6 +696,35 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(controller.phase, .paused)
         controlled.onAudioPaused?(false)
         XCTAssertEqual(controller.phase, .speaking)
+        controller.stop()
+    }
+
+    func testGPTLiveSpeakerMuteSilencesTheModelsTrackAndHoldsItsNewsUntilUnmuted() async {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        XCTAssertEqual(session.speakerEnabled, true)
+        XCTAssertTrue(controller.isConversationIdle)
+
+        controller.setSpeakerMuted(true)
+        XCTAssertEqual(session.speakerEnabled, false)
+        XCTAssertFalse(controller.isConversationIdle, "Nothing Conduit would have it say goes out unheard")
+        XCTAssertEqual(session.microphoneEnabled, true, "The microphone is its own mute")
+        // A reconnect keeps the speaker silenced.
+        session.becomeReady()
+        XCTAssertEqual(session.speakerEnabled, false)
+
+        controller.setSpeakerMuted(false)
+        XCTAssertEqual(session.speakerEnabled, true)
+        XCTAssertTrue(controller.isConversationIdle)
+
+        // A speaker mute belongs to the call it was set in.
+        controller.setSpeakerMuted(true)
+        controller.stop()
+        await controller.start()
+        XCTAssertFalse(controller.isSpeakerMuted)
+        session.becomeReady()
+        XCTAssertEqual(session.speakerEnabled, true)
         controller.stop()
     }
 

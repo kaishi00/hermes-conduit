@@ -227,9 +227,11 @@ struct GeminiLiveVoiceSheet: View {
             assistantLabel: speakerLabel,
             jobs: jobs,
             isMicrophoneMuted: controller.isMicrophoneMuted,
+            isSpeakerMuted: controller.isSpeakerMuted,
             canMute: controller.isActive && !controller.isEnding,
             canInterrupt: controller.phase == .speaking,
             onToggleMute: { controller.setMicrophoneMuted(!controller.isMicrophoneMuted) },
+            onToggleSpeaker: { controller.setSpeakerMuted(!controller.isSpeakerMuted) },
             onInterrupt: { controller.interruptSpeaking() },
             onEnd: onClose,
             onRetry: onRetry
@@ -245,6 +247,12 @@ struct GeminiLiveVoiceSheet: View {
             AccessibilityNotification.Announcement(muted
                 ? AppLocalization.string("Microphone muted")
                 : AppLocalization.string("Microphone unmuted")).post()
+        }
+        .onChange(of: controller.isSpeakerMuted) { _, muted in
+            guard controller.isActive, controller.phase != .connecting else { return }
+            AccessibilityNotification.Announcement(muted
+                ? AppLocalization.string("Assistant silenced")
+                : AppLocalization.string("Assistant's sound back on")).post()
         }
         // Each line once, with its final text (not the first fragment).
         .onChange(of: controller.finishedTurn) { _, turn in
@@ -280,7 +288,7 @@ struct GeminiLiveVoiceSheet: View {
                 : AppLocalization.string("Connecting to Gemini Live…")
         case .reconnecting: return AppLocalization.string("Reconnecting…")
         case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
-        case .speaking: return AppLocalization.string("Speaking")
+        case .speaking: return controller.isSpeakerMuted ? AppLocalization.string("Speaking, silenced") : AppLocalization.string("Speaking")
         case .paused: return AppLocalization.string("Paused while another sound plays")
         case .ending: return AppLocalization.string("Ending conversation…")
         case .failed(let message): return message

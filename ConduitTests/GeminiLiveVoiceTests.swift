@@ -181,9 +181,11 @@ final class FakeGeminiLiveOutput: GeminiLiveAudioOutput {
     var isPlaying = false
     private(set) var played = 0
     private(set) var interrupts = 0
+    private(set) var isMuted = false
     func play(_ pcm: Data, sampleRate: Double) throws { played += 1; isPlaying = true }
     func interrupt() { interrupts += 1; isPlaying = false }
     func stop() { isPlaying = false }
+    func setMuted(_ muted: Bool) { isMuted = muted }
 }
 
 @MainActor
@@ -819,6 +821,48 @@ extension VoiceConversationControllerTests {
             notificationCenter: notificationCenter
         )
         return (controller, session, input, output, supervisor)
+    }
+
+    func testLiveCallSpeakerMuteSilencesTheOutputAndHoldsItsNewsUntilUnmuted() async {
+        let (controller, session, _, output, _) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        XCTAssertTrue(controller.isConversationIdle)
+
+        controller.setSpeakerMuted(true)
+        XCTAssertTrue(controller.isSpeakerMuted)
+        XCTAssertTrue(output.isMuted)
+        XCTAssertFalse(controller.isConversationIdle, "Nothing Conduit would have it say goes out unheard")
+        XCTAssertEqual(controller.phase, .listening, "The call carries on")
+
+        controller.setSpeakerMuted(false)
+        XCTAssertFalse(output.isMuted)
+        XCTAssertTrue(controller.isConversationIdle)
+
+        // A speaker mute belongs to the call it was set in.
+        controller.setSpeakerMuted(true)
+        controller.stop()
+        await controller.start()
+        XCTAssertFalse(controller.isSpeakerMuted)
+        XCTAssertFalse(output.isMuted)
+        controller.stop()
+    }
+
+    func testLiveVoiceAudioGivesTheSpeakerMuteToTheAudioTheCallChooses() throws {
+        let standardOutput = FakeGeminiLiveOutput()
+        let selector = LiveVoiceAudioSelector(
+            wantsEchoCancellation: { false },
+            makeStandard: { (FakeGeminiLiveInput(), standardOutput) },
+            makeEchoCancelling: { (FakeGeminiLiveInput(), FakeGeminiLiveOutput()) }
+        )
+        let output = selector.output
+        // Muted before the call has any audio: the chosen audio starts silent.
+        output.setMuted(true)
+        try output.play(Data([0, 0]), sampleRate: 24_000)
+        XCTAssertTrue(standardOutput.isMuted)
+        output.setMuted(false)
+        XCTAssertFalse(standardOutput.isMuted)
+        output.stop()
     }
 
     func testLiveCallGreetsOnceWhenItFirstConnectsAndNeverOnAReconnect() async {
