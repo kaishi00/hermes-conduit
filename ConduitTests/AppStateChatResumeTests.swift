@@ -3356,6 +3356,40 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertNil(appState.sessionLiveStatus(other))
     }
 
+    func testLiveStatusChipsHideWhileTheGatewayLacksActiveList() async {
+        // #454: a gateway without session.active_list can't fill the Working
+        // and Needs input chips, so they hide rather than show a 0.
+        let probe = LiveStatusProbeStub()
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            probeActiveSessions: { _ in
+                probe.calls += 1
+                if let error = probe.error { throw error }
+                return []
+            }
+        ))
+        let appState = harness.appState
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        XCTAssertTrue(appState.liveSessionStatusAvailable)
+
+        probe.error = URLError(.timedOut)
+        await appState.refreshLiveSessionStatuses()
+        XCTAssertTrue(appState.liveSessionStatusAvailable, "A transient failure keeps the chips")
+
+        probe.error = RpcError(code: -32601, message: "Method not found")
+        await appState.refreshLiveSessionStatuses()
+        XCTAssertFalse(appState.liveSessionStatusAvailable)
+        await appState.refreshLiveSessionStatuses()
+        XCTAssertEqual(probe.calls, 2, "The same connection isn't asked again")
+
+        probe.error = nil
+        appState.client = HermesClient(connection: connection, profile: "default")
+        await appState.refreshLiveSessionStatuses()
+        XCTAssertEqual(probe.calls, 3, "A new connection asks again")
+        XCTAssertTrue(appState.liveSessionStatusAvailable)
+    }
+
     func testConfirmedAliasNotificationDecisionSurvivesRotatedRuntimePromotion() async {
         // The promotion case: a confirmedAlias notification carries a pending
         // approval under runtime-old; the resume of stored-a is admitted and
@@ -6717,6 +6751,12 @@ final class AppStateChatResumeTests: XCTestCase {
             )
         )
     }
+}
+
+/// The live status poll's probe: what it throws next and how often it ran.
+private final class LiveStatusProbeStub {
+    var error: Error?
+    var calls = 0
 }
 
 /// Seam call counters for the cold-launch owed-bootstrap fixture: one

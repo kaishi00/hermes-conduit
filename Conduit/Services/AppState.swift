@@ -607,6 +607,10 @@ final class AppState: ObservableObject {
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
     private weak var activeListUnsupportedClient: HermesClient?
+    /// False once the gateway turned `session.active_list` down, so the chat
+    /// list hides the Working and Needs input chips instead of showing a 0 it
+    /// can't know. A successful poll turns it back on.
+    @Published private(set) var liveSessionStatusAvailable = true
     /// The client whose failed poll was already logged, so a flaky
     /// connection leaves one line rather than one per tick.
     private weak var activeListFailureLoggedClient: HermesClient?
@@ -5176,12 +5180,14 @@ final class AppState: ObservableObject {
                 rows = try await client.activeSessions()
             }
             guard profile == activeProfile, self.client === client else { return }
+            liveSessionStatusAvailable = true
             recordActiveListEvidence(rows, profile: profile)
         } catch {
             // Stop asking a gateway that doesn't have the method; a new
             // connection probes again. Other failures retry on the next tick.
             if isMethodUnavailable(error) {
                 activeListUnsupportedClient = client
+                if self.client === client { liveSessionStatusAvailable = false }
             } else if client !== activeListFailureLoggedClient {
                 activeListFailureLoggedClient = client
                 sessionCatalogLog.notice(
@@ -6349,6 +6355,7 @@ final class AppState: ObservableObject {
         conversationIdentityIndex.removeAll()
         liveSessionStatusIndex = SessionLiveStatusIndex()
         liveSessionStatusProfile = nil
+        liveSessionStatusAvailable = true
         sessionYoloStore.clearAllOverrides()
         // Bot Mode state is per-server: the roster, the capability phase, and
         // the in-memory bot-chat profile registry all describe the outgoing
