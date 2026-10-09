@@ -2004,7 +2004,8 @@ enum VoiceThreadRouting {
     }
 
     /// The answer words in English, then German, Spanish, French,
-    /// Portuguese and Russian, the shipped languages with word breaks.
+    /// Portuguese, Russian, Italian, Polish, Turkish, Indonesian and
+    /// Korean, the shipped languages with word breaks.
     /// A lead is matched in order, so a longer one comes before a shorter
     /// one it starts with ("claro que sí" before "claro"). Verbs that also
     /// start a new request ("envoie", "manda", "отправь") are only leads
@@ -2023,6 +2024,14 @@ enum VoiceThreadRouting {
         "deixa pra lá", "deixa pra la", "cancele",
         "нет", "неа", "не надо", "не нужно", "не стоит", "не отправляй", "не отправляйте", "отмена",
         "отмени", "отмените", "забудь", "забудьте", "забей",
+        "annulla", "lascia perdere", "lascia stare", "dimenticalo", "dimentica", "meglio di no",
+        "nie wysyłaj", "nie", "lepiej nie", "w żadnym wypadku", "anuluj", "zapomnij", "daj spokój", "nieważne",
+        "hayır", "yok", "iptal et", "iptal", "boş ver", "vazgeç", "gerek yok", "gönderme", "unut gitsin", "unut",
+        "tidak usah", "tidak perlu", "tidak jadi", "tidak", "nggak usah", "nggak perlu", "nggak jadi", "nggak",
+        "enggak", "gak usah", "gak perlu", "gak jadi", "gak", "ga usah", "ga jadi", "ga", "jangan dikirim",
+        "jangan", "batalkan", "batal", "lupakan",
+        "아니요", "아니오", "아뇨", "아니", "됐어요", "됐어", "취소해 주세요", "취소해", "취소", "보내지 마세요",
+        "보내지 마", "하지 마세요", "하지 마", "필요 없어요", "필요없어요", "그만",
     ]
     static let answerNotYetLeads = [
         "wait", "hold on", "hang on", "not yet", "not now", "one sec", "one second", "one moment",
@@ -2038,6 +2047,14 @@ enum VoiceThreadRouting {
         "não agora", "nao agora", "não ainda", "nao ainda",
         "подожди", "подождите", "погоди", "погодите", "секунду", "секундочку", "минуту", "минутку",
         "пока нет", "пока не надо", "не сейчас", "ещё нет", "еще нет", "ещё не", "еще не",
+        "aspetta", "aspetti", "un attimo", "un secondo", "non ancora", "non adesso", "non ora", "adesso no",
+        "ora no", "ancora no",
+        "czekaj", "poczekaj", "zaczekaj", "chwileczkę", "chwila", "sekundę", "jeszcze nie", "nie teraz",
+        "bir dakika", "bir saniye", "bekle", "bekleyin", "dur", "henüz değil", "şimdi değil", "daha değil",
+        "tunggu sebentar", "tunggu", "sebentar", "belum", "jangan sekarang", "nanti dulu", "nanti saja",
+        "nanti aja", "tidak sekarang", "nggak sekarang", "gak sekarang",
+        "잠깐만요", "잠깐만", "잠깐", "잠시만요", "잠시만", "아직 아니요", "아직이요", "아직", "지금은 아니요",
+        "지금 말고",
     ]
     static let answerYesLeads = [
         "no problem", "no worries", "no rush", "yes", "yeah", "yep", "yup", "yea", "ya", "sure", "ok", "okay", "alright", "all right",
@@ -2069,6 +2086,21 @@ enum VoiceThreadRouting {
         "не вопрос", "да", "ага", "угу", "конечно", "давай", "давайте", "хорошо", "ладно", "ок", "окей",
         "отлично", "супер", "без проблем", "согласен", "согласна", "верно", "точно", "правильно",
         "именно", "пожалуйста", "отправляй", "отправляйте", "вперёд", "вперед", "годится", "пойдёт", "пойдет",
+        "sì", "certamente", "va bene", "d'accordo", "perfetto", "esatto", "giusto", "volentieri",
+        "vai pure", "vai avanti", "vai", "procedi", "invialo", "fallo", "assolutamente",
+        "ovviamente", "sicuro", "benissimo", "ottimo", "nessun problema", "come no", "per favore",
+        "nie ma problemu", "nie ma sprawy", "no jasne", "no pewnie", "no dobra", "no dobrze", "no tak",
+        "tak masalah", "tak", "jasne", "pewnie", "na pewno", "oczywiście", "dobrze", "dobra", "okej", "zgoda", "wyślij to",
+        "wysyłaj", "śmiało", "proszę", "świetnie", "idealnie", "zgadza się", "w porządku", "racja",
+        "dokładnie", "bez problemu",
+        "evet", "tamam", "olur", "tabii ki", "tabii", "elbette", "kesinlikle", "peki", "gönder", "yolla",
+        "hadi", "olsun", "harika", "mükemmel", "doğru", "aynen", "sorun yok", "problem yok", "lütfen",
+        "tidak apa apa", "tidak masalah", "nggak apa apa", "nggak masalah", "gak apa apa", "gak masalah",
+        "ga apa apa", "ga masalah", "iya", "oke", "baiklah", "baik", "boleh", "tentu saja",
+        "tentu", "pasti", "silakan", "kirim saja", "kirim aja", "kirimkan", "lanjutkan", "lanjut",
+        "setuju", "benar", "betul", "bagus", "sip", "mantap", "tolong",
+        "네", "예", "응", "좋아요", "좋아", "그래요", "그래", "그럼요", "물론이죠", "물론", "보내 주세요",
+        "보내주세요", "보내줘", "부탁해요", "부탁합니다", "알겠어요", "알겠습니다", "오케이",
     ]
     /// After a no, words that only decline politely ("no, I'm good", "yes,
     /// leave it as is").
@@ -2082,11 +2114,19 @@ enum VoiceThreadRouting {
         "precisa não", "precisa nao", "precisa", "tô bem", "to bem", "estou bem", "tá bom", "ta bom",
         "está bom", "esta bom", "tudo bem", "assim mesmo",
         "всё нормально", "все нормально", "всё хорошо", "все хорошо", "нормально", "так нормально",
+        "serve", "c'è bisogno", "importa", "fa niente", "va bene così", "va bene", "sto bene",
+        "tutto a posto", "a posto",
+        "trzeba", "ma potrzeby", "w porządku", "wszystko dobrze", "jest dobrze",
+        "kalsın", "böyle iyi", "iyiyim",
+        "tidak apa apa", "nggak apa apa", "gak apa apa", "ga apa apa", "sudah cukup", "udah cukup", "cukup",
+        "괜찮아요", "괜찮습니다",
     ]
     /// Words between a yes and what decides it ("okay, but wait").
     static let answerJoiners = [
         "but", "actually", "oh", "well", "aber", "doch", "naja", "äh", "ähm", "pero", "bueno", "eh",
-        "mais", "bon", "euh", "mas", "então", "entao", "só", "но", "ну", "э", "эм",
+        "mais", "bon", "euh", "mas", "então", "entao", "só", "но", "ну", "э", "эм", "ma", "beh", "allora",
+        "ehm", "ale", "właściwie", "cóż", "ama", "aslında", "şey", "yani", "tapi", "sebenarnya", "근데",
+        "그런데", "하지만", "음",
     ]
     /// Words after a yes that turn it around or question it ("yeah, I don't
     /// think so", "sure, but why?", "okay, let me think", "yes, actually
@@ -2107,6 +2147,15 @@ enum VoiceThreadRouting {
         "não", "nao", "sem", "talvez", "depois", "esquece", "cancele", "quê", "onde",
         "не", "нет", "ни", "никогда", "ничего", "без", "если", "ли", "почему", "зачем", "где", "кто",
         "может", "потом", "позже", "подожди", "погоди", "отмена", "отмени", "забудь", "подумать",
+        "non", "mai", "niente", "nulla", "senza", "se", "forse", "dopo", "perché", "dove", "chi", "aspetta",
+        "annulla", "pensarci",
+        "nigdy", "nic", "jeśli", "czy", "może", "później", "potem", "dlaczego", "czemu", "gdzie",
+        "kto", "czekaj", "anuluj", "zapomnij", "pomyśleć", "zastanowić",
+        "değil", "hiç", "asla", "olmadan", "eğer", "belki", "sonra", "neden", "niye", "nasıl", "nerede",
+        "bekle", "iptal", "düşüneyim",
+        "tidak", "nggak", "gak", "jangan", "belum", "tanpa", "kalau", "jika", "apakah", "mungkin", "nanti",
+        "kenapa", "mengapa", "bagaimana", "mana", "siapa", "tunggu", "batal", "pikir", "pikirkan",
+        "안", "못", "말고", "없이", "만약", "왜", "어떻게", "어디", "누가", "나중에", "아마", "잠깐", "생각해",
     ]
     /// Words that add nothing to an answer ("no thanks", "yes, send it to
     /// Hermes now").
@@ -2122,13 +2171,21 @@ enum VoiceThreadRouting {
         "maintenant", "encore", "une", "seconde", "instant",
         "sim", "obrigado", "obrigada", "valeu", "isso", "agora", "ainda", "para", "pro", "ao", "o", "um",
         "да", "спасибо", "пожалуйста", "это", "его", "сейчас", "ещё", "еще", "гермес", "гермесу",
+        "grazie", "mille", "per", "pure", "adesso", "ora", "ancora", "attimo", "sì",
+        "tak", "dzięki", "dziękuję", "proszę", "teraz", "jeszcze",
+        "evet", "teşekkürler", "teşekkür", "ederim", "sağ", "ol", "lütfen", "şimdi", "bunu", "onu",
+        "ya", "terima", "kasih", "makasih", "saja", "aja", "dong", "deh", "sekarang", "itu", "ini", "ke",
+        "네", "감사합니다", "고마워요", "고마워", "주세요", "부탁해요", "지금", "그거", "이거",
     ]
-    /// Words that negate ("not", "nicht", "pas", "não", "не"). Not the
-    /// English and Spanish "no": "No, no, make it for Alex" is a change.
+    /// Words that negate ("not", "nicht", "pas", "não", "не", "non",
+    /// "tidak"). Not the English, Spanish and Italian "no": "No, no, make
+    /// it for Alex" is a change.
     static let answerNegations: Set<String> = [
         "not", "never", "dont", "nothing",
         "nicht", "kein", "keine", "keinen", "nichts", "nie", "niemals",
         "nunca", "nada", "ni", "pas", "rien", "jamais", "não", "nao", "не", "нет", "ничего", "никогда",
+        "non", "mai", "niente", "nulla", "nigdy", "nic", "değil", "yok", "hiç", "asla",
+        "tidak", "nggak", "enggak", "gak", "ga", "jangan", "belum", "bukan", "안", "못",
     ]
 
     /// Whether these words negate ("don't", "not", "never", "can't").
@@ -2457,8 +2514,12 @@ enum VoiceThreadRouting {
         return lastReplyPhrases.contains { $0 == String(request) }
     }
 
+    /// Lowercased, with a curly apostrophe made straight and the Turkish
+    /// "İ" lowercased to a plain "i" ("İptal" is "iptal", not "i̇ptal").
     private static func fold(_ text: String) -> String {
-        text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+        text.lowercased()
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .replacingOccurrences(of: "i\u{307}", with: "i")
     }
 
     /// Whole-word match for Latin phrases ("read" isn't in "thread"); CJK
