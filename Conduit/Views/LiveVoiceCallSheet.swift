@@ -411,7 +411,9 @@ private struct LiveVoiceAskFirstButton: View {
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.primary)
                     // Wraps rather than running off the leading edge, at
-                    // large text sizes and in longer languages.
+                    // large text sizes and in longer languages. Capped since
+                    // it sits over the stage: larger, it would cover the orb
+                    // (the button itself says the same to VoiceOver).
                     .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                     .multilineTextAlignment(.trailing)
                     .fixedSize(horizontal: false, vertical: true)

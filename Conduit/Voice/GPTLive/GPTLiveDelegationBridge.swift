@@ -370,7 +370,7 @@ final class GPTLiveDelegationBridge {
             let drop = takeDroppedBesideReadBack() ? " " + Self.droppedBesideReadBack : ""
             let text = attached
                 ? Self.relay("Hermes hasn't replied in this chat yet." + drop)
-                : String(Self.nothingToReadBack.dropLast()) + drop + "]"
+                : "[" + GeminiLiveToolBridge.nothingToReadBack + drop + "]"
             return [.delegationReply(delegationID: id, text: text, channel: .speakable)]
         }
         // The whole reply goes in quietly first, then one cue starts the
@@ -669,17 +669,13 @@ final class GPTLiveDelegationBridge {
             // then delegated again before they finished: the finished ones
             // are the request, and that delegation still waits for the
             // answer.
-            if let finished = Self.finishing(waiting.request, heldFrom: waiting.userWords, with: words),
-               now().timeIntervalSince(waiting.heldAt) < Self.lateWordsWindow {
+            if let finished = finishedRequest(waiting, with: words) {
                 if VoiceThreadRouting.saysSendToHermes(words) || !supervisor.asksBeforeSending {
                     draft = nil
                     lastSentAt = now()
                     return .send(request: finished, intoJob: intoJob, delegationID: pending, call: callGeneration)
                 }
-                waiting.request = finished
-                waiting.userWords = words
-                draft = waiting
-                return .reply([])
+                return keepFinished(finished, words: words, in: waiting)
             }
             waiting.pendingDelegationID = nil
             draft = waiting
@@ -710,8 +706,7 @@ final class GPTLiveDelegationBridge {
             lastSentAt = now()
             // Finishing the words it was held from ("Book a table for", then
             // "… for four, send it to Hermes"): they are the request.
-            if let finished = Self.finishing(waiting.request, heldFrom: waiting.userWords, with: words),
-               now().timeIntervalSince(waiting.heldAt) < Self.lateWordsWindow {
+            if let finished = finishedRequest(waiting, with: words) {
                 return .send(request: finished, intoJob: intoJob, delegationID: waiting.delegationID, call: callGeneration)
             }
             // "…, but make it for four" goes with it; the request's own
@@ -729,14 +724,27 @@ final class GPTLiveDelegationBridge {
         // Held from the user's words while they were still coming in ("Book
         // a table for"): the finished ones ("… for four") are the request
         // they OK.
-        if let finished = Self.finishing(waiting.request, heldFrom: waiting.userWords, with: words),
-           now().timeIntervalSince(waiting.heldAt) < Self.lateWordsWindow {
-            waiting.request = finished
-            waiting.userWords = words
-            draft = waiting
-            return .reply([])
+        if let finished = finishedRequest(waiting, with: words) {
+            return keepFinished(finished, words: words, in: waiting)
         }
         return nil
+    }
+
+    /// The held request finished by these words of the user's, while they
+    /// can still be its late words.
+    private func finishedRequest(_ waiting: Draft, with words: String) -> String? {
+        guard now().timeIntervalSince(waiting.heldAt) < Self.lateWordsWindow else { return nil }
+        return Self.finishing(waiting.request, heldFrom: waiting.userWords, with: words)
+    }
+
+    /// Holds the finished request in place of the one from unfinished words.
+    private func keepFinished(_ finished: String, words: String, in waiting: Draft) -> SpokenAnswer {
+        var waiting = waiting
+        waiting.request = finished
+        waiting.userWords = words
+        waiting.heldAt = now()
+        draft = waiting
+        return .reply([])
     }
 
     /// The user's words for a request still arrive this long after it was

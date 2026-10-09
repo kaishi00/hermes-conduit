@@ -2038,13 +2038,13 @@ extension VoiceConversationControllerTests {
 
     /// Asking first in a call attached to a chat whose last reply is
     /// "Here is the edited image."
-    private func makeAskingFirstChatBridge() -> (FakeVoiceJobBackend, GPTLiveDelegationBridge) {
+    private func makeAskingFirstChatBridge(clock: @escaping () -> Date = Date.init) -> (FakeVoiceJobBackend, GPTLiveDelegationBridge) {
         let fake = FakeVoiceJobBackend()
         fake.threadReply = "Here is the edited image."
         let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
         supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Image Editing")
         supervisor.beginLiveCall(asksBeforeSending: true)
-        return (fake, GPTLiveDelegationBridge(supervisor: supervisor))
+        return (fake, GPTLiveDelegationBridge(supervisor: supervisor, now: clock))
     }
 
     func testGPTLiveAskingFirstHoldsADelegationUntilTheUserSaysYes() async {
@@ -2204,6 +2204,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No problem"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yes, no problem"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Yeah, no worries"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, no worries"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("That works"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sounds great"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("That's great"), .yes(addition: nil))
@@ -2307,6 +2308,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Vergiss es"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Lieber nicht"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Warte"), .notYet(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Bitte warten"), .notYet(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Bitte warten Sie"), .notYet(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Ja, stopp"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Moment mal"), .notYet(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Einen Moment bitte"), .notYet(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Noch nicht"), .notYet(change: nil))
@@ -2337,6 +2341,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Mejor no"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, ahora no"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, no lo mandes"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, no te preocupes"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, para cuatro personas"), .no(change: "No, para cuatro personas"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Cancela"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Olvídalo"), .no(change: nil))
@@ -2369,6 +2374,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Non"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Non merci"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Non, c'est bon"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Non, aucun problème"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Non, pas maintenant"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Laisse tomber"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Annule"), .no(change: nil))
@@ -2415,6 +2421,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sim, mas agora não"), .notYet(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sim, mas não agora"), .notYet(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sim, talvez depois"), .other("Sim, talvez depois"))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sim, aguarde"), .notYet(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Não, sem problema"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Manda um email pro João"), .other("Manda um email pro João"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Deixa eu pensar"), .other("Deixa eu pensar"))
         // Russian
@@ -2438,6 +2446,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Отмена"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Забудь"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Нет, всё нормально"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Нет, без проблем"), .no(change: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Да, стоп"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Нет-нет"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Да нет"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Нет, на четверых"), .no(change: "Нет, на четверых"))
@@ -2468,6 +2478,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Vai pure"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Per favore"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Nessun problema"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No, nessun problema"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Come no"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Sì, per quattro persone"), .yes(addition: "Sì, per quattro persone"))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No"), .no(change: nil))
@@ -2493,6 +2504,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Dobrze"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Okej, wysyłaj"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Nie ma problemu"), .yes(addition: nil))
+        XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Nie, bez problemu"), .no(change: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("No jasne"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Tak, dziękuję"), .yes(addition: nil))
         XCTAssertEqual(VoiceThreadRouting.heldRequestAnswer("Tak, dla czterech osób"), .yes(addition: "Tak, dla czterech osób"))
@@ -2736,7 +2748,8 @@ extension VoiceConversationControllerTests {
         }
 
         // Nothing to read yet: the model still hears it was dropped.
-        let (emptyFake, empty) = makeAskingFirstChatBridge()
+        let start = Date(timeIntervalSince1970: 1_000)
+        let (emptyFake, empty) = makeAskingFirstChatBridge(clock: { start })
         emptyFake.threadReply = nil
         _ = await empty.handleDelegation(id: "del_1", request: "book a table for Sam", userWords: "book a table for Sam")
         empty.modelFinishedTurn()
@@ -3007,7 +3020,8 @@ extension VoiceConversationControllerTests {
     /// GPT-Live delegated while the user's words were still coming in: the
     /// request they OK is their finished words, not the start of them.
     func testGPTLiveAskingFirstHeldFromUnfinishedWordsSendsTheFinishedOnes() async {
-        let (_, fake, bridge) = makeAskingFirstBridge()
+        let start = Date(timeIntervalSince1970: 1_000)
+        let (_, fake, bridge) = makeAskingFirstBridge(clock: { start })
         _ = await bridge.handleDelegation(id: "del_1", request: "Book a table for", userWords: "Book a table for")
         bridge.modelFinishedTurn()
         XCTAssertEqual(bridge.userFinishedSpeaking("Book a table for four."), .reply([]), "these words are the request's")
@@ -3016,7 +3030,7 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(fake.submissions.first?.1.hasSuffix("Book a table for four.") == true, fake.submissions.first?.1 ?? "")
 
         // Finished with "send it to Hermes": the finished words go.
-        let (_, sendFake, sending) = makeAskingFirstBridge()
+        let (_, sendFake, sending) = makeAskingFirstBridge(clock: { start })
         _ = await sending.handleDelegation(id: "del_1", request: "Book a table for", userWords: "Book a table for")
         sending.modelFinishedTurn()
         guard let answer = sending.userFinishedSpeaking("Book a table for four, send it to Hermes") else { return XCTFail("said to send it") }
@@ -3028,18 +3042,22 @@ extension VoiceConversationControllerTests {
 
         // Delegated again before the words finished: the finished ones are
         // still the request, and that delegation waits for the answer.
-        let (_, pendingFake, pending) = makeAskingFirstBridge()
+        var clock = start
+        let (_, pendingFake, pending) = makeAskingFirstBridge(clock: { clock })
         _ = await pending.handleDelegation(id: "del_1", request: "Book a table for", userWords: "Book a table for")
         let early = await pending.handleDelegation(id: "del_2", request: "")
         guard case .delegationReply("del_2", GPTLiveDelegationBridge.waitingForAnswer, .commentary)? = early.first else {
             return XCTFail("\(early)")
         }
-        XCTAssertEqual(pending.userFinishedSpeaking("Book a table for four."), .reply([]), "these words are the request's")
+        clock += 8
+        XCTAssertEqual(pending.userFinishedSpeaking("Book a table for four"), .reply([]), "these words are the request's")
+        clock += 8
+        XCTAssertEqual(pending.userFinishedSpeaking("Book a table for four at seven."), .reply([]), "each finished part restarts the wait")
         guard let yes = pending.userFinishedSpeaking("Yes") else { return XCTFail("the yes answers the waiting delegation") }
         _ = await pending.deliver(yes)
         XCTAssertEqual(pendingFake.created, 1)
         let pendingPrompt = pendingFake.submissions.first?.1 ?? ""
-        XCTAssertTrue(pendingPrompt.hasSuffix("Book a table for four."), pendingPrompt)
+        XCTAssertTrue(pendingPrompt.hasSuffix("Book a table for four at seven."), pendingPrompt)
         XCTAssertFalse(pendingPrompt.contains("the user said"), pendingPrompt)
     }
 

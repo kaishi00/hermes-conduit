@@ -2015,7 +2015,7 @@ enum VoiceThreadRouting {
         "cancel", "forget", "drop", "scrap", "skip", "ditch", "abort", "stop", "leave it", "leave that",
         "nein", "nee", "nö", "auf keinen fall", "lieber nicht", "bloß nicht", "nicht nötig", "nicht senden",
         "nicht schicken", "nicht abschicken", "vergiss es", "vergiss das", "vergiss", "lass es", "lass das",
-        "lass mal", "abbrechen", "brich ab",
+        "lass mal", "abbrechen", "brich ab", "stopp",
         "nop", "mejor no", "cancela", "cancélalo", "cancelalo", "cancelar", "olvídalo", "olvidalo", "olvida",
         "déjalo", "dejalo", "ni hablar",
         "non", "pas besoin", "pas la peine", "surtout pas", "laisse tomber", "laissez tomber", "oublie",
@@ -2023,7 +2023,7 @@ enum VoiceThreadRouting {
         "não", "nao", "negativo", "melhor não", "melhor nao", "esquece", "esqueça", "esqueca",
         "deixa pra lá", "deixa pra la", "cancele",
         "нет", "неа", "не надо", "не нужно", "не стоит", "не отправляй", "не отправляйте", "отмена",
-        "отмени", "отмените", "забудь", "забудьте", "забей",
+        "отмени", "отмените", "забудь", "забудьте", "забей", "стоп",
         "annulla", "lascia perdere", "lascia stare", "dimenticalo", "dimentica", "meglio di no",
         "nie wysyłaj", "nie", "lepiej nie", "w żadnym wypadku", "anuluj", "zapomnij", "daj spokój", "nieważne",
         "hayır", "yok", "iptal et", "iptal", "boş ver", "vazgeç", "gerek yok", "gönderme", "unut gitsin", "unut",
@@ -2036,14 +2036,14 @@ enum VoiceThreadRouting {
     static let answerNotYetLeads = [
         "wait", "hold on", "hang on", "not yet", "not now", "one sec", "one second", "one moment",
         "just a sec", "just a second", "just a moment", "hold it",
-        "warte", "wart", "warten sie", "moment", "einen moment", "einen augenblick", "augenblick",
+        "warte", "wart", "warten sie", "warten", "moment", "einen moment", "einen augenblick", "augenblick",
         "eine sekunde", "sekunde", "noch nicht", "jetzt nicht", "nicht jetzt",
         "espera", "espere", "esperá", "un momento", "un momentito", "un segundo", "momento",
         "todavía no", "todavia no", "aún no", "aun no", "ahora no", "por ahora no", "no todavía",
         "no todavia", "no ahora", "no por ahora",
         "attends", "attendez", "un instant", "une seconde", "une minute", "un moment", "pas encore",
         "pas maintenant", "pas tout de suite",
-        "segundo", "peraí", "perai", "pera", "ainda não", "ainda nao", "agora não", "agora nao",
+        "segundo", "peraí", "perai", "pera", "aguarda", "aguarde", "ainda não", "ainda nao", "agora não", "agora nao",
         "não agora", "nao agora", "não ainda", "nao ainda",
         "подожди", "подождите", "погоди", "погодите", "секунду", "секундочку", "минуту", "минутку",
         "пока нет", "пока не надо", "не сейчас", "ещё нет", "еще нет", "ещё не", "еще не",
@@ -2103,22 +2103,27 @@ enum VoiceThreadRouting {
         "보내주세요", "보내줘", "부탁해요", "부탁합니다", "알겠어요", "알겠습니다", "오케이",
     ]
     /// After a no, words that only decline politely ("no, I'm good", "yes,
-    /// leave it as is").
+    /// leave it as is", "no, no worries").
     static let answerRefusalTails = [
         "i'm good", "i'm fine", "i'm ok", "i'm okay", "we're good", "all good", "all set", "as is",
-        "it's fine", "it's ok", "it's okay", "that's fine", "that's ok", "that's okay",
+        "it's fine", "it's ok", "it's okay", "that's fine", "that's ok", "that's okay", "no problem",
+        "no worries", "no rush",
         "schon gut", "passt schon", "passt so", "alles gut", "ist gut", "ist okay",
         "así está bien", "asi esta bien", "está bien así", "esta bien asi", "estoy bien", "lo mandes",
-        "lo envíes", "lo envies", "lo hagas", "hace falta", "es necesario",
-        "ça va", "ca va", "c'est bon", "ça ira", "ca ira", "comme ça", "comme ca",
+        "lo envíes", "lo envies", "lo hagas", "hace falta", "es necesario", "no hay problema",
+        "no te preocupes", "no pasa nada", "no hay prisa", "sin problema",
+        "ça va", "ca va", "c'est bon", "ça ira", "ca ira", "comme ça", "comme ca", "aucun problème",
+        "aucun probleme", "aucun souci",
         "precisa não", "precisa nao", "precisa", "tô bem", "to bem", "estou bem", "tá bom", "ta bom",
-        "está bom", "esta bom", "tudo bem", "assim mesmo",
+        "está bom", "esta bom", "tudo bem", "assim mesmo", "sem problema", "sem problemas",
         "всё нормально", "все нормально", "всё хорошо", "все хорошо", "нормально", "так нормально",
+        "без проблем",
         "serve", "c'è bisogno", "importa", "fa niente", "va bene così", "va bene", "sto bene",
-        "tutto a posto", "a posto",
-        "trzeba", "ma potrzeby", "w porządku", "wszystko dobrze", "jest dobrze",
+        "tutto a posto", "a posto", "nessun problema",
+        "trzeba", "ma potrzeby", "w porządku", "wszystko dobrze", "jest dobrze", "bez problemu",
         "kalsın", "böyle iyi", "iyiyim",
         "tidak apa apa", "nggak apa apa", "gak apa apa", "ga apa apa", "sudah cukup", "udah cukup", "cukup",
+        "tak masalah",
         "괜찮아요", "괜찮습니다",
     ]
     /// Words between a yes and what decides it ("okay, but wait").
@@ -2188,6 +2193,16 @@ enum VoiceThreadRouting {
         "tidak", "nggak", "enggak", "gak", "ga", "jangan", "belum", "bukan", "안", "못",
     ]
 
+    /// Positive leads a no lead starts ("no problem", "não tem problema",
+    /// "no todavía"): said first, they are a yes or a not yet, not a no.
+    private static let answerLeadsStartingWithNo: [[String]] = (answerYesLeads + answerNotYetLeads).compactMap { lead in
+        let leadWords = lead.split(separator: " ").map(String.init)
+        let startsWithNo = leadWords.count > 1 && answerNoLeads.contains { noLead in
+            leadWords.starts(with: noLead.split(separator: " ").map(String.init))
+        }
+        return startsWithNo ? leadWords : nil
+    }
+
     /// Whether these words negate ("don't", "not", "never", "can't").
     private static func negates(_ words: [String]) -> Bool {
         words.contains { answerNegations.contains($0) || $0.hasSuffix("n't") }
@@ -2217,9 +2232,7 @@ enum VoiceThreadRouting {
         // "No problem", "não tem problema" and "no todavía" are a yes or a not
         // yet, not a no.
         func dropNoLead() -> Bool {
-            !(answerYesLeads + answerNotYetLeads).contains { lead in
-                lead.contains(" ") && words.starts(with: lead.split(separator: " ").map(String.init))
-            } && dropLead(answerNoLeads)
+            !answerLeadsStartingWithNo.contains { words.starts(with: $0) } && dropLead(answerNoLeads)
         }
         // "No, I don't want that": a negation in what follows is still the no.
         func change(_ rest: [String]) -> String? { negates(rest) ? nil : more(rest) }
