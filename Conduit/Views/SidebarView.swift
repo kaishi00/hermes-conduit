@@ -1056,7 +1056,10 @@ struct SessionActionMenuItems: View {
 
         ReadStateToggleButton(session: session)
 
-        MoveToProjectMenu(session: session, excludingProjectID: excludingProjectID, onMoved: onChanged)
+        // A cron run keeps the job's workspace (#485).
+        if session.source != .cron {
+            MoveToProjectMenu(session: session, excludingProjectID: excludingProjectID, onMoved: onChanged)
+        }
 
         Button {
             Task {
