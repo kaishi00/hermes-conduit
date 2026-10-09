@@ -269,7 +269,7 @@ final class HermesNativeCalls: NSObject {
         // Another voice conversation started while it rang: the job's news
         // reaches the user there, never as this call.
         guard appState.answerHermesCall(request) else {
-            finish(id, reason: .failed, notice: .missed)
+            finish(id, reason: .failed, notice: .talk)
             return
         }
         var started = false
@@ -284,9 +284,10 @@ final class HermesNativeCalls: NSObject {
         }
         guard calls[id] != nil else { return }
         // Voice ended in the app, or never started: the CallKit call ends,
-        // and voice still opening for a missed call doesn't.
+        // and voice still opening doesn't. The user picked up, so what's
+        // left is "Hermes wants to talk", not a missed call.
         if !started { appState.endVoiceForNativeCall() }
-        finish(id, reason: started ? .remoteEnded : .failed, notice: started ? .none : .missed)
+        finish(id, reason: started ? .remoteEnded : .failed, notice: started ? .none : .talk)
     }
 
     private func waitForAudio() async {
