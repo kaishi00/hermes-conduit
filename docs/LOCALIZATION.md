@@ -102,6 +102,12 @@ One key has one translation, so a word used in two unrelated places
 needs two wordings: the "Clear" voice style is an adjective, so the
 Watch call log's button says "Clear Log".
 
+A conditional label wraps each branch: `Text(active ? "Responding" :
+"Finishing")` binds SwiftUI's verbatim `String` initializer, so neither
+literal is looked up. Write `Text(active ? AppLocalization.string("Responding")
+: AppLocalization.string("Finishing"))` (`String(localized:)` in the Watch
+app).
+
 ## What CI checks
 
 `check-l10n-coverage.py` runs in the `Plan & validate` job:
@@ -113,11 +119,14 @@ Watch call log's button says "Clear Log".
 - every integer placeholder is a count with English plural forms, one per
   key (labels excepted, see above), and no count is passed as
   `String(count)` in front of a plural noun;
+- no SwiftUI title gets a raw string literal as a ternary branch;
 - where the English source varies a key by plural, every shipped language
   provides each plural form its own rules use (French: one, many, other;
   Japanese: other). The table is `PLURAL_CATEGORIES` in the checker,
   generated from CLDR; a language CLDR doesn't know only needs `other`, and
   the checker says so;
+- every permission prompt (`NS…UsageDescription`) in the app's and the
+  Watch's `Info.plist` has an entry in the `InfoPlist.xcstrings` beside it;
 - each language is spelled the same way in every catalog;
 - every value in every language, drafts included, keeps the key's
   placeholders in the same order, or reorders all of them with positional

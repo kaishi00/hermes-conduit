@@ -790,6 +790,11 @@ struct CronJob: Codable, Identifiable {
     }
 }
 
+/// A Cron job action; the raw value is the dashboard API path segment.
+enum CronJobAction: String {
+    case pause, resume, trigger
+}
+
 struct CronSchedule: Codable {
     var display: String?
     var expr: String?

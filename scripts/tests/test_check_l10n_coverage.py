@@ -658,6 +658,59 @@ class StringWrappedCountTests(unittest.TestCase):
         self.assertTrue(check_l10n_coverage.language_is_complete(catalog, "ru"))
 
 
+class RawTernaryTests(unittest.TestCase):
+    """Text(flag ? "A" : "B") binds the verbatim String overload, so a raw
+    literal branch is never looked up in the catalog."""
+
+    def literals(self, source):
+        return [skeleton for skeleton, _offset
+                in check_l10n_coverage.raw_ternary_literals(source)]
+
+    def test_raw_branches_are_reported(self):
+        self.assertEqual(self.literals('Text(active ? "Responding" : "Finishing")'),
+                         ["Responding", "Finishing"])
+        self.assertEqual(self.literals(
+            'Label(on ? AppLocalization.string("Pause") : "Resume", systemImage: "pause")'),
+            ["Resume"])
+        self.assertEqual(self.literals(
+            '.accessibilityHint(\n    live\n        ? "Mic is live."\n        : "Mic is off.")'),
+            ["Mic is live.", "Mic is off."])
+        self.assertEqual(self.literals('Text(a ? "One" : b ? "Two" : name)'), ["One", "Two"])
+        self.assertEqual(self.literals('Text(name.isEmpty ? "Hi \\(user)" : name)'), ["Hi %@"])
+
+    def test_wrapped_glyph_and_labeled_branches_are_not_reported(self):
+        for source in (
+            'Text(on ? AppLocalization.string("On") : AppLocalization.string("Off"))',
+            'Text(ordered ? "\\(index + 1)." : "•")',
+            'Text(verbatim: empty ? "pasteboard:empty" : text)',
+            'Label("Copy", systemImage: copied ? "checkmark" : "doc.on.doc")',
+            'Text(title ?? "Untitled")',
+            'Text(try? load() ?? "")',
+            'ProgressView(value: done ? 1 : 0)',
+            'Text("\\(on ? "A" : "B")")',
+        ):
+            self.assertEqual(self.literals(source), [], source)
+
+
+class UsageDescriptionTests(unittest.TestCase):
+    """A permission prompt without an InfoPlist catalog entry shows in
+    English whatever the language."""
+
+    def test_a_prompt_missing_from_the_catalog_is_reported(self):
+        info = {"NSCameraUsageDescription": "Conduit uses the camera.",
+                "NSMicrophoneUsageDescription": "Conduit uses the microphone.",
+                "CFBundleName": "Conduit"}
+        catalog = {"strings": {"NSMicrophoneUsageDescription": {}}}
+        self.assertEqual(check_l10n_coverage.usage_description_problems(info, catalog),
+                         ["NSCameraUsageDescription"])
+
+    def test_covered_prompts_and_other_keys_pass(self):
+        info = {"NSMicrophoneUsageDescription": "Conduit uses the microphone.",
+                "UIBackgroundModes": ["audio"]}
+        catalog = {"strings": {"NSMicrophoneUsageDescription": {}}}
+        self.assertEqual(check_l10n_coverage.usage_description_problems(info, catalog), [])
+
+
 class DraftLanguageTests(unittest.TestCase):
     """A draft may be partial and unreviewed, but never malformed."""
 

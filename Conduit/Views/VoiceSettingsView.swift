@@ -1366,7 +1366,7 @@ private struct SpokenPhraseListEditor: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(commitDraft)
                     .accessibilityLabel(Text(editingIndex == nil ? AppLocalization.string("Add \(title)") : AppLocalization.string("Edit \(title)")))
-                Button(editingIndex == nil ? "Add" : "Save", action: commitDraft)
+                Button(editingIndex == nil ? AppLocalization.string("Add") : AppLocalization.string("Save"), action: commitDraft)
                     .disabled(draftCanonicalized.isEmpty)
             }
         }

@@ -703,7 +703,7 @@ struct KanbanTaskDetailView: View {
             Button {
                 Task { await reclaimTask(reason: nil) }
             } label: {
-                Label(action.label.isEmpty ? "Reclaim" : action.label, systemImage: "arrow.clockwise.circle")
+                Label(action.label.isEmpty ? AppLocalization.string("Reclaim") : action.label, systemImage: "arrow.clockwise.circle")
             }
             .buttonStyle(.bordered)
             .tint(action.suggested == true ? .conduitAccent : .secondary)

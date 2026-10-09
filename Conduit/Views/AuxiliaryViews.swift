@@ -200,7 +200,7 @@ private struct LegacySettingsView: View {
                     isReconnecting = false
                 }
             } label: {
-                Label(isReconnecting ? AppLocalization.string("Reconnecting…") : "Reconnect", systemImage: "arrow.clockwise")
+                Label(isReconnecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Reconnect"), systemImage: "arrow.clockwise")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .frame(height: 44)
@@ -1285,8 +1285,8 @@ private struct ChatReturnBehaviorSettings: View {
                 .pickerStyle(.segmented)
                 .accessibilityHint(
                     surface == .sessions
-                        ? "Conduit opens to the session list. Used if you dismiss it without choosing another conversation."
-                        : "Conduit opens to your conversation."
+                        ? AppLocalization.string("Conduit opens to the session list. Used if you dismiss it without choosing another conversation.")
+                        : AppLocalization.string("Conduit opens to your conversation.")
                 )
                 if surface == .sessions {
                     Text("Used if you dismiss the session list without choosing another conversation.")
@@ -1392,7 +1392,7 @@ struct ConduitMenuPicker<Label: View>: View {
             HStack {
                 label
                 Spacer(minLength: 8)
-                Text(displayedTitle.isEmpty ? "Default" : displayedTitle)
+                Text(displayedTitle.isEmpty ? AppLocalization.string("Default") : displayedTitle)
                 Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary).accessibilityHidden(true)
             }
             .font(.subheadline.weight(.medium))
@@ -1794,7 +1794,7 @@ private struct GatewaySettingsDetail: View {
             ConduitSettingsSection(title: AppLocalization.string("Connection"), symbol: "radio", tint: .conduitAura) {
                 SettingsMetricRow(label: AppLocalization.string("Server"), value: snapshot.server ?? "—", lineLimit: 1)
                 SettingsMetricRow(label: AppLocalization.string("Status"), value: connected ? "Connected" : "Disconnected", valueColor: connected ? .green : .red, statusDot: connected ? .green : .red)
-                Button { Task { reconnecting = true; connected = await reconnect(); reconnecting = false } } label: { Label(reconnecting ? AppLocalization.string("Reconnecting…") : "Reconnect", systemImage: "arrow.clockwise").frame(maxWidth: .infinity).frame(height: 44) }
+                Button { Task { reconnecting = true; connected = await reconnect(); reconnecting = false } } label: { Label(reconnecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Reconnect"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity).frame(height: 44) }
                     .disabled(reconnecting).conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
             }
             ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield.lefthalf.filled", tint: .conduitAccent) {
