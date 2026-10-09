@@ -778,7 +778,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // A call that began since hands the watch over still held, so
                 // Hermes can't call in between.
                 let holdSeconds = callbackCallID != nil ? Self.callbackHoldSeconds : 0
-                let answer: HermesCallHoldAnswer
+                var answer: HermesCallHoldAnswer
                 if let held = watchID {
                     answer = try await callbacks.hold(held, entry.profile, holdSeconds)
                 } else {
@@ -789,6 +789,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     case .ended(let kind):
                         answer = .ended(kind)
                     }
+                }
+                // The call it was handed to ended during that round trip:
+                // the hold it took goes too, or Hermes would wait it out.
+                if holdSeconds > 0, callbackCallID == nil, answer == .watching, let held = watchID {
+                    answer = try await callbacks.hold(held, entry.profile, 0)
                 }
                 guard generation == self.generation else { return }
                 switch answer {

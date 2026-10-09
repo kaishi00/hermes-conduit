@@ -17,7 +17,7 @@ struct HermesCallSettingsModel {
     /// Reads them again; false when the host couldn't answer.
     var load: () async -> Bool
     /// The settings last read from the host, as they are now.
-    var current: () -> HermesCallSettings?
+    var current: @MainActor () -> HermesCallSettings?
     /// Saves every setting; false when the host didn't take them.
     var save: (HermesCallSettings) async -> Bool
 }
@@ -64,6 +64,7 @@ struct HermesCallSettingsSection: View {
         let settings = draft
         let save = model.save
         let current = model.current
+        let editTimeSettings = model.status?.settings
         saveTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(500))
             await previous?.value
@@ -72,7 +73,7 @@ struct HermesCallSettingsSection: View {
             guard !Task.isCancelled else { return }
             saveTask = nil
             // What the host holds now, including saves since this edit.
-            if !saved, let hostSettings = current() { draft = hostSettings }
+            if !saved, let hostSettings = current() ?? editTimeSettings { draft = hostSettings }
         }
     }
 

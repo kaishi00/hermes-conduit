@@ -21,6 +21,8 @@ final class FakeHermesCallbackBackend {
     var watchError: Error?
     var holdAnswers: [Int: HermesCallHoldAnswer] = [:]
     var holdError: Error?
+    /// Runs as each hold reaches the host, before it answers.
+    var onHold: (@MainActor (Int) -> Void)?
     private(set) var watches: [(target: VoiceCallbackTarget, hold: Int, within: Int?)] = []
     private(set) var holds: [(id: String, seconds: Int)] = []
     private(set) var cancels: [String] = []
@@ -37,6 +39,7 @@ final class FakeHermesCallbackBackend {
             },
             hold: { [self] id, _, seconds in
                 self.holds.append((id, seconds))
+                self.onHold?(seconds)
                 if let error = self.holdError { throw error }
                 return self.holdAnswers[seconds] ?? .watching
             },
@@ -284,6 +287,25 @@ extension VoiceConversationControllerTests {
 
         XCTAssertFalse(calls.holds.isEmpty)
         XCTAssertTrue(calls.holds.allSatisfy { $0.seconds == VoiceBackgroundJobSupervisor.callbackHoldSeconds }, "Never released between the calls")
+        XCTAssertEqual(calls.watches.count, 1, "Handed over, not registered again")
+        XCTAssertTrue(calls.notified.isEmpty)
+    }
+
+    func testAWatchHandedToACallThatEndsMeanwhileIsLetGo() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+
+        // The next call hangs up while its hold of the watch is on its way.
+        calls.onHold = { [weak supervisor] seconds in
+            if seconds > 0 { supervisor?.finishCallbacks() }
+        }
+        beginHermesCall(supervisor)
+        await supervisor.callbackPassesSettled()
+
+        XCTAssertEqual(calls.holds.map(\.seconds), [VoiceBackgroundJobSupervisor.callbackHoldSeconds, 0], "Released, so Hermes doesn't wait the hold out")
         XCTAssertTrue(calls.notified.isEmpty)
     }
 
