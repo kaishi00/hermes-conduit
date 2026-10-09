@@ -53,8 +53,8 @@ one's run: each merge gets its own run, because branch protection does not
 require PRs to be up to date with main, and the main run is what catches two
 PRs that are green alone but break together. Whoever merged the breaking PR
 fixes main forward. Two merges close together overlap, so their macOS jobs
-queue behind the ceiling and can delay PR runs for a while; that is accepted,
-since merges are minutes apart at most a few times a day.
+queue behind the ceiling and can delay PR runs. That is accepted: it costs
+minutes, where updating every open PR after each merge cost a full run each.
 
 Raise `unit_shards` only with that ceiling in mind.
 A nightly run schedules up to 6 macOS jobs (3 timing repeats + 3 UI shards),
