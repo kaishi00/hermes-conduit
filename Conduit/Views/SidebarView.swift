@@ -615,9 +615,7 @@ struct SessionList: View {
     private var sourceFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(visibleStatusFilters) { filter in
-                    statusFilterChip(filter, count: statusCount(filter))
-                }
+                statusFilterMenu
                 Capsule()
                     .fill(Color.primary.opacity(0.12))
                     .frame(width: 1, height: 18)
@@ -632,30 +630,58 @@ struct SessionList: View {
         }
     }
 
-    /// A status chip toggles on and off and narrows whichever source filter
-    /// is selected, so "Unread" works inside "Telegram" too.
-    private func statusFilterChip(_ filter: SessionStatusFilter, count: Int) -> some View {
-        let isOn = statusFilter == filter
-        return Button {
-            withAnimation(ConduitMotion.response) {
-                Haptics.selection()
-                statusFilterRaw = isOn ? "" : filter.rawValue
+    /// One chip for Needs input, Working and Unread, so they don't crowd the
+    /// source filters. Picking a status narrows whichever source filter is
+    /// selected ("Unread" inside "Telegram"); picking it again clears it.
+    private var statusFilterMenu: some View {
+        let selected = statusFilter
+        let waiting = visibleStatusFilters.filter { $0 != selected && statusCount($0) > 0 }
+        return Menu {
+            ForEach(visibleStatusFilters) { filter in
+                Button {
+                    withAnimation(ConduitMotion.response) {
+                        Haptics.selection()
+                        statusFilterRaw = selected == filter ? "" : filter.rawValue
+                    }
+                } label: {
+                    if selected == filter {
+                        Label("\(filter.title) \(String(statusCount(filter)))", systemImage: "checkmark")
+                    } else {
+                        Text("\(filter.title) \(String(statusCount(filter)))")
+                    }
+                }
+                .accessibilityHint(filter.accessibilityHint)
             }
         } label: {
             HStack(spacing: 5) {
-                Circle()
-                    .fill(isOn ? Color.conduitBackgroundColor : filter.color)
-                    .frame(width: 6, height: 6)
-                Text("\(filter.title) \(String(count))")
+                if let selected {
+                    Circle()
+                        .fill(Color.conduitBackgroundColor)
+                        .frame(width: 6, height: 6)
+                    Text("\(selected.title) \(String(statusCount(selected)))")
+                } else {
+                    // A dot per status with something in it, so a chat
+                    // waiting on you shows without opening the menu.
+                    ForEach(waiting) { filter in
+                        Circle().fill(filter.color).frame(width: 6, height: 6)
+                    }
+                    Text(AppLocalization.string("Status"))
+                }
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.bold))
             }
             .font(.caption.weight(.semibold))
-            .foregroundStyle(isOn ? Color.conduitBackgroundColor : .secondary)
+            .foregroundStyle(selected == nil ? Color.secondary : Color.conduitBackgroundColor)
             .padding(.horizontal, 11).padding(.vertical, 7)
-            .background(isOn ? filter.color : Color.primary.opacity(0.07), in: Capsule())
+            .background(selected?.color ?? Color.primary.opacity(0.07), in: Capsule())
         }
+        .menuOrder(.fixed)
         .buttonStyle(.plain)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
-        .accessibilityHint(filter.accessibilityHint)
+        // The idle dots say which statuses have chats; VoiceOver hears them too.
+        .accessibilityLabel(([AppLocalization.string("Status")]
+            + (selected.map { [$0] } ?? waiting).map { "\($0.title) \(String(statusCount($0)))" })
+            .joined(separator: ", "))
+        .accessibilityAddTraits(selected == nil ? [] : .isSelected)
     }
 
     private func sourceFilter(title: String, count: Int, source: SessionSource?) -> some View {
