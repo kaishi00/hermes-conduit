@@ -50,6 +50,16 @@ enum ReasoningEffortLevel: String, CaseIterable, Identifiable {
         self.init(rawValue: word.isEmpty || word == "off" ? "none" : word)
     }
 
+    /// What to show for a runtime effort word: the level's title, or the
+    /// raw gateway word made readable when Conduit doesn't list it.
+    static func displayTitle(for runtimeEffort: String) -> String {
+        if let level = ReasoningEffortLevel(runtimeEffort: runtimeEffort) { return level.title }
+        return runtimeEffort.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
+    }
+
     var title: String {
         switch self {
         case .off: return AppLocalization.string("Off")
@@ -447,6 +457,12 @@ struct ModelPickerView: View {
         ModelPickerSection(title: AppLocalization.string("Reasoning"), symbol: "brain.head.profile", tint: .conduitAura) {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
+                    // A level Hermes reports that Conduit doesn't offer still
+                    // shows, selected, so the row never looks unset.
+                    if ReasoningEffortLevel(runtimeEffort: reasoningEffort) == nil {
+                        reasoningPillLabel(ReasoningEffortLevel.displayTitle(for: reasoningEffort), isSelected: true)
+                            .accessibilityAddTraits(.isSelected)
+                    }
                     ForEach(ReasoningEffortLevel.allCases) { level in
                         reasoningPill(level)
                     }
@@ -469,24 +485,28 @@ struct ModelPickerView: View {
         return Button {
             Task { @MainActor in await applyReasoning(level) }
         } label: {
-            Text(level.title)
-                .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Color.white : Color.primary)
-                .padding(.horizontal, 14)
-                .frame(minHeight: 36)
-                .background(
-                    isSelected ? AnyShapeStyle(Color.conduitAura) : AnyShapeStyle(rowFoundation),
-                    in: Capsule()
-                )
-                .overlay {
-                    Capsule().strokeBorder(isSelected ? Color.clear : rowStroke, lineWidth: 1)
-                }
-                .contentShape(Capsule())
+            reasoningPillLabel(level.title, isSelected: isSelected)
         }
         .buttonStyle(.plain)
         // One write at a time: Apply may switch the model under this level.
-        .disabled(isApplyingReasoning || isApplying)
+        .disabled(isApplyingReasoning || isApplying || appState.isWritingReasoningEffort)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func reasoningPillLabel(_ title: String, isSelected: Bool) -> some View {
+        Text(title)
+            .font(.subheadline.weight(isSelected ? .semibold : .regular))
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 36)
+            .background(
+                isSelected ? AnyShapeStyle(Color.conduitAura) : AnyShapeStyle(rowFoundation),
+                in: Capsule()
+            )
+            .overlay {
+                Capsule().strokeBorder(isSelected ? Color.clear : rowStroke, lineWidth: 1)
+            }
+            .contentShape(Capsule())
     }
 
     private var runSettingsSection: some View {
@@ -760,6 +780,8 @@ struct ModelPickerView: View {
     /// waiting for Apply.
     private func applyReasoning(_ level: ReasoningEffortLevel) async {
         guard !isApplyingReasoning, !isApplying else { return }
+        // Re-tapping the live level sends nothing.
+        guard ReasoningEffortLevel(runtimeEffort: reasoningEffort) != level else { return }
         Haptics.selection()
         reasoningEffort = level.rawValue
         reasoningError = nil
@@ -778,6 +800,7 @@ struct ModelPickerView: View {
 
     private func applyModel(confirmedModelSwitch: Bool = false) async {
         guard !isApplying, !isApplyingReasoning else { return }
+        reasoningError = nil
         guard let client = appState.client, let sessionId = appState.activeSessionId else {
             applyError = AppLocalization.string("Not connected to a conversation.")
             return
