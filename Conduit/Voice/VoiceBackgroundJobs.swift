@@ -2210,6 +2210,15 @@ enum VoiceThreadRouting {
         return startsWithNo ? leadWords : nil
     }
 
+    /// Send verbs that are a yes on their own ("Отправляй", "Gönder") but
+    /// open a new request with more after them ("Gönder dosyayı Ayşe'ye"),
+    /// as "Send an email to Sam" does.
+    static let answerBareSendLeads: Set<String> = [
+        "abschicken", "absenden", "pode mandar", "pode enviar", "отправляй", "отправляйте", "wysyłaj", "gönder",
+        "yolla", "kirimkan",
+    ]
+    private static let answerNoLeadWords = answerNoLeads.map { $0.split(separator: " ").map(String.init) }
+
     /// The Polish yes that is also the Indonesian "not". Run into the next
     /// word ("Tak tahu", "Ya, tak tahu"), it's the "not": no yes, and
     /// after one, asked again. Set off ("Tak, proszę"), it's the yes.
@@ -2248,7 +2257,7 @@ enum VoiceThreadRouting {
         // yet, not a no.
         func startsWithNoLead() -> Bool {
             !answerLeadsStartingWithNo.contains { words.starts(with: $0) }
-                && answerNoLeads.contains { words.starts(with: $0.split(separator: " ").map(String.init)) }
+                && answerNoLeadWords.contains { words.starts(with: $0) }
         }
         func dropNoLead() -> Bool { startsWithNoLead() && dropLead(answerNoLeads) }
         // "No, I don't want that": a negation in what follows is still the no.
@@ -2279,11 +2288,14 @@ enum VoiceThreadRouting {
         while dropLead(answerJoiners) {}
         if dropNoLead() { return refusal() }
         if dropLead(answerNotYetLeads) { return notYet() }
+        let unanswered = words
         guard dropLead(yesLeads) else {
             // "Send to Hermes", or just "Send": a yes with nothing more.
             if words == ["send"] || saysSendToHermes(spoken) { return .yes(addition: more(words)) }
             return .other(spoken)
         }
+        let lead = unanswered.dropLast(words.count).joined(separator: " ")
+        if answerBareSendLeads.contains(lead), more(words) != nil, !saysSendToHermes(spoken) { return .other(spoken) }
         // "Okay, wait", "Yeah, but actually no", "Please don't": what
         // follows decides. A no that starts with a yes word ("Iya, tak
         // usah") is still the no.
