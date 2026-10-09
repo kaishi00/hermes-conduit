@@ -1641,6 +1641,9 @@ final class PushNotificationService: ObservableObject {
         if voipChange != .keep {
             let rings = (try? JSONDecoder().decode(UpdateRegistrationResponse.self, from: data))?.installation?.voip == true
             self.registration?.voipToken = rings ? voipToken : nil
+            // Another update sent a newer token meanwhile, and this one may
+            // have landed after it: the newer token goes again, last.
+            if rings, voipToken != self.voipToken { updateVoIPToken(self.voipToken) }
         }
         persistRegistration()
     }

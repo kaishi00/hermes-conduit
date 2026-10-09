@@ -1359,6 +1359,7 @@ final class CarPlayVoiceCoordinator {
         // tapped meanwhile starts nothing.
         guard isCurrent(generation), isConnected, voiceStartRequest == startRequest,
               CarPlayVoiceMode.current(in: appState) == mode.voiceMode else { return }
+        appState.keepVoiceFromHermesCallCleanup()
         switch mode {
         case .geminiLive:
             await appState.startGeminiLiveForCarPlay(attachingTo: thread)
@@ -1394,6 +1395,7 @@ final class CarPlayVoiceCoordinator {
         generation: UInt64,
         startsFreshConversation: Bool = false
     ) async -> AppState.VoiceConversationPrepareOutcome {
+        appState.keepVoiceFromHermesCallCleanup()
         let outcome = await appState.prepareVoiceConversation(
             profile: nil,
             startsFreshConversation: startsFreshConversation

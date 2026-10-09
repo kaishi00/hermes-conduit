@@ -167,20 +167,44 @@ extension AppState {
         )
         let profile = activeProfile
         let intent = PendingVoiceIntent(profile: profile, startsFreshConversation: false, source: .hermesCall)
-        Task { [weak self] in
-            guard let self else { return }
+        hermesCallOpenTask?.cancel()
+        let generation = UUID()
+        hermesCallOpenGeneration = generation
+        hermesCallOpenTask = Task { [weak self] in
+            // Hung up before voice opened: it doesn't.
+            guard let self, !Task.isCancelled else { return }
+            let errorBefore = self.errorMessage
             if self.configuredLiveVoiceEngine(profile: profile) != nil {
                 self.pendingHermesCall = opening
                 _ = await self.openVoiceConversation(intent)
                 // Starting the call took it; a later unrelated call must not.
-                self.pendingHermesCall = nil
+                if self.pendingHermesCall == opening { self.pendingHermesCall = nil }
             } else {
                 // Classic voice says it at its first listening window.
                 self.voiceBackgroundJobSupervisor.queueCallOpening(opening.spokenBrief)
-                if !(await self.openVoiceConversation(intent)) || !self.showVoiceSheet {
-                    self.voiceBackgroundJobSupervisor.clearCallOpening()
+                let opened = await self.openVoiceConversation(intent)
+                if !opened || !self.showVoiceSheet {
+                    self.voiceBackgroundJobSupervisor.clearCallOpening(opening.spokenBrief)
                 }
             }
+            // Only a hang-up or a newer call replaces this task, and both
+            // cancel it first.
+            guard Task.isCancelled else {
+                self.hermesCallOpenTask = nil
+                return
+            }
+            // Hung up while it opened: what it opened ends as the call did.
+            self.voiceBackgroundJobSupervisor.clearCallOpening(opening.spokenBrief)
+            // Voice started since by another call or by the user isn't this
+            // call's to end.
+            guard self.hermesCallOpenGeneration == generation else { return }
+            self.hermesCallOpenGeneration = nil
+            // Voice being off or unavailable isn't news for a call the user
+            // left; any other error stays.
+            if self.errorMessage != errorBefore, self.errorMessage == self.voiceUnavailableReason {
+                self.errorMessage = errorBefore
+            }
+            self.endVoiceOfNativeCall()
         }
         return true
     }
@@ -333,8 +357,22 @@ extension AppState {
     }
 
     /// The user hung up the CallKit call: the voice conversation it opened
-    /// ends as its End button would.
+    /// ends as its End button would, and one still opening doesn't open.
     func endVoiceForNativeCall() {
+        hermesCallOpenTask?.cancel()
+        hermesCallOpenTask = nil
+        // No voice started from now on takes the call's opening.
+        pendingHermesCall = nil
+        endVoiceOfNativeCall()
+    }
+
+    /// Voice the user starts another way is theirs: an open still running
+    /// for a call they hung up no longer ends it.
+    func keepVoiceFromHermesCallCleanup() {
+        hermesCallOpenGeneration = nil
+    }
+
+    private func endVoiceOfNativeCall() {
         if isLiveVoiceCallActive || minimisedLiveVoice != nil {
             endLiveVoiceCall()
         } else if showVoiceSheet || voiceConversationController.hasLiveVoiceSession {

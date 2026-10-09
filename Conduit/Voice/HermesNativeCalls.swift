@@ -263,13 +263,14 @@ final class HermesNativeCalls: NSObject {
         guard calls[id] != nil, !Task.isCancelled else { return }
         guard connected, await appState.openNotificationTarget(target), calls[id] != nil else {
             nativeCallsLogger.notice("Hermes call answered but not opened (connected: \(connected, privacy: .public))")
-            finish(id, reason: .failed, notice: .missed)
+            // The user picked up: what's left is "Hermes wants to talk".
+            finish(id, reason: .failed, notice: .talk)
             return
         }
         // Another voice conversation started while it rang: the job's news
         // reaches the user there, never as this call.
         guard appState.answerHermesCall(request) else {
-            finish(id, reason: .failed, notice: .missed)
+            finish(id, reason: .failed, notice: .talk)
             return
         }
         var started = false
@@ -283,8 +284,11 @@ final class HermesNativeCalls: NSObject {
             do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
         }
         guard calls[id] != nil else { return }
-        // Voice ended in the app, or never started: the CallKit call ends.
-        finish(id, reason: started ? .remoteEnded : .failed, notice: started ? .none : .missed)
+        // Voice ended in the app, or never started: the CallKit call ends,
+        // and voice still opening doesn't. The user picked up, so what's
+        // left is "Hermes wants to talk", not a missed call.
+        if !started { appState.endVoiceForNativeCall() }
+        finish(id, reason: started ? .remoteEnded : .failed, notice: started ? .none : .talk)
     }
 
     private func waitForAudio() async {

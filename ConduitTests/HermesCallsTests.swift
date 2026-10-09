@@ -764,4 +764,29 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(HermesCallSettingsFormat.gapChoices(bounds: 30...3_600, current: 120), [30, 60, 120, 300, 600, 1_800, 3_600])
         XCTAssertEqual(HermesCallSettingsFormat.gapChoices(bounds: 60...600, current: 90), [60, 90, 120, 300, 600])
     }
+
+    func testAHangUpBeforeTheCallsVoiceOpensKeepsItClosed() async {
+        let suite = "HermesCallsTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let call = HermesCallRequest(id: "", kind: .done, title: "Deploy", sessionIDs: ["st-1"])
+
+        // No bridge, so voice is off: an open that runs fails and says why
+        // (connected, so it can't defer).
+        let answered = AppState(defaults: defaults, loadSavedConnection: false)
+        answered.isConnected = true
+        XCTAssertTrue(answered.answerHermesCall(call))
+        await answered.hermesCallOpenTask?.value
+        XCTAssertNotNil(answered.errorMessage, "The call's voice tried to open")
+
+        let hungUp = AppState(defaults: defaults, loadSavedConnection: false)
+        hungUp.isConnected = true
+        XCTAssertTrue(hungUp.answerHermesCall(call))
+        let opening = hungUp.hermesCallOpenTask
+        hungUp.endVoiceForNativeCall()
+        await opening?.value
+        XCTAssertNil(hungUp.errorMessage, "Hung up first: nothing opened")
+        XCTAssertNil(hungUp.pendingHermesCall)
+        XCTAssertFalse(hungUp.showVoiceSheet)
+    }
 }

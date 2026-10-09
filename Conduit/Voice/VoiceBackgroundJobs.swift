@@ -902,7 +902,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callOpening = text
     }
 
-    func clearCallOpening() {
+    /// Drops the queued opening; with `text`, only while it is that one.
+    func clearCallOpening(_ text: String? = nil) {
+        guard text == nil || callOpening == text else { return }
         callOpening = nil
     }
 
