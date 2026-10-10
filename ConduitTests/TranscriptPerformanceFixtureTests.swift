@@ -233,9 +233,10 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
     ) {
         let steadyBody = String(repeating: "Steady padding body text for the live row. ", count: 10)
         for tick in 0..<ticks {
-            appState.streamingText =
+            appState.setStreamingTextForTesting(
                 "Live streaming delta \(tick) — the only view that should change. "
-                + steadyBody
+                    + steadyBody
+            )
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
             RunLoop.current.run(until: Date())
