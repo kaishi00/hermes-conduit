@@ -1389,6 +1389,7 @@ private struct ResponseBehaviorSettings: View {
 /// menu. Every menu-style choice in Settings uses it, so a bare value never
 /// floats on its own. Choice titles arrive localized.
 struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let label: Label
     let value: ID
     let choices: [(id: ID, title: String)]
@@ -1403,6 +1404,14 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
 
     private var displayedTitle: String {
         choices.first(where: { $0.id == value })?.title ?? (value as? String) ?? ""
+    }
+
+    private var valueText: Text {
+        Text(displayedTitle.isEmpty ? AppLocalization.string("Default") : displayedTitle)
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary).accessibilityHidden(true)
     }
 
     var body: some View {
@@ -1420,12 +1429,26 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
                 }
             }
         } label: {
-            HStack {
-                label
-                Spacer(minLength: 8)
-                Text(displayedTitle.isEmpty ? AppLocalization.string("Default") : displayedTitle)
-                    .multilineTextAlignment(.trailing)
-                Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary).accessibilityHidden(true)
+            Group {
+                // Large text: the value goes under the name, as in
+                // SettingsMetricRow, instead of squeezing beside it.
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 2) {
+                        label
+                        HStack {
+                            valueText
+                            Spacer(minLength: 8)
+                            chevron
+                        }
+                    }
+                } else {
+                    HStack {
+                        label
+                        Spacer(minLength: 8)
+                        valueText.multilineTextAlignment(.trailing)
+                        chevron
+                    }
+                }
             }
             .font(.subheadline.weight(.medium))
             .padding(.horizontal, 12)
