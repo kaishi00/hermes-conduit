@@ -7,6 +7,7 @@
 //  an authoritative `running` value.
 //
 
+import AVFoundation
 import SwiftUI
 import UIKit
 import PhotosUI
@@ -837,6 +838,14 @@ struct ComposerBar: View {
                 .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
+            if message == Self.cameraAccessMessage {
+                Button("Open Settings") {
+                    composerErrorMessage = nil
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+                .font(.caption.weight(.semibold))
+            }
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
@@ -880,13 +889,7 @@ struct ComposerBar: View {
         Menu {
             if CameraCapture.isAvailable {
                 Button {
-                    guard !CameraCapture.isAccessDenied else {
-                        composerErrorMessage = AppLocalization.string("Taking a photo needs camera access. You can allow it in Settings.")
-                        Haptics.error()
-                        return
-                    }
-                    cameraImportContext = asyncAttachmentContext
-                    showCamera = true
+                    openCamera()
                 } label: {
                     Label("Camera", systemImage: "camera")
                 }
@@ -1517,6 +1520,39 @@ struct ComposerBar: View {
         )
     }
 
+    static var cameraAccessMessage: String {
+        AppLocalization.string("Taking a photo needs camera access. You can allow it in Settings.")
+    }
+
+    /// Asks for camera access first when it hasn't been decided, so a "Don't
+    /// Allow" never leaves the picker open on a black screen; when access is
+    /// off, the composer says so with a way to Settings instead.
+    private func openCamera() {
+        composerErrorMessage = nil
+        let origin = asyncAttachmentContext
+        let present = {
+            cameraImportContext = origin
+            showCamera = true
+        }
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            present()
+        case .notDetermined:
+            Task {
+                let granted = await AVCaptureDevice.requestAccess(for: .video)
+                guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { return }
+                if granted { present() } else { showCameraAccessNotice() }
+            }
+        default:
+            showCameraAccessNotice()
+        }
+    }
+
+    private func showCameraAccessNotice() {
+        composerErrorMessage = Self.cameraAccessMessage
+        Haptics.error()
+    }
+
     private func openPhotoLibraryPicker() {
         // A fresh selection each time, so items an earlier import is still
         // staging aren't picked up again.
@@ -1795,6 +1831,7 @@ struct ComposerBar: View {
     /// JPEG off the main actor, then size checked.
     private func handleCapturedPhoto(_ image: UIImage, startedIn origin: AsyncAttachmentContext?) {
         guard let origin, shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { return }
+        composerErrorMessage = nil
         let limitMegabytes = attachmentLimitMegabytes
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {

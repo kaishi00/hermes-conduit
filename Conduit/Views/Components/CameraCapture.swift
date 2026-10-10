@@ -7,7 +7,6 @@
 //  so this wraps UIImagePickerController.
 //
 
-import AVFoundation
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -16,16 +15,6 @@ struct CameraCapture: UIViewControllerRepresentable {
     /// Whether this device has a camera (the simulator doesn't).
     static var isAvailable: Bool {
         UIImagePickerController.isSourceTypeAvailable(.camera)
-    }
-
-    /// Whether the user has turned camera access off (or a profile has).
-    /// The picker would open to a black screen then, so the composer says
-    /// where to allow it instead.
-    static var isAccessDenied: Bool {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .denied, .restricted: return true
-        default: return false
-        }
     }
 
     let onCapture: (UIImage) -> Void
