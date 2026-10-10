@@ -52,3 +52,37 @@ struct AdaptiveStack<Content: View>: View {
         layout { content }
     }
 }
+
+/// Children side by side in equal widths. Its ideal width is the widest
+/// child's times the count, so inside a `ViewThatFits` it is only chosen
+/// when every child fits its share, not just when the total does.
+struct EqualWidthHStack: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard !subviews.isEmpty else { return .zero }
+        let ideal = subviews.map { $0.sizeThatFits(.unspecified) }
+        let gaps = spacing * CGFloat(subviews.count - 1)
+        let width = proposal.width ?? (ideal.map(\.width).max() ?? 0) * CGFloat(subviews.count) + gaps
+        let cellWidth = max(0, (width - gaps) / CGFloat(subviews.count))
+        let height = subviews
+            .map { $0.sizeThatFits(ProposedViewSize(width: cellWidth, height: proposal.height)).height }
+            .max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard !subviews.isEmpty else { return }
+        let gaps = spacing * CGFloat(subviews.count - 1)
+        let cellWidth = max(0, (bounds.width - gaps) / CGFloat(subviews.count))
+        var x = bounds.minX
+        for subview in subviews {
+            subview.place(
+                at: CGPoint(x: x, y: bounds.midY),
+                anchor: .leading,
+                proposal: ProposedViewSize(width: cellWidth, height: bounds.height)
+            )
+            x += cellWidth + spacing
+        }
+    }
+}

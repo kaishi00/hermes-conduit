@@ -23,6 +23,43 @@ struct SidebarView: View {
     @State private var showProfilePicker = false
     @Environment(\.dismiss) private var dismiss
 
+    private func tabBar(iconOnly: Bool) -> some View {
+        EqualWidthHStack(spacing: 6) {
+            ForEach(SidebarTab.allCases, id: \.self) { tab in
+                Button {
+                    withAnimation(ConduitMotion.response) {
+                        Haptics.selection()
+                        selectedTabRaw = tab.rawValue
+                    }
+                } label: {
+                    Group {
+                        if iconOnly {
+                            Label(tab.displayName, systemImage: tab.icon)
+                                .labelStyle(.iconOnly)
+                                .conduitFixedGlyph()
+                        } else {
+                            Label(tab.displayName, systemImage: tab.icon)
+                                .lineLimit(1)
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 40)
+                    .foregroundStyle(selectedTab == tab ? .primary : .secondary)
+                    .background(
+                        selectedTab == tab ? Color.conduitAccent.opacity(0.16) : .clear,
+                        in: Capsule()
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityShowsLargeContentViewer {
+                    Label(tab.displayName, systemImage: tab.icon)
+                }
+                .accessibilityLabel(tab.displayName)
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -93,38 +130,11 @@ struct SidebarView: View {
                     .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
 
                     ConduitGlassGroup(spacing: 8) {
-                        HStack(spacing: 6) {
-                            ForEach(SidebarTab.allCases, id: \.self) { tab in
-                                Button {
-                                    withAnimation(ConduitMotion.response) {
-                                        Haptics.selection()
-                                        selectedTabRaw = tab.rawValue
-                                    }
-                                } label: {
-                                    // Icon only when the name no longer fits
-                                    // its quarter of the bar (large text).
-                                    ViewThatFits(in: .horizontal) {
-                                        Label(tab.displayName, systemImage: tab.icon)
-                                            .lineLimit(1)
-                                        Label(tab.displayName, systemImage: tab.icon)
-                                            .labelStyle(.iconOnly)
-                                            .conduitFixedGlyph()
-                                    }
-                                        .font(.caption.weight(.semibold))
-                                        .frame(maxWidth: .infinity)
-                                        .frame(minHeight: 40)
-                                        .foregroundStyle(selectedTab == tab ? .primary : .secondary)
-                                        .background(
-                                            selectedTab == tab ? Color.conduitAccent.opacity(0.16) : .clear,
-                                            in: Capsule()
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityShowsLargeContentViewer {
-                                    Label(tab.displayName, systemImage: tab.icon)
-                                }
-                                .accessibilityLabel(tab.displayName)
-                            }
+                        // Every tab drops to its icon together once the
+                        // names no longer fit their quarters (large text).
+                        ViewThatFits(in: .horizontal) {
+                            tabBar(iconOnly: false)
+                            tabBar(iconOnly: true)
                         }
                         .padding(4)
                         .conduitGlassSurface(cornerRadius: 20, tint: .conduitAccent.opacity(0.05))
