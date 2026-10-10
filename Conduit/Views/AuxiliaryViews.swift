@@ -551,8 +551,6 @@ struct SettingsView: View {
                     continuousConversation: appState.continuousConversationEnabled,
                     spokenStopPhrases: voicePreferences.resolvedSpokenStopPhrases,
                     spokenEndConversationPhrases: voicePreferences.resolvedSpokenEndConversationPhrases,
-                    spokenPhrasesCustomized: voicePreferences.spokenStopPhrases != nil
-                        || voicePreferences.spokenEndConversationPhrases != nil,
                     setVoiceEnabled: { enabled in
                         await appState.setVoiceEnabled(enabled)
                     },
@@ -1403,7 +1401,7 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
     }
 
     private var displayedTitle: String {
-        choices.first(where: { $0.id == value })?.title ?? (value as? String) ?? ""
+        choices.first(where: { $0.id == value })?.title ?? (value as? String) ?? String(describing: value)
     }
 
     private var valueText: Text {

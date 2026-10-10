@@ -60,8 +60,8 @@ struct VoiceProviderDescriptor: Codable, Equatable, Identifiable {
 /// talking|be quiet"), so a new language brings its own phrases the same
 /// way it brings its strings.
 enum VoiceSpokenCommandDefaults {
-    static let englishStopPhrases = ["stop", "stop talking", "be quiet"]
-    static let englishEndConversationPhrases = ["goodbye", "bye", "end conversation", "that's all"]
+    static let englishStopPhrases = VoiceSpokenCommands.previousDefaultStopPhrases
+    static let englishEndConversationPhrases = VoiceSpokenCommands.previousDefaultEndConversationPhrases
 
     static var stopPhrases: [String] {
         phrases(

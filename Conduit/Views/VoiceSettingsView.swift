@@ -21,7 +21,6 @@ struct VoiceSettingsRoute: View {
     let continuousConversation: Bool
     let spokenStopPhrases: [String]
     let spokenEndConversationPhrases: [String]
-    let spokenPhrasesCustomized: Bool
     let setVoiceEnabled: (Bool) async -> Bool
     let setTranscriptionMode: (VoiceTranscriptionMode) async -> Bool
     let setContinuousConversation: (Bool) async -> Bool
@@ -51,7 +50,6 @@ struct VoiceSettingsRoute: View {
         continuousConversation: Bool = true,
         spokenStopPhrases: [String] = VoiceSpokenCommandDefaults.stopPhrases,
         spokenEndConversationPhrases: [String] = VoiceSpokenCommandDefaults.endConversationPhrases,
-        spokenPhrasesCustomized: Bool = false,
         setVoiceEnabled: @escaping (Bool) async -> Bool,
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool,
         setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
@@ -90,7 +88,6 @@ struct VoiceSettingsRoute: View {
         self.continuousConversation = continuousConversation
         self.spokenStopPhrases = spokenStopPhrases
         self.spokenEndConversationPhrases = spokenEndConversationPhrases
-        self.spokenPhrasesCustomized = spokenPhrasesCustomized
         self.setVoiceEnabled = setVoiceEnabled
         self.setTranscriptionMode = setTranscriptionMode
         self.setContinuousConversation = setContinuousConversation
@@ -110,7 +107,6 @@ struct VoiceSettingsRoute: View {
             continuousConversation: continuousConversation,
             spokenStopPhrases: spokenStopPhrases,
             spokenEndConversationPhrases: spokenEndConversationPhrases,
-            spokenPhrasesCustomized: spokenPhrasesCustomized,
             setVoiceEnabled: setVoiceEnabled,
             setTranscriptionMode: setTranscriptionMode,
             setContinuousConversation: setContinuousConversation,
@@ -185,7 +181,6 @@ struct VoiceSettingsView: View {
     @AppStorage("conduit.voiceSettings.advancedExpanded") private var advancedExpanded = false
     let spokenStopPhrases: [String]
     let spokenEndConversationPhrases: [String]
-    let spokenPhrasesCustomized: Bool
     let setStopPhrases: ([String]) -> Void
     let setEndConversationPhrases: ([String]) -> Void
     var geminiLive: GeminiLiveSettingsModel?
@@ -201,6 +196,13 @@ struct VoiceSettingsView: View {
     var hermesCalls: HermesCallSettingsModel?
     @State private var keepListeningWhenLocked: Bool
     @State private var speakerTalkOverEnabled: Bool
+    /// The phrase lists as last saved from this page. AppState doesn't
+    /// publish a phrase save, so the page keeps its own copy for the
+    /// editors and the reset button instead of waiting for a re-render.
+    @State private var stopPhrasesShown: [String]
+    @State private var endPhrasesShown: [String]
+    @State private var stopPhrasesCustomized: Bool
+    @State private var endPhrasesCustomized: Bool
 
     init(
         service: HermesVoiceConfigurationService,
@@ -213,7 +215,6 @@ struct VoiceSettingsView: View {
         continuousConversation: Bool = true,
         spokenStopPhrases: [String] = VoiceSpokenCommandDefaults.stopPhrases,
         spokenEndConversationPhrases: [String] = VoiceSpokenCommandDefaults.endConversationPhrases,
-        spokenPhrasesCustomized: Bool = false,
         setVoiceEnabled: @escaping (Bool) async -> Bool = { _ in false },
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool = { _ in false },
         setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
@@ -252,9 +253,12 @@ struct VoiceSettingsView: View {
         self.setContinuousConversation = setContinuousConversation
         self.spokenStopPhrases = spokenStopPhrases
         self.spokenEndConversationPhrases = spokenEndConversationPhrases
-        self.spokenPhrasesCustomized = spokenPhrasesCustomized
         self.setStopPhrases = setStopPhrases
         self.setEndConversationPhrases = setEndConversationPhrases
+        _stopPhrasesShown = State(initialValue: spokenStopPhrases)
+        _endPhrasesShown = State(initialValue: spokenEndConversationPhrases)
+        _stopPhrasesCustomized = State(initialValue: Self.isCustomStopList(spokenStopPhrases))
+        _endPhrasesCustomized = State(initialValue: Self.isCustomEndList(spokenEndConversationPhrases))
         _voiceEnabled = State(initialValue: voiceEnabled)
         _transcriptionMode = State(initialValue: transcriptionMode)
         _transcriptionModeChosen = State(initialValue: transcriptionModeChosen)
@@ -310,6 +314,16 @@ struct VoiceSettingsView: View {
         // lives under Advanced.
         .onChange(of: classicSpeechNeedsAttention, initial: true) { _, needsAttention in
             if needsAttention { advancedExpanded = true }
+        }
+        // A profile switch or an app language change re-renders the host
+        // with other lists.
+        .onChange(of: spokenStopPhrases) { _, phrases in
+            stopPhrasesShown = phrases
+            stopPhrasesCustomized = Self.isCustomStopList(phrases)
+        }
+        .onChange(of: spokenEndConversationPhrases) { _, phrases in
+            endPhrasesShown = phrases
+            endPhrasesCustomized = Self.isCustomEndList(phrases)
         }
         .onChange(of: savedTranscriptionModeChosen) { _, chosen in
             if chosen { transcriptionModeChosen = true }
@@ -1099,24 +1113,36 @@ struct VoiceSettingsView: View {
             SpokenPhraseListEditor(
                 title: AppLocalization.string("Stop Phrases"),
                 purposeText: AppLocalization.string("Cancel the current response and keep Voice open."),
-                initialPhrases: spokenStopPhrases,
-                onChange: setStopPhrases
+                initialPhrases: stopPhrasesShown,
+                onChange: { phrases in
+                    setStopPhrases(phrases)
+                    stopPhrasesCustomized = Self.isCustomStopList(phrases)
+                }
             )
-            .id(spokenStopPhrases)
+            .id(stopPhrasesShown)
             SpokenPhraseListEditor(
                 title: AppLocalization.string("End Conversation Phrases"),
                 purposeText: AppLocalization.string("Close the Voice conversation completely."),
-                initialPhrases: spokenEndConversationPhrases,
-                onChange: setEndConversationPhrases
+                initialPhrases: endPhrasesShown,
+                onChange: { phrases in
+                    setEndConversationPhrases(phrases)
+                    endPhrasesCustomized = Self.isCustomEndList(phrases)
+                }
             )
-            .id(spokenEndConversationPhrases)
+            .id(endPhrasesShown)
             Text("The built-in phrases are in the app language. Once you edit a list, it stays as you left it.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            if spokenPhrasesCustomized {
+            if stopPhrasesCustomized || endPhrasesCustomized {
                 Button {
-                    setStopPhrases(VoiceSpokenCommandDefaults.stopPhrases)
-                    setEndConversationPhrases(VoiceSpokenCommandDefaults.endConversationPhrases)
+                    let stop = VoiceSpokenCommandDefaults.stopPhrases
+                    let end = VoiceSpokenCommandDefaults.endConversationPhrases
+                    setStopPhrases(stop)
+                    setEndConversationPhrases(end)
+                    stopPhrasesShown = stop
+                    endPhrasesShown = end
+                    stopPhrasesCustomized = false
+                    endPhrasesCustomized = false
                 } label: {
                     Label(AppLocalization.string("Use the built-in phrases"), systemImage: "arrow.counterclockwise")
                         .font(.footnote.weight(.semibold))
@@ -1125,6 +1151,16 @@ struct VoiceSettingsView: View {
                 .accessibilityIdentifier("voice.spokenPhrasesReset")
             }
         }
+    }
+
+    /// A list is the user's own when saving it wouldn't go back to
+    /// following the app language (an emptied list counts).
+    private static func isCustomStopList(_ phrases: [String]) -> Bool {
+        VoiceSpokenCommands.storedPhrases(phrases, builtIns: VoiceSpokenCommandDefaults.stopPhrases) != nil
+    }
+
+    private static func isCustomEndList(_ phrases: [String]) -> Bool {
+        VoiceSpokenCommands.storedPhrases(phrases, builtIns: VoiceSpokenCommandDefaults.endConversationPhrases) != nil
     }
 
     @ViewBuilder
