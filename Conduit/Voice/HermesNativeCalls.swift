@@ -195,7 +195,12 @@ final class HermesNativeCalls: NSObject {
     func ringingSettingChanged() {
         // Not activated (unit tests): nothing rings.
         guard storefrontTask != nil else { return }
-        storefrontChanged(nil)
+        // A call already ringing or on carries on: only new calls change.
+        if Self.ringingWanted {
+            storefrontChanged(nil)
+        } else {
+            stopRinging(endingCalls: false)
+        }
     }
 
     private func startRinging() {
@@ -222,7 +227,7 @@ final class HermesNativeCalls: NSObject {
     }
 
     /// Calls go back to notifications: the relay forgets the token.
-    private func stopRinging() {
+    private func stopRinging(endingCalls: Bool = true) {
         if let registry {
             registry.desiredPushTypes = []
             registry.delegate = nil
@@ -230,6 +235,7 @@ final class HermesNativeCalls: NSObject {
             nativeCallsLogger.info("Hermes calls come as notifications")
         }
         PushNotificationService.shared.updateVoIPToken(nil)
+        guard endingCalls else { return }
         for call in calls.values where call.answered {
             endVoice(of: call.target)
         }
@@ -371,6 +377,8 @@ final class HermesNativeCalls: NSObject {
         HermesCallTrace.shared.note(audioActive ? "Call audio ready" : "Call audio not ready, going on", since: audioWait)
         guard calls[id] != nil, !Task.isCancelled else { return }
         // The Apple Watch rang too and was answered first: the call is there.
+        // Declined there first, the answer here still stands: the user
+        // picked up on the iPhone.
         if let settling = calls[id]?.settling, case .alreadySettled(.answered, by: .watch) = await settling.value {
             guard calls[id] != nil else { return }
             HermesCallTrace.shared.note("Answered on the Watch first")

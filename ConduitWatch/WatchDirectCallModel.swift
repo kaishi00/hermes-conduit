@@ -2835,6 +2835,7 @@ final class WatchDirectCallModel: ObservableObject {
 
     private func reset() {
         grokStreams = 0
+        ring = nil
         callID = UInt32.random(in: 1...UInt32.max)
         callUUID = UUID()
         callStartedDate = Date()

@@ -71,9 +71,12 @@ final class HermesWatchCalls: NSObject {
     func activate() {
         guard registry == nil, Self.ringingBuilt else { return }
         let configuration = CXProviderConfiguration()
+        configuration.supportsVideo = false
         configuration.maximumCallGroups = 1
         configuration.maximumCallsPerCallGroup = 1
         configuration.supportedHandleTypes = [.generic]
+        // A Hermes call can't be called back from the Phone app.
+        configuration.includesCallsInRecents = false
         let provider = CXProvider(configuration: configuration)
         // Nil queue: the delegate runs on the main queue, as the registry.
         provider.setDelegate(self, queue: nil)
@@ -207,6 +210,12 @@ final class HermesWatchCalls: NSObject {
     /// Tells the relay (the iPhone stops ringing) while CallKit's audio
     /// comes up, then starts the Watch voice call.
     private func connect(_ id: UUID, ring: HermesRing) async {
+        // A Watch call the user started meanwhile keeps going, and the
+        // iPhone goes on ringing: nothing is settled.
+        guard !WatchVoiceCall.shared.isActive else {
+            finish(id, reason: .failed)
+            return
+        }
         let settling = Task { await HermesRingSettler.settle(ring, by: .watch, outcome: .answered) }
         await waitForAudio()
         let settled = await settling.value
@@ -217,7 +226,7 @@ final class HermesWatchCalls: NSObject {
             finish(id, reason: outcome == .answered ? .answeredElsewhere : .declinedElsewhere)
             return
         }
-        // A Watch call the user started meanwhile keeps going.
+        // Or started while CallKit's audio came up.
         guard !WatchVoiceCall.shared.isActive else {
             finish(id, reason: .failed)
             return
