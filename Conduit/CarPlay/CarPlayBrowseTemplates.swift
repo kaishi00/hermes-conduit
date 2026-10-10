@@ -170,7 +170,25 @@ struct CarPlayBrowseHandlers {
 
 @MainActor
 enum CarPlayBrowseTemplateFactory {
-    static func chatsTemplate(chats: CarPlayChatList, handlers: CarPlayBrowseHandlers) -> CPListTemplate {
+    static func chatsTemplate(
+        chats: CarPlayChatList,
+        placeholder: String? = nil,
+        handlers: CarPlayBrowseHandlers
+    ) -> CPListTemplate {
+        CPListTemplate(
+            title: AppLocalization.string("Chats"),
+            sections: chatSections(chats: chats, placeholder: placeholder, handlers: handlers)
+        )
+    }
+
+    /// New voice chat, then the pinned and recent chats. `placeholder`
+    /// stands in for the chats while there are none yet because the list
+    /// is still on its way (#514).
+    static func chatSections(
+        chats: CarPlayChatList,
+        placeholder: String? = nil,
+        handlers: CarPlayBrowseHandlers
+    ) -> [CPListSection] {
         let newChat = CPListItem(
             text: AppLocalization.string("New voice chat"),
             detailText: nil,
@@ -195,7 +213,12 @@ enum CarPlayBrowseTemplateFactory {
                 sectionIndexTitle: nil
             ))
         }
-        return CPListTemplate(title: AppLocalization.string("Chats"), sections: sections)
+        if let placeholder, chats.pinned.isEmpty, chats.recent.isEmpty {
+            let waiting = CPListItem(text: placeholder, detailText: nil)
+            waiting.isEnabled = false
+            sections.append(CPListSection(items: [waiting]))
+        }
+        return sections
     }
 
     private static func chatItems(_ rows: [CarPlayChatRow], handlers: CarPlayBrowseHandlers) -> [CPListItem] {

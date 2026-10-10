@@ -1250,6 +1250,109 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertFalse(harness.controller.hasLiveVoiceSession, "no conversation opens for a refused job")
     }
 
+    // MARK: Chat list follows the chats (#514)
+
+    private func chatSession(_ id: String, activity: TimeInterval) -> SessionSummary {
+        SessionSummary(
+            id: id,
+            storedSessionId: "stored-\(id)",
+            alternateIds: [],
+            title: id,
+            model: "Hermes",
+            updatedLabel: "now",
+            lastActivityAt: activity,
+            profile: "default",
+            source: .chat,
+            isActive: false,
+            isArchived: false,
+            lineageRootId: nil
+        )
+    }
+
+    /// Steps the main actor until `done`, capped at 10 s of wall clock.
+    private func settleChats(until done: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(10)
+        while !done(), Date() < deadline { await Task.yield() }
+    }
+
+    private func listTexts(_ list: CPListTemplate) -> [String] {
+        list.sections.flatMap(\.items).compactMap { ($0 as? CPListItem)?.text }
+    }
+
+    func testAChatListOpenedBeforeTheChatsLoadedFillsInWhenTheyArrive() async throws {
+        let harness = makeHarness()
+        var loads = 0
+        harness.coordinator.chatCatalogLoader = { [self] appState in
+            loads += 1
+            appState.sessions = [chatSession("older", activity: 1), chatSession("newer", activity: 2)]
+        }
+        harness.coordinator.handleConnect(harness.spy)
+
+        harness.coordinator.showChats()
+        let list = try XCTUnwrap(harness.spy.pushedTemplates.last as? CPListTemplate)
+        XCTAssertEqual(listTexts(list), ["New voice chat", "Loading chats…"], "the list says the chats are coming")
+
+        await settleChats { listTexts(list).count == 3 }
+        XCTAssertEqual(loads, 1, "a list with no chats asks for them")
+        XCTAssertEqual(listTexts(list), ["New voice chat", "newer", "older"])
+        XCTAssertEqual(list.sections.map(\.header), [nil, "Recent"])
+        XCTAssertTrue(harness.coordinator.isObservingChats)
+    }
+
+    func testAChatListOpenedWhileConnectingLoadsTheChatsOnceConnected() async throws {
+        let harness = makeHarness(connected: false)
+        var loads = 0
+        harness.coordinator.chatCatalogLoader = { [self] appState in
+            loads += 1
+            appState.sessions = [chatSession("chat", activity: 1)]
+        }
+        harness.coordinator.handleConnect(harness.spy)
+
+        harness.coordinator.showChats()
+        let list = try XCTUnwrap(harness.spy.pushedTemplates.last as? CPListTemplate)
+        XCTAssertEqual(listTexts(list), ["New voice chat", "Connecting…"])
+        XCTAssertEqual(loads, 0, "nothing to load from yet")
+
+        harness.appState.isConnected = true
+        await settleChats { listTexts(list).count == 2 && listTexts(list).last == "chat" }
+        XCTAssertEqual(loads, 1)
+        XCTAssertEqual(listTexts(list), ["New voice chat", "chat"])
+    }
+
+    func testAChatListWithChatsLoadsNothingAndFollowsPinning() async throws {
+        let harness = makeHarness()
+        var loads = 0
+        harness.coordinator.chatCatalogLoader = { _ in loads += 1 }
+        let pinned = chatSession("pin-me", activity: 1)
+        harness.appState.sessions = [pinned, chatSession("other", activity: 2)]
+        harness.coordinator.handleConnect(harness.spy)
+
+        harness.coordinator.showChats()
+        let list = try XCTUnwrap(harness.spy.pushedTemplates.last as? CPListTemplate)
+        XCTAssertEqual(list.sections.map(\.header), [nil, "Recent"])
+
+        harness.appState.toggleSessionPinned(pinned)
+        await settleChats { list.sections.count == 3 }
+        XCTAssertEqual(list.sections.map(\.header), [nil, "Pinned", "Recent"])
+        XCTAssertEqual(loads, 0, "chats already here are not loaded again")
+    }
+
+    func testLeavingTheChatListStopsKeepingItCurrent() async throws {
+        let harness = makeHarness()
+        harness.coordinator.chatCatalogLoader = { _ in }
+        harness.coordinator.handleConnect(harness.spy)
+
+        harness.coordinator.showChats()
+        let list = try XCTUnwrap(harness.spy.pushedTemplates.last as? CPListTemplate)
+        XCTAssertTrue(harness.coordinator.isObservingChats)
+        harness.coordinator.handleTemplateDidDisappear(list)
+        XCTAssertFalse(harness.coordinator.isObservingChats, "the car's back button ends the observation")
+
+        harness.appState.sessions = [chatSession("late", activity: 1)]
+        await Task.yield()
+        XCTAssertFalse(listTexts(list).contains("late"))
+    }
+
     func testABrowseTapAfterADisconnectDoesNothing() async {
         let harness = makeHarness()
         harness.coordinator.handleConnect(harness.spy)
