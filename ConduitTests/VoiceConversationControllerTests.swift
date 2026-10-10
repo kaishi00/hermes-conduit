@@ -1156,6 +1156,9 @@ final class VoiceConversationControllerTests: XCTestCase {
             submit: { _ in true },
             interrupt: { true }
         )
+        var preferences = VoiceProfilePreferences()
+        preferences.continuousConversation = false
+        controller.setProfilePreferences(preferences)
         await controller.startListening()
         controller.ingestAudioLevel(0, at: Date().addingTimeInterval(12.1))
 
@@ -2951,6 +2954,32 @@ extension ContinuousConversationPreferenceTests {
         XCTAssertFalse(controller.isMicrophonePaused, "nobody can unpause from the lock screen")
         XCTAssertFalse(capture.didPause, "pausing would release the audio session")
         XCTAssertEqual(capture.startCount, starts + 1, "the silent window is dropped and a fresh one opens")
+        XCTAssertEqual(capture.lastStartIncludePreRoll, false)
+    }
+
+    /// Issue #517: with Continuous Conversation on, a long think before
+    /// speaking in the foreground keeps listening instead of pausing.
+    func testContinuousConversationKeepsListeningThroughIdleSilence() async {
+        let capture = MockCapture(permissionGranted: true)
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: MockGateway(),
+            submit: { _ in true },
+            interrupt: { true }
+        )
+        controller.setProfilePreferences(Self.preferences(continuous: true))
+        await controller.startListening()
+        let starts = capture.startCount
+        let firstWindowEnds = Date().addingTimeInterval(12.1)
+
+        controller.ingestAudioLevel(0, at: firstWindowEnds)
+        controller.ingestAudioLevel(0, at: firstWindowEnds.addingTimeInterval(12.1))
+
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertFalse(controller.isMicrophonePaused)
+        XCTAssertFalse(capture.didPause)
+        XCTAssertEqual(capture.startCount, starts + 2, "each silent window is dropped and a fresh one opens")
         XCTAssertEqual(capture.lastStartIncludePreRoll, false)
     }
 

@@ -274,8 +274,9 @@ final class VoiceConversationController: ObservableObject {
     }
 
     /// Whether a completed assistant response automatically opens the next
-    /// listening turn. This is conversation continuation only — it does not
-    /// control session lifetime, user pause, barge-in, or route policy.
+    /// listening turn, and idle silence keeps listening instead of pausing
+    /// the microphone. It does not control session lifetime, user pause,
+    /// barge-in, or route policy.
     var isContinuousConversationEnabled: Bool {
         preferences.continuousConversation
     }
@@ -779,7 +780,9 @@ final class VoiceConversationController: ObservableObject {
                 if isSteeringTurn {
                     // Nothing came of it: Hermes' turn carries on as is.
                     resumeTurnAfterSteer()
-                } else if isBackgroundListening {
+                } else if isContinuousConversationEnabled || isBackgroundListening {
+                    // Hands-free: a long think before speaking shouldn't
+                    // need a tap to go on (#517).
                     restartSilentListeningWindow(at: date)
                 } else {
                     pauseMicrophone()
@@ -976,10 +979,11 @@ final class VoiceConversationController: ObservableObject {
         suspendCaptureForPlayback()
     }
 
-    /// Locked-phone idle silence: a paused microphone can't be unpaused
-    /// from the lock screen, and pausing releases the audio session iOS
-    /// keeps Conduit running for. The silent audio is dropped instead and a
-    /// fresh listening window opens on the same capture.
+    /// Idle silence with Continuous Conversation on, or on a locked phone
+    /// (where a paused microphone can't be unpaused, and pausing releases
+    /// the audio session iOS keeps Conduit running for). The silent audio
+    /// is dropped instead and a fresh listening window opens on the same
+    /// capture.
     private func restartSilentListeningWindow(at date: Date) {
         do {
             try capture.startListening(includePreRoll: false)
