@@ -52,7 +52,8 @@ enum ConduitAppLink: Equatable {
         self = link
     }
 
-    /// The link's `profile` query item; nil when it has none or a blank one.
+    /// The link's first `profile` query item; nil when it has none or a
+    /// blank one.
     private static func profile(in components: URLComponents) -> String? {
         let value = components.queryItems?.first { $0.name == "profile" }?.value?
             .trimmingCharacters(in: .whitespacesAndNewlines)

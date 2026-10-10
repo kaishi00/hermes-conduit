@@ -4562,8 +4562,9 @@ final class AppState: ObservableObject {
     func openAppLink(_ link: ConduitAppLink) {
         switch link {
         case .session(let id, let profile):
-            if let profile, notificationProfileID(profile) != activeProfile {
-                Task { @MainActor [weak self] in await self?.routeLinkedSession(id, toProfile: profile) }
+            // A blank profile names none: the chat opens on the profile in use.
+            if let named = notificationProfileID(profile), named != activeProfile {
+                Task { @MainActor [weak self] in await self?.routeLinkedSession(id, toProfile: named) }
                 return
             }
             // Some failed opens say nothing themselves; a deleted job
@@ -4581,18 +4582,25 @@ final class AppState: ObservableObject {
     /// app can send the link, so it only switches to a profile this
     /// dashboard lists, and never while a call would end with the switch.
     func routeLinkedSession(_ id: String, toProfile profile: String) async {
+        guard !isVoiceCallInProgress else {
+            errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+            return
+        }
         if let listed = notificationProfileID(profile), listed != "default", !profiles.contains(listed) {
             // The saved list can predate a new profile (or a first pairing):
-            // read it once before saying the chat is gone.
+            // read it once before saying the chat is gone. Offline it can't
+            // be read, and says nothing about the profile.
+            guard isConnected, dashboardTicketBridge != nil else {
+                errorMessage = AppLocalization.string(
+                    "Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment."
+                )
+                return
+            }
             await loadProfiles()
         }
         guard let target = notificationProfileID(profile),
               target == "default" || profiles.contains(target) else {
             errorMessage = AppLocalization.string("That chat is no longer available.")
-            return
-        }
-        guard !isVoiceCallInProgress else {
-            errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
             return
         }
         // A bot's own chat opens through its bot, never as a workspace chat.
@@ -4601,7 +4609,9 @@ final class AppState: ObservableObject {
             return
         }
         PushNotificationService.shared.routeChatLink(
-            ConduitNotificationTarget(profile: target, sessionId: id, dashboardID: activeDashboardID, type: nil)
+            ConduitNotificationTarget(
+                profile: target, sessionId: id, dashboardID: activeDashboardID, type: nil, isChatLink: true
+            )
         )
     }
 
@@ -15386,6 +15396,14 @@ final class AppState: ObservableObject {
             }
         }
         if let targetProfile, targetProfile != activeProfile {
+            // A call can have started (one from Hermes needs no tap) while
+            // the checks above waited on the gateway; a chat link never ends
+            // it with the switch.
+            if target.isChatLink, isVoiceCallInProgress {
+                traceStage = "call in progress"
+                errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+                return false
+            }
             traceStage = "profile switch"
             guard await switchProfile(
                 to: targetProfile,

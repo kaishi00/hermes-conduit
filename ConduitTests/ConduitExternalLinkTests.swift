@@ -77,7 +77,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(appState.errorMessage)
         XCTAssertEqual(
             PushNotificationService.shared.pendingTarget,
-            ConduitNotificationTarget(profile: "work", sessionId: "work-chat", dashboardID: appState.activeDashboardID, type: nil)
+            ConduitNotificationTarget(
+                profile: "work", sessionId: "work-chat", dashboardID: appState.activeDashboardID, type: nil, isChatLink: true
+            )
         )
     }
 
@@ -92,10 +94,30 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testLinkToAProfileTheDashboardDoesNotListOpensNothing() async throws {
-        let appState = try makeLinkAppState()
+        let appState = try makeLinkAppState(listedOnHost: ["default", "work"])
         defer { clearRoutedLink() }
         await appState.routeLinkedSession("work-chat", toProfile: "ghost")
         XCTAssertEqual(appState.errorMessage, AppLocalization.string("That chat is no longer available."))
+        XCTAssertNotEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
+    }
+
+    func testLinkToAProfileNewerThanTheSavedListOpensOnceTheListIsRead() async throws {
+        let appState = try makeLinkAppState(listedOnHost: ["default", "work", "Research"])
+        defer { clearRoutedLink() }
+        await appState.routeLinkedSession("work-chat", toProfile: "research")
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(PushNotificationService.shared.pendingTarget?.profile, "Research")
+        XCTAssertEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
+    }
+
+    func testLinkToAnUnlistedProfileWhileOfflineSaysSo() async throws {
+        let appState = try makeLinkAppState()
+        defer { clearRoutedLink() }
+        await appState.routeLinkedSession("work-chat", toProfile: "research")
+        XCTAssertEqual(
+            appState.errorMessage,
+            AppLocalization.string("Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment.")
+        )
         XCTAssertNotEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
     }
 
@@ -108,12 +130,27 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     /// Conduit on the default profile of a dashboard that also lists "work".
-    private func makeLinkAppState() throws -> AppState {
+    /// With `listedOnHost` it is connected, and reading the host's profile
+    /// list returns those names.
+    private func makeLinkAppState(listedOnHost: [String]? = nil) throws -> AppState {
         let suite = "ConduitExternalLink.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
-        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        var loader: (@MainActor () async throws -> [String: Any])?
+        if let listedOnHost {
+            loader = { ["profiles": listedOnHost] }
+        }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, profileDiscoveryLoader: loader)
         appState.profiles = ["default", "work"]
+        if listedOnHost != nil {
+            appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(
+                baseURL: "https://links.example",
+                pendingRequests: DashboardTicketBridgePendingRequests(),
+                readinessPollAttempts: 0,
+                readinessPollInterval: .milliseconds(1)
+            ))
+            appState.isConnected = true
+        }
         return appState
     }
 

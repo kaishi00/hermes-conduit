@@ -154,7 +154,8 @@ struct ConduitApp: App {
             // On iPad (multiple scenes are on for CarPlay) SwiftUI opens a
             // new window for a link no open window claims, and the
             // duplicate-window guard would close it at once: the open
-            // window takes every link.
+            // window takes every link, and every other external event
+            // (Handoff) too, since Conduit has one window.
             .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
             // Another app opening a chat: only session links, opened through
             // the same route as an in-app link once Hermes is connected.
