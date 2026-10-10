@@ -212,6 +212,8 @@ final class CarPlayVoiceCoordinator {
     /// call the pick starts (#378).
     private(set) var chosenChat: CarPlayChatRow?
     private var isChatTitleRefreshScheduled = false
+    /// Follows the chat open on the phone, which the Ready title names.
+    private var chatTitleObservation: AnyCancellable?
     /// Rotated by every chat pick, so an earlier pick still opening never
     /// starts a call after a newer one.
     private var chatOpenRequest: UInt64 = 0
@@ -264,6 +266,8 @@ final class CarPlayVoiceCoordinator {
         jobsObservation = nil
         jobsTemplate = nil
         stopKeepingChatsCurrent()
+        chatTitleObservation?.cancel()
+        chatTitleObservation = nil
         chosenChat = nil
         isBrowsing = false
         self.interfacing = interfacing
@@ -289,6 +293,13 @@ final class CarPlayVoiceCoordinator {
         // driver's next Listen must be able to re-arm capture.
         appState.handleCarPlayVoiceSurfaceActivated()
         observeCurrentVoiceMode(appState)
+        // The phone opening or renaming a chat while the car rests at Ready
+        // updates the title there.
+        chatTitleObservation = Publishers.Merge(
+            appState.$activeSessionId.map { _ in () }.dropFirst(),
+            appState.$sessions.map { _ in () }.dropFirst()
+        )
+        .sink { [weak self] _ in self?.scheduleChatTitleRefresh() }
 
         if autoEstablishOnConnect {
             Task { @MainActor [weak self] in
@@ -322,6 +333,8 @@ final class CarPlayVoiceCoordinator {
         jobsObservation = nil
         jobsTemplate = nil
         stopKeepingChatsCurrent()
+        chatTitleObservation?.cancel()
+        chatTitleObservation = nil
         chosenChat = nil
         isBrowsing = false
         lastActivatedState = nil
@@ -335,6 +348,8 @@ final class CarPlayVoiceCoordinator {
         appState.releaseCarPlayGeminiLive()
         appState.releaseCarPlayGPTLive()
         appState.releaseCarPlayGrokLive()
+        // Up to ~30 MB of orb frames at 3x; drawn again on the next connect.
+        CarPlayVoiceArtwork.clearCache()
     }
 
     // MARK: - Template
@@ -788,12 +803,17 @@ final class CarPlayVoiceCoordinator {
         chosenChat: CarPlayChatRow?
     ) -> String? {
         if let chosenChat { return chosenChat.title }
-        guard mode == .classic, let activeSessionId = appState.activeSessionId else { return nil }
-        guard let session = appState.activeProfileSessions.first(where: {
+        guard mode == .classic, let session = openListedChat(in: appState) else { return nil }
+        return CarPlayBrowse.recentChats(from: [session]).first?.title
+    }
+
+    /// The listed chat open on the phone, matched by any of its ids.
+    static func openListedChat(in appState: AppState) -> SessionSummary? {
+        guard let activeSessionId = appState.activeSessionId else { return nil }
+        return appState.activeProfileSessions.first {
             $0.id == activeSessionId || $0.storedSessionId == activeSessionId
                 || $0.alternateIds.contains(activeSessionId)
-        }) else { return nil }
-        return CarPlayBrowse.recentChats(from: [session]).first?.title
+        }
     }
 
     private func scheduleChatTitleRefresh() {
@@ -895,7 +915,9 @@ final class CarPlayVoiceCoordinator {
     private func attachedChatID(in appState: AppState) -> String? {
         if let chosenChat { return chosenChat.sessionID }
         let mode = observedVoiceMode ?? CarPlayVoiceMode.current(in: appState)
-        return mode == .classic ? appState.activeSessionId : nil
+        // The row's own id, whichever of its ids the phone has open, so
+        // the marker and the Ready title always agree.
+        return mode == .classic ? Self.openListedChat(in: appState)?.id : nil
     }
 
     private static func chatList(in appState: AppState) -> CarPlayChatList {

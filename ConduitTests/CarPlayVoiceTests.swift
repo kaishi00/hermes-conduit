@@ -1382,6 +1382,24 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(CarPlayVoiceCoordinator.listenChatTitle(in: harness.appState, mode: .gptLive, chosenChat: picked), "Picked")
     }
 
+    func testTheReadyTitleFollowsThePhoneWhileTheCarRestsAtReady() async throws {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        XCTAssertNil(harness.coordinator.controls.chatTitle)
+
+        var renamed = chatSession("trip", activity: 1)
+        harness.appState.sessions = [renamed]
+        harness.appState.activeSessionId = "stored-trip"
+        await settleChats { harness.coordinator.controls.chatTitle == "trip" }
+        XCTAssertEqual(harness.coordinator.controls.chatTitle, "trip", "matched by its stored id too")
+
+        renamed.title = "Road trip"
+        harness.appState.sessions = [renamed]
+        await settleChats { harness.coordinator.controls.chatTitle == "Road trip" }
+        XCTAssertEqual(harness.coordinator.controls.chatTitle, "Road trip")
+    }
+
     func testTheReadyTitleWaitsWhileAListIsUp() async throws {
         let harness = makeHarness()
         harness.coordinator.chatCatalogLoader = { _ in }

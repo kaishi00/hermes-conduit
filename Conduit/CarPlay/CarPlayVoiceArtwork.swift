@@ -35,6 +35,11 @@ enum CarPlayVoiceArtwork {
 
     private static var cache: [CacheKey: UIImage] = [:]
 
+    /// Drops the drawn icons, when the car disconnects.
+    static func clearCache() {
+        cache.removeAll()
+    }
+
     /// Ready and Error are still; the in-conversation states animate.
     static func isAnimated(_ state: CarPlayVoiceState) -> Bool {
         switch state {
