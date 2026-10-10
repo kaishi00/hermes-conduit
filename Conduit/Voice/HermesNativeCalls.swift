@@ -66,6 +66,26 @@ enum HermesNativeCallPlan: Equatable {
         if let sentAt = call.sentAt, now.timeIntervalSince(sentAt) > lateAfter { return .endAtOnce(.missed) }
         return voiceInUse ? .endAtOnce(.talk) : .ring
     }
+
+    /// Whether the push is a call of its own, with its own trace: a replay
+    /// or a push Conduit couldn't read leaves the last call's trace alone.
+    var startsTrace: Bool {
+        switch self {
+        case .ring, .endAtOnce(.missed), .endAtOnce(.talk): return true
+        case .endAtOnce(.none), .endAtOnce(.unreadable): return false
+        }
+    }
+
+    /// How the call trace names it.
+    var traceLabel: String {
+        switch self {
+        case .ring: return "ring"
+        case .endAtOnce(.none): return "end at once, nothing posted"
+        case .endAtOnce(.missed): return "end at once, missed call"
+        case .endAtOnce(.talk): return "end at once, wants to talk"
+        case .endAtOnce(.unreadable): return "end at once, unreadable"
+        }
+    }
 }
 
 @MainActor
@@ -80,6 +100,8 @@ final class HermesNativeCalls: NSObject {
     static let audioTimeout: Duration = .seconds(3)
     /// How long the voice conversation it opens has to start.
     static let voiceStartTimeout: Duration = .seconds(15)
+    /// How long an answered call waits for Conduit to come on screen.
+    static let phoneScreenWait: Duration = .milliseconds(1500)
 
     private var registry: PKPushRegistry?
     private var provider: CXProvider?
@@ -164,8 +186,8 @@ final class HermesNativeCalls: NSObject {
             nativeCallsLogger.info("Hermes calls don't ring in this storefront")
         }
         PushNotificationService.shared.updateVoIPToken(nil)
-        if calls.values.contains(where: \.answered) {
-            AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall()
+        for call in calls.values where call.answered {
+            endVoice(of: call.target)
         }
         // Only a call that never connected was missed.
         for (id, call) in Array(calls) { finish(id, reason: .failed, notice: call.answered ? .none : .missed) }
@@ -179,6 +201,11 @@ final class HermesNativeCalls: NSObject {
         let appState = AppStateRuntimeRegistry.shared.existing
         let busy = appState.map { $0.isVoiceInUse || $0.isWatchVoiceCallActive } ?? false
         let plan = HermesNativeCallPlan.plan(for: call, now: Date(), voiceInUse: busy || !calls.isEmpty)
+        if plan.startsTrace {
+            HermesCallTrace.shared.begin(
+                "Push received: \(plan.traceLabel) (app \(appState == nil ? "starting" : "running"), voice busy: \(busy), calls: \(calls.count))"
+            )
+        }
         let id = UUID()
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: "hermes")
@@ -190,6 +217,7 @@ final class HermesNativeCalls: NSObject {
         update.supportsDTMF = false
         guard let provider else {
             // Never registered for VoIP pushes without a provider.
+            HermesCallTrace.shared.note("No CallKit provider")
             completion()
             return
         }
@@ -207,6 +235,9 @@ final class HermesNativeCalls: NSObject {
             calls[id] = nil
             let code = (error as? CXErrorCodeIncomingCallError)?.code
             nativeCallsLogger.notice("Hermes call not shown: \(error.localizedDescription, privacy: .public)")
+            if plan.startsTrace {
+                HermesCallTrace.shared.note("CallKit didn't show it (code \(code.map { String($0.rawValue) } ?? "unknown"))")
+            }
             // Do Not Disturb or a blocked caller: the user asked for quiet.
             if code == .filteredByDoNotDisturb || code == .filteredByBlockList || code == .callUUIDAlreadyExists { return }
             if case .endAtOnce(let notice) = plan {
@@ -218,10 +249,12 @@ final class HermesNativeCalls: NSObject {
         }
         switch plan {
         case .endAtOnce(let notice):
+            if plan.startsTrace { HermesCallTrace.shared.note("Ended at once") }
             provider?.reportCall(with: id, endedAt: Date(), reason: notice == .missed ? .unanswered : .failed)
             post(notice, for: target)
         case .ring:
             guard calls[id] != nil else { return }
+            HermesCallTrace.shared.note("Ringing")
             calls[id]?.unanswered = Task {
                 do { try await Task.sleep(for: Self.unansweredAfter) } catch { return }
                 guard self.calls[id]?.answered == false else { return }
@@ -236,9 +269,11 @@ final class HermesNativeCalls: NSObject {
 
     private func answer(_ action: CXAnswerCallAction) {
         guard calls[action.callUUID] != nil else {
+            HermesCallTrace.shared.note("Answered a call that had ended")
             action.fail()
             return
         }
+        HermesCallTrace.shared.note("Answered")
         calls[action.callUUID]?.answered = true
         calls[action.callUUID]?.unanswered?.cancel()
         // CallKit activates the session once the action is fulfilled.
@@ -253,30 +288,103 @@ final class HermesNativeCalls: NSObject {
     private func connect(_ id: UUID) async {
         guard let target = calls[id]?.target else { return }
         guard let request = target.call else {
+            HermesCallTrace.shared.note("No call in the push")
             finish(id, reason: .failed, notice: .missed)
             return
         }
         let appState = AppStateRuntimeRegistry.shared.appState
         appState.setNativeHermesCallActive(true)
+        let audioWait = Date()
         await waitForAudio()
-        let connected = await CarPlayVoiceCoordinator.awaitConnection(of: appState, timeout: Self.connectionTimeout)
+        HermesCallTrace.shared.note(audioActive ? "Call audio ready" : "Call audio not ready, going on", since: audioWait)
         guard calls[id] != nil, !Task.isCancelled else { return }
+        // Answered unlocked, Conduit comes to the front with the call, and
+        // its return to the app (a connection check, maybe a reconnect, the
+        // chat it restores) would race an open from here. The call opens
+        // the way its notification's Talk button does instead: the route
+        // that open waits behind, retries once, and answers the call.
+        let onScreen = await waitForPhoneScreen()
+        guard calls[id] != nil, !Task.isCancelled else { return }
+        if onScreen {
+            HermesCallTrace.shared.note("Conduit on screen: opening like the Talk button")
+            await openThroughRoute(id, target: target, appState: appState)
+            return
+        }
+        // Answered locked, Conduit stays in the background, where nothing
+        // routes: the call opens its chat itself.
+        HermesCallTrace.shared.note("Conduit in the background: opening from the call")
+        let connectionWait = Date()
+        let wasConnected = appState.isConnected
+        let connected = await CarPlayVoiceCoordinator.awaitConnection(of: appState, timeout: Self.connectionTimeout)
+        HermesCallTrace.shared.note(
+            connected ? (wasConnected ? "Already connected" : "Connected") : "Not connected in time",
+            since: connectionWait
+        )
+        guard calls[id] != nil, !Task.isCancelled else { return }
+        // A cold launch can take longer to come on screen: once it has, the
+        // same race holds.
+        if PhoneScenePresence.isInForeground {
+            HermesCallTrace.shared.note("Conduit came on screen: opening like the Talk button")
+            await openThroughRoute(id, target: target, appState: appState)
+            return
+        }
+        let chatWait = Date()
+        let errorBefore = appState.errorMessage
         guard connected, await appState.openNotificationTarget(target), calls[id] != nil else {
             nativeCallsLogger.notice("Hermes call answered but not opened (connected: \(connected, privacy: .public))")
+            if connected {
+                let shown = appState.errorMessage != nil && appState.errorMessage != errorBefore
+                HermesCallTrace.shared.note("Chat not opened\(shown ? ", error shown" : "")", since: chatWait)
+            }
             // The user picked up: what's left is "Hermes wants to talk".
             finish(id, reason: .failed, notice: .talk)
             return
         }
+        HermesCallTrace.shared.note("Chat opened", since: chatWait)
         // Another voice conversation started while it rang: the job's news
         // reaches the user there, never as this call.
         guard appState.answerHermesCall(request) else {
             finish(id, reason: .failed, notice: .talk)
             return
         }
+        await keepCallWhileVoiceRuns(id, appState: appState, startTimeout: Self.voiceStartTimeout)
+    }
+
+    /// Opens the call as its notification's Talk button would, then keeps
+    /// the CallKit call while the voice it opens runs.
+    private func openThroughRoute(_ id: UUID, target: ConduitNotificationTarget, appState: AppState) async {
+        PushNotificationService.shared.routeAnsweredHermesCall(target)
+        await keepCallWhileVoiceRuns(id, appState: appState, startTimeout: Self.connectionTimeout + Self.voiceStartTimeout)
+    }
+
+    /// The route opened the call's chat but couldn't open its voice (voice
+    /// was already in use): the call ends, and its news waits in "Hermes
+    /// wants to talk", as when the call opens the chat itself.
+    func routedAnswerRefused(_ target: ConduitNotificationTarget) {
+        for (id, call) in calls where call.answered && call.target == target {
+            finish(id, reason: .failed, notice: .talk)
+        }
+    }
+
+    /// Whether Conduit is on screen within a moment of the answer.
+    private func waitForPhoneScreen() async -> Bool {
+        let until = ContinuousClock.now + Self.phoneScreenWait
+        while !PhoneScenePresence.isInForeground {
+            guard ContinuousClock.now < until else { return false }
+            do { try await Task.sleep(for: .milliseconds(100)) } catch { return false }
+        }
+        return true
+    }
+
+    /// Keeps the CallKit call for as long as the voice conversation it
+    /// opened runs, once it starts within `startTimeout`.
+    private func keepCallWhileVoiceRuns(_ id: UUID, appState: AppState, startTimeout: Duration) async {
         var started = false
-        let startBy = ContinuousClock.now + Self.voiceStartTimeout
+        let voiceWait = Date()
+        let startBy = ContinuousClock.now + startTimeout
         while calls[id] != nil, !Task.isCancelled {
             if appState.isVoiceInUse {
+                if !started { HermesCallTrace.shared.note("Voice in use", since: voiceWait) }
                 started = true
             } else if started || ContinuousClock.now > startBy {
                 break
@@ -284,11 +392,22 @@ final class HermesNativeCalls: NSObject {
             do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
         }
         guard calls[id] != nil else { return }
+        HermesCallTrace.shared.note(
+            started ? "Voice ended" : "Voice not in use in time (\(appState.hermesCallVoiceTraceSummary))",
+            since: voiceWait
+        )
         // Voice ended in the app, or never started: the CallKit call ends,
         // and voice still opening doesn't. The user picked up, so what's
         // left is "Hermes wants to talk", not a missed call.
-        if !started { appState.endVoiceForNativeCall() }
+        if !started { endVoice(of: calls[id]?.target) }
         finish(id, reason: started ? .remoteEnded : .failed, notice: started ? .none : .talk)
+    }
+
+    /// An answered call is over: the voice conversation it opened ends,
+    /// and an open still on its way, from here or routed, doesn't happen.
+    private func endVoice(of target: ConduitNotificationTarget?) {
+        if let target { PushNotificationService.shared.clearPendingTarget(target) }
+        AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall()
     }
 
     private func waitForAudio() async {
@@ -314,6 +433,7 @@ final class HermesNativeCalls: NSObject {
     /// Conduit ends the call: CallKit hears why, and `notice` follows.
     private func finish(_ id: UUID, reason: CXCallEndedReason, notice: HermesNativeCallPlan.Notice) {
         guard let call = calls.removeValue(forKey: id) else { return }
+        HermesCallTrace.shared.note("Call ended (\(Self.traceLabel(reason)))")
         call.unanswered?.cancel()
         call.work?.cancel()
         provider?.reportCall(with: id, endedAt: Date(), reason: reason)
@@ -327,15 +447,27 @@ final class HermesNativeCalls: NSObject {
             action.fulfill()
             return
         }
+        HermesCallTrace.shared.note(call.answered ? "Hung up" : "Declined")
         call.unanswered?.cancel()
         call.work?.cancel()
         action.fulfill()
         if call.answered {
-            AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall()
+            endVoice(of: call.target)
         } else {
             post(.missed, for: call.target)
         }
         settle()
+    }
+
+    private static func traceLabel(_ reason: CXCallEndedReason) -> String {
+        switch reason {
+        case .failed: return "failed"
+        case .remoteEnded: return "ended by Conduit"
+        case .unanswered: return "unanswered"
+        case .answeredElsewhere: return "answered elsewhere"
+        case .declinedElsewhere: return "declined elsewhere"
+        @unknown default: return "reason \(reason.rawValue)"
+        }
     }
 
     private func settle() {
@@ -389,7 +521,8 @@ extension HermesNativeCalls: PKPushRegistryDelegate {
 extension HermesNativeCalls: CXProviderDelegate {
     nonisolated func providerDidReset(_ provider: CXProvider) {
         MainActor.assumeIsolated {
-            let answered = self.calls.values.contains { $0.answered }
+            HermesCallTrace.shared.note("CallKit reset")
+            let answered = self.calls.values.filter(\.answered).map(\.target)
             for call in self.calls.values {
                 call.unanswered?.cancel()
                 call.work?.cancel()
@@ -399,7 +532,7 @@ extension HermesNativeCalls: CXProviderDelegate {
             self.calls = [:]
             self.audioActive = false
             self.resumeAudioWaiters()
-            if answered { AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall() }
+            for target in answered { self.endVoice(of: target) }
             self.settle()
         }
     }
@@ -425,13 +558,17 @@ extension HermesNativeCalls: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         MainActor.assumeIsolated {
+            HermesCallTrace.shared.note("CallKit audio on")
             self.audioActive = true
             self.resumeAudioWaiters()
         }
     }
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-        MainActor.assumeIsolated { self.audioActive = false }
+        MainActor.assumeIsolated {
+            HermesCallTrace.shared.note("CallKit audio off")
+            self.audioActive = false
+        }
     }
 
     nonisolated func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {

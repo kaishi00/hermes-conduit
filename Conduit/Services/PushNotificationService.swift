@@ -1303,6 +1303,12 @@ final class PushNotificationService: ObservableObject {
         route(target)
     }
 
+    /// A call from Hermes answered with Conduit on screen opens as its
+    /// notification's Talk button would (#449).
+    func routeAnsweredHermesCall(_ target: ConduitNotificationTarget) {
+        route(target)
+    }
+
     private func route(_ target: ConduitNotificationTarget) {
         navigationRetryTask?.cancel()
         navigationRetryTask = nil

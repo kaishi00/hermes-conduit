@@ -639,6 +639,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(plan(target, busy: true), .endAtOnce(.talk))
         XCTAssertEqual(plan(target, replayed: true), .endAtOnce(.none))
         XCTAssertEqual(plan(nil), .endAtOnce(.unreadable))
+        XCTAssertTrue(plan(target, sentAgo: 91).startsTrace)
+        XCTAssertFalse(plan(target, replayed: true).startsTrace, "A replay leaves the last call's trace alone")
+        XCTAssertFalse(plan(nil).startsTrace)
         XCTAssertTrue(HermesNativeCallStorefront.allowsCalls("USA"))
         XCTAssertTrue(HermesNativeCallStorefront.allowsCalls(nil))
         XCTAssertFalse(HermesNativeCallStorefront.allowsCalls("CHN"))
@@ -788,5 +791,31 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(hungUp.errorMessage, "Hung up first: nothing opened")
         XCTAssertNil(hungUp.pendingHermesCall)
         XCTAssertFalse(hungUp.showVoiceSheet)
+    }
+
+    func testACallAnsweredOnScreenOpensLikeItsTalkButton() {
+        let service = PushNotificationService(retryDelay: .zero)
+        let call = HermesCallRequest(id: "", kind: .done, title: "Deploy", sessionIDs: ["st-1"])
+        let target = ConduitNotificationTarget(profile: "default", sessionId: "st-1", type: HermesCallRequest.type, call: call)
+        let attempts = service.navigationAttempt
+        service.routeAnsweredHermesCall(target)
+        XCTAssertEqual(service.pendingTarget, target, "The same route a Talk tap takes")
+        XCTAssertEqual(service.navigationAttempt, attempts + 1)
+        service.clearPendingTarget(target)
+        XCTAssertNil(service.pendingTarget, "A call that ended lets go of its route")
+    }
+
+    func testTheCallTraceRecordsTheStepsOfOneCall() throws {
+        let trace = HermesCallTrace()
+        trace.note("Answered")
+        XCTAssertNil(trace.timeline, "No call, no trace")
+        trace.begin("Push received: \(HermesNativeCallPlan.ring.traceLabel)")
+        trace.note("Chat opened", since: Date().addingTimeInterval(-1))
+        let report = try XCTUnwrap(trace.timeline?.report)
+        XCTAssertTrue(report.hasPrefix("Conduit connection timeline: call from Hermes"))
+        XCTAssertTrue(report.contains("Push received: ring"))
+        XCTAssertTrue(report.contains("Chat opened (1."), report)
+        trace.begin("Push received: \(HermesNativeCallPlan.endAtOnce(.talk).traceLabel)")
+        XCTAssertFalse(trace.timeline?.report.contains("Chat opened") ?? true, "A new call starts a new trace")
     }
 }
