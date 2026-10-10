@@ -780,7 +780,7 @@ final class VoiceConversationController: ObservableObject {
                 if isSteeringTurn {
                     // Nothing came of it: Hermes' turn carries on as is.
                     resumeTurnAfterSteer()
-                } else if preferences.continuousConversation || isBackgroundListening {
+                } else if isContinuousConversationEnabled || isBackgroundListening {
                     // Hands-free: a long think before speaking shouldn't
                     // need a tap to go on (#517).
                     restartSilentListeningWindow(at: date)

@@ -56823,84 +56823,84 @@
         }
       }
     },
-    "Automatically listens again after each response. Turn off to start each listening turn manually." : {
+    "Automatically listens again after each response and keeps listening through silence. Turn off to start each listening turn manually." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hört nach jeder Antwort automatisch wieder zu. Schalte dies aus, um jedes Zuhören manuell zu starten."
+            "value" : "Hört nach jeder Antwort automatisch wieder zu und hört auch bei Stille weiter. Schalte dies aus, um jedes Zuhören manuell zu starten."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vuelve a escuchar automáticamente tras cada respuesta. Desactívalo para iniciar cada turno de escucha manualmente."
+            "value" : "Vuelve a escuchar automáticamente tras cada respuesta y sigue escuchando durante los silencios. Desactívalo para iniciar cada turno de escucha manualmente."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se remet à écouter automatiquement après chaque réponse. Désactivez cette option pour lancer chaque tour d'écoute manuellement."
+            "value" : "Se remet à écouter automatiquement après chaque réponse et continue d'écouter pendant les silences. Désactivez cette option pour lancer chaque tour d'écoute manuellement."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mendengarkan lagi secara otomatis setelah setiap respons. Matikan untuk memulai setiap giliran mendengarkan secara manual."
+            "value" : "Mendengarkan lagi secara otomatis setelah setiap respons dan tetap mendengarkan saat hening. Matikan untuk memulai setiap giliran mendengarkan secara manual."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Riprende automaticamente ad ascoltare dopo ogni risposta. Disattiva l'opzione per avviare manualmente ogni turno di ascolto."
+            "value" : "Riprende automaticamente ad ascoltare dopo ogni risposta e continua ad ascoltare anche nei silenzi. Disattiva l'opzione per avviare manualmente ogni turno di ascolto."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "応答のたびに自動で聞き取りを再開します。オフにすると、毎回手動で聞き取りを開始します。"
+            "value" : "応答のたびに自動で聞き取りを再開し、沈黙の間も聞き取りを続けます。オフにすると、毎回手動で聞き取りを開始します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "응답할 때마다 자동으로 다시 들어요. 끄면 듣기 턴을 매번 직접 시작해요."
+            "value" : "응답할 때마다 자동으로 다시 듣고, 조용할 때도 계속 들어요. 끄면 듣기 턴을 매번 직접 시작해요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Automatycznie zaczyna ponownie słuchać po każdej odpowiedzi. Wyłącz, aby za każdym razem uruchamiać słuchanie ręcznie."
+            "value" : "Automatycznie zaczyna ponownie słuchać po każdej odpowiedzi i słucha dalej podczas ciszy. Wyłącz, aby za każdym razem uruchamiać słuchanie ręcznie."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Volta a ouvir automaticamente após cada resposta. Desative para iniciar cada turno de escuta manualmente."
+            "value" : "Volta a ouvir automaticamente após cada resposta e continua ouvindo durante os silêncios. Desative para iniciar cada turno de escuta manualmente."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Автоматически снова слушает после каждого ответа. Выключите, чтобы начинать каждое прослушивание вручную."
+            "value" : "Автоматически снова слушает после каждого ответа и продолжает слушать во время пауз. Выключите, чтобы начинать каждое прослушивание вручную."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Her yanıttan sonra otomatik olarak yeniden dinler. Her dinleme turunu elle başlatmak için kapatın."
+            "value" : "Her yanıttan sonra otomatik olarak yeniden dinler ve sessizlikte de dinlemeye devam eder. Her dinleme turunu elle başlatmak için kapatın."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每次回复后自动重新聆听。关闭后，每轮聆听需手动开始。"
+            "value" : "每次回复后自动重新聆听，安静时也会持续聆听。关闭后，每轮聆听需手动开始。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每次回應後自動再次聆聽。關閉後，每次聆聽都需要手動開始。"
+            "value" : "每次回應後自動再次聆聽，安靜時也會持續聆聽。關閉後，每次聆聽都需要手動開始。"
           }
         }
       }
