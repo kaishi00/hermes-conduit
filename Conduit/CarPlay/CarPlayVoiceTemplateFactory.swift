@@ -59,6 +59,10 @@ struct CarPlayVoiceControls: Equatable {
     /// generic Error title. A state's title is as fixed as its buttons, so
     /// a new issue also needs a new template.
     var errorIssue: VoiceSetupIssue? = nil
+    /// The chat Listen talks in, which the Ready title names; nil when
+    /// Listen starts a new one. Fixed like the other titles, so a different
+    /// chat also needs a new template.
+    var chatTitle: String? = nil
 
     /// The classic mode's Listen continues the current chat, so a new chat
     /// is its own button. A live call always starts fresh.
@@ -119,12 +123,13 @@ enum CarPlayVoiceTemplateFactory {
     static func makeVoiceControlState(
         for state: CarPlayVoiceState,
         controls: CarPlayVoiceControls = .initial,
+        scale: CGFloat = CarPlayVoiceArtwork.defaultScale,
         handlers: CarPlayVoiceActionHandlers
     ) -> CPVoiceControlState {
         let voiceControlState = CPVoiceControlState(
             identifier: state.identifier,
-            titleVariants: state.titleVariants(errorIssue: controls.errorIssue),
-            image: CarPlayVoiceArtwork.image(for: state),
+            titleVariants: state.titleVariants(controls: controls),
+            image: CarPlayVoiceArtwork.image(for: state, scale: scale),
             repeats: CarPlayVoiceArtwork.isAnimated(state)
         )
         if #available(iOS 26.4, *) {
@@ -139,11 +144,12 @@ enum CarPlayVoiceTemplateFactory {
     static func makeTemplate(
         controls: CarPlayVoiceControls = .initial,
         presenting initialState: CarPlayVoiceState = .ready,
+        scale: CGFloat = CarPlayVoiceArtwork.defaultScale,
         handlers: CarPlayVoiceActionHandlers
     ) -> CPVoiceControlTemplate {
         let ordered = [initialState] + CarPlayVoiceState.allCases.filter { $0 != initialState }
         let states = ordered.map {
-            makeVoiceControlState(for: $0, controls: controls, handlers: handlers)
+            makeVoiceControlState(for: $0, controls: controls, scale: scale, handlers: handlers)
         }
         return CPVoiceControlTemplate(voiceControlStates: states)
     }

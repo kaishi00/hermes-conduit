@@ -47,9 +47,17 @@ protocol CarPlayInterfacing: AnyObject {
         animated: Bool,
         completion: ((Bool, (any Error)?) -> Void)?
     )
+    /// The car screen's scale, which the voice screen's icons are drawn at.
+    var carDisplayScale: CGFloat { get }
 }
 
-extension CPInterfaceController: CarPlayInterfacing {}
+extension CarPlayInterfacing {
+    var carDisplayScale: CGFloat { CarPlayVoiceArtwork.defaultScale }
+}
+
+extension CPInterfaceController: CarPlayInterfacing {
+    var carDisplayScale: CGFloat { carTraitCollection.displayScale }
+}
 
 /// The Voice mode the profile uses, which decides the controller CarPlay
 /// presents and drives. AppState keeps at most one live mode enabled.
@@ -185,6 +193,7 @@ final class CarPlayVoiceCoordinator {
     /// to the car again.
     private var shownChats: CarPlayChatList?
     private var shownChatsPlaceholder: String?
+    private var shownAttachedChatID: String?
     /// The chat-list load this coordinator asked for, while it runs. A load
     /// the driver leaves behind still finishes (the phone's list wants the
     /// chats too) but no longer counts.
@@ -202,6 +211,9 @@ final class CarPlayVoiceCoordinator {
     /// from the car's Listen button is attached to it too, not only the
     /// call the pick starts (#378).
     private(set) var chosenChat: CarPlayChatRow?
+    private var isChatTitleRefreshScheduled = false
+    /// Follows the chat open on the phone, which the Ready title names.
+    private var chatTitleObservation: AnyCancellable?
     /// Rotated by every chat pick, so an earlier pick still opening never
     /// starts a call after a newer one.
     private var chatOpenRequest: UInt64 = 0
@@ -254,6 +266,8 @@ final class CarPlayVoiceCoordinator {
         jobsObservation = nil
         jobsTemplate = nil
         stopKeepingChatsCurrent()
+        chatTitleObservation?.cancel()
+        chatTitleObservation = nil
         chosenChat = nil
         isBrowsing = false
         self.interfacing = interfacing
@@ -279,6 +293,13 @@ final class CarPlayVoiceCoordinator {
         // driver's next Listen must be able to re-arm capture.
         appState.handleCarPlayVoiceSurfaceActivated()
         observeCurrentVoiceMode(appState)
+        // The phone opening or renaming a chat while the car rests at Ready
+        // updates the title there.
+        chatTitleObservation = Publishers.Merge(
+            appState.$activeSessionId.map { _ in () }.dropFirst(),
+            appState.$sessions.map { _ in () }.dropFirst()
+        )
+        .sink { [weak self] _ in self?.scheduleChatTitleRefresh() }
 
         if autoEstablishOnConnect {
             Task { @MainActor [weak self] in
@@ -312,6 +333,8 @@ final class CarPlayVoiceCoordinator {
         jobsObservation = nil
         jobsTemplate = nil
         stopKeepingChatsCurrent()
+        chatTitleObservation?.cancel()
+        chatTitleObservation = nil
         chosenChat = nil
         isBrowsing = false
         lastActivatedState = nil
@@ -325,6 +348,8 @@ final class CarPlayVoiceCoordinator {
         appState.releaseCarPlayGeminiLive()
         appState.releaseCarPlayGPTLive()
         appState.releaseCarPlayGrokLive()
+        // Up to ~30 MB of orb frames at 3x; drawn again on the next connect.
+        CarPlayVoiceArtwork.clearCache()
     }
 
     // MARK: - Template
@@ -343,6 +368,7 @@ final class CarPlayVoiceCoordinator {
         let template = CarPlayVoiceTemplateFactory.makeTemplate(
             controls: builtControls,
             presenting: initialState,
+            scale: interfacing.carDisplayScale,
             handlers: makeHandlers()
         )
         self.template = template
@@ -412,6 +438,7 @@ final class CarPlayVoiceCoordinator {
                 if pending != initialState || isReplacement {
                     self.stateActivator(template, pending)
                 }
+                if pending == .ready { self.scheduleChatTitleRefresh() }
                 if self.isChatPickerPending {
                     self.isChatPickerPending = false
                     // Never over a conversation that started meanwhile.
@@ -606,6 +633,7 @@ final class CarPlayVoiceCoordinator {
         lastActivatedState = activated
         stateActivator(template, activated)
         if playsEarcon { playEarcon(from: previous, to: activated) }
+        if activated == .ready { scheduleChatTitleRefresh() }
         // A conversation is listening or talking (one started on the phone,
         // say): the voice screen shows it, rather than a list the driver has
         // to back out of first. Thinking alone doesn't count: a call that is
@@ -684,13 +712,13 @@ final class CarPlayVoiceCoordinator {
         showsBrowseButtons = shows
         guard let template, #available(iOS 26.4, *) else { return }
         if shows {
+            // Two buttons rather than four words crowding the bar: Chats,
+            // the one a driver needs most, and More for the rest.
             template.leadingNavigationBarButtons = [
-                CPBarButton(title: AppLocalization.string("Chats")) { [weak self] _ in self?.showChats() },
-                CPBarButton(title: AppLocalization.string("Jobs")) { [weak self] _ in self?.showJobs() },
+                CarPlayBrowseTemplateFactory.barButton(.chats) { [weak self] in self?.showChats() },
             ]
             template.trailingNavigationBarButtons = [
-                CPBarButton(title: AppLocalization.string("Shortcuts")) { [weak self] _ in self?.showShortcuts() },
-                CPBarButton(title: AppLocalization.string("Voice")) { [weak self] _ in self?.showVoiceOptions() },
+                CarPlayBrowseTemplateFactory.barButton(.more) { [weak self] in self?.showMore() },
             ]
         } else {
             template.leadingNavigationBarButtons = []
@@ -720,7 +748,10 @@ final class CarPlayVoiceCoordinator {
             replayJob: fenced { $0.replayJob($1) },
             runShortcut: fenced { $0.runShortcut($1) },
             selectMode: fenced { $0.selectVoiceMode($1) },
-            selectAgent: fenced { $0.selectAgent(at: $1) }
+            selectAgent: fenced { $0.selectAgent(at: $1) },
+            showJobs: fencedAction { $0.showJobs() },
+            showShortcuts: fencedAction { $0.showShortcuts() },
+            showVoiceOptions: fencedAction { $0.showVoiceOptions() }
         )
     }
 
@@ -728,8 +759,8 @@ final class CarPlayVoiceCoordinator {
         // A screen the driver opens wins over a chat list still waiting
         // for the voice screen.
         isChatPickerPending = false
-        // Only the Jobs list is kept current, and only while it is the
-        // newest screen (the car's back button reports nothing).
+        // Only the Jobs and chat lists are kept current, and only while
+        // they are the newest screen.
         jobsObservation?.cancel()
         jobsObservation = nil
         jobsTemplate = nil
@@ -756,6 +787,63 @@ final class CarPlayVoiceCoordinator {
     func handleTemplateDidAppear(_ appeared: CPTemplate) {
         guard let template, appeared === template else { return }
         isBrowsing = false
+        // A chat picked or renamed while a list was up shows in the title.
+        scheduleChatTitleRefresh()
+    }
+
+    // MARK: - Ready title
+
+    /// The chat the Ready title names: the one picked in the car, else for
+    /// the classic mode the listed chat open on the phone, which Listen
+    /// continues. A live call's Listen starts a new chat unless one was
+    /// picked, so it names none.
+    static func listenChatTitle(
+        in appState: AppState,
+        mode: CarPlayVoiceMode,
+        chosenChat: CarPlayChatRow?
+    ) -> String? {
+        if let chosenChat { return chosenChat.title }
+        guard mode == .classic, let session = openListedChat(in: appState) else { return nil }
+        return CarPlayBrowse.recentChats(from: [session]).first?.title
+    }
+
+    /// The listed chat open on the phone, matched by any of its ids.
+    static func openListedChat(in appState: AppState) -> SessionSummary? {
+        guard let activeSessionId = appState.activeSessionId else { return nil }
+        return appState.activeProfileSessions.first {
+            $0.id == activeSessionId || $0.storedSessionId == activeSessionId
+                || $0.alternateIds.contains(activeSessionId)
+        }
+    }
+
+    private func scheduleChatTitleRefresh() {
+        guard isConnected, !isChatTitleRefreshScheduled else { return }
+        isChatTitleRefreshScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.isChatTitleRefreshScheduled = false
+            self.refreshChatTitle()
+        }
+    }
+
+    /// Brings the Ready title up to date. Only while the car rests on the
+    /// voice screen at Ready, where the title shows: the new template it
+    /// takes would pop a list pushed over it, and isn't worth a swap
+    /// mid-turn. Reaching Ready again, or the voice screen coming back,
+    /// tries again.
+    private func refreshChatTitle() {
+        guard isConnected, template != nil, isTemplatePresented, !isBrowsing,
+              shownState == .ready else { return }
+        let appState = lastBoundAppState ?? appStateProvider()
+        let title = Self.listenChatTitle(
+            in: appState,
+            mode: observedVoiceMode ?? CarPlayVoiceMode.current(in: appState),
+            chosenChat: chosenChat
+        )
+        guard title != controls.chatTitle else { return }
+        var updated = controls
+        updated.chatTitle = title
+        updateControls(updated)
     }
 
     /// A conversation is starting on the phone (its Voice button, a live
@@ -788,30 +876,48 @@ final class CarPlayVoiceCoordinator {
     /// there are none yet (#514).
     func showChats() {
         guard isConnected else { return }
+        // A fresh list starts from clean state, whatever the last one left.
+        stopKeepingChatsCurrent()
         let appState = lastBoundAppState ?? appStateProvider()
         let chats = Self.chatList(in: appState)
         let placeholder = chatsPlaceholder(for: chats, in: appState)
+        let attached = attachedChatID(in: appState)
         let handlers = makeBrowseHandlers()
         let list = CarPlayBrowseTemplateFactory.chatsTemplate(
             chats: chats,
             placeholder: placeholder,
+            attachedChatID: attached,
             handlers: handlers
         )
         push(list)
         chatsTemplate = list
         shownChats = chats
         shownChatsPlaceholder = placeholder
-        didRequestChatCatalog = false
+        shownAttachedChatID = attached
         // `@Published` sends before the value is stored, so the list is
-        // rebuilt once the change has landed, from AppState itself.
-        chatsObservation = Publishers.CombineLatest3(
-            appState.$sessions.map { _ in () },
-            appState.$pinnedSessionIDs.map { _ in () },
-            appState.$isConnected.removeDuplicates().map { _ in () }
+        // rebuilt once the change has landed, from AppState itself. The
+        // open chat moves the marker on the chat Listen talks in.
+        chatsObservation = Publishers.MergeMany(
+            appState.$sessions.map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.$pinnedSessionIDs.map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.$isConnected.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.$activeSessionId.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            // Which chats are this agent's, and which are bots'.
+            appState.$activeProfile.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.$botRoster.map { _ in () }.dropFirst().eraseToAnyPublisher()
         )
-        .dropFirst()
         .sink { [weak self] _ in self?.scheduleChatsRefresh() }
         loadChatsIfMissing(appState)
+    }
+
+    /// The chat Listen talks in, which the list marks: the one picked in
+    /// the car, else for the classic mode the chat open on the phone.
+    private func attachedChatID(in appState: AppState) -> String? {
+        if let chosenChat { return chosenChat.sessionID }
+        let mode = observedVoiceMode ?? CarPlayVoiceMode.current(in: appState)
+        // The row's own id, whichever of its ids the phone has open, so
+        // the marker and the Ready title always agree.
+        return mode == .classic ? Self.openListedChat(in: appState)?.id : nil
     }
 
     private static func chatList(in appState: AppState) -> CarPlayChatList {
@@ -864,15 +970,22 @@ final class CarPlayVoiceCoordinator {
             return
         }
         let appState = lastBoundAppState ?? appStateProvider()
+        // A load that came back empty may have failed with the connection;
+        // the next connection asks once more.
+        if !appState.isConnected, chatCatalogLoad == nil { didRequestChatCatalog = false }
         loadChatsIfMissing(appState)
         let chats = Self.chatList(in: appState)
         let placeholder = chatsPlaceholder(for: chats, in: appState)
-        guard chats != shownChats || placeholder != shownChatsPlaceholder else { return }
+        let attached = attachedChatID(in: appState)
+        guard chats != shownChats || placeholder != shownChatsPlaceholder
+                || attached != shownAttachedChatID else { return }
         shownChats = chats
         shownChatsPlaceholder = placeholder
+        shownAttachedChatID = attached
         list.updateSections(CarPlayBrowseTemplateFactory.chatSections(
             chats: chats,
             placeholder: placeholder,
+            attachedChatID: attached,
             handlers: makeBrowseHandlers()
         ))
     }
@@ -883,8 +996,10 @@ final class CarPlayVoiceCoordinator {
         chatsTemplate = nil
         shownChats = nil
         shownChatsPlaceholder = nil
+        shownAttachedChatID = nil
         chatCatalogLoad = nil
         didRequestChatCatalog = false
+        isChatsRefreshScheduled = false
     }
 
     /// Shows the chat list over the voice screen once that is on the car.
@@ -940,6 +1055,14 @@ final class CarPlayVoiceCoordinator {
                     handlers: handlers
                 ))
             }
+    }
+
+    /// Jobs, Shortcuts and the Voice options, as a grid one level below
+    /// the voice screen; each opens one level further down (CarPlay allows
+    /// three, the voice screen included).
+    func showMore() {
+        guard isConnected else { return }
+        push(CarPlayBrowseTemplateFactory.moreTemplate(handlers: makeBrowseHandlers()))
     }
 
     func showShortcuts() {

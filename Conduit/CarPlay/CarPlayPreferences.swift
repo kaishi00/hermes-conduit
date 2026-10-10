@@ -38,7 +38,9 @@ final class CarPlayPreferences: ObservableObject {
     @Published private(set) var shortcuts: [CarPlayShortcut]
     @Published private(set) var playsSounds: Bool
     /// CarPlay opens on the chat list (New voice chat, pinned, recent)
-    /// instead of starting Voice at once (#361).
+    /// instead of starting Voice at once (#361). Off unless the driver
+    /// turns it on: Apple wants a voice app to open voice first, and the
+    /// voice screen's Chats button reaches the list in one tap.
     @Published private(set) var choosesChatFirst: Bool
 
     private let defaults: UserDefaults
@@ -52,7 +54,7 @@ final class CarPlayPreferences: ObservableObject {
             shortcuts = []
         }
         playsSounds = defaults.object(forKey: Self.soundsKey) as? Bool ?? true
-        choosesChatFirst = defaults.object(forKey: Self.chooseChatFirstKey) as? Bool ?? true
+        choosesChatFirst = defaults.object(forKey: Self.chooseChatFirstKey) as? Bool ?? false
     }
 
     var canAddShortcut: Bool { shortcuts.count < Self.maximumShortcuts }

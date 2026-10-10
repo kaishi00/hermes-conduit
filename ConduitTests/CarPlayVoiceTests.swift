@@ -246,23 +246,23 @@ final class CarPlayVoiceTemplateFactoryTests: XCTestCase {
     /// (they were about two thirds and a half), and the mic fills the
     /// middle (#378).
     func testStateIconMarksFillTheIcon() throws {
-        let thinking = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .processing)))
+        let thinking = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .processing, includesOrb: false)))
         XCTAssertGreaterThanOrEqual(thinking.width, 0.85, "the dots span the icon")
         XCTAssertGreaterThanOrEqual(thinking.height, 0.25, "the dots are big")
 
-        let responding = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .responding)))
+        let responding = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .responding, includesOrb: false)))
         XCTAssertGreaterThanOrEqual(responding.width, 0.8, "the bars span the icon")
         XCTAssertGreaterThanOrEqual(responding.height, 0.8, "the tallest bar nearly fills it")
 
-        let ready = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .ready)))
+        let ready = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .ready, includesOrb: false)))
         XCTAssertGreaterThanOrEqual(ready.height, 0.45, "the mic fills the middle")
 
-        let error = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .error)))
+        let error = try markExtent(of: XCTUnwrap(CarPlayVoiceArtwork.image(for: .error, includesOrb: false)))
         XCTAssertGreaterThanOrEqual(error.width, 0.45, "the warning fills the middle")
     }
 
-    /// The box around the solid marks of every frame (the faint disc
-    /// behind them excluded), as fractions of the icon's side.
+    /// The box around the solid marks of every frame (drawn without the
+    /// orb behind them), as fractions of the icon's side.
     private func markExtent(of image: UIImage) throws -> CGSize {
         var minX = Int.max, minY = Int.max, maxX = -1, maxY = -1
         var side = 0
@@ -433,7 +433,7 @@ extension CarPlayVoiceTemplateFactoryTests {
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let preferences = CarPlayPreferences(defaults: defaults)
         XCTAssertTrue(preferences.playsSounds, "sounds are on by default")
-        XCTAssertTrue(preferences.choosesChatFirst, "CarPlay opens on the chat list by default")
+        XCTAssertFalse(preferences.choosesChatFirst, "CarPlay opens on the voice screen by default")
 
         XCTAssertFalse(preferences.save(CarPlayShortcut(title: "  ", prompt: "x")), "a blank name is refused")
         XCTAssertTrue(preferences.save(CarPlayShortcut(title: " Brief ", prompt: " Morning brief ")))
@@ -443,12 +443,106 @@ extension CarPlayVoiceTemplateFactoryTests {
         }
         XCTAssertFalse(preferences.save(CarPlayShortcut(title: "Ninth", prompt: "p")), "CarPlay's grid holds eight")
         preferences.setPlaysSounds(false)
-        preferences.setChoosesChatFirst(false)
+        preferences.setChoosesChatFirst(true)
 
         let reloaded = CarPlayPreferences(defaults: defaults)
         XCTAssertEqual(reloaded.shortcuts.count, CarPlayPreferences.maximumShortcuts)
         XCTAssertFalse(reloaded.playsSounds)
-        XCTAssertFalse(reloaded.choosesChatFirst)
+        XCTAssertTrue(reloaded.choosesChatFirst)
+    }
+}
+
+// MARK: - CarPlay look: titles, icons, marker, orb scale
+
+@MainActor
+extension CarPlayVoiceTemplateFactoryTests {
+    private func row(_ id: String, source: SessionSource = .chat, activity: TimeInterval) -> SessionSummary {
+        SessionSummary(
+            id: id,
+            storedSessionId: "stored-\(id)",
+            alternateIds: [],
+            title: id,
+            model: "Hermes",
+            updatedLabel: "now",
+            lastActivityAt: activity,
+            profile: "default",
+            source: source,
+            isActive: false,
+            isArchived: false,
+            lineageRootId: nil
+        )
+    }
+
+    func testReadyNamesTheChatListenTalksIn() {
+        var controls = CarPlayVoiceControls(isClassic: true, isMicrophoneMuted: false)
+        XCTAssertEqual(CarPlayVoiceState.ready.titleVariants(controls: controls), ["Ready"])
+        controls.chatTitle = "Trip planning"
+        XCTAssertEqual(
+            CarPlayVoiceState.ready.titleVariants(controls: controls),
+            ["Ready · Trip planning", "Ready"],
+            "the plain title stays as the short variant"
+        )
+        XCTAssertEqual(CarPlayVoiceState.listening.titleVariants(controls: controls), ["Listening…"])
+        controls.chatTitle = String(repeating: "Long trip planning ", count: 5)
+        let long = CarPlayVoiceState.ready.titleVariants(controls: controls)[0]
+        XCTAssertLessThanOrEqual(long.count, 40, "driver-safe, like every other title")
+        XCTAssertTrue(long.hasSuffix("…"))
+        controls.errorIssue = .voiceOff
+        XCTAssertEqual(
+            CarPlayVoiceState.error.titleVariants(controls: controls),
+            VoiceSetupIssue.voiceOff.carPlayTitleVariants
+        )
+    }
+
+    func testChatRowsShowWhatKindOfChatTheyAre() {
+        let list = CarPlayBrowse.chatList(
+            from: [row("call", source: .voice, activity: 3), row("job", source: .voiceJob, activity: 2),
+                   row("plain", activity: 1), row("pinned", source: .voice, activity: 4)],
+            isPinned: { $0.id == "pinned" }
+        )
+        XCTAssertEqual(list.pinned.map(\.symbol), [CarPlayBrowse.pinSymbol], "a pin outranks the kind")
+        XCTAssertEqual(list.recent.map(\.symbol), ["waveform", "checklist", CarPlayBrowse.chatSymbol])
+    }
+
+    func testTheChatListMarksTheChatListenTalksIn() throws {
+        let list = CarPlayChatList(
+            pinned: [],
+            recent: [
+                CarPlayChatRow(sessionID: "a", storedSessionID: "stored-a", title: "A", detail: ""),
+                CarPlayChatRow(sessionID: "b", storedSessionID: nil, title: "B", detail: ""),
+            ]
+        )
+        let template = CarPlayBrowseTemplateFactory.chatsTemplate(
+            chats: list,
+            attachedChatID: "stored-a",
+            handlers: CarPlayBrowseHandlers()
+        )
+        let items = try XCTUnwrap(template.sections.last?.items as? [CPListItem])
+        XCTAssertEqual(items.map(\.isPlaying), [true, false], "matched by either id")
+        XCTAssertNotNil(items.first?.image)
+    }
+
+    func testMoreOffersJobsShortcutsAndVoice() {
+        let grid = CarPlayBrowseTemplateFactory.moreTemplate(handlers: CarPlayBrowseHandlers())
+        XCTAssertEqual(grid.gridButtons.map { $0.titleVariants.first }, ["Jobs", "Shortcuts", "Voice"])
+    }
+
+    func testJobsAndModesHaveIcons() {
+        XCTAssertEqual(CarPlayBrowse.statusSymbol(.finished), "checkmark.circle.fill")
+        XCTAssertEqual(CarPlayBrowse.statusSymbol(.failed("x")), "exclamationmark.triangle.fill")
+        XCTAssertEqual(Set(CarPlayVoiceMode.all.map(\.symbol)).count, CarPlayVoiceMode.all.count, "each mode has its own icon")
+    }
+
+    func testIconsAreDrawnAtTheCarsScale() throws {
+        XCTAssertEqual(CarPlayVoiceArtwork.clampedScale(0), CarPlayVoiceArtwork.defaultScale)
+        XCTAssertEqual(CarPlayVoiceArtwork.clampedScale(1), 2, "CarPlay screens are 2x or 3x")
+        XCTAssertEqual(CarPlayVoiceArtwork.clampedScale(3), 3)
+        XCTAssertEqual(CarPlayVoiceArtwork.clampedScale(4), 3, "the guide's 450 px limit")
+        let sharp = try XCTUnwrap(CarPlayVoiceArtwork.image(for: .ready, scale: 3))
+        XCTAssertEqual(sharp.scale, 3)
+        XCTAssertEqual(sharp.size.width, CarPlayVoiceArtwork.side)
+        let orb = try XCTUnwrap(CarPlayVoiceArtwork.image(for: .ready)?.cgImage)
+        XCTAssertEqual(orb.width, Int(CarPlayVoiceArtwork.side * CarPlayVoiceArtwork.defaultScale))
     }
 }
 
@@ -1011,6 +1105,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let preferences = CarPlayPreferences(defaults: defaults)
+        preferences.setChoosesChatFirst(true)
         harness.coordinator.preferencesProvider = { preferences }
         harness.appState.activeSessionId = "existing-session"
         harness.coordinator.handleConnect(harness.spy)
@@ -1040,6 +1135,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
             let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
             addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
             let preferences = CarPlayPreferences(defaults: defaults)
+            preferences.setChoosesChatFirst(true)
             harness.coordinator.preferencesProvider = { preferences }
             harness.appState.activeSessionId = "existing-session"
             harness.spy.completesImmediately = false
@@ -1070,6 +1166,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let preferences = CarPlayPreferences(defaults: defaults)
+        preferences.setChoosesChatFirst(true)
         harness.coordinator.preferencesProvider = { preferences }
         harness.openVoice(session: "session-1")
         await harness.controller.startListening()
@@ -1248,6 +1345,85 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumActiveJobs, "no job was added")
         XCTAssertEqual(harness.activations.last, .error)
         XCTAssertFalse(harness.controller.hasLiveVoiceSession, "no conversation opens for a refused job")
+    }
+
+    // MARK: CarPlay look
+
+    func testTheTopBarHasChatsAndMore() async throws {
+        guard #available(iOS 26.4, *) else { throw XCTSkip("top-bar buttons need iOS 26.4") }
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        let template = try XCTUnwrap(harness.coordinator.template)
+        XCTAssertEqual(template.leadingNavigationBarButtons.count, 1)
+        XCTAssertEqual(template.trailingNavigationBarButtons.count, 1)
+
+        harness.coordinator.showMore()
+        let more = try XCTUnwrap(harness.spy.pushedTemplates.last as? CPGridTemplate)
+        XCTAssertEqual(more.gridButtons.count, 3)
+        XCTAssertTrue(harness.coordinator.isBrowsing)
+    }
+
+    func testReadyNamesTheListedChatOpenOnThePhone() async throws {
+        let harness = makeHarness()
+        harness.appState.sessions = [chatSession("trip", activity: 1)]
+        harness.appState.activeSessionId = "trip"
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+
+        await settleChats { harness.coordinator.controls.chatTitle == "trip" && harness.coordinator.isTemplatePresented }
+        XCTAssertEqual(harness.coordinator.controls.chatTitle, "trip")
+        let template = try XCTUnwrap(harness.coordinator.template)
+        let ready = template.voiceControlStates.first { $0.identifier == CarPlayVoiceState.ready.identifier }
+        XCTAssertEqual(ready?.titleVariants?.first, "Ready · trip")
+
+        // A chat the list doesn't know names nothing.
+        harness.appState.activeSessionId = "unlisted"
+        XCTAssertNil(CarPlayVoiceCoordinator.listenChatTitle(in: harness.appState, mode: .classic, chosenChat: nil))
+        XCTAssertNil(CarPlayVoiceCoordinator.listenChatTitle(in: harness.appState, mode: .gptLive, chosenChat: nil),
+                     "a live call's Listen starts a new chat")
+        let picked = CarPlayChatRow(sessionID: "p", storedSessionID: nil, title: "Picked", detail: "")
+        XCTAssertEqual(CarPlayVoiceCoordinator.listenChatTitle(in: harness.appState, mode: .gptLive, chosenChat: picked), "Picked")
+    }
+
+    func testTheReadyTitleFollowsThePhoneWhileTheCarRestsAtReady() async throws {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        XCTAssertNil(harness.coordinator.controls.chatTitle)
+
+        var renamed = chatSession("trip", activity: 1)
+        harness.appState.sessions = [renamed]
+        harness.appState.activeSessionId = "stored-trip"
+        await settleChats { harness.coordinator.controls.chatTitle == "trip" }
+        XCTAssertEqual(harness.coordinator.controls.chatTitle, "trip", "matched by its stored id too")
+
+        renamed.title = "Road trip"
+        harness.appState.sessions = [renamed]
+        await settleChats { harness.coordinator.controls.chatTitle == "Road trip" }
+        XCTAssertEqual(harness.coordinator.controls.chatTitle, "Road trip")
+    }
+
+    func testTheReadyTitleWaitsWhileAListIsUp() async throws {
+        let harness = makeHarness()
+        harness.coordinator.chatCatalogLoader = { _ in }
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.coordinator.showChats()
+        let installs = harness.spy.setRootTemplateCount
+
+        harness.appState.sessions = [chatSession("trip", activity: 1)]
+        harness.appState.activeSessionId = "trip"
+        // Thinking, not listening: listening brings the voice screen back.
+        harness.coordinator.handleControllerState(.thinking)
+        harness.coordinator.handleControllerState(.idle)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(harness.spy.setRootTemplateCount, installs, "a new template would pop the list")
+        XCTAssertNil(harness.coordinator.controls.chatTitle)
+
+        harness.coordinator.handleTemplateDidAppear(try XCTUnwrap(harness.coordinator.template))
+        await settleChats { harness.coordinator.controls.chatTitle == "trip" }
+        XCTAssertEqual(harness.coordinator.controls.chatTitle, "trip", "back on the voice screen, Ready names it")
     }
 
     // MARK: Chat list follows the chats (#514)
@@ -2335,6 +2511,7 @@ extension CarPlayVoiceCoordinatorTests {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let preferences = CarPlayPreferences(defaults: defaults)
+        preferences.setChoosesChatFirst(true)
         harness.coordinator.preferencesProvider = { preferences }
     }
 

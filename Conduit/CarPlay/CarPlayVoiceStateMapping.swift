@@ -8,6 +8,8 @@
 //  CarPlay is a state/control surface, never a mirrored chat window: no
 //  transcript text, reasoning, or failure detail ever crosses this boundary —
 //  the associated failure message of `.failed` is deliberately dropped here.
+//  The one piece of user text is a chat's title in Ready, shortened, which
+//  says where Listen talks.
 //  The Error state instead names what to fix (`VoiceSetupIssue`), which the
 //  coordinator works out from the app's own state.
 //
@@ -44,6 +46,26 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
     func titleVariants(errorIssue: VoiceSetupIssue?) -> [String] {
         guard self == .error, let errorIssue else { return titleVariants }
         return errorIssue.carPlayTitleVariants
+    }
+
+    /// The titles for this state on a template built for `controls`. Ready
+    /// also names the chat Listen talks in, so the driver knows where the
+    /// next words go; the plain title stays as the short variant.
+    func titleVariants(controls: CarPlayVoiceControls) -> [String] {
+        guard self == .ready, let chatTitle = controls.chatTitle else {
+            return titleVariants(errorIssue: controls.errorIssue)
+        }
+        let shortened = Self.shortenedChatTitle(chatTitle)
+        return [AppLocalization.string("Ready · \(shortened)")] + titleVariants
+    }
+
+    /// Chat titles are any length; Ready keeps them to a glance.
+    static let maximumChatTitleLength = 28
+
+    static func shortenedChatTitle(_ title: String) -> String {
+        guard title.count > maximumChatTitleLength else { return title }
+        let kept = title.prefix(maximumChatTitleLength - 1).trimmingCharacters(in: .whitespaces)
+        return kept + "…"
     }
 
     /// Approximate mapping from the authoritative controller state. Both
