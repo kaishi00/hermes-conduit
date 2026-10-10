@@ -4,10 +4,15 @@
 //
 //  Links Conduit writes into saved text that open inside the app, such as
 //  the link to a background job a voice call started. They are handled by
-//  the root view's `openURL` action, so no URL scheme is registered and
-//  another app can't open them. A model's reply could write one too; a tap
-//  on it only opens a chat on the profile in use or a bot's chat, as the
+//  the root view's `openURL` action. A model's reply could write one too; a
+//  tap on it only opens a chat on the profile in use or a bot's chat, as the
 //  sidebar would.
+//
+//  The `conduit` scheme is also registered, so another app (a notification
+//  from ntfy, a Shortcut) can open a chat with `conduit://session/<id>`.
+//  From outside the app only session links are honoured: opening a chat is
+//  all they do, the same as tapping its row, and a bot link is not needed
+//  there.
 //
 
 import Foundation
@@ -33,6 +38,18 @@ enum ConduitAppLink: Equatable {
         default: return nil
         }
     }
+
+    /// A link another app opened Conduit with: only a chat link, and only
+    /// one whose id is a plain session token.
+    init?(externalURL url: URL) {
+        guard let link = ConduitAppLink(url: url), case .session(let id) = link,
+              id.count <= Self.maxExternalIDLength,
+              id.unicodeScalars.allSatisfy(Self.externalIDCharacters.contains) else { return nil }
+        self = link
+    }
+
+    private static let maxExternalIDLength = 128
+    private static let externalIDCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.:")
 
     var url: URL {
         var components = URLComponents()
