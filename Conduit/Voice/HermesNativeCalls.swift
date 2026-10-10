@@ -14,7 +14,9 @@
 //  arrives late (the phone was offline) or can't be answered becomes a
 //  missed-call notification, one that arrives while voice is in use the
 //  usual "Hermes wants to talk" notification, and a replay nothing. A call
-//  Do Not Disturb silences stays silent. CallKit is off in China's App
+//  Do Not Disturb silences stays silent. A call the user declines or
+//  doesn't get to answer is reported to the host too, so Hermes hears it in
+//  that chat's next turn. CallKit is off in China's App
 //  Store, so there Conduit never registers a PushKit token and calls keep
 //  arriving as notifications.
 //  (designs/hermes-calls-you-449.md)
@@ -110,6 +112,8 @@ final class HermesNativeCalls: NSObject {
 
     private struct Call {
         let target: ConduitNotificationTarget
+        /// When the relay sent it, if it said.
+        var sentAt: Date?
         var answered = false
         var unanswered: Task<Void, Never>?
         var work: Task<Void, Never>?
@@ -224,22 +228,27 @@ final class HermesNativeCalls: NSObject {
             completion()
             return
         }
-        if plan == .ring, let target = call.target { calls[id] = Call(target: target) }
+        if plan == .ring, let target = call.target { calls[id] = Call(target: target, sentAt: call.sentAt) }
         provider.reportNewIncomingCall(with: id, update: update) { error in
             Task { @MainActor in
-                self.reported(id, plan: plan, traced: traced, target: call.target, error: error)
+                self.reported(id, plan: plan, traced: traced, target: call.target, sentAt: call.sentAt, error: error)
                 completion()
             }
         }
     }
 
-    private func reported(_ id: UUID, plan: HermesNativeCallPlan, traced: Bool, target: ConduitNotificationTarget?, error: Error?) {
+    private func reported(_ id: UUID, plan: HermesNativeCallPlan, traced: Bool, target: ConduitNotificationTarget?, sentAt: Date?, error: Error?) {
         if let error {
             calls[id] = nil
             let code = (error as? CXErrorCodeIncomingCallError)?.code
             nativeCallsLogger.notice("Hermes call not shown: \(error.localizedDescription, privacy: .public)")
             if traced {
                 HermesCallTrace.shared.note("CallKit didn't show it (code \(code.map { String($0.rawValue) } ?? "unknown"))")
+            }
+            // A call that should have rung didn't (one CallKit already has
+            // is no new call): Hermes hears it went unanswered.
+            if code != .callUUIDAlreadyExists, plan == .ring || plan == .endAtOnce(.missed) {
+                report(.missed, for: target, sentAt: sentAt)
             }
             // Do Not Disturb or a blocked caller: the user asked for quiet.
             if code == .filteredByDoNotDisturb || code == .filteredByBlockList || code == .callUUIDAlreadyExists { return }
@@ -255,6 +264,7 @@ final class HermesNativeCalls: NSObject {
             if traced { HermesCallTrace.shared.note("Ended at once") }
             provider?.reportCall(with: id, endedAt: Date(), reason: notice == .missed ? .unanswered : .failed)
             post(notice, for: target)
+            if notice == .missed { report(.missed, for: target, sentAt: sentAt) }
         case .ring:
             guard calls[id] != nil else { return }
             HermesCallTrace.shared.note("Ringing")
@@ -446,6 +456,8 @@ final class HermesNativeCalls: NSObject {
         call.work?.cancel()
         provider?.reportCall(with: id, endedAt: Date(), reason: reason)
         post(notice, for: call.target)
+        // It rang out, or stopped ringing, before the user picked up.
+        if !call.answered, notice == .missed { report(.missed, for: call.target, sentAt: call.sentAt) }
         settle()
     }
 
@@ -463,6 +475,7 @@ final class HermesNativeCalls: NSObject {
             endVoice(of: call.target)
         } else {
             post(.missed, for: call.target)
+            report(.declined, for: call.target, sentAt: call.sentAt)
         }
         settle()
     }
@@ -481,6 +494,16 @@ final class HermesNativeCalls: NSObject {
     private func settle() {
         guard calls.isEmpty else { return }
         AppStateRuntimeRegistry.shared.existing?.setNativeHermesCallActive(false)
+    }
+
+    /// The user didn't pick up: the host that placed the call hears so,
+    /// now if it can be reached, else once it's connected again. Timed from
+    /// when the relay sent it: one that reached an offline phone hours
+    /// later was placed then, not now.
+    private func report(_ outcome: HermesCallOutcome, for target: ConduitNotificationTarget?, sentAt: Date?) {
+        guard let target, let entry = HermesCallOutcomeOutbox.Entry(outcome, target: target, at: sentAt ?? Date()) else { return }
+        HermesCallOutcomeOutbox.record(entry, in: .standard)
+        AppStateRuntimeRegistry.shared.existing?.deliverHermesCallOutcomes()
     }
 
     private func post(_ notice: HermesNativeCallPlan.Notice, for target: ConduitNotificationTarget?) {
@@ -535,7 +558,10 @@ extension HermesNativeCalls: CXProviderDelegate {
                 call.unanswered?.cancel()
                 call.work?.cancel()
                 // A call still ringing leaves its trace, as on every other end.
-                if !call.answered { self.post(.missed, for: call.target) }
+                if !call.answered {
+                    self.post(.missed, for: call.target)
+                    self.report(.missed, for: call.target, sentAt: call.sentAt)
+                }
             }
             self.calls = [:]
             self.audioActive = false

@@ -3,8 +3,9 @@
 //  Conduit
 //
 //  Hermes calls you (#449): the host's call settings for Voice settings,
-//  the job layer's watches on the host, and answering a call from Hermes,
-//  which opens voice in the job's chat with what came of the job.
+//  the job layer's watches on the host, answering a call from Hermes,
+//  which opens voice in the job's chat with what came of the job, and
+//  telling the host about a call the user declined or missed.
 //  Design: /mnt/project-files/designs/hermes-calls-you-449.md
 //
 
@@ -18,6 +19,13 @@ extension AppState {
     /// (plugin 0.14+).
     var supportsHermesCallPresence: Bool {
         if case .reported(_, let capabilities) = notifierPlugin.state { return capabilities.contains("hermes-call-presence") }
+        return false
+    }
+
+    /// Whether the host hears about calls the user declined or missed
+    /// (plugin 0.15+).
+    var supportsHermesCallOutcomes: Bool {
+        if case .reported(_, let capabilities) = notifierPlugin.state { return capabilities.contains("hermes-call-outcomes") }
         return false
     }
 
@@ -356,6 +364,32 @@ extension AppState {
         case .answered?: return .answered
         case .expired?: return .expired
         default: return after.isExpired ? .expired : .failed
+        }
+    }
+
+    // MARK: Declined and missed calls (#449)
+
+    /// Calls the user declined or didn't answer (HermesNativeCalls queues
+    /// them) reach this dashboard's host, so Hermes hears it in that chat's
+    /// next turn. Runs once the host has said what its plugin serves; what
+    /// waits for another dashboard waits until that one is connected.
+    func deliverHermesCallOutcomes() {
+        guard dashboardTicketBridge != nil, case .reported = notifierPlugin.state else { return }
+        let dashboard = activeDashboardID?.uuidString
+        let active = activeProfile
+        let takesOutcomes = supportsHermesCallOutcomes
+        let client = hermesCallsClient
+        let end = beginVoiceTranscriptBackgroundTask(named: "conduit.hermesCalls.outcomes")
+        Task { [weak self] in
+            // Where HermesNativeCalls records them.
+            await HermesCallOutcomeOutbox.deliver(dashboard: dashboard, activeProfile: active, takesOutcomes: takesOutcomes, defaults: .standard) { entry, profile in
+                // Another server since: it isn't that host's to hear.
+                guard let appState = self, appState.activeDashboardID?.uuidString == dashboard else {
+                    throw DashboardTicketBridgeError.notReady
+                }
+                try await client.reportOutcome(entry, profile: profile)
+            }
+            end()
         }
     }
 

@@ -818,4 +818,112 @@ extension VoiceConversationControllerTests {
         trace.begin("Push received: \(HermesNativeCallPlan.endAtOnce(.talk).traceLabel)")
         XCTAssertFalse(trace.timeline?.report.contains("Chat opened") ?? true, "A new call starts a new trace")
     }
+
+    // MARK: Declined and missed calls
+
+    private func outcomeTarget(id: String = "a1b2c3d4e5f6a1b2c3d4e5f6", dashboard: UUID? = nil, profile: String? = "work") -> ConduitNotificationTarget {
+        let call = HermesCallRequest(id: id, kind: .done, title: "Deploy", sessionIDs: ["rt-1", "st-1"], reason: "The deploy finished.")
+        return ConduitNotificationTarget(profile: profile, sessionId: "rt-1", durableSessionID: "st-1", dashboardID: dashboard,
+                                         type: HermesCallRequest.type, call: call)
+    }
+
+    private func outcomeDefaults() throws -> UserDefaults {
+        let suite = "HermesCallsTests.outcomes.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return defaults
+    }
+
+    private func recordOutcome(_ outcome: HermesCallOutcome, _ target: ConduitNotificationTarget, at: Date = Date(), in defaults: UserDefaults) throws {
+        HermesCallOutcomeOutbox.record(try XCTUnwrap(HermesCallOutcomeOutbox.Entry(outcome, target: target, at: at)), in: defaults)
+    }
+
+    private func waitingOutcomes(_ defaults: UserDefaults) -> [String] {
+        HermesCallOutcomeOutbox.load(from: defaults).entries.map(\.callID)
+    }
+
+    func testADeclinedCallTellsTheHostWhatItWasAboutAndHowLongAgo() async throws {
+        let at = Date(timeIntervalSince1970: 1_000_000)
+        let entry = try XCTUnwrap(HermesCallOutcomeOutbox.Entry(.declined, target: outcomeTarget(), at: at))
+        XCTAssertNil(HermesCallOutcomeOutbox.Entry(.missed, target: outcomeTarget(id: ""), at: at), "No id: nothing for the host to match it to")
+        var requests: [(path: String, method: String, body: [String: Any]?)] = []
+        let client = HermesCallsClient(request: { path, method, body in
+            requests.append((path, method, body))
+            return ["ok": true, "status": "recorded"]
+        })
+
+        try await client.reportOutcome(entry, profile: "work", now: at.addingTimeInterval(42))
+        XCTAssertEqual(requests.last?.method, "POST")
+        XCTAssertTrue(requests.last?.path.hasPrefix(HermesCallsClient.outcomesPath) ?? false)
+        XCTAssertTrue(requests.last?.path.contains("profile=work") ?? false)
+        let body = try XCTUnwrap(requests.last?.body)
+        XCTAssertEqual(body["call_id"] as? String, "a1b2c3d4e5f6a1b2c3d4e5f6")
+        XCTAssertEqual(body["session_ids"] as? [String], ["rt-1", "st-1"])
+        XCTAssertEqual(body["outcome"] as? String, "declined")
+        XCTAssertEqual(body["kind"] as? String, "done")
+        XCTAssertEqual(body["title"] as? String, "Deploy")
+        XCTAssertEqual(body["reason"] as? String, "The deploy finished.")
+        XCTAssertEqual(body["age_s"] as? Int, 42)
+        XCTAssertEqual(entry.payload(now: at.addingTimeInterval(-5))["age_s"] as? Int, 0, "A clock set back says just now")
+    }
+
+    func testMissedCallsWaitForTheirServerAndGoOnce() async throws {
+        let defaults = try outcomeDefaults()
+        let home = UUID()
+        try recordOutcome(.missed, outcomeTarget(id: "call-home-1", dashboard: home), in: defaults)
+        try recordOutcome(.missed, outcomeTarget(id: "call-other", dashboard: UUID()), in: defaults)
+        try recordOutcome(.missed, outcomeTarget(id: "call-home-2", dashboard: home), in: defaults)
+        // A relay that doesn't say which server: the active one hears it.
+        try recordOutcome(.declined, outcomeTarget(id: "call-unscoped", profile: nil), in: defaults)
+        try recordOutcome(.declined, outcomeTarget(id: "call-home-1", dashboard: home), in: defaults)
+
+        var sent: [String] = []
+        var profiles: [String] = []
+        var outcomes: [HermesCallOutcome] = []
+        await HermesCallOutcomeOutbox.deliver(dashboard: home.uuidString, activeProfile: "default", takesOutcomes: true, defaults: defaults) { entry, profile in
+            sent.append(entry.callID)
+            profiles.append(profile)
+            outcomes.append(entry.outcome)
+        }
+        XCTAssertEqual(sent, ["call-home-1", "call-home-2", "call-unscoped"])
+        XCTAssertEqual(profiles, ["work", "work", "default"], "No profile on the call: the active one")
+        XCTAssertEqual(outcomes, [.missed, .missed, .declined], "A call ends once: the first word stands")
+        XCTAssertEqual(waitingOutcomes(defaults), ["call-other"], "Another server's call waits for it")
+    }
+
+    func testAMissedCallWaitsWhileTheHostIsOutOfReachAndAHostThatWontTakeItDropsIt() async throws {
+        let defaults = try outcomeDefaults()
+        try recordOutcome(.missed, outcomeTarget(id: "call-first"), in: defaults)
+        try recordOutcome(.missed, outcomeTarget(id: "call-second"), in: defaults)
+
+        var attempts = 0
+        await HermesCallOutcomeOutbox.deliver(dashboard: nil, activeProfile: "default", takesOutcomes: true, defaults: defaults) { _, _ in
+            attempts += 1
+            throw URLError(.notConnectedToInternet)
+        }
+        XCTAssertEqual(attempts, 1, "The rest wait with it")
+        XCTAssertEqual(waitingOutcomes(defaults), ["call-first", "call-second"])
+
+        var sent: [String] = []
+        await HermesCallOutcomeOutbox.deliver(dashboard: nil, activeProfile: "default", takesOutcomes: true, defaults: defaults) { entry, _ in
+            if entry.callID == "call-first" { throw DashboardTicketBridgeError.http(status: 400, detail: "outcome must be declined or missed") }
+            sent.append(entry.callID)
+        }
+        XCTAssertEqual(sent, ["call-second"], "A refused one is dropped, and the next still goes")
+        XCTAssertEqual(waitingOutcomes(defaults), [])
+
+        // A plugin without the route (before 0.15) never hears it.
+        try recordOutcome(.declined, outcomeTarget(id: "call-old-host"), in: defaults)
+        await HermesCallOutcomeOutbox.deliver(dashboard: nil, activeProfile: "default", takesOutcomes: false, defaults: defaults) { _, _ in
+            XCTFail("Nothing is sent to a host that doesn't take it")
+        }
+        XCTAssertEqual(waitingOutcomes(defaults), [])
+
+        // Older than the plugin keeps one: nothing left worth saying.
+        try recordOutcome(.missed, outcomeTarget(id: "call-stale"), at: Date().addingTimeInterval(-HermesCallOutcomeOutbox.maximumAge - 60), in: defaults)
+        await HermesCallOutcomeOutbox.deliver(dashboard: nil, activeProfile: "default", takesOutcomes: true, defaults: defaults) { _, _ in
+            XCTFail("A stale call isn't sent")
+        }
+        XCTAssertEqual(waitingOutcomes(defaults), [])
+    }
 }
