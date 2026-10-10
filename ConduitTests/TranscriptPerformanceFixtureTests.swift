@@ -471,13 +471,14 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         }
         let bubblesAfterRecreation = TranscriptPerf.settledMessageBubbleBodyEvaluations
 
-        // A streaming publish tick in the same window: the publish
-        // invalidation re-runs the settled rows' body chains THROUGH the
-        // re-created environment (the same vector the streaming fixtures
-        // drive), so the dormancy assertions below measure a genuinely
-        // consulted gate under the churned preference — not a pruned
-        // subtree.
-        appState.streamingText = "Shared-preference churn tick — the live row only."
+        // An AppState publish in the same window: its invalidation re-runs
+        // ChatView's body and the settled rows' body chains THROUGH the
+        // re-created environment, so the dormancy assertions below measure
+        // a genuinely consulted gate under the churned preference — not a
+        // pruned subtree. (A streaming tick no longer serves: live text
+        // publishes on `LiveTurnProjection`, which only the live rows
+        // observe.)
+        appState.objectWillChange.send()
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
 

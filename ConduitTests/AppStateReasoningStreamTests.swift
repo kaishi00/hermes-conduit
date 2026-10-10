@@ -137,6 +137,53 @@ final class AppStateReasoningStreamTests: XCTestCase {
         )
     }
 
+    // MARK: - App-wide publishes
+
+    /// Every view that observes AppState, the root of each open sheet
+    /// included, re-renders on any AppState publish. A streaming turn's
+    /// deltas must therefore publish only the live projection: each delta
+    /// used to re-affirm `turnState` (one AppState publish per gateway
+    /// frame), and the live text and thinking card published on AppState
+    /// 20 to 30 times a second, so a sheet opened during a turn lagged.
+    func testStreamedDeltasPublishOnlyTheLiveProjection() async {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        XCTAssertTrue(state.isBusy)
+
+        var appStatePublishes = 0
+        let appStateObserver = state.objectWillChange.sink { _ in appStatePublishes += 1 }
+        defer { appStateObserver.cancel() }
+        var liveTurnPublishes = 0
+        let liveTurnObserver = state.liveTurn.objectWillChange.sink { _ in liveTurnPublishes += 1 }
+        defer { liveTurnObserver.cancel() }
+
+        let thoughts = (0..<30).map { "thought \($0) " }
+        for thought in thoughts {
+            state.handleStreamEvent(.reasoningDelta(sessionId: "stored-a", text: thought))
+            state.flushReasoningPublish()
+        }
+        let words = (0..<60).map { "word\($0) " }
+        for word in words {
+            state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: word))
+        }
+        // The coalesced text publish lands on its own scheduled task.
+        let expectedText = words.joined()
+        let deadline = Date().addingTimeInterval(10)
+        while state.streamingText != expectedText, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+
+        XCTAssertEqual(state.streamingText, expectedText)
+        XCTAssertEqual(liveReasoningContent(on: state), thoughts.joined())
+        XCTAssertTrue(state.isBusy)
+        XCTAssertGreaterThan(liveTurnPublishes, 0, "the live rows still update")
+        XCTAssertEqual(
+            appStatePublishes, 0,
+            "a streaming turn's deltas must not re-render every view and sheet observing AppState"
+        )
+    }
+
     func testReasoningCardIdentityIsStableAcrossCoalescedPublications() {
         let state = makeAppState()
         installActiveSession(state, id: "stored-a")

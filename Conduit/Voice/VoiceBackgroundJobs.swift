@@ -1722,7 +1722,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // A thread turn waiting its turn doesn't own the chat's events yet.
         guard !before.isThreadTurn || before.threadTurnSubmitted else { return }
         // Any event for the job is proof of life for the liveness poll.
-        jobs[index].consecutiveMissedPolls = 0
+        // Written only when it changes: `jobs` is published, and a write per
+        // streamed delta would re-render the call screen at that rate.
+        if before.consecutiveMissedPolls != 0 { jobs[index].consecutiveMissedPolls = 0 }
         // A follow-up is going into the turn (#451). Hermes takes it into
         // the running turn, which still ends with a single completion: once
         // it has, that completion is the request's end. Until then (still

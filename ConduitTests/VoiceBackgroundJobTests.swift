@@ -680,6 +680,26 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.map(\.status), [.running], "misses separated by activity are not consecutive")
     }
 
+    /// The call screen observes the supervisor, so a job whose reply is
+    /// streaming must not publish `jobs` for every delta: only a real change
+    /// (here the first event moving it to running) may.
+    func testStreamedDeltasForARunningJobDontRepublishJobs() async {
+        let (supervisor, _) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "long task")
+        supervisor.observe(.messageDelta(sessionId: "rt-1", text: "first "))
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.running])
+
+        var publishes = 0
+        let observer = supervisor.objectWillChange.sink { _ in publishes += 1 }
+        defer { observer.cancel() }
+        for index in 0..<20 {
+            supervisor.observe(.messageDelta(sessionId: "rt-1", text: "word\(index) "))
+        }
+
+        XCTAssertEqual(publishes, 0, "deltas that change nothing must not re-render the call screen")
+        XCTAssertEqual(supervisor.jobs.map(\.status), [.running])
+    }
+
     func testIdleRegistryRowSettlesAJobOnTheFirstPoll() async {
         let (supervisor, fake) = makeSupervisor()
         _ = await supervisor.startJob(instructions: "done already")
