@@ -103,6 +103,10 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "Apple Development"
         PROVISIONING_PROFILE_SPECIFIER: ""
+        # Push Notifications, for the PushKit token calls from Hermes ring
+        # on (designs/hermes-calls-watch.md). Automatic signing adds the
+        # capability to the App ID; distribution signing sets production.
+        CODE_SIGN_ENTITLEMENTS: ConduitWatch/ConduitWatch.entitlements
   ConduitNotificationService:
     # Decrypts end-to-end encrypted notifications before iOS shows them
     # (#431). APNs still targets com.milim.relay; this App ID has no Push

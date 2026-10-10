@@ -69,6 +69,11 @@ final class WatchVoiceLink: ObservableObject {
             reply?([:])
         case .directStart, .bridgeStart, .grokStart, .directToken, .directTool, .directToolCancel, .directPoll, .directEnd, .directGrant:
             direct.handle(message, reply: reply)
+        case .callsToken(let token):
+            // Calls from Hermes ring the Watch too (designs/hermes-calls-watch.md).
+            log.note("watchCallsToken", ["token": token != nil])
+            PushNotificationService.shared.updateWatchVoIPToken(token)
+            reply?([:])
         default:
             reply?([:])
         }

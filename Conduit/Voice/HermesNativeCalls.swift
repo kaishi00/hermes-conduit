@@ -16,7 +16,9 @@
 //  usual "Hermes wants to talk" notification, and a replay nothing. A call
 //  Do Not Disturb silences stays silent. A call the user declines or
 //  doesn't get to answer is reported to the host too, so Hermes hears it in
-//  that chat's next turn. CallKit is off in China's App
+//  that chat's next turn. With relay 0.10+ the call rings on the Apple
+//  Watch too, and answering or declining on either stops the other
+//  (designs/hermes-calls-watch.md). CallKit is off in China's App
 //  Store, so there Conduit never registers a PushKit token and calls keep
 //  arriving as notifications.
 //  (designs/hermes-calls-you-449.md)
@@ -28,6 +30,7 @@ import Foundation
 import OSLog
 import PushKit
 import StoreKit
+import UIKit
 import UserNotifications
 
 private let nativeCallsLogger = Logger(subsystem: "com.milim.relay", category: "HermesCalls")
@@ -110,16 +113,45 @@ final class HermesNativeCalls: NSObject {
     private var storefrontTask: Task<Void, Never>?
     private var isActivated = false
 
+    /// How long a ringing call's target is kept for a Watch call that
+    /// answers it, as long as the relay keeps its ring.
+    static let ringTargetLife: TimeInterval = 600
+
+    /// Calls ring through CallKit in this build. Off, every call comes as
+    /// the "Hermes wants to talk" notification (#449's first step), for a
+    /// build App Review wants without CallKit: set ConduitHermesCallsRing
+    /// to NO in both apps' Info.plist and drop `voip` from their
+    /// UIBackgroundModes.
+    static var ringingBuilt: Bool {
+        Bundle.main.object(forInfoDictionaryKey: "ConduitHermesCallsRing") as? Bool ?? true
+    }
+    /// "Ring like a phone call" in Voice settings, on this iPhone. Off,
+    /// calls come as the notification.
+    static let ringsKey = "hermesCalls.ringsLikeCall"
+    static var ringingWanted: Bool { UserDefaults.standard.object(forKey: ringsKey) as? Bool ?? true }
+    /// Whether "Ring like a phone call" is offered: a build that rings, in
+    /// a storefront that allows it.
+    static var offersRinging: Bool {
+        let known = UserDefaults.standard.string(forKey: HermesNativeCallStorefront.defaultsKey)
+        return ringingBuilt && HermesNativeCallStorefront.allowsCalls(known.flatMap { $0.isEmpty ? nil : $0 })
+    }
+
     private struct Call {
         let target: ConduitNotificationTarget
         /// When the relay sent it, if it said.
         var sentAt: Date?
+        /// The ring it shares with the Apple Watch, when it rings there too.
+        var ring: HermesRing? = nil
+        /// Telling the relay this phone answered it.
+        var settling: Task<HermesRingSettleResult, Never>? = nil
         var answered = false
         var unanswered: Task<Void, Never>?
         var work: Task<Void, Never>?
     }
     /// Calls reported to CallKit and not ended.
     private var calls: [UUID: Call] = [:]
+    /// Each ring's call, for a Watch call that answers it.
+    private var ringTargets: [String: (target: ConduitNotificationTarget, at: Date)] = [:]
     private var audioActive = false
     private var audioWaiters: [CheckedContinuation<Void, Never>] = []
 
@@ -151,11 +183,19 @@ final class HermesNativeCalls: NSObject {
         // stands.
         let known = countryCode ?? defaults.string(forKey: key).flatMap { $0.isEmpty ? nil : $0 }
         defaults.set(known ?? "", forKey: key)
-        if HermesNativeCallStorefront.allowsCalls(known) {
+        if Self.ringingBuilt, Self.ringingWanted, HermesNativeCallStorefront.allowsCalls(known) {
             startRinging()
         } else {
             stopRinging()
         }
+    }
+
+    /// "Ring like a phone call" changed: calls ring, or come as the
+    /// notification, from now on.
+    func ringingSettingChanged() {
+        // Not activated (unit tests): nothing rings.
+        guard storefrontTask != nil else { return }
+        storefrontChanged(nil)
     }
 
     private func startRinging() {
@@ -187,7 +227,7 @@ final class HermesNativeCalls: NSObject {
             registry.desiredPushTypes = []
             registry.delegate = nil
             self.registry = nil
-            nativeCallsLogger.info("Hermes calls don't ring in this storefront")
+            nativeCallsLogger.info("Hermes calls come as notifications")
         }
         PushNotificationService.shared.updateVoIPToken(nil)
         for call in calls.values where call.answered {
@@ -200,11 +240,23 @@ final class HermesNativeCalls: NSObject {
     // MARK: Ringing
 
     private func receive(_ userInfo: [AnyHashable: Any], completion: @escaping () -> Void) {
+        if let settled = HermesRingSettled.from(userInfo) {
+            ringSettled(settled, completion: completion)
+            return
+        }
         let call = PushNotificationService.shared.receiveVoIPCall(userInfo)
+        let ring = HermesRing.from(userInfo)
+        if let ring, let target = call.target {
+            pruneRingTargets()
+            ringTargets[ring.id] = (target, Date())
+        }
         // Never created here: reporting comes first.
         let appState = AppStateRuntimeRegistry.shared.existing
         let busy = appState.map { $0.isVoiceInUse || $0.isWatchVoiceCallActive } ?? false
         let plan = HermesNativeCallPlan.plan(for: call, now: Date(), voiceInUse: busy || !calls.isEmpty)
+        // Busy in voice or another call here: the Apple Watch stops ringing
+        // it too.
+        if plan == .endAtOnce(.talk), let ring { settleRing(ring, outcome: .declined) }
         // A push while a call is live ends at once: the live call keeps
         // its trace.
         let traced = plan.startsTrace && calls.isEmpty
@@ -228,7 +280,7 @@ final class HermesNativeCalls: NSObject {
             completion()
             return
         }
-        if plan == .ring, let target = call.target { calls[id] = Call(target: target, sentAt: call.sentAt) }
+        if plan == .ring, let target = call.target { calls[id] = Call(target: target, sentAt: call.sentAt, ring: ring) }
         provider.reportNewIncomingCall(with: id, update: update) { error in
             Task { @MainActor in
                 self.reported(id, plan: plan, traced: traced, target: call.target, sentAt: call.sentAt, error: error)
@@ -264,6 +316,8 @@ final class HermesNativeCalls: NSObject {
             if traced { HermesCallTrace.shared.note("Ended at once") }
             provider?.reportCall(with: id, endedAt: Date(), reason: notice == .missed ? .unanswered : .failed)
             post(notice, for: target)
+            // A call that arrived too late never rang, so no one could have
+            // answered it: Hermes hears it was missed.
             if notice == .missed { report(.missed, for: target, sentAt: sentAt) }
         case .ring:
             guard calls[id] != nil else { return }
@@ -293,6 +347,11 @@ final class HermesNativeCalls: NSObject {
         VoiceAudioSessionCoordinator.shared.configureForIncomingCall()
         action.fulfill()
         let id = action.callUUID
+        // The Apple Watch stops ringing (Conduit is running the call, so no
+        // background time is needed).
+        if let ring = calls[id]?.ring {
+            calls[id]?.settling = Task { await HermesRingSettler.settle(ring, by: .phone, outcome: .answered) }
+        }
         calls[id]?.work = Task { await self.connect(id) }
     }
 
@@ -311,6 +370,13 @@ final class HermesNativeCalls: NSObject {
         await waitForAudio()
         HermesCallTrace.shared.note(audioActive ? "Call audio ready" : "Call audio not ready, going on", since: audioWait)
         guard calls[id] != nil, !Task.isCancelled else { return }
+        // The Apple Watch rang too and was answered first: the call is there.
+        if let settling = calls[id]?.settling, case .alreadySettled(.answered, by: .watch) = await settling.value {
+            guard calls[id] != nil else { return }
+            HermesCallTrace.shared.note("Answered on the Watch first")
+            finish(id, reason: .answeredElsewhere, notice: .none, end: .elsewhere(.answered))
+            return
+        }
         // Answered unlocked, Conduit comes to the front with the call, and
         // its return to the app (a connection check, maybe a reconnect, the
         // chat it restores) would race an open from here. The call opens
@@ -449,7 +515,8 @@ final class HermesNativeCalls: NSObject {
     // MARK: Ending
 
     /// Conduit ends the call: CallKit hears why, and `notice` follows.
-    private func finish(_ id: UUID, reason: CXCallEndedReason, notice: HermesNativeCallPlan.Notice) {
+    /// `end`: how it ended when not by `notice` alone (on the Watch).
+    private func finish(_ id: UUID, reason: CXCallEndedReason, notice: HermesNativeCallPlan.Notice, end: HermesCallEnd? = nil) {
         guard let call = calls.removeValue(forKey: id) else { return }
         HermesCallTrace.shared.note("Call ended (\(Self.traceLabel(reason)))")
         call.unanswered?.cancel()
@@ -457,8 +524,76 @@ final class HermesNativeCalls: NSObject {
         provider?.reportCall(with: id, endedAt: Date(), reason: reason)
         post(notice, for: call.target)
         // It rang out, or stopped ringing, before the user picked up.
-        report(HermesCallOutcome.of(.finished(notice), answered: call.answered), for: call.target, sentAt: call.sentAt)
+        report(HermesCallOutcome.of(end ?? .finished(notice), answered: call.answered), for: call.target, sentAt: call.sentAt)
         settle()
+    }
+
+    /// The Apple Watch answered or declined a call that rang on both: this
+    /// one stops ringing. Every VoIP push is reported to CallKit, this one
+    /// too: a call still on the phone is reported again under its own id,
+    /// which CallKit already has; any other is reported and ended at once.
+    private func ringSettled(_ settled: HermesRingSettled, completion: @escaping () -> Void) {
+        guard let provider else {
+            completion()
+            return
+        }
+        let match = calls.first { $0.value.ring?.id == settled.id }
+        let id = match?.key ?? UUID()
+        let update = CXCallUpdate()
+        update.remoteHandle = CXHandle(type: .generic, value: "hermes")
+        update.localizedCallerName = HermesCallCopy.callerName(title: match?.value.target.call?.title)
+        update.hasVideo = false
+        let reason: CXCallEndedReason = settled.outcome == .answered ? .answeredElsewhere : .declinedElsewhere
+        provider.reportNewIncomingCall(with: id, update: update) { _ in
+            Task { @MainActor in
+                if let match {
+                    // Answered here too: the race in `connect` settles it.
+                    if self.calls[id]?.answered == false {
+                        HermesCallTrace.shared.note(settled.outcome == .answered ? "Answered on the Watch" : "Declined on the Watch")
+                        // Declined there, it leaves the same missed call a decline here does.
+                        self.finish(id, reason: reason, notice: settled.outcome == .answered ? .none : .missed, end: .elsewhere(settled.outcome))
+                    } else if self.calls[id] == nil {
+                        // Ended meanwhile: the report above may have rung it again.
+                        provider.reportCall(with: id, endedAt: Date(), reason: reason)
+                    }
+                } else {
+                    provider.reportCall(with: id, endedAt: Date(), reason: reason)
+                }
+                completion()
+            }
+        }
+    }
+
+    /// The call a Watch call answers (designs/hermes-calls-watch.md), kept
+    /// from its push. A phone call still ringing for it stops now, in case
+    /// the relay's word hasn't come.
+    func answeredOnWatch(ringID: String) -> ConduitNotificationTarget? {
+        pruneRingTargets()
+        if let match = calls.first(where: { $0.value.ring?.id == ringID }), !match.value.answered {
+            HermesCallTrace.shared.note("Answered on the Watch")
+            finish(match.key, reason: .answeredElsewhere, notice: .none, end: .elsewhere(.answered))
+        }
+        return ringTargets[ringID]?.target
+    }
+
+    private func pruneRingTargets(now: Date = Date()) {
+        ringTargets = ringTargets.filter { now.timeIntervalSince($0.value.at) < Self.ringTargetLife }
+    }
+
+    /// Tells the relay how this phone settled the ring, with the time to
+    /// finish if Conduit goes back to the background meanwhile.
+    private func settleRing(_ ring: HermesRing, outcome: HermesRingOutcome) {
+        var taskID = UIBackgroundTaskIdentifier.invalid
+        let end = {
+            guard taskID != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+        taskID = UIApplication.shared.beginBackgroundTask(withName: "conduit.hermesCall.settle", expirationHandler: end)
+        Task {
+            _ = await HermesRingSettler.settle(ring, by: .phone, outcome: outcome)
+            end()
+        }
     }
 
     /// The user declined or hung up in CallKit.
@@ -471,6 +606,8 @@ final class HermesNativeCalls: NSObject {
         call.unanswered?.cancel()
         call.work?.cancel()
         action.fulfill()
+        // Declined here: the Apple Watch stops ringing too.
+        if !call.answered, let ring = call.ring { settleRing(ring, outcome: .declined) }
         if call.answered {
             endVoice(of: call.target)
         } else {

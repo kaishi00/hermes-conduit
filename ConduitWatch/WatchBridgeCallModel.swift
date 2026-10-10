@@ -124,6 +124,10 @@ final class WatchBridgeCallModel: ObservableObject {
     private var watchKey: String?
     private var briefing: String?
     private var greeting: String?
+    /// A call from Hermes opens with this turn (designs/hermes-calls-watch.md).
+    private var openingTurn: String?
+    /// The call from Hermes this call answers.
+    private var ring: String?
     private var voice: String?
     private var relay: WatchToolRelayClient?
 
@@ -277,9 +281,10 @@ final class WatchBridgeCallModel: ObservableObject {
 
     // MARK: Controls
 
-    func start() async {
+    func start(ring: String? = nil) async {
         guard !isActive else { return }
         reset()
+        self.ring = ring
         phase = .preparing
         let id = callID
         guard await WatchAudio.requestPermission() else {
@@ -451,7 +456,7 @@ final class WatchBridgeCallModel: ObservableObject {
     private func requestSession() {
         sessionRequests += 1
         let id = callID
-        link.send(.bridgeStart(callID: id, version: WatchVoiceWire.version, engine: Self.engine), reply: { [weak self] answer in
+        link.send(.bridgeStart(callID: id, version: WatchVoiceWire.version, engine: Self.engine, ring: ring), reply: { [weak self] answer in
             guard let self, self.callID == id, self.phase == .preparing else { return }
             switch answer {
             case .bridgeSession(_, let session)?:
@@ -505,6 +510,7 @@ final class WatchBridgeCallModel: ObservableObject {
         watchKey = session.grant.watchKey
         briefing = session.briefingText
         greeting = session.greeting
+        openingTurn = session.openingTurn
         voice = session.voice
         endPhrases = session.endPhrases ?? []
         relay = relayClient
@@ -515,6 +521,7 @@ final class WatchBridgeCallModel: ObservableObject {
             "compressedBytes": session.briefing.count,
             "briefingRead": briefing != nil,
             "greeting": greeting != nil,
+            "openingTurn": openingTurn != nil,
             "engines": bridge.engines,
             "relayTools": relayClient.tools.sorted(),
             "maxJobs": relayClient.maxJobs,
@@ -713,6 +720,11 @@ final class WatchBridgeCallModel: ObservableObject {
                 note("bridgeRateMismatch", ["input": info.inputRate, "output": info.outputRate])
                 finish(String(localized: "Hermes sends GPT-Live's audio in a format this Watch build can't play. Update Conduit and the conduit_push plugin together."))
                 return
+            }
+            // A call from Hermes: the model says what it called about, as
+            // the phone's GPT-Live call asks it to. Once, never on a rejoin.
+            if !rejoining, let openingTurn {
+                pendingSends.insert(Pending(text: openingTurn, channel: .speakable, delegationID: nil), at: 0)
             }
             flushPending()
         case .ended(let reason):
@@ -1590,6 +1602,8 @@ final class WatchBridgeCallModel: ObservableObject {
         watchKey = nil
         briefing = nil
         greeting = nil
+        openingTurn = nil
+        ring = nil
         voice = nil
         connection = 0
         streamsOpened = 0

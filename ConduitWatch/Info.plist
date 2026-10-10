@@ -20,11 +20,14 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ConduitHermesCallsRing</key>
+	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Conduit uses the microphone to talk with Hermes from your wrist.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>voip</string>
 	</array>
 	<key>WKApplication</key>
 	<true/>

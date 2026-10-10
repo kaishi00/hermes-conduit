@@ -203637,6 +203637,170 @@
           }
         }
       }
+    },
+    "Ring like a phone call" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie ein Telefonanruf klingeln"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonar como una llamada telefónica"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonner comme un appel téléphonique"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berdering seperti panggilan telepon"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Squilla come una telefonata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通常の電話のように着信"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "일반 전화처럼 울리기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dzwoń jak zwykłe połączenie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tocar como uma ligação telefônica"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонить как обычный телефон"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Telefon araması gibi çalsın"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "像普通来电一样响铃"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "像一般來電一樣響鈴"
+          }
+        }
+      }
+    },
+    "On this iPhone and your Apple Watch. Off, a “Hermes wants to talk” notification comes instead: tap Talk to answer." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem iPhone und deiner Apple Watch. Aus: Stattdessen kommt die Mitteilung „Hermes möchte sprechen“: Tippe auf „Sprechen“, um anzunehmen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En este iPhone y en tu Apple Watch. Si lo desactivas, llega en su lugar una notificación «Hermes quiere hablar»: toca Hablar para contestar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sur cet iPhone et votre Apple Watch. Désactivé, une notification « Hermes veut vous parler » arrive à la place : touchez Parler pour répondre."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di iPhone ini dan Apple Watch Anda. Jika nonaktif, pemberitahuan “Hermes ingin bicara” muncul sebagai gantinya: ketuk Bicara untuk menjawab."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su questo iPhone e sul tuo Apple Watch. Se disattivato, arriva invece la notifica «Hermes vuole parlarti»: tocca Parla per rispondere."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneとApple Watchで着信します。オフにすると、代わりに「Hermesが話したがっています」という通知が届きます。「話す」をタップして応答してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 iPhone과 Apple Watch에서 울려요. 끄면 대신 “Hermes가 이야기하고 싶어 해요” 알림이 와요. 대화를 탭해 받으세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na tym iPhonie i Twoim Apple Watch. Po wyłączeniu przychodzi zamiast tego powiadomienie „Hermes chce porozmawiać”: stuknij Rozmawiaj, aby odebrać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neste iPhone e no seu Apple Watch. Desativado, chega no lugar uma notificação “O Hermes quer conversar”: toque em Conversar para atender."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом iPhone и ваших Apple Watch. Если выключено, вместо этого приходит уведомление «Hermes хочет поговорить»: нажмите «Говорить», чтобы ответить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu iPhone'da ve Apple Watch'unuzda. Kapalıyken bunun yerine “Hermes konuşmak istiyor” bildirimi gelir: yanıtlamak için Konuş'a dokunun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在这台 iPhone 和你的 Apple Watch 上响铃。关闭后，会改为收到“Hermes 想和你通话”通知：轻点“通话”即可接听。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在這支 iPhone 和你的 Apple Watch 上響鈴。關閉後，會改為收到「Hermes 想跟你通話」通知：點一下「通話」即可接聽。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
