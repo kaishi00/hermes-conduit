@@ -457,7 +457,7 @@ final class HermesNativeCalls: NSObject {
         provider?.reportCall(with: id, endedAt: Date(), reason: reason)
         post(notice, for: call.target)
         // It rang out, or stopped ringing, before the user picked up.
-        if !call.answered, notice == .missed { report(.missed, for: call.target, sentAt: call.sentAt) }
+        report(HermesCallOutcome.of(.finished(notice), answered: call.answered), for: call.target, sentAt: call.sentAt)
         settle()
     }
 
@@ -475,8 +475,8 @@ final class HermesNativeCalls: NSObject {
             endVoice(of: call.target)
         } else {
             post(.missed, for: call.target)
-            report(.declined, for: call.target, sentAt: call.sentAt)
         }
+        report(HermesCallOutcome.of(.declined, answered: call.answered), for: call.target, sentAt: call.sentAt)
         settle()
     }
 
@@ -500,8 +500,9 @@ final class HermesNativeCalls: NSObject {
     /// now if it can be reached, else once it's connected again. Timed from
     /// when the relay sent it: one that reached an offline phone hours
     /// later was placed then, not now.
-    private func report(_ outcome: HermesCallOutcome, for target: ConduitNotificationTarget?, sentAt: Date?) {
-        guard let target, let entry = HermesCallOutcomeOutbox.Entry(outcome, target: target, at: sentAt ?? Date()) else { return }
+    private func report(_ outcome: HermesCallOutcome?, for target: ConduitNotificationTarget?, sentAt: Date?) {
+        guard let outcome, let target,
+              let entry = HermesCallOutcomeOutbox.Entry(outcome, target: target, at: sentAt ?? Date()) else { return }
         HermesCallOutcomeOutbox.record(entry, in: .standard)
         AppStateRuntimeRegistry.shared.existing?.deliverHermesCallOutcomes()
     }
@@ -558,10 +559,8 @@ extension HermesNativeCalls: CXProviderDelegate {
                 call.unanswered?.cancel()
                 call.work?.cancel()
                 // A call still ringing leaves its trace, as on every other end.
-                if !call.answered {
-                    self.post(.missed, for: call.target)
-                    self.report(.missed, for: call.target, sentAt: call.sentAt)
-                }
+                if !call.answered { self.post(.missed, for: call.target) }
+                self.report(HermesCallOutcome.of(.reset, answered: call.answered), for: call.target, sentAt: call.sentAt)
             }
             self.calls = [:]
             self.audioActive = false
