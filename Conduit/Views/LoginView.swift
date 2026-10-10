@@ -320,7 +320,7 @@ struct LoginView: View {
                     .submitLabel(LoginField.server.submitKeyboardLabel(cloudflareTokenEntryEnabled: cloudflareEnabled))
                     .onSubmit { handleSubmit(from: .server) }
                     .padding(.horizontal, 14)
-                    .frame(height: 50)
+                    .padding(.vertical, 6).frame(minHeight: 50)
                     .conduitGlassSurface(cornerRadius: 17, tint: .conduitAura.opacity(0.06))
                     .id(LoginField.server)
 
@@ -333,7 +333,7 @@ struct LoginView: View {
                     .focused($focusedField, equals: .username)
                     .onSubmit { handleSubmit(from: .username) }
                     .padding(.horizontal, 14)
-                    .frame(height: 50)
+                    .padding(.vertical, 6).frame(minHeight: 50)
                     .conduitGlassSurface(cornerRadius: 17, tint: .conduitAura.opacity(0.06))
                     .id(LoginField.username)
 
@@ -344,7 +344,7 @@ struct LoginView: View {
                     .focused($focusedField, equals: .password)
                     .onSubmit { handleSubmit(from: .password) }
                     .padding(.horizontal, 14)
-                    .frame(height: 50)
+                    .padding(.vertical, 6).frame(minHeight: 50)
                     .conduitGlassSurface(cornerRadius: 17, tint: .conduitAura.opacity(0.06))
                     .id(LoginField.password)
 
@@ -400,7 +400,7 @@ struct LoginView: View {
                             .focused($focusedField, equals: .cloudflareClientID)
                             .submitLabel(LoginField.cloudflareClientID.submitKeyboardLabel(cloudflareTokenEntryEnabled: cloudflareEnabled))
                             .onSubmit { handleSubmit(from: .cloudflareClientID) }
-                            .padding(.horizontal, 14).frame(height: 50)
+                            .padding(.horizontal, 14).padding(.vertical, 6).frame(minHeight: 50)
                             .conduitGlassSurface(cornerRadius: 17, tint: .conduitAura.opacity(0.06))
                             .id(LoginField.cloudflareClientID)
                         SecureField("Cloudflare Client Secret", text: $cloudflareClientSecret)
@@ -408,7 +408,7 @@ struct LoginView: View {
                             .focused($focusedField, equals: .cloudflareClientSecret)
                             .submitLabel(LoginField.cloudflareClientSecret.submitKeyboardLabel(cloudflareTokenEntryEnabled: cloudflareEnabled))
                             .onSubmit { handleSubmit(from: .cloudflareClientSecret) }
-                            .padding(.horizontal, 14).frame(height: 50)
+                            .padding(.horizontal, 14).padding(.vertical, 6).frame(minHeight: 50)
                             .conduitGlassSurface(cornerRadius: 17, tint: .conduitAura.opacity(0.06))
                             .id(LoginField.cloudflareClientSecret)
                         Text("Used only to reach this Cloudflare-protected dashboard; the secret stays in Keychain.")
@@ -455,7 +455,7 @@ struct LoginView: View {
                             }
                         }
                         if failure.offersRecoveryActions {
-                            HStack(spacing: 16) {
+                            AdaptiveStack(spacing: 16) {
                                 Button("Try Again") {
                                     Task { await connect() }
                                 }
@@ -496,7 +496,7 @@ struct LoginView: View {
                     Label(isConnecting ? AppLocalization.string("Connecting…") : AppLocalization.string("Connect"), systemImage: "arrow.right")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 50)
+                        .padding(.vertical, 6).frame(minHeight: 50)
                 }
                 .accessibilityIdentifier("login.connect")
                 .foregroundStyle(.white)

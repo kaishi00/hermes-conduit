@@ -17,8 +17,20 @@ struct PastedImage: Equatable {
 }
 
 struct ComposerPasteTextView: UIViewRepresentable {
-    static let minimumHeight: CGFloat = 44
-    static let maximumHeight: CGFloat = 160
+    /// One line of body text plus the text insets at the current text size,
+    /// so a large Text Size doesn't clip the first line.
+    static var minimumHeight: CGFloat {
+        max(44, ceil(bodyLineHeight) + 16)
+    }
+    /// About four lines at large text sizes, never under the original
+    /// 160 pt, and capped so the composer can't cover the chat.
+    static var maximumHeight: CGFloat {
+        min(max(160, ceil(bodyLineHeight) * 4 + 16), 280)
+    }
+
+    private static var bodyLineHeight: CGFloat {
+        UIFont.preferredFont(forTextStyle: .body).lineHeight
+    }
 
     @Binding var text: String
     @Binding var isFocused: Bool

@@ -263,7 +263,11 @@ struct GroupChatView: View {
                 Text(memberSummary)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
+            // The navigation bar doesn't grow; touch and hold shows it large.
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+            .accessibilityShowsLargeContentViewer()
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
@@ -882,7 +886,10 @@ struct DesktopGroupChatView: View {
                         Text(AppLocalization.string("\(group.members.count) members"))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
+                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                    .accessibilityShowsLargeContentViewer()
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Done")) { dismiss() }

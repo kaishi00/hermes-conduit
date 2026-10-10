@@ -644,6 +644,10 @@ struct ComposerBar: View {
         .padding(.horizontal, 10)
         .padding(.top, 6)
         .padding(.bottom, 10)
+        // Seven controls share one row of fixed 32 pt circles; past this
+        // size the model chip shrinks to nothing and glyphs spill out.
+        // The typed text above still follows the full Text Size.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 
     @ViewBuilder
@@ -690,7 +694,7 @@ struct ComposerBar: View {
                     Label("Repair Connection", systemImage: "wrench.and.screwdriver")
                         .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 34)
+                        .padding(.vertical, 6).frame(minHeight: 34)
                 }
                 .buttonStyle(.bordered)
                 .tint(.conduitAccent)
@@ -751,7 +755,7 @@ struct ComposerBar: View {
                     Label("Take over this chat", systemImage: "arrow.down.to.line")
                         .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 34)
+                        .padding(.vertical, 6).frame(minHeight: 34)
                 }
                 .buttonStyle(.bordered)
                 .tint(.conduitAccent)

@@ -1582,6 +1582,8 @@ struct AssistantBubble: View {
                 }
             }
             .padding(.top, 2)
+            // Fixed 34 pt buttons: larger glyphs would overlap each other.
+            .conduitFixedGlyph()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1680,6 +1682,7 @@ private struct ReviewSummaryCard: View {
                     if !details.isEmpty {
                         Image(systemName: expanded ? "chevron.up" : "chevron.down")
                             .font(.caption.weight(.semibold))
+                            .conduitFixedGlyph()
                             .foregroundStyle(.secondary)
                             .frame(width: 28, height: 28)
                     }
@@ -1710,7 +1713,7 @@ private struct ReviewSummaryCard: View {
                     Label("Open full review", systemImage: "arrow.up.forward.square")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 42)
+                        .padding(.vertical, 6).frame(minHeight: 42)
                 }
                 .conduitGlassControl(cornerRadius: 14, tint: .conduitAccent.opacity(0.14))
             }
@@ -2446,6 +2449,7 @@ struct ClarifyQuestionRow: View {
             } label: {
                 Image(systemName: "arrow.up")
                     .font(.subheadline.weight(.bold))
+                    .conduitFixedGlyph()
                     .frame(width: 36, height: 36)
             }
             .buttonStyle(.plain)
@@ -2519,6 +2523,7 @@ struct ClarifyQuestionRow: View {
                 } label: {
                     Image(systemName: "arrow.up")
                         .font(.subheadline.weight(.bold))
+                        .conduitFixedGlyph()
                         .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.plain)
@@ -2648,6 +2653,12 @@ struct ApprovalCard: View {
                                     allowButtons(approval)
                                 }
                             }
+                        }
+                        // Large text: one button per row.
+                        VStack(alignment: .leading, spacing: 8) {
+                            runButton(approval)
+                            allowButtons(approval)
+                            rejectButton(approval)
                         }
                     }
                     .font(.subheadline.weight(.medium))

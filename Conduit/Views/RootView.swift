@@ -488,6 +488,9 @@ private struct ChatTitleControl: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
+            // The navigation bar doesn't grow; touch and hold shows it large.
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+            .accessibilityShowsLargeContentViewer()
     }
 }
 
