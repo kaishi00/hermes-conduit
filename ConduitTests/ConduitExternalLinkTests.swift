@@ -50,6 +50,80 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(ConduitAppLink(externalURL: url), .session(id: id))
     }
 
+    func testSessionLinkCarriesItsProfile() throws {
+        let link = ConduitAppLink.session(id: "20261009_160855_d213a4", profile: "work")
+        XCTAssertEqual(link.url.absoluteString, "conduit://session/20261009_160855_d213a4?profile=work")
+        XCTAssertEqual(ConduitAppLink(url: link.url), link)
+        XCTAssertEqual(ConduitAppLink(externalURL: link.url), link)
+        let blank = try XCTUnwrap(URL(string: "conduit://session/abc?profile="))
+        XCTAssertEqual(ConduitAppLink(externalURL: blank), .session(id: "abc"), "a blank profile is the profile in use")
+    }
+
+    func testExternalLinkWithAnOddProfileIsIgnored() throws {
+        for raw in [
+            "conduit://session/abc?profile=a%20b",
+            "conduit://session/abc?profile=a%2Fb",
+            "conduit://session/abc?profile=" + String(repeating: "a", count: 129)
+        ] {
+            let url = try XCTUnwrap(URL(string: raw), raw)
+            XCTAssertNil(ConduitAppLink(externalURL: url), raw)
+        }
+    }
+
+    func testLinkToAChatOnAnotherProfileOpensLikeItsNotification() throws {
+        let appState = try makeLinkAppState()
+        defer { clearRoutedLink() }
+        appState.openAppLink(.session(id: "work-chat", profile: "Work"))
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(
+            PushNotificationService.shared.pendingTarget,
+            ConduitNotificationTarget(profile: "work", sessionId: "work-chat", dashboardID: appState.activeDashboardID, type: nil)
+        )
+    }
+
+    func testLinkToAnotherProfileNeverEndsACall() throws {
+        let appState = try makeLinkAppState()
+        defer { clearRoutedLink() }
+        appState.isNativeHermesCallActive = true
+        appState.openAppLink(.session(id: "work-chat", profile: "work"))
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("End the call to open a chat in another profile."))
+        XCTAssertNotEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
+        XCTAssertEqual(appState.activeProfile, "default")
+    }
+
+    func testLinkToAProfileTheDashboardDoesNotListOpensNothing() throws {
+        let appState = try makeLinkAppState()
+        defer { clearRoutedLink() }
+        appState.openAppLink(.session(id: "work-chat", profile: "ghost"))
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("That chat is no longer available."))
+        XCTAssertNotEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
+    }
+
+    func testLinkNamingTheProfileInUseStaysOnIt() throws {
+        let appState = try makeLinkAppState()
+        defer { clearRoutedLink() }
+        appState.openAppLink(.session(id: "work-chat", profile: "default"))
+        XCTAssertNotEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
+        XCTAssertEqual(appState.activeProfile, "default")
+    }
+
+    /// Conduit on the default profile of a dashboard that also lists "work".
+    private func makeLinkAppState() throws -> AppState {
+        let suite = "ConduitExternalLink.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.profiles = ["default", "work"]
+        return appState
+    }
+
+    /// Clears a link these tests routed, so it can't reach another test.
+    private func clearRoutedLink() {
+        if let target = PushNotificationService.shared.pendingTarget, target.sessionId == "work-chat" {
+            PushNotificationService.shared.clearPendingTarget(target)
+        }
+    }
+
     func testExternalLinkSchemeIsRegistered() throws {
         let types = try XCTUnwrap(Bundle(for: AppState.self).object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]])
         let schemes = types.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }

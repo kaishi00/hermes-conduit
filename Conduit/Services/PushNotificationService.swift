@@ -1309,6 +1309,12 @@ final class PushNotificationService: ObservableObject {
         route(target)
     }
 
+    /// A chat link for another profile (`conduit://session/<id>?profile=…`)
+    /// opens as a notification for that chat would.
+    func routeChatLink(_ target: ConduitNotificationTarget) {
+        route(target)
+    }
+
     private func route(_ target: ConduitNotificationTarget) {
         navigationRetryTask?.cancel()
         navigationRetryTask = nil

@@ -4557,10 +4557,15 @@ final class AppState: ObservableObject {
         return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open chat"))
     }
 
-    /// Opens a link Conduit wrote into a chat (a voice call's job link).
+    /// Opens a link Conduit wrote into a chat (a voice call's job link), or
+    /// one another app opened Conduit with.
     func openAppLink(_ link: ConduitAppLink) {
         switch link {
-        case .session(let id):
+        case .session(let id, let profile):
+            if let profile, notificationProfileID(profile) != activeProfile {
+                openLinkedSession(id, inProfile: profile)
+                return
+            }
             // Some failed opens say nothing themselves; a deleted job
             // shouldn't make the link look dead.
             // Job links and chat-turn links share this route.
@@ -4568,6 +4573,31 @@ final class AppState: ObservableObject {
         case .bot(let profile):
             openLinkedBotChat(profile)
         }
+    }
+
+    /// Opens a chat a link puts on another profile. It goes the way a
+    /// notification for that chat goes: that route switches profile and
+    /// keeps the switch's own sync from opening a different chat. Another
+    /// app can send the link, so it only switches to a profile this
+    /// dashboard lists, and never while a call would end with the switch.
+    private func openLinkedSession(_ id: String, inProfile profile: String) {
+        guard let target = notificationProfileID(profile),
+              target == "default" || profiles.contains(target) else {
+            errorMessage = AppLocalization.string("That chat is no longer available.")
+            return
+        }
+        guard !isVoiceCallInProgress else {
+            errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+            return
+        }
+        // A bot's own chat opens through its bot, never as a workspace chat.
+        if let normalized = ChatScrollIdentityNormalization.sessionID(id), botOwnedSessionIDs.contains(normalized) {
+            openLinkedBotChat(target)
+            return
+        }
+        PushNotificationService.shared.routeChatLink(
+            ConduitNotificationTarget(profile: target, sessionId: id, dashboardID: activeDashboardID, type: nil)
+        )
     }
 
     /// Opens a bot's chat from a link or card Conduit wrote. The roster is
@@ -5101,6 +5131,13 @@ final class AppState: ObservableObject {
     /// dictation steps aside.
     var isVoiceInUse: Bool {
         showVoiceSheet || isLiveVoiceCallActive || voiceConversationController.hasLiveVoiceSession
+    }
+
+    /// A call runs somewhere: on this screen or minimised, in CarPlay, on
+    /// the Watch, or a call from Hermes. A profile switch would end it.
+    var isVoiceCallInProgress: Bool {
+        isVoiceInUse || minimisedLiveVoice != nil || isCarPlayVoiceSurfaceActive
+            || isWatchVoiceCallActive || isNativeHermesCallActive
     }
 
     /// Continues a saved call with a new live call on the selected engine.

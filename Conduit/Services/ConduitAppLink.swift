@@ -14,12 +14,17 @@
 //  all they do, the same as tapping its row, and a bot link is not needed
 //  there.
 //
+//  `?profile=<name>` puts the chat on a named Hermes profile; Conduit
+//  switches to it first, as a notification for that chat does. Without it
+//  the chat is on the profile in use.
+//
 
 import Foundation
 
 enum ConduitAppLink: Equatable {
-    /// A chat (Hermes session) on the profile the link was read in.
-    case session(id: String)
+    /// A chat (Hermes session) on `profile`, or on the profile the link
+    /// was read in when it names none.
+    case session(id: String, profile: String? = nil)
     /// A bot's Bot Chat, by the bot's profile name: a bot has one chat, and
     /// it opens through the bot's profile.
     case bot(profile: String)
@@ -33,31 +38,45 @@ enum ConduitAppLink: Equatable {
         let id = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !id.isEmpty, !id.contains("/") else { return nil }
         switch components.host?.lowercased() {
-        case "session": self = .session(id: id)
+        case "session": self = .session(id: id, profile: Self.profile(in: components))
         case "bot": self = .bot(profile: id)
         default: return nil
         }
     }
 
     /// A link another app opened Conduit with: only a chat link, and only
-    /// one whose id is a plain session token.
+    /// one whose id and profile are plain tokens.
     init?(externalURL url: URL) {
-        guard let link = ConduitAppLink(url: url), case .session(let id) = link,
-              id.count <= Self.maxExternalIDLength,
-              id.unicodeScalars.allSatisfy(Self.externalIDCharacters.contains) else { return nil }
+        guard let link = ConduitAppLink(url: url), case .session(let id, let profile) = link,
+              Self.isPlainToken(id), profile.map(Self.isPlainToken) ?? true else { return nil }
         self = link
     }
 
-    private static let maxExternalIDLength = 128
-    private static let externalIDCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.:")
+    /// The link's `profile` query item; nil when it has none or a blank one.
+    private static func profile(in components: URLComponents) -> String? {
+        let value = components.queryItems?.first { $0.name == "profile" }?.value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false ? value : nil
+    }
+
+    private static func isPlainToken(_ value: String) -> Bool {
+        let scalars = value.unicodeScalars
+        return scalars.count <= maxExternalTokenLength && scalars.allSatisfy(externalTokenCharacters.contains)
+    }
+
+    private static let maxExternalTokenLength = 128
+    private static let externalTokenCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.:")
 
     var url: URL {
         var components = URLComponents()
         components.scheme = Self.scheme
         switch self {
-        case .session(let id):
+        case .session(let id, let profile):
             components.host = "session"
             components.path = "/" + id
+            if let profile {
+                components.queryItems = [URLQueryItem(name: "profile", value: profile)]
+            }
         case .bot(let profile):
             components.host = "bot"
             components.path = "/" + profile

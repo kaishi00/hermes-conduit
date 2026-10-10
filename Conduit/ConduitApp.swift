@@ -143,10 +143,19 @@ struct ConduitApp: App {
             // Links Conduit writes into chats (a voice call's job link)
             // open inside the app; every other link goes to the system.
             .environment(\.openURL, OpenURLAction { url in
-                guard let link = ConduitAppLink(url: url) else { return .systemAction }
+                guard let link = ConduitAppLink(url: url) else {
+                    // The scheme is registered, so the system would hand a
+                    // conduit link Conduit can't read straight back to it.
+                    return url.scheme?.lowercased() == ConduitAppLink.scheme ? .discarded : .systemAction
+                }
                 Task { @MainActor in appState.openAppLink(link) }
                 return .handled
             })
+            // On iPad (multiple scenes are on for CarPlay) SwiftUI opens a
+            // new window for a link no open window claims, and the
+            // duplicate-window guard would close it at once: the open
+            // window takes every link.
+            .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
             // Another app opening a chat: only session links, opened through
             // the same route as an in-app link once Hermes is connected.
             .onOpenURL { url in
