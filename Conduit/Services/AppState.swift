@@ -5908,8 +5908,14 @@ final class AppState: ObservableObject {
         return chatViewportTransitionGeneration
     }
 
+    /// Whether the navigation that began transition `generation` still owns
+    /// the chat: no newer one has begun a transition. A transition that
+    /// finished in place (the chat laid out its new transcript, or its
+    /// restoration was given up) still does. On screen the chat lays out
+    /// while an open still awaits its context refresh: that open finished,
+    /// nothing superseded it (#449).
     private func chatViewportTransitionIsCurrent(generation: UInt64) -> Bool {
-        chatViewportTransition?.generation == generation
+        chatViewportTransitionGeneration == generation
     }
 
     private func chatViewportTransitionIsCurrent(_ generation: UInt64?) -> Bool {
@@ -15596,7 +15602,7 @@ final class AppState: ObservableObject {
             && chatViewportTransitionIsCurrent(generation: transitionGeneration)
         if !current {
             HermesCallTrace.shared.note(
-                "Chat open superseded (different open: \(activeNotificationOpenAttemptID != id), chat view moved: \(!chatViewportTransitionIsCurrent(generation: transitionGeneration)))"
+                "Chat open superseded (different open: \(activeNotificationOpenAttemptID != id), newer chat open: \(!chatViewportTransitionIsCurrent(generation: transitionGeneration)))"
             )
         }
         return current
