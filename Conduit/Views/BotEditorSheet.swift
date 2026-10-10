@@ -133,7 +133,7 @@ struct BotEditorSheet: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(AppLocalization.string("Picture")))
             .accessibilityValue(Text(pictureStateDescription))
-            HStack(spacing: 12) {
+            AdaptiveStack(spacing: 12) {
                 Button {
                     Haptics.light()
                     showingImagePicker = true

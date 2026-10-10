@@ -23,6 +23,43 @@ struct SidebarView: View {
     @State private var showProfilePicker = false
     @Environment(\.dismiss) private var dismiss
 
+    private func tabBar(iconOnly: Bool) -> some View {
+        EqualWidthHStack(spacing: 6) {
+            ForEach(SidebarTab.allCases, id: \.self) { tab in
+                Button {
+                    withAnimation(ConduitMotion.response) {
+                        Haptics.selection()
+                        selectedTabRaw = tab.rawValue
+                    }
+                } label: {
+                    Group {
+                        if iconOnly {
+                            Label(tab.displayName, systemImage: tab.icon)
+                                .labelStyle(.iconOnly)
+                                .conduitFixedGlyph()
+                        } else {
+                            Label(tab.displayName, systemImage: tab.icon)
+                                .lineLimit(1)
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 40)
+                    .foregroundStyle(selectedTab == tab ? .primary : .secondary)
+                    .background(
+                        selectedTab == tab ? Color.conduitAccent.opacity(0.16) : .clear,
+                        in: Capsule()
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityShowsLargeContentViewer {
+                    Label(tab.displayName, systemImage: tab.icon)
+                }
+                .accessibilityLabel(tab.displayName)
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -50,13 +87,15 @@ struct SidebarView: View {
                                             .foregroundStyle(.secondary)
                                         Text(appState.profileDisplayName(appState.activeProfile))
                                             .font(.subheadline.weight(.semibold))
+                                            .lineLimit(2)
                                     }
                                     Image(systemName: "chevron.up.chevron.down")
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding(.horizontal, 12)
-                                .frame(height: 48)
+                                .padding(.vertical, 4)
+                                .frame(minHeight: 48)
                             }
                             .disabled(appState.isProfileSwitching)
                             .conduitGlassControl(cornerRadius: 18, tint: .conduitAccent.opacity(0.08))
@@ -88,32 +127,19 @@ struct SidebarView: View {
                             }
                         }
                     }
+                    .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
 
                     ConduitGlassGroup(spacing: 8) {
-                        HStack(spacing: 6) {
-                            ForEach(SidebarTab.allCases, id: \.self) { tab in
-                                Button {
-                                    withAnimation(ConduitMotion.response) {
-                                        Haptics.selection()
-                                        selectedTabRaw = tab.rawValue
-                                    }
-                                } label: {
-                                    Label(tab.displayName, systemImage: tab.icon)
-                                        .font(.caption.weight(.semibold))
-                                        .frame(maxWidth: .infinity)
-                                        .frame(height: 40)
-                                        .foregroundStyle(selectedTab == tab ? .primary : .secondary)
-                                        .background(
-                                            selectedTab == tab ? Color.conduitAccent.opacity(0.16) : .clear,
-                                            in: Capsule()
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
+                        // Every tab drops to its icon together once the
+                        // names no longer fit their quarters (large text).
+                        ViewThatFits(in: .horizontal) {
+                            tabBar(iconOnly: false)
+                            tabBar(iconOnly: true)
                         }
                         .padding(4)
                         .conduitGlassSurface(cornerRadius: 20, tint: .conduitAccent.opacity(0.05))
                     }
+                    .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
 
                     Group {
                         switch selectedTab {
@@ -207,6 +233,7 @@ struct SessionList: View {
                             .font(.system(size: 16, weight: .semibold))
                         Text("New Chat")
                             .font(.subheadline.weight(.semibold))
+                            .lineLimit(2)
                     }
                     .foregroundStyle(Color.conduitBackgroundColor)
                     .frame(maxWidth: .infinity)
@@ -232,11 +259,15 @@ struct SessionList: View {
                     } label: {
                         Image(systemName: "waveform")
                             .font(.title3.weight(.semibold))
+                            .conduitFixedGlyph()
                             .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
                     .conduitGlassControl(cornerRadius: 14)
                     .disabled(!appState.canStartPhoneVoiceConversation || appState.isVoiceInUse)
+                    .accessibilityShowsLargeContentViewer {
+                        Label("New voice call", systemImage: "waveform")
+                    }
                     .accessibilityLabel("New voice call")
                     .accessibilityHint(appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Starts a voice call that isn't tied to a chat"))
                 }
@@ -313,8 +344,10 @@ struct SessionList: View {
             .padding(.horizontal, 14)
             .padding(.top, 8)
             .padding(.bottom, 4)
+            .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
             if !showingProjects {
                 sourceFilters
+                    .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
             }
             let layout = SidebarOfflineLayout.visibility(
                 showingProjects: showingProjects,
@@ -957,12 +990,15 @@ struct SessionRow: View {
     var detail: String? = nil
     var showsDisclosureIndicator = true
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var icon: SessionSource { category ?? session.source }
 
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: icon.iconName)
                 .font(.caption.weight(.semibold))
+                .conduitFixedGlyph()
                 .foregroundStyle(icon.color)
                 .frame(width: 30, height: 30)
                 .background(icon.color.opacity(0.13), in: Circle())
@@ -970,11 +1006,20 @@ struct SessionRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.title)
                     .font(.subheadline.weight(isUnread ? .semibold : .medium))
-                    .lineLimit(1)
-                HStack(spacing: 5) {
-                    Text(detail ?? session.model)
-                    Text("•")
-                    Text(session.updatedLabel)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                // Stacked at large text so the model doesn't truncate the time.
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        Text(detail ?? session.model)
+                            .lineLimit(1)
+                        Text(session.updatedLabel)
+                    } else {
+                        HStack(spacing: 5) {
+                            Text(detail ?? session.model)
+                            Text("•")
+                            Text(session.updatedLabel)
+                        }
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -1029,6 +1074,7 @@ struct SessionRow: View {
                 .strokeBorder(isSelected ? Color.conduitAccent.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 1)
         }
         .animation(ConduitMotion.response, value: isSelected)
+        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
     }
 }
 
@@ -1231,6 +1277,7 @@ private struct ProjectRow: View {
         HStack(spacing: 11) {
             Image(systemName: project.isHome ? "house.fill" : "folder.fill")
                 .font(.caption.weight(.semibold))
+                .conduitFixedGlyph()
                 .foregroundStyle(project.isHome ? Color.conduitAccent : .orange)
                 .frame(width: 30, height: 30)
                 .background((project.isHome ? Color.conduitAccent : .orange).opacity(0.13), in: Circle())
@@ -1256,6 +1303,7 @@ private struct ProjectRow: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
         }
+        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
     }
 }
 
@@ -1852,6 +1900,7 @@ private struct CronJobRow: View {
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: "clock")
+                .conduitFixedGlyph()
                 .foregroundStyle(job.isActive ? .green : .secondary)
                 .frame(width: 30, height: 30).background((job.isActive ? Color.green : .secondary).opacity(0.13), in: Circle())
             VStack(alignment: .leading, spacing: 3) {
@@ -1865,6 +1914,7 @@ private struct CronJobRow: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
     }
 }
 
@@ -1897,7 +1947,7 @@ private struct CronJobDetailSheet: View {
                             SettingsMetricRow(label: AppLocalization.string("Last run"), value: job.lastRunAt ?? "—")
                             SettingsMetricRow(label: AppLocalization.string("Delivery"), value: job.deliver ?? AppLocalization.string("Local"))
                         }
-                        HStack(spacing: 10) {
+                        AdaptiveStack(spacing: 10) {
                             // A finished one-shot job has nothing left to pause
                             // or resume.
                             if !job.isFinished {

@@ -78,6 +78,7 @@ struct LiveVoiceSetupSheet: View {
                 HStack(spacing: 8) {
                     Text(verbatim: "2")
                         .font(.caption.weight(.bold))
+                        .conduitFixedGlyph()
                         .foregroundStyle(.white)
                         .frame(width: 22, height: 22)
                         .background(Color.conduitAccent, in: Circle())

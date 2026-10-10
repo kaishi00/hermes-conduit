@@ -550,11 +550,11 @@ struct VoiceSettingsView: View {
 
     private var testButtons: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
+            AdaptiveStack(spacing: 10) {
                 Button { runTest(kind: .stt) } label: {
                     Label(AppLocalization.string("Test listening"), systemImage: "mic")
                         .frame(maxWidth: .infinity)
-                        .frame(height: 46)
+                        .padding(.vertical, 6).frame(minHeight: 46)
                 }
                 .disabled(actions.runASRTest == nil || isRunningTest || !supportsSelectedTranscription)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.14))
@@ -563,7 +563,7 @@ struct VoiceSettingsView: View {
                 Button { runTest(kind: .tts) } label: {
                     Label(AppLocalization.string("Test speaking"), systemImage: "speaker.wave.2")
                         .frame(maxWidth: .infinity)
-                        .frame(height: 46)
+                        .padding(.vertical, 6).frame(minHeight: 46)
                 }
                 .disabled(actions.runTTSTest == nil || isRunningTest || !service.snapshot.capability.supportsSpeech)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
@@ -1644,7 +1644,7 @@ struct VoiceCallSaveStatusSection: View {
             } label: {
                 Label(model.isSaving ? AppLocalization.string("Saving…") : AppLocalization.string("Save Now"), systemImage: "arrow.clockwise")
                     .frame(maxWidth: .infinity)
-                    .frame(height: 44)
+                    .padding(.vertical, 6).frame(minHeight: 44)
             }
             .disabled(model.isSaving || model.isWaitingOnCall)
             .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.14))

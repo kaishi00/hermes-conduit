@@ -203,7 +203,7 @@ private struct LegacySettingsView: View {
                 Label(isReconnecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Reconnect"), systemImage: "arrow.clockwise")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
-                    .frame(height: 44)
+                    .padding(.vertical, 6).frame(minHeight: 44)
             }
             .disabled(isReconnecting)
             .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
@@ -218,7 +218,7 @@ private struct LegacySettingsView: View {
                 .foregroundStyle(.secondary)
 
             ConduitGlassGroup(spacing: 8) {
-                HStack(spacing: 8) {
+                AdaptiveStack(spacing: 8) {
                     themeChoice(.dark, title: AppLocalization.string("Dark"), symbol: "moon.fill")
                     themeChoice(.light, title: AppLocalization.string("Light"), symbol: "sun.max.fill")
                     themeChoice(.system, title: AppLocalization.string("System"), symbol: "circle.lefthalf.filled")
@@ -234,7 +234,7 @@ private struct LegacySettingsView: View {
                 .foregroundStyle(.secondary)
 
             ConduitGlassGroup(spacing: 10) {
-                HStack(spacing: 10) {
+                AdaptiveStack(spacing: 10) {
                     busyModeChoice(.steer, symbol: BusyInputMode.steer.symbol, detail: AppLocalization.string("Guide safely"))
                     busyModeChoice(.interrupt, symbol: BusyInputMode.interrupt.symbol, detail: AppLocalization.string("Stop and correct"))
                 }
@@ -291,7 +291,7 @@ private struct LegacySettingsView: View {
             Label("Disconnect from Hermes", systemImage: "rectangle.portrait.and.arrow.right")
                 .font(.subheadline.weight(.semibold))
                 .frame(maxWidth: .infinity)
-                .frame(height: 48)
+                .padding(.vertical, 6).frame(minHeight: 48)
         }
         .conduitGlassControl(cornerRadius: 18, tint: .red.opacity(0.18))
     }
@@ -311,7 +311,7 @@ private struct LegacySettingsView: View {
             }
             .foregroundStyle(theme == value ? .primary : .secondary)
             .frame(maxWidth: .infinity)
-            .frame(height: 58)
+            .padding(.vertical, 6).frame(minHeight: 58)
         }
         .conduitGlassControl(
             cornerRadius: 16,
@@ -346,7 +346,7 @@ private struct LegacySettingsView: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 72)
+            .padding(.vertical, 6).frame(minHeight: 72)
             .padding(.horizontal, 12)
         }
         .foregroundStyle(busyInputMode == value ? .primary : .secondary)
@@ -757,6 +757,7 @@ struct SettingsView: View {
 
 private struct SettingsHome: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let snapshot: SettingsSnapshot
     @Binding var path: [SettingsDestination]
     @EnvironmentObject private var appState: AppState
@@ -937,10 +938,10 @@ private struct SettingsHome: View {
 
     private func settingsRowLabel(icon: String, title: String, detail: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).font(.subheadline.weight(.semibold)).foregroundStyle(.conduitAccent).frame(width: 25)
+            Image(systemName: icon).font(.subheadline.weight(.semibold)).conduitFixedGlyph().foregroundStyle(.conduitAccent).frame(width: 25)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadline.weight(.semibold))
-                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
             }
             Spacer(minLength: 8)
             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
@@ -1488,7 +1489,7 @@ private struct ProfileModelSettingsDetail: View {
                     Text("Default reasoning").foregroundStyle(.secondary)
                 }
             }
-            Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save model defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).frame(height: 46) }
+            Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save model defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 46) }
                 .disabled(saving || provider.isEmpty || model.isEmpty).conduitGlassControl(cornerRadius: 17, tint: .conduitAccent.opacity(0.18))
             if let error { Label(error, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(.red) }
         }
@@ -1582,7 +1583,7 @@ private struct DelegationModelSettings: View {
                     Text("Delegate reasoning").foregroundStyle(.secondary)
                 }
             } else { ProgressView("Loading available models…") }
-            Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save delegate defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).frame(height: 42) }
+            Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save delegate defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 42) }
                 .disabled(saving).conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
         }
@@ -1726,7 +1727,7 @@ struct ProfileConfigSettingsPage: View {
                     }
                 } label: {
                     HStack { Text(ProfileConfigValueDisplay.label(forFieldKey: field.key, displayedValue)); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary) }
-                        .font(.subheadline.weight(.medium)).padding(.horizontal, 12).frame(height: 42)
+                        .font(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42)
                 }
                 .disabled(savingKey != nil || choices.isEmpty).conduitGlassControl(cornerRadius: 14)
                 if choices.isEmpty { Text("No configured choices are available.").font(.caption).foregroundStyle(.secondary) }
@@ -1739,7 +1740,7 @@ struct ProfileConfigSettingsPage: View {
                     }
                 } label: {
                     HStack { Text(displayedValue); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary) }
-                        .font(.subheadline.weight(.medium)).padding(.horizontal, 12).frame(height: 42)
+                        .font(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42)
                 }
                 .disabled(savingKey != nil || options.isEmpty).conduitGlassControl(cornerRadius: 14)
             case .text(let defaultValue):
@@ -1752,10 +1753,10 @@ struct ProfileConfigSettingsPage: View {
     }
 
     private func textEditor(_ field: ProfileSettingField, defaultValue: String, keyboard: UIKeyboardType) -> some View {
-        HStack(spacing: 8) {
+        AdaptiveStack(spacing: 8) {
             TextField(field.label, text: Binding(get: { drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue) }, set: { drafts[field.key] = $0 }))
                 .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(keyboard)
-                .padding(.horizontal, 12).frame(height: 42).conduitGlassSurface(cornerRadius: 14)
+                .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42).conduitGlassSurface(cornerRadius: 14)
             Button("Save") {
                 let raw = drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue)
                 if case .number = field.control, let number = Double(raw) { save(field, value: .number(number)) }
@@ -1827,9 +1828,9 @@ private struct GatewaySettingsDetail: View {
             ConduitSettingsSection(title: AppLocalization.string("Connection"), symbol: "radio", tint: .conduitAura) {
                 SettingsMetricRow(label: AppLocalization.string("Server"), value: snapshot.server ?? "—", lineLimit: 1)
                 SettingsMetricRow(label: AppLocalization.string("Status"), value: connected ? AppLocalization.string("Connected") : AppLocalization.string("Disconnected"), valueColor: connected ? .green : .red, statusDot: connected ? .green : .red)
-                Button { Task { reconnecting = true; connected = await reconnect(); reconnecting = false } } label: { Label(reconnecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Reconnect"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity).frame(height: 44) }
+                Button { Task { reconnecting = true; connected = await reconnect(); reconnecting = false } } label: { Label(reconnecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Reconnect"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 44) }
                     .disabled(reconnecting).conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
-                Button { confirmingRestart = true } label: { Label("Restart Gateway", systemImage: "restart").frame(maxWidth: .infinity).frame(height: 44) }
+                Button { confirmingRestart = true } label: { Label("Restart Gateway", systemImage: "restart").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 44) }
                     .disabled(snapshot.server == nil || !appState.canRestartGateway)
                     .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.12))
                     .accessibilityIdentifier("settings.gateway.restart")
@@ -1865,7 +1866,7 @@ private struct GatewaySettingsDetail: View {
                 Text(AppLocalization.string("Reconnect after changing them."))
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            Button(role: .destructive) { disconnect(); close() } label: { Label(AppLocalization.string("Sign Out of This Dashboard"), systemImage: "rectangle.portrait.and.arrow.right").frame(maxWidth: .infinity).frame(height: 48) }
+            Button(role: .destructive) { disconnect(); close() } label: { Label(AppLocalization.string("Sign Out of This Dashboard"), systemImage: "rectangle.portrait.and.arrow.right").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 48) }
                 .conduitGlassControl(cornerRadius: 18, tint: .red.opacity(0.18))
         }
         .navigationTitle("Gateway")
@@ -2061,7 +2062,7 @@ private struct NotificationsSettingsDetail: View {
                         systemImage: notifications.isEnabled ? "bell.slash" : "bell.badge.fill"
                     )
                     .frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                    .padding(.vertical, 6).frame(minHeight: 48)
                     .foregroundStyle(notifications.isEnabled ? Color.primary : Color.white)
                 }
                 .disabled(notifications.isWorking)
@@ -2212,7 +2213,7 @@ private struct NotificationsSettingsDetail: View {
                     } label: {
                         Label(notifications.isWorking ? AppLocalization.string("Creating code…") : AppLocalization.string("Create pairing code"), systemImage: "number")
                             .frame(maxWidth: .infinity)
-                            .frame(height: 46)
+                            .padding(.vertical, 6).frame(minHeight: 46)
                     }
                     .disabled(notifications.isWorking || appState.activeDashboardID == nil)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
@@ -2287,7 +2288,7 @@ private struct NotificationsSettingsDetail: View {
                             systemImage: relayDraftIsUnsaved ? "checkmark" : "arrow.clockwise"
                         )
                             .frame(maxWidth: .infinity)
-                            .frame(height: 44)
+                            .padding(.vertical, 6).frame(minHeight: 44)
                     }
                     .disabled(notifications.isWorking)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
@@ -2300,7 +2301,7 @@ private struct NotificationsSettingsDetail: View {
                     } label: {
                         Label(AppLocalization.string("Reset to default relay"), systemImage: "arrow.counterclockwise")
                             .frame(maxWidth: .infinity)
-                            .frame(height: 44)
+                            .padding(.vertical, 6).frame(minHeight: 44)
                     }
                     .disabled(notifications.isWorking)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
@@ -2499,6 +2500,7 @@ struct NotificationSetupCommand: View {
             HStack(spacing: 8) {
                 Text("\(step)")
                     .font(.caption.weight(.bold))
+                    .conduitFixedGlyph()
                     .foregroundStyle(.white)
                     .frame(width: 22, height: 22)
                     .background(Color.conduitAccent, in: Circle())
@@ -2640,24 +2642,49 @@ struct SettingsMetricRow: View {
     var valueColor: Color = .secondary
     var statusDot: Color?
     var lineLimit: Int? = nil
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 10) {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 16)
-            if let statusDot {
-                Circle()
-                    .fill(statusDot)
-                    .frame(width: 7, height: 7)
-                    .shadow(color: statusDot.opacity(0.7), radius: 4)
+        // Large text: the value goes under its label instead of squeezing
+        // into a sliver beside it.
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    statusIndicator
+                    Text(value)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(valueColor)
+                        .lineLimit(lineLimit.map { $0 + 1 })
+                        .truncationMode(.middle)
+                }
             }
-            Text(value)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(valueColor)
-                .lineLimit(lineLimit)
-                .multilineTextAlignment(.trailing)
+            .font(.subheadline)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(spacing: 10) {
+                Text(label)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 16)
+                statusIndicator
+                Text(value)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(valueColor)
+                    .lineLimit(lineLimit)
+                    .multilineTextAlignment(.trailing)
+            }
+            .font(.subheadline)
         }
-        .font(.subheadline)
+    }
+
+    @ViewBuilder
+    private var statusIndicator: some View {
+        if let statusDot {
+            Circle()
+                .fill(statusDot)
+                .frame(width: 7, height: 7)
+                .shadow(color: statusDot.opacity(0.7), radius: 4)
+        }
     }
 }

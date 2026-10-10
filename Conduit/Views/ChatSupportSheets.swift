@@ -72,7 +72,7 @@ struct GatewayDiagnosticsSheet: View {
                     Label("Retry connection", systemImage: "arrow.clockwise")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 44)
+                        .padding(.vertical, 6).frame(minHeight: 44)
                 }
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
             }

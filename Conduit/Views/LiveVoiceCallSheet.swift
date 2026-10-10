@@ -500,11 +500,17 @@ private struct LiveVoiceCallButton: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.7)
+                    // A fifth of the width can't hold larger titles;
+                    // touch and hold shows the name large.
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityShowsLargeContentViewer {
+            Label { Text(verbatim: title) } icon: { Image(systemName: symbol) }
+        }
         .opacity(isEnabled ? 1 : 0.4)
         .accessibilityLabel(Text(verbatim: voiceOverLabel ?? title))
         .accessibilityHint(Text(verbatim: voiceOverHint ?? ""))

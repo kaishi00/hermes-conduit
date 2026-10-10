@@ -47,7 +47,7 @@ struct SavedDashboardsSettingsDetail: View {
                 } label: {
                     Label(AppLocalization.string("Add Dashboard"), systemImage: "plus")
                         .frame(maxWidth: .infinity)
-                        .frame(height: 44)
+                        .padding(.vertical, 6).frame(minHeight: 44)
                 }
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.12))
                 .accessibilityIdentifier("settings.add-dashboard")
