@@ -284,6 +284,8 @@ final class HermesWatchCalls: NSObject {
     /// The Watch ends the call: CallKit hears why.
     private func finish(_ id: UUID, reason: CXCallEndedReason) {
         guard let call = calls.removeValue(forKey: id) else { return }
+        // Rung out, or ended any other way: the same call never rings again.
+        noteSettled(call.ring.id)
         call.unanswered?.cancel()
         call.work?.cancel()
         if voiceCall == id { voiceCall = nil }

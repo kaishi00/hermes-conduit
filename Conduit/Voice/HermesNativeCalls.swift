@@ -186,8 +186,8 @@ final class HermesNativeCalls: NSObject {
         if Self.ringingBuilt, Self.ringingWanted, HermesNativeCallStorefront.allowsCalls(known) {
             startRinging()
         } else {
-            // A storefront without CallKit ends any call on. Once the
-            // setting has turned ringing off, calls still on finish.
+            // Where CallKit isn't allowed, calls on end too. Once the
+            // setting has turned ringing off, a call still on carries on.
             stopRinging(endingCalls: registry != nil)
         }
     }
@@ -229,7 +229,7 @@ final class HermesNativeCalls: NSObject {
     }
 
     /// Calls go back to notifications: the relay forgets the token.
-    private func stopRinging(endingCalls: Bool = true) {
+    private func stopRinging(endingCalls: Bool) {
         if let registry {
             registry.desiredPushTypes = []
             registry.delegate = nil
