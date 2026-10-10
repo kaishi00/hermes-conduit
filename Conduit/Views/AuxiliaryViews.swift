@@ -1779,6 +1779,7 @@ struct ProfileConfigSettingsPage: View {
 
 private struct GatewaySettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var appState: AppState
     let snapshot: SettingsSnapshot
     let reconnect: () async -> Bool
     let disconnect: () -> Void
@@ -1793,6 +1794,7 @@ private struct GatewaySettingsDetail: View {
     @State private var cloudflareEnabled: Bool
     @State private var clientID: String
     @State private var clientSecret = ""
+    @State private var confirmingRestart = false
 
     init(snapshot: SettingsSnapshot, reconnect: @escaping () async -> Bool, disconnect: @escaping () -> Void, close: @escaping () -> Void, saveCloudflareAccess: @escaping (String, String) -> Void, removeCloudflareAccess: @escaping () -> Void, customHeaders: [CustomHeader], saveCustomHeaders: @escaping ([CustomHeader]) -> Void) {
         self.snapshot = snapshot; self.reconnect = reconnect; self.disconnect = disconnect; self.close = close
@@ -1810,6 +1812,13 @@ private struct GatewaySettingsDetail: View {
                 SettingsMetricRow(label: AppLocalization.string("Status"), value: connected ? AppLocalization.string("Connected") : AppLocalization.string("Disconnected"), valueColor: connected ? .green : .red, statusDot: connected ? .green : .red)
                 Button { Task { reconnecting = true; connected = await reconnect(); reconnecting = false } } label: { Label(reconnecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Reconnect"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity).frame(height: 44) }
                     .disabled(reconnecting).conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
+                Button { confirmingRestart = true } label: { Label("Restart Gateway", systemImage: "restart").frame(maxWidth: .infinity).frame(height: 44) }
+                    .disabled(snapshot.server == nil || !appState.canRestartGateway)
+                    .conduitGlassControl(cornerRadius: 16, tint: .orange.opacity(0.12))
+                    .accessibilityIdentifier("settings.gateway.restart")
+                GatewayRestartStatusView()
+                Text("Reconnect only reconnects Conduit. Restart Gateway restarts Hermes' gateway on your host.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield.lefthalf.filled", tint: .conduitAccent) {
                 Toggle("Use service token", isOn: Binding(get: { cloudflareEnabled }, set: { enabled in
@@ -1843,6 +1852,7 @@ private struct GatewaySettingsDetail: View {
                 .conduitGlassControl(cornerRadius: 18, tint: .red.opacity(0.18))
         }
         .navigationTitle("Gateway")
+        .gatewayRestartConfirmation(isPresented: $confirmingRestart)
         .sheet(isPresented: $showCustomHeaders) {
             CustomHeadersEditorSheet(serverURL: snapshot.server ?? "", headers: customHeaders) { headers in
                 saveCustomHeaders(headers)
