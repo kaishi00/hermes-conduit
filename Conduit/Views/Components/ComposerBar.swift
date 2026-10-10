@@ -26,6 +26,7 @@ struct ComposerBar: View {
     @State private var showAttachmentMenu = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var showDocumentPicker = false
+    @State private var showCamera = false
     @State private var isFocused = false
     @State private var isShowingSlashSuggestions = false
     @State private var composerErrorMessage: String?
@@ -48,6 +49,7 @@ struct ComposerBar: View {
     @State private var photoImportContext: AsyncAttachmentContext?
     @State private var photoImportGeneration: UInt64 = 0
     @State private var documentImportContext: AsyncAttachmentContext?
+    @State private var cameraImportContext: AsyncAttachmentContext?
     @State private var attachmentGeneration: UInt64 = 0
     @State private var suppressNextTextChangeSuggestions = false
     /// Round 6: non-nil presents the Repair Connection wizard seeded from
@@ -402,6 +404,12 @@ struct ComposerBar: View {
                 clearDocumentImportContextIfCurrent(origin)
             }
         )
+        .fullScreenCover(isPresented: $showCamera, onDismiss: { cameraImportContext = nil }) {
+            CameraCapture { image in
+                handleCapturedPhoto(image, startedIn: cameraImportContext)
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private var composerContent: some View {
@@ -870,6 +878,14 @@ struct ComposerBar: View {
 
     private var attachmentButton: some View {
         Menu {
+            if CameraCapture.isAvailable {
+                Button {
+                    cameraImportContext = asyncAttachmentContext
+                    showCamera = true
+                } label: {
+                    Label("Camera", systemImage: "camera")
+                }
+            }
             Button {
                 openPhotoLibraryPicker()
             } label: {
@@ -1767,6 +1783,33 @@ struct ComposerBar: View {
         } catch {
             return .failed(name)
         }
+    }
+
+    /// A photo from the Camera item, staged like a picked one: encoded as
+    /// JPEG off the main actor, then size checked.
+    private func handleCapturedPhoto(_ image: UIImage, startedIn origin: AsyncAttachmentContext?) {
+        guard let origin, shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { return }
+        let limitMegabytes = attachmentLimitMegabytes
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                Self.stageCapturedPhoto(image, limitMegabytes: limitMegabytes)
+            }.value
+            guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
+                if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                return
+            }
+            var tally = ImportTally()
+            record(outcome, in: &tally)
+            finishImport(tally, limitMegabytes: limitMegabytes)
+        }
+    }
+
+    nonisolated static func stageCapturedPhoto(_ image: UIImage, limitMegabytes: Int) -> StagedImport {
+        let name = AttachmentTypePolicy.jpegFilename(for: "photo")
+        guard let data = image.jpegData(compressionQuality: 0.9),
+              let url = try? AttachmentStaging.destination(for: name),
+              (try? data.write(to: url, options: .atomic)) != nil else { return .failed(name) }
+        return AttachmentStaging.finishStaging(fileAt: url, name: name, type: .jpeg, limitMegabytes: limitMegabytes)
     }
 
     private func clearDocumentImportContextIfCurrent(_ completingContext: AsyncAttachmentContext?) {
