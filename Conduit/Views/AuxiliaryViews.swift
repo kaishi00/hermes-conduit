@@ -1736,7 +1736,7 @@ struct ProfileConfigSettingsPage: View {
     }
 
     private func textEditor(_ field: ProfileSettingField, defaultValue: String, keyboard: UIKeyboardType) -> some View {
-        HStack(spacing: 8) {
+        AdaptiveStack(spacing: 8) {
             TextField(field.label, text: Binding(get: { drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue) }, set: { drafts[field.key] = $0 }))
                 .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(keyboard)
                 .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42).conduitGlassSurface(cornerRadius: 14)
