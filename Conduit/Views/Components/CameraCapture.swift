@@ -7,13 +7,25 @@
 //  so this wraps UIImagePickerController.
 //
 
+import AVFoundation
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct CameraCapture: UIViewControllerRepresentable {
     /// Whether this device has a camera (the simulator doesn't).
     static var isAvailable: Bool {
         UIImagePickerController.isSourceTypeAvailable(.camera)
+    }
+
+    /// Whether the user has turned camera access off (or a profile has).
+    /// The picker would open to a black screen then, so the composer says
+    /// where to allow it instead.
+    static var isAccessDenied: Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .denied, .restricted: return true
+        default: return false
+        }
     }
 
     let onCapture: (UIImage) -> Void
@@ -24,17 +36,20 @@ struct CameraCapture: UIViewControllerRepresentable {
         // Photos only: recording video would also need the microphone,
         // whose purpose string covers voice only.
         picker.sourceType = .camera
+        picker.mediaTypes = [UTType.image.identifier]
         picker.cameraCaptureMode = .photo
         picker.delegate = context.coordinator
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {
+        context.coordinator.parent = self
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let parent: CameraCapture
+        var parent: CameraCapture
         init(_ parent: CameraCapture) { self.parent = parent }
 
         func imagePickerController(

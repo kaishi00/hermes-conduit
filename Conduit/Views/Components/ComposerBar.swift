@@ -880,6 +880,11 @@ struct ComposerBar: View {
         Menu {
             if CameraCapture.isAvailable {
                 Button {
+                    guard !CameraCapture.isAccessDenied else {
+                        composerErrorMessage = AppLocalization.string("Taking a photo needs camera access. You can allow it in Settings.")
+                        Haptics.error()
+                        return
+                    }
                     cameraImportContext = asyncAttachmentContext
                     showCamera = true
                 } label: {
@@ -1574,6 +1579,7 @@ struct ComposerBar: View {
         photoItems = []
         photoImportContext = nil
         documentImportContext = nil
+        cameraImportContext = nil
         editorIdentity = UUID()
     }
 
