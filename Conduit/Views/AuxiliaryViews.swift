@@ -755,6 +755,7 @@ struct SettingsView: View {
 
 private struct SettingsHome: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let snapshot: SettingsSnapshot
     @Binding var path: [SettingsDestination]
     @EnvironmentObject private var appState: AppState
@@ -938,7 +939,7 @@ private struct SettingsHome: View {
             Image(systemName: icon).font(.subheadline.weight(.semibold)).foregroundStyle(.conduitAccent).frame(minWidth: 25)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadline.weight(.semibold))
-                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(4)
+                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
             }
             Spacer(minLength: 8)
             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)

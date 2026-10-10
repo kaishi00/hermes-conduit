@@ -115,12 +115,13 @@ struct ComposerPasteTextView: UIViewRepresentable {
     func updateUIView(_ uiView: ImagePasteTextView, context: Context) {
         TranscriptPerf.note(.composerUpdateUIView)
         // Text Size changed while the app was open: the font follows on its
-        // own, the height bounds need re-reading.
-        let minimumHeight = Self.minimumHeight
-        let maximumHeight = Self.maximumHeight
-        if uiView.minimumReportedHeight != minimumHeight || uiView.maximumReportedHeight != maximumHeight {
-            uiView.minimumReportedHeight = minimumHeight
-            uiView.maximumReportedHeight = maximumHeight
+        // own, the height bounds need re-reading. Checked by category so the
+        // hot update path doesn't look up fonts.
+        let category = uiView.traitCollection.preferredContentSizeCategory
+        if uiView.boundsContentSizeCategory != category {
+            uiView.boundsContentSizeCategory = category
+            uiView.minimumReportedHeight = Self.minimumHeight
+            uiView.maximumReportedHeight = Self.maximumHeight
             uiView.setNeedsLayout()
         }
         context.coordinator.parent = self
@@ -376,6 +377,8 @@ final class ImagePasteTextView: UITextView {
     var onContentHeightChange: ((CGFloat) -> Void)?
     var editorIdentity: UUID?
     var minimumReportedHeight: CGFloat = 44
+    /// The Text Size the height bounds were last read at.
+    var boundsContentSizeCategory: UIContentSizeCategory?
     var maximumReportedHeight: CGFloat = 160
     private var lastReportedHeight: CGFloat = 0
 
