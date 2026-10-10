@@ -1435,7 +1435,7 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
                     VStack(alignment: .leading, spacing: 2) {
                         label
                         HStack {
-                            valueText
+                            valueText.accessibilityHidden(true)
                             Spacer(minLength: 8)
                             chevron
                         }
@@ -1444,7 +1444,7 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
                     HStack {
                         label
                         Spacer(minLength: 8)
-                        valueText.multilineTextAlignment(.trailing)
+                        valueText.multilineTextAlignment(.trailing).accessibilityHidden(true)
                         chevron
                     }
                 }
@@ -1454,6 +1454,8 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
             .padding(.vertical, 6).frame(minHeight: 42)
             .contentShape(Rectangle())
         }
+        // VoiceOver reads "Name, Value" like a picker instead of one run-on label.
+        .accessibilityValue(valueText)
         .conduitGlassControl(cornerRadius: 14)
     }
 }
