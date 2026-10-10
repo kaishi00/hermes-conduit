@@ -2750,6 +2750,57 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.store.snapshot(for: key), .latest)
     }
 
+    func testNotificationOpenLaidOutDuringItsContextRefreshStillOpened() async {
+        // On screen, the chat lays out the resumed transcript while the open
+        // still waits on its context refresh, which ends the viewport
+        // transition. That is this open finishing, not a newer navigation:
+        // a call from Hermes (#449) opens voice only after an open that says
+        // it opened.
+        let appReference = WeakAppStateReference()
+        let messagesB = [
+            ChatMessage(id: "b", role: .assistant, content: "B", timestamp: "1")
+        ]
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [self.session("stored-b")] },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: messagesB,
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                refreshContext: { _, _ in
+                    guard let app = appReference.value,
+                          let key = app.activeChatScrollSessionIdentity.canonicalSessionKey
+                            ?? app.activeSessionId.map({ ChatScrollSessionKey(profile: app.activeProfile, sessionID: $0) })
+                    else { return }
+                    app.chatViewportLayoutDidSettle(
+                        sessionKey: key,
+                        transitionGeneration: app.chatViewportTransitionGeneration,
+                        transcriptRevision: app.chatTranscriptRevision,
+                        renderRevision: 1,
+                        receivedScopedPreference: true
+                    )
+                }
+            )
+        )
+        appReference.value = harness.appState
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+
+        let opened = await harness.appState.openNotificationTarget(
+            ConduitNotificationTarget(profile: nil, sessionId: "stored-b", type: nil)
+        )
+
+        XCTAssertTrue(opened, "The chat laying out its own transcript is the open finishing")
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-b")
+        XCTAssertEqual(harness.appState.messages, messagesB)
+    }
+
     func testStaleNotificationContinuationCannotSupersedeNewerSessionTransition() async {
         let notificationCatalogGate = ControlledSuspension()
         let messagesB = [

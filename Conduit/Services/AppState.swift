@@ -5908,8 +5908,14 @@ final class AppState: ObservableObject {
         return chatViewportTransitionGeneration
     }
 
+    /// Whether the navigation that began transition `generation` still owns
+    /// the chat: no newer one has begun a transition. A transition that
+    /// finished in place (the chat laid out its new transcript, or its
+    /// restoration was given up) still does. On screen the chat lays out
+    /// while an open still awaits its context refresh: that open finished,
+    /// nothing superseded it (#449).
     private func chatViewportTransitionIsCurrent(generation: UInt64) -> Bool {
-        chatViewportTransition?.generation == generation
+        chatViewportTransitionGeneration == generation
     }
 
     private func chatViewportTransitionIsCurrent(_ generation: UInt64?) -> Bool {
@@ -15221,7 +15227,10 @@ final class AppState: ObservableObject {
         isOpeningNotificationSession = true
         let transitionGeneration = beginExplicitChatViewportTransition()
         defer {
-            cancelChatViewportTransitionIfNoReplacement(generation: transitionGeneration)
+            // Ends with no transcript of its own laid out (a profile switch
+            // it lent the transition to marks a replacement but replaces no
+            // transcript): the viewport is released, not left frozen.
+            finishChatViewportTransitionIfNoTranscriptReplacement(generation: transitionGeneration)
             finishNotificationOpenAttempt(id: notificationAttemptID)
         }
         guard notificationOpenAttemptIsCurrent(
@@ -15596,7 +15605,7 @@ final class AppState: ObservableObject {
             && chatViewportTransitionIsCurrent(generation: transitionGeneration)
         if !current {
             HermesCallTrace.shared.note(
-                "Chat open superseded (different open: \(activeNotificationOpenAttemptID != id), chat view moved: \(!chatViewportTransitionIsCurrent(generation: transitionGeneration)))"
+                "Chat open superseded (different open: \(activeNotificationOpenAttemptID != id), newer chat open: \(!chatViewportTransitionIsCurrent(generation: transitionGeneration)))"
             )
         }
         return current
@@ -20598,9 +20607,14 @@ final class AppState: ObservableObject {
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
             }
-            finishChatViewportTransitionIfNoTranscriptReplacement(
-                generation: transitionGeneration
-            )
+            // A transition borrowed from an open that goes on (a
+            // notification) stays with it: the chat it opens next lays out
+            // under it.
+            if viewportTransitionGeneration == nil {
+                finishChatViewportTransitionIfNoTranscriptReplacement(
+                    generation: transitionGeneration
+                )
+            }
             await loadChatResumeBusyInputMode(using: nextClient)
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
