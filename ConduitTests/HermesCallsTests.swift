@@ -926,4 +926,47 @@ extension VoiceConversationControllerTests {
         }
         XCTAssertEqual(waitingOutcomes(defaults), [])
     }
+
+    func testOnlyACallTheUserDidntPickUpIsReported() {
+        XCTAssertEqual(HermesCallOutcome.of(.declined, answered: false), .declined)
+        XCTAssertNil(HermesCallOutcome.of(.declined, answered: true), "Hung up after answering")
+        XCTAssertEqual(HermesCallOutcome.of(.finished(.missed), answered: false), .missed, "Rang out")
+        XCTAssertNil(HermesCallOutcome.of(.finished(.missed), answered: true), "Answered a push that had no call in it")
+        XCTAssertNil(HermesCallOutcome.of(.finished(.talk), answered: true), "Answered, but voice couldn't open")
+        XCTAssertNil(HermesCallOutcome.of(.finished(.none), answered: true), "Voice ran and ended")
+        XCTAssertEqual(HermesCallOutcome.of(.reset, answered: false), .missed)
+        XCTAssertNil(HermesCallOutcome.of(.reset, answered: true))
+    }
+
+    func testOutcomesBelongToTheHostThatPlacedTheCall() async throws {
+        let defaults = try outcomeDefaults()
+        let home = UUID(), other = UUID()
+        // Ids are each host's own: the same id from two hosts is two calls.
+        try recordOutcome(.missed, outcomeTarget(id: "call-shared", dashboard: home), in: defaults)
+        try recordOutcome(.declined, outcomeTarget(id: "call-shared", dashboard: other), in: defaults)
+        XCTAssertEqual(waitingOutcomes(defaults), ["call-shared", "call-shared"])
+        await HermesCallOutcomeOutbox.deliver(dashboard: home.uuidString, activeProfile: "default", takesOutcomes: true, defaults: defaults) { _, _ in }
+        XCTAssertEqual(HermesCallOutcomeOutbox.load(from: defaults).entries.map(\.dashboard), [other.uuidString])
+
+        // A dashboard id Conduit can't read could be any host: no report.
+        let call = HermesCallRequest(id: "a1b2c3d4e5f6a1b2c3d4e5f6", kind: .done, title: "Deploy", sessionIDs: ["rt-1"])
+        let unreadable = ConduitNotificationTarget(profile: "work", sessionId: "rt-1", hasMalformedDashboardID: true, type: HermesCallRequest.type, call: call)
+        XCTAssertNil(HermesCallOutcomeOutbox.Entry(.missed, target: unreadable, at: Date()))
+    }
+
+    func testAHostThatAnswersWithoutTakingAnOutcomeIsNotAskedAgain() async throws {
+        let defaults = try outcomeDefaults()
+        try recordOutcome(.missed, outcomeTarget(id: "call-not-ok"), in: defaults)
+        try recordOutcome(.missed, outcomeTarget(id: "call-unpaired"), in: defaults)
+        let client = HermesCallsClient(request: { _, _, body in
+            if body?["call_id"] as? String == "call-unpaired" {
+                throw DashboardTicketBridgeError.http(status: 409, detail: "This Hermes profile isn't paired with Conduit")
+            }
+            return ["ok": false]
+        })
+        await HermesCallOutcomeOutbox.deliver(dashboard: nil, activeProfile: "default", takesOutcomes: true, defaults: defaults) { entry, profile in
+            try await client.reportOutcome(entry, profile: profile)
+        }
+        XCTAssertEqual(waitingOutcomes(defaults), [], "Neither would ever be taken")
+    }
 }

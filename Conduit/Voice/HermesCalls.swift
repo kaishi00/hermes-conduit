@@ -758,6 +758,27 @@ enum HermesCallOutcome: String, Codable, Equatable {
     /// It rang out, Do Not Disturb silenced it, or it reached the phone too
     /// late to ring.
     case missed
+
+    /// What the host hears when a ringing call ends `end`: nothing once the
+    /// user picked up.
+    static func of(_ end: HermesCallEnd, answered: Bool) -> HermesCallOutcome? {
+        guard !answered else { return nil }
+        switch end {
+        case .declined: return .declined
+        case .finished(let notice): return notice == .missed ? .missed : nil
+        case .reset: return .missed
+        }
+    }
+}
+
+/// How a call from Hermes that CallKit showed came to an end.
+enum HermesCallEnd: Equatable {
+    /// The user ended it in CallKit (Decline while it rang).
+    case declined
+    /// Conduit ended it, with this notice after it.
+    case finished(HermesNativeCallPlan.Notice)
+    /// CallKit reset.
+    case reset
 }
 
 /// Calls from Hermes the user declined or didn't answer, on their way to
@@ -780,9 +801,11 @@ struct HermesCallOutcomeOutbox: Codable, Equatable {
         var profile: String?
         var at: Date
 
-        /// Nil for a call with no id: the host has nothing to match it to.
+        /// Nil for a call with no id (the host has nothing to match it to),
+        /// or from a dashboard Conduit can't read (it could reach the wrong
+        /// host).
         init?(_ outcome: HermesCallOutcome, target: ConduitNotificationTarget, at: Date) {
-            guard let call = target.call, !call.id.isEmpty else { return nil }
+            guard let call = target.call, !call.id.isEmpty, !target.hasMalformedDashboardID else { return nil }
             callID = call.id
             self.outcome = outcome
             sessionIDs = call.sessionIDs.isEmpty ? [target.sessionId] : call.sessionIDs
@@ -818,8 +841,9 @@ struct HermesCallOutcomeOutbox: Codable, Equatable {
     var entries: [Entry] = []
 
     mutating func add(_ entry: Entry) {
-        // A call ends once; the first word on it stands.
-        guard !entries.contains(where: { $0.callID == entry.callID }) else { return }
+        // A call ends once; the first word on it stands. Ids are each host's
+        // own.
+        guard !entries.contains(where: { $0.dashboard == entry.dashboard && $0.callID == entry.callID }) else { return }
         entries.append(entry)
         if entries.count > Self.maximumEntries { entries.removeFirst(entries.count - Self.maximumEntries) }
     }
@@ -889,16 +913,18 @@ struct HermesCallOutcomeOutbox: Codable, Equatable {
                 }
                 // Read again: others may have been recorded meanwhile.
                 var current = load(from: defaults)
-                current.entries.removeAll { $0.callID == entry.callID }
+                current.entries.removeAll { $0.dashboard == entry.dashboard && $0.callID == entry.callID }
                 current.store(in: defaults)
             }
         } while deliversAgain
     }
 
-    /// The host refused it as it is: sending it again won't change that.
+    /// The host refused it as it is (or answered without taking it):
+    /// sending it again won't change that.
     private static func refusesForGood(_ error: Error) -> Bool {
+        if case HermesCallsError.malformed = error { return true }
         guard case DashboardTicketBridgeError.http(let status, _) = error else { return false }
-        return [400, 404, 405, 413, 422].contains(status)
+        return [400, 404, 405, 409, 410, 413, 422].contains(status)
     }
 }
 
