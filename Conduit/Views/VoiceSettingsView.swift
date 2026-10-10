@@ -1116,6 +1116,9 @@ struct VoiceSettingsView: View {
                 initialPhrases: stopPhrasesShown,
                 onChange: { phrases in
                     setStopPhrases(phrases)
+                    // Kept current, so a reset to the built-ins always
+                    // changes the editor's identity and reseeds it.
+                    stopPhrasesShown = phrases
                     stopPhrasesCustomized = Self.isCustomStopList(phrases)
                 }
             )
@@ -1126,6 +1129,7 @@ struct VoiceSettingsView: View {
                 initialPhrases: endPhrasesShown,
                 onChange: { phrases in
                     setEndConversationPhrases(phrases)
+                    endPhrasesShown = phrases
                     endPhrasesCustomized = Self.isCustomEndList(phrases)
                 }
             )
