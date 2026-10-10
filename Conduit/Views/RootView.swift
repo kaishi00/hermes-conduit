@@ -461,7 +461,8 @@ private struct ChatTitleControl: View {
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
-            .accessibilityShowsLargeContentViewer { Text(appState.displayedChatTitle) }
+            // No large content viewer here: its touch and hold would take
+            // the one that opens the conversation actions.
             .accessibilityLabel(appState.displayedChatTitle)
             .accessibilityHint(AppLocalization.string("Scroll to top of conversation. Touch and hold for conversation actions."))
             // VoiceOver may open the menu on activation; the scroll stays

@@ -253,6 +253,9 @@ struct SessionList: View {
                     .buttonStyle(.plain)
                     .conduitGlassControl(cornerRadius: 14)
                     .disabled(!appState.canStartPhoneVoiceConversation || appState.isVoiceInUse)
+                    .accessibilityShowsLargeContentViewer {
+                        Label("New voice call", systemImage: "waveform")
+                    }
                     .accessibilityLabel("New voice call")
                     .accessibilityHint(appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Starts a voice call that isn't tied to a chat"))
                 }
