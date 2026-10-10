@@ -2864,6 +2864,62 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
+    func testChatLinkStopsBeforeTheProfileSwitchWhenACallStartedMeanwhile() async {
+        // A call from Hermes needs no tap, so one can ring while a chat
+        // link's open waits on the gateway: on its bot checks, or on the
+        // switch's own ticket. The link then stops short of the profile
+        // switch, which would end the call.
+        for duringTicket in [false, true] {
+            let defaultSession = session("default-session")
+            let appReference = WeakAppStateReference()
+            let harness = makeHarness(
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    connectClient: { _ in },
+                    loadCatalog: { _, _ in [defaultSession] },
+                    mintTicket: { _ in
+                        if duringTicket { appReference.value?.isNativeHermesCallActive = true }
+                        return "profile-ticket"
+                    },
+                    refreshContext: { _, _ in },
+                    loadProfiles: {},
+                    loadBusyInputMode: { _ in },
+                    loadProfileDisplayPreferences: {},
+                    loadSlashCommands: {},
+                    botRoster: { _ in
+                        if !duringTicket { appReference.value?.isNativeHermesCallActive = true }
+                        return BotRosterSnapshot(bots: [], supportsBotProtocol: false)
+                    },
+                    findBotChat: { _, _ in [] }
+                )
+            )
+            appReference.value = harness.appState
+            let connection = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+            harness.appState.connection = connection
+            harness.appState.client = HermesClient(connection: connection, profile: "default")
+            harness.appState.isConnected = true
+            harness.appState.showLogin = false
+            harness.appState.sessions = [defaultSession]
+            harness.appState.activeSessionId = defaultSession.id
+            let target = ConduitNotificationTarget(
+                profile: "work",
+                sessionId: "work-session",
+                type: nil,
+                isChatLink: true
+            )
+
+            let opened = await harness.appState.openNotificationTarget(target)
+
+            XCTAssertFalse(opened, "call started during the ticket: \(duringTicket)")
+            XCTAssertEqual(harness.appState.activeProfile, "default")
+            XCTAssertEqual(harness.appState.activeSessionId, defaultSession.id)
+            XCTAssertEqual(harness.appState.connection, connection)
+            XCTAssertEqual(
+                harness.appState.errorMessage,
+                AppLocalization.string("End the call to open a chat in another profile.")
+            )
+        }
+    }
+
     /// Conduit on the default profile with a call answered for a chat on the
     /// work profile, routed the way an on-screen answer is: the pending
     /// target keeps the switch's own sync from resuming a chat.

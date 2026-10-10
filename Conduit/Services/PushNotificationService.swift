@@ -37,6 +37,10 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
     /// The call a "Hermes wants to talk" notification carries (#449); nil
     /// for every other notification.
     let call: HermesCallRequest?
+    /// Opened from a chat link (`conduit://session/<id>?profile=…`), not a
+    /// notification: it never switches profile while a call runs, because
+    /// the switch would end the call.
+    let isChatLink: Bool
     var id: String { "\(dashboardID?.uuidString ?? "none"):\(relayGatewayID ?? "nogw"):\(profile ?? "default"):\(sessionId):\(type ?? "")" }
 
     init(
@@ -48,7 +52,8 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
         relayGatewayID: String? = nil,
         type: String?,
         decision: PendingDecisionPayload? = nil,
-        call: HermesCallRequest? = nil
+        call: HermesCallRequest? = nil,
+        isChatLink: Bool = false
     ) {
         self.profile = profile
         self.sessionId = sessionId
@@ -59,6 +64,7 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
         self.type = type
         self.decision = decision
         self.call = call
+        self.isChatLink = isChatLink
     }
 }
 
@@ -1306,6 +1312,12 @@ final class PushNotificationService: ObservableObject {
     /// A call from Hermes answered with Conduit on screen opens as its
     /// notification's Talk button would (#449).
     func routeAnsweredHermesCall(_ target: ConduitNotificationTarget) {
+        route(target)
+    }
+
+    /// A chat link for another profile (`conduit://session/<id>?profile=…`)
+    /// opens as a notification for that chat would.
+    func routeChatLink(_ target: ConduitNotificationTarget) {
         route(target)
     }
 

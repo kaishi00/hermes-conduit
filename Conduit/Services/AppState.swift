@@ -4557,10 +4557,22 @@ final class AppState: ObservableObject {
         return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open chat"))
     }
 
-    /// Opens a link Conduit wrote into a chat (a voice call's job link).
+    /// Opens a link Conduit wrote into a chat (a voice call's job link), or
+    /// one another app opened Conduit with.
     func openAppLink(_ link: ConduitAppLink) {
         switch link {
-        case .session(let id):
+        case .session(let id, let profile):
+            // A blank profile names none: the chat opens on the profile in use.
+            if let named = notificationProfileID(profile), named != activeProfile {
+                Task { @MainActor [weak self] in await self?.routeLinkedSession(id, toProfile: named) }
+                return
+            }
+            // A bot's own chat opens through the bot that owns it, as it
+            // does from a link for another profile.
+            if let owner = botOwnership.botProfileName(owningAny: [id]) {
+                openLinkedBotChat(owner)
+                return
+            }
             // Some failed opens say nothing themselves; a deleted job
             // shouldn't make the link look dead.
             // Job links and chat-turn links share this route.
@@ -4568,6 +4580,50 @@ final class AppState: ObservableObject {
         case .bot(let profile):
             openLinkedBotChat(profile)
         }
+    }
+
+    /// Routes a chat a link puts on another profile. It goes the way a
+    /// notification for that chat goes: that route switches profile and
+    /// keeps the switch's own sync from opening a different chat. Another
+    /// app can send the link, so it only switches to a profile this
+    /// dashboard lists, and never while a call would end with the switch.
+    func routeLinkedSession(_ id: String, toProfile profile: String) async {
+        // A bot's own chat opens through the bot that owns it, whatever
+        // profile the link names. That switches nothing, so a call goes on.
+        if let owner = botOwnership.botProfileName(owningAny: [id]) {
+            openLinkedBotChat(owner)
+            return
+        }
+        guard !isVoiceCallInProgress else {
+            errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+            return
+        }
+        if let listed = notificationProfileID(profile), listed != "default", !profiles.contains(listed) {
+            // The saved list can predate a new profile (or a first pairing):
+            // read it once before saying the chat is gone. A list that
+            // can't be read (offline) says nothing about the profile.
+            let dashboardID = activeDashboardID
+            let read = await readProfiles()
+            // A dashboard switched meanwhile is the later choice; the link
+            // was read in the one before it.
+            guard activeDashboardID == dashboardID else { return }
+            guard read else {
+                errorMessage = AppLocalization.string(
+                    "Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment."
+                )
+                return
+            }
+        }
+        guard let target = notificationProfileID(profile),
+              target == "default" || profiles.contains(target) else {
+            errorMessage = AppLocalization.string("That chat is no longer available.")
+            return
+        }
+        PushNotificationService.shared.routeChatLink(
+            ConduitNotificationTarget(
+                profile: target, sessionId: id, dashboardID: activeDashboardID, type: nil, isChatLink: true
+            )
+        )
     }
 
     /// Opens a bot's chat from a link or card Conduit wrote. The roster is
@@ -5101,6 +5157,13 @@ final class AppState: ObservableObject {
     /// dictation steps aside.
     var isVoiceInUse: Bool {
         showVoiceSheet || isLiveVoiceCallActive || voiceConversationController.hasLiveVoiceSession
+    }
+
+    /// A call runs somewhere: on this screen or minimised, in CarPlay, on
+    /// the Watch, or a call from Hermes. A profile switch would end it.
+    var isVoiceCallInProgress: Bool {
+        isVoiceInUse || minimisedLiveVoice != nil || isCarPlayVoiceSurfaceActive
+            || isWatchVoiceCallActive || isNativeHermesCallActive
     }
 
     /// Continues a saved call with a new live call on the selected engine.
@@ -15344,10 +15407,19 @@ final class AppState: ObservableObject {
             }
         }
         if let targetProfile, targetProfile != activeProfile {
+            // A call can have started (one from Hermes needs no tap) while
+            // the checks above waited on the gateway; a chat link never ends
+            // it with the switch.
+            if target.isChatLink, isVoiceCallInProgress {
+                traceStage = "call in progress"
+                errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+                return false
+            }
             traceStage = "profile switch"
             guard await switchProfile(
                 to: targetProfile,
-                reusing: transitionGeneration
+                reusing: transitionGeneration,
+                sparingCalls: target.isChatLink
             ) else { return false }
         }
         guard notificationOpenAttemptIsCurrent(
@@ -20482,13 +20554,41 @@ final class AppState: ObservableObject {
     @discardableResult
     private func switchProfile(
         to profile: String,
-        reusing viewportTransitionGeneration: UInt64?
+        reusing viewportTransitionGeneration: UInt64?,
+        sparingCalls: Bool = false
     ) async -> Bool {
         let target = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !target.isEmpty, target != activeProfile, let savedConnection = connection else {
             return false
         }
         guard !isProfileSwitching else { return false }
+        // A switch that spares calls (a chat link's) mints its ticket before
+        // anything changes, so nothing waits between its call check and the
+        // voice teardown below.
+        var sparedCallTicket: String?
+        if sparingCalls {
+            var mintError: Error?
+            do {
+                sparedCallTicket = try await mintChatResumeTicket(for: savedConnection)
+            } catch {
+                mintError = error
+            }
+            // A newer navigation or switch that started meanwhile owns the
+            // screen now.
+            if let viewportTransitionGeneration,
+               !chatViewportTransitionIsCurrent(generation: viewportTransitionGeneration) {
+                return false
+            }
+            guard !isProfileSwitching, target != activeProfile, connection == savedConnection else { return false }
+            if let mintError {
+                errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: mintError))")
+                return false
+            }
+            guard !isVoiceCallInProgress else {
+                errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+                return false
+            }
+        }
         // A profile change replaces the voice gateway; any in-flight read
         // aloud belongs to the outgoing profile.
         messageReadAloudController.stop()
@@ -20536,7 +20636,12 @@ final class AppState: ObservableObject {
         lastReportedSessionYolo = nil
 
         do {
-            let ticket = try await mintChatResumeTicket(for: savedConnection)
+            let ticket: String
+            if let sparedCallTicket {
+                ticket = sparedCallTicket
+            } else {
+                ticket = try await mintChatResumeTicket(for: savedConnection)
+            }
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
             }
@@ -20666,7 +20771,15 @@ final class AppState: ObservableObject {
     }
 
     func loadProfiles() async {
-        guard let bridge = dashboardTicketBridge else { return }
+        await readProfiles()
+    }
+
+    /// Reads the host's profile list. False when it wasn't read for this
+    /// connection (no bridge, a failed or empty reply, or a reply from a
+    /// replaced connection): the list then says nothing about a profile.
+    @discardableResult
+    private func readProfiles() async -> Bool {
+        guard let bridge = dashboardTicketBridge else { return false }
         do {
             let response: [String: Any]
             if let profileDiscoveryLoaderOverride {
@@ -20682,7 +20795,7 @@ final class AppState: ObservableObject {
             // prepareChatResumeForConnection(to:) already cleared with the
             // previous server's profile names. Discarded silently — profile
             // discovery has no retry loop to feed an error into.
-            guard dashboardTicketBridge === bridge else { return }
+            guard dashboardTicketBridge === bridge else { return false }
             let values = response["profiles"] as? [Any] ?? []
             let names = values.compactMap { value -> String? in
                 if let name = value as? String { return name }
@@ -20722,8 +20835,9 @@ final class AppState: ObservableObject {
                     Task { await reconnect() }
                 }
             }
+            return !names.isEmpty
         } catch {
-            guard dashboardTicketBridge === bridge else { return }
+            guard dashboardTicketBridge === bridge else { return false }
             // Profile discovery is additive and monotonic. A failed refresh
             // (bridge still loading, dashboard restart, transient 5xx) must
             // never shrink the visible list or overwrite a complete persisted
@@ -20736,6 +20850,7 @@ final class AppState: ObservableObject {
             let merged = orderedProfiles(profiles + [activeProfile, "default"])
             profiles = merged
             persistKnownProfiles(merged)
+            return false
         }
     }
 
