@@ -622,6 +622,7 @@ final class HermesCallsClient {
     static let path = "/api/plugins/conduit_push/calls"
     static let watchesPath = "/api/plugins/conduit_push/calls/watches"
     static let presencePath = "/api/plugins/conduit_push/calls/presence"
+    static let outcomesPath = "/api/plugins/conduit_push/calls/outcomes"
 
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
 
@@ -690,6 +691,13 @@ final class HermesCallsClient {
         guard response["ok"] as? Bool == true else { throw HermesCallsError.malformed }
     }
 
+    /// The user declined a call from Hermes or didn't answer it: the next
+    /// turn of its chat hears so (plugin 0.15+).
+    func reportOutcome(_ entry: HermesCallOutcomeOutbox.Entry, profile: String, now: Date = Date()) async throws {
+        let response = try await request(DashboardPath.withProfile(Self.outcomesPath, profile: profile), "POST", entry.payload(now: now))
+        guard response["ok"] as? Bool == true else { throw HermesCallsError.malformed }
+    }
+
     /// The plugin's own bounds (calls_store.py MAX_HOLD_S, RECENT_END_TTL_S).
     static let maximumHoldSeconds = 600
     static let maximumEndedWithinSeconds = 30 * 60
@@ -739,6 +747,158 @@ final class HermesCallsClient {
         default:
             return nil
         }
+    }
+}
+
+// MARK: - Outcomes
+
+/// How a ringing call from Hermes ended without the user answering it.
+enum HermesCallOutcome: String, Codable, Equatable {
+    case declined
+    /// It rang out, Do Not Disturb silenced it, or it reached the phone too
+    /// late to ring.
+    case missed
+}
+
+/// Calls from Hermes the user declined or didn't answer, on their way to
+/// the host that placed them (#449), so Hermes hears it in that chat's next
+/// turn instead of assuming the user heard the call. Kept until that
+/// dashboard is connected with a plugin that takes them.
+struct HermesCallOutcomeOutbox: Codable, Equatable {
+    struct Entry: Codable, Equatable {
+        /// The host's id for the call (its watch id).
+        var callID: String
+        var outcome: HermesCallOutcome
+        var sessionIDs: [String]
+        var kind: String?
+        var title: String?
+        var reason: String?
+        /// The dashboard the call came from; nil (a relay that doesn't say)
+        /// goes to the one active when it's sent.
+        var dashboard: String?
+        /// The call's profile; nil goes to the one active when it's sent.
+        var profile: String?
+        var at: Date
+
+        /// Nil for a call with no id: the host has nothing to match it to.
+        init?(_ outcome: HermesCallOutcome, target: ConduitNotificationTarget, at: Date) {
+            guard let call = target.call, !call.id.isEmpty else { return nil }
+            callID = call.id
+            self.outcome = outcome
+            sessionIDs = call.sessionIDs.isEmpty ? [target.sessionId] : call.sessionIDs
+            kind = call.kind?.rawValue
+            title = call.title
+            reason = call.reason
+            dashboard = target.dashboardID?.uuidString
+            profile = target.profile
+            self.at = at
+        }
+
+        /// The plugin's body: how long ago rather than when, so the host's
+        /// clock never matters.
+        func payload(now: Date) -> [String: Any] {
+            var body: [String: Any] = [
+                "call_id": callID,
+                "session_ids": sessionIDs,
+                "outcome": outcome.rawValue,
+                "age_s": max(0, min(Int(now.timeIntervalSince(at)), Int(HermesCallOutcomeOutbox.maximumAge))),
+            ]
+            if let kind { body["kind"] = kind }
+            if let title { body["title"] = title }
+            if let reason { body["reason"] = reason }
+            return body
+        }
+    }
+
+    static let storageKey = "conduit.hermesCallOutcomes.v1"
+    static let maximumEntries = 20
+    /// Inside the day the plugin keeps one (calls_store.py OUTCOME_TTL_S).
+    static let maximumAge: TimeInterval = 23 * 60 * 60
+
+    var entries: [Entry] = []
+
+    mutating func add(_ entry: Entry) {
+        // A call ends once; the first word on it stands.
+        guard !entries.contains(where: { $0.callID == entry.callID }) else { return }
+        entries.append(entry)
+        if entries.count > Self.maximumEntries { entries.removeFirst(entries.count - Self.maximumEntries) }
+    }
+
+    mutating func prune(now: Date) {
+        entries.removeAll { now.timeIntervalSince($0.at) > Self.maximumAge }
+    }
+
+    static func load(from defaults: UserDefaults) -> HermesCallOutcomeOutbox {
+        guard let data = defaults.data(forKey: storageKey),
+              let outbox = try? JSONDecoder().decode(HermesCallOutcomeOutbox.self, from: data) else { return HermesCallOutcomeOutbox() }
+        return outbox
+    }
+
+    func store(in defaults: UserDefaults) {
+        if entries.isEmpty {
+            defaults.removeObject(forKey: Self.storageKey)
+        } else if let data = try? JSONEncoder().encode(self) {
+            defaults.set(data, forKey: Self.storageKey)
+        }
+    }
+
+    static func record(_ entry: Entry, in defaults: UserDefaults) {
+        var outbox = load(from: defaults)
+        outbox.prune(now: Date())
+        outbox.add(entry)
+        outbox.store(in: defaults)
+    }
+
+    @MainActor private static var isDelivering = false
+    @MainActor private static var deliversAgain = false
+
+    /// Sends what waits for `dashboard`, oldest first, through `send`
+    /// (given each one's profile, `activeProfile` if it has none). A host
+    /// whose plugin doesn't take outcomes (`takesOutcomes` false) or refuses
+    /// one drops it: it never will. Anything else (offline, a busy host)
+    /// keeps it and the rest for the next connection. One delivery at a
+    /// time; one asked for meanwhile runs once it's done.
+    @MainActor
+    static func deliver(
+        dashboard: String?,
+        activeProfile: String,
+        takesOutcomes: Bool,
+        defaults: UserDefaults,
+        now: () -> Date = { Date() },
+        send: @MainActor (Entry, String) async throws -> Void
+    ) async {
+        guard !isDelivering else {
+            deliversAgain = true
+            return
+        }
+        isDelivering = true
+        defer { isDelivering = false }
+        repeat {
+            deliversAgain = false
+            var outbox = load(from: defaults)
+            outbox.prune(now: now())
+            outbox.store(in: defaults)
+            for entry in outbox.entries where (entry.dashboard ?? dashboard) == dashboard {
+                if takesOutcomes {
+                    do {
+                        try await send(entry, entry.profile ?? activeProfile)
+                    } catch {
+                        // Offline or a busy host: this one and the rest wait.
+                        guard refusesForGood(error) else { return }
+                    }
+                }
+                // Read again: others may have been recorded meanwhile.
+                var current = load(from: defaults)
+                current.entries.removeAll { $0.callID == entry.callID }
+                current.store(in: defaults)
+            }
+        } while deliversAgain
+    }
+
+    /// The host refused it as it is: sending it again won't change that.
+    private static func refusesForGood(_ error: Error) -> Bool {
+        guard case DashboardTicketBridgeError.http(let status, _) = error else { return false }
+        return [400, 404, 405, 413, 422].contains(status)
     }
 }
 

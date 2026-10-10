@@ -16808,6 +16808,8 @@ final class AppState: ObservableObject {
         // request says nothing new: keep the last real answer.
         guard bridge === dashboardTicketBridge, state != .unknown else { return }
         notifierPlugin.state = state
+        // Calls declined or missed while this host was out of reach.
+        deliverHermesCallOutcomes()
         await provisionNotificationEncryption(bridge: bridge)
     }
 
