@@ -4582,30 +4582,35 @@ final class AppState: ObservableObject {
     /// app can send the link, so it only switches to a profile this
     /// dashboard lists, and never while a call would end with the switch.
     func routeLinkedSession(_ id: String, toProfile profile: String) async {
+        // A bot's own chat opens through the bot that owns it, whatever
+        // profile the link names. That switches nothing, so a call goes on.
+        if let owner = botOwnership.botProfileName(owningAny: [id]) {
+            openLinkedBotChat(owner)
+            return
+        }
         guard !isVoiceCallInProgress else {
             errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
             return
         }
         if let listed = notificationProfileID(profile), listed != "default", !profiles.contains(listed) {
             // The saved list can predate a new profile (or a first pairing):
-            // read it once before saying the chat is gone. Offline it can't
-            // be read, and says nothing about the profile.
-            guard isConnected, dashboardTicketBridge != nil else {
+            // read it once before saying the chat is gone. A list that
+            // can't be read (offline) says nothing about the profile.
+            let dashboardID = activeDashboardID
+            let read = await readProfiles()
+            // A dashboard switched meanwhile is the later choice; the link
+            // was read in the one before it.
+            guard activeDashboardID == dashboardID else { return }
+            guard read else {
                 errorMessage = AppLocalization.string(
                     "Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment."
                 )
                 return
             }
-            await loadProfiles()
         }
         guard let target = notificationProfileID(profile),
               target == "default" || profiles.contains(target) else {
             errorMessage = AppLocalization.string("That chat is no longer available.")
-            return
-        }
-        // A bot's own chat opens through its bot, never as a workspace chat.
-        if let normalized = ChatScrollIdentityNormalization.sessionID(id), botOwnedSessionIDs.contains(normalized) {
-            openLinkedBotChat(target)
             return
         }
         PushNotificationService.shared.routeChatLink(
@@ -20726,7 +20731,15 @@ final class AppState: ObservableObject {
     }
 
     func loadProfiles() async {
-        guard let bridge = dashboardTicketBridge else { return }
+        await readProfiles()
+    }
+
+    /// Reads the host's profile list. False when it wasn't read for this
+    /// connection (no bridge, a failed or empty reply, or a reply from a
+    /// replaced connection): the list then says nothing about a profile.
+    @discardableResult
+    private func readProfiles() async -> Bool {
+        guard let bridge = dashboardTicketBridge else { return false }
         do {
             let response: [String: Any]
             if let profileDiscoveryLoaderOverride {
@@ -20742,7 +20755,7 @@ final class AppState: ObservableObject {
             // prepareChatResumeForConnection(to:) already cleared with the
             // previous server's profile names. Discarded silently — profile
             // discovery has no retry loop to feed an error into.
-            guard dashboardTicketBridge === bridge else { return }
+            guard dashboardTicketBridge === bridge else { return false }
             let values = response["profiles"] as? [Any] ?? []
             let names = values.compactMap { value -> String? in
                 if let name = value as? String { return name }
@@ -20782,8 +20795,9 @@ final class AppState: ObservableObject {
                     Task { await reconnect() }
                 }
             }
+            return !names.isEmpty
         } catch {
-            guard dashboardTicketBridge === bridge else { return }
+            guard dashboardTicketBridge === bridge else { return false }
             // Profile discovery is additive and monotonic. A failed refresh
             // (bridge still loading, dashboard restart, transient 5xx) must
             // never shrink the visible list or overwrite a complete persisted
@@ -20796,6 +20810,7 @@ final class AppState: ObservableObject {
             let merged = orderedProfiles(profiles + [activeProfile, "default"])
             profiles = merged
             persistKnownProfiles(merged)
+            return false
         }
     }
 
