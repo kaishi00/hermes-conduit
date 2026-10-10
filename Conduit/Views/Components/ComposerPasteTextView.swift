@@ -19,17 +19,23 @@ struct PastedImage: Equatable {
 struct ComposerPasteTextView: UIViewRepresentable {
     /// One line of body text plus the text insets at the current text size,
     /// so a large Text Size doesn't clip the first line.
-    static var minimumHeight: CGFloat {
-        max(44, ceil(bodyLineHeight) + 16)
-    }
+    static var minimumHeight: CGFloat { minimumHeight(for: nil) }
     /// About four lines at large text sizes, never under the original
     /// 160 pt, and capped so the composer can't cover the chat.
-    static var maximumHeight: CGFloat {
-        min(max(160, ceil(bodyLineHeight) * 4 + 16), 280)
+    static var maximumHeight: CGFloat { maximumHeight(for: nil) }
+
+    /// The bounds for a text view's own traits, the same source its
+    /// `adjustsFontForContentSizeCategory` font scales from.
+    static func minimumHeight(for traits: UITraitCollection?) -> CGFloat {
+        max(44, ceil(bodyLineHeight(for: traits)) + 16)
     }
 
-    private static var bodyLineHeight: CGFloat {
-        UIFont.preferredFont(forTextStyle: .body).lineHeight
+    static func maximumHeight(for traits: UITraitCollection?) -> CGFloat {
+        min(max(160, ceil(bodyLineHeight(for: traits)) * 4 + 16), 280)
+    }
+
+    private static func bodyLineHeight(for traits: UITraitCollection?) -> CGFloat {
+        UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits).lineHeight
     }
 
     @Binding var text: String
@@ -120,8 +126,8 @@ struct ComposerPasteTextView: UIViewRepresentable {
         let category = uiView.traitCollection.preferredContentSizeCategory
         if uiView.boundsContentSizeCategory != category {
             uiView.boundsContentSizeCategory = category
-            uiView.minimumReportedHeight = Self.minimumHeight
-            uiView.maximumReportedHeight = Self.maximumHeight
+            uiView.minimumReportedHeight = Self.minimumHeight(for: uiView.traitCollection)
+            uiView.maximumReportedHeight = Self.maximumHeight(for: uiView.traitCollection)
             uiView.setNeedsLayout()
         }
         context.coordinator.parent = self

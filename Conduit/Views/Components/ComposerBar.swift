@@ -980,6 +980,13 @@ struct ComposerBar: View {
             prominent: action == .send,
             interactive: action != .unavailable
         )
+        .accessibilityShowsLargeContentViewer {
+            Label {
+                Text(actionTitle ?? accessibilityLabel)
+            } icon: {
+                Image(systemName: actionSymbol)
+            }
+        }
         .accessibilityLabel(accessibilityLabel)
     }
 

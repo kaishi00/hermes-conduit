@@ -222,7 +222,6 @@ struct SessionList: View {
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(2)
                     }
-                    .frame(minHeight: 24)
                     .foregroundStyle(Color.conduitBackgroundColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
