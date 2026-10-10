@@ -209,8 +209,18 @@ struct HermesCallOpening: Equatable {
     /// Added to the live model's instructions for this call. `delegation`:
     /// the model hands work over in text (GPT-Live), so it answers an
     /// approval or question with markers instead of tools.
-    func instructionBlock(delegation: Bool) -> String {
+    /// `canAnswer`: false on the Apple Watch, whose call can't give Hermes
+    /// the approval or answer (that runs on the iPhone).
+    func instructionBlock(delegation: Bool, canAnswer: Bool = true) -> String {
         var block = "\n\nAbout this call: you called the user; they didn't call you. "
+        if waitsOnUser, !canAnswer {
+            block += kind == .approval
+                ? "Hermes is waiting in a chat for the user's approval before it goes on"
+                : "Hermes asked the user a question in a chat and is waiting for the answer"
+            block += fencedReason.map { ": \($0). " } ?? ". "
+            block += "Your first words tell the user in a sentence what Hermes is waiting on. This call can't give Hermes their answer: tell them to answer in that chat in Conduit on their iPhone, and never answer it yourself. Never open with a greeting question or by asking how you can help. After that, carry on as usual."
+            return block
+        }
         switch kind {
         case .approval?:
             let (approve, deny) = delegation
@@ -252,7 +262,16 @@ struct HermesCallOpening: Equatable {
     }
 
     /// The call's first turn.
-    var openingTurn: String {
+    var openingTurn: String { firstTurn(canAnswer: true) }
+
+    /// The first turn of the call answered on the Apple Watch, which can't
+    /// give Hermes the approval or answer it waits on.
+    var watchOpeningTurn: String { firstTurn(canAnswer: false) }
+
+    private func firstTurn(canAnswer: Bool) -> String {
+        if waitsOnUser, !canAnswer {
+            return "[The call just connected. You called the user because Hermes is waiting on them. Tell them what it's waiting on and where to answer, as your instructions say. Don't ask how you can help. Then wait for them.]"
+        }
         switch kind {
         case .approval?:
             return "[The call just connected. You called the user because Hermes needs their approval. Tell them what it wants to do, as your instructions say, and ask whether to allow it. Don't ask how you can help. Then wait for them.]"
@@ -760,13 +779,15 @@ enum HermesCallOutcome: String, Codable, Equatable {
     case missed
 
     /// What the host hears when a ringing call ends `end`: nothing once the
-    /// user picked up.
+    /// user picked up, here or on the Apple Watch.
     static func of(_ end: HermesCallEnd, answered: Bool) -> HermesCallOutcome? {
         guard !answered else { return nil }
         switch end {
         case .declined: return .declined
         case .finished(let notice): return notice == .missed ? .missed : nil
         case .reset: return .missed
+        case .elsewhere(.declined): return .declined
+        case .elsewhere(.answered): return nil
         }
     }
 }
@@ -779,6 +800,9 @@ enum HermesCallEnd: Equatable {
     case finished(HermesNativeCallPlan.Notice)
     /// CallKit reset.
     case reset
+    /// The user answered or declined it on the Apple Watch, which rang too
+    /// (designs/hermes-calls-watch.md).
+    case elsewhere(HermesRingOutcome)
 }
 
 /// Calls from Hermes the user declined or didn't answer, on their way to
@@ -909,6 +933,7 @@ struct HermesCallOutcomeOutbox: Codable, Equatable {
                     } catch {
                         // Offline or a busy host: this one and the rest wait.
                         guard refusesForGood(error) else { return }
+                        hermesCallsLogger.notice("Hermes call outcome dropped for \(entry.callID, privacy: .public): \(String(describing: error), privacy: .public)")
                     }
                 }
                 // Read again: others may have been recorded meanwhile.
@@ -920,7 +945,11 @@ struct HermesCallOutcomeOutbox: Codable, Equatable {
     }
 
     /// The host refused it as it is (or answered without taking it):
-    /// sending it again won't change that.
+    /// sending it again won't change that. The route's 409 only ever means
+    /// "this profile isn't paired" (it never checks whether calls are on).
+    /// The plugin answers `ok: true` or an HTTP error, so a 200 without it
+    /// (`malformed`) came from something in between, and a resend meets
+    /// the same.
     private static func refusesForGood(_ error: Error) -> Bool {
         if case HermesCallsError.malformed = error { return true }
         guard case DashboardTicketBridgeError.http(let status, _) = error else { return false }

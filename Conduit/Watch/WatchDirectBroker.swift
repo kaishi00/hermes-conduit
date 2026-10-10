@@ -133,7 +133,7 @@ final class WatchDirectBroker {
     func handle(_ message: WatchVoiceWire.Message, reply: (([String: Any]) -> Void)?) {
         func answer(_ message: WatchVoiceWire.Message) { reply?(WatchVoiceWire.encode(message)) }
         switch message {
-        case .directStart(let id, let version):
+        case .directStart(let id, let version, let ring):
             guard version == WatchVoiceWire.version else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
@@ -145,7 +145,7 @@ final class WatchDirectBroker {
             if let preparing, preparing.callID == id {
                 task = preparing.task
             } else {
-                task = Task { await self.prepare(id) }
+                task = Task { await self.prepare(id, ring: ring) }
                 preparing = (id, task)
             }
             Task {
@@ -154,7 +154,7 @@ final class WatchDirectBroker {
                 if self.preparing?.callID == id { self.preparing = nil }
                 end()
             }
-        case .bridgeStart(let id, let version, let engine):
+        case .bridgeStart(let id, let version, let engine, let ring):
             guard version == WatchVoiceWire.version else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
@@ -168,7 +168,7 @@ final class WatchDirectBroker {
             if let preparing, preparing.callID == id {
                 task = preparing.task
             } else {
-                task = Task { await self.prepareBridge(id, engine: engine) }
+                task = Task { await self.prepareBridge(id, engine: engine, ring: ring) }
                 preparing = (id, task)
             }
             Task {
@@ -177,7 +177,7 @@ final class WatchDirectBroker {
                 if self.preparing?.callID == id { self.preparing = nil }
                 end()
             }
-        case .grokStart(let id, let version):
+        case .grokStart(let id, let version, let ring):
             guard version == WatchVoiceWire.version else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
@@ -187,7 +187,7 @@ final class WatchDirectBroker {
             if let preparing, preparing.callID == id {
                 task = preparing.task
             } else {
-                task = Task { await self.prepareGrok(id) }
+                task = Task { await self.prepareGrok(id, ring: ring) }
                 preparing = (id, task)
             }
             Task {
@@ -256,7 +256,7 @@ final class WatchDirectBroker {
 
     // MARK: Start
 
-    private func prepare(_ id: UInt32) async -> WatchVoiceWire.Message {
+    private func prepare(_ id: UInt32, ring: String? = nil) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
@@ -270,12 +270,13 @@ final class WatchDirectBroker {
         let startedAt = Date()
         link.log.note("watchDirectStart", [
             "callID": Int(id),
+            "answersHermesCall": ring != nil,
             "appState": WatchVoiceLink.appStateName,
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchDirectCall()
+            let plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -357,7 +358,7 @@ final class WatchDirectBroker {
     /// opens the host's audio bridge, with jobs for GPT-Live's delegations
     /// as the user allows and web_search for when they don't. Nothing else
     /// runs here until the call ends.
-    private func prepareBridge(_ id: UInt32, engine: String) async -> WatchVoiceWire.Message {
+    private func prepareBridge(_ id: UInt32, engine: String, ring: String? = nil) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
@@ -368,13 +369,14 @@ final class WatchDirectBroker {
         let startedAt = Date()
         link.log.note("watchBridgeStart", [
             "callID": Int(id),
+            "answersHermesCall": ring != nil,
             "engine": engine,
             "appState": WatchVoiceLink.appStateName,
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchBridgeCall()
+            let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -415,7 +417,8 @@ final class WatchDirectBroker {
                 briefingBytes: packed.bytes,
                 greeting: plan.greeting,
                 voice: plan.voice,
-                endPhrases: plan.endPhrases
+                endPhrases: plan.endPhrases,
+                openingTurn: plan.openingTurn
             ))
             // The reply travels in one Watch message, which carries about
             // 65 KB as sent (the briefing as base64 in JSON).
@@ -459,7 +462,7 @@ final class WatchDirectBroker {
     /// the host's sign-in) and carries the call's lookups and jobs. The
     /// Watch runs the conversation as it runs Gemini's, so its tools and
     /// polls come here as a Gemini call's do.
-    private func prepareGrok(_ id: UInt32) async -> WatchVoiceWire.Message {
+    private func prepareGrok(_ id: UInt32, ring: String? = nil) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
@@ -471,12 +474,13 @@ final class WatchDirectBroker {
         let startedAt = Date()
         link.log.note("watchGrokStart", [
             "callID": Int(id),
+            "answersHermesCall": ring != nil,
             "appState": WatchVoiceLink.appStateName,
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchGrokCall()
+            let plan = try await appState.prepareWatchGrokCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)

@@ -969,4 +969,114 @@ extension VoiceConversationControllerTests {
         }
         XCTAssertEqual(waitingOutcomes(defaults), [], "Neither would ever be taken")
     }
+
+    // MARK: Ringing on the Apple Watch too (designs/hermes-calls-watch.md)
+
+    private static let ringID = "AAAAAAAAAAAAAAAAAAAAAA"
+    private static let ringToken = String(repeating: "b", count: 43)
+
+    func testACallThatRingsOnTheWatchTooCarriesItsRing() throws {
+        let ring: [String: Any] = ["id": Self.ringID, "token": Self.ringToken, "url": "https://push.example/v1/rings/\(Self.ringID)/settled"]
+        let direct = try XCTUnwrap(HermesRing.from(["conduit": ["sent_at": 1_800_000_000, "ring": ring]]))
+        XCTAssertEqual(direct.id, Self.ringID)
+        XCTAssertEqual(direct.token, Self.ringToken)
+        XCTAssertEqual(direct.url.absoluteString, "https://push.example/v1/rings/\(Self.ringID)/settled")
+        XCTAssertEqual(HermesRing.from(["e2e": "sealed", "body": ["conduit": ["ring": ring]]]), direct, "Beside a sealed envelope")
+        XCTAssertNil(HermesRing.from(["conduit": ["sent_at": 1_800_000_000]]), "Rings on the phone alone")
+
+        func withRing(_ change: (inout [String: Any]) -> Void) -> HermesRing? {
+            var value = ring
+            change(&value)
+            return HermesRing.from(["conduit": ["ring": value]])
+        }
+        XCTAssertNil(withRing { $0["url"] = "http://push.example/v1/rings/\(Self.ringID)/settled" }, "Never settled in the clear")
+        XCTAssertNil(withRing { $0["url"] = "https://push.example/v1/rings/other/settled" }, "Settled only for its own ring")
+        XCTAssertNil(withRing { $0["id"] = "short" })
+        XCTAssertNil(withRing { $0["token"] = "short" })
+
+        let settled = try XCTUnwrap(HermesRingSettled.from(["aps": [String: Any](), "conduit": ["ring": ["id": Self.ringID, "settled": "answered", "by": "watch"]]]))
+        XCTAssertEqual(settled, HermesRingSettled(id: Self.ringID, outcome: .answered, by: .watch))
+        XCTAssertNil(HermesRingSettled.from(["conduit": ["ring": ring]]), "A call is no stop")
+        XCTAssertNil(HermesRingSettled.from(["conduit": ["ring": ["id": Self.ringID, "settled": "maybe", "by": "watch"]]]))
+
+        XCTAssertEqual(HermesRingPush.title(["body": ["conduit": ["call": ["title": "  Check\nthe   build "]]]]), "Check the build")
+        XCTAssertNil(HermesRingPush.title(["e2e": "sealed", "conduit": ["ring": ring]]), "A sealed call's title is the iPhone's to read")
+        XCTAssertEqual(HermesRingPush.sentAt(["body": ["conduit": ["sent_at": 1_800_000_002]]]), Date(timeIntervalSince1970: 1_800_000_002))
+    }
+
+    func testSettlingARingTellsTheRelayWhoAnsweredAndWhoWasFirst() throws {
+        let ring = HermesRing(id: Self.ringID, token: Self.ringToken, url: try XCTUnwrap(URL(string: "https://push.example/v1/rings/\(Self.ringID)/settled")))
+        let request = HermesRingSettler.request(ring, by: .watch, outcome: .declined)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url, ring.url)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: String])
+        XCTAssertEqual(body, ["token": Self.ringToken, "by": "watch", "outcome": "declined"])
+
+        XCTAssertEqual(HermesRingSettler.result(status: 200, data: Data(#"{"settled":true,"notified":true}"#.utf8)), .settled)
+        XCTAssertEqual(
+            HermesRingSettler.result(status: 409, data: Data(#"{"error":"already_settled","settled":{"by":"phone","outcome":"answered"}}"#.utf8)),
+            .alreadySettled(.answered, by: .phone)
+        )
+        XCTAssertEqual(HermesRingSettler.result(status: 409, data: Data("{}".utf8)), .failed)
+        XCTAssertEqual(HermesRingSettler.result(status: 404, data: Data(#"{"error":"unknown_ring"}"#.utf8)), .failed, "The relay forgot it")
+    }
+
+    func testACallAnsweredOrDeclinedOnTheWatchIsReportedAsTheUserLeftIt() {
+        XCTAssertNil(HermesCallOutcome.of(.elsewhere(.answered), answered: false), "Picked up on the Watch")
+        XCTAssertEqual(HermesCallOutcome.of(.elsewhere(.declined), answered: false), .declined)
+        XCTAssertNil(HermesCallOutcome.of(.elsewhere(.declined), answered: true))
+    }
+
+    func testAWatchCallOpensWithTheNewsButLeavesAnswersToTheIPhone() {
+        let approval = HermesCallOpening(kind: .approval, title: "Deploy", result: nil, reason: "Run the migration", sessionIDs: ["st-1"])
+        let watch = approval.instructionBlock(delegation: false, canAnswer: false)
+        XCTAssertTrue(watch.contains("<reason>Run the migration</reason>"))
+        XCTAssertTrue(watch.contains("on their iPhone"))
+        XCTAssertFalse(watch.contains("answer_approval"), "The Watch call has no way to give Hermes the answer")
+        XCTAssertFalse(approval.instructionBlock(delegation: true, canAnswer: false).contains("Approve:"))
+        XCTAssertTrue(approval.watchOpeningTurn.contains("where to answer"))
+        XCTAssertNotEqual(approval.watchOpeningTurn, approval.openingTurn)
+
+        let question = HermesCallOpening(kind: .question, title: nil, result: nil, reason: "Which branch?")
+        XCTAssertFalse(question.instructionBlock(delegation: false, canAnswer: false).contains("answer_question"))
+
+        let done = HermesCallOpening(kind: .done, title: "Deploy", result: "It shipped.", reason: nil)
+        XCTAssertEqual(done.instructionBlock(delegation: false, canAnswer: false), done.instructionBlock(delegation: false), "News is the same on the wrist")
+        XCTAssertEqual(done.watchOpeningTurn, done.openingTurn)
+    }
+
+    func testTheRelayLearnsTheWatchTokenBesideThePhones() throws {
+        func body(_ change: VoIPTokenChange) throws -> [String: Any] {
+            let data = try JSONEncoder().encode(UpdateRegistrationRequest(deviceToken: nil, preferences: ConduitNotificationPreferences(), voipToken: .keep, watchVoipToken: change))
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        }
+        XCTAssertFalse(try body(.keep).keys.contains("watch_voip_token"), "Left out, the relay keeps it")
+        XCTAssertTrue(try body(.clear)["watch_voip_token"] is NSNull, "null clears it")
+        XCTAssertEqual(try body(.set("cd"))["watch_voip_token"] as? String, "cd")
+        XCTAssertFalse(try body(.set("cd")).keys.contains("voip_token"), "The phone's own stays as it is")
+    }
+
+    func testTheWatchCallStartNamesTheCallItAnswersAndOlderMessagesStillRead() throws {
+        let messages: [WatchVoiceWire.Message] = [
+            .directStart(callID: 7, version: WatchVoiceWire.version, ring: Self.ringID),
+            .grokStart(callID: 8, version: WatchVoiceWire.version, ring: Self.ringID),
+            .bridgeStart(callID: 9, version: WatchVoiceWire.version, engine: WatchAudioBridgeWire.gptLive, ring: Self.ringID),
+            .callsToken(token: "abcd"),
+            .callsToken(token: nil),
+        ]
+        for message in messages {
+            XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(message)), message)
+        }
+        // From a Watch app before rings.
+        let older = Data(#"{"directStart":{"callID":7,"version":1}}"#.utf8)
+        XCTAssertEqual(WatchVoiceWire.decode([WatchVoiceWire.messageKey: older]), .directStart(callID: 7, version: 1))
+
+        let session = WatchVoiceWire.BridgeSession(
+            engine: WatchAudioBridgeWire.gptLive, grant: HermesVoiceGatewayTimeoutTests.watchToolGrant, briefing: Data([1]), briefingBytes: 1,
+            greeting: nil, voice: nil, openingTurn: "[The call just connected.]"
+        )
+        let reply = WatchVoiceWire.Message.bridgeSession(callID: 9, session: session)
+        XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(reply)), reply)
+    }
 }

@@ -14,12 +14,15 @@ import SwiftUI
 
 @main
 struct ConduitWatchApp: App {
-    @StateObject private var call = WatchVoiceCall()
+    @StateObject private var call = WatchVoiceCall.shared
     @StateObject private var link = WatchLink.shared
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         WatchLink.shared.activate()
+        // Before launch finishes: a call from Hermes that launched the app
+        // waits on its PushKit registry.
+        HermesWatchCalls.shared.activate()
     }
 
     var body: some Scene {

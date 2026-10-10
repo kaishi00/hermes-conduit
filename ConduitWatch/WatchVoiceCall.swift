@@ -62,6 +62,10 @@ enum WatchVoiceEngine: String, CaseIterable, Identifiable {
 
 @MainActor
 final class WatchVoiceCall: ObservableObject {
+    /// The app's one call: the screens and a call from Hermes answered on
+    /// the Watch (HermesWatchCalls) share it.
+    static let shared = WatchVoiceCall()
+
     enum Phase: Equatable {
         case idle
         /// Starting the Watch's audio and asking the iPhone for the call.
@@ -148,7 +152,9 @@ final class WatchVoiceCall: ObservableObject {
 
     // MARK: Controls
 
-    func start() {
+    /// `ring`: the call from Hermes it answers (HermesWatchCalls), which
+    /// the iPhone opens it with.
+    func start(ring: String? = nil) {
         guard !isActive else { return }
         callEngine = engine
         summaryDismissed = false
@@ -159,9 +165,9 @@ final class WatchVoiceCall: ObservableObject {
         phase = .preparing
         previousModelCall = modelCallID
         switch callEngine {
-        case .geminiLive: Task { await direct.start(engine: .gemini) }
-        case .grokLive: Task { await direct.start(engine: .grok) }
-        case .gptLive: Task { await bridge.start() }
+        case .geminiLive: Task { await direct.start(engine: .gemini, ring: ring) }
+        case .grokLive: Task { await direct.start(engine: .grok, ring: ring) }
+        case .gptLive: Task { await bridge.start(ring: ring) }
         }
     }
 
@@ -226,7 +232,8 @@ final class WatchVoiceCall: ObservableObject {
     static let openAfterEndPause: TimeInterval = 120
 
     private func startOnOpenIfWanted() {
-        guard startsOnOpen, !isActive else { return }
+        // A call from Hermes ringing or answered is the call.
+        guard startsOnOpen, !isActive, !HermesWatchCalls.shared.holdsCall else { return }
         // Back in front soon after a call ended (the wrist went down on
         // its summary): the user is reading it, not calling again.
         if let endedAt, Date().timeIntervalSince(endedAt) < Self.openAfterEndPause { return }

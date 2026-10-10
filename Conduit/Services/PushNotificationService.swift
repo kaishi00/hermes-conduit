@@ -1290,14 +1290,36 @@ final class PushNotificationService: ObservableObject {
     /// relay learns it with the registration.
     func updateVoIPToken(_ token: String?) {
         voipToken = token
+        queueVoIPTokenUpdate()
+    }
+
+    /// The Apple Watch's own PushKit token, which calls from Hermes ring on
+    /// too (designs/hermes-calls-watch.md). Kept across launches: the Watch
+    /// sends it again only when it changes.
+    private(set) var watchVoIPToken: String? = UserDefaults.standard.string(forKey: PushNotificationService.watchVoIPTokenKey)
+    static let watchVoIPTokenKey = "hermesCalls.watchVoIPToken"
+
+    /// The Watch app has a new PushKit token, or none any more.
+    func updateWatchVoIPToken(_ token: String?) {
+        watchVoIPToken = token
+        UserDefaults.standard.set(token, forKey: Self.watchVoIPTokenKey)
+        queueVoIPTokenUpdate()
+    }
+
+    /// The Watch rings only alongside this phone: while the phone doesn't
+    /// ring, the relay has neither token.
+    private var ringingWatchVoIPToken: String? { voipToken == nil ? nil : watchVoIPToken }
+
+    private func queueVoIPTokenUpdate() {
         guard registration != nil else { return }
-        // One after another, each sending the token as it is by then. An
+        // One after another, each sending the tokens as they are by then. An
         // update still on its way may carry another token, so whether this
         // one is new is decided when its turn comes.
         let previous = voipTokenUpdate
         voipTokenUpdate = Task {
             await previous?.value
-            guard let registration, registration.voipToken != voipToken else { return }
+            guard let registration,
+                  registration.voipToken != voipToken || registration.watchVoipToken != ringingWatchVoIPToken else { return }
             try? await updateRegistration()
         }
     }
@@ -1631,7 +1653,8 @@ final class PushNotificationService: ObservableObject {
             throw RelayDecisionError.insecureTransport
         }
         let voipToken = self.voipToken
-        let body = RegistrationRequest(bundleID: bundleID, deviceToken: deviceToken, environment: "production", preferences: preferences, voipToken: voipToken)
+        let watchToken = ringingWatchVoIPToken
+        let body = RegistrationRequest(bundleID: bundleID, deviceToken: deviceToken, environment: "production", preferences: preferences, voipToken: voipToken, watchVoipToken: watchToken)
         var request = try jsonRequest(path: "/v1/installations", method: "POST", body: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
@@ -1640,30 +1663,42 @@ final class PushNotificationService: ObservableObject {
         // Only a relay that rings (0.9+) keeps it; an older one is asked
         // again at the next update.
         registration?.voipToken = responseBody.installation.voip == true ? voipToken : nil
+        // Likewise the Watch's, on a relay that rings it (0.10+).
+        registration?.watchVoipToken = responseBody.installation.watchVoip == true ? watchToken : nil
         preferences = registration!.preferences
         persistRegistration()
         // A PushKit token that came while this was on its way goes next
         // (at first launch both arrive together).
-        if self.voipToken != voipToken { updateVoIPToken(self.voipToken) }
+        if self.voipToken != voipToken || ringingWatchVoIPToken != watchToken { queueVoIPTokenUpdate() }
     }
 
     private func updateRegistration(deviceToken: String? = nil) async throws {
         guard let registration else { return }
         let voipToken = self.voipToken
         let voipChange: VoIPTokenChange = registration.voipToken == voipToken ? .keep : (voipToken.map(VoIPTokenChange.set) ?? .clear)
-        let body = UpdateRegistrationRequest(deviceToken: deviceToken ?? self.deviceToken, preferences: preferences, voipToken: voipChange)
+        let watchToken = ringingWatchVoIPToken
+        let watchChange: VoIPTokenChange = registration.watchVoipToken == watchToken ? .keep : (watchToken.map(VoIPTokenChange.set) ?? .clear)
+        let body = UpdateRegistrationRequest(deviceToken: deviceToken ?? self.deviceToken, preferences: preferences, voipToken: voipChange, watchVoipToken: watchChange)
         var request = try jsonRequest(path: "/v1/installations/\(registration.installationID)", method: "PUT", body: body, credential: registration.credential)
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
         self.registration?.preferences = preferences
+        let installation = (try? JSONDecoder().decode(UpdateRegistrationResponse.self, from: data))?.installation
+        // Another update sent a newer token meanwhile, and this one may
+        // have landed after it: the newer token goes again, last.
+        var newerToken = false
         if voipChange != .keep {
-            let rings = (try? JSONDecoder().decode(UpdateRegistrationResponse.self, from: data))?.installation?.voip == true
+            let rings = installation?.voip == true
             self.registration?.voipToken = rings ? voipToken : nil
-            // Another update sent a newer token meanwhile, and this one may
-            // have landed after it: the newer token goes again, last.
-            if rings, voipToken != self.voipToken { updateVoIPToken(self.voipToken) }
+            newerToken = rings && voipToken != self.voipToken
+        }
+        if watchChange != .keep {
+            let rings = installation?.watchVoip == true
+            self.registration?.watchVoipToken = rings ? watchToken : nil
+            newerToken = newerToken || (rings && watchToken != ringingWatchVoIPToken)
         }
         persistRegistration()
+        if newerToken { queueVoIPTokenUpdate() }
     }
 
     private func jsonRequest<Body: Encodable>(path: String, method: String, body: Body, credential: String? = nil) throws -> URLRequest {
@@ -1705,6 +1740,8 @@ private struct StoredRegistration: Codable {
     var relayURL: String?
     /// The PushKit token the relay rings (#449); nil when it has none.
     var voipToken: String? = nil
+    /// The Apple Watch's PushKit token the relay rings too.
+    var watchVoipToken: String? = nil
 }
 
 private struct RegistrationRequest: Encodable {
@@ -1713,7 +1750,11 @@ private struct RegistrationRequest: Encodable {
     let environment: String
     let preferences: ConduitNotificationPreferences
     var voipToken: String? = nil
-    enum CodingKeys: String, CodingKey { case bundleID = "bundle_id", deviceToken = "device_token", environment, preferences, voipToken = "voip_token" }
+    var watchVoipToken: String? = nil
+    enum CodingKeys: String, CodingKey {
+        case bundleID = "bundle_id", deviceToken = "device_token", environment, preferences, voipToken = "voip_token"
+        case watchVoipToken = "watch_voip_token"
+    }
 }
 
 /// What an update does to the relay's PushKit token.
@@ -1727,29 +1768,42 @@ struct UpdateRegistrationRequest: Encodable {
     let deviceToken: String?
     let preferences: ConduitNotificationPreferences
     var voipToken: VoIPTokenChange = .keep
-    enum CodingKeys: String, CodingKey { case deviceToken = "device_token", preferences, voipToken = "voip_token" }
+    var watchVoipToken: VoIPTokenChange = .keep
+    enum CodingKeys: String, CodingKey { case deviceToken = "device_token", preferences, voipToken = "voip_token", watchVoipToken = "watch_voip_token" }
 
-    /// `voip_token` is left out to keep it, null to clear it.
+    /// A token is left out to keep it, null to clear it.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(deviceToken, forKey: .deviceToken)
         try container.encode(preferences, forKey: .preferences)
-        switch voipToken {
-        case .keep: break
-        case .clear: try container.encodeNil(forKey: .voipToken)
-        case .set(let token): try container.encode(token, forKey: .voipToken)
+        for (change, key) in [(voipToken, CodingKeys.voipToken), (watchVoipToken, CodingKeys.watchVoipToken)] {
+            switch change {
+            case .keep: break
+            case .clear: try container.encodeNil(forKey: key)
+            case .set(let token): try container.encode(token, forKey: key)
+            }
         }
     }
 }
 
 private struct RegistrationResponse: Decodable {
-    struct Installation: Decodable { let id: String; let preferences: ConduitNotificationPreferences?; let voip: Bool? }
+    struct Installation: Decodable {
+        let id: String
+        let preferences: ConduitNotificationPreferences?
+        let voip: Bool?
+        let watchVoip: Bool?
+        enum CodingKeys: String, CodingKey { case id, preferences, voip, watchVoip = "watch_voip" }
+    }
     let credential: String
     let installation: Installation
 }
 
 private struct UpdateRegistrationResponse: Decodable {
-    struct Installation: Decodable { let voip: Bool? }
+    struct Installation: Decodable {
+        let voip: Bool?
+        let watchVoip: Bool?
+        enum CodingKeys: String, CodingKey { case voip, watchVoip = "watch_voip" }
+    }
     let installation: Installation?
 }
 

@@ -48,6 +48,8 @@ enum HermesCallSettingsFormat {
 struct HermesCallSettingsSection: View {
     let model: HermesCallSettingsModel
     @State private var draft: HermesCallSettings
+    /// This iPhone's own setting, not the host's.
+    @AppStorage(HermesNativeCalls.ringsKey) private var ringsLikeCall = true
     @State private var loadFailed = false
     @State private var saveTask: Task<Void, Never>?
 
@@ -108,6 +110,13 @@ struct HermesCallSettingsSection: View {
                         .foregroundStyle(.orange)
                 }
                 if draft.enabled {
+                    if HermesNativeCalls.offersRinging {
+                        Toggle("Ring like a phone call", isOn: $ringsLikeCall)
+                            .onChange(of: ringsLikeCall) { _, _ in HermesNativeCalls.shared.ringingSettingChanged() }
+                        Text("On this iPhone and your Apple Watch. Off, a “Hermes wants to talk” notification comes instead: tap Talk to answer.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Toggle("Call when I ask", isOn: binding(\.whenAsked))
                     Text("Say “call me when it's done” during a live call, or ask Hermes in a chat to call you. Hermes calls about that job once the call has ended; if it finishes while you're still talking, you hear about it in the call instead.")
                         .font(.caption)

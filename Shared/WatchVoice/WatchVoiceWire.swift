@@ -125,6 +125,10 @@ enum WatchVoiceWire {
         /// The profile's spoken end phrases: the user saying one ends the
         /// call, as on the iPhone. Nil from an older iPhone.
         var endPhrases: [String]? = nil
+        /// A call from Hermes the Watch answered opens with this turn, as
+        /// the phone's does (designs/hermes-calls-watch.md); nil for any
+        /// other call, and from an older iPhone.
+        var openingTurn: String? = nil
     }
 
     /// Everything a Watch call to Grok needs, built on the iPhone. The
@@ -283,8 +287,10 @@ enum WatchVoiceWire {
         case report(String)
         /// Any other Watch event, as one JSON line for the iPhone's log.
         case note(String)
-        /// A Watch call to Gemini Live wants its session.
-        case directStart(callID: UInt32, version: Int)
+        /// A Watch call to Gemini Live wants its session. `ring`: the call
+        /// from Hermes it answers (designs/hermes-calls-watch.md), so it
+        /// opens with what Hermes called about.
+        case directStart(callID: UInt32, version: Int, ring: String? = nil)
         /// A new single-use token for the call's next connection.
         case directToken(callID: UInt32)
         case directTool(callID: UInt32, call: DirectToolCall)
@@ -300,10 +306,14 @@ enum WatchVoiceWire {
         case directGrant(callID: UInt32, carryJobsFrom: String? = nil)
         /// A Watch call through the host's audio bridge (GPT-Live) wants
         /// its grant and briefing.
-        case bridgeStart(callID: UInt32, version: Int, engine: String)
+        case bridgeStart(callID: UInt32, version: Int, engine: String, ring: String? = nil)
         /// A Watch call to Grok wants its setup and the grant that opens
         /// the host's audio bridge.
-        case grokStart(callID: UInt32, version: Int)
+        case grokStart(callID: UInt32, version: Int, ring: String? = nil)
+        /// The Watch's own PushKit token, which calls from Hermes ring on
+        /// (designs/hermes-calls-watch.md); nil once it has none. Queued, so
+        /// it reaches a sleeping iPhone.
+        case callsToken(token: String?)
         // iPhone → Watch
         /// Why the iPhone can't serve the call, as the Watch shows it.
         case callRefused(callID: UInt32, reason: String)

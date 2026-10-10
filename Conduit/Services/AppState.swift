@@ -24551,8 +24551,9 @@ final class AppState: ObservableObject {
     /// Builds a Watch call's setup as `geminiLiveController` builds the
     /// phone's: the same search, memory and persona lookups, instructions,
     /// functions and voice. The call has no attached chat and no phone
-    /// screen, so it gets no chat tools and no resume context.
-    func prepareWatchDirectCall() async throws -> WatchDirectPlan {
+    /// screen, so it gets no chat tools and no resume context. `target`:
+    /// the call from Hermes it answers, which it opens with.
+    func prepareWatchDirectCall(answering target: ConduitNotificationTarget? = nil) async throws -> WatchDirectPlan {
         // Woken (or launched) by the Watch with no phone screen up.
         if isSceneActive, !PhoneScenePresence.isInForeground {
             isSceneActive = false
@@ -24571,6 +24572,7 @@ final class AppState: ObservableObject {
         async let searchLookup = resolveGeminiLiveSearchSource()
         async let memoryLookup = wantsMemory ? tokens.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? tokens.personality() : nil
+        async let hermesCallLookup = watchHermesCallOpening(for: target)
         let status = try await tokens.availability()
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
@@ -24578,6 +24580,7 @@ final class AppState: ObservableObject {
         let search = await searchLookup
         let memory = await memoryLookup
         let personality = await personalityLookup
+        let hermesCall = await hermesCallLookup
         let token = try await tokens.freshToken()
         let style = liveVoiceStyle
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
@@ -24603,14 +24606,14 @@ final class AppState: ObservableObject {
                 answerLength: style.answerLength,
                 asksFirst: false,
                 onWatch: true
-            ) + style.instructions,
+            ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
                 memoryRecall: memory?.canRecall == true
             ),
             googleSearch: search == .google,
             voice: geminiLiveVoice,
-            openingPrompt: style.openingPrompt,
+            openingPrompt: hermesCall?.watchOpeningTurn ?? style.openingPrompt,
             token: token,
             connection: connection,
             saveCalls: voiceCallSavingEnabled,
@@ -24628,6 +24631,8 @@ final class AppState: ObservableObject {
     struct WatchBridgePlan {
         let briefing: String
         let greeting: String?
+        /// A call from Hermes opens with this turn instead of a greeting.
+        var openingTurn: String? = nil
         let voice: String?
         let connection: WatchDirectConnection
         let saveCalls: Bool
@@ -24641,8 +24646,8 @@ final class AppState: ObservableObject {
     /// Builds a Watch GPT-Live call's briefing as `gptLiveController`
     /// builds the phone's: the same availability check, memory and persona
     /// lookups, answer length and style. The call has no attached chat and
-    /// no resume context.
-    func prepareWatchBridgeCall() async throws -> WatchBridgePlan {
+    /// no resume context. `target`: the call from Hermes it answers.
+    func prepareWatchBridgeCall(answering target: ConduitNotificationTarget? = nil) async throws -> WatchBridgePlan {
         if isSceneActive, !PhoneScenePresence.isInForeground {
             isSceneActive = false
             publishVoiceRuntimeGates()
@@ -24657,12 +24662,14 @@ final class AppState: ObservableObject {
         let wantsPersonality = gptLivePersonalityEnabled
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
+        async let hermesCallLookup = watchHermesCallOpening(for: target)
         let status = try await gptLiveClient.availability()
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
         }
         let memory = await memoryLookup
         let personality = await personalityLookup
+        let hermesCall = await hermesCallLookup
         let style = liveVoiceStyle
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
         let jobSession = preferences.voiceJobSessionOptions(
@@ -24684,8 +24691,10 @@ final class AppState: ObservableObject {
                 personality: personality,
                 answerLength: style.answerLength,
                 onWatch: true
-            ) + style.instructions,
-            greeting: style.greeting,
+            ) + (hermesCall?.instructionBlock(delegation: true, canAnswer: false) ?? "") + style.instructions,
+            // A call Hermes made opens with its brief instead (#449).
+            greeting: hermesCall == nil ? style.greeting : nil,
+            openingTurn: hermesCall?.watchOpeningTurn,
             voice: gptLiveVoice,
             connection: connection,
             saveCalls: voiceCallSavingEnabled,
@@ -24718,8 +24727,9 @@ final class AppState: ObservableObject {
     /// Builds a Watch Grok call's setup as `grokLiveController` builds the
     /// phone's: the same availability check, search, memory and persona
     /// lookups, instructions, functions and voice. The call has no attached
-    /// chat and no resume context.
-    func prepareWatchGrokCall() async throws -> WatchGrokPlan {
+    /// chat and no resume context. `target`: the call from Hermes it
+    /// answers, which it opens with.
+    func prepareWatchGrokCall(answering target: ConduitNotificationTarget? = nil) async throws -> WatchGrokPlan {
         if isSceneActive, !PhoneScenePresence.isInForeground {
             isSceneActive = false
             publishVoiceRuntimeGates()
@@ -24735,6 +24745,7 @@ final class AppState: ObservableObject {
         async let searchLookup = hostContext.webSearchAvailable()
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
+        async let hermesCallLookup = watchHermesCallOpening(for: target)
         let status = try await grokLiveClient.availability()
         guard case .available(_, let voice, _) = status else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
@@ -24742,6 +24753,7 @@ final class AppState: ObservableObject {
         let search: GeminiLiveSearchSource = await searchLookup ? .hermes : .none
         let memory = await memoryLookup
         let personality = await personalityLookup
+        let hermesCall = await hermesCallLookup
         let style = liveVoiceStyle
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
         let jobSession = preferences.voiceJobSessionOptions(
@@ -24765,13 +24777,13 @@ final class AppState: ObservableObject {
                 answerLength: style.answerLength,
                 asksFirst: false,
                 onWatch: true
-            ) + style.instructions,
+            ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
                 memoryRecall: memory?.canRecall == true
             ),
             voice: voice,
-            openingPrompt: style.openingPrompt,
+            openingPrompt: hermesCall?.watchOpeningTurn ?? style.openingPrompt,
             connection: connection,
             saveCalls: voiceCallSavingEnabled,
             memoryIncluded: memory != nil,
@@ -24780,6 +24792,27 @@ final class AppState: ObservableObject {
             endPhrases: preferences.spokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames()
         )
+    }
+
+    /// What a Watch call that answers a call from Hermes opens with
+    /// (designs/hermes-calls-watch.md): the news the phone's own answer
+    /// gives, with the reply read from the call's chat. Nil for any other
+    /// Watch call. The call tells the user how the job went, so no voice
+    /// conversation announces it again.
+    private func watchHermesCallOpening(for target: ConduitNotificationTarget?) async -> HermesCallOpening? {
+        guard let target, let call = target.call else { return nil }
+        voiceBackgroundJobSupervisor.noteCallAnswered(sessionIDs: call.sessionIDs)
+        var result: String?
+        // Read on the dashboard in use only: another's chat isn't there.
+        if target.dashboardID == nil || target.dashboardID == activeDashboardID {
+            result = await latestLiveVoiceThreadReply(VoiceThreadTarget(
+                runtimeSessionID: target.sessionId,
+                storedSessionID: target.durableSessionID,
+                title: call.title ?? "",
+                profile: target.profile == activeProfile ? nil : target.profile
+            ))
+        }
+        return HermesCallOpening(kind: call.kind, title: call.title, result: result, reason: call.reason, sessionIDs: call.sessionIDs)
     }
 
     /// The connection a Watch call started now would belong to.

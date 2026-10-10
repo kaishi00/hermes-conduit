@@ -167,6 +167,9 @@ final class WatchDirectCallModel: ObservableObject {
     private var meter = WatchSocketMeter()
     private var session: GeminiLiveSessionControlling?
     private(set) var engine: Engine = .gemini
+    /// The call from Hermes this call answers, so the iPhone opens it with
+    /// what Hermes called about (designs/hermes-calls-watch.md).
+    private var ring: String?
     /// Grok's bridge streams opened on the call's grant, which takes 32.
     private var grokStreams = 0
     private var tokens: WatchDirectTokens?
@@ -449,10 +452,11 @@ final class WatchDirectCallModel: ObservableObject {
 
     // MARK: Controls
 
-    func start(engine: Engine = .gemini) async {
+    func start(engine: Engine = .gemini, ring: String? = nil) async {
         guard !isActive else { return }
         reset()
         self.engine = engine
+        self.ring = ring
         phase = .preparing
         // Before the audio session, to see what activating it changes.
         startPathMonitor()
@@ -598,8 +602,8 @@ final class WatchDirectCallModel: ObservableObject {
         sessionRequests += 1
         let id = callID
         let request: WatchVoiceWire.Message = engine == .grok
-            ? .grokStart(callID: id, version: WatchVoiceWire.version)
-            : .directStart(callID: id, version: WatchVoiceWire.version)
+            ? .grokStart(callID: id, version: WatchVoiceWire.version, ring: ring)
+            : .directStart(callID: id, version: WatchVoiceWire.version, ring: ring)
         link.send(request, reply: { [weak self] answer in
             guard let self, self.callID == id, self.phase == .preparing else { return }
             switch answer {
@@ -2831,6 +2835,7 @@ final class WatchDirectCallModel: ObservableObject {
 
     private func reset() {
         grokStreams = 0
+        ring = nil
         callID = UInt32.random(in: 1...UInt32.max)
         callUUID = UUID()
         callStartedDate = Date()
