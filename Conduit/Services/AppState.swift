@@ -4567,6 +4567,12 @@ final class AppState: ObservableObject {
                 Task { @MainActor [weak self] in await self?.routeLinkedSession(id, toProfile: named) }
                 return
             }
+            // A bot's own chat opens through the bot that owns it, as it
+            // does from a link for another profile.
+            if let owner = botOwnership.botProfileName(owningAny: [id]) {
+                openLinkedBotChat(owner)
+                return
+            }
             // Some failed opens say nothing themselves; a deleted job
             // shouldn't make the link look dead.
             // Job links and chat-turn links share this route.
@@ -15412,7 +15418,8 @@ final class AppState: ObservableObject {
             traceStage = "profile switch"
             guard await switchProfile(
                 to: targetProfile,
-                reusing: transitionGeneration
+                reusing: transitionGeneration,
+                sparingCalls: target.isChatLink
             ) else { return false }
         }
         guard notificationOpenAttemptIsCurrent(
@@ -20547,13 +20554,41 @@ final class AppState: ObservableObject {
     @discardableResult
     private func switchProfile(
         to profile: String,
-        reusing viewportTransitionGeneration: UInt64?
+        reusing viewportTransitionGeneration: UInt64?,
+        sparingCalls: Bool = false
     ) async -> Bool {
         let target = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !target.isEmpty, target != activeProfile, let savedConnection = connection else {
             return false
         }
         guard !isProfileSwitching else { return false }
+        // A switch that spares calls (a chat link's) mints its ticket before
+        // anything changes, so nothing waits between its call check and the
+        // voice teardown below.
+        var sparedCallTicket: String?
+        if sparingCalls {
+            var mintError: Error?
+            do {
+                sparedCallTicket = try await mintChatResumeTicket(for: savedConnection)
+            } catch {
+                mintError = error
+            }
+            // A newer navigation or switch that started meanwhile owns the
+            // screen now.
+            if let viewportTransitionGeneration,
+               !chatViewportTransitionIsCurrent(generation: viewportTransitionGeneration) {
+                return false
+            }
+            guard !isProfileSwitching, target != activeProfile, connection == savedConnection else { return false }
+            if let mintError {
+                errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: mintError))")
+                return false
+            }
+            guard !isVoiceCallInProgress else {
+                errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+                return false
+            }
+        }
         // A profile change replaces the voice gateway; any in-flight read
         // aloud belongs to the outgoing profile.
         messageReadAloudController.stop()
@@ -20601,7 +20636,12 @@ final class AppState: ObservableObject {
         lastReportedSessionYolo = nil
 
         do {
-            let ticket = try await mintChatResumeTicket(for: savedConnection)
+            let ticket: String
+            if let sparedCallTicket {
+                ticket = sparedCallTicket
+            } else {
+                ticket = try await mintChatResumeTicket(for: savedConnection)
+            }
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
             }
