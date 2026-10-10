@@ -201,9 +201,12 @@ final class HermesNativeCalls: NSObject {
         let appState = AppStateRuntimeRegistry.shared.existing
         let busy = appState.map { $0.isVoiceInUse || $0.isWatchVoiceCallActive } ?? false
         let plan = HermesNativeCallPlan.plan(for: call, now: Date(), voiceInUse: busy || !calls.isEmpty)
-        if plan.startsTrace {
+        // A push while a call is live ends at once: the live call keeps
+        // its trace.
+        let traced = plan.startsTrace && calls.isEmpty
+        if traced {
             HermesCallTrace.shared.begin(
-                "Push received: \(plan.traceLabel) (app \(appState == nil ? "starting" : "running"), voice busy: \(busy), calls: \(calls.count))"
+                "Push received: \(plan.traceLabel) (app \(appState == nil ? "starting" : "running"), voice busy: \(busy))"
             )
         }
         let id = UUID()
@@ -217,25 +220,25 @@ final class HermesNativeCalls: NSObject {
         update.supportsDTMF = false
         guard let provider else {
             // Never registered for VoIP pushes without a provider.
-            HermesCallTrace.shared.note("No CallKit provider")
+            if traced { HermesCallTrace.shared.note("No CallKit provider") }
             completion()
             return
         }
         if plan == .ring, let target = call.target { calls[id] = Call(target: target) }
         provider.reportNewIncomingCall(with: id, update: update) { error in
             Task { @MainActor in
-                self.reported(id, plan: plan, target: call.target, error: error)
+                self.reported(id, plan: plan, traced: traced, target: call.target, error: error)
                 completion()
             }
         }
     }
 
-    private func reported(_ id: UUID, plan: HermesNativeCallPlan, target: ConduitNotificationTarget?, error: Error?) {
+    private func reported(_ id: UUID, plan: HermesNativeCallPlan, traced: Bool, target: ConduitNotificationTarget?, error: Error?) {
         if let error {
             calls[id] = nil
             let code = (error as? CXErrorCodeIncomingCallError)?.code
             nativeCallsLogger.notice("Hermes call not shown: \(error.localizedDescription, privacy: .public)")
-            if plan.startsTrace {
+            if traced {
                 HermesCallTrace.shared.note("CallKit didn't show it (code \(code.map { String($0.rawValue) } ?? "unknown"))")
             }
             // Do Not Disturb or a blocked caller: the user asked for quiet.
@@ -249,7 +252,7 @@ final class HermesNativeCalls: NSObject {
         }
         switch plan {
         case .endAtOnce(let notice):
-            if plan.startsTrace { HermesCallTrace.shared.note("Ended at once") }
+            if traced { HermesCallTrace.shared.note("Ended at once") }
             provider?.reportCall(with: id, endedAt: Date(), reason: notice == .missed ? .unanswered : .failed)
             post(notice, for: target)
         case .ring:
@@ -330,7 +333,7 @@ final class HermesNativeCalls: NSObject {
         }
         let chatWait = Date()
         let errorBefore = appState.errorMessage
-        guard connected, await appState.openNotificationTarget(target), calls[id] != nil else {
+        guard connected, await appState.openNotificationTarget(target) else {
             nativeCallsLogger.notice("Hermes call answered but not opened (connected: \(connected, privacy: .public))")
             if connected {
                 let shown = appState.errorMessage != nil && appState.errorMessage != errorBefore
@@ -338,6 +341,10 @@ final class HermesNativeCalls: NSObject {
             }
             // The user picked up: what's left is "Hermes wants to talk".
             finish(id, reason: .failed, notice: .talk)
+            return
+        }
+        guard calls[id] != nil else {
+            HermesCallTrace.shared.note("Chat opened, call already ended", since: chatWait)
             return
         }
         HermesCallTrace.shared.note("Chat opened", since: chatWait)
@@ -357,10 +364,11 @@ final class HermesNativeCalls: NSObject {
         await keepCallWhileVoiceRuns(id, appState: appState, startTimeout: Self.connectionTimeout + Self.voiceStartTimeout)
     }
 
-    /// The route opened the call's chat but couldn't open its voice (voice
-    /// was already in use): the call ends, and its news waits in "Hermes
-    /// wants to talk", as when the call opens the chat itself.
-    func routedAnswerRefused(_ target: ConduitNotificationTarget) {
+    /// The route gave up on the call's chat, or opened it but couldn't open
+    /// its voice (voice was already in use): the call ends now, not after
+    /// its start wait, and its news waits in "Hermes wants to talk", as
+    /// when the call opens the chat itself.
+    func routedAnswerFailed(_ target: ConduitNotificationTarget) {
         for (id, call) in calls where call.answered && call.target == target {
             finish(id, reason: .failed, notice: .talk)
         }
