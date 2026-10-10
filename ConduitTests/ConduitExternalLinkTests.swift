@@ -70,10 +70,10 @@ extension HermesVoiceGatewayTimeoutTests {
         }
     }
 
-    func testLinkToAChatOnAnotherProfileOpensLikeItsNotification() throws {
+    func testLinkToAChatOnAnotherProfileOpensLikeItsNotification() async throws {
         let appState = try makeLinkAppState()
         defer { clearRoutedLink() }
-        appState.openAppLink(.session(id: "work-chat", profile: "Work"))
+        await appState.routeLinkedSession("work-chat", toProfile: "Work")
         XCTAssertNil(appState.errorMessage)
         XCTAssertEqual(
             PushNotificationService.shared.pendingTarget,
@@ -81,20 +81,20 @@ extension HermesVoiceGatewayTimeoutTests {
         )
     }
 
-    func testLinkToAnotherProfileNeverEndsACall() throws {
+    func testLinkToAnotherProfileNeverEndsACall() async throws {
         let appState = try makeLinkAppState()
         defer { clearRoutedLink() }
         appState.isNativeHermesCallActive = true
-        appState.openAppLink(.session(id: "work-chat", profile: "work"))
+        await appState.routeLinkedSession("work-chat", toProfile: "work")
         XCTAssertEqual(appState.errorMessage, AppLocalization.string("End the call to open a chat in another profile."))
         XCTAssertNotEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
         XCTAssertEqual(appState.activeProfile, "default")
     }
 
-    func testLinkToAProfileTheDashboardDoesNotListOpensNothing() throws {
+    func testLinkToAProfileTheDashboardDoesNotListOpensNothing() async throws {
         let appState = try makeLinkAppState()
         defer { clearRoutedLink() }
-        appState.openAppLink(.session(id: "work-chat", profile: "ghost"))
+        await appState.routeLinkedSession("work-chat", toProfile: "ghost")
         XCTAssertEqual(appState.errorMessage, AppLocalization.string("That chat is no longer available."))
         XCTAssertNotEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
     }

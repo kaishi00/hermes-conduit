@@ -4563,7 +4563,7 @@ final class AppState: ObservableObject {
         switch link {
         case .session(let id, let profile):
             if let profile, notificationProfileID(profile) != activeProfile {
-                openLinkedSession(id, inProfile: profile)
+                Task { @MainActor [weak self] in await self?.routeLinkedSession(id, toProfile: profile) }
                 return
             }
             // Some failed opens say nothing themselves; a deleted job
@@ -4575,12 +4575,17 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Opens a chat a link puts on another profile. It goes the way a
+    /// Routes a chat a link puts on another profile. It goes the way a
     /// notification for that chat goes: that route switches profile and
     /// keeps the switch's own sync from opening a different chat. Another
     /// app can send the link, so it only switches to a profile this
     /// dashboard lists, and never while a call would end with the switch.
-    private func openLinkedSession(_ id: String, inProfile profile: String) {
+    func routeLinkedSession(_ id: String, toProfile profile: String) async {
+        if let listed = notificationProfileID(profile), listed != "default", !profiles.contains(listed) {
+            // The saved list can predate a new profile (or a first pairing):
+            // read it once before saying the chat is gone.
+            await loadProfiles()
+        }
         guard let target = notificationProfileID(profile),
               target == "default" || profiles.contains(target) else {
             errorMessage = AppLocalization.string("That chat is no longer available.")
