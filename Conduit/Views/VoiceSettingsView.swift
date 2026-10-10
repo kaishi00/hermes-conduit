@@ -178,7 +178,7 @@ struct VoiceSettingsView: View {
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @AppStorage(LiveVoiceOrbPower.preferenceKey) private var animateCallOrb = true
     @AppStorage(ReadAloudSpeed.preferenceKey) private var readAloudSpeedRaw = ReadAloudSpeed.normal.rawValue
-    @AppStorage("conduit.voiceSettings.advancedExpanded") private var advancedExpanded = false
+    @AppStorage("conduit.voice.settingsAdvancedExpanded") private var advancedExpanded = false
     let spokenStopPhrases: [String]
     let spokenEndConversationPhrases: [String]
     let setStopPhrases: ([String]) -> Bool
@@ -203,6 +203,10 @@ struct VoiceSettingsView: View {
     @State private var endPhrasesShown: [String]
     @State private var stopPhrasesCustomized: Bool
     @State private var endPhrasesCustomized: Bool
+    /// Bumped to reseed the phrase editors (a reset, a profile or language
+    /// switch), never by the editors' own saves, so adding phrases keeps
+    /// the keyboard up.
+    @State private var phraseEditorsGeneration = 0
 
     init(
         service: HermesVoiceConfigurationService,
@@ -318,12 +322,16 @@ struct VoiceSettingsView: View {
         // A profile switch or an app language change re-renders the host
         // with other lists.
         .onChange(of: spokenStopPhrases) { _, phrases in
+            guard phrases != stopPhrasesShown else { return }
             stopPhrasesShown = phrases
             stopPhrasesCustomized = Self.isCustomStopList(phrases)
+            phraseEditorsGeneration += 1
         }
         .onChange(of: spokenEndConversationPhrases) { _, phrases in
+            guard phrases != endPhrasesShown else { return }
             endPhrasesShown = phrases
             endPhrasesCustomized = Self.isCustomEndList(phrases)
+            phraseEditorsGeneration += 1
         }
         .onChange(of: savedTranscriptionModeChosen) { _, chosen in
             if chosen { transcriptionModeChosen = true }
@@ -1116,13 +1124,13 @@ struct VoiceSettingsView: View {
                 initialPhrases: stopPhrasesShown,
                 onChange: { phrases in
                     _ = setStopPhrases(phrases)
-                    // Kept current, so a reset to the built-ins always
-                    // changes the editor's identity and reseeds it.
+                    // Kept current, so the host's list matches it after
+                    // the save and doesn't reseed the editor.
                     stopPhrasesShown = phrases
                     stopPhrasesCustomized = Self.isCustomStopList(phrases)
                 }
             )
-            .id(stopPhrasesShown)
+            .id(phraseEditorsGeneration)
             SpokenPhraseListEditor(
                 title: AppLocalization.string("End Conversation Phrases"),
                 purposeText: AppLocalization.string("Close the Voice conversation completely."),
@@ -1133,7 +1141,7 @@ struct VoiceSettingsView: View {
                     endPhrasesCustomized = Self.isCustomEndList(phrases)
                 }
             )
-            .id(endPhrasesShown)
+            .id(phraseEditorsGeneration)
             Text("The built-in phrases are in the app language. Once you edit a list, it stays as you left it.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -1146,6 +1154,7 @@ struct VoiceSettingsView: View {
                     guard setStopPhrases(stop), setEndConversationPhrases(end) else { return }
                     stopPhrasesShown = stop
                     endPhrasesShown = end
+                    phraseEditorsGeneration += 1
                     stopPhrasesCustomized = false
                     endPhrasesCustomized = false
                 } label: {
