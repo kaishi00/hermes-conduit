@@ -312,8 +312,10 @@ enum WatchVoiceWire {
         case grokStart(callID: UInt32, version: Int, ring: String? = nil)
         /// The Watch's own PushKit token, which calls from Hermes ring on
         /// (designs/hermes-calls-watch.md); nil once it has none. Queued, so
-        /// it reaches a sleeping iPhone.
-        case callsToken(token: String?)
+        /// it reaches a sleeping iPhone. `key`: the Watch's handoff key,
+        /// base64url, which seals an answered call's start and session at
+        /// the relay (HermesRingHandoff); nil from an older Watch.
+        case callsToken(token: String?, key: String? = nil)
         // iPhone → Watch
         /// Why the iPhone can't serve the call, as the Watch shows it.
         case callRefused(callID: UInt32, reason: String)
