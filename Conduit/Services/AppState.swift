@@ -897,10 +897,18 @@ final class AppState: ObservableObject {
     /// The live reply text as the chat shows it; stored in `liveTurn`.
     /// Deliberately not @Published: reading it in a view that observes
     /// AppState does not refresh with the stream. Views observe `liveTurn`.
-    var streamingText: String {
+    /// Written only by the delta coalescing and turn-boundary code here.
+    private(set) var streamingText: String {
         get { liveTurn.streamingText }
         set { liveTurn.streamingText = newValue }
     }
+    #if DEBUG
+    /// Test seam: shows `text` as the live reply, as a coalesced streaming
+    /// publish would, without feeding gateway deltas.
+    func setStreamingTextForTesting(_ text: String) {
+        streamingText = text
+    }
+    #endif
     /// Live, frequently-changing reasoning projection, stored in `liveTurn`.
     /// Streaming reasoning renders from here at display cadence WITHOUT
     /// mutating the settled `messages` array — per-publish transcript
@@ -25123,9 +25131,10 @@ final class AppState: ObservableObject {
 /// each sheet, re-renders on any AppState publish; a publish here re-renders
 /// only the chat's live rows (`ChatLiveTurnRows`).
 ///
-/// Its setters are file-private: AppState, declared in this file, is the
-/// only writer (through `streamingText` and `liveReasoningSegment`), so the
-/// coalescing, drawer pause and segment settling cannot be bypassed.
+/// Its setters are file-private and AppState's `streamingText` and
+/// `liveReasoningSegment` setters are private, so only AppState's own
+/// coalescing, drawer pause and segment settling write it (tests use
+/// `setStreamingTextForTesting`, in debug builds only).
 @MainActor
 final class LiveTurnProjection: ObservableObject {
     @Published fileprivate(set) var streamingText = ""

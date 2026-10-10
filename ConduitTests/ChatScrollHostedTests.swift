@@ -17,7 +17,7 @@ final class ChatScrollHostedTests: XCTestCase {
         // until SwiftUI has torn it down, so no deferred work from this
         // suite lands in the next one (the reason the deleted follow
         // correction suite tore down the same way).
-        appState?.streamingText = ""
+        appState?.setStreamingTextForTesting("")
         if let window {
             window.isHidden = true
             window.rootViewController = nil
@@ -305,10 +305,10 @@ final class ChatScrollHostedTests: XCTestCase {
         assertAtLatest(mounted, "an appended reply is followed")
 
         for tick in 1...8 {
-            mounted.appState.streamingText = String(
+            mounted.appState.setStreamingTextForTesting(String(
                 repeating: "Streaming line \(tick) grows the live bubble. ",
                 count: tick * 3
-            )
+            ))
             settle(mounted.host.view, seconds: 0.1)
             assertAtLatest(mounted, "streaming growth tick \(tick) is followed")
         }
@@ -322,7 +322,7 @@ final class ChatScrollHostedTests: XCTestCase {
         let before = try XCTUnwrap(screenY(of: topRow, in: mounted))
 
         mounted.appState.messages.append(contentsOf: Self.transcript(120..<124))
-        mounted.appState.streamingText = String(repeating: "More streamed text. ", count: 40)
+        mounted.appState.setStreamingTextForTesting(String(repeating: "More streamed text. ", count: 40))
         settle(mounted.host.view)
 
         let after = try XCTUnwrap(screenY(of: topRow, in: mounted))
@@ -474,7 +474,7 @@ final class ChatScrollHostedTests: XCTestCase {
             ))
             settle(mounted.host.view, seconds: 0.15)
         }
-        appState.streamingText = String(repeating: "The final answer streams in with several lines. ", count: 30)
+        appState.setStreamingTextForTesting(String(repeating: "The final answer streams in with several lines. ", count: 30))
         settle(mounted.host.view, seconds: 0.3)
         checkpoint("completion before", mounted, recorder)
         assertAtLatest(mounted, "the live turn is followed")
@@ -489,7 +489,7 @@ final class ChatScrollHostedTests: XCTestCase {
             content: "Done.",
             timestamp: "2026-01-01T00:00:00Z"
         ))
-        appState.streamingText = ""
+        appState.setStreamingTextForTesting("")
         checkpoint("completion published", mounted, recorder)
         settle(mounted.host.view, seconds: 0.6)
         checkpoint("completion after", mounted, recorder)
@@ -504,9 +504,9 @@ final class ChatScrollHostedTests: XCTestCase {
         let mounted = try mount(Self.uneven(0..<90))
         let recorder = ScrollRecorder(mounted.scrollView)
         mounted.appState.messages.append(contentsOf: Self.uneven(90..<93))
-        mounted.appState.streamingText = String(repeating: "Streaming with ```code``` and *emphasis*. ", count: 20)
+        mounted.appState.setStreamingTextForTesting(String(repeating: "Streaming with ```code``` and *emphasis*. ", count: 20))
         settle(mounted.host.view)
-        mounted.appState.streamingText = ""
+        mounted.appState.setStreamingTextForTesting("")
         mounted.appState.messages.append(contentsOf: Self.uneven(93..<94))
         settle(mounted.host.view)
         assertAtLatest(mounted, "following after the burst\n\(recorder.dump())")

@@ -294,11 +294,11 @@ final class LongContextScalingFixtureTests: XCTestCase {
 
         TranscriptPerf.reset()
         _ = feedReasoningDeltas(8, sessionId: "deep-session", state: appState, host: host)
-        appState.streamingText = "unrelated streaming tick "
+        appState.setStreamingTextForTesting("unrelated streaming tick ")
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
         RunLoop.current.run(until: Date())
-        appState.streamingText = ""
+        appState.setStreamingTextForTesting("")
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
         // An unrelated AppState publish, so the seam below is reached however
