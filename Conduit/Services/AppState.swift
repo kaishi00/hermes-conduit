@@ -15227,7 +15227,10 @@ final class AppState: ObservableObject {
         isOpeningNotificationSession = true
         let transitionGeneration = beginExplicitChatViewportTransition()
         defer {
-            cancelChatViewportTransitionIfNoReplacement(generation: transitionGeneration)
+            // Ends with no transcript of its own laid out (a profile switch
+            // it lent the transition to marks a replacement but replaces no
+            // transcript): the viewport is released, not left frozen.
+            finishChatViewportTransitionIfNoTranscriptReplacement(generation: transitionGeneration)
             finishNotificationOpenAttempt(id: notificationAttemptID)
         }
         guard notificationOpenAttemptIsCurrent(
