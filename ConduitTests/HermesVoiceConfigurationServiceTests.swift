@@ -233,6 +233,49 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.capability.supportsTranscription)
     }
 
+    /// Hermes 0.16–0.18 send TTS rows without `status` or `tts_provider`
+    /// (rows shaped as 0.16.0 sends them). A row is ready once every key it
+    /// lists is set, so Voice starts on those hosts instead of saying no
+    /// assistant voice is ready.
+    func testHermesWithoutReadinessStatusJudgesRowsByTheirKeys() {
+        let ttsRows: [[String: Any]] = [
+            ["name": "Microsoft Edge TTS", "badge": "★ recommended · free", "tag": "Good quality, no API key needed",
+             "env_vars": [[String: Any]](), "post_setup": NSNull(), "requires_nous_auth": false, "is_active": true],
+            ["name": "OpenAI TTS", "badge": "paid", "tag": "",
+             "env_vars": [["key": "VOICE_TOOLS_OPENAI_KEY", "prompt": "OpenAI API key", "is_set": false]],
+             "post_setup": NSNull(), "requires_nous_auth": false, "is_active": false],
+            ["name": "xAI TTS", "badge": "paid", "tag": "", "env_vars": [[String: Any]](), "post_setup": "xai_grok",
+             "requires_nous_auth": false, "is_active": false],
+        ]
+        let snapshot = VoiceConfigurationParser.parse(
+            profile: "default",
+            schema: nil,
+            config: ["stt": ["provider": "local"], "tts": ["provider": "edge"]],
+            sttReadiness: nil,
+            ttsReadiness: ["name": "tts", "has_category": true, "providers": ttsRows, "active_provider": "Microsoft Edge TTS"],
+            environment: [:],
+            ttsToolsetConfigAvailable: true
+        )
+
+        XCTAssertTrue(snapshot.capability.supportsSpeech)
+        XCTAssertNil(snapshot.capability.unavailableReason)
+        let status = { (id: String) in snapshot.ttsProviders.first { $0.descriptor.id == id }?.readiness?.status }
+        XCTAssertEqual(status("edge"), "ready")
+        XCTAssertEqual(status("openai"), "needs_keys")
+        XCTAssertEqual(status("xai"), "ready")
+
+        let openAI = VoiceConfigurationParser.parse(
+            profile: "default",
+            schema: nil,
+            config: ["stt": ["provider": "local"], "tts": ["provider": "openai"]],
+            sttReadiness: nil,
+            ttsReadiness: ["providers": [ttsRows[1].merging(["is_active": true]) { $1 }]],
+            environment: [:],
+            ttsToolsetConfigAvailable: true
+        )
+        XCTAssertFalse(openAI.capability.supportsSpeech)
+    }
+
     func testDisabledSTTConfigStillDisablesHermesTranscription() {
         let snapshot = VoiceConfigurationParser.parse(
             profile: "default",
