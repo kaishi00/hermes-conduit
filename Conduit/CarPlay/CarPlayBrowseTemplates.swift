@@ -2,10 +2,12 @@
 //  CarPlayBrowseTemplates.swift
 //  Conduit
 //
-//  The screens the voice screen's top-bar buttons open: recent chats,
-//  Voice Jobs, Shortcuts, and the voice mode and agent picker. Each is one
-//  level below the voice screen (CarPlay allows three). Rows carry titles
-//  and status only, never a reply: answers are always spoken.
+//  The screens the voice screen's top-bar buttons open: the chat list
+//  under Chats, and under More a grid of Voice Jobs, Shortcuts, and the
+//  voice mode and agent picker. Nothing goes deeper than the third level,
+//  the voice screen included, which is CarPlay's limit for voice apps.
+//  Rows carry titles, status and an icon only, never a reply: answers are
+//  always spoken.
 //
 //  The row models are pure so what each screen lists is testable without
 //  a car; the factory turns them into CarPlay templates.
@@ -21,6 +23,14 @@ struct CarPlayChatRow: Equatable {
     let storedSessionID: String?
     let title: String
     let detail: String
+    /// The row's icon: what kind of chat it is.
+    var symbol: String = CarPlayBrowse.chatSymbol
+
+    /// Whether this row is the chat `id` names, by either of its ids.
+    func matches(_ id: String?) -> Bool {
+        guard let id else { return false }
+        return id == sessionID || id == storedSessionID
+    }
 
     var thread: VoiceThreadTarget {
         VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: storedSessionID, title: title)
@@ -31,6 +41,7 @@ struct CarPlayJobRow: Equatable {
     let id: UUID
     let title: String
     let status: String
+    var symbol: String = "hourglass"
     /// A settled job can be heard again; a running one has nothing to say yet.
     let canReplay: Bool
 }
@@ -44,6 +55,7 @@ struct CarPlayModeRow: Equatable {
     let mode: CarPlayVoiceMode
     let title: String
     let isSelected: Bool
+    var symbol: String { mode.symbol }
 }
 
 /// The chats the car's chat list offers: pinned ones first, then recent.
@@ -64,7 +76,11 @@ enum CarPlayBrowse {
         isPinned: (SessionSummary) -> Bool
     ) -> CarPlayChatList {
         let pinnedSessions = sessions.filter(isPinned)
-        let pinned = recentChats(from: pinnedSessions)
+        let pinned = recentChats(from: pinnedSessions).map { row in
+            var pinnedRow = row
+            pinnedRow.symbol = pinSymbol
+            return pinnedRow
+        }
         let others = sessions.filter { !isPinned($0) }
         let recent = Array(recentChats(from: others).prefix(maximumChats - pinned.count))
         return CarPlayChatList(pinned: pinned, recent: recent)
@@ -90,9 +106,24 @@ enum CarPlayBrowse {
                     sessionID: session.id,
                     storedSessionID: session.storedSessionId,
                     title: title.isEmpty ? AppLocalization.string("New Chat") : title,
-                    detail: session.updatedLabel
+                    detail: session.updatedLabel,
+                    symbol: chatSymbol(for: session.source)
                 )
             }
+    }
+
+    static let chatSymbol = "bubble.left.fill"
+    static let pinSymbol = "pin.fill"
+
+    /// Saved calls and voice jobs look like what they are; every other
+    /// chat is a speech bubble.
+    static func chatSymbol(for source: SessionSource) -> String {
+        switch source {
+        case .voice: return "waveform"
+        case .voiceJob: return "checklist"
+        case .cron: return "clock.fill"
+        case .chat, .discord, .telegram, .api, .webhook, .other: return chatSymbol
+        }
     }
 
     /// Background Voice Jobs, newest first.
@@ -104,6 +135,7 @@ enum CarPlayBrowse {
                     id: job.id,
                     title: job.title,
                     status: statusText(job.status),
+                    symbol: statusSymbol(job.status),
                     canReplay: !job.status.isActive
                 )
             }
@@ -116,6 +148,16 @@ enum CarPlayBrowse {
         case .finished: return AppLocalization.string("Done")
         case .failed: return AppLocalization.string("Failed")
         case .cancelled: return AppLocalization.string("Cancelled")
+        }
+    }
+
+    static func statusSymbol(_ status: VoiceBackgroundJob.Status) -> String {
+        switch status {
+        case .starting, .running: return "hourglass"
+        case .needsInput: return "questionmark.bubble.fill"
+        case .finished: return "checkmark.circle.fill"
+        case .failed: return "exclamationmark.triangle.fill"
+        case .cancelled: return "xmark.circle.fill"
         }
     }
 
@@ -144,6 +186,15 @@ enum CarPlayBrowse {
 extension CarPlayVoiceMode {
     static let all: [CarPlayVoiceMode] = [.classic, .geminiLive, .gptLive, .grokLive]
 
+    var symbol: String {
+        switch self {
+        case .classic: return "mic.fill"
+        case .geminiLive: return "sparkles"
+        case .gptLive: return "waveform"
+        case .grokLive: return "bolt.fill"
+        }
+    }
+
     var title: String {
         switch self {
         case .classic: return AppLocalization.string("Classic voice")
@@ -166,33 +217,73 @@ struct CarPlayBrowseHandlers {
     var runShortcut: (CarPlayShortcut) -> Void = { _ in }
     var selectMode: (CarPlayVoiceMode) -> Void = { _ in }
     var selectAgent: (Int) -> Void = { _ in }
+    var showJobs: () -> Void = {}
+    var showShortcuts: () -> Void = {}
+    var showVoiceOptions: () -> Void = {}
+}
+
+/// The voice screen's top-bar buttons.
+enum CarPlayBarButtonKind: Equatable {
+    case chats
+    case more
+
+    var symbol: String {
+        switch self {
+        case .chats: return "bubble.left.and.bubble.right.fill"
+        case .more: return "ellipsis.circle"
+        }
+    }
 }
 
 @MainActor
 enum CarPlayBrowseTemplateFactory {
+    static func barButton(_ kind: CarPlayBarButtonKind, action: @escaping () -> Void) -> CPBarButton {
+        CPBarButton(image: symbolImage(kind.symbol)) { _ in action() }
+    }
+
+    static func symbolImage(_ name: String) -> UIImage {
+        UIImage(systemName: name) ?? UIImage(systemName: "circle.fill") ?? UIImage()
+    }
+
     static func chatsTemplate(
         chats: CarPlayChatList,
         placeholder: String? = nil,
+        attachedChatID: String? = nil,
         handlers: CarPlayBrowseHandlers
     ) -> CPListTemplate {
         CPListTemplate(
             title: AppLocalization.string("Chats"),
-            sections: chatSections(chats: chats, placeholder: placeholder, handlers: handlers)
+            sections: chatSections(chats: chats, placeholder: placeholder, attachedChatID: attachedChatID, handlers: handlers)
         )
+    }
+
+    /// Jobs, Shortcuts and Voice, the screens the top bar's More opens.
+    static func moreTemplate(handlers: CarPlayBrowseHandlers) -> CPGridTemplate {
+        let buttons = [
+            (AppLocalization.string("Jobs"), "checklist", handlers.showJobs),
+            (AppLocalization.string("Shortcuts"), "bolt.fill", handlers.showShortcuts),
+            (AppLocalization.string("Voice"), "waveform.circle.fill", handlers.showVoiceOptions),
+        ].map { title, symbol, action in
+            CPGridButton(titleVariants: [title], image: symbolImage(symbol)) { _ in action() }
+        }
+        return CPGridTemplate(title: AppLocalization.string("More"), gridButtons: buttons)
     }
 
     /// New voice chat, then the pinned and recent chats. `placeholder`
     /// stands in for the chats while there are none yet because the list
     /// is still on its way (#514).
+    /// `attachedChatID` is the chat Listen talks in, which the list marks
+    /// the way music apps mark what is playing.
     static func chatSections(
         chats: CarPlayChatList,
         placeholder: String? = nil,
+        attachedChatID: String? = nil,
         handlers: CarPlayBrowseHandlers
     ) -> [CPListSection] {
         let newChat = CPListItem(
             text: AppLocalization.string("New voice chat"),
             detailText: nil,
-            image: UIImage(systemName: "square.and.pencil")
+            image: symbolImage("plus.bubble.fill")
         )
         newChat.handler = { _, completion in
             handlers.newVoiceChat()
@@ -201,14 +292,14 @@ enum CarPlayBrowseTemplateFactory {
         var sections = [CPListSection(items: [newChat])]
         if !chats.pinned.isEmpty {
             sections.append(CPListSection(
-                items: chatItems(chats.pinned, handlers: handlers),
+                items: chatItems(chats.pinned, attachedChatID: attachedChatID, handlers: handlers),
                 header: AppLocalization.string("Pinned"),
                 sectionIndexTitle: nil
             ))
         }
         if !chats.recent.isEmpty {
             sections.append(CPListSection(
-                items: chatItems(chats.recent, handlers: handlers),
+                items: chatItems(chats.recent, attachedChatID: attachedChatID, handlers: handlers),
                 header: AppLocalization.string("Recent"),
                 sectionIndexTitle: nil
             ))
@@ -221,9 +312,21 @@ enum CarPlayBrowseTemplateFactory {
         return sections
     }
 
-    private static func chatItems(_ rows: [CarPlayChatRow], handlers: CarPlayBrowseHandlers) -> [CPListItem] {
+    private static func chatItems(
+        _ rows: [CarPlayChatRow],
+        attachedChatID: String?,
+        handlers: CarPlayBrowseHandlers
+    ) -> [CPListItem] {
         rows.map { row in
-            let item = CPListItem(text: row.title, detailText: row.detail.isEmpty ? nil : row.detail)
+            let item = CPListItem(
+                text: row.title,
+                detailText: row.detail.isEmpty ? nil : row.detail,
+                image: symbolImage(row.symbol)
+            )
+            if row.matches(attachedChatID) {
+                item.isPlaying = true
+                item.playingIndicatorLocation = .trailing
+            }
             item.handler = { _, completion in
                 handlers.openChat(row)
                 completion()
@@ -241,7 +344,7 @@ enum CarPlayBrowseTemplateFactory {
 
     static func jobSections(rows: [CarPlayJobRow], handlers: CarPlayBrowseHandlers) -> [CPListSection] {
         let items = rows.map { row in
-            let item = CPListItem(text: row.title, detailText: row.status)
+            let item = CPListItem(text: row.title, detailText: row.status, image: symbolImage(row.symbol))
             item.handler = { _, completion in
                 if row.canReplay { handlers.replayJob(row.id) }
                 completion()
@@ -263,7 +366,7 @@ enum CarPlayBrowseTemplateFactory {
         let buttons = shortcuts.prefix(CarPlayPreferences.maximumShortcuts).enumerated().map { index, shortcut in
             CPGridButton(
                 titleVariants: [shortcut.title],
-                image: UIImage(systemName: CarPlayBrowse.shortcutSymbol(at: index)) ?? UIImage(systemName: "circle.fill") ?? UIImage()
+                image: symbolImage(CarPlayBrowse.shortcutSymbol(at: index))
             ) { _ in
                 handlers.runShortcut(shortcut)
             }
@@ -278,7 +381,7 @@ enum CarPlayBrowseTemplateFactory {
     ) -> CPListTemplate {
         var sections = [CPListSection(
             items: modes.map { row in
-                optionItem(title: row.title, isSelected: row.isSelected) { handlers.selectMode(row.mode) }
+                optionItem(title: row.title, symbol: row.symbol, isSelected: row.isSelected) { handlers.selectMode(row.mode) }
             },
             header: AppLocalization.string("Voice mode"),
             sectionIndexTitle: nil
@@ -286,7 +389,7 @@ enum CarPlayBrowseTemplateFactory {
         if !agents.isEmpty {
             sections.append(CPListSection(
                 items: agents.enumerated().map { index, row in
-                    optionItem(title: row.title, isSelected: row.isSelected) { handlers.selectAgent(index) }
+                    optionItem(title: row.title, symbol: "person.crop.circle.fill", isSelected: row.isSelected) { handlers.selectAgent(index) }
                 },
                 header: AppLocalization.string("Agent"),
                 sectionIndexTitle: nil
@@ -295,11 +398,11 @@ enum CarPlayBrowseTemplateFactory {
         return CPListTemplate(title: AppLocalization.string("Voice"), sections: sections)
     }
 
-    private static func optionItem(title: String, isSelected: Bool, select: @escaping () -> Void) -> CPListItem {
+    private static func optionItem(title: String, symbol: String, isSelected: Bool, select: @escaping () -> Void) -> CPListItem {
         let item = CPListItem(
             text: title,
             detailText: nil,
-            image: nil,
+            image: symbolImage(symbol),
             accessoryImage: isSelected ? UIImage(systemName: "checkmark") : nil,
             accessoryType: .none
         )

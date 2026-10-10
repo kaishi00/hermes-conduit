@@ -1946,6 +1946,7 @@ extension AppStateVoiceCapabilityTests {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let preferences = CarPlayPreferences(defaults: defaults)
+        preferences.setChoosesChatFirst(true)
         let coordinator = CarPlayVoiceCoordinator()
         coordinator.appStateProvider = { appState }
         coordinator.autoEstablishOnConnect = false

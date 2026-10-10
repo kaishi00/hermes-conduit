@@ -46,6 +46,16 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
         return errorIssue.carPlayTitleVariants
     }
 
+    /// The titles for this state on a template built for `controls`. Ready
+    /// also names the chat Listen talks in, so the driver knows where the
+    /// next words go; the plain title stays as the short variant.
+    func titleVariants(controls: CarPlayVoiceControls) -> [String] {
+        guard self == .ready, let chatTitle = controls.chatTitle else {
+            return titleVariants(errorIssue: controls.errorIssue)
+        }
+        return [AppLocalization.string("Ready · \(chatTitle)")] + titleVariants
+    }
+
     /// Approximate mapping from the authoritative controller state. Both
     /// `.transcribing` and `.thinking` are "the assistant is working";
     /// `.muted` is a playback presentation detail and maps to responding.
