@@ -1590,6 +1590,10 @@ private struct VoiceProviderFieldEditor: View {
         VoiceConfigurationParser.validationMessage(for: value, key: field.key)
     }
 
+    private func saveChoice(_ option: String) {
+        Task { await save(option) }
+    }
+
     private var saveHint: Text {
         if let validationMessage {
             return Text("Cannot save. \(validationMessage)")
@@ -1608,7 +1612,7 @@ private struct VoiceProviderFieldEditor: View {
                 ) {
                     Text(field.label).foregroundStyle(.secondary)
                 }
-                .onChange(of: value) { _, updated in Task { await save(updated) } }
+                .onChange(of: value) { _, updated in saveChoice(updated) }
             case .decimal:
                 TextField(field.label, text: $value)
                     .keyboardType(.decimalPad)
