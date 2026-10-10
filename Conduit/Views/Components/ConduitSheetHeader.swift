@@ -9,6 +9,10 @@ struct ConduitSheetHeader: View {
         ZStack {
             Text(title)
                 .font(.headline)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                // Clear of the close button at any text size.
+                .padding(.horizontal, 52)
             HStack {
                 Spacer()
                 Button(action: close) {
@@ -20,7 +24,7 @@ struct ConduitSheetHeader: View {
                 .accessibilityLabel("Close \(title)")
             }
         }
-        .frame(height: 44)
+        .frame(minHeight: 44)
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 10)

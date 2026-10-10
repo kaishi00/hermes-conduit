@@ -82,7 +82,9 @@ struct ComposerBar: View {
     static let fullEditorThreshold: CGFloat = 80
 
     static func showsFullEditorButton(measuredHeight: CGFloat) -> Bool {
-        measuredHeight >= fullEditorThreshold
+        // At large Text Sizes one line alone can reach 80 pt; the icon still
+        // waits for more than a line.
+        measuredHeight >= max(fullEditorThreshold, ComposerPasteTextView.minimumHeight + 20)
     }
 
     static func composerDraftKey(for sessionID: String?, profile: String) -> ComposerDraftKey {
@@ -653,6 +655,10 @@ struct ComposerBar: View {
         .padding(.horizontal, 10)
         .padding(.top, 6)
         .padding(.bottom, 10)
+        // Seven controls share one row of fixed 32 pt circles; past this
+        // size the model chip shrinks to nothing and glyphs spill out.
+        // The typed text above still follows the full Text Size.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 
     @ViewBuilder
@@ -699,7 +705,7 @@ struct ComposerBar: View {
                     Label("Repair Connection", systemImage: "wrench.and.screwdriver")
                         .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 34)
+                        .padding(.vertical, 6).frame(minHeight: 34)
                 }
                 .buttonStyle(.bordered)
                 .tint(.conduitAccent)
@@ -760,7 +766,7 @@ struct ComposerBar: View {
                     Label("Take over this chat", systemImage: "arrow.down.to.line")
                         .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 34)
+                        .padding(.vertical, 6).frame(minHeight: 34)
                 }
                 .buttonStyle(.bordered)
                 .tint(.conduitAccent)
@@ -1000,6 +1006,13 @@ struct ComposerBar: View {
             prominent: action == .send,
             interactive: action != .unavailable
         )
+        .accessibilityShowsLargeContentViewer {
+            Label {
+                Text(actionTitle ?? accessibilityLabel)
+            } icon: {
+                Image(systemName: actionSymbol)
+            }
+        }
         .accessibilityLabel(accessibilityLabel)
     }
 
@@ -1023,6 +1036,10 @@ struct ComposerBar: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // The controls row is capped; touch and hold shows the model large.
+            .accessibilityShowsLargeContentViewer {
+                Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
+            }
             .accessibilityLabel(modelAccessibilityLabel)
 
             if !appState.runtime.model.isEmpty {

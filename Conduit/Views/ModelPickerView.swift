@@ -713,7 +713,7 @@ struct ModelPickerView: View {
                 .font(.headline)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 46)
+                .padding(.vertical, 6).frame(minHeight: 46)
             }
             .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent, prominent: true)
             .disabled(isApplying || isApplyingReasoning)

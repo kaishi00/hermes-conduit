@@ -908,7 +908,7 @@ struct KanbanView: View {
                 .padding(.horizontal, 2)
                 .padding(.vertical, 1)
             }
-            .frame(height: 34)
+            .frame(minHeight: 34)
 
             if let column = resolvedLaneColumn(in: columns) {
                 ScrollView(showsIndicators: false) {
@@ -1501,7 +1501,7 @@ struct KanbanView: View {
                 }
             }
             .padding(.horizontal, 11)
-            .frame(height: 30)
+            .padding(.vertical, 6).frame(minHeight: 30)
         }
         .buttonStyle(.plain)
         .foregroundStyle(isSelected ? .primary : .secondary)
@@ -1729,7 +1729,7 @@ struct KanbanView: View {
             .disabled(!store.isSelectedSnapshotLoaded)
         }
         .padding(.horizontal, 12)
-        .frame(height: 40)
+        .padding(.vertical, 6).frame(minHeight: 40)
         .conduitGlassControl(cornerRadius: 15)
     }
 

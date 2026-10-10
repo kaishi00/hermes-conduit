@@ -181,11 +181,11 @@ struct VoiceConversationSheet: View {
 
     private var controlsCard: some View {
         ConduitSettingsSection(title: AppLocalization.string("Microphone and audio"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
-            HStack(spacing: 10) {
+            AdaptiveStack(spacing: 10) {
                 Button { microphoneTapped() } label: {
                     Label(microphoneLabel, systemImage: microphoneSymbol)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 48)
+                        .padding(.vertical, 6).frame(minHeight: 48)
                 }
                 .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent.opacity(0.16))
                 .accessibilityHint(microphoneHint)
@@ -194,7 +194,7 @@ struct VoiceConversationSheet: View {
                 Button { controller.setOutputMuted(!controller.isOutputMuted) } label: {
                     Label(controller.isOutputMuted ? AppLocalization.string("Unmute") : AppLocalization.string("Mute"), systemImage: controller.isOutputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                         .frame(maxWidth: .infinity)
-                        .frame(height: 48)
+                        .padding(.vertical, 6).frame(minHeight: 48)
                 }
                 .conduitGlassControl(cornerRadius: 17, tint: controller.isOutputMuted ? .orange.opacity(0.18) : .conduitAura.opacity(0.14))
                 .accessibilityHint("Mutes assistant audio without changing chat messages")

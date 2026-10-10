@@ -223,7 +223,7 @@ struct ConnectionSetupForm: View {
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("setup.test.failure")
-            HStack(spacing: 16) {
+            AdaptiveStack(spacing: 16) {
                 Button(plan.remediationLabel) {
                     flow.editAfterFailedTest(plan.remediationStep)
                 }

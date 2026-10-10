@@ -84,7 +84,7 @@ struct GPTLiveSettingsSection: View {
                 } label: {
                     Label(isChecking ? AppLocalization.string("Checking…") : AppLocalization.string("Check GPT-Live"), systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
-                        .frame(height: 44)
+                        .padding(.vertical, 6).frame(minHeight: 44)
                 }
                 .disabled(isChecking)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
