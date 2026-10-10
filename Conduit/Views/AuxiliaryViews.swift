@@ -549,8 +549,8 @@ struct SettingsView: View {
                     transcriptionModeChosen: voicePreferences.transcriptionMode != nil,
                     appleSpeechAvailability: appState.appleSpeechAvailability,
                     continuousConversation: appState.continuousConversationEnabled,
-                    spokenStopPhrases: voicePreferences.spokenStopPhrases,
-                    spokenEndConversationPhrases: voicePreferences.spokenEndConversationPhrases,
+                    spokenStopPhrases: voicePreferences.resolvedSpokenStopPhrases,
+                    spokenEndConversationPhrases: voicePreferences.resolvedSpokenEndConversationPhrases,
                     setVoiceEnabled: { enabled in
                         await appState.setVoiceEnabled(enabled)
                     },
@@ -1155,12 +1155,13 @@ private struct AttachmentLimitSettings: View {
             Text("Photos, videos and files larger than this are not attached.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            Picker("Maximum file size", selection: $megabytes) {
-                ForEach(AttachmentSizeLimit.choices, id: \.self) { value in
-                    Text(verbatim: "\(value) MB").tag(value)
-                }
+            ConduitMenuPicker(
+                value: megabytes,
+                choices: AttachmentSizeLimit.choices.map { (id: $0, title: "\($0) MB") },
+                onSelect: { megabytes = $0 }
+            ) {
+                Text("Maximum file size").foregroundStyle(.secondary)
             }
-            .tint(.conduitAccent)
             if AttachmentSizeLimit.isRisky(megabytes: megabytes) {
                 Label {
                     Text("Large files are held in memory while they upload. A high limit may make Conduit freeze or crash.")
@@ -1381,13 +1382,18 @@ private struct ResponseBehaviorSettings: View {
 
 /// A custom menu picker matching the Chat settings selector style,
 /// used by Model and Delegate model settings for visual consistency.
-struct ConduitMenuPicker<Label: View>: View {
+/// The settings picker row: the setting's name on the left and its current
+/// value on the right ("Provider    OpenRouter"), the whole row opening the
+/// menu. Every menu-style choice in Settings uses it, so a bare value never
+/// floats on its own. Choice titles arrive localized.
+struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let label: Label
-    let value: String
-    let choices: [(id: String, title: String)]
-    let onSelect: (String) -> Void
+    let value: ID
+    let choices: [(id: ID, title: String)]
+    let onSelect: (ID) -> Void
 
-    init(value: String, choices: [(id: String, title: String)], onSelect: @escaping (String) -> Void, @ViewBuilder label: () -> Label) {
+    init(value: ID, choices: [(id: ID, title: String)], onSelect: @escaping (ID) -> Void, @ViewBuilder label: () -> Label) {
         self.value = value
         self.choices = choices
         self.onSelect = onSelect
@@ -1395,26 +1401,61 @@ struct ConduitMenuPicker<Label: View>: View {
     }
 
     private var displayedTitle: String {
-        choices.first(where: { $0.id == value })?.title ?? value
+        choices.first(where: { $0.id == value })?.title ?? (value as? String) ?? String(describing: value)
+    }
+
+    private var valueText: Text {
+        Text(displayedTitle.isEmpty ? AppLocalization.string("Default") : displayedTitle)
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary).accessibilityHidden(true)
     }
 
     var body: some View {
         Menu {
-            ForEach(choices, id: \.id) { choice in
-                Button(choice.title) { onSelect(choice.id) }
+            ForEach(choices.indices, id: \.self) { index in
+                let choice = choices[index]
+                Button {
+                    onSelect(choice.id)
+                } label: {
+                    if choice.id == value {
+                        SwiftUI.Label(choice.title, systemImage: "checkmark")
+                    } else {
+                        Text(verbatim: choice.title)
+                    }
+                }
+                .accessibilityAddTraits(choice.id == value ? .isSelected : [])
             }
         } label: {
-            HStack {
-                label
-                Spacer(minLength: 8)
-                Text(displayedTitle.isEmpty ? AppLocalization.string("Default") : displayedTitle)
-                Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary).accessibilityHidden(true)
+            Group {
+                // Large text: the value goes under the name, as in
+                // SettingsMetricRow, instead of squeezing beside it.
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 2) {
+                        label
+                        HStack {
+                            valueText.accessibilityHidden(true)
+                            Spacer(minLength: 8)
+                            chevron
+                        }
+                    }
+                } else {
+                    HStack {
+                        label
+                        Spacer(minLength: 8)
+                        valueText.multilineTextAlignment(.trailing).accessibilityHidden(true)
+                        chevron
+                    }
+                }
             }
             .font(.subheadline.weight(.medium))
             .padding(.horizontal, 12)
             .padding(.vertical, 6).frame(minHeight: 42)
             .contentShape(Rectangle())
         }
+        // VoiceOver reads "Name, Value" like a picker instead of one run-on label.
+        .accessibilityValue(valueText)
         .conduitGlassControl(cornerRadius: 14)
     }
 }
@@ -1889,20 +1930,29 @@ private struct AppearanceSettingsDetail: View {
                 Text("Choose the language Conduit’s interface uses. Speech, transcription, and provider language settings are unaffected.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                let picker = Picker("App language", selection: Binding(get: { appLanguage.selection }, set: {
-                    Haptics.selection()
-                    appLanguage.select($0)
-                })) {
-                    ForEach(AppLanguage.selectable) { language in
-                        Text(verbatim: language.displayName).tag(language)
-                    }
-                }
                 // System Default plus two languages fit a segmented control;
-                // more languages get a menu.
+                // more languages get the settings menu row.
                 if AppLanguage.selectable.count <= 3 {
-                    picker.pickerStyle(.segmented)
+                    Picker("App language", selection: Binding(get: { appLanguage.selection }, set: {
+                        Haptics.selection()
+                        appLanguage.select($0)
+                    })) {
+                        ForEach(AppLanguage.selectable) { language in
+                            Text(verbatim: language.displayName).tag(language)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                 } else {
-                    picker.pickerStyle(.menu)
+                    ConduitMenuPicker(
+                        value: appLanguage.selection,
+                        choices: AppLanguage.selectable.map { (id: $0, title: $0.displayName) },
+                        onSelect: { language in
+                            Haptics.selection()
+                            appLanguage.select(language)
+                        }
+                    ) {
+                        Text("Language").foregroundStyle(.secondary)
+                    }
                 }
             }
             ConduitSettingsSection(title: AppLocalization.string("App icon"), symbol: "app.badge", tint: .conduitAura) {

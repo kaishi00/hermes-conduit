@@ -1653,7 +1653,7 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the classic Voice mode.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
+                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
             },
             // A call Hermes made opens with why it called, not a greeting (#449).
             openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt }
@@ -1941,7 +1941,7 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
+                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
             }
         )
         // A hands-free goodbye closes the sheet like the Close button.
@@ -2213,7 +2213,7 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
+                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
             },
             openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt }
         )
@@ -24221,24 +24221,29 @@ final class AppState: ObservableObject {
     /// `hasLiveVoiceSession` authority (PR #159 semantics). Entries are
     /// canonicalized (trimmed, de-duplicated, blanks dropped) at this
     /// boundary — the single write authority for phrase lists.
-    func setSpokenStopPhrases(_ phrases: [String]) {
+    /// Returns false when nothing was saved (disconnected).
+    @discardableResult
+    func setSpokenStopPhrases(_ phrases: [String]) -> Bool {
         // Same connected-state policy as `setContinuousConversation`: the
         // preference key is gateway-qualified, and a write while
         // disconnected would land in the orphaned "disconnected" namespace.
-        guard isConnected else { return }
+        guard isConnected else { return false }
         updateActiveProfileVoicePreferences {
-            $0.spokenStopPhrases = VoiceSpokenCommands.canonicalizedPhraseList(phrases)
+            $0.spokenStopPhrases = VoiceSpokenCommands.storedPhrases(phrases, builtIns: VoiceSpokenCommandDefaults.stopPhrases)
         }
+        return true
     }
 
     /// Saves an edited spoken End Conversation phrase list. Same contract as
     /// `setSpokenStopPhrases`; an intentionally emptied list persists as
     /// empty and disables that spoken-command category.
-    func setSpokenEndConversationPhrases(_ phrases: [String]) {
-        guard isConnected else { return }
+    @discardableResult
+    func setSpokenEndConversationPhrases(_ phrases: [String]) -> Bool {
+        guard isConnected else { return false }
         updateActiveProfileVoicePreferences {
-            $0.spokenEndConversationPhrases = VoiceSpokenCommands.canonicalizedPhraseList(phrases)
+            $0.spokenEndConversationPhrases = VoiceSpokenCommands.storedPhrases(phrases, builtIns: VoiceSpokenCommandDefaults.endConversationPhrases)
         }
+        return true
     }
 
     /// Loads the active profile's preference blob, applies `mutate`, and
@@ -24620,7 +24625,7 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases,
+            endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames()
         )
     }
@@ -24701,7 +24706,7 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases,
+            endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames()
         )
     }
@@ -24789,7 +24794,7 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases,
+            endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames()
         )
     }

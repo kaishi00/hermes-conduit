@@ -52,6 +52,17 @@ struct GPTLiveSettingsSection: View {
         _saveCalls = State(initialValue: model.saveCalls)
     }
 
+    private var voiceChoices: [(id: String, title: String)] {
+        let options = GPTLiveVoice.all
+        var choices = [(id: "", title: AppLocalization.string("Server default"))]
+        choices += options.map { (id: $0.name, title: $0.label) }
+        // A voice saved by a newer build that this one doesn't list.
+        if !voice.isEmpty, !options.contains(where: { $0.name == voice }) {
+            choices.append((id: voice, title: voice))
+        }
+        return choices
+    }
+
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("GPT-Live"), symbol: "waveform.circle", tint: .conduitAccent) {
             if showsModeToggle {
@@ -88,26 +99,18 @@ struct GPTLiveSettingsSection: View {
                 }
                 .disabled(isChecking)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
-                Picker("Voice", selection: Binding(
-                    get: { voice },
-                    set: { chosen in
+                ConduitMenuPicker(
+                    value: voice,
+                    choices: voiceChoices,
+                    onSelect: { chosen in
                         voice = chosen
                         model.setVoice(chosen.isEmpty ? nil : chosen)
                         // The status line names the voice in use.
                         if status != nil { Task { await check() } }
                     }
-                )) {
-                    Text("Server default").tag("")
-                    let options = GPTLiveVoice.all
-                    ForEach(options) { option in
-                        Text(verbatim: option.label).tag(option.name)
-                    }
-                    // A voice saved by a newer build that this one doesn't list.
-                    if !voice.isEmpty, !options.contains(where: { $0.name == voice }) {
-                        Text(verbatim: voice).tag(voice)
-                    }
+                ) {
+                    Text("Voice").foregroundStyle(.secondary)
                 }
-                .pickerStyle(.menu)
                 Text("The voice GPT-Live speaks with. Server default uses the voice set on your Hermes server (voice.gpt_live in the profile's config). The model is set there too. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

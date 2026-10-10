@@ -334,9 +334,9 @@ final class AppLanguageTests: XCTestCase {
             standardDefaults.set(language.rawValue, forKey: AppLanguageStore.defaultsKey)
 
             let voicePreferences = VoiceProfilePreferences()
-            XCTAssertEqual(voicePreferences.spokenStopPhrases, VoiceSpokenCommands.defaultStopPhrases)
-            XCTAssertEqual(voicePreferences.spokenEndConversationPhrases,
-                           VoiceSpokenCommands.defaultEndConversationPhrases)
+            // Spoken phrases follow the app language by staying unset.
+            XCTAssertNil(voicePreferences.spokenStopPhrases)
+            XCTAssertNil(voicePreferences.spokenEndConversationPhrases)
             XCTAssertEqual(voicePreferences.resolvedTranscriptionMode, .hermes)
         }
     }

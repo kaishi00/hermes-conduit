@@ -10,41 +10,49 @@
 import Foundation
 
 /// Shared canonicalization and whole-utterance matching for the spoken Voice
-/// command phrase lists (Stop, End Conversation). Matching is deliberately
+/// command phrase lists (Stop, End Conversation). The built-in lists follow
+/// the app language (`VoiceSpokenCommandDefaults` in the iPhone app); the
+/// Watch gets the resolved list with each call. Matching is deliberately
 /// conservative: a command fires only when the ENTIRE transcribed utterance
 /// equals an ENTIRE configured phrase after normalization — no substring,
 /// fuzzy, or semantic matching. Both the transcript and the configured
 /// phrases are normalized the same way, so stored phrases need not be
 /// pre-trimmed or lowercased.
 enum VoiceSpokenCommands {
-    /// Built-in spoken commands. Additive across languages BY DESIGN: both
-    /// the English and the Simplified Chinese commands are recognized no
-    /// matter which App Language the interface uses — commands match the
-    /// transcribed utterance, never the UI locale.
-    static let defaultStopPhrases = [
+    /// The built-in lists as they shipped before the built-ins followed the
+    /// app language (Conduit reads those from its string catalog, one list
+    /// per language). A stored list equal to one of these was never
+    /// customized, so it goes back to following the app language.
+    static let legacyStopPhrases = [
         "stop", "stop talking", "be quiet",
         "停止", "别说了", "不要说了",
     ]
-    static let defaultEndConversationPhrases = [
+    static let legacyEndConversationPhrases = [
         "goodbye", "bye", "end conversation", "that's all",
         "再见", "拜拜", "结束对话", "就这样吧",
     ]
 
-    /// Defaults as originally shipped. The spoken-phrase preferences have
-    /// not shipped in a stable release, but development builds may have
-    /// persisted the original lists verbatim.
+    /// The first built-ins, English only. Development builds may have
+    /// persisted these verbatim.
     static let previousDefaultStopPhrases = ["stop", "stop talking", "be quiet"]
     static let previousDefaultEndConversationPhrases = ["goodbye", "bye", "end conversation", "that's all"]
 
-    /// Persistence migration for extended built-ins: a stored list that is
-    /// exactly a previous default (the user never customized it) upgrades
-    /// to the current defaults, so multilingual commands appear for
-    /// existing persisted blobs. A customized list — including one where
-    /// the user deliberately removed a built-in — is preserved untouched.
-    static func migratedDefaultPhrases(_ stored: [String], previous: [String], current: [String]) -> [String] {
+    /// True when a stored list is exactly one of `legacy` (compared in
+    /// canonical form, order ignored): the user never customized it. A
+    /// customized list, including one where the user deliberately removed
+    /// a built-in or emptied it, is not.
+    static func isUncustomized(_ stored: [String], legacy: [[String]]) -> Bool {
         let canonicalStored = Set(stored.map(canonicalized))
-        let canonicalPrevious = Set(previous.map(canonicalized))
-        return canonicalStored == canonicalPrevious ? current : stored
+        guard !canonicalStored.isEmpty else { return false }
+        return legacy.contains { Set($0.map(canonicalized)) == canonicalStored }
+    }
+
+    /// The list to persist after an edit: nil (follow the app language's
+    /// built-ins) when the edit leaves exactly the built-ins, else the
+    /// edited list.
+    static func storedPhrases(_ phrases: [String], builtIns: [String]) -> [String]? {
+        let canonical = canonicalizedPhraseList(phrases)
+        return isUncustomized(canonical, legacy: [builtIns]) ? nil : canonical
     }
 
     /// The single normalization used on both utterances and configured

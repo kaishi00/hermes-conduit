@@ -1148,11 +1148,11 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
                 XCTAssertTrue(harness.coordinator.isChatPickerPending)
             }
             harness.spy.completeParkedInstall(success: false, error: URLError(.badURL))
-            for _ in 0..<50 where !harness.coordinator.didTemplateInstallFail { await Task.yield() }
+            await settleChats { harness.coordinator.didTemplateInstallFail }
             if !listFirst {
                 await harness.coordinator.establishOnConnect(generation: generation)
             }
-            for _ in 0..<200 where !harness.controller.hasLiveVoiceSession { await Task.yield() }
+            await settleChats { harness.controller.hasLiveVoiceSession }
 
             XCTAssertFalse(harness.coordinator.isChatPickerPending, "listFirst=\(listFirst)")
             XCTAssertTrue(harness.spy.pushedTemplates.isEmpty, "listFirst=\(listFirst)")

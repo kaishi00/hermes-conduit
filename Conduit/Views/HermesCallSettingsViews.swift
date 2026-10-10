@@ -133,12 +133,14 @@ struct HermesCallSettingsSection: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Picker("Time between calls", selection: binding(\.minGapSeconds)) {
-                        ForEach(HermesCallSettingsFormat.gapChoices(bounds: status.minGapBounds, current: draft.minGapSeconds), id: \.self) { seconds in
-                            Text(verbatim: HermesCallSettingsFormat.gap(seconds: seconds)).tag(seconds)
-                        }
+                    ConduitMenuPicker(
+                        value: draft.minGapSeconds,
+                        choices: HermesCallSettingsFormat.gapChoices(bounds: status.minGapBounds, current: draft.minGapSeconds)
+                            .map { (id: $0, title: HermesCallSettingsFormat.gap(seconds: $0)) },
+                        onSelect: { seconds in change { $0.minGapSeconds = seconds } }
+                    ) {
+                        Text("Time between calls").foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.menu)
                     Stepper(value: binding(\.perHour), in: status.perHourBounds) {
                         Text(AppLocalization.string("Calls per hour: \(String(draft.perHour))"))
                     }

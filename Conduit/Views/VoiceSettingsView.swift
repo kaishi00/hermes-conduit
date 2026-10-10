@@ -24,8 +24,8 @@ struct VoiceSettingsRoute: View {
     let setVoiceEnabled: (Bool) async -> Bool
     let setTranscriptionMode: (VoiceTranscriptionMode) async -> Bool
     let setContinuousConversation: (Bool) async -> Bool
-    let setStopPhrases: ([String]) -> Void
-    let setEndConversationPhrases: ([String]) -> Void
+    let setStopPhrases: ([String]) -> Bool
+    let setEndConversationPhrases: ([String]) -> Bool
     let geminiLive: GeminiLiveSettingsModel?
     let gptLive: GPTLiveSettingsModel?
     let grokLive: GrokLiveSettingsModel?
@@ -48,13 +48,13 @@ struct VoiceSettingsRoute: View {
         transcriptionModeChosen: Bool = false,
         appleSpeechAvailability: AppleSpeechRecognitionAvailability,
         continuousConversation: Bool = true,
-        spokenStopPhrases: [String] = VoiceSpokenCommands.defaultStopPhrases,
-        spokenEndConversationPhrases: [String] = VoiceSpokenCommands.defaultEndConversationPhrases,
+        spokenStopPhrases: [String] = VoiceSpokenCommandDefaults.stopPhrases,
+        spokenEndConversationPhrases: [String] = VoiceSpokenCommandDefaults.endConversationPhrases,
         setVoiceEnabled: @escaping (Bool) async -> Bool,
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool,
         setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
-        setStopPhrases: @escaping ([String]) -> Void = { _ in },
-        setEndConversationPhrases: @escaping ([String]) -> Void = { _ in },
+        setStopPhrases: @escaping ([String]) -> Bool = { _ in true },
+        setEndConversationPhrases: @escaping ([String]) -> Bool = { _ in true },
         geminiLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
@@ -178,10 +178,11 @@ struct VoiceSettingsView: View {
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @AppStorage(LiveVoiceOrbPower.preferenceKey) private var animateCallOrb = true
     @AppStorage(ReadAloudSpeed.preferenceKey) private var readAloudSpeedRaw = ReadAloudSpeed.normal.rawValue
+    @AppStorage("conduit.voice.settingsAdvancedExpanded") private var advancedExpanded = false
     let spokenStopPhrases: [String]
     let spokenEndConversationPhrases: [String]
-    let setStopPhrases: ([String]) -> Void
-    let setEndConversationPhrases: ([String]) -> Void
+    let setStopPhrases: ([String]) -> Bool
+    let setEndConversationPhrases: ([String]) -> Bool
     var geminiLive: GeminiLiveSettingsModel?
     var gptLive: GPTLiveSettingsModel?
     var grokLive: GrokLiveSettingsModel?
@@ -195,6 +196,17 @@ struct VoiceSettingsView: View {
     var hermesCalls: HermesCallSettingsModel?
     @State private var keepListeningWhenLocked: Bool
     @State private var speakerTalkOverEnabled: Bool
+    /// The phrase lists as last saved from this page. AppState doesn't
+    /// publish a phrase save, so the page keeps its own copy for the
+    /// editors and the reset button instead of waiting for a re-render.
+    @State private var stopPhrasesShown: [String]
+    @State private var endPhrasesShown: [String]
+    @State private var stopPhrasesCustomized: Bool
+    @State private var endPhrasesCustomized: Bool
+    /// Bumped to reseed the phrase editors (a reset, a profile or language
+    /// switch), never by the editors' own saves, so adding phrases keeps
+    /// the keyboard up.
+    @State private var phraseEditorsGeneration = 0
 
     init(
         service: HermesVoiceConfigurationService,
@@ -205,13 +217,13 @@ struct VoiceSettingsView: View {
         transcriptionModeChosen: Bool = false,
         appleSpeechAvailability: AppleSpeechRecognitionAvailability = .permissionRequired(localeIdentifier: Locale.current.identifier),
         continuousConversation: Bool = true,
-        spokenStopPhrases: [String] = VoiceSpokenCommands.defaultStopPhrases,
-        spokenEndConversationPhrases: [String] = VoiceSpokenCommands.defaultEndConversationPhrases,
+        spokenStopPhrases: [String] = VoiceSpokenCommandDefaults.stopPhrases,
+        spokenEndConversationPhrases: [String] = VoiceSpokenCommandDefaults.endConversationPhrases,
         setVoiceEnabled: @escaping (Bool) async -> Bool = { _ in false },
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool = { _ in false },
         setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
-        setStopPhrases: @escaping ([String]) -> Void = { _ in },
-        setEndConversationPhrases: @escaping ([String]) -> Void = { _ in },
+        setStopPhrases: @escaping ([String]) -> Bool = { _ in true },
+        setEndConversationPhrases: @escaping ([String]) -> Bool = { _ in true },
         geminiLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
@@ -247,6 +259,10 @@ struct VoiceSettingsView: View {
         self.spokenEndConversationPhrases = spokenEndConversationPhrases
         self.setStopPhrases = setStopPhrases
         self.setEndConversationPhrases = setEndConversationPhrases
+        _stopPhrasesShown = State(initialValue: spokenStopPhrases)
+        _endPhrasesShown = State(initialValue: spokenEndConversationPhrases)
+        _stopPhrasesCustomized = State(initialValue: Self.isCustomStopList(spokenStopPhrases))
+        _endPhrasesCustomized = State(initialValue: Self.isCustomEndList(spokenEndConversationPhrases))
         _voiceEnabled = State(initialValue: voiceEnabled)
         _transcriptionMode = State(initialValue: transcriptionMode)
         _transcriptionModeChosen = State(initialValue: transcriptionModeChosen)
@@ -265,8 +281,8 @@ struct VoiceSettingsView: View {
         ZStack {
             ConduitBackdrop()
             ScrollView {
-                // Setup first, then what changes how voice behaves, then the
-                // provider detail most people never need to open.
+                // Setup first, then what most people change. Provider
+                // detail, models and tuning wait under Advanced.
                 VStack(alignment: .leading, spacing: 14) {
                     if let callSaves, callSaves.pendingCount > 0 {
                         VoiceCallSaveStatusSection(model: callSaves)
@@ -275,28 +291,15 @@ struct VoiceSettingsView: View {
                     voiceModeSection
                     liveModeSettings
                     conversationSection
-                    spokenControlsSection
+                    // "Call me when it's done" is asked in a live call (#449).
+                    if voiceMode != .classic, let hermesCalls {
+                        HermesCallSettingsSection(model: hermesCalls)
+                    }
                     wakeSection
-                    if voiceMode == .classic {
-                        if service.isLoading {
-                            ProgressView("Loading profile voice settings…")
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 4)
-                        } else if service.snapshot.capability.isGatewayConnected {
-                            providerSection(title: AppLocalization.string("Speech to text"), symbol: "waveform", kind: .stt, providers: service.snapshot.sttProviders)
-                            providerSection(title: AppLocalization.string("Assistant speech"), symbol: "speaker.wave.3", kind: .tts, providers: service.snapshot.ttsProviders)
-                            credentialsSection
-                        }
-                    }
-                    if voiceMode == .classic, let voiceReplies {
-                        VoiceReplyModelSettingsSection(settings: voiceReplies)
-                    }
-                    if let voiceJobs {
-                        VoiceJobModelSettingsSection(settings: voiceJobs)
-                    }
                     CarPlaySettingsSection()
                     WatchSettingsSection()
                     readAloudSection
+                    advancedSection
                 }
                 .padding(16)
             }
@@ -311,6 +314,25 @@ struct VoiceSettingsView: View {
         // A mode changed elsewhere (CarPlay, another profile's settings)
         // while this page stays open.
         .onChange(of: modelVoiceMode) { _, newValue in voiceMode = newValue }
+        // The setup step's fix ("choose one under Speech to text below")
+        // lives under Advanced.
+        .onChange(of: classicSpeechNeedsAttention, initial: true) { _, needsAttention in
+            if needsAttention { advancedExpanded = true }
+        }
+        // A profile switch or an app language change re-renders the host
+        // with other lists.
+        .onChange(of: spokenStopPhrases) { _, phrases in
+            guard phrases != stopPhrasesShown else { return }
+            stopPhrasesShown = phrases
+            stopPhrasesCustomized = Self.isCustomStopList(phrases)
+            phraseEditorsGeneration += 1
+        }
+        .onChange(of: spokenEndConversationPhrases) { _, phrases in
+            guard phrases != endPhrasesShown else { return }
+            endPhrasesShown = phrases
+            endPhrasesCustomized = Self.isCustomEndList(phrases)
+            phraseEditorsGeneration += 1
+        }
         .onChange(of: savedTranscriptionModeChosen) { _, chosen in
             if chosen { transcriptionModeChosen = true }
         }
@@ -717,13 +739,75 @@ struct VoiceSettingsView: View {
         case .grok:
             if let grokLive { GrokLiveSettingsSection(model: grokLive, showsModeToggle: false) }
         }
-        if voiceMode != .classic, let liveStyle {
-            LiveVoiceStyleSettingsSection(model: liveStyle)
+    }
+
+    // MARK: Advanced
+
+    /// Collapsed by default and remembered on this device. Opens by itself
+    /// when a Classic setup step needs a fix that lives in here.
+    @ViewBuilder
+    private var advancedSection: some View {
+        Button {
+            withAnimation(.snappy) { advancedExpanded.toggle() }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Label(AppLocalization.string("Advanced"), systemImage: "slider.horizontal.3")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.conduitAura)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(advancedExpanded ? 90 : 0))
+                        .accessibilityHidden(true)
+                }
+                if !advancedExpanded {
+                    Text("Speech providers, voice models, spoken phrases and experimental options.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .contentShape(Rectangle())
         }
-        // "Call me when it's done" is asked in a live call (#449).
-        if voiceMode != .classic, let hermesCalls {
-            HermesCallSettingsSection(model: hermesCalls)
+        .buttonStyle(.plain)
+        .conduitGlassSurface(cornerRadius: 24, tint: Color.conduitAura.opacity(0.07))
+        .accessibilityValue(Text(advancedExpanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")))
+        .accessibilityIdentifier("voice.advancedToggle")
+        if advancedExpanded {
+            if voiceMode != .classic, let liveStyle {
+                LiveVoiceStyleSettingsSection(model: liveStyle)
+            }
+            spokenControlsSection
+            if voiceMode == .classic {
+                if service.isLoading {
+                    ProgressView("Loading profile voice settings…")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
+                } else if service.snapshot.capability.isGatewayConnected {
+                    providerSection(title: AppLocalization.string("Speech to text"), symbol: "waveform", kind: .stt, providers: service.snapshot.sttProviders)
+                    providerSection(title: AppLocalization.string("Assistant speech"), symbol: "speaker.wave.3", kind: .tts, providers: service.snapshot.ttsProviders)
+                    credentialsSection
+                }
+                if let voiceReplies {
+                    VoiceReplyModelSettingsSection(settings: voiceReplies)
+                }
+            }
+            if let voiceJobs {
+                VoiceJobModelSettingsSection(settings: voiceJobs)
+            }
+            speakerAndCallScreenSection
         }
+    }
+
+    /// A Classic step the provider sections below fix.
+    private var classicSpeechNeedsAttention: Bool {
+        guard voiceEnabled, voiceMode == .classic, !service.isLoading,
+              service.snapshot.capability.isGatewayConnected else { return false }
+        return !supportsSelectedTranscription || !service.snapshot.capability.supportsSpeech
     }
 
     private func selectVoiceMode(_ id: String) {
@@ -778,6 +862,16 @@ struct VoiceSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Toggle("Keep phone awake during voice conversations", isOn: $keepScreenAwake)
+            Text("The screen stays on while a voice conversation is open, including the live voice modes. When off, the phone locks on its usual timer: live voice calls keep going in the background, and a classic voice conversation does too with Keep Listening When Locked on. Applies to this device.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The experimental talk-over switch and the call orb, under Advanced.
+    private var speakerAndCallScreenSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Speaker and call screen"), symbol: "speaker.wave.2.circle", tint: .conduitAccent) {
             if let speakerTalkOver {
                 Toggle("Talk over Hermes on the speaker", isOn: Binding(
                     get: { speakerTalkOverEnabled },
@@ -791,10 +885,6 @@ struct VoiceSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Toggle("Keep phone awake during voice conversations", isOn: $keepScreenAwake)
-            Text("The screen stays on while a voice conversation is open, including the live voice modes. When off, the phone locks on its usual timer: live voice calls keep going in the background, and a classic voice conversation does too with Keep Listening When Locked on. Applies to this device.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             Toggle("Animate the call orb", isOn: $animateCallOrb)
                 .accessibilityIdentifier("voice.animateCallOrb")
                 .accessibilityHint("The orb on the live call screen moves with the call. Turn this off for a still orb that uses less battery. It also holds still while the phone is hot or Reduce Motion is on. Applies to this device.")
@@ -1031,18 +1121,60 @@ struct VoiceSettingsView: View {
             SpokenPhraseListEditor(
                 title: AppLocalization.string("Stop Phrases"),
                 purposeText: AppLocalization.string("Cancel the current response and keep Voice open."),
-                initialPhrases: spokenStopPhrases,
-                onChange: setStopPhrases
+                initialPhrases: stopPhrasesShown,
+                onChange: { phrases in
+                    _ = setStopPhrases(phrases)
+                    // Kept current, so the host's list matches it after
+                    // the save and doesn't reseed the editor.
+                    stopPhrasesShown = phrases
+                    stopPhrasesCustomized = Self.isCustomStopList(phrases)
+                }
             )
-            .id(spokenStopPhrases)
+            .id(phraseEditorsGeneration)
             SpokenPhraseListEditor(
                 title: AppLocalization.string("End Conversation Phrases"),
                 purposeText: AppLocalization.string("Close the Voice conversation completely."),
-                initialPhrases: spokenEndConversationPhrases,
-                onChange: setEndConversationPhrases
+                initialPhrases: endPhrasesShown,
+                onChange: { phrases in
+                    _ = setEndConversationPhrases(phrases)
+                    endPhrasesShown = phrases
+                    endPhrasesCustomized = Self.isCustomEndList(phrases)
+                }
             )
-            .id(spokenEndConversationPhrases)
+            .id(phraseEditorsGeneration)
+            Text("The built-in phrases are in the app language. Once you edit a list, it stays as you left it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if stopPhrasesCustomized || endPhrasesCustomized {
+                Button {
+                    let stop = VoiceSpokenCommandDefaults.stopPhrases
+                    let end = VoiceSpokenCommandDefaults.endConversationPhrases
+                    // Disconnected, nothing is saved: keep showing the
+                    // user's lists rather than claim a reset.
+                    guard setStopPhrases(stop), setEndConversationPhrases(end) else { return }
+                    stopPhrasesShown = stop
+                    endPhrasesShown = end
+                    phraseEditorsGeneration += 1
+                    stopPhrasesCustomized = false
+                    endPhrasesCustomized = false
+                } label: {
+                    Label(AppLocalization.string("Use the built-in phrases"), systemImage: "arrow.counterclockwise")
+                        .font(.footnote.weight(.semibold))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("voice.spokenPhrasesReset")
+            }
         }
+    }
+
+    /// A list is the user's own when saving it wouldn't go back to
+    /// following the app language (an emptied list counts).
+    private static func isCustomStopList(_ phrases: [String]) -> Bool {
+        VoiceSpokenCommands.storedPhrases(phrases, builtIns: VoiceSpokenCommandDefaults.stopPhrases) != nil
+    }
+
+    private static func isCustomEndList(_ phrases: [String]) -> Bool {
+        VoiceSpokenCommands.storedPhrases(phrases, builtIns: VoiceSpokenCommandDefaults.endConversationPhrases) != nil
     }
 
     @ViewBuilder
@@ -1458,6 +1590,10 @@ private struct VoiceProviderFieldEditor: View {
         VoiceConfigurationParser.validationMessage(for: value, key: field.key)
     }
 
+    private func saveChoice(_ option: String) {
+        Task { await save(option) }
+    }
+
     private var saveHint: Text {
         if let validationMessage {
             return Text("Cannot save. \(validationMessage)")
@@ -1469,13 +1605,14 @@ private struct VoiceProviderFieldEditor: View {
         VStack(alignment: .leading, spacing: 5) {
             switch field.kind {
             case .choice(let options):
-                Picker(field.label, selection: $value) {
-                    ForEach(options, id: \.self) { option in
-                        Text(option.replacingOccurrences(of: "_", with: " ").capitalized).tag(option)
-                    }
+                ConduitMenuPicker(
+                    value: value,
+                    choices: options.map { (id: $0, title: $0.replacingOccurrences(of: "_", with: " ").capitalized) },
+                    onSelect: { value = $0 }
+                ) {
+                    Text(field.label).foregroundStyle(.secondary)
                 }
-                .pickerStyle(.menu)
-                .onChange(of: value) { _, updated in Task { await save(updated) } }
+                .onChange(of: value) { _, updated in saveChoice(updated) }
             case .decimal:
                 TextField(field.label, text: $value)
                     .keyboardType(.decimalPad)

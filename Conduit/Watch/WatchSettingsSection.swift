@@ -41,9 +41,15 @@ struct WatchSettingsSection: View {
             Text("Hermes jobs a Watch call can start, wrist up or down. Each runs as a normal Hermes chat under Voice Jobs, and Hermes' own approval settings apply.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Picker(AppLocalization.string("Approve from the Watch"), selection: $voiceApprovals) {
-                Text("Tap").tag(false)
-                Text("Tap or voice").tag(true)
+            ConduitMenuPicker(
+                value: voiceApprovals,
+                choices: [
+                    (id: false, title: AppLocalization.string("Tap")),
+                    (id: true, title: AppLocalization.string("Tap or voice")),
+                ],
+                onSelect: { voiceApprovals = $0 }
+            ) {
+                Text("Approve from the Watch").foregroundStyle(.secondary)
             }
             .disabled(jobsPerCall == 0)
             .accessibilityIdentifier("voice.watchApprovals")

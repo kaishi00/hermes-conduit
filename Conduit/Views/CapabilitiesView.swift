@@ -220,6 +220,7 @@ private struct CapabilitySkillRow: View {
                         Text(skill.name)
                             .font(.subheadline.weight(.medium))
                             .lineLimit(1)
+                            .layoutPriority(1)
                         if let category = skill.category, !category.isEmpty {
                             Text(category)
                                 .font(.caption2.weight(.semibold))
@@ -227,6 +228,7 @@ private struct CapabilitySkillRow: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(Color.conduitAura.opacity(0.14), in: Capsule())
+                                .lineLimit(1)
                         }
                     }
                     if let desc = skill.description, !desc.isEmpty {
@@ -241,7 +243,7 @@ private struct CapabilitySkillRow: View {
         .tint(.conduitAccent)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+        .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
     }
 }
 
@@ -293,6 +295,6 @@ private struct CapabilityToolsetRow: View {
         .tint(.conduitAccent)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+        .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
     }
 }

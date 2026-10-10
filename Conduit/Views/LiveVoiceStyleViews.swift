@@ -83,6 +83,11 @@ struct LiveVoiceStyleSettingsSection: View {
         model.setStyle(current)
     }
 
+    private var toneChoices: [(id: String, title: String)] {
+        let tones: [(id: String, title: String)] = LiveVoiceTone.allCases.map { (id: $0.rawValue, title: $0.label) }
+        return [(id: "", title: AppLocalization.string("Model default"))] + tones
+    }
+
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Live call style"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
             Toggle("Greet me when a call connects", isOn: Binding(
@@ -129,34 +134,29 @@ struct LiveVoiceStyleSettingsSection: View {
             Text("The voice model greets you as soon as a call connects, so you know it's live. Leave the greeting empty for one in its own words. GPT-Live needs an up-to-date Hermes notifier plugin for this. Applies to the next call.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Picker("Tone", selection: Binding(
-                get: { tone },
-                set: { chosen in
+            ConduitMenuPicker(
+                value: tone,
+                choices: toneChoices,
+                onSelect: { chosen in
                     tone = chosen
                     save()
                 }
-            )) {
-                Text("Model default").tag("")
-                ForEach(LiveVoiceTone.allCases) { option in
-                    Text(verbatim: option.label).tag(option.rawValue)
-                }
+            ) {
+                Text("Tone").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             Text("How live calls sound. Model default keeps the voice model's tone and your Hermes server's persona. Applies to the next call.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Picker("Answer length", selection: Binding(
-                get: { answerLength },
-                set: { chosen in
+            ConduitMenuPicker(
+                value: answerLength,
+                choices: LiveVoiceAnswerLength.allCases.map { (id: $0, title: $0.label) },
+                onSelect: { chosen in
                     answerLength = chosen
                     save()
                 }
-            )) {
-                ForEach(LiveVoiceAnswerLength.allCases) { option in
-                    Text(verbatim: option.label).tag(option)
-                }
+            ) {
+                Text("Answer length").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             Text("How much the voice model says when you ask something. Concise gives the key point in one to three sentences, Default adds the details that make it useful, and Detailed goes in depth. Applies to the next call.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

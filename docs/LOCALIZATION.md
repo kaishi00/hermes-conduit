@@ -30,6 +30,10 @@ change is needed.
    `ConduitDraftLanguages`. Drafts can land on `main` in small pieces.
 3. Translate every entry in all three catalogs. Translate
    `Name of this language` as the language's own name (for example 日本語).
+   `Built-in stop phrases` and `Built-in end conversation phrases` are the
+   spoken Stop and goodbye phrases Voice listens for in that language:
+   write what a speaker would actually say, lowercase, separated by `|`
+   (English: `stop|stop talking|be quiet`).
 4. Run `python3 scripts/check-l10n-coverage.py --repo-root .`. It lists
    what is missing or malformed and says when a draft is complete.
 5. Remove the identifier from `ConduitDraftLanguages`. The language now
