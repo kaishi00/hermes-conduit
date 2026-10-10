@@ -14,6 +14,13 @@ extension DynamicTypeSize {
     /// The largest size a text-style glyph inside a small fixed frame
     /// (22–44 pt) can reach before it overflows the frame.
     static let fixedGlyphCap: DynamicTypeSize = .xxLarge
+    /// Fixed headers above a scrolling list (the session drawer's workspace
+    /// chip, tabs, New Chat row and filter chips) stop here, so at the
+    /// largest sizes they don't fill the screen and leave the list no room.
+    static let pinnedChromeCap: DynamicTypeSize = .accessibility1
+    /// List rows stop here: past it a two-line row fills most of a small
+    /// screen.
+    static let listRowCap: DynamicTypeSize = .accessibility3
 }
 
 extension View {
@@ -27,7 +34,9 @@ extension View {
 }
 
 /// Side by side at regular text sizes, stacked at accessibility sizes, so
-/// two short pieces of text don't truncate each other on one line.
+/// two short pieces of text don't truncate each other on one line. It reads
+/// the environment's size, so under a `dynamicTypeSize` cap below the
+/// accessibility sizes it stays side by side.
 /// `verticalAlignment` applies side by side, `horizontalAlignment` stacked.
 struct AdaptiveStack<Content: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize

@@ -90,6 +90,7 @@ struct SidebarView: View {
                             }
                         }
                     }
+                    .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
 
                     ConduitGlassGroup(spacing: 8) {
                         HStack(spacing: 6) {
@@ -128,6 +129,7 @@ struct SidebarView: View {
                         .padding(4)
                         .conduitGlassSurface(cornerRadius: 20, tint: .conduitAccent.opacity(0.05))
                     }
+                    .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
 
                     Group {
                         switch selectedTab {
@@ -332,8 +334,10 @@ struct SessionList: View {
             .padding(.horizontal, 14)
             .padding(.top, 8)
             .padding(.bottom, 4)
+            .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
             if !showingProjects {
                 sourceFilters
+                    .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
             }
             let layout = SidebarOfflineLayout.visibility(
                 showingProjects: showingProjects,
@@ -992,12 +996,12 @@ struct SessionRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.title)
                     .font(.subheadline.weight(isUnread ? .semibold : .medium))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 // Stacked at large text so the model doesn't truncate the time.
                 Group {
                     if dynamicTypeSize.isAccessibilitySize {
                         Text(detail ?? session.model)
-                            .lineLimit(2)
+                            .lineLimit(1)
                         Text(session.updatedLabel)
                     } else {
                         HStack(spacing: 5) {
@@ -1060,6 +1064,7 @@ struct SessionRow: View {
                 .strokeBorder(isSelected ? Color.conduitAccent.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 1)
         }
         .animation(ConduitMotion.response, value: isSelected)
+        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
     }
 }
 
