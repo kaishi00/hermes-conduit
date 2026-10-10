@@ -154,11 +154,11 @@ struct ConduitApp: App {
                     // the route. Started before the route clears, which ends
                     // this task.
                     if let call = target.call, notifications.pendingTarget == target, !appState.answerHermesCall(call) {
-                        HermesNativeCalls.shared.routedAnswerRefused(target)
+                        HermesNativeCalls.shared.routedAnswerFailed(target)
                     }
                     notifications.clearPendingTarget(target)
-                } else {
-                    notifications.handleFailedNotificationRoute(target)
+                } else if !notifications.handleFailedNotificationRoute(target), target.call != nil {
+                    HermesNativeCalls.shared.routedAnswerFailed(target)
                 }
             }
             .task(id: voiceIntentRouteKey) {
