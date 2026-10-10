@@ -3468,8 +3468,9 @@ final class AppState: ObservableObject {
     }
 
     /// The open chat's row in the session list, for the chat title's
-    /// touch-and-hold menu. Nil for a room, an offline copy, a Bot Chat (no
-    /// row of its own), a cron run (the menu's actions are for ordinary chats), or a new chat
+    /// touch-and-hold menu. A cron run is found among the Cron rows and gets
+    /// the same menu its row has there (#512; no Move to Project). Nil for a
+    /// room, an offline copy, a Bot Chat (no row of its own), or a new chat
     /// Hermes hasn't listed yet. A reopened chat runs under a
     /// runtime id its row may not name yet, so the row is found through the
     /// chat's own ids and handed back carrying the open id too: rename,
@@ -3480,7 +3481,7 @@ final class AppState: ObservableObject {
         guard activeRoomSurface == nil, offlineChatPresentation == nil,
               let sessionId = activeSessionId, !sessionId.isEmpty,
               botConversationProfile(for: sessionId) == nil else { return nil }
-        let rows = activeProfileSessions
+        let rows = activeProfileSessions + activeProfileCronSessions
         let ownIDs = chatOwnSessionIDs(for: sessionId)
         // This row drives rename, archive and delete, so it is never picked
         // by list order: two rows matching the chat's own ids are settled

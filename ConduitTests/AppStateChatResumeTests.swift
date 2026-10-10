@@ -1387,6 +1387,36 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertNil(harness.appState.activeChatSessionSummary)
     }
 
+    /// #512: an open cron run gets the title menu too. Its row lives in the
+    /// Cron list, not the chats, and is found under a reopened runtime id.
+    func testActiveChatSessionSummaryFindsCronRunRow() {
+        let index = ConversationIdentityIndex()
+        _ = index.recordAuthoritative(
+            runtimeID: "runtime-cron",
+            durableID: "cron-run-a",
+            profile: "default",
+            source: .resume
+        )
+        let harness = makeHarness(conversationIdentityIndex: index)
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.cronSessions = [
+            session("cron-run-a", source: .cron),
+            session("cron-run-other", profile: "work", source: .cron)
+        ]
+
+        harness.appState.activeSessionId = "cron-run-a"
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "cron-run-a")
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.source, .cron)
+
+        harness.appState.activeSessionId = "runtime-cron"
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.id, "cron-run-a")
+        XCTAssertEqual(harness.appState.activeChatSessionSummary?.alternateIds, ["runtime-cron"])
+
+        // Another profile's run is not this chat's row.
+        harness.appState.activeSessionId = "cron-run-other"
+        XCTAssertNil(harness.appState.activeChatSessionSummary)
+    }
+
     func testResumeDedupNormalizesPersistedBoundaryBeforeReplayingBufferedDelta() async {
         let openGate = ControlledSuspension()
         let active = session("stored-a")
@@ -7038,7 +7068,8 @@ final class AppStateChatResumeTests: XCTestCase {
         title: String? = nil,
         storedID: String? = nil,
         alternateIDs: [String] = [],
-        profile: String = "default"
+        profile: String = "default",
+        source: SessionSource = .chat
     ) -> SessionSummary {
         SessionSummary(
             id: id,
@@ -7048,7 +7079,7 @@ final class AppStateChatResumeTests: XCTestCase {
             model: "Hermes",
             updatedLabel: "now",
             profile: profile,
-            source: .chat,
+            source: source,
             isActive: false,
             isArchived: false,
             lineageRootId: nil
