@@ -186,7 +186,9 @@ final class HermesNativeCalls: NSObject {
         if Self.ringingBuilt, Self.ringingWanted, HermesNativeCallStorefront.allowsCalls(known) {
             startRinging()
         } else {
-            stopRinging()
+            // A storefront without CallKit ends any call on. Once the
+            // setting has turned ringing off, calls still on finish.
+            stopRinging(endingCalls: registry != nil)
         }
     }
 

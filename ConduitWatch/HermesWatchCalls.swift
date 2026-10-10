@@ -49,6 +49,7 @@ final class HermesWatchCalls: NSObject {
 
     private struct Call {
         let ring: HermesRing
+        let title: String?
         var answered = false
         var unanswered: Task<Void, Never>?
         var work: Task<Void, Never>?
@@ -57,7 +58,8 @@ final class HermesWatchCalls: NSObject {
     private var calls: [UUID: Call] = [:]
     /// The call whose Watch voice call is running.
     private var voiceCall: UUID?
-    /// Rings the iPhone settled, for a call push that comes after its stop.
+    /// Rings settled here or on the iPhone, for a call push that comes
+    /// again, or after the stop.
     private var settledRings: [String: Date] = [:]
     private var audioActive = false
     private var audioWaiters: [CheckedContinuation<Void, Never>] = []
@@ -78,8 +80,9 @@ final class HermesWatchCalls: NSObject {
         // A Hermes call can't be called back from the Phone app.
         configuration.includesCallsInRecents = false
         let provider = CXProvider(configuration: configuration)
-        // Nil queue: the delegate runs on the main queue, as the registry.
-        provider.setDelegate(self, queue: nil)
+        // On the main queue, like the PushKit registry: the delegate
+        // methods assume it.
+        provider.setDelegate(self, queue: .main)
         self.provider = provider
         let registry = PKPushRegistry(queue: .main)
         registry.delegate = self
@@ -126,11 +129,12 @@ final class HermesWatchCalls: NSObject {
         let settled = ring.map { settledRings[$0.id] != nil } ?? false
         let id = UUID()
         let rings = ring != nil && !late && !busy && !settled
-        if rings, let ring { calls[id] = Call(ring: ring) }
+        let title = HermesRingPush.title(userInfo)
+        if rings, let ring { calls[id] = Call(ring: ring, title: title) }
         WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled])
         // Every VoIP push is reported before this returns, even one that
         // can't ring here (the iPhone rings it).
-        provider.reportNewIncomingCall(with: id, update: Self.update(title: HermesRingPush.title(userInfo))) { error in
+        provider.reportNewIncomingCall(with: id, update: Self.update(title: title)) { error in
             Task { @MainActor in
                 defer { completion() }
                 if let error {
@@ -159,11 +163,9 @@ final class HermesWatchCalls: NSObject {
     private func stopRinging(_ settled: HermesRingSettled, provider: CXProvider, completion: @escaping () -> Void) {
         let id = calls.first { $0.value.ring.id == settled.id }?.key ?? UUID()
         let reason: CXCallEndedReason = settled.outcome == .answered ? .answeredElsewhere : .declinedElsewhere
-        let now = Date()
-        settledRings = settledRings.filter { now.timeIntervalSince($0.value) < 600 }
-        settledRings[settled.id] = now
+        noteSettled(settled.id)
         WatchCallLog.shared.note("hermesCallSettledOnPhone", ["outcome": settled.outcome.rawValue, "here": calls[id] != nil])
-        provider.reportNewIncomingCall(with: id, update: Self.update(title: nil)) { _ in
+        provider.reportNewIncomingCall(with: id, update: Self.update(title: calls[id]?.title)) { _ in
             Task { @MainActor in
                 if let call = self.calls[id] {
                     // Answered here too: `connect` settles that race.
@@ -174,6 +176,12 @@ final class HermesWatchCalls: NSObject {
                 completion()
             }
         }
+    }
+
+    private func noteSettled(_ ringID: String) {
+        let now = Date()
+        settledRings = settledRings.filter { now.timeIntervalSince($0.value) < 600 }
+        settledRings[ringID] = now
     }
 
     private static func update(title: String?) -> CXCallUpdate {
@@ -216,12 +224,15 @@ final class HermesWatchCalls: NSObject {
             finish(id, reason: .failed)
             return
         }
+        noteSettled(ring.id)
         let settling = Task { await HermesRingSettler.settle(ring, by: .watch, outcome: .answered) }
         await waitForAudio()
         let settled = await settling.value
         guard calls[id] != nil, !Task.isCancelled else { return }
         WatchCallLog.shared.note("hermesCallAnswered", ["settled": "\(settled)", "audio": audioActive])
-        // The iPhone got there first: the call is there.
+        // The iPhone got there first: the call is there. Declined there
+        // first, the decline stands, unlike on the iPhone: the iPhone has
+        // already told Hermes the call was declined.
         if case .alreadySettled(let outcome, by: .phone) = settled {
             finish(id, reason: outcome == .answered ? .answeredElsewhere : .declinedElsewhere)
             return
@@ -298,6 +309,7 @@ final class HermesWatchCalls: NSObject {
         } else {
             // Declined here: the iPhone stops ringing, and tells Hermes.
             WatchCallLog.shared.note("hermesCallDeclined")
+            noteSettled(call.ring.id)
             Self.settleBeforeSuspending(call.ring, outcome: .declined)
         }
     }
