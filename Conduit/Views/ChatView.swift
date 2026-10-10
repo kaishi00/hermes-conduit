@@ -2654,7 +2654,8 @@ struct ApprovalCard: View {
                                 }
                             }
                         }
-                        // Large text: one button per row.
+                        // When even two per row don't fit (large text,
+                        // narrow screens): one button per row.
                         VStack(alignment: .leading, spacing: 8) {
                             runButton(approval)
                             allowButtons(approval)

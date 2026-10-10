@@ -122,6 +122,7 @@ struct SidebarView: View {
                                 .accessibilityShowsLargeContentViewer {
                                     Label(tab.displayName, systemImage: tab.icon)
                                 }
+                                .accessibilityLabel(tab.displayName)
                             }
                         }
                         .padding(4)
