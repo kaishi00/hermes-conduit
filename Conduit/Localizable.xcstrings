@@ -159442,84 +159442,84 @@
         }
       }
     },
-    "When enabled, Conduit automatically listens again after each response. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings." : {
+    "When enabled, Conduit automatically listens again after each response and keeps listening through long silences until you pause the mic. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn aktiviert, hört Conduit nach jeder Antwort automatisch wieder zu. Wenn deaktiviert, bleibt die Sitzung geöffnet und du startest das nächste Zuhören manuell. Dies ändert nichts an „Mikrofon pausieren“, „Unterbrechen“, „Schließen“ oder den Einstellungen für Aktivierungswörter."
+            "value" : "Wenn aktiviert, hört Conduit nach jeder Antwort automatisch wieder zu und hört auch bei längerer Stille weiter, bis du das Mikrofon pausierst. Wenn deaktiviert, bleibt die Sitzung geöffnet und du startest das nächste Zuhören manuell. Dies ändert nichts an „Mikrofon pausieren“, „Unterbrechen“, „Schließen“ oder den Einstellungen für Aktivierungswörter."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si está activado, Conduit vuelve a escuchar automáticamente tras cada respuesta. Si está desactivado, la sesión sigue abierta y tú inicias el siguiente turno de escucha manualmente. Esto no cambia los ajustes de Pausar micrófono, Interrumpir, Cerrar ni de la palabra de activación."
+            "value" : "Si está activado, Conduit vuelve a escuchar automáticamente tras cada respuesta y sigue escuchando durante los silencios largos hasta que pauses el micrófono. Si está desactivado, la sesión sigue abierta y tú inicias el siguiente turno de escucha manualmente. Esto no cambia los ajustes de Pausar micrófono, Interrumpir, Cerrar ni de la palabra de activación."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si l'option est activée, Conduit se remet automatiquement à écouter après chaque réponse. Si elle est désactivée, la session reste ouverte et vous lancez vous-même le tour d'écoute suivant. Cela ne modifie pas les réglages Mettre le micro en pause, Interrompre, Fermer ni ceux du mot d'activation."
+            "value" : "Si l'option est activée, Conduit se remet automatiquement à écouter après chaque réponse et continue d'écouter pendant les longs silences jusqu'à ce que vous mettiez le micro en pause. Si elle est désactivée, la session reste ouverte et vous lancez vous-même le tour d'écoute suivant. Cela ne modifie pas les réglages Mettre le micro en pause, Interrompre, Fermer ni ceux du mot d'activation."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jika diaktifkan, Conduit otomatis mendengarkan lagi setelah setiap respons. Jika dinonaktifkan, sesi tetap terbuka dan Anda memulai giliran mendengarkan berikutnya secara manual. Ini tidak mengubah pengaturan Jeda Mikrofon, Interupsi, Tutup, atau kata pemicu."
+            "value" : "Jika diaktifkan, Conduit otomatis mendengarkan lagi setelah setiap respons dan tetap mendengarkan selama jeda panjang sampai Anda menjeda mikrofon. Jika dinonaktifkan, sesi tetap terbuka dan Anda memulai giliran mendengarkan berikutnya secara manual. Ini tidak mengubah pengaturan Jeda Mikrofon, Interupsi, Tutup, atau kata pemicu."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se l'opzione è attiva, Conduit torna ad ascoltare automaticamente dopo ogni risposta. Se è disattivata, la sessione resta aperta e avvii tu manualmente il turno di ascolto successivo. Non modifica le impostazioni Pausa microfono, Interrompi, Chiudi o dell'attivazione vocale."
+            "value" : "Se l'opzione è attiva, Conduit torna ad ascoltare automaticamente dopo ogni risposta e continua ad ascoltare anche durante i silenzi lunghi finché non metti in pausa il microfono. Se è disattivata, la sessione resta aperta e avvii tu manualmente il turno di ascolto successivo. Non modifica le impostazioni Pausa microfono, Interrompi, Chiudi o dell'attivazione vocale."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "オンにすると、Conduitは応答のたびに自動的に再び聞き取りを開始します。オフにすると、セッションは開いたままになり、次の聞き取りは手動で開始します。この設定は「マイクを一時停止」「割り込み」「閉じる」やウェイクフレーズの設定には影響しません。"
+            "value" : "オンにすると、Conduitは応答のたびに自動的に再び聞き取りを開始し、マイクを一時停止するまで長い沈黙の間も聞き取りを続けます。オフにすると、セッションは開いたままになり、次の聞き取りは手動で開始します。この設定は「マイクを一時停止」「割り込み」「閉じる」やウェイクフレーズの設定には影響しません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "켜면 응답할 때마다 Conduit이 자동으로 다시 들어요. 끄면 세션은 열린 채로 유지되고 다음 듣기 턴을 직접 시작해요. ‘마이크 일시 정지’, ‘중단’, ‘닫기’ 또는 호출어 설정은 바뀌지 않아요."
+            "value" : "켜면 응답할 때마다 Conduit이 자동으로 다시 듣고, 마이크를 일시 정지할 때까지 오래 조용해도 계속 들어요. 끄면 세션은 열린 채로 유지되고 다음 듣기 턴을 직접 시작해요. ‘마이크 일시 정지’, ‘중단’, ‘닫기’ 또는 호출어 설정은 바뀌지 않아요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gdy ta opcja jest włączona, Conduit automatycznie zaczyna słuchać po każdej odpowiedzi. Gdy jest wyłączona, sesja pozostaje otwarta, a kolejne słuchanie rozpoczynasz ręcznie. Nie zmienia to ustawień „Wstrzymaj mikrofon”, „Przerwij”, „Zamknij” ani słowa aktywującego."
+            "value" : "Gdy ta opcja jest włączona, Conduit automatycznie zaczyna słuchać po każdej odpowiedzi i słucha dalej podczas długiej ciszy, dopóki nie wstrzymasz mikrofonu. Gdy jest wyłączona, sesja pozostaje otwarta, a kolejne słuchanie rozpoczynasz ręcznie. Nie zmienia to ustawień „Wstrzymaj mikrofon”, „Przerwij”, „Zamknij” ani słowa aktywującego."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando ativado, o Conduit volta a ouvir automaticamente após cada resposta. Quando desativado, a sessão continua aberta e você inicia o próximo turno de escuta manualmente. Isso não altera Pausar microfone, Interromper, Fechar nem os ajustes de palavra de ativação."
+            "value" : "Quando ativado, o Conduit volta a ouvir automaticamente após cada resposta e continua ouvindo durante silêncios longos até você pausar o microfone. Quando desativado, a sessão continua aberta e você inicia o próximo turno de escuta manualmente. Isso não altera Pausar microfone, Interromper, Fechar nem os ajustes de palavra de ativação."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Если включено, Conduit автоматически снова слушает после каждого ответа. Если выключено, сеанс остаётся открытым, а следующее прослушивание вы запускаете вручную. Это не влияет на «Пауза микрофона», «Прервать», «Закрыть» и настройки слов активации."
+            "value" : "Если включено, Conduit автоматически снова слушает после каждого ответа и продолжает слушать во время долгих пауз, пока вы не поставите микрофон на паузу. Если выключено, сеанс остаётся открытым, а следующее прослушивание вы запускаете вручную. Это не влияет на «Пауза микрофона», «Прервать», «Закрыть» и настройки слов активации."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Açıkken Conduit her yanıttan sonra otomatik olarak yeniden dinler. Kapalıyken oturum açık kalır ve sonraki dinleme turunu elle başlatırsınız. Bu ayar Mikrofonu duraklat, Yarıda Kes, Kapat veya uyandırma sözcüğü ayarlarını değiştirmez."
+            "value" : "Açıkken Conduit her yanıttan sonra otomatik olarak yeniden dinler ve siz mikrofonu duraklatana kadar uzun sessizliklerde de dinlemeye devam eder. Kapalıyken oturum açık kalır ve sonraki dinleme turunu elle başlatırsınız. Bu ayar Mikrofonu duraklat, Yarıda Kes, Kapat veya uyandırma sözcüğü ayarlarını değiştirmez."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "开启后，Conduit 会在每次回复后自动重新聆听。关闭后会话保持打开，由你手动开始下一轮聆听。此设置不影响暂停麦克风、中断、关闭或唤醒词设置。"
+            "value" : "开启后，Conduit 会在每次回复后自动重新聆听，并在长时间安静时持续聆听，直到你暂停麦克风。关闭后会话保持打开，由你手动开始下一轮聆听。此设置不影响暂停麦克风、中断、关闭或唤醒词设置。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "啟用時，Conduit 會在每次回應後自動再次聆聽。停用時，工作階段會保持開啟，由你手動開始下一次聆聽。這不會更改「暫停麥克風」、「中斷」、「關閉」或喚醒詞設定。"
+            "value" : "啟用時，Conduit 會在每次回應後自動再次聆聽，並在長時間安靜時持續聆聽，直到你暫停麥克風。停用時，工作階段會保持開啟，由你手動開始下一次聆聽。這不會更改「暫停麥克風」、「中斷」、「關閉」或喚醒詞設定。"
           }
         }
       }
