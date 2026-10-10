@@ -483,6 +483,10 @@ extension CarPlayVoiceTemplateFactoryTests {
             "the plain title stays as the short variant"
         )
         XCTAssertEqual(CarPlayVoiceState.listening.titleVariants(controls: controls), ["Listening…"])
+        controls.chatTitle = String(repeating: "Long trip planning ", count: 5)
+        let long = CarPlayVoiceState.ready.titleVariants(controls: controls)[0]
+        XCTAssertLessThanOrEqual(long.count, 40, "driver-safe, like every other title")
+        XCTAssertTrue(long.hasSuffix("…"))
         controls.errorIssue = .voiceOff
         XCTAssertEqual(
             CarPlayVoiceState.error.titleVariants(controls: controls),

@@ -222,15 +222,16 @@ struct CarPlayBrowseHandlers {
     var showVoiceOptions: () -> Void = {}
 }
 
-/// The voice screen's top-bar buttons.
+/// The voice screen's top-bar buttons. Words, not icons: a word reads at
+/// a glance and VoiceOver can say it, and two of them leave the bar room.
 enum CarPlayBarButtonKind: Equatable {
     case chats
     case more
 
-    var symbol: String {
+    var title: String {
         switch self {
-        case .chats: return "bubble.left.and.bubble.right.fill"
-        case .more: return "ellipsis.circle"
+        case .chats: return AppLocalization.string("Chats")
+        case .more: return AppLocalization.string("More")
         }
     }
 }
@@ -238,7 +239,7 @@ enum CarPlayBarButtonKind: Equatable {
 @MainActor
 enum CarPlayBrowseTemplateFactory {
     static func barButton(_ kind: CarPlayBarButtonKind, action: @escaping () -> Void) -> CPBarButton {
-        CPBarButton(image: symbolImage(kind.symbol)) { _ in action() }
+        CPBarButton(title: kind.title) { _ in action() }
     }
 
     static func symbolImage(_ name: String) -> UIImage {
