@@ -153,7 +153,9 @@ struct ConduitApp: App {
                     // unless its CallKit call ended meanwhile and let go of
                     // the route. Started before the route clears, which ends
                     // this task.
-                    if let call = target.call, notifications.pendingTarget == target { appState.answerHermesCall(call) }
+                    if let call = target.call, notifications.pendingTarget == target, !appState.answerHermesCall(call) {
+                        HermesNativeCalls.shared.routedAnswerRefused(target)
+                    }
                     notifications.clearPendingTarget(target)
                 } else {
                     notifications.handleFailedNotificationRoute(target)
