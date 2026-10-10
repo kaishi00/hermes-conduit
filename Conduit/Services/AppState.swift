@@ -20604,9 +20604,14 @@ final class AppState: ObservableObject {
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
             }
-            finishChatViewportTransitionIfNoTranscriptReplacement(
-                generation: transitionGeneration
-            )
+            // A transition borrowed from an open that goes on (a
+            // notification) stays with it: the chat it opens next lays out
+            // under it.
+            if viewportTransitionGeneration == nil {
+                finishChatViewportTransitionIfNoTranscriptReplacement(
+                    generation: transitionGeneration
+                )
+            }
             await loadChatResumeBusyInputMode(using: nextClient)
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
