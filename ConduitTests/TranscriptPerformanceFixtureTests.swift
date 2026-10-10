@@ -173,7 +173,7 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         appState: AppState,
         streaming: String
     ) -> UIHostingController<PinnedChatRoot> {
-        appState.streamingText = streaming
+        appState.setStreamingTextForTesting(streaming)
         let host = UIHostingController(rootView: PinnedChatRoot(appState: appState))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
@@ -233,9 +233,10 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
     ) {
         let steadyBody = String(repeating: "Steady padding body text for the live row. ", count: 10)
         for tick in 0..<ticks {
-            appState.streamingText =
+            appState.setStreamingTextForTesting(
                 "Live streaming delta \(tick) — the only view that should change. "
-                + steadyBody
+                    + steadyBody
+            )
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
             RunLoop.current.run(until: Date())
@@ -654,7 +655,7 @@ final class TranscriptPerformanceFixtureTests: XCTestCase {
         appState.messages = messages
 
         let host = mountChat(appState: appState, streaming: "")
-        appState.streamingText = ""  // StreamingBubble unmounts
+        appState.setStreamingTextForTesting("")  // StreamingBubble unmounts
 
         TranscriptPerf.reset()
         messages.append(

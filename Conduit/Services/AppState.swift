@@ -895,10 +895,20 @@ final class AppState: ObservableObject {
     /// that observes it, so any open sheet re-rendered at that rate and lagged.
     let liveTurn = LiveTurnProjection()
     /// The live reply text as the chat shows it; stored in `liveTurn`.
-    var streamingText: String {
+    /// Deliberately not @Published: reading it in a view that observes
+    /// AppState does not refresh with the stream. Views observe `liveTurn`.
+    /// Written only by the delta coalescing and turn-boundary code here.
+    private(set) var streamingText: String {
         get { liveTurn.streamingText }
         set { liveTurn.streamingText = newValue }
     }
+    #if DEBUG
+    /// Test seam: shows `text` as the live reply, as a coalesced streaming
+    /// publish would, without feeding gateway deltas.
+    func setStreamingTextForTesting(_ text: String) {
+        streamingText = text
+    }
+    #endif
     /// Live, frequently-changing reasoning projection, stored in `liveTurn`.
     /// Streaming reasoning renders from here at display cadence WITHOUT
     /// mutating the settled `messages` array — per-publish transcript
@@ -1278,9 +1288,10 @@ final class AppState: ObservableObject {
             // Closing the drawer uncovers the open chat (#454).
             if oldValue, !showSidebar { noteActiveChatSeen(respectingMarks: true) }
             // The drawer covers the chat, so its live rows need not redraw at
-            // streaming cadence while it is up or animating. The live buffer
-            // remains authoritative and is republished as soon as the drawer
-            // closes.
+            // streaming cadence while it is up or animating: the live text and
+            // reasoning publishes (to `liveTurn`, which only those rows
+            // observe) pause. The live buffers remain authoritative and are
+            // republished there as soon as the drawer closes.
             if showSidebar {
                 streamingPublishTask?.cancel()
                 streamingPublishTask = nil
@@ -25121,6 +25132,25 @@ final class AppState: ObservableObject {
         streamingBuffer = ""
         streamingText = ""
     }
+}
+
+// MARK: - Live Turn Projection
+
+/// What a running turn shows while it streams: the reply text so far and the
+/// open thinking card. Both change at display cadence (about 20 to 30 times a
+/// second for as long as a turn streams), so they publish here and never on
+/// AppState. Every view that observes AppState, including the root view of
+/// each sheet, re-renders on any AppState publish; a publish here re-renders
+/// only the chat's live rows (`ChatLiveTurnRows`).
+///
+/// Its setters are file-private and AppState's `streamingText` and
+/// `liveReasoningSegment` setters are private, so only AppState's own
+/// coalescing, drawer pause and segment settling write it (tests use
+/// `setStreamingTextForTesting`, in debug builds only).
+@MainActor
+final class LiveTurnProjection: ObservableObject {
+    @Published fileprivate(set) var streamingText = ""
+    @Published fileprivate(set) var reasoningSegment: AppState.LiveReasoningSegment?
 }
 
 // MARK: - Keychain Helper
