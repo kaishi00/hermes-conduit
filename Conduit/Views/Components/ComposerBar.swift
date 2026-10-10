@@ -79,7 +79,9 @@ struct ComposerBar: View {
     static let fullEditorThreshold: CGFloat = 80
 
     static func showsFullEditorButton(measuredHeight: CGFloat) -> Bool {
-        measuredHeight >= fullEditorThreshold
+        // At large Text Sizes one line alone can reach 80 pt; the icon still
+        // waits for more than a line.
+        measuredHeight >= max(fullEditorThreshold, ComposerPasteTextView.minimumHeight + 20)
     }
 
     static func composerDraftKey(for sessionID: String?, profile: String) -> ComposerDraftKey {

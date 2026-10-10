@@ -1293,6 +1293,7 @@ private struct ProjectRow: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
         }
+        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
     }
 }
 
@@ -1903,6 +1904,7 @@ private struct CronJobRow: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .dynamicTypeSize(...DynamicTypeSize.listRowCap)
     }
 }
 
