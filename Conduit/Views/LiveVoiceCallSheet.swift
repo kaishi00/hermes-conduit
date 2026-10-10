@@ -508,7 +508,9 @@ private struct LiveVoiceCallButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityShowsLargeContentViewer()
+        .accessibilityShowsLargeContentViewer {
+            Label { Text(verbatim: title) } icon: { Image(systemName: symbol) }
+        }
         .opacity(isEnabled ? 1 : 0.4)
         .accessibilityLabel(Text(verbatim: voiceOverLabel ?? title))
         .accessibilityHint(Text(verbatim: voiceOverHint ?? ""))

@@ -1003,6 +1003,10 @@ struct ComposerBar: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // The controls row is capped; touch and hold shows the model large.
+            .accessibilityShowsLargeContentViewer {
+                Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
+            }
             .accessibilityLabel(modelAccessibilityLabel)
 
             if !appState.runtime.model.isEmpty {

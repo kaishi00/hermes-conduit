@@ -119,7 +119,9 @@ struct SidebarView: View {
                                         )
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityShowsLargeContentViewer()
+                                .accessibilityShowsLargeContentViewer {
+                                    Label(tab.displayName, systemImage: tab.icon)
+                                }
                             }
                         }
                         .padding(4)
@@ -218,8 +220,7 @@ struct SessionList: View {
                             .font(.system(size: 16, weight: .semibold))
                         Text("New Chat")
                             .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
+                            .lineLimit(2)
                     }
                     .frame(minHeight: 24)
                     .foregroundStyle(Color.conduitBackgroundColor)
@@ -1880,7 +1881,6 @@ private struct CronJobRow: View {
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: "clock")
-                .font(.subheadline)
                 .conduitFixedGlyph()
                 .foregroundStyle(job.isActive ? .green : .secondary)
                 .frame(width: 30, height: 30).background((job.isActive ? Color.green : .secondary).opacity(0.13), in: Circle())

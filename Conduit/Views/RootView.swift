@@ -461,6 +461,7 @@ private struct ChatTitleControl: View {
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
+            .accessibilityShowsLargeContentViewer { Text(appState.displayedChatTitle) }
             .accessibilityLabel(appState.displayedChatTitle)
             .accessibilityHint(AppLocalization.string("Scroll to top of conversation. Touch and hold for conversation actions."))
             // VoiceOver may open the menu on activation; the scroll stays
@@ -475,6 +476,7 @@ private struct ChatTitleControl: View {
                 titleLabel
             }
             .buttonStyle(.plain)
+            .accessibilityShowsLargeContentViewer { Text(appState.displayedChatTitle) }
             .accessibilityLabel(appState.displayedChatTitle)
             .accessibilityHint(AppLocalization.string("Scroll to top of conversation"))
         }
@@ -490,7 +492,6 @@ private struct ChatTitleControl: View {
             .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
             // The navigation bar doesn't grow; touch and hold shows it large.
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-            .accessibilityShowsLargeContentViewer()
     }
 }
 

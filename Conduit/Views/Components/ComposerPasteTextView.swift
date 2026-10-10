@@ -82,6 +82,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         let view = ImagePasteTextView()
         view.delegate = context.coordinator
         view.font = .preferredFont(forTextStyle: .body)
+        view.adjustsFontForContentSizeCategory = true
         view.backgroundColor = .clear
         view.textColor = .label
         view.tintColor = .systemOrange
@@ -113,6 +114,15 @@ struct ComposerPasteTextView: UIViewRepresentable {
 
     func updateUIView(_ uiView: ImagePasteTextView, context: Context) {
         TranscriptPerf.note(.composerUpdateUIView)
+        // Text Size changed while the app was open: the font follows on its
+        // own, the height bounds need re-reading.
+        let minimumHeight = Self.minimumHeight
+        let maximumHeight = Self.maximumHeight
+        if uiView.minimumReportedHeight != minimumHeight || uiView.maximumReportedHeight != maximumHeight {
+            uiView.minimumReportedHeight = minimumHeight
+            uiView.maximumReportedHeight = maximumHeight
+            uiView.setNeedsLayout()
+        }
         context.coordinator.parent = self
         context.coordinator.isActive = true
         context.coordinator.apply(

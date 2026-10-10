@@ -267,6 +267,7 @@ struct GroupChatView: View {
             }
             // The navigation bar doesn't grow; touch and hold shows it large.
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+            .accessibilityElement(children: .combine)
             .accessibilityShowsLargeContentViewer()
         }
         ToolbarItem(placement: .topBarTrailing) {
@@ -889,6 +890,7 @@ struct DesktopGroupChatView: View {
                             .lineLimit(1)
                     }
                     .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                    .accessibilityElement(children: .combine)
                     .accessibilityShowsLargeContentViewer()
                 }
                 ToolbarItem(placement: .cancellationAction) {
