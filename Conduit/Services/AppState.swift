@@ -895,6 +895,8 @@ final class AppState: ObservableObject {
     /// that observes it, so any open sheet re-rendered at that rate and lagged.
     let liveTurn = LiveTurnProjection()
     /// The live reply text as the chat shows it; stored in `liveTurn`.
+    /// Deliberately not @Published: reading it in a view that observes
+    /// AppState does not refresh with the stream. Views observe `liveTurn`.
     var streamingText: String {
         get { liveTurn.streamingText }
         set { liveTurn.streamingText = newValue }
@@ -1274,9 +1276,10 @@ final class AppState: ObservableObject {
             // Closing the drawer uncovers the open chat (#454).
             if oldValue, !showSidebar { noteActiveChatSeen(respectingMarks: true) }
             // The drawer covers the chat, so its live rows need not redraw at
-            // streaming cadence while it is up or animating. The live buffer
-            // remains authoritative and is republished as soon as the drawer
-            // closes.
+            // streaming cadence while it is up or animating: the live text and
+            // reasoning publishes (to `liveTurn`, which only those rows
+            // observe) pause. The live buffers remain authoritative and are
+            // republished there as soon as the drawer closes.
             if showSidebar {
                 streamingPublishTask?.cancel()
                 streamingPublishTask = nil
@@ -25109,6 +25112,24 @@ final class AppState: ObservableObject {
         streamingBuffer = ""
         streamingText = ""
     }
+}
+
+// MARK: - Live Turn Projection
+
+/// What a running turn shows while it streams: the reply text so far and the
+/// open thinking card. Both change at display cadence (about 20 to 30 times a
+/// second for as long as a turn streams), so they publish here and never on
+/// AppState. Every view that observes AppState, including the root view of
+/// each sheet, re-renders on any AppState publish; a publish here re-renders
+/// only the chat's live rows (`ChatLiveTurnRows`).
+///
+/// Its setters are file-private: AppState, declared in this file, is the
+/// only writer (through `streamingText` and `liveReasoningSegment`), so the
+/// coalescing, drawer pause and segment settling cannot be bypassed.
+@MainActor
+final class LiveTurnProjection: ObservableObject {
+    @Published fileprivate(set) var streamingText = ""
+    @Published fileprivate(set) var reasoningSegment: AppState.LiveReasoningSegment?
 }
 
 // MARK: - Keychain Helper

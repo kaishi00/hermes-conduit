@@ -167,7 +167,10 @@ final class AppStateReasoningStreamTests: XCTestCase {
         for word in words {
             state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: word))
         }
-        // The coalesced text publish lands on its own scheduled task.
+        // The coalesced text publish lands on its own scheduled task. The
+        // wait stays inside the counted window on purpose: that task's write
+        // must reach only `liveTurn`, never AppState. It ends as soon as the
+        // text lands; the 10 s cap is only a failsafe.
         let expectedText = words.joined()
         let deadline = Date().addingTimeInterval(10)
         while state.streamingText != expectedText, Date() < deadline {
@@ -178,6 +181,9 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(liveReasoningContent(on: state), thoughts.joined())
         XCTAssertTrue(state.isBusy)
         XCTAssertGreaterThan(liveTurnPublishes, 0, "the live rows still update")
+        // The invariant: a streaming turn's deltas touch only `liveTurn`.
+        // Anything a delta changes that other screens show is a real change
+        // and belongs on a turn edge, not on every delta.
         XCTAssertEqual(
             appStatePublishes, 0,
             "a streaming turn's deltas must not re-render every view and sheet observing AppState"
