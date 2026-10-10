@@ -15565,7 +15565,7 @@ final class AppState: ObservableObject {
             && chatViewportTransitionIsCurrent(generation: transitionGeneration)
         if !current {
             HermesCallTrace.shared.note(
-                "Chat open superseded (newer open: \(activeNotificationOpenAttemptID != id), chat view moved: \(!chatViewportTransitionIsCurrent(generation: transitionGeneration)))"
+                "Chat open superseded (different open: \(activeNotificationOpenAttemptID != id), chat view moved: \(!chatViewportTransitionIsCurrent(generation: transitionGeneration)))"
             )
         }
         return current

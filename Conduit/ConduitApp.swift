@@ -149,9 +149,11 @@ struct ConduitApp: App {
             .task(id: notificationRouteKey) {
                 guard appState.isConnected, let target = notifications.pendingTarget else { return }
                 if await appState.openNotificationTarget(target) {
-                    // A call from Hermes (#449) opens voice in its chat.
-                    // Started before the route clears, which ends this task.
-                    if let call = target.call { appState.answerHermesCall(call) }
+                    // A call from Hermes (#449) opens voice in its chat,
+                    // unless its CallKit call ended meanwhile and let go of
+                    // the route. Started before the route clears, which ends
+                    // this task.
+                    if let call = target.call, notifications.pendingTarget == target { appState.answerHermesCall(call) }
                     notifications.clearPendingTarget(target)
                 } else {
                     notifications.handleFailedNotificationRoute(target)

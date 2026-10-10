@@ -29,11 +29,13 @@ final class HermesCallTrace {
         note(label)
     }
 
-    /// A step, while the trace still records: what happens long after the
-    /// call is ordinary use.
+    /// A step. What happens long after the call is ordinary use: the trace
+    /// only says that it stopped recording.
     func note(_ label: String, since startedAt: Date? = nil, error: Error? = nil) {
-        guard timeline?.isRecording() == true else { return }
+        guard timeline != nil else { return }
+        let recorded = timeline?.events.count
         timeline?.record(label, since: startedAt, error: error)
-        callTraceLogger.notice("Call trace: \(label, privacy: .public)")
+        guard let event = timeline?.events.last, timeline?.events.count != recorded else { return }
+        callTraceLogger.notice("Call trace: \(event.label, privacy: .public)")
     }
 }

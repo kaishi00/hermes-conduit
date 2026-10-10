@@ -790,6 +790,18 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(hungUp.showVoiceSheet)
     }
 
+    func testACallAnsweredOnScreenOpensLikeItsTalkButton() {
+        let service = PushNotificationService(retryDelay: .zero)
+        let call = HermesCallRequest(id: "", kind: .done, title: "Deploy", sessionIDs: ["st-1"])
+        let target = ConduitNotificationTarget(profile: "default", sessionId: "st-1", type: HermesCallRequest.type, call: call)
+        let attempts = service.navigationAttempt
+        service.routeAnsweredHermesCall(target)
+        XCTAssertEqual(service.pendingTarget, target, "The same route a Talk tap takes")
+        XCTAssertEqual(service.navigationAttempt, attempts + 1)
+        service.clearPendingTarget(target)
+        XCTAssertNil(service.pendingTarget, "A call that ended lets go of its route")
+    }
+
     func testTheCallTraceRecordsTheStepsOfOneCall() throws {
         let trace = HermesCallTrace()
         trace.note("Answered")
