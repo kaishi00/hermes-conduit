@@ -175,6 +175,27 @@ final class CarPlayVoiceCoordinator {
     private var jobsObservation: AnyCancellable?
     /// Whether the Jobs list on screen is being kept current.
     var isObservingJobs: Bool { jobsObservation != nil }
+    /// The chat list last opened, kept current as the chats arrive and
+    /// change: on a car that launched or woke Conduit the list opens before
+    /// the chats have loaded, and a snapshot taken then showed only New
+    /// voice chat for the whole drive (#514).
+    private weak var chatsTemplate: CPListTemplate?
+    private var chatsObservation: AnyCancellable?
+    /// What the chat list on the car shows, so an unchanged list isn't sent
+    /// to the car again.
+    private var shownChats: CarPlayChatList?
+    private var shownChatsPlaceholder: String?
+    /// The chat-list load this coordinator asked for, while it runs. A load
+    /// the driver leaves behind still finishes (the phone's list wants the
+    /// chats too) but no longer counts.
+    private var chatCatalogLoad: UUID?
+    /// The chat list on screen already asked for the chats once.
+    private var didRequestChatCatalog = false
+    private var isChatsRefreshScheduled = false
+    /// Whether the chat list on screen is being kept current.
+    var isObservingChats: Bool { chatsObservation != nil }
+    /// Test seam over loading the chat list.
+    var chatCatalogLoader: @MainActor (AppState) async -> Void = { await $0.loadSessions() }
     /// The profiles the open Voice list offered, in row order.
     private var listedAgentProfiles: [String] = []
     /// The chat the driver picked from the chat list. A live call started
@@ -232,6 +253,7 @@ final class CarPlayVoiceCoordinator {
         jobsObservation?.cancel()
         jobsObservation = nil
         jobsTemplate = nil
+        stopKeepingChatsCurrent()
         chosenChat = nil
         isBrowsing = false
         self.interfacing = interfacing
@@ -289,6 +311,7 @@ final class CarPlayVoiceCoordinator {
         jobsObservation?.cancel()
         jobsObservation = nil
         jobsTemplate = nil
+        stopKeepingChatsCurrent()
         chosenChat = nil
         isBrowsing = false
         lastActivatedState = nil
@@ -710,14 +733,19 @@ final class CarPlayVoiceCoordinator {
         jobsObservation?.cancel()
         jobsObservation = nil
         jobsTemplate = nil
+        stopKeepingChatsCurrent()
         guard let interfacing else { return }
         isBrowsing = true
         interfacing.pushTemplate(browseTemplate, animated: true, completion: nil)
     }
 
     /// A screen left the car's display (the back button included). The Jobs
-    /// list stops being kept current once it is gone.
+    /// and chat lists stop being kept current once they are gone.
     func handleTemplateDidDisappear(_ disappeared: CPTemplate) {
+        if let chatsTemplate, disappeared === chatsTemplate {
+            stopKeepingChatsCurrent()
+            return
+        }
         guard let jobsTemplate, disappeared === jobsTemplate else { return }
         jobsObservation?.cancel()
         jobsObservation = nil
@@ -751,18 +779,112 @@ final class CarPlayVoiceCoordinator {
         jobsObservation?.cancel()
         jobsObservation = nil
         jobsTemplate = nil
+        stopKeepingChatsCurrent()
         interfacing?.popToRootTemplate(animated: true, completion: nil)
     }
 
     /// The chat list: New voice chat, then pinned chats, then recent ones.
+    /// It follows the chats while it is on screen, and loads them when
+    /// there are none yet (#514).
     func showChats() {
         guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
-        let chats = CarPlayBrowse.chatList(
+        let chats = Self.chatList(in: appState)
+        let placeholder = chatsPlaceholder(for: chats, in: appState)
+        let handlers = makeBrowseHandlers()
+        let list = CarPlayBrowseTemplateFactory.chatsTemplate(
+            chats: chats,
+            placeholder: placeholder,
+            handlers: handlers
+        )
+        push(list)
+        chatsTemplate = list
+        shownChats = chats
+        shownChatsPlaceholder = placeholder
+        didRequestChatCatalog = false
+        // `@Published` sends before the value is stored, so the list is
+        // rebuilt once the change has landed, from AppState itself.
+        chatsObservation = Publishers.CombineLatest3(
+            appState.$sessions.map { _ in () },
+            appState.$pinnedSessionIDs.map { _ in () },
+            appState.$isConnected.removeDuplicates().map { _ in () }
+        )
+        .dropFirst()
+        .sink { [weak self] _ in self?.scheduleChatsRefresh() }
+        loadChatsIfMissing(appState)
+    }
+
+    private static func chatList(in appState: AppState) -> CarPlayChatList {
+        CarPlayBrowse.chatList(
             from: appState.activeProfileSessions,
             isPinned: { appState.isSessionPinned($0) }
         )
-        push(CarPlayBrowseTemplateFactory.chatsTemplate(chats: chats, handlers: makeBrowseHandlers()))
+    }
+
+    /// What stands in for the chats while there are none to show yet.
+    private func chatsPlaceholder(for chats: CarPlayChatList, in appState: AppState) -> String? {
+        guard chats.pinned.isEmpty, chats.recent.isEmpty else { return nil }
+        if !appState.isConnected { return AppLocalization.string("Connecting…") }
+        if chatCatalogLoad != nil || !didRequestChatCatalog { return AppLocalization.string("Loading chats…") }
+        return nil
+    }
+
+    /// Asks for the chats once while the list shows none and Hermes is
+    /// connected. The car can open the list before anything loaded them.
+    private func loadChatsIfMissing(_ appState: AppState) {
+        guard chatsTemplate != nil, !didRequestChatCatalog, chatCatalogLoad == nil,
+              appState.isConnected else { return }
+        let chats = Self.chatList(in: appState)
+        guard chats.pinned.isEmpty, chats.recent.isEmpty else { return }
+        didRequestChatCatalog = true
+        let load = UUID()
+        chatCatalogLoad = load
+        Task { @MainActor [weak self, loader = chatCatalogLoader] in
+            await loader(appState)
+            guard let self, self.chatCatalogLoad == load else { return }
+            self.chatCatalogLoad = nil
+            self.scheduleChatsRefresh()
+        }
+    }
+
+    private func scheduleChatsRefresh() {
+        guard chatsTemplate != nil, !isChatsRefreshScheduled else { return }
+        isChatsRefreshScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.isChatsRefreshScheduled = false
+            self.refreshChats()
+        }
+    }
+
+    private func refreshChats() {
+        // A list CarPlay already released ends its own observation.
+        guard isConnected, let list = chatsTemplate else {
+            stopKeepingChatsCurrent()
+            return
+        }
+        let appState = lastBoundAppState ?? appStateProvider()
+        loadChatsIfMissing(appState)
+        let chats = Self.chatList(in: appState)
+        let placeholder = chatsPlaceholder(for: chats, in: appState)
+        guard chats != shownChats || placeholder != shownChatsPlaceholder else { return }
+        shownChats = chats
+        shownChatsPlaceholder = placeholder
+        list.updateSections(CarPlayBrowseTemplateFactory.chatSections(
+            chats: chats,
+            placeholder: placeholder,
+            handlers: makeBrowseHandlers()
+        ))
+    }
+
+    private func stopKeepingChatsCurrent() {
+        chatsObservation?.cancel()
+        chatsObservation = nil
+        chatsTemplate = nil
+        shownChats = nil
+        shownChatsPlaceholder = nil
+        chatCatalogLoad = nil
+        didRequestChatCatalog = false
     }
 
     /// Shows the chat list over the voice screen once that is on the car.
