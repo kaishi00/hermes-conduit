@@ -2801,6 +2801,131 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages, messagesB)
     }
 
+    func testCrossProfileCallOpenKeepsItsTransitionUntilTheChatLaysOut() async {
+        // A call can name a profile other than the one on screen (#449). The
+        // open lends its viewport transition to the profile switch, and the
+        // switch leaves it with the open: the chat opens, and its scroll
+        // position is recorded only once it has laid out.
+        let workSession = session("work-session", profile: "work")
+        let workMessages = [
+            ChatMessage(id: "work-message", role: .assistant, content: "Work", timestamp: "2")
+        ]
+        let fixture = makeCrossProfileCallFixture(
+            workCatalog: { return [workSession] },
+            workMessages: workMessages
+        )
+        defer { PushNotificationService.shared.clearPendingTarget(fixture.target) }
+
+        let opened = await fixture.appState.openNotificationTarget(fixture.target)
+
+        XCTAssertTrue(opened, "A call for another profile opens its chat")
+        XCTAssertEqual(fixture.appState.activeProfile, "work")
+        XCTAssertEqual(fixture.appState.activeSessionId, workSession.id)
+        XCTAssertEqual(fixture.appState.messages, workMessages)
+        fixture.appState.recordChatViewport(.latest, for: fixture.workKey)
+        fixture.appState.flushChatResumeViewport()
+        XCTAssertNil(
+            fixture.store.snapshot(for: fixture.workKey),
+            "The viewport stays frozen until the opened chat lays out"
+        )
+
+        fixture.appState.chatViewportLayoutDidSettle(
+            sessionKey: fixture.workKey,
+            transitionGeneration: fixture.appState.chatViewportTransitionGeneration,
+            transcriptRevision: fixture.appState.chatTranscriptRevision,
+            renderRevision: 1,
+            receivedScopedPreference: true
+        )
+        fixture.appState.recordChatViewport(.latest, for: fixture.workKey)
+        fixture.appState.flushChatResumeViewport()
+        XCTAssertEqual(fixture.store.snapshot(for: fixture.workKey), .latest)
+    }
+
+    func testCrossProfileCallOpenThatGivesUpAfterTheSwitchReleasesTheViewport() async {
+        // The switch marks the lent transition as replaced but replaces no
+        // transcript, so an open that stops after it (here the work chat list
+        // fails to load) releases the viewport itself.
+        let fixture = makeCrossProfileCallFixture(
+            workCatalog: { throw ControlledLifecycleError.failed },
+            workMessages: []
+        )
+        defer { PushNotificationService.shared.clearPendingTarget(fixture.target) }
+
+        let opened = await fixture.appState.openNotificationTarget(fixture.target)
+
+        XCTAssertFalse(opened)
+        XCTAssertEqual(fixture.appState.activeProfile, "work")
+        fixture.appState.recordChatViewport(.latest, for: fixture.workKey)
+        fixture.appState.flushChatResumeViewport()
+        XCTAssertEqual(
+            fixture.store.snapshot(for: fixture.workKey),
+            .latest,
+            "An open that gave up must not leave the viewport frozen"
+        )
+    }
+
+    /// Conduit on the default profile with a call answered for a chat on the
+    /// work profile, routed the way an on-screen answer is: the pending
+    /// target keeps the switch's own sync from resuming a chat.
+    private func makeCrossProfileCallFixture(
+        workCatalog: @escaping () throws -> [SessionSummary],
+        workMessages: [ChatMessage]
+    ) -> (
+        appState: AppState,
+        store: ChatResumeStore,
+        target: ConduitNotificationTarget,
+        workKey: ChatScrollSessionKey
+    ) {
+        let defaultSession = session("default-session")
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                connectClient: { _ in },
+                loadCatalog: { client, _ in
+                    if (client.profile ?? "default") == "work" {
+                        return try workCatalog()
+                    }
+                    return [defaultSession]
+                },
+                mintTicket: { _ in "profile-ticket" },
+                openSession: { client, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: (client.profile ?? "default") == "work" ? workMessages : [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                loadProfiles: {},
+                loadBusyInputMode: { _ in },
+                loadProfileDisplayPreferences: {},
+                loadSlashCommands: {},
+                botRoster: { _ in BotRosterSnapshot(bots: [], supportsBotProtocol: false) },
+                findBotChat: { _, _ in [] }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.isConnected = true
+        harness.appState.showLogin = false
+        harness.appState.sessions = [defaultSession]
+        harness.appState.activeSessionId = defaultSession.id
+        let call = HermesCallRequest(id: "", kind: .done, title: "Deploy", sessionIDs: ["work-session"])
+        let target = ConduitNotificationTarget(
+            profile: "work",
+            sessionId: "work-session",
+            type: HermesCallRequest.type,
+            call: call
+        )
+        PushNotificationService.shared.routeAnsweredHermesCall(target)
+        return (
+            harness.appState,
+            harness.store,
+            target,
+            ChatScrollSessionKey(profile: "work", sessionID: "work-session")
+        )
+    }
+
     func testStaleNotificationContinuationCannotSupersedeNewerSessionTransition() async {
         let notificationCatalogGate = ControlledSuspension()
         let messagesB = [
