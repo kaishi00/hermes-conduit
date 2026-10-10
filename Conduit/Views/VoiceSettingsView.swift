@@ -24,8 +24,8 @@ struct VoiceSettingsRoute: View {
     let setVoiceEnabled: (Bool) async -> Bool
     let setTranscriptionMode: (VoiceTranscriptionMode) async -> Bool
     let setContinuousConversation: (Bool) async -> Bool
-    let setStopPhrases: ([String]) -> Void
-    let setEndConversationPhrases: ([String]) -> Void
+    let setStopPhrases: ([String]) -> Bool
+    let setEndConversationPhrases: ([String]) -> Bool
     let geminiLive: GeminiLiveSettingsModel?
     let gptLive: GPTLiveSettingsModel?
     let grokLive: GrokLiveSettingsModel?
@@ -53,8 +53,8 @@ struct VoiceSettingsRoute: View {
         setVoiceEnabled: @escaping (Bool) async -> Bool,
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool,
         setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
-        setStopPhrases: @escaping ([String]) -> Void = { _ in },
-        setEndConversationPhrases: @escaping ([String]) -> Void = { _ in },
+        setStopPhrases: @escaping ([String]) -> Bool = { _ in true },
+        setEndConversationPhrases: @escaping ([String]) -> Bool = { _ in true },
         geminiLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
@@ -181,8 +181,8 @@ struct VoiceSettingsView: View {
     @AppStorage("conduit.voiceSettings.advancedExpanded") private var advancedExpanded = false
     let spokenStopPhrases: [String]
     let spokenEndConversationPhrases: [String]
-    let setStopPhrases: ([String]) -> Void
-    let setEndConversationPhrases: ([String]) -> Void
+    let setStopPhrases: ([String]) -> Bool
+    let setEndConversationPhrases: ([String]) -> Bool
     var geminiLive: GeminiLiveSettingsModel?
     var gptLive: GPTLiveSettingsModel?
     var grokLive: GrokLiveSettingsModel?
@@ -218,8 +218,8 @@ struct VoiceSettingsView: View {
         setVoiceEnabled: @escaping (Bool) async -> Bool = { _ in false },
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool = { _ in false },
         setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
-        setStopPhrases: @escaping ([String]) -> Void = { _ in },
-        setEndConversationPhrases: @escaping ([String]) -> Void = { _ in },
+        setStopPhrases: @escaping ([String]) -> Bool = { _ in true },
+        setEndConversationPhrases: @escaping ([String]) -> Bool = { _ in true },
         geminiLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
@@ -1115,7 +1115,7 @@ struct VoiceSettingsView: View {
                 purposeText: AppLocalization.string("Cancel the current response and keep Voice open."),
                 initialPhrases: stopPhrasesShown,
                 onChange: { phrases in
-                    setStopPhrases(phrases)
+                    _ = setStopPhrases(phrases)
                     // Kept current, so a reset to the built-ins always
                     // changes the editor's identity and reseeds it.
                     stopPhrasesShown = phrases
@@ -1128,7 +1128,7 @@ struct VoiceSettingsView: View {
                 purposeText: AppLocalization.string("Close the Voice conversation completely."),
                 initialPhrases: endPhrasesShown,
                 onChange: { phrases in
-                    setEndConversationPhrases(phrases)
+                    _ = setEndConversationPhrases(phrases)
                     endPhrasesShown = phrases
                     endPhrasesCustomized = Self.isCustomEndList(phrases)
                 }
@@ -1141,8 +1141,9 @@ struct VoiceSettingsView: View {
                 Button {
                     let stop = VoiceSpokenCommandDefaults.stopPhrases
                     let end = VoiceSpokenCommandDefaults.endConversationPhrases
-                    setStopPhrases(stop)
-                    setEndConversationPhrases(end)
+                    // Disconnected, nothing is saved: keep showing the
+                    // user's lists rather than claim a reset.
+                    guard setStopPhrases(stop), setEndConversationPhrases(end) else { return }
                     stopPhrasesShown = stop
                     endPhrasesShown = end
                     stopPhrasesCustomized = false

@@ -1425,6 +1425,7 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
                         Text(verbatim: choice.title)
                     }
                 }
+                .accessibilityAddTraits(choice.id == value ? .isSelected : [])
             }
         } label: {
             Group {

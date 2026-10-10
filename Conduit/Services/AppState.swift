@@ -24221,24 +24221,29 @@ final class AppState: ObservableObject {
     /// `hasLiveVoiceSession` authority (PR #159 semantics). Entries are
     /// canonicalized (trimmed, de-duplicated, blanks dropped) at this
     /// boundary — the single write authority for phrase lists.
-    func setSpokenStopPhrases(_ phrases: [String]) {
+    /// Returns false when nothing was saved (disconnected).
+    @discardableResult
+    func setSpokenStopPhrases(_ phrases: [String]) -> Bool {
         // Same connected-state policy as `setContinuousConversation`: the
         // preference key is gateway-qualified, and a write while
         // disconnected would land in the orphaned "disconnected" namespace.
-        guard isConnected else { return }
+        guard isConnected else { return false }
         updateActiveProfileVoicePreferences {
             $0.spokenStopPhrases = VoiceSpokenCommands.storedPhrases(phrases, builtIns: VoiceSpokenCommandDefaults.stopPhrases)
         }
+        return true
     }
 
     /// Saves an edited spoken End Conversation phrase list. Same contract as
     /// `setSpokenStopPhrases`; an intentionally emptied list persists as
     /// empty and disables that spoken-command category.
-    func setSpokenEndConversationPhrases(_ phrases: [String]) {
-        guard isConnected else { return }
+    @discardableResult
+    func setSpokenEndConversationPhrases(_ phrases: [String]) -> Bool {
+        guard isConnected else { return false }
         updateActiveProfileVoicePreferences {
             $0.spokenEndConversationPhrases = VoiceSpokenCommands.storedPhrases(phrases, builtIns: VoiceSpokenCommandDefaults.endConversationPhrases)
         }
+        return true
     }
 
     /// Loads the active profile's preference blob, applies `mutate`, and
