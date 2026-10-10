@@ -1736,11 +1736,11 @@ final class VoiceConversationController: ObservableObject {
     }
 
     private func isWholeUtteranceEndConversationCommand(_ transcript: String) -> Bool {
-        VoiceSpokenCommands.matches(transcript, phrases: preferences.spokenEndConversationPhrases)
+        VoiceSpokenCommands.matches(transcript, phrases: preferences.resolvedSpokenEndConversationPhrases)
     }
 
     private func isWholeUtteranceStopCommand(_ transcript: String) -> Bool {
-        VoiceSpokenCommands.matches(transcript, phrases: preferences.spokenStopPhrases)
+        VoiceSpokenCommands.matches(transcript, phrases: preferences.resolvedSpokenStopPhrases)
     }
 
     private func appendAssistantTranscriptDelta(_ text: String) {

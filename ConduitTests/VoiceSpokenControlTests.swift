@@ -14,19 +14,55 @@ import XCTest
 
 @MainActor
 final class VoiceSpokenCommandMatchingTests: XCTestCase {
-    func testDefaultStopPhrasesAreMultilingualBuiltIns() {
-        XCTAssertEqual(
-            VoiceSpokenCommands.defaultStopPhrases,
-            ["stop", "stop talking", "be quiet", "停止", "别说了", "不要说了"])
-        XCTAssertEqual(VoiceProfilePreferences().spokenStopPhrases, VoiceSpokenCommands.defaultStopPhrases)
+    func testNewPreferencesFollowTheAppLanguageBuiltIns() {
+        let preferences = VoiceProfilePreferences()
+        XCTAssertNil(preferences.spokenStopPhrases)
+        XCTAssertNil(preferences.spokenEndConversationPhrases)
+        XCTAssertEqual(preferences.resolvedSpokenStopPhrases, VoiceSpokenCommandDefaults.stopPhrases)
+        XCTAssertEqual(preferences.resolvedSpokenEndConversationPhrases, VoiceSpokenCommandDefaults.endConversationPhrases)
     }
 
-    func testDefaultEndConversationPhrasesAreMultilingualBuiltIns() {
+    func testBuiltInsFollowThePinnedAppLanguage() {
+        let standardDefaults = UserDefaults.standard
+        defer { standardDefaults.removeObject(forKey: AppLanguageStore.defaultsKey) }
+
+        standardDefaults.set("en", forKey: AppLanguageStore.defaultsKey)
+        XCTAssertEqual(VoiceSpokenCommandDefaults.stopPhrases, ["stop", "stop talking", "be quiet"])
+        XCTAssertEqual(VoiceSpokenCommandDefaults.endConversationPhrases, ["goodbye", "bye", "end conversation", "that's all"])
+
+        standardDefaults.set("zh-Hans", forKey: AppLanguageStore.defaultsKey)
+        XCTAssertEqual(VoiceSpokenCommandDefaults.stopPhrases, ["停止", "别说了", "不要说了"])
+        XCTAssertEqual(VoiceSpokenCommandDefaults.endConversationPhrases, ["再见", "拜拜", "结束对话", "就这样吧"])
+        XCTAssertEqual(VoiceProfilePreferences().resolvedSpokenStopPhrases, ["停止", "别说了", "不要说了"])
+
+        standardDefaults.set("ja", forKey: AppLanguageStore.defaultsKey)
+        XCTAssertTrue(VoiceSpokenCommandDefaults.stopPhrases.contains("ストップ"))
+        XCTAssertFalse(VoiceSpokenCommandDefaults.stopPhrases.contains("stop"))
+        XCTAssertTrue(VoiceSpokenCommandDefaults.endConversationPhrases.contains("さようなら"))
+    }
+
+    func testEveryLanguageHasItsOwnBuiltIns() {
+        let standardDefaults = UserDefaults.standard
+        defer { standardDefaults.removeObject(forKey: AppLanguageStore.defaultsKey) }
+        for language in AppLanguage.selectable {
+            standardDefaults.set(language.rawValue, forKey: AppLanguageStore.defaultsKey)
+            let stop = VoiceSpokenCommandDefaults.stopPhrases
+            let end = VoiceSpokenCommandDefaults.endConversationPhrases
+            XCTAssertFalse(stop.isEmpty, "\(language.rawValue) has no stop phrases")
+            XCTAssertFalse(end.isEmpty, "\(language.rawValue) has no goodbye phrases")
+            XCTAssertTrue(Set(stop.map(VoiceSpokenCommands.canonicalized)).isDisjoint(with: end.map(VoiceSpokenCommands.canonicalized)),
+                          "\(language.rawValue) uses one phrase for both stop and goodbye")
+            XCTAssertFalse(stop.contains { $0.contains("|") }, "\(language.rawValue) stop phrases were not split")
+        }
+    }
+
+    func testMissingCatalogEntryFallsBackToEnglish() {
         XCTAssertEqual(
-            VoiceSpokenCommands.defaultEndConversationPhrases,
-            ["goodbye", "bye", "end conversation", "that's all", "再见", "拜拜", "结束对话", "就这样吧"])
-        XCTAssertEqual(VoiceProfilePreferences().spokenEndConversationPhrases,
-                       VoiceSpokenCommands.defaultEndConversationPhrases)
+            VoiceSpokenCommandDefaults.phrases(catalogValue: "Built-in stop phrases", key: "Built-in stop phrases", fallback: ["stop"]),
+            ["stop"])
+        XCTAssertEqual(
+            VoiceSpokenCommandDefaults.phrases(catalogValue: "Halt | Stop |halt||", key: "Built-in stop phrases", fallback: ["stop"]),
+            ["Halt", "Stop"])
     }
 
     func testOlderPreferenceBlobWithoutEndConversationFieldDecodesWithDefaults() throws {
@@ -36,7 +72,7 @@ final class VoiceSpokenCommandMatchingTests: XCTestCase {
         )
         let preferences = try JSONDecoder().decode(VoiceProfilePreferences.self, from: data)
 
-        XCTAssertEqual(preferences.spokenEndConversationPhrases, VoiceSpokenCommands.defaultEndConversationPhrases)
+        XCTAssertNil(preferences.spokenEndConversationPhrases)
         XCTAssertEqual(preferences.spokenStopPhrases, ["stop"])
         XCTAssertTrue(preferences.outputMuted)
         XCTAssertTrue(preferences.continuousConversation, "absent continuousConversation still decodes as ON")
@@ -44,7 +80,7 @@ final class VoiceSpokenCommandMatchingTests: XCTestCase {
     }
 
     func testSpokenCommandMatchingAllowsHowLiveModelsTranscribeAGoodbye() {
-        let phrases = VoiceSpokenCommands.defaultEndConversationPhrases
+        let phrases = VoiceSpokenCommands.legacyEndConversationPhrases
         for utterance in ["Goodbye.", " Good bye.", "Good-bye!", "Okay, goodbye.", "Alright, bye bye!",
                           "Bye, thanks!", "Thank you, goodbye.", "Bye for now.", "That\u{2019}s all, thanks.", "好的，再见。"] {
             XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand(utterance, phrases: phrases), utterance)
@@ -127,12 +163,11 @@ final class VoiceSpokenCommandMatchingTests: XCTestCase {
 
 @MainActor
 final class VoiceSpokenMultilingualCommandTests: XCTestCase {
-    private var defaults: [String] { VoiceSpokenCommands.defaultStopPhrases }
-    private var endDefaults: [String] { VoiceSpokenCommands.defaultEndConversationPhrases }
+    private var defaults: [String] { VoiceSpokenCommands.legacyStopPhrases }
+    private var endDefaults: [String] { VoiceSpokenCommands.legacyEndConversationPhrases }
 
-    /// The required built-in Chinese commands — recognized regardless of the
-    /// selected App Language, because command matching never consults the
-    /// UI locale.
+    /// The Chinese commands in a given list match whatever the selected App
+    /// Language: matching a list never consults the UI locale.
     func testChineseEndConversationCommandsMatchExactly() {
         XCTAssertTrue(VoiceSpokenCommands.matches("再见", phrases: endDefaults))
         XCTAssertTrue(VoiceSpokenCommands.matches("结束对话", phrases: endDefaults))
@@ -197,14 +232,33 @@ final class VoiceSpokenMultilingualCommandTests: XCTestCase {
 
     // MARK: - Persistence migration for extended built-ins
 
-    func testStoredOriginalDefaultListMigratesToMultilingualDefaults() throws {
+    func testStoredOriginalDefaultListFollowsTheAppLanguage() throws {
         let data = try XCTUnwrap(
             #"{"spokenStopPhrases":["stop","stop talking","be quiet"],"spokenEndConversationPhrases":["goodbye","bye","end conversation","that's all"]}"#
                 .data(using: .utf8)
         )
         let preferences = try JSONDecoder().decode(VoiceProfilePreferences.self, from: data)
-        XCTAssertEqual(preferences.spokenStopPhrases, VoiceSpokenCommands.defaultStopPhrases)
-        XCTAssertEqual(preferences.spokenEndConversationPhrases, VoiceSpokenCommands.defaultEndConversationPhrases)
+        XCTAssertNil(preferences.spokenStopPhrases)
+        XCTAssertNil(preferences.spokenEndConversationPhrases)
+    }
+
+    func testStoredEnglishAndChineseBuiltInsFollowTheAppLanguage() throws {
+        // The lists every profile carried before built-ins followed the app
+        // language: the mix of English and Chinese.
+        let data = try XCTUnwrap(
+            #"{"spokenStopPhrases":["stop","stop talking","be quiet","停止","别说了","不要说了"],"spokenEndConversationPhrases":["goodbye","bye","end conversation","that's all","再见","拜拜","结束对话","就这样吧"]}"#
+                .data(using: .utf8)
+        )
+        let preferences = try JSONDecoder().decode(VoiceProfilePreferences.self, from: data)
+        XCTAssertNil(preferences.spokenStopPhrases)
+        XCTAssertNil(preferences.spokenEndConversationPhrases)
+    }
+
+    func testFollowingTheAppLanguageIsNotWrittenBack() throws {
+        let encoded = try JSONEncoder().encode(VoiceProfilePreferences())
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertNil(object["spokenStopPhrases"])
+        XCTAssertNil(object["spokenEndConversationPhrases"])
     }
 
     func testCustomizedStoredListsArePreservedUntouched() throws {
@@ -239,24 +293,19 @@ final class VoiceSpokenMultilingualCommandTests: XCTestCase {
     func testMigrationCanonicalizesBeforeComparing() {
         // Case/apostrophe/whitespace variants of the original defaults are
         // still "never customized".
-        XCTAssertEqual(
-            VoiceSpokenCommands.migratedDefaultPhrases(
-                [" Stop ", "Stop Talking", "be quiet"],
-                previous: VoiceSpokenCommands.previousDefaultStopPhrases,
-                current: VoiceSpokenCommands.defaultStopPhrases),
-            VoiceSpokenCommands.defaultStopPhrases)
-        XCTAssertEqual(
-            VoiceSpokenCommands.migratedDefaultPhrases(
-                ["that’s all", "Bye.", "Goodbye!", "END CONVERSATION"],
-                previous: VoiceSpokenCommands.previousDefaultEndConversationPhrases,
-                current: VoiceSpokenCommands.defaultEndConversationPhrases),
-            VoiceSpokenCommands.defaultEndConversationPhrases)
-        XCTAssertNotEqual(
-            VoiceSpokenCommands.migratedDefaultPhrases(
-                ["stop", "stop talking", "be quiet", "halt"],
-                previous: VoiceSpokenCommands.previousDefaultStopPhrases,
-                current: VoiceSpokenCommands.defaultStopPhrases),
-            VoiceSpokenCommands.defaultStopPhrases)
+        let stopLegacy = [VoiceSpokenCommands.previousDefaultStopPhrases, VoiceSpokenCommands.legacyStopPhrases]
+        let endLegacy = [VoiceSpokenCommands.previousDefaultEndConversationPhrases, VoiceSpokenCommands.legacyEndConversationPhrases]
+        XCTAssertTrue(VoiceSpokenCommands.isUncustomized([" Stop ", "Stop Talking", "be quiet"], legacy: stopLegacy))
+        XCTAssertTrue(VoiceSpokenCommands.isUncustomized(["that’s all", "Bye.", "Goodbye!", "END CONVERSATION"], legacy: endLegacy))
+        XCTAssertFalse(VoiceSpokenCommands.isUncustomized(["stop", "stop talking", "be quiet", "halt"], legacy: stopLegacy))
+        XCTAssertFalse(VoiceSpokenCommands.isUncustomized([], legacy: stopLegacy), "an emptied list is a choice")
+    }
+
+    func testAnEditThatLeavesTheBuiltInsFollowsTheAppLanguage() {
+        let builtIns = ["stop", "stop talking", "be quiet"]
+        XCTAssertNil(VoiceSpokenCommands.storedPhrases(["be quiet", " Stop", "stop talking"], builtIns: builtIns))
+        XCTAssertEqual(VoiceSpokenCommands.storedPhrases(["stop", "halt"], builtIns: builtIns), ["stop", "halt"])
+        XCTAssertEqual(VoiceSpokenCommands.storedPhrases([], builtIns: builtIns), [])
     }
 }
 
@@ -661,6 +710,24 @@ final class AppStateVoiceSpokenPhraseTests: XCTestCase {
         XCTAssertEqual(loaded.spokenStopPhrases, ["stop"])
         XCTAssertFalse(loaded.outputMuted)
         XCTAssertTrue(loaded.continuousConversation)
+    }
+
+    func testSavingTheBuiltInsGoesBackToFollowingTheAppLanguage() throws {
+        let (appState, defaults, suite) = makeAppState(profile: "default")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        var seed = VoiceProfilePreferences()
+        seed.spokenStopPhrases = ["halt"]
+        seed.spokenEndConversationPhrases = ["see ya"]
+        savePreferences(seed, defaults: defaults, profile: "default", gateway: "https://example.com")
+
+        appState.setSpokenStopPhrases(VoiceSpokenCommandDefaults.stopPhrases)
+        appState.setSpokenEndConversationPhrases(VoiceSpokenCommandDefaults.endConversationPhrases)
+
+        let loaded = try loadPreferences(defaults: defaults, profile: "default", gateway: "https://example.com")
+        XCTAssertNil(loaded.spokenStopPhrases)
+        XCTAssertNil(loaded.spokenEndConversationPhrases)
+        XCTAssertEqual(loaded.resolvedSpokenStopPhrases, VoiceSpokenCommandDefaults.stopPhrases)
     }
 
     func testSpokenPhraseEditsAreProfileScoped() throws {

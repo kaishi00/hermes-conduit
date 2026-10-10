@@ -61,6 +61,16 @@ struct GeminiLiveSettingsSection: View {
         _speakerBargeIn = State(initialValue: model.speakerBargeIn)
     }
 
+    private var voiceChoices: [(id: String, title: String)] {
+        var choices = [(id: "", title: AppLocalization.string("Gemini default"))]
+        choices += GeminiLiveVoice.all.map { (id: $0.name, title: "\($0.name) · \($0.style)") }
+        // A voice saved by a newer build that this one doesn't list.
+        if !voice.isEmpty, !GeminiLiveVoice.all.contains(where: { $0.name == voice }) {
+            choices.append((id: voice, title: voice))
+        }
+        return choices
+    }
+
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Gemini Live"), symbol: "waveform.badge.mic", tint: .conduitAura) {
             if showsModeToggle {
@@ -97,39 +107,34 @@ struct GeminiLiveSettingsSection: View {
                 }
                 .disabled(isChecking)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.14))
-                Picker("Web lookups", selection: Binding(
-                    get: { search },
-                    set: { chosen in
+                ConduitMenuPicker(
+                    value: search,
+                    choices: [
+                        (id: GeminiLiveSearchMode.automatic, title: AppLocalization.string("Automatic")),
+                        (id: GeminiLiveSearchMode.hermes, title: AppLocalization.string("Hermes web search")),
+                        (id: GeminiLiveSearchMode.google, title: AppLocalization.string("Google Search")),
+                        (id: GeminiLiveSearchMode.off, title: AppLocalization.string("Off")),
+                    ],
+                    onSelect: { chosen in
                         search = chosen
                         model.setSearch(chosen)
                     }
-                )) {
-                    Text("Automatic").tag(GeminiLiveSearchMode.automatic)
-                    Text("Hermes web search").tag(GeminiLiveSearchMode.hermes)
-                    Text("Google Search").tag(GeminiLiveSearchMode.google)
-                    Text("Off").tag(GeminiLiveSearchMode.off)
+                ) {
+                    Text("Web lookups").foregroundStyle(.secondary)
                 }
-                .pickerStyle(.menu)
                 Text("How Gemini answers quick questions like weather or news. Hermes web search uses the search your Hermes server is set up with (SearXNG, Firecrawl…). Google Search has its own quota on your Gemini key. Automatic uses Hermes when it has a search set up, otherwise Google. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Picker("Voice", selection: Binding(
-                    get: { voice },
-                    set: { chosen in
+                ConduitMenuPicker(
+                    value: voice,
+                    choices: voiceChoices,
+                    onSelect: { chosen in
                         voice = chosen
                         model.setVoice(chosen.isEmpty ? nil : chosen)
                     }
-                )) {
-                    Text("Gemini default").tag("")
-                    ForEach(GeminiLiveVoice.all) { option in
-                        Text(verbatim: "\(option.name) · \(option.style)").tag(option.name)
-                    }
-                    // A voice saved by a newer build that this one doesn't list.
-                    if !voice.isEmpty, !GeminiLiveVoice.all.contains(where: { $0.name == voice }) {
-                        Text(verbatim: voice).tag(voice)
-                    }
+                ) {
+                    Text("Voice").foregroundStyle(.secondary)
                 }
-                .pickerStyle(.menu)
                 Text("The voice Gemini speaks with. Applies to the next conversation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -375,34 +380,25 @@ struct VoiceJobModelSettingsSection: View {
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Voice jobs"), symbol: "bolt.horizontal.circle", tint: .conduitAccent) {
-            Picker("Model", selection: $selection) {
-                Text("Profile default").tag(Self.profileDefault)
-                // Keep a saved choice visible even before the list loads.
-                if selection != Self.profileDefault, !providers.contains(where: { provider in
-                    provider.models.contains { Self.tag(provider: provider.name, model: $0.id) == selection }
-                }) {
-                    Text(Self.parse(selection).model).tag(selection)
-                }
-                ForEach(providers, id: \.name) { provider in
-                    ForEach(provider.models, id: \.id) { model in
-                        Text("\(model.label ?? model.id) · \(provider.name)")
-                            .tag(Self.tag(provider: provider.name, model: model.id))
-                    }
-                }
+            ConduitMenuPicker(
+                value: selection,
+                choices: VoiceJobModelSettingsSection.modelChoices(
+                    defaultTitle: AppLocalization.string("Profile default"),
+                    defaultTag: Self.profileDefault,
+                    selection: selection,
+                    providers: providers
+                ),
+                onSelect: { selection = $0 }
+            ) {
+                Text("Model").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
-            Picker("Reasoning", selection: $reasoning) {
-                Text("Profile default").tag(Self.profileDefault)
-                // Same levels as the model picker's reasoning control.
-                Text("None").tag("none")
-                Text("Minimal").tag("minimal")
-                Text("Low").tag("low")
-                Text("Medium").tag("medium")
-                Text("High").tag("high")
-                Text("Extra High").tag("xhigh")
-                Text("Max").tag("max")
+            ConduitMenuPicker(
+                value: reasoning,
+                choices: reasoningChoices,
+                onSelect: { reasoning = $0 }
+            ) {
+                Text("Reasoning").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             Text("The model Hermes uses for background jobs started by voice. A fast model with low reasoning keeps spoken requests quick; your chats keep the profile's model.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -415,6 +411,47 @@ struct VoiceJobModelSettingsSection: View {
     private func save() {
         let chosen = selection == Self.profileDefault ? nil : Self.parse(selection)
         settings.save(chosen?.provider, chosen?.model, reasoning == Self.profileDefault ? nil : reasoning)
+    }
+
+    private var reasoningChoices: [(id: String, title: String)] {
+        let levels = Self.reasoningLevels(offTitle: AppLocalization.string("None"))
+        return [(id: Self.profileDefault, title: AppLocalization.string("Profile default"))] + levels
+    }
+
+    /// Model menu: the default choice, a saved model the list doesn't carry
+    /// (kept visible even before the list loads), then every provider's
+    /// models.
+    static func modelChoices(
+        defaultTitle: String,
+        defaultTag: String,
+        selection: String,
+        providers: [ProviderInfo]
+    ) -> [(id: String, title: String)] {
+        var choices = [(id: defaultTag, title: defaultTitle)]
+        if selection != defaultTag, !providers.contains(where: { provider in
+            provider.models.contains { tag(provider: provider.name, model: $0.id) == selection }
+        }) {
+            choices.append((id: selection, title: parse(selection).model))
+        }
+        for provider in providers {
+            for model in provider.models {
+                choices.append((id: tag(provider: provider.name, model: model.id), title: "\(model.label ?? model.id) · \(provider.name)"))
+            }
+        }
+        return choices
+    }
+
+    /// Reasoning levels, the same as the model picker's reasoning control.
+    static func reasoningLevels(offTitle: String) -> [(id: String, title: String)] {
+        [
+            (id: "none", title: offTitle),
+            (id: "minimal", title: AppLocalization.string("Minimal")),
+            (id: "low", title: AppLocalization.string("Low")),
+            (id: "medium", title: AppLocalization.string("Medium")),
+            (id: "high", title: AppLocalization.string("High")),
+            (id: "xhigh", title: AppLocalization.string("Extra High")),
+            (id: "max", title: AppLocalization.string("Max")),
+        ]
     }
 
     /// Picker tag for a provider/model pair (provider may be empty).
@@ -494,33 +531,25 @@ struct VoiceReplyModelSettingsSection: View {
         Group {
             if saved != nil {
                 ConduitSettingsSection(title: AppLocalization.string("Voice replies"), symbol: "waveform.circle", tint: .conduitAura) {
-                    Picker("Model", selection: $selection) {
-                        Text("Same as chats").tag(Self.sameAsChats)
-                        // Keep a saved choice visible even before the list loads.
-                        if selection != Self.sameAsChats, !providers.contains(where: { provider in
-                            provider.models.contains { VoiceJobModelSettingsSection.tag(provider: provider.name, model: $0.id) == selection }
-                        }) {
-                            Text(VoiceJobModelSettingsSection.parse(selection).model).tag(selection)
-                        }
-                        ForEach(providers, id: \.name) { provider in
-                            ForEach(provider.models, id: \.id) { model in
-                                Text("\(model.label ?? model.id) · \(provider.name)")
-                                    .tag(VoiceJobModelSettingsSection.tag(provider: provider.name, model: model.id))
-                            }
-                        }
+                    ConduitMenuPicker(
+                        value: selection,
+                        choices: VoiceJobModelSettingsSection.modelChoices(
+                            defaultTitle: AppLocalization.string("Same as chats"),
+                            defaultTag: Self.sameAsChats,
+                            selection: selection,
+                            providers: providers
+                        ),
+                        onSelect: { selection = $0 }
+                    ) {
+                        Text("Model").foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.menu)
-                    Picker("Reasoning", selection: $reasoning) {
-                        Text("Off").tag("none")
-                        Text("Minimal").tag("minimal")
-                        Text("Low").tag("low")
-                        Text("Medium").tag("medium")
-                        Text("High").tag("high")
-                        Text("Extra High").tag("xhigh")
-                        Text("Max").tag("max")
-                        Text("Same as chats").tag(Self.inheritReasoning)
+                    ConduitMenuPicker(
+                        value: reasoning,
+                        choices: reasoningChoices,
+                        onSelect: { reasoning = $0 }
+                    ) {
+                        Text("Reasoning").foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.menu)
                     Text("The model Hermes answers you with in a voice conversation. Reasoning is off by default so replies start sooner; typed messages keep the chat's model. Hermes Desktop uses this setting too.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -538,6 +567,11 @@ struct VoiceReplyModelSettingsSection: View {
         }
         .onChange(of: selection) { _, _ in save() }
         .onChange(of: reasoning) { _, _ in save() }
+    }
+
+    private var reasoningChoices: [(id: String, title: String)] {
+        let levels = VoiceJobModelSettingsSection.reasoningLevels(offTitle: AppLocalization.string("Off"))
+        return levels + [(id: Self.inheritReasoning, title: AppLocalization.string("Same as chats"))]
     }
 
     private var chosen: VoiceReplyModelSetting {

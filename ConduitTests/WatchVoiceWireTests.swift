@@ -1036,7 +1036,7 @@ extension HermesVoiceGatewayTimeoutTests {
     /// A Watch call ends on the same spoken goodbye as the phone's call:
     /// the matcher it shares with the phone.
     func testWatchCallsEndOnTheProfilesGoodbye() {
-        let phrases = VoiceSpokenCommands.defaultEndConversationPhrases
+        let phrases = VoiceSpokenCommands.legacyEndConversationPhrases
         XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand("Okay, goodbye.", phrases: phrases))
         XCTAssertFalse(VoiceSpokenCommands.matchesSpokenCommand("Goodbye to the old server.", phrases: phrases))
     }

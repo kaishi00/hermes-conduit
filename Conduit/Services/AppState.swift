@@ -1653,7 +1653,7 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the classic Voice mode.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
+                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
             },
             // A call Hermes made opens with why it called, not a greeting (#449).
             openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt }
@@ -1941,7 +1941,7 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
+                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
             }
         )
         // A hands-free goodbye closes the sheet like the Close button.
@@ -2213,7 +2213,7 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).spokenEndConversationPhrases
+                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
             },
             openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt }
         )
@@ -24227,7 +24227,7 @@ final class AppState: ObservableObject {
         // disconnected would land in the orphaned "disconnected" namespace.
         guard isConnected else { return }
         updateActiveProfileVoicePreferences {
-            $0.spokenStopPhrases = VoiceSpokenCommands.canonicalizedPhraseList(phrases)
+            $0.spokenStopPhrases = VoiceSpokenCommands.storedPhrases(phrases, builtIns: VoiceSpokenCommandDefaults.stopPhrases)
         }
     }
 
@@ -24237,7 +24237,7 @@ final class AppState: ObservableObject {
     func setSpokenEndConversationPhrases(_ phrases: [String]) {
         guard isConnected else { return }
         updateActiveProfileVoicePreferences {
-            $0.spokenEndConversationPhrases = VoiceSpokenCommands.canonicalizedPhraseList(phrases)
+            $0.spokenEndConversationPhrases = VoiceSpokenCommands.storedPhrases(phrases, builtIns: VoiceSpokenCommandDefaults.endConversationPhrases)
         }
     }
 
@@ -24620,7 +24620,7 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases,
+            endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames()
         )
     }
@@ -24701,7 +24701,7 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases,
+            endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames()
         )
     }
@@ -24789,7 +24789,7 @@ final class AppState: ObservableObject {
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
-            endPhrases: preferences.spokenEndConversationPhrases,
+            endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames()
         )
     }

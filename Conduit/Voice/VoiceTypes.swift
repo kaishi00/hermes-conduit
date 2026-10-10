@@ -55,6 +55,39 @@ struct VoiceProviderDescriptor: Codable, Equatable, Identifiable {
     }
 }
 
+/// The built-in spoken Stop and End Conversation phrases, in the app
+/// language. Each language's list is a catalog value ("stop|stop
+/// talking|be quiet"), so a new language brings its own phrases the same
+/// way it brings its strings.
+enum VoiceSpokenCommandDefaults {
+    static let englishStopPhrases = ["stop", "stop talking", "be quiet"]
+    static let englishEndConversationPhrases = ["goodbye", "bye", "end conversation", "that's all"]
+
+    static var stopPhrases: [String] {
+        phrases(
+            catalogValue: AppLocalization.string("Built-in stop phrases"),
+            key: "Built-in stop phrases",
+            fallback: englishStopPhrases
+        )
+    }
+
+    static var endConversationPhrases: [String] {
+        phrases(
+            catalogValue: AppLocalization.string("Built-in end conversation phrases"),
+            key: "Built-in end conversation phrases",
+            fallback: englishEndConversationPhrases
+        )
+    }
+
+    /// Splits a catalog value on "|". A missing entry resolves to its key
+    /// (AppLocalization's fallback contract), which means English.
+    static func phrases(catalogValue: String, key: String, fallback: [String]) -> [String] {
+        guard catalogValue != key else { return fallback }
+        let phrases = VoiceSpokenCommands.canonicalizedPhraseList(catalogValue.components(separatedBy: "|"))
+        return phrases.isEmpty ? fallback : phrases
+    }
+}
+
 struct VoiceProfilePreferences: Codable, Equatable {
     var outputMuted: Bool = false
     /// Whether a completed assistant response automatically opens the next
@@ -66,10 +99,22 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// phone locked or Conduit in the background, like a live call. Nil is
     /// off.
     var keepListeningWhenLocked: Bool? = nil
-    var spokenStopPhrases: [String] = VoiceSpokenCommands.defaultStopPhrases
+    /// Spoken phrases that stop the current reply. Nil follows the app
+    /// language's built-ins (`resolvedSpokenStopPhrases`); a list is the
+    /// user's own. An empty list disables the category.
+    var spokenStopPhrases: [String]? = nil
     /// Spoken phrases that close the whole Voice session through the
-    /// existing Close teardown path. An empty list disables the category.
-    var spokenEndConversationPhrases: [String] = VoiceSpokenCommands.defaultEndConversationPhrases
+    /// existing Close teardown path. Nil follows the app language's
+    /// built-ins; an empty list disables the category.
+    var spokenEndConversationPhrases: [String]? = nil
+
+    var resolvedSpokenStopPhrases: [String] {
+        spokenStopPhrases ?? VoiceSpokenCommandDefaults.stopPhrases
+    }
+
+    var resolvedSpokenEndConversationPhrases: [String] {
+        spokenEndConversationPhrases ?? VoiceSpokenCommandDefaults.endConversationPhrases
+    }
     /// Nil decodes older preferences as the Hermes-hosted route.
     var transcriptionMode: VoiceTranscriptionMode? = nil
     /// Opt-in Gemini Live voice mode (off by default; older blobs decode off).
@@ -156,23 +201,22 @@ struct VoiceProfilePreferences: Codable, Equatable {
         continuousConversation = try container.decodeIfPresent(Bool.self, forKey: .continuousConversation) ?? true
         continueWakeConversation = try container.decodeIfPresent(Bool.self, forKey: .continueWakeConversation) ?? false
         keepListeningWhenLocked = try? container.decodeIfPresent(Bool.self, forKey: .keepListeningWhenLocked)
+        // A list that is still a built-in list as shipped follows the app
+        // language now; a customized one is kept.
         spokenStopPhrases = try container.decodeIfPresent([String].self, forKey: .spokenStopPhrases)
-            .map {
-                VoiceSpokenCommands.migratedDefaultPhrases(
-                    $0,
-                    previous: VoiceSpokenCommands.previousDefaultStopPhrases,
-                    current: VoiceSpokenCommands.defaultStopPhrases
-                )
-            } ?? VoiceSpokenCommands.defaultStopPhrases
-        spokenEndConversationPhrases = try container.decodeIfPresent(
-            [String].self, forKey: .spokenEndConversationPhrases
-        ).map {
-            VoiceSpokenCommands.migratedDefaultPhrases(
-                $0,
-                previous: VoiceSpokenCommands.previousDefaultEndConversationPhrases,
-                current: VoiceSpokenCommands.defaultEndConversationPhrases
-            )
-        } ?? VoiceSpokenCommands.defaultEndConversationPhrases
+            .flatMap { stored in
+                VoiceSpokenCommands.isUncustomized(stored, legacy: [
+                    VoiceSpokenCommands.previousDefaultStopPhrases,
+                    VoiceSpokenCommands.legacyStopPhrases,
+                ]) ? nil : stored
+            }
+        spokenEndConversationPhrases = try container.decodeIfPresent([String].self, forKey: .spokenEndConversationPhrases)
+            .flatMap { stored in
+                VoiceSpokenCommands.isUncustomized(stored, legacy: [
+                    VoiceSpokenCommands.previousDefaultEndConversationPhrases,
+                    VoiceSpokenCommands.legacyEndConversationPhrases,
+                ]) ? nil : stored
+            }
         transcriptionMode = try container.decodeIfPresent(VoiceTranscriptionMode.self, forKey: .transcriptionMode)
         geminiLiveEnabled = try container.decodeIfPresent(Bool.self, forKey: .geminiLiveEnabled) ?? false
         // An unknown mode (a newer build's) falls back to automatic rather
