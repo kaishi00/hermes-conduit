@@ -91,6 +91,10 @@ struct ConduitApp: App {
     @ObservedObject private var notifications = PushNotificationService.shared
     @ObservedObject private var pendingVoiceIntents = PendingVoiceIntentStore.shared
     @ObservedObject private var appLanguage = AppLanguageStore.shared
+    /// A chat another app asked to open (`conduit://session/<id>`), held
+    /// until Hermes is connected: a cold launch opens it once connecting
+    /// finishes instead of failing against an empty session list.
+    @State private var pendingExternalLink: ConduitAppLink?
 
     var body: some Scene {
         // Multi-scene support is enabled in the manifest so the CarPlay
@@ -143,6 +147,17 @@ struct ConduitApp: App {
                 Task { @MainActor in appState.openAppLink(link) }
                 return .handled
             })
+            // Another app opening a chat: only session links, opened through
+            // the same route as an in-app link once Hermes is connected.
+            .onOpenURL { url in
+                guard let link = ConduitAppLink(externalURL: url) else { return }
+                pendingExternalLink = link
+            }
+            .task(id: externalLinkRouteKey) {
+                guard appState.isConnected, let link = pendingExternalLink else { return }
+                pendingExternalLink = nil
+                appState.openAppLink(link)
+            }
             .task { await PushNotificationService.shared.refresh() }
             // Siri learns the cached profile names for its profile phrases.
             .task { SiriProfileShortcuts.refresh() }
@@ -189,6 +204,10 @@ struct ConduitApp: App {
 
     private var notificationRouteKey: String {
         "\(notifications.pendingTarget?.id ?? "none"):\(appState.isConnected):\(notifications.navigationAttempt)"
+    }
+
+    private var externalLinkRouteKey: String {
+        "\(pendingExternalLink?.url.absoluteString ?? "none"):\(appState.isConnected)"
     }
 
     private var voiceIntentRouteKey: String {
