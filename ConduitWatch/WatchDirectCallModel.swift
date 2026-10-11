@@ -170,6 +170,12 @@ final class WatchDirectCallModel: ObservableObject {
     /// The call from Hermes this call answers, so the iPhone opens it with
     /// what Hermes called about (designs/hermes-calls-watch.md).
     private var ring: String?
+    /// Answered from the call screen, where the link to the iPhone is down:
+    /// the iPhone's answer comes through the relay too (HermesRingHandoff).
+    private var answer: HermesRingAnswer?
+    private var handoff: Task<Void, Never>?
+    /// The link's requests ran out of time while the relay's fetch went on.
+    private var linkGaveUp = false
     /// Grok's bridge streams opened on the call's grant, which takes 32.
     private var grokStreams = 0
     private var tokens: WatchDirectTokens?
@@ -452,11 +458,14 @@ final class WatchDirectCallModel: ObservableObject {
 
     // MARK: Controls
 
-    func start(engine: Engine = .gemini, ring: String? = nil) async {
+    func start(engine: Engine = .gemini, ring: String? = nil, answer: HermesRingAnswer? = nil) async {
         guard !isActive else { return }
         reset()
         self.engine = engine
         self.ring = ring
+        // The id the start sent through the relay named.
+        self.answer = answer
+        if let answer { callID = answer.callID }
         phase = .preparing
         // Before the audio session, to see what activating it changes.
         startPathMonitor()
@@ -598,25 +607,19 @@ final class WatchDirectCallModel: ObservableObject {
 
     // MARK: Session from the iPhone
 
+    static func startRequest(engine: Engine, callID: UInt32, ring: String?) -> WatchVoiceWire.Message {
+        engine == .grok
+            ? .grokStart(callID: callID, version: WatchVoiceWire.version, ring: ring)
+            : .directStart(callID: callID, version: WatchVoiceWire.version, ring: ring)
+    }
+
     private func requestSession() {
         sessionRequests += 1
         let id = callID
-        let request: WatchVoiceWire.Message = engine == .grok
-            ? .grokStart(callID: id, version: WatchVoiceWire.version, ring: ring)
-            : .directStart(callID: id, version: WatchVoiceWire.version, ring: ring)
-        link.send(request, reply: { [weak self] answer in
+        if sessionRequests == 1, let answer { fetchHandoff(answer) }
+        link.send(Self.startRequest(engine: engine, callID: id, ring: ring), reply: { [weak self] answer in
             guard let self, self.callID == id, self.phase == .preparing else { return }
-            switch answer {
-            case .directSession(_, let session)? where self.engine == .gemini:
-                self.begin(session)
-            case .grokSession(_, let session)? where self.engine == .grok:
-                self.begin(session)
-            case .callRefused(_, let reason)?:
-                WatchCallLog.shared.note("directRefused", ["reason": reason])
-                self.finish(reason)
-            default:
-                self.finish(String(localized: "Conduit on the iPhone sent something this Watch app can't read. Update both."))
-            }
+            self.sessionAnswered(answer)
         }, failure: { [weak self] error in
             guard let self, self.callID == id, self.phase == .preparing else { return }
             WatchCallLog.shared.note("directStartFailed", [
@@ -625,6 +628,11 @@ final class WatchDirectCallModel: ObservableObject {
                 "attempt": self.sessionRequests,
             ])
             guard self.now - self.callStartedAt < Self.sessionWait else {
+                // The relay's fetch may still bring it.
+                if self.handoff != nil {
+                    self.linkGaveUp = true
+                    return
+                }
                 self.finish(String(localized: "Couldn't reach Conduit on your iPhone."))
                 return
             }
@@ -635,6 +643,42 @@ final class WatchDirectCallModel: ObservableObject {
                 }
             }
         })
+    }
+
+    /// The iPhone's answer to the start, over the link or through the relay.
+    private func sessionAnswered(_ answer: WatchVoiceWire.Message?) {
+        switch answer {
+        case .directSession(_, let session)? where engine == .gemini:
+            begin(session)
+        case .grokSession(_, let session)? where engine == .grok:
+            begin(session)
+        case .callRefused(_, let reason)?:
+            WatchCallLog.shared.note("directRefused", ["reason": reason])
+            finish(reason)
+        default:
+            finish(String(localized: "Conduit on the iPhone sent something this Watch app can't read. Update both."))
+        }
+    }
+
+    /// The iPhone's answer through the relay, for a call answered from the
+    /// call screen: whichever of it and the link's answer comes first
+    /// starts the call.
+    private func fetchHandoff(_ answer: HermesRingAnswer) {
+        let id = callID
+        let deadline = Date().addingTimeInterval(Self.sessionWait - (now - callStartedAt))
+        handoff = Task { [weak self] in
+            let outcome = await HermesRingHandoff.fetchSession(answer, until: deadline)
+            guard let self, self.callID == id, self.phase == .preparing else { return }
+            self.handoff = nil
+            switch outcome {
+            case .message(let message):
+                WatchCallLog.shared.note("directHandoff", ["session": true, "afterTapMs": Int((self.now - self.callStartedAt) * 1000)])
+                self.sessionAnswered(message)
+            case .unavailable(let why):
+                WatchCallLog.shared.note("directHandoff", ["session": false, "why": why, "afterTapMs": Int((self.now - self.callStartedAt) * 1000)])
+                if self.linkGaveUp { self.finish(String(localized: "Couldn't reach Conduit on your iPhone.")) }
+            }
+        }
     }
 
     private func begin(_ direct: WatchVoiceWire.DirectSession) {
@@ -2836,6 +2880,10 @@ final class WatchDirectCallModel: ObservableObject {
     private func reset() {
         grokStreams = 0
         ring = nil
+        answer = nil
+        handoff?.cancel()
+        handoff = nil
+        linkGaveUp = false
         callID = UInt32.random(in: 1...UInt32.max)
         callUUID = UUID()
         callStartedDate = Date()
@@ -3023,6 +3071,8 @@ final class WatchDirectCallModel: ObservableObject {
         guard isActive else { return }
         timers.forEach { $0.invalidate() }
         timers = []
+        handoff?.cancel()
+        handoff = nil
         session?.stop()
         session = nil
         tokens = nil

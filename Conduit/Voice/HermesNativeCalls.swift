@@ -18,7 +18,9 @@
 //  doesn't get to answer is reported to the host too, so Hermes hears it in
 //  that chat's next turn. With relay 0.10+ the call rings on the Apple
 //  Watch too, and answering or declining on either stops the other
-//  (designs/hermes-calls-watch.md). CallKit is off in China's App
+//  (designs/hermes-calls-watch.md); with relay 0.11+ a Watch answer's
+//  start comes with the stop, and this phone hands the Watch call its
+//  session through the relay (HermesRingHandoff). CallKit is off in China's App
 //  Store, so there Conduit never registers a PushKit token and calls keep
 //  arriving as notifications.
 //  (designs/hermes-calls-you-449.md)
@@ -150,8 +152,9 @@ final class HermesNativeCalls: NSObject {
     }
     /// Calls reported to CallKit and not ended.
     private var calls: [UUID: Call] = [:]
-    /// Each ring's call, for a Watch call that answers it.
-    private var ringTargets: [String: (target: ConduitNotificationTarget, at: Date)] = [:]
+    /// Each ring's call, for a Watch call that answers it, and the ring, to
+    /// store that call's session at the relay.
+    private var ringTargets: [String: (target: ConduitNotificationTarget, ring: HermesRing, at: Date)] = [:]
     private var audioActive = false
     private var audioWaiters: [CheckedContinuation<Void, Never>] = []
 
@@ -256,7 +259,7 @@ final class HermesNativeCalls: NSObject {
         let ring = HermesRing.from(userInfo)
         if let ring, let target = call.target {
             pruneRingTargets()
-            ringTargets[ring.id] = (target, Date())
+            ringTargets[ring.id] = (target, ring, Date())
         }
         // Never created here: reporting comes first.
         let appState = AppStateRuntimeRegistry.shared.existing
@@ -569,7 +572,57 @@ final class HermesNativeCalls: NSObject {
                 } else {
                     provider.reportCall(with: id, endedAt: Date(), reason: reason)
                 }
+                if let start = settled.start {
+                    self.pruneRingTargets()
+                    self.startWatchCall(start, ringID: settled.id, ring: match?.value.ring ?? self.ringTargets[settled.id]?.ring)
+                }
                 completion()
+            }
+        }
+    }
+
+    /// The Apple Watch answered, and its link to this phone is down under
+    /// its call screen: its call's start came with the stop. It's answered
+    /// as if it had come over the link, and the answer (the session, or why
+    /// not) goes to the relay, sealed, for the Watch to fetch.
+    private func startWatchCall(_ sealedStart: String, ringID: String, ring: HermesRing?) {
+        let log = WatchVoiceLink.shared.log
+        guard let ring else {
+            log.note("watchAnswerHandoff", ["ok": false, "why": "unknownRing"])
+            return
+        }
+        guard let key = HermesRingHandoffKey.load() else {
+            log.note("watchAnswerHandoff", ["ok": false, "why": "noKey"])
+            return
+        }
+        guard let start = HermesRingHandoff.openStart(sealedStart, key: key, ringID: ringID) else {
+            log.note("watchAnswerHandoff", ["ok": false, "why": "unreadableStart"])
+            return
+        }
+        var taskID = UIBackgroundTaskIdentifier.invalid
+        let end = {
+            guard taskID != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(taskID)
+            taskID = .invalid
+        }
+        taskID = UIApplication.shared.beginBackgroundTask(withName: "conduit.hermesCall.watchStart", expirationHandler: end)
+        let startedAt = Date()
+        WatchVoiceLink.shared.startAnsweredCall(start) { reply in
+            guard let data = reply[WatchVoiceWire.messageKey] as? Data,
+                  let sealed = try? HermesRingHandoff.seal(data, root: key, direction: .session, ringID: ringID) else {
+                log.note("watchAnswerHandoff", ["ok": false, "why": "unsealable", "bytes": (reply[WatchVoiceWire.messageKey] as? Data)?.count ?? 0])
+                end()
+                return
+            }
+            Task { @MainActor in
+                let status = await HermesRingHandoff.store(ring, sealed: sealed)
+                log.note("watchAnswerHandoff", [
+                    "ok": status == 200,
+                    "status": status,
+                    "bytes": sealed.count,
+                    "ms": Int(Date().timeIntervalSince(startedAt) * 1000),
+                ])
+                end()
             }
         }
     }

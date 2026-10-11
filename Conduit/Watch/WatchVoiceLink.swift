@@ -47,6 +47,14 @@ final class WatchVoiceLink: ObservableObject {
         }
     }
 
+    /// A Watch call answering a call from Hermes, whose start came through
+    /// the relay (HermesNativeCalls): the Watch's link to this phone is
+    /// down under its call screen. Served as if it had come over the link,
+    /// so the same start arriving over it gets the same answer.
+    func startAnsweredCall(_ start: WatchVoiceWire.Message, reply: @escaping ([String: Any]) -> Void) {
+        direct.handle(start, reply: reply)
+    }
+
     // MARK: Receiving
 
     fileprivate func sessionChanged(_ session: WCSession, activation: Bool = false) {
@@ -69,9 +77,11 @@ final class WatchVoiceLink: ObservableObject {
             reply?([:])
         case .directStart, .bridgeStart, .grokStart, .directToken, .directTool, .directToolCancel, .directPoll, .directEnd, .directGrant:
             direct.handle(message, reply: reply)
-        case .callsToken(let token):
+        case .callsToken(let token, let key):
             // Calls from Hermes ring the Watch too (designs/hermes-calls-watch.md).
-            log.note("watchCallsToken", ["token": token != nil])
+            // Its key opens an answered call's start (HermesRingHandoff).
+            let keySaved = key.flatMap(WatchToolSeal.data(base64URL:)).map(HermesRingHandoffKey.save)
+            log.note("watchCallsToken", ["token": token != nil, "key": keySaved.map { $0 ? "saved" : "unsaved" } ?? "none"])
             PushNotificationService.shared.updateWatchVoIPToken(token)
             reply?([:])
         default:

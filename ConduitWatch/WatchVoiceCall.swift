@@ -153,10 +153,12 @@ final class WatchVoiceCall: ObservableObject {
     // MARK: Controls
 
     /// `ring`: the call from Hermes it answers (HermesWatchCalls), which
-    /// the iPhone opens it with.
-    func start(ring: String? = nil) {
+    /// the iPhone opens it with. `answer`: where its session comes through
+    /// the relay, with the call id and engine the start sent to the iPhone
+    /// named.
+    func start(ring: String? = nil, answer: HermesRingAnswer? = nil, engine chosen: WatchVoiceEngine? = nil) {
         guard !isActive else { return }
-        callEngine = engine
+        callEngine = chosen ?? engine
         summaryDismissed = false
         liveSince = nil
         endedAt = nil
@@ -165,9 +167,19 @@ final class WatchVoiceCall: ObservableObject {
         phase = .preparing
         previousModelCall = modelCallID
         switch callEngine {
-        case .geminiLive: Task { await direct.start(engine: .gemini, ring: ring) }
-        case .grokLive: Task { await direct.start(engine: .grok, ring: ring) }
-        case .gptLive: Task { await bridge.start(ring: ring) }
+        case .geminiLive: Task { await direct.start(engine: .gemini, ring: ring, answer: answer) }
+        case .grokLive: Task { await direct.start(engine: .grok, ring: ring, answer: answer) }
+        case .gptLive: Task { await bridge.start(ring: ring, answer: answer) }
+        }
+    }
+
+    /// The start a call on `engine` asks the iPhone for its session with,
+    /// as each model sends it.
+    static func startRequest(engine: WatchVoiceEngine, callID: UInt32, ring: String?) -> WatchVoiceWire.Message {
+        switch engine {
+        case .geminiLive: return WatchDirectCallModel.startRequest(engine: .gemini, callID: callID, ring: ring)
+        case .grokLive: return WatchDirectCallModel.startRequest(engine: .grok, callID: callID, ring: ring)
+        case .gptLive: return WatchBridgeCallModel.startRequest(callID: callID, ring: ring)
         }
     }
 

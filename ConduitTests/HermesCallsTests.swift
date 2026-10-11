@@ -12,6 +12,7 @@
 //  capacity for new classes.
 //
 
+import CryptoKit
 import XCTest
 @testable import Conduit
 
@@ -1078,5 +1079,142 @@ extension VoiceConversationControllerTests {
         )
         let reply = WatchVoiceWire.Message.bridgeSession(callID: 9, session: session)
         XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(reply)), reply)
+    }
+
+    // MARK: Starting an answered Watch call through the relay
+
+    private static let handoffKey = Data(repeating: 7, count: 32)
+
+    private func answeredRing() throws -> HermesRingAnswer {
+        let ring = HermesRing(id: Self.ringID, token: Self.ringToken, url: try XCTUnwrap(URL(string: "https://push.example/v1/rings/\(Self.ringID)/settled")))
+        return HermesRingAnswer(ring: ring, callID: 41, key: Self.handoffKey)
+    }
+
+    func testAWatchAnswerTakesItsSealedStartToThePhone() throws {
+        let answer = try answeredRing()
+        let request = HermesRingSettler.request(answer.ring, by: .watch, outcome: .answered, start: "c2VhbGVk")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: String])
+        XCTAssertEqual(body, ["token": Self.ringToken, "by": "watch", "outcome": "answered", "start": "c2VhbGVk"])
+
+        let stop: [AnyHashable: Any] = ["aps": [String: Any](), "conduit": ["ring": ["id": Self.ringID, "settled": "answered", "by": "watch", "start": "c2VhbGVk"]]]
+        XCTAssertEqual(HermesRingSettled.from(stop)?.start, "c2VhbGVk")
+        XCTAssertNil(HermesRingSettled.from(["conduit": ["ring": ["id": Self.ringID, "settled": "declined", "by": "watch", "start": "c2VhbGVk"]]])?.start,
+                     "Only an answer starts a call")
+        XCTAssertNil(HermesRingSettled.from(["conduit": ["ring": ["id": Self.ringID, "settled": "answered", "by": "watch", "start": "not sealed!"]]])?.start)
+        XCTAssertNotNil(HermesRingSettled.from(["conduit": ["ring": ["id": Self.ringID, "settled": "answered", "by": "watch", "start": "not sealed!"]]]),
+                        "The phone still stops ringing")
+
+        let start = WatchVoiceWire.Message.directStart(callID: answer.callID, version: WatchVoiceWire.version, ring: Self.ringID)
+        let sealed = try XCTUnwrap(HermesRingHandoff.sealStart(start, answer: answer))
+        XCTAssertLessThanOrEqual(sealed.count, HermesRingHandoff.maxStartChars)
+        XCTAssertEqual(HermesRingHandoff.openStart(sealed, key: Self.handoffKey, ringID: Self.ringID), start)
+        XCTAssertNil(HermesRingHandoff.openStart(sealed, key: Data(repeating: 8, count: 32), ringID: Self.ringID), "Another Watch's key")
+        XCTAssertNil(HermesRingHandoff.openStart(sealed, key: Self.handoffKey, ringID: "BBBBBBBBBBBBBBBBBBBBBB"), "Bound to its ring")
+        let elsewhere = try XCTUnwrap(HermesRingHandoff.sealStart(.directStart(callID: 1, version: WatchVoiceWire.version, ring: "BBBBBBBBBBBBBBBBBBBBBB"), answer: answer))
+        XCTAssertNil(HermesRingHandoff.openStart(elsewhere, key: Self.handoffKey, ringID: Self.ringID), "A start naming another ring")
+        let notAStart = try XCTUnwrap(HermesRingHandoff.sealStart(.directPoll(callID: 1), answer: answer))
+        XCTAssertNil(HermesRingHandoff.openStart(notAStart, key: Self.handoffKey, ringID: Self.ringID), "Only a call start")
+        for engineStart in [
+            WatchVoiceWire.Message.grokStart(callID: 2, version: WatchVoiceWire.version, ring: Self.ringID),
+            .bridgeStart(callID: 3, version: WatchVoiceWire.version, engine: WatchAudioBridgeWire.gptLive, ring: Self.ringID),
+        ] {
+            let sealedStart = try XCTUnwrap(HermesRingHandoff.sealStart(engineStart, answer: answer))
+            XCTAssertEqual(HermesRingHandoff.openStart(sealedStart, key: Self.handoffKey, ringID: Self.ringID), engineStart)
+        }
+    }
+
+    func testTheSessionIsSealedOneWayAndForItsRing() throws {
+        let plaintext = Data("session".utf8)
+        let sealed = try HermesRingHandoff.seal(plaintext, root: Self.handoffKey, direction: .session, ringID: Self.ringID)
+        XCTAssertTrue(HermesRingHandoff.isSealed(sealed, maxChars: HermesRingHandoff.maxSessionChars))
+        XCTAssertEqual(try HermesRingHandoff.open(sealed, root: Self.handoffKey, direction: .session, ringID: Self.ringID), plaintext)
+        XCTAssertThrowsError(try HermesRingHandoff.open(sealed, root: Self.handoffKey, direction: .start, ringID: Self.ringID), "Each direction has its own key")
+        XCTAssertThrowsError(try HermesRingHandoff.open(sealed, root: Self.handoffKey, direction: .session, ringID: "BBBBBBBBBBBBBBBBBBBBBB"))
+        XCTAssertThrowsError(try HermesRingHandoff.open("short", root: Self.handoffKey, direction: .session, ringID: Self.ringID))
+        XCTAssertThrowsError(try HermesRingHandoff.seal(plaintext, root: Data(repeating: 1, count: 16), direction: .session, ringID: Self.ringID))
+        XCTAssertThrowsError(try HermesRingHandoff.seal(Data(count: 2_000), root: Self.handoffKey, direction: .start, ringID: Self.ringID),
+                             "A start is small, as the relay takes it")
+        let nonce = try ChaChaPoly.Nonce(data: Data(repeating: 0, count: 12))
+        XCTAssertNotEqual(
+            try HermesRingHandoff.seal(plaintext, root: Self.handoffKey, direction: .session, ringID: Self.ringID, nonce: nonce),
+            try HermesRingHandoff.seal(plaintext, root: Self.handoffKey, direction: .start, ringID: Self.ringID, nonce: nonce)
+        )
+    }
+
+    func testThePhoneStoresTheSessionAndTheWatchFetchesItWithTheRingsToken() throws {
+        let answer = try answeredRing()
+        XCTAssertEqual(HermesRingHandoff.sessionURL(answer.ring).absoluteString, "https://push.example/v1/rings/\(Self.ringID)/session")
+
+        let store = HermesRingHandoff.storeRequest(answer.ring, sealed: "c2VhbGVk")
+        XCTAssertEqual(store.httpMethod, "PUT")
+        XCTAssertEqual(store.url, HermesRingHandoff.sessionURL(answer.ring))
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(store.httpBody)) as? [String: String])
+        XCTAssertEqual(body, ["token": Self.ringToken, "sealed": "c2VhbGVk"])
+
+        let fetch = HermesRingHandoff.fetchRequest(answer.ring, wait: 45)
+        XCTAssertEqual(fetch.httpMethod, "GET")
+        XCTAssertEqual(fetch.url?.absoluteString, "https://push.example/v1/rings/\(Self.ringID)/session?wait=20", "The relay waits 20 s at most")
+        XCTAssertEqual(fetch.value(forHTTPHeaderField: "Authorization"), "Bearer \(Self.ringToken)")
+        XCTAssertGreaterThan(fetch.timeoutInterval, 20)
+
+        XCTAssertEqual(HermesRingHandoff.fetchResult(status: 200, data: Data(#"{"sealed":"c2VhbGVk"}"#.utf8)), .sealed("c2VhbGVk"))
+        XCTAssertEqual(HermesRingHandoff.fetchResult(status: 204, data: Data()), .notYet)
+        XCTAssertEqual(HermesRingHandoff.fetchResult(status: 404, data: Data()), .gone, "An older relay, or a forgotten ring")
+        XCTAssertEqual(HermesRingHandoff.fetchResult(status: 409, data: Data()), .gone)
+        XCTAssertEqual(HermesRingHandoff.fetchResult(status: 429, data: Data()), .retry)
+        XCTAssertEqual(HermesRingHandoff.fetchResult(status: 502, data: Data()), .retry)
+    }
+
+    func testTheWatchWaitsForTheSessionUntilItsDeadline() async throws {
+        final class FakeClock {
+            var now: Date
+            init(_ now: Date) { self.now = now }
+        }
+        let answer = try answeredRing()
+        let reply = WatchVoiceWire.Message.callRefused(callID: answer.callID, reason: "Hermes is offline")
+        let sealed = try HermesRingHandoff.seal(try JSONEncoder().encode(reply), root: Self.handoffKey, direction: .session, ringID: Self.ringID)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = FakeClock(start)
+        var asked: [String] = []
+
+        var answers: [(Data, Int)] = [(Data(), 204), (Data(), 502), (try JSONSerialization.data(withJSONObject: ["sealed": sealed]), 200)]
+        let fetched = await HermesRingHandoff.fetchSession(answer, until: start.addingTimeInterval(30), now: { clock.now }) { request in
+            asked.append(request.url?.query ?? "")
+            clock.now = clock.now.addingTimeInterval(5)
+            return answers.removeFirst()
+        }
+        XCTAssertEqual(fetched, .message(reply))
+        XCTAssertEqual(asked, ["wait=20", "wait=20", "wait=19"], "Each wait ends by the deadline")
+
+        clock.now = start
+        answers = [(Data(), 404)]
+        let gone = await HermesRingHandoff.fetchSession(answer, until: start.addingTimeInterval(30), now: { clock.now }) { _ in answers.removeFirst() }
+        XCTAssertEqual(gone, .unavailable("gone"))
+
+        clock.now = start
+        let late = await HermesRingHandoff.fetchSession(answer, until: start.addingTimeInterval(30), now: { clock.now }) { _ in
+            clock.now = clock.now.addingTimeInterval(20)
+            return (Data(), 204)
+        }
+        XCTAssertEqual(late, .unavailable("timedOut"))
+
+        clock.now = start
+        let forged = try HermesRingHandoff.seal(Data("{}".utf8), root: Data(repeating: 9, count: 32), direction: .session, ringID: Self.ringID)
+        let unreadable = await HermesRingHandoff.fetchSession(answer, until: start.addingTimeInterval(30), now: { clock.now }) { _ in
+            (try JSONSerialization.data(withJSONObject: ["sealed": forged]), 200)
+        }
+        XCTAssertEqual(unreadable, .unavailable("unreadable"))
+    }
+
+    func testTheWatchSendsItsHandoffKeyWithItsTokenAndOlderMessagesStillRead() {
+        let messages: [WatchVoiceWire.Message] = [
+            .callsToken(token: "abcd", key: "a2V5"),
+            .callsToken(token: nil, key: "a2V5"),
+        ]
+        for message in messages {
+            XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(message)), message)
+        }
+        let older = Data(#"{"callsToken":{"token":"abcd"}}"#.utf8)
+        XCTAssertEqual(WatchVoiceWire.decode([WatchVoiceWire.messageKey: older]), .callsToken(token: "abcd", key: nil))
     }
 }
