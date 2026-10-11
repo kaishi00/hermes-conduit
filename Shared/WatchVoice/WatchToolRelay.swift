@@ -227,8 +227,11 @@ enum WatchToolAnswer {
             return ["error": VoiceChatToolText.failed(reason(body) ?? fallback)]
         }
         if name == findChat {
-            let count = body["count"] as? Int ?? 0
-            return VoiceChatToolText.searchResult(summary: body["chats"] as? String ?? "", count: count, opens: false)
+            // No list to name, whatever the count says: no matches, as the
+            // GPT-Live reply says it.
+            let chats = body["chats"] as? String ?? ""
+            let count = chats.isEmpty ? 0 : body["count"] as? Int ?? 0
+            return VoiceChatToolText.searchResult(summary: chats, count: count, opens: false)
         }
         if body["unknown"] as? Bool == true { return ["error": VoiceChatToolText.unknownForRead] }
         let chat = body["chat"] as? String ?? ""

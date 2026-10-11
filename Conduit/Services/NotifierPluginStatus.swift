@@ -30,6 +30,8 @@ struct NotifierPluginStatus: Equatable {
         "e2e-notifications",
         "desktop-views",
         "hermes-calls",
+        // "watch-chats" is left out on purpose: only Watch calls use it, and
+        // they fall back to the phone without it, so it's no reason to nag.
     ]
 
     var state: State = .unknown

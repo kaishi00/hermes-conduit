@@ -71,10 +71,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// it out, like asking first below.
     static let phoneReadBack = "When the user asks to hear a reply again, word for word or in full (Hermes' last reply, or a job's result), don't answer from memory or in your own words: delegate \"Read back:\". Conduit takes the reply from the chat or the job itself: a read-back never goes to Hermes and never needs the user's OK, so never ask whether to send it. Conduit gives you the reply, then tells you to read it: read it word for word, all of it, once. When the user asks whether Hermes replied or what it said, and you don't have that reply, that's a read-back too: delegate \"Read back:\" rather than asking Hermes."
 
-    /// Finding and opening an earlier chat: the phone's delegation bridge
-    /// answers "Find chat:" and "Open chat:" itself, so a Watch call leaves
-    /// it out.
-    /// A Watch call finds and reads chats but can't open one.
+    /// A Watch call finds and reads chats through its grant
+    /// (WatchBridgeCallModel answers "Find chat:" and "Read chat:") but
+    /// can't open one.
     static let watchFindChat = "When the user asks to find or go back to one of their earlier conversations with Hermes, or what was said in one, delegate \"Find chat:\" with one to three distinctive words from the topic, like \"Find chat: GPU setup\". Conduit answers with numbered matches: when one clearly fits, delegate \"Read chat:\" with its number, like \"Read chat: 2\", and answer from what Conduit sends back; when several could, say the titles of the likeliest two or three and ask which. This call can't open a chat on the phone; if the user wants to see it, tell them to open it in Conduit on their iPhone. These markers are for Conduit only: never say them aloud."
     static let phoneFindChat = "When the user asks to find, pull up or open one of their earlier conversations with Hermes, delegate \"Find chat:\" with one to three distinctive words from the topic, like \"Find chat: GPU setup\". Conduit answers with numbered matches: when one clearly fits, delegate \"Open chat:\" with its number, like \"Open chat: 2\"; when several could, say the titles of the likeliest two or three and ask which. Opening it doesn't end this call; if Conduit says the chat can't be opened right now, just tell the user. When the user wants to talk about a found chat or asks what was said in it, delegate \"Read chat:\" with its number, like \"Read chat: 2\", and answer from what Conduit sends back. These markers are for Conduit only: never say them aloud."
 

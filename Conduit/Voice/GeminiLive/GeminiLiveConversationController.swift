@@ -182,10 +182,8 @@ final class GeminiLiveConversationController: ObservableObject {
 
     static let showOnScreenParagraph = "Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user."
 
-    /// Finding and opening an earlier chat runs on the phone, so a Watch
-    /// call leaves this out.
-    /// A Watch call finds and reads chats but can't open one: the phone
-    /// isn't in view.
+    /// A Watch call finds and reads chats (through its grant, or the phone)
+    /// but can't open one: the phone isn't in view.
     static let watchFindChatParagraph = "When the user asks to find or go back to one of their earlier conversations with Hermes, or what was said in one, call find_chat with a few words from the topic, then read_chat with the match that fits (ask which one when several could) and answer from what it returns. This call can't open a chat on the phone; if the user wants to see it, tell them to open it in Conduit on their iPhone."
     static let findChatParagraph = "When the user asks to find, pull up or open one of their earlier conversations with Hermes, call find_chat with a few words from the topic, then open_chat with the match that fits (ask which one when several could). Opening it doesn't end this call. If it says the chat can't be opened right now, just tell the user. When the user wants to talk about a found chat or asks what was said in it, call read_chat with its number and answer from what it returns."
 

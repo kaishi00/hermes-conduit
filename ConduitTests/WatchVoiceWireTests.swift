@@ -781,6 +781,10 @@ extension HermesVoiceGatewayTimeoutTests {
         // A plugin before 0.8 refuses the tool (400): asked again without it.
         XCTAssertTrue(WatchDirectBroker.isRefusedTool(DashboardTicketBridgeError.http(status: 400, detail: "The Watch can only be granted web_search")))
         XCTAssertFalse(WatchDirectBroker.isRefusedTool(DashboardTicketBridgeError.http(status: 502, detail: "Couldn't reach the push relay")))
+        // Chats are dropped only when a plugin before 0.18 lists what it grants without them.
+        XCTAssertTrue(WatchDirectBroker.isRefusedChatTool(DashboardTicketBridgeError.http(status: 400, detail: "The Watch can only be granted web_search, recall_memory, start_job")))
+        XCTAssertFalse(WatchDirectBroker.isRefusedChatTool(DashboardTicketBridgeError.http(status: 400, detail: "job_profiles must list at most 32 profiles")))
+        XCTAssertFalse(WatchDirectBroker.isRefusedChatTool(DashboardTicketBridgeError.http(status: 400, detail: "The Watch can only be granted web_search, find_chat, read_chat")))
     }
 
     /// The phone keeps each Watch call's connection, its end and the

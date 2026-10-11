@@ -867,7 +867,7 @@ final class WatchDirectBroker {
     private func requestGrantWithToken(_ id: UInt32, profile: String, withJobs: Bool, carryJobsFrom: String?) async -> Result<WatchVoiceWire.DirectToolGrant, Error> {
         let asked = grantLiveToken
         var first = await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: asked, carryJobsFrom: carryJobsFrom)
-        if case .failure(let error) = first, callID == id, Self.isRefusedTool(error),
+        if case .failure(let error) = first, callID == id, Self.isRefusedChatTool(error),
            grantTools.contains(where: { WatchToolAnswer.chatTools.contains($0) }) {
             grantTools.removeAll { WatchToolAnswer.chatTools.contains($0) }
             guard !grantTools.isEmpty || asked || (withJobs && !grantJobTools.isEmpty) || grantAudio else { return first }
@@ -903,6 +903,13 @@ final class WatchDirectBroker {
     private func grantable(_ tools: [String]) -> [String] {
         guard !appState.notifierPlugin.mightSupport(WatchToolAnswer.chatCapability) else { return tools }
         return tools.filter { !WatchToolAnswer.chatTools.contains($0) }
+    }
+
+    /// A plugin before 0.18 refusing the chat tools: its 400 lists what the
+    /// Watch can be granted, without them. Any other 400 keeps them.
+    static func isRefusedChatTool(_ error: Error) -> Bool {
+        guard case DashboardTicketBridgeError.http(let status, let detail) = error, status == 400 else { return false }
+        return detail.contains("can only be granted") && !detail.contains(WatchToolAnswer.findChat)
     }
 
     static func isRefusedTool(_ error: Error) -> Bool {
