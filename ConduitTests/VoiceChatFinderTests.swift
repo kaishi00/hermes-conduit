@@ -463,6 +463,8 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(briefing.contains("\"Find chat:\""))
         XCTAssertTrue(briefing.contains("\"Read chat:\""))
         XCTAssertFalse(briefing.contains("Open chat"))
+        XCTAssertFalse(GPTLiveConversationController.briefing(onWatch: true, watchChats: false).contains("Find chat"),
+                       "a host without watch chats isn't offered them")
     }
 
     func testAWatchCallsBridgeNeverSuggestsOpeningAChat() async {

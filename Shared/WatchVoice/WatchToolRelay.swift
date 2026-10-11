@@ -228,9 +228,9 @@ enum WatchToolAnswer {
         }
         if name == findChat {
             // No list to name, whatever the count says: no matches, as the
-            // GPT-Live reply says it.
+            // GPT-Live reply says it. A list without a count still names one.
             let chats = body["chats"] as? String ?? ""
-            let count = chats.isEmpty ? 0 : body["count"] as? Int ?? 0
+            let count = chats.isEmpty ? 0 : max(body["count"] as? Int ?? 0, 1)
             return VoiceChatToolText.searchResult(summary: chats, count: count, opens: false)
         }
         if body["unknown"] as? Bool == true { return ["error": VoiceChatToolText.unknownForRead] }
@@ -250,9 +250,9 @@ enum WatchToolAnswer {
             return name == findChat ? VoiceChatToolText.delegatedSearchFailed(why) : VoiceChatToolText.delegatedReadFailed(why)
         }
         if name == findChat {
-            let count = body["count"] as? Int ?? 0
             let chats = body["chats"] as? String ?? ""
-            return count == 0 || chats.isEmpty
+            let count = chats.isEmpty ? 0 : max(body["count"] as? Int ?? 0, 1)
+            return chats.isEmpty
                 ? VoiceChatToolText.delegatedNoMatches
                 : VoiceChatToolText.delegatedSearchFound(summary: chats, count: count, opens: false)
         }

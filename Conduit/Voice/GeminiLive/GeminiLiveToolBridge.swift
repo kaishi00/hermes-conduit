@@ -283,7 +283,6 @@ final class GeminiLiveToolBridge {
             .map { $0.name == Tool.findChat.rawValue ? findChatDeclaration(opens: false) : $0 }
     }
 
-
     /// Offered only while the call is attached to a Hermes chat.
     static let threadDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         .init(

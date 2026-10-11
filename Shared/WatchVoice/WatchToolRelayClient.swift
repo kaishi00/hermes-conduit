@@ -4,7 +4,8 @@
 //
 //  A Watch call's web_search and recall_memory through the push relay, over
 //  the Watch's own internet, for while the iPhone can't be reached (wrist
-//  down), its Hermes jobs when the grant carries them
+//  down), its chat search and reading (plugin 0.18, wrist up or down), its
+//  Hermes jobs when the grant carries them
 //  (WatchJobRelay.swift), and a fresh Gemini token when it carries
 //  live_token (WatchLiveToken). The call's grant came from the iPhone with the
 //  session; each call is sealed with it (WatchToolRelay.swift), held open

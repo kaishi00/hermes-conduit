@@ -24994,7 +24994,9 @@ final class AppState: ObservableObject {
                 memory: memory,
                 personality: personality,
                 answerLength: style.answerLength,
-                onWatch: true
+                onWatch: true,
+                // GPT-Live on the Watch finds chats only through the grant.
+                watchChats: notifierPlugin.mightSupport(WatchToolAnswer.chatCapability)
             ) + (hermesCall?.instructionBlock(delegation: true, canAnswer: false) ?? "") + style.instructions,
             // A call Hermes made opens with its brief instead (#449).
             greeting: hermesCall == nil ? style.greeting : nil,
