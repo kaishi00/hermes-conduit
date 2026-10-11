@@ -244,13 +244,14 @@ struct MainView: View {
     /// and so does a voice or other sheet: closing a voice sheet ends its
     /// call, and only one sheet shows at a time.
     private func openSettings(at page: ConduitAppLink.SettingsLink) {
-        // A host without calls has no such page.
-        guard appState.supportsHermesCalls, settingsPresentation == nil else { return }
+        guard settingsPresentation == nil else { return }
         let otherSheetUp = appState.showModelPicker || appState.showContextSheet || appState.showWorkspaceSheet
             || appState.showGatewaySheet || appState.showAgentsSheet || appState.showVoiceSheet
             || appState.showGeminiLiveSheet || appState.showGrokLiveSheet || appState.showGPTLiveSheet
         guard !otherSheetUp else { return }
-        settingsOpensAt = page
+        // A host without calls (or not heard from yet) has no such page:
+        // Settings opens at its start.
+        settingsOpensAt = appState.supportsHermesCalls ? page : nil
         if appState.showSidebar, !isPersistentSidebarActive {
             presentSettingsFromDrawer()
         } else {

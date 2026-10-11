@@ -792,6 +792,12 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(cut.unicodeScalars.contains("\u{200D}"), "No half emoji left behind")
     }
 
+    func testHaveHermesWatchForThisSendsTheNoteAsTheHostKeepsIt() {
+        let prompt = HermesCallSettingsFormat.watchPrompt("  Only if the homelab is down for over 10 minutes. \n\n Never before 9 am. ")
+        XCTAssertTrue(prompt.hasSuffix("\nOnly if the homelab is down for over 10 minutes.\nNever before 9 am."), prompt)
+        XCTAssertFalse(prompt.hasPrefix("Only if"), "The request comes first, the note after it")
+    }
+
     func testCallSettingsGapChoicesKeepTheCurrentValue() {
         XCTAssertEqual(HermesCallSettingsFormat.gapChoices(bounds: 30...3_600, current: 120), [30, 60, 120, 300, 600, 1_800, 3_600])
         XCTAssertEqual(HermesCallSettingsFormat.gapChoices(bounds: 60...600, current: 90), [60, 90, 120, 300, 600])

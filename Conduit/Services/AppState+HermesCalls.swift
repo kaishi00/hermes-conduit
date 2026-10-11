@@ -99,17 +99,30 @@ extension AppState {
     /// composer, for the user to send. The phone rings when Hermes's reply
     /// ends, like any call they ask for.
     func startHermesTestCall() async {
+        await startHermesCallsChat(prefill: HermesCallSettingsFormat.testCallPrompt)
+    }
+
+    /// Settings' Have Hermes watch for this: a new chat asking Hermes to set
+    /// up a scheduled check for what the user's call note describes. The
+    /// note only decides which calls Hermes makes; nothing checks for what
+    /// it says unless a job does (Eric, 2026-10-11).
+    func startHermesWatch(for note: String) async {
+        await startHermesCallsChat(prefill: HermesCallSettingsFormat.watchPrompt(note))
+    }
+
+    /// A new chat with `prefill` in the composer, for the user to send.
+    private func startHermesCallsChat(prefill: String) async {
         let previous = activeSessionId
         await createNewSession()
         guard let created = activeSessionId, created != previous else {
             // Settings has closed: a chat that didn't start says so.
             if errorMessage == nil {
-                errorMessage = AppLocalization.string("Couldn't start a chat for the test call. Check your connection and try again.")
+                errorMessage = AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
             }
             return
         }
         showSidebar = false
-        prefillComposer(HermesCallSettingsFormat.testCallPrompt)
+        prefillComposer(prefill)
         // Held until the composer unlocks.
         requestComposerFocus(on: created)
     }
@@ -124,9 +137,7 @@ extension AppState {
     func refreshWatchCallVoices() async {
         guard PushNotificationService.shared.watchVoIPToken != nil else { return }
         let scope = hermesCallsKey(profile: activeProfile)
-        // Another server's or profile's checks don't decide this one's
-        // calls: until checked, the Watch rings.
-        PushNotificationService.shared.updateWatchCallVoices(PushNotificationService.shared.watchCallVoices.scoped(to: scope))
+        rescopeWatchCallVoices()
         guard supportsHermesCalls else {
             shareWatchCallVoices()
             return
@@ -144,6 +155,14 @@ extension AppState {
         }
         PushNotificationService.shared.updateWatchCallVoices(voices)
         shareWatchCallVoices()
+    }
+
+    /// Another server's or profile's checks don't decide this one's calls:
+    /// until checked, the Watch rings. Nothing to do without a Watch.
+    func rescopeWatchCallVoices() {
+        let notifications = PushNotificationService.shared
+        guard notifications.watchVoIPToken != nil else { return }
+        notifications.updateWatchCallVoices(notifications.watchCallVoices.scoped(to: hermesCallsKey(profile: activeProfile)))
     }
 
     /// The Watch sent its call token or voice: its voices are checked now

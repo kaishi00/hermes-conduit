@@ -3313,6 +3313,10 @@ final class AppState: ObservableObject {
         dismissOfflineChatPresentation()
         // So do the unsaved voice calls Voice settings counts.
         publishVoiceCallSaveStatus()
+        // And the Watch voice checks: this profile's decide whether calls
+        // ring the Watch.
+        rescopeWatchCallVoices()
+        Task { await refreshWatchCallVoices() }
     }
 
 #if DEBUG
@@ -20739,8 +20743,6 @@ final class AppState: ObservableObject {
                 return false
             }
             Task { await loadChatResumeSlashCommands() }
-            // The new profile's voices decide whether calls ring the Watch.
-            Task { await refreshWatchCallVoices() }
             return true
         } catch {
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
