@@ -178,11 +178,6 @@ enum WatchToolAnswer {
         return query.isEmpty ? nil : query
     }
 
-    /// A lookup's trimmed query.
-    static func query(_ arguments: [String: String]) -> String? {
-        query(name: webSearch, arguments: arguments)
-    }
-
     /// What the host runs: the tool and the arguments the iPhone's client
     /// would send its route.
     static func request(name: String, query: String) -> [String: Any] {

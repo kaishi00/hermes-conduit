@@ -180,8 +180,8 @@ final class GeminiLiveToolBridge {
             + (waitsOn == .question ? [answerQuestionDeclaration] : [])
     }
 
-    /// Finding, opening and reading the user's earlier chats. Phone calls only: the
-    /// chat opens in Conduit on the iPhone.
+    /// Finding, opening and reading the user's earlier chats on a phone call. Opening
+    /// runs on the iPhone, so a Watch call gets find and read without it.
     static let chatDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         findChatDeclaration(opens: true),
         .init(

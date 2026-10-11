@@ -299,7 +299,7 @@ extension HermesVoiceGatewayTimeoutTests {
         }
 
         for name in ["web_search", "recall_memory"] {
-            XCTAssertNil(WatchToolAnswer.query(["query": "  "]))
+            XCTAssertNil(WatchToolAnswer.query(name: WatchToolAnswer.webSearch, arguments: ["query": "  "]))
             let phone = await bridge.handle(.init(id: "e-\(name)", name: name, arguments: [:]))
             let watch = WatchToolAnswer.outgoing(id: "e-\(name)", name: name, result: WatchToolAnswer.missingQuery(name: name))
             XCTAssertEqual(phone.map { WatchDirectBroker.wire($0) }, [watch], name)
@@ -319,7 +319,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(searchArgs["limit"] as? Int, GeminiLiveTokenClient.webSearchLimit)
         let recall = WatchToolAnswer.request(name: "recall_memory", query: "tea")
         XCTAssertEqual(recall["args"] as? [String: String], ["query": "tea"])
-        XCTAssertEqual(WatchToolAnswer.query(["query": "  tea "]), "tea")
+        XCTAssertEqual(WatchToolAnswer.query(name: WatchToolAnswer.webSearch, arguments: ["query": "  tea "]), "tea")
     }
 
     @MainActor
