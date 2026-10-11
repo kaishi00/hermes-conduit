@@ -58,8 +58,8 @@ a job. At most three jobs run at once.
   `Read chat: <number>` on GPT-Live. It gets the chat's user and Hermes text
   the way a resumed call gets a saved call's: word for word when short, else
   a summary of the older part (a saved call's stored one, else made for the
-  read) plus the latest turns, fenced as data. A Watch call (Gemini, Grok, GPT-Live) finds and reads chats but
-  can't open one. With conduit_push 0.18 on the host (capability
+  read) plus the latest turns, fenced as data. A Watch call (Gemini, Grok,
+  GPT-Live) finds and reads chats but can't open one. With conduit_push 0.18 on the host (capability
   `watch-chats`) both tools run through the call's relay grant, wrist up or
   down, and the host keeps the numbered matches `read_chat` names; the
   plugin reads the chat in process and trims the answer to 16 KB. With an

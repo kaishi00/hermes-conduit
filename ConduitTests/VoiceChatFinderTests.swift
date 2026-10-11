@@ -191,7 +191,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(emptyResult["error"], "query is required")
     }
 
-    func testChatToolsAreOfferedOnlyOnThePhone() {
+    func testChatToolsAreOffUnlessRequested() {
         XCTAssertFalse(GeminiLiveToolBridge.declarations(webSearch: false).contains { $0.name == "find_chat" })
         let phone = GeminiLiveToolBridge.declarations(webSearch: false, chats: true).map(\.name)
         XCTAssertTrue(phone.contains("find_chat"))
@@ -459,11 +459,11 @@ extension VoiceConversationControllerTests {
         let instructions = GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, onWatch: true)
         XCTAssertTrue(instructions.contains("read_chat"))
         XCTAssertFalse(instructions.contains("open_chat"))
-        let briefing = GPTLiveConversationController.briefing(onWatch: true)
+        let briefing = GPTLiveConversationController.briefing(onWatch: true, watchChats: true)
         XCTAssertTrue(briefing.contains("\"Find chat:\""))
         XCTAssertTrue(briefing.contains("\"Read chat:\""))
         XCTAssertFalse(briefing.contains("Open chat"))
-        XCTAssertFalse(GPTLiveConversationController.briefing(onWatch: true, watchChats: false).contains("Find chat"),
+        XCTAssertFalse(GPTLiveConversationController.briefing(onWatch: true).contains("Find chat"),
                        "a host without watch chats isn't offered them")
     }
 

@@ -102,7 +102,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// request and the host adds them to GPT-Live's instructions; a host
     /// that doesn't take them gets them as session context when the call
     /// starts. Written for the model, not shown as UI copy, so not localized.
-    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard, onWatch: Bool = false, watchChats: Bool = true) -> String {
+    static func briefing(memory: GeminiLiveMemoryContext? = nil, personality: String? = nil, answerLength: LiveVoiceAnswerLength = .standard, onWatch: Bool = false, watchChats: Bool = false) -> String {
         var text = """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions(readsBack: !onWatch)) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
