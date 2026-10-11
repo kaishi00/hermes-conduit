@@ -26,6 +26,7 @@ struct LoginView: View {
     /// LocalAuthentication round trip), and again on return to the
     /// foreground, where a fingerprint or face may just have been set up.
     @State private var biometrics = BiometricAuth.Status(kind: nil, isAvailable: false)
+    @State private var biometricsLoaded = false
     @Environment(\.scenePhase) private var scenePhase
     @State var cloudflareEnabled = false
     @State var cloudflareClientID = ""
@@ -142,6 +143,7 @@ struct LoginView: View {
         }
         .onAppear {
             biometrics = BiometricAuth.status
+            biometricsLoaded = true
             guard serverUrl.isEmpty else { return }
             serverUrl = appState.lastDashboardURL
             if let access = appState.dashboardScopedCloudflareAccess(for: serverUrl) {
@@ -396,7 +398,9 @@ struct LoginView: View {
                         .accessibilityIdentifier("login.biometric-toggle")
                         .disabled(!saveCredentials || !biometrics.isAvailable)
 
-                    if !biometrics.isAvailable || saveCredentials {
+                    // No footnote before the first status read, so a Face ID
+                    // phone never flashes "not available".
+                    if biometricsLoaded && (!biometrics.isAvailable || saveCredentials) {
                         Text(biometricFootnote)
                             .font(.caption)
                             .foregroundStyle(.secondary)
