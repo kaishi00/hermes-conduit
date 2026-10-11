@@ -90,7 +90,7 @@ final class LoginKeyboardUITests: XCTestCase {
         // 2026-10-05 to 2026-10-11). Each drag gets a moment to settle before
         // the next, so a slow scroll is not mistaken for a stuck one.
         var drags = 0
-        while !pollAboveKeyboard(connect, in: app, timeout: 1) && drags < 3 {
+        while app.keyboards.firstMatch.exists && !pollAboveKeyboard(connect, in: app, timeout: 1) && drags < 3 {
             dragFormUp(app)
             drags += 1
         }
@@ -328,15 +328,15 @@ final class LoginKeyboardUITests: XCTestCase {
         return switchIsOn(element)
     }
 
-    /// Drags the login form up by about a third of the screen, starting in
-    /// the left margin (outside every card, so no field, switch or button
-    /// takes the touch) at 45% of the height, which is above the keyboard
-    /// and its toolbar on every iPhone. The short press before the move makes
-    /// it a drag, not a fling, so the distance scrolled is predictable.
+    /// Drags the login form up by about a third of the screen. It starts at
+    /// 6% of the width, left of every control (on the iPhone 17 Pro the
+    /// nightly runs, that is the card's own padding, and controls start at
+    /// 44 pt), at 45% of the height, which is above the keyboard and its
+    /// toolbar there. The short press before the move makes it a drag, not a
+    /// fling, so the distance scrolled is predictable.
     private func dragFormUp(_ app: XCUIApplication) {
-        let window = app.windows.firstMatch
-        let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.45))
-        let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.12))
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.45))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.12))
         start.press(forDuration: 0.1, thenDragTo: end)
     }
 
@@ -346,7 +346,9 @@ final class LoginKeyboardUITests: XCTestCase {
     /// dismissKeyboard), so the frame check is what proves it is reachable.
     private func pollAboveKeyboard(_ element: XCUIElement, in app: XCUIApplication, timeout: TimeInterval) -> Bool {
         func isAbove() -> Bool {
-            guard element.isHittable else { return false }
+            // No keyboard means no keyboard layout to check; the caller's
+            // keyboard assertion reports that case.
+            guard app.keyboards.firstMatch.exists, element.isHittable else { return false }
             var top = app.keyboards.firstMatch.frame.minY
             let done = app.buttons["Done"].firstMatch
             if done.exists { top = min(top, done.frame.minY) }
