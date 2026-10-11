@@ -127,7 +127,7 @@ final class HermesNativeCalls: NSObject {
     static var ringingBuilt: Bool {
         Bundle.main.object(forInfoDictionaryKey: "ConduitHermesCallsRing") as? Bool ?? true
     }
-    /// "Ring like a phone call" in Voice settings, on this iPhone. Off,
+    /// "Ring like a phone call" in Calls from Hermes, on this iPhone. Off,
     /// calls come as the notification.
     static let ringsKey = "hermesCalls.ringsLikeCall"
     static var ringingWanted: Bool { UserDefaults.standard.object(forKey: ringsKey) as? Bool ?? true }

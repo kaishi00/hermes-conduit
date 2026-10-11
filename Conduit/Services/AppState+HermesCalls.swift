@@ -2,10 +2,10 @@
 //  AppState+HermesCalls.swift
 //  Conduit
 //
-//  Hermes calls you (#449): the host's call settings for Voice settings,
-//  the job layer's watches on the host, answering a call from Hermes,
-//  which opens voice in the job's chat with what came of the job, and
-//  telling the host about a call the user declined or missed.
+//  Hermes calls you (#449): the host's call settings and a test call for
+//  Settings, the job layer's watches on the host, answering a call from
+//  Hermes, which opens voice in the job's chat with what came of the job,
+//  and telling the host about a call the user declined or missed.
 //  Design: /mnt/project-files/designs/hermes-calls-you-449.md
 //
 
@@ -93,6 +93,19 @@ extension AppState {
             errorMessage = AppLocalization.string("Couldn't save Hermes' call settings. Check your connection and try again.")
             return false
         }
+    }
+
+    /// Settings' Try a test call: a new chat with the test request in the
+    /// composer, for the user to send. The phone rings when Hermes's reply
+    /// ends, like any call they ask for.
+    func startHermesTestCall() async {
+        let previous = activeSessionId
+        await createNewSession()
+        guard let created = activeSessionId, created != previous else { return }
+        showSidebar = false
+        prefillComposer(HermesCallSettingsFormat.testCallPrompt)
+        // Held until the composer unlocks.
+        requestComposerFocus(on: created)
     }
 
     /// How GPT-Live asks for a call, when the host takes call watches.

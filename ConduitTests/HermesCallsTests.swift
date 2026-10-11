@@ -764,6 +764,31 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(GPTLiveDelegationBridge.decisionMarker(in: "Please approve: it"))
     }
 
+    func testCallRulesGoToHostsThatKeepThemWithinTheirLimit() throws {
+        let old = HermesCallSettings(json: ["enabled": true, "when_asked": true, "decides": true, "min_gap_s": 120, "per_hour": 6, "per_day": 20])
+        XCTAssertNil(old?.rules, "A plugin before 0.16 has no note, so the field stays hidden")
+        XCTAssertNil(old?.payload["rules"], "An older plugin refuses settings it doesn't know")
+        var new = try XCTUnwrap(HermesCallSettings(json: ["enabled": true, "when_asked": true, "decides": true, "rules": "", "min_gap_s": 120, "per_hour": 6, "per_day": 20]))
+        XCTAssertEqual(new.rules, "")
+        new.rules = "Only outages"
+        XCTAssertEqual(new.payload["rules"] as? String, "Only outages")
+
+        let status = try XCTUnwrap(HermesCallsStatus.parse(["ok": true, "paired": true, "settings": ["enabled": true, "when_asked": true, "rules": "", "min_gap_s": 120, "per_hour": 6, "per_day": 20], "rules_max": 300]))
+        XCTAssertEqual(status.rulesMax, 300)
+        let unbounded = try XCTUnwrap(HermesCallsStatus.parse(["ok": true, "paired": true, "settings": ["enabled": true, "when_asked": true, "min_gap_s": 120, "per_hour": 6, "per_day": 20], "rules_max": 0]))
+        XCTAssertEqual(unbounded.rulesMax, HermesCallsStatus.defaultRulesMax)
+
+        XCTAssertEqual(HermesCallSettingsFormat.rules("  Only outages \n\n  Not before 9 am  \n"), "Only outages\nNot before 9 am")
+        XCTAssertEqual(HermesCallSettingsFormat.rules(" \n "), "")
+        XCTAssertNil(HermesCallSettingsFormat.limitRules("abc", to: 3))
+        XCTAssertEqual(HermesCallSettingsFormat.limitRules("abcd", to: 3), "abc")
+        // The host counts Unicode scalars: a family emoji is one Swift
+        // character but five scalars.
+        let family = "👨‍👩‍👧"
+        XCTAssertEqual(family.unicodeScalars.count, 5)
+        XCTAssertEqual(HermesCallSettingsFormat.limitRules("ab" + family, to: 6)?.unicodeScalars.count, 6)
+    }
+
     func testCallSettingsGapChoicesKeepTheCurrentValue() {
         XCTAssertEqual(HermesCallSettingsFormat.gapChoices(bounds: 30...3_600, current: 120), [30, 60, 120, 300, 600, 1_800, 3_600])
         XCTAssertEqual(HermesCallSettingsFormat.gapChoices(bounds: 60...600, current: 90), [60, 90, 120, 300, 600])

@@ -2,16 +2,18 @@
 //  HermesCallSettingsViews.swift
 //  Conduit
 //
-//  Voice settings for Hermes calls you (#449): whether Hermes may call,
-//  whether "call me when it's done" works, whether Hermes may decide to
-//  call and call about approvals and questions (plugin 0.14+), and the
-//  profile's limits. The settings live with the notifier plugin on the
-//  Hermes host, per profile.
+//  Settings › Calls from Hermes (#449): whether Hermes may call, whether
+//  "call me when it's done" works, whether Hermes may decide to call and
+//  call about approvals and questions (plugin 0.14+), the user's note on
+//  what's worth such a call (plugin 0.16+), the profile's limits, a test
+//  call and how to use calls. The settings live with the notifier plugin
+//  on the Hermes host, per profile.
+//  Design: /mnt/project-files/designs/hermes-calls-teaching.md
 //
 
 import SwiftUI
 
-/// What Voice settings needs to show the profile's call settings.
+/// What Settings needs to show the profile's call settings.
 struct HermesCallSettingsModel {
     var profile: String
     /// Nil until read from the host.
@@ -43,19 +45,88 @@ enum HermesCallSettingsFormat {
         formatter.allowedUnits = [.hour, .minute, .second]
         return formatter.string(from: TimeInterval(seconds)) ?? "\(seconds)"
     }
+
+    /// What the test call sends, in the app's language.
+    static var testCallPrompt: String { AppLocalization.string("Call me now to test calls.") }
+
+    /// The note as the host keeps it: each line trimmed, no empty lines.
+    static func rules(_ text: String) -> String {
+        text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    /// The host counts characters as Unicode scalars (Python), so a note
+    /// is held to its limit in those, not in what Swift counts.
+    static func limitRules(_ text: String, to max: Int) -> String? {
+        guard text.unicodeScalars.count > max else { return nil }
+        var scalars = String.UnicodeScalarView()
+        scalars.append(contentsOf: text.unicodeScalars.prefix(max))
+        return String(scalars)
+    }
+}
+
+/// Settings › Calls from Hermes.
+struct HermesCallsSettingsPage: View {
+    let model: HermesCallSettingsModel
+    /// Whether the host hears about calls the user declined or missed.
+    let hearsMissedCalls: Bool
+    let startTestCall: () -> Void
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+
+    var body: some View {
+        SettingsDetailContainer {
+            HermesCallSettingsSection(model: model, startTestCall: startTestCall)
+            HermesCallsHowToSection(settings: model.status?.settings, hearsMissedCalls: hearsMissedCalls)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+}
+
+/// What to say to get a call, and what else to know.
+struct HermesCallsHowToSection: View {
+    /// The host's settings, which say what it can do; nil until read.
+    let settings: HermesCallSettings?
+    let hearsMissedCalls: Bool
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("How to use calls"), symbol: "text.bubble", tint: .conduitAccent) {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Ask in any chat or voice call: “Call me when the tests finish.” Your iPhone rings once the job is done, and answering opens voice in that chat.", systemImage: "phone.arrow.down.left")
+                if settings?.rules != nil {
+                    Label("To let Hermes call on its own, turn on Hermes decides when to call and write what's worth a call. Hermes checks your note before each call it decides to make.", systemImage: "sparkles")
+                } else if settings?.decides != nil {
+                    Label("To let Hermes call on its own when news can't wait, turn on Hermes decides when to call.", systemImage: "sparkles")
+                }
+                if hearsMissedCalls {
+                    Label("If you decline or miss a call, Hermes knows the next time you write in that chat.", systemImage: "phone.down")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
 }
 
 struct HermesCallSettingsSection: View {
     let model: HermesCallSettingsModel
+    var startTestCall: (() -> Void)?
     @State private var draft: HermesCallSettings
+    /// The note as typed; saved when the field lets go of the keyboard.
+    @State private var rulesText: String
+    @FocusState private var rulesFocused: Bool
     /// This iPhone's own setting, not the host's.
     @AppStorage(HermesNativeCalls.ringsKey) private var ringsLikeCall = true
     @State private var loadFailed = false
     @State private var saveTask: Task<Void, Never>?
 
-    init(model: HermesCallSettingsModel) {
+    init(model: HermesCallSettingsModel, startTestCall: (() -> Void)? = nil) {
         self.model = model
-        _draft = State(initialValue: model.status?.settings ?? HermesCallSettings())
+        self.startTestCall = startTestCall
+        let settings = model.status?.settings ?? HermesCallSettings()
+        _draft = State(initialValue: settings)
+        _rulesText = State(initialValue: settings.rules ?? "")
     }
 
     /// Saved once the user stops tapping, so a stepper run is one save.
@@ -79,6 +150,14 @@ struct HermesCallSettingsSection: View {
             // What the host holds now, including saves since this edit.
             if !saved, let hostSettings = current() ?? editTimeSettings { draft = hostSettings }
         }
+    }
+
+    /// Saves the note if it changed. Calls you ask for don't read it.
+    private func commitRules() {
+        guard draft.rules != nil else { return }
+        let rules = HermesCallSettingsFormat.rules(rulesText)
+        guard rules != draft.rules else { return }
+        change { $0.rules = rules }
     }
 
     private func binding<Value>(_ keyPath: WritableKeyPath<HermesCallSettings, Value>) -> Binding<Value> {
@@ -121,11 +200,18 @@ struct HermesCallSettingsSection: View {
                     Text("Say “call me when it's done” during a live call, or ask Hermes in a chat to call you. Hermes calls about that job once the call has ended; if it finishes while you're still talking, you hear about it in the call instead.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    // The call tool came with plugin 0.14, as did "decides".
+                    if let startTestCall, status.paired, draft.whenAsked, draft.decides != nil {
+                        testCallRow(startTestCall)
+                    }
                     if draft.decides != nil {
                         Toggle("Hermes decides when to call", isOn: optionalBinding(\.decides))
                         Text("Hermes may also call on its own when news can't wait, within your limits. It never calls for routine updates.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                    if draft.decides == true, draft.rules != nil {
+                        rulesField(max: status.rulesMax)
                     }
                     if draft.alerts != nil {
                         Toggle("Call about approvals and questions", isOn: optionalBinding(\.alerts))
@@ -174,6 +260,65 @@ struct HermesCallSettingsSection: View {
             // its task outlives the view.)
             guard saveTask == nil, let settings = newValue?.settings else { return }
             draft = settings
+        }
+        // The host's note, unless the user is writing one.
+        .onChange(of: draft.rules) { _, rules in
+            guard !rulesFocused else { return }
+            rulesText = rules ?? ""
+        }
+        .onChange(of: rulesFocused) { _, focused in
+            if !focused { commitRules() }
+        }
+        .onDisappear { commitRules() }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { rulesFocused = false }
+            }
+        }
+    }
+
+    private func testCallRow(_ start: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button(action: start) {
+                Label(AppLocalization.string("Try a test call"), systemImage: "phone.fill")
+                    .font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("settings.hermesCallsTest")
+            Text(AppLocalization.string("Opens a new chat with “\(HermesCallSettingsFormat.testCallPrompt)” ready to send. Send it, and your iPhone rings when Hermes replies."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func rulesField(max: Int) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("What's worth a call")
+                .font(.subheadline.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            TextField(
+                AppLocalization.string("For example: only if production is down or a deploy fails. Never before 9 am."),
+                text: $rulesText,
+                axis: .vertical
+            )
+            .textFieldStyle(.roundedBorder)
+            .lineLimit(3...8)
+            .focused($rulesFocused)
+            .accessibilityLabel(Text(AppLocalization.string("What's worth a call")))
+            .accessibilityIdentifier("settings.hermesCallsRules")
+            .onChange(of: rulesText) { _, text in
+                if let limited = HermesCallSettingsFormat.limitRules(text, to: max) { rulesText = limited }
+            }
+            if rulesFocused {
+                Text(verbatim: "\(rulesText.unicodeScalars.count)/\(max)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            Text("Hermes reads this before each call it decides to make, and calls only if the news fits. Calls you ask for don't depend on it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
