@@ -575,9 +575,9 @@ extension AppStateMultiDashboardTests {
 
     private func averageColor(of image: UIImage) throws -> (red: CGFloat, green: CGFloat, blue: CGFloat) {
         let cgImage = try XCTUnwrap(image.cgImage)
-        var pixel = [UInt8](repeating: 0, count: 4)
+        // CoreGraphics owns the one-pixel buffer, so no pointer outlives its array.
         let context = try XCTUnwrap(CGContext(
-            data: &pixel,
+            data: nil,
             width: 1,
             height: 1,
             bitsPerComponent: 8,
@@ -586,6 +586,7 @@ extension AppStateMultiDashboardTests {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ))
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let pixel = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
         return (CGFloat(pixel[0]) / 255, CGFloat(pixel[1]) / 255, CGFloat(pixel[2]) / 255)
     }
 

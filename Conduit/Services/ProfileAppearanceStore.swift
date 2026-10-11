@@ -265,8 +265,8 @@ enum ProfileAvatarImageCache {
     static let failedReadRetryInterval: TimeInterval = 30
 
     /// The first show of each photo decodes it here, on the main actor, so
-    /// the avatar never flashes its initials. ImageIO builds the thumbnail
-    /// without decoding the full photo, so that one read is small.
+    /// the avatar never flashes its initials. ImageIO reads the file once
+    /// and builds the thumbnail without decoding the photo at full size.
     static func image(at url: URL) -> UIImage? {
         let key = url.path as NSString
         if let cached = images.object(forKey: key) { return cached }
