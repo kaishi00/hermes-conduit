@@ -205704,84 +205704,412 @@
         }
       }
     },
-    "Couldn't start a chat for the test call. Check your connection and try again." : {
+    "Couldn't start a new chat. Check your connection and try again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für den Testanruf konnte kein Chat gestartet werden. Prüfe deine Verbindung und versuche es erneut."
+            "value" : "Neuer Chat konnte nicht gestartet werden. Prüfe deine Verbindung und versuche es erneut."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No se pudo iniciar un chat para la llamada de prueba. Revisa tu conexión e inténtalo de nuevo."
+            "value" : "No se pudo iniciar un chat nuevo. Revisa tu conexión e inténtalo de nuevo."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Impossible de lancer une discussion pour l'appel test. Vérifiez votre connexion et réessayez."
+            "value" : "Impossible de lancer une nouvelle discussion. Vérifiez votre connexion et réessayez."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tidak dapat memulai chat untuk panggilan uji. Periksa koneksi Anda dan coba lagi."
+            "value" : "Tidak dapat memulai obrolan baru. Periksa koneksi Anda dan coba lagi."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Impossibile avviare una chat per la chiamata di prova. Controlla la connessione e riprova."
+            "value" : "Impossibile avviare una nuova chat. Controlla la connessione e riprova."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "テスト通話用のチャットを開始できませんでした。接続を確認して、もう一度お試しください。"
+            "value" : "新しいチャットを開始できませんでした。接続を確認して、もう一度お試しください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "테스트 전화를 위한 채팅을 시작할 수 없었어요. 연결을 확인하고 다시 시도하세요."
+            "value" : "새 채팅을 시작할 수 없었어요. 연결을 확인하고 다시 시도하세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nie udało się rozpocząć czatu dla połączenia testowego. Sprawdź połączenie z siecią i spróbuj ponownie."
+            "value" : "Nie udało się rozpocząć nowego czatu. Sprawdź połączenie z siecią i spróbuj ponownie."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Não foi possível iniciar um chat para a chamada de teste. Verifique sua conexão e tente de novo."
+            "value" : "Não foi possível iniciar um chat novo. Verifique sua conexão e tente de novo."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Не удалось начать чат для тестового звонка. Проверьте подключение и повторите попытку."
+            "value" : "Не удалось начать новый чат. Проверьте подключение и повторите попытку."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Test araması için sohbet başlatılamadı. Bağlantınızı kontrol edip yeniden deneyin."
+            "value" : "Yeni sohbet başlatılamadı. Bağlantınızı kontrol edip yeniden deneyin."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法为测试来电开始聊天。请检查网络连接后重试。"
+            "value" : "无法开始新聊天。请检查网络连接后重试。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法為測試來電開始聊天。請檢查連線後再試一次。"
+            "value" : "無法開始新聊天。請檢查連線後再試一次。"
+          }
+        }
+      }
+    },
+    "Have Hermes watch for this" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes darauf achten lassen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Que Hermes lo vigile"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faire surveiller ceci par Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minta Hermes memantau ini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fai controllare a Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesに見張ってもらう"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에게 지켜보게 하기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niech Hermes tego pilnuje"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pedir ao Hermes para vigiar isto"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поручить Hermes следить за этим"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunu Hermes takip etsin"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Hermes 留意这件事"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓 Hermes 留意這件事"
+          }
+        }
+      }
+    },
+    "Hermes doesn't check for what your note describes on its own. This opens a new chat asking it to set up a scheduled check that calls you when it happens." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes prüft nicht von selbst, was deine Notiz beschreibt. Das öffnet einen neuen Chat, in dem du ihn bittest, eine geplante Prüfung einzurichten, die dich anruft, wenn es passiert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no comprueba por su cuenta lo que describe tu nota. Esto abre un chat nuevo en el que le pides que configure una comprobación programada que te llame cuando ocurra."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ne vérifie pas de lui-même ce que décrit votre note. Ceci ouvre une nouvelle discussion qui lui demande de mettre en place une vérification planifiée qui vous appelle quand cela arrive."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak memeriksa sendiri hal yang dijelaskan catatan Anda. Ini membuka obrolan baru yang meminta Hermes menyiapkan pemeriksaan terjadwal yang menelepon Anda saat hal itu terjadi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non controlla da solo ciò che descrive la tua nota. Questo apre una nuova chat in cui gli chiedi di impostare un controllo pianificato che ti chiami quando succede."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesはメモに書かれたことを自分から確認しません。新しいチャットを開き、それが起きたら電話する定期チェックの設定をHermesに頼みます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 메모에 적힌 일을 스스로 확인하지 않아요. 새 채팅을 열어, 그 일이 생기면 전화하는 정기 확인을 설정해 달라고 Hermes에게 요청해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sam nie sprawdza tego, co opisuje Twoja notatka. To otwiera nowy czat z prośbą, by ustawił zaplanowane sprawdzanie, które zadzwoni do Ciebie, gdy to się stanie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não verifica sozinho o que sua nota descreve. Isto abre um chat novo pedindo que ele configure uma verificação agendada que ligue para você quando isso acontecer."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes сам не проверяет то, что описано в вашей заметке. Откроется новый чат с просьбой настроить проверку по расписанию, которая позвонит вам, когда это случится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, notunuzda anlatılanı kendiliğinden kontrol etmez. Bu, gerçekleştiğinde sizi arayan zamanlanmış bir kontrol kurmasını isteyen yeni bir sohbet açar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 不会主动检查你的说明里写的事。这会打开一个新聊天，请它设置一个定时检查，在事情发生时给你打电话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 不會主動檢查你的說明裡寫的事。這會開啟一個新聊天，請它設定一個定時檢查，在事情發生時打電話給你。"
+          }
+        }
+      }
+    },
+    "Set up a scheduled check that calls me when this happens:\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richte eine geplante Prüfung ein, die mich anruft, wenn das passiert:\n%@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configura una comprobación programada que me llame cuando pase esto:\n%@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mets en place une vérification planifiée qui m'appelle quand ceci arrive :\n%@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siapkan pemeriksaan terjadwal yang menelepon saya saat ini terjadi:\n%@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imposta un controllo pianificato che mi chiami quando succede questo:\n%@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これが起きたら電話してくれる定期チェックを設定して：\n%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이런 일이 생기면 나한테 전화하는 정기 확인을 설정해 줘:\n%@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ustaw zaplanowane sprawdzanie, które zadzwoni do mnie, gdy to się stanie:\n%@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configure uma verificação agendada que me ligue quando isto acontecer:\n%@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Настрой проверку по расписанию, которая позвонит мне, когда это случится:\n%@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu olduğunda beni arayan zamanlanmış bir kontrol kur:\n%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置一个定时检查，在发生这件事时给我打电话：\n%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定一個定時檢查，在發生這件事時打電話給我：\n%@"
+          }
+        }
+      }
+    },
+    "To be called when something happens, ask Hermes to watch for it: “Check my homelab every 5 minutes and call me if it's down for more than 10 minutes.” Hermes sets up a scheduled check that calls you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit du angerufen wirst, wenn etwas passiert, bitte Hermes, darauf zu achten: „Prüf mein Homelab alle 5 Minuten und ruf mich an, wenn es länger als 10 Minuten down ist.“ Hermes richtet eine geplante Prüfung ein, die dich anruft."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para recibir una llamada cuando pase algo, pide a Hermes que lo vigile: «Revisa mi homelab cada 5 minutos y llámame si lleva caído más de 10 minutos». Hermes configura una comprobación programada que te llama."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour recevoir un appel quand quelque chose se produit, demandez à Hermes de le surveiller : « Vérifie mon homelab toutes les 5 minutes et appelle-moi s'il est hors ligne depuis plus de 10 minutes. » Hermes met en place une vérification planifiée qui vous appelle."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agar ditelepon saat sesuatu terjadi, minta Hermes memantaunya: “Periksa homelab saya setiap 5 menit dan telepon saya kalau mati lebih dari 10 menit.” Hermes menyiapkan pemeriksaan terjadwal yang menelepon Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per ricevere una chiamata quando succede qualcosa, chiedi a Hermes di controllarlo: «Controlla il mio homelab ogni 5 minuti e chiamami se è giù da più di 10 minuti». Hermes imposta un controllo pianificato che ti chiama."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "何かが起きたときに電話してほしいなら、Hermesに見張りを頼んでください：「5分ごとにホームラボを確認して、10分以上ダウンしていたら電話して」。Hermesが、電話してくれる定期チェックを設定します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어떤 일이 생겼을 때 전화를 받으려면 Hermes에게 지켜봐 달라고 부탁하세요: “5분마다 홈랩을 확인하고 10분 넘게 다운되면 전화해 줘.” Hermes가 전화해 주는 정기 확인을 설정해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aby dostać telefon, gdy coś się stanie, poproś Hermesa, żeby tego pilnował: „Sprawdzaj mój homelab co 5 minut i zadzwoń, jeśli nie działa dłużej niż 10 minut”. Hermes ustawi zaplanowane sprawdzanie, które do Ciebie zadzwoni."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para receber uma ligação quando algo acontecer, peça ao Hermes para vigiar: “Verifique meu homelab a cada 5 minutos e me ligue se ele ficar fora do ar por mais de 10 minutos.” O Hermes configura uma verificação agendada que liga para você."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы вам позвонили, когда что-то случится, попросите Hermes следить за этим: «Проверяй мой homelab каждые 5 минут и позвони, если он лежит больше 10 минут». Hermes настроит проверку по расписанию, которая вам позвонит."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir şey olduğunda aranmak için Hermes'ten onu takip etmesini isteyin: “Homelab'imi 5 dakikada bir kontrol et, 10 dakikadan uzun süre çökük kalırsa beni ara.” Hermes sizi arayan zamanlanmış bir kontrol kurar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "想在某件事发生时接到电话，就请 Hermes 留意它：“每 5 分钟检查一次我的家庭实验室，如果宕机超过 10 分钟就给我打电话。”Hermes 会设置一个定时检查来给你打电话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "想在某件事發生時接到電話，就請 Hermes 留意它：「每 5 分鐘檢查一次我的家庭實驗室，如果當機超過 10 分鐘就打電話給我。」Hermes 會設定一個定時檢查來打電話給你。"
           }
         }
       }

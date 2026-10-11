@@ -747,6 +747,10 @@ struct SettingsView: View {
                 startTestCall: {
                     dismiss()
                     Task { await appState.startHermesTestCall() }
+                },
+                startWatch: { note in
+                    dismiss()
+                    Task { await appState.startHermesWatch(for: note) }
                 }
             )
                 .navigationTitle("Calls from Hermes")

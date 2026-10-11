@@ -49,6 +49,12 @@ enum HermesCallSettingsFormat {
     /// What the test call sends, in the app's language.
     static var testCallPrompt: String { AppLocalization.string("Call me now to test calls.") }
 
+    /// What Have Hermes watch for this sends: a scheduled check for what
+    /// the call note describes, the note as the host keeps it.
+    static func watchPrompt(_ note: String) -> String {
+        AppLocalization.string("Set up a scheduled check that calls me when this happens:\n\(rules(note))")
+    }
+
     /// The note as the host keeps it: each line trimmed, no empty lines.
     static func rules(_ text: String) -> String {
         text.components(separatedBy: .newlines)
@@ -81,11 +87,13 @@ struct HermesCallsSettingsPage: View {
     /// Whether the host hears about calls the user declined or missed.
     let hearsMissedCalls: Bool
     let startTestCall: () -> Void
+    /// Opens a chat asking Hermes to watch for what the note describes.
+    let startWatch: (String) -> Void
     @ObservedObject var appLanguage = AppLanguageStore.shared
 
     var body: some View {
         SettingsDetailContainer {
-            HermesCallSettingsSection(model: model, startTestCall: startTestCall)
+            HermesCallSettingsSection(model: model, startTestCall: startTestCall, startWatch: startWatch)
             HermesCallsHowToSection(settings: model.status?.settings, hearsMissedCalls: hearsMissedCalls)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -102,6 +110,9 @@ struct HermesCallsHowToSection: View {
         ConduitSettingsSection(title: AppLocalization.string("How to use calls"), symbol: "text.bubble", tint: .conduitAccent) {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Ask in any chat or voice call: “Call me when the tests finish.” Your iPhone rings once the job is done, and answering opens voice in that chat.", systemImage: "phone.arrow.down.left")
+                if settings?.decides != nil {
+                    Label("To be called when something happens, ask Hermes to watch for it: “Check my homelab every 5 minutes and call me if it's down for more than 10 minutes.” Hermes sets up a scheduled check that calls you.", systemImage: "binoculars")
+                }
                 if settings?.rules != nil {
                     Label("To let Hermes call on its own, turn on Hermes decides when to call and write what's worth a call. Hermes checks your note before each call it decides to make.", systemImage: "sparkles")
                 } else if settings?.decides != nil {
@@ -120,6 +131,7 @@ struct HermesCallsHowToSection: View {
 struct HermesCallSettingsSection: View {
     let model: HermesCallSettingsModel
     var startTestCall: (() -> Void)?
+    var startWatch: ((String) -> Void)?
     @State private var draft: HermesCallSettings
     /// The note as typed; saved when the field lets go of the keyboard.
     @State private var rulesText: String
@@ -129,9 +141,10 @@ struct HermesCallSettingsSection: View {
     @State private var loadFailed = false
     @State private var saveTask: Task<Void, Never>?
 
-    init(model: HermesCallSettingsModel, startTestCall: (() -> Void)? = nil) {
+    init(model: HermesCallSettingsModel, startTestCall: (() -> Void)? = nil, startWatch: ((String) -> Void)? = nil) {
         self.model = model
         self.startTestCall = startTestCall
+        self.startWatch = startWatch
         let settings = model.status?.settings ?? HermesCallSettings()
         _draft = State(initialValue: settings)
         _rulesText = State(initialValue: settings.rules ?? "")
@@ -220,6 +233,11 @@ struct HermesCallSettingsSection: View {
                     }
                     if draft.decides == true, draft.rules != nil {
                         rulesField(max: status.rulesMax)
+                        // A check's calls are ones the user asked for.
+                        if let startWatch, status.paired, draft.whenAsked,
+                           !HermesCallSettingsFormat.rules(rulesText).isEmpty {
+                            watchRow { startWatch(rulesText) }
+                        }
                     }
                     if draft.alerts != nil {
                         Toggle("Call about approvals and questions", isOn: optionalBinding(\.alerts))
@@ -295,6 +313,20 @@ struct HermesCallSettingsSection: View {
             .buttonStyle(.borderless)
             .accessibilityIdentifier("settings.hermesCallsTest")
             Text(AppLocalization.string("Opens a new chat with “\(HermesCallSettingsFormat.testCallPrompt)” ready to send. Send it, and your iPhone rings when Hermes replies."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func watchRow(_ start: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button(action: start) {
+                Label(AppLocalization.string("Have Hermes watch for this"), systemImage: "binoculars.fill")
+                    .font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("settings.hermesCallsWatch")
+            Text("Hermes doesn't check for what your note describes on its own. This opens a new chat asking it to set up a scheduled check that calls you when it happens.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
