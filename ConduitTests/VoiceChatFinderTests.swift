@@ -16,7 +16,7 @@ import XCTest
 extension VoiceConversationControllerTests {
     /// A supervisor whose chat search answers from `results` by query, and
     /// whose opens are recorded.
-    func makeChatFinder(
+    fileprivate func makeChatFinder(
         _ results: [String: [VoiceChatMatch]],
         canOpen: Bool = true
     ) -> (VoiceBackgroundJobSupervisor, ChatFinderLog) {
@@ -40,7 +40,7 @@ extension VoiceConversationControllerTests {
         return (supervisor, log)
     }
 
-    static func chat(_ id: String, _ title: String, snippet: String = "") -> VoiceChatMatch {
+    fileprivate static func chat(_ id: String, _ title: String, snippet: String = "") -> VoiceChatMatch {
         VoiceChatMatch(sessionID: id, title: title, snippet: snippet, lastActive: nil)
     }
 
