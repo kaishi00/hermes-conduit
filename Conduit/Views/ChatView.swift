@@ -31,6 +31,8 @@ struct ChatView: View {
     /// scroll ticks never reach SwiftUI state; it publishes only when a value
     /// the body renders from (`renderInputs`) changes.
     @StateObject private var scrollEngine = ChatScrollEngine()
+    /// Not observable on purpose: one stable instance rows read when built
+    /// and write when tapped (see ChatRowDisclosure).
     @State private var rowDisclosure = ChatRowDisclosure()
     /// Carries the engine's requests to AppState and ScrollViewProxy. Holds
     /// both weakly, so the engine never retains this view.

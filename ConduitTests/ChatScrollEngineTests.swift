@@ -255,6 +255,18 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.sets.filter { $0.y == 3220 }.count, 1, "one settle, one pin")
     }
 
+    func testACommandAfterAToggleCancelsItsSettle() {
+        let (engine, surface) = makeEngine()
+        engine.userWillToggleRow()
+        surface.layOut(contentHeight: 4030)
+        engine.explicitMessageRequested(id: "m9")
+        XCTAssertEqual(events.last, .revealRow(id: "m9"))
+
+        scheduled.forEach { $0() }
+        XCTAssertEqual(engine.mode, .browsing, "the row the reader asked for is not undone by a pin")
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+    }
+
     func testClosingARowAtTheBottomLeavesNoEmptySpace() {
         let (engine, surface) = makeEngine()
         engine.userWillToggleRow()

@@ -15,7 +15,11 @@ import SwiftUI
 ///
 /// Not observable: a row reads it when it is built and writes it when
 /// tapped, so a toggle re-renders only that row. One instance per chat view,
-/// so the environment value never changes identity.
+/// so the environment value never changes identity. Choices are kept for
+/// the life of the chat view, across conversations, so coming back to one
+/// finds its rows as the reader left them; that is one Bool per row tapped.
+/// Rows without a message id ("Show all" in a long reply, the review
+/// summary) only tell the engine and keep their own state as before.
 @MainActor
 final class ChatRowDisclosure {
     weak var engine: ChatScrollEngine?
@@ -31,6 +35,14 @@ final class ChatRowDisclosure {
         if let id {
             states[id] = expanded
         }
+    }
+}
+
+/// By identity, so ChatView handing down the same instance on every body
+/// evaluation never invalidates the rows that read it.
+extension ChatRowDisclosure: Equatable {
+    nonisolated static func == (lhs: ChatRowDisclosure, rhs: ChatRowDisclosure) -> Bool {
+        lhs === rhs
     }
 }
 

@@ -361,7 +361,7 @@ final class ChatScrollEngine: ObservableObject {
         defer { surfaceCallbackDepth -= 1 }
         isDragging = true
         cancelPastBottomCheck()
-        disclosureGeneration &+= 1
+        cancelDisclosureSettle()
         latestAnimationUntil = nil
         prependAnchor = nil
         restoration = nil
@@ -397,6 +397,8 @@ final class ChatScrollEngine: ObservableObject {
     /// the tapped row still. Once the row has animated, a reader still at
     /// the bottom (the row was short, or it closed) follows again.
     func userWillToggleRow() {
+        // Momentum is not excluded: following would pin the opened row's
+        // new bottom as soon as the momentum ended.
         guard !isPaused, !isDragging, surface?.isTracking != true else { return }
         cancelPastBottomCheck()
         latestAnimationUntil = nil
@@ -410,7 +412,7 @@ final class ChatScrollEngine: ObservableObject {
             setMode(.browsing)
             emit(.persistSnapshot(renderedSessionKey))
         }
-        disclosureGeneration &+= 1
+        cancelDisclosureSettle()
         let generation = disclosureGeneration
         schedule(Self.disclosureSettleDelay) { [weak self] in
             guard let self, generation == self.disclosureGeneration else { return }
@@ -460,6 +462,7 @@ final class ChatScrollEngine: ObservableObject {
         }
         prependAnchor = nil
         latestAnimationUntil = nil
+        cancelDisclosureSettle()
         topVisibleMessageID = nil
         rowFrames = [:]
         refreshTrackedMessageVisibility()
@@ -581,6 +584,7 @@ final class ChatScrollEngine: ObservableObject {
         if surface?.isTracking == true { return }
         restoration = nil
         prependAnchor = nil
+        cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
         setMode(.following)
         // In the background, setPaused(false) catches up and pins.
@@ -614,6 +618,7 @@ final class ChatScrollEngine: ObservableObject {
         prependAnchor = nil
         latestAnimationUntil = nil
         cancelPastBottomCheck()
+        cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
         setMode(.browsing)
         emit(.revealRow(id: id))
@@ -636,6 +641,7 @@ final class ChatScrollEngine: ObservableObject {
         prependAnchor = nil
         latestAnimationUntil = nil
         cancelPastBottomCheck()
+        cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
         setMode(.browsing)
         guard !isPaused else { return }
@@ -662,6 +668,7 @@ final class ChatScrollEngine: ObservableObject {
         }
         prependAnchor = nil
         latestAnimationUntil = nil
+        cancelDisclosureSettle()
         restoration = Restoration(
             request: request,
             destination: resolveRestorationDestination(for: request)
@@ -818,6 +825,10 @@ final class ChatScrollEngine: ObservableObject {
         }
     }
 
+    private func cancelDisclosureSettle() {
+        disclosureGeneration &+= 1
+    }
+
     private func cancelPastBottomCheck() {
         pastBottomCheckGeneration &+= 1
         pastBottomCheckScheduled = false
@@ -847,7 +858,7 @@ final class ChatScrollEngine: ObservableObject {
     /// message and follow it.
     private func relatchIfPastTheBottom(_ surface: ChatScrollSurface) {
         guard mode == .browsing, !isDragging, !surface.isTracking, !surface.isDecelerating,
-              !latestAnimationInFlight, prependAnchor?.landedAt == nil,
+              !latestAnimationInFlight, prependAnchor == nil,
               surface.distanceFromBottom < -0.5 else { return }
         setMode(.following)
         emit(.persistSnapshot(renderedSessionKey))
