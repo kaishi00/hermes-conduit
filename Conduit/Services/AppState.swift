@@ -1630,7 +1630,8 @@ final class AppState: ObservableObject {
                         memoryRecall: memory?.canRecall == true,
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
-                        waitsOn: self?.liveHermesCall?.kind
+                        waitsOn: self?.liveHermesCall?.kind,
+                        chats: true
                     ),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
@@ -2189,7 +2190,8 @@ final class AppState: ObservableObject {
                         memoryRecall: memory?.canRecall == true,
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
-                        waitsOn: self?.liveHermesCall?.kind
+                        waitsOn: self?.liveHermesCall?.kind,
+                        chats: true
                     ),
                     voice: self?.grokLiveVoice
                 )
@@ -2442,6 +2444,10 @@ final class AppState: ObservableObject {
                 guard let self, self.isOpenChat(thread),
                       let message = Self.liveVoiceUnansweredPrompt(in: self.messages) else { return nil }
                 return Self.liveVoiceTypedPrompt(message)
+            },
+            searchChats: { [weak self] query in
+                guard let self else { throw HermesError.notConnected }
+                return try await self.searchChatsForVoice(query)
             }
         ))
         supervisor.callbacks = self.makeHermesCallbackBackend()
@@ -2472,6 +2478,9 @@ final class AppState: ObservableObject {
         supervisor.liveCallScreenIsVisible = { [weak self] in
             guard let self else { return false }
             return self.isSceneActive && (self.showGeminiLiveSheet || self.showGrokLiveSheet)
+        }
+        supervisor.openChat = { [weak self] match in
+            self?.openChatFromLiveCall(match.sessionID) ?? false
         }
         supervisor.onThreadTurnStarted = { [weak self] job, thread in
             guard let self, let recorder = self.voiceCallRecorder else { return }
@@ -4830,6 +4839,34 @@ final class AppState: ObservableObject {
         if isGeminiLiveActive || showGeminiLiveSheet || minimisedLiveVoice == .geminiLive { closeGeminiLiveConversation() }
         if isGPTLiveActive || showGPTLiveSheet || minimisedLiveVoice == .gptLive { closeGPTLiveConversation() }
         if isGrokLiveActive || showGrokLiveSheet || minimisedLiveVoice == .grokLive { closeGrokLiveConversation() }
+    }
+
+    // MARK: Finding chats from a call
+
+    /// The user's earlier chats on the profile in use that match `query`,
+    /// for a call asked to find one: Hermes' own search over ids, message
+    /// text and titles. A Hermes without that route is asked by the titles
+    /// of the chats Conduit lists.
+    func searchChatsForVoice(_ query: String) async throws -> [VoiceChatMatch] {
+        guard isConnected, let dashboardTicketBridge else { throw HermesError.notConnected }
+        let profile = activeProfile
+        do {
+            let response = try await dashboardTicketBridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
+            return VoiceChatFinder.matches(from: response)
+        } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
+            return VoiceChatFinder.titleMatches(in: sessions, query: query)
+        }
+    }
+
+    /// Opens a chat a call found. The call goes on minimised, as it does
+    /// when its screen opens a job's chat.
+    func openChatFromLiveCall(_ sessionID: String) -> Bool {
+        guard isConnected, client != nil else { return false }
+        if showGeminiLiveSheet { showGeminiLiveSheet = false }
+        if showGPTLiveSheet { showGPTLiveSheet = false }
+        if showGrokLiveSheet { showGrokLiveSheet = false }
+        openAppLink(.session(id: sessionID))
+        return true
     }
 
     // MARK: Minimised live voice

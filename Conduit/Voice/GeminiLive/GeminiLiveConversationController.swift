@@ -174,13 +174,17 @@ final class GeminiLiveConversationController: ObservableObject {
     Answer quick questions yourself. \(lookups)
     Call start_job only for work that needs the user's Hermes agent: their files, code, systems, accounts, or longer multi-step research. Pass the complete task. Every time you call start_job, first say a very short acknowledgement out loud, like "On it, I'll have Hermes look into that." Then carry on with the conversation; the job runs on Hermes in the background.
     Do not comment on how a job is progressing unless the user asks; use list_jobs when they do. When a job's result arrives, tell the user the outcome once, when the conversation is quiet: what Hermes found or did, with the details that matter.
-    \(readsBack ? readBackParagraph + "\n" : "")\(onWatch ? "" : showOnScreenParagraph + "\n")\(onWatch ? watchApprovalParagraph : "Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.")
+    \(readsBack ? readBackParagraph + "\n" : "")\(onWatch ? "" : showOnScreenParagraph + "\n" + findChatParagraph + "\n")\(onWatch ? watchApprovalParagraph : "Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.")
     When the user corrects, changes, pauses or calls off a job Hermes is still working on ("wait, make it Alex", "hold that", "never mind"), call interrupt_job with their words right away (job_id from list_jobs): Hermes takes them in at once and decides what they mean. Use cancel_job only when the user asks to cancel.
     \(asksFirst ? askFirstParagraph + "\n" : "")When the user says goodbye or asks to end the conversation, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
     """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality)
     }
 
     static let showOnScreenParagraph = "Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user."
+
+    /// Finding and opening an earlier chat runs on the phone, so a Watch
+    /// call leaves this out.
+    static let findChatParagraph = "When the user asks to find, pull up or open one of their earlier conversations with Hermes, call find_chat with a few words from the topic, then open_chat with the match that fits (ask which one when several could). Opening it doesn't end this call."
 
     /// The Watch shows a job's approval request and, with voice approvals
     /// on, passes it to the model with how to answer it.
@@ -1331,6 +1335,11 @@ final class GeminiLiveConversationController: ObservableObject {
     static func fallbackText(for result: [String: String], name: String? = nil) -> String? {
         if name == GeminiLiveToolBridge.Tool.webSearch.rawValue || name == GeminiLiveToolBridge.Tool.recallMemory.rawValue {
             return lookupFallbackText(for: result)
+        }
+        if name == GeminiLiveToolBridge.Tool.findChat.rawValue {
+            // Its matches stay numbered on the phone, so open_chat still works.
+            guard let chats = result["chats"], !chats.isEmpty else { return nil }
+            return "[The chat search you just made found these:\n\(chats)\n\(result["message"] ?? "")]"
         }
         guard let title = result["title"], let status = result["status"] else { return nil }
         if let outcome = result["result"] {

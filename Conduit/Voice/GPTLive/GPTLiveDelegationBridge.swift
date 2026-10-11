@@ -282,6 +282,21 @@ final class GPTLiveDelegationBridge {
             spokenWords?.settleWords(.delegation(id))
             return [.delegationReply(delegationID: id, text: text, channel: .commentary)]
         }
+        // "Find chat: GPU setup" and "Open chat: 2": the user's earlier chats,
+        // looked up and opened by Conduit. Neither is work for Hermes, and
+        // neither waits for the user's OK.
+        let markedWords = instructions.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? instructions
+        if let query = Self.findChatMarker(in: markedWords) {
+            spokenWords?.settleWords(.delegation(id))
+            // GPT-Live can leave a delegation's text empty: the user's own words then.
+            let outcome = await supervisor.findChats(query: query.isEmpty ? spoken : query)
+            guard callGeneration == call, !isEnding else { return [] }
+            return [.delegationReply(delegationID: id, text: Self.chatSearchReply(outcome), channel: .commentary)]
+        }
+        if let reference = Self.openChatMarker(in: markedWords) {
+            spokenWords?.settleWords(.delegation(id))
+            return [.delegationReply(delegationID: id, text: Self.chatOpenReply(supervisor.openFoundChat(reference)), channel: .commentary)]
+        }
         // Routed on the delegation's own words, not the conversation added
         // for context (which would end with whatever was said last).
         let routingWords = instructions.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? instructions
@@ -1140,6 +1155,53 @@ final class GPTLiveDelegationBridge {
     static func modeMarker(in request: String) -> Bool? {
         guard let range = request.range(of: #"^\s*mode\s*:\s*(ask first|send directly)\b"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
         return request[range].lowercased().contains("ask first")
+    }
+
+    /// "Find chat: GPU setup" at the very start of a delegation: the words
+    /// to look the chat up by.
+    static func findChatMarker(in request: String) -> String? {
+        guard let range = request.range(of: #"^\s*find\s+(?:a\s+|the\s+)?chat\s*:"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        return String(request[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// "Open chat: 2" (or "Open chat 2:") at the very start of a delegation:
+    /// the number of the found chat to open.
+    static func openChatMarker(in request: String) -> String? {
+        let pattern = #"^\s*open\s+chat\s*(?:(\d{1,2})\s*:|:\s*(?:number\s*)?(\d{1,2})\b)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: request, range: NSRange(request.startIndex..., in: request)) else { return nil }
+        for group in 1...2 {
+            if let range = Range(match.range(at: group), in: request) { return String(request[range]) }
+        }
+        return nil
+    }
+
+    /// What a "Find chat:" delegation is answered with. Not UI copy.
+    static func chatSearchReply(_ outcome: VoiceChatSearchOutcome) -> String {
+        switch outcome {
+        case .found(let matches):
+            let next = matches.count == 1
+                ? "One chat matches. If it fits what the user asked for, delegate \"Open chat: 1\"."
+                : "If one clearly fits what the user asked for, delegate \"Open chat:\" with its number, like \"Open chat: 2\". Otherwise say the titles of the likeliest two or three, with when, and ask which one; don't read the lines out."
+            return "[Chats that match:\n\(VoiceChatFinder.summary(matches))\n\(next)]"
+        case .noMatches:
+            return "[No chats match that. Tell the user, and offer to try other words.]"
+        case .failed(let reason):
+            return "[Conduit couldn't search the chats: \(reason) Tell the user in a few words.]"
+        }
+    }
+
+    /// What an "Open chat:" delegation is answered with. Not UI copy.
+    static func chatOpenReply(_ outcome: VoiceChatOpenOutcome) -> String {
+        switch outcome {
+        case .opened(let title):
+            let name = title.isEmpty ? "The chat" : "\"\(title)\""
+            return "[\(name) is open in Conduit; this call goes on. Tell the user in a few words.]"
+        case .unknownChat:
+            return "[That isn't one of the chats found. Delegate \"Find chat:\" with a few words from the topic first.]"
+        case .unavailable:
+            return "[Conduit couldn't open the chat right now. Tell the user in a few words.]"
+        }
     }
 
     /// "Send:" at the very start of a delegation: the user OK'd the draft.

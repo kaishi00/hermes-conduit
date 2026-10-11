@@ -292,6 +292,12 @@ struct VoiceBackgroundJobBackend {
     /// The message the user typed for the chat's latest turn, when Conduit
     /// can see it (the chat is open). Nil otherwise.
     var latestThreadPrompt: @MainActor (_ thread: VoiceThreadTarget) -> String? = { _ in nil }
+    /// The user's earlier chats on the profile in use that match `query`,
+    /// best first, for a call asked to find one.
+    var searchChats: @MainActor (_ query: String) async throws -> [VoiceChatMatch] = { _ in
+        // Said to the model, not shown: not localized.
+        throw VoiceAudioError.unavailable("Searching chats isn't available on this call.")
+    }
 }
 
 /// The attached chat started another turn (a typed message) between the
@@ -403,6 +409,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A call only CarPlay shows, a minimised one, or a backgrounded app
     /// has nowhere to show it. Nil counts as up.
     var liveCallScreenIsVisible: (@MainActor () -> Bool)?
+    /// Opens a chat a call's search found, the call going on minimised.
+    /// False when Conduit can't open chats right now. Nil: no chat opens.
+    var openChat: (@MainActor (_ match: VoiceChatMatch) -> Bool)?
+    /// The running call's last chat search, numbered from 1 as the model
+    /// heard it.
+    private(set) var chatMatches: [VoiceChatMatch] = []
     /// The running (or last) live call; jobs it starts carry it, so the
     /// call screen shows only its own jobs.
     @Published private(set) var liveCallID: UUID?
@@ -465,6 +477,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callbackLater = .none
         callbackWordsChecked = 0
         holdWaitingCallbacks(for: callID)
+        chatMatches = []
         // A switch the last call never heard about isn't this call's.
         chatNotes.removeAll { $0.text == Self.askFirstOnPrompt || $0.text == Self.askFirstOffPrompt }
         // Only the running call's cards are ever shown.
@@ -939,6 +952,47 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             screenCards.removeFirst(screenCards.count - Self.maximumScreenCards)
         }
         return card
+    }
+
+    /// Looks up the user's earlier chats for the running call. A query that
+    /// matches nothing as a whole is tried again a word at a time.
+    func findChats(query rawQuery: String) async -> VoiceChatSearchOutcome {
+        let query = VoiceChatFinder.searchQuery(rawQuery)
+        guard !query.isEmpty else { return .failed("query is required") }
+        let started = generation
+        var matches: [VoiceChatMatch]
+        do {
+            matches = try await backend.searchChats(query)
+            for word in matches.isEmpty ? VoiceChatFinder.fallbackWords(query) : [] {
+                for match in try await backend.searchChats(word) where !matches.contains(where: { $0.sessionID == match.sessionID }) {
+                    matches.append(match)
+                }
+            }
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+        // A server or profile change meanwhile: these chats aren't its.
+        guard generation == started else { return .failed("The search was cut short; try again.") }
+        chatMatches = Array(matches.prefix(VoiceChatFinder.resultLimit))
+        return chatMatches.isEmpty ? .noMatches : .found(chatMatches)
+    }
+
+    /// Opens one of the last search's chats, by its number in the list the
+    /// model heard ("2") or its session id.
+    func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome {
+        let trimmed = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digits = trimmed.drop { !$0.isNumber }.prefix { $0.isNumber }
+        let match: VoiceChatMatch?
+        if let byID = chatMatches.first(where: { $0.sessionID == trimmed }) {
+            match = byID
+        } else if let number = Int(digits), chatMatches.indices.contains(number - 1) {
+            match = chatMatches[number - 1]
+        } else {
+            match = nil
+        }
+        guard let match else { return .unknownChat }
+        guard openChat?(match) == true else { return .unavailable }
+        return .opened(title: match.title)
     }
 
     /// `markdown` within the card limit; a code fence the cut leaves open
@@ -1680,6 +1734,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         threadTask = nil
         jobs.removeAll()
         lastJobNumber = 0
+        chatMatches = []
         asksBeforeSending = false
         lastCallResult = nil
         // Their generation no longer matches: cancelled, they stop at once.
