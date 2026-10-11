@@ -136,7 +136,9 @@ struct LoginView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { biometrics = BiometricAuth.status }
+            guard phase == .active else { return }
+            biometrics = BiometricAuth.status
+            if !biometrics.isAvailable { useFaceID = false }
         }
         .onAppear {
             biometrics = BiometricAuth.status
@@ -391,6 +393,7 @@ struct LoginView: View {
                     // wording follows the device's sensor.
                     Toggle(biometricToggleTitle, isOn: $useFaceID)
                         .tint(.conduitAccent)
+                        .accessibilityIdentifier("login.biometric-toggle")
                         .disabled(!saveCredentials || !biometrics.isAvailable)
 
                     if !biometrics.isAvailable || saveCredentials {
