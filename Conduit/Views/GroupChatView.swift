@@ -15,6 +15,7 @@ struct GroupChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             transcript
+            pendingApprovals
             MinimisedLiveVoiceBar()
             composer
         }
@@ -294,8 +295,48 @@ struct GroupChatView: View {
         }
     }
 
+    // MARK: - Approvals
+
+    /// A member's tool call the room is holding for the user. These are
+    /// driver state, not log events, so they sit above the composer until
+    /// they are answered or the gateway drops them.
+    @ViewBuilder
+    private var pendingApprovals: some View {
+        let approvals = appState.activeRoomPendingApprovals
+        if !approvals.isEmpty {
+            // One card per waiting member, so a room shows at most a few.
+            VStack(spacing: 8) {
+                ForEach(approvals) { approval in
+                    GroupApprovalCard(
+                        approval: approval,
+                        memberName: memberName(for: approval.memberID),
+                        answer: appState.roomApprovalAnswers[approval.id]
+                    ) { choice in
+                        Task { await appState.respondToRoomApproval(approval, choice: choice) }
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    /// Matched on member id or profile, like `GroupActor.displayLabel`: the
+    /// driver names a member by whichever its task carries.
+    private func memberName(for memberID: String) -> String {
+        let key = memberID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let member = members.first {
+            $0.memberID?.caseInsensitiveCompare(key) == .orderedSame
+                || $0.profile?.caseInsensitiveCompare(key) == .orderedSame
+        }
+        return member.map(GroupRoomTurns.displayName(of:)) ?? (key.isEmpty ? AppLocalization.string("A member") : key)
+    }
+
     private var memberSummary: String {
         let count = surface?.room.members.count ?? 0
+        if !appState.activeRoomPendingApprovals.isEmpty {
+            return AppLocalization.string("Approval needed")
+        }
         if let responder = respondingMember {
             return AppLocalization.string("\(GroupRoomTurns.displayName(of: responder)) is responding…")
         }
@@ -303,6 +344,86 @@ struct GroupChatView: View {
             return AppLocalization.string("\(count) members · working…")
         }
         return AppLocalization.string("\(count) members")
+    }
+}
+
+// MARK: - Approval card
+
+/// One member's pending approval. Rooms answer Run (once) or Reject only:
+/// session and permanent grants aren't offered for a room member's turn.
+struct GroupApprovalCard: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let approval: GroupPendingApproval
+    let memberName: String
+    let answer: AppState.RoomApprovalAnswer?
+    let respond: (String) -> Void
+
+    private var submitting: Bool { answer == .submitting }
+
+    private var failure: String? {
+        if case .failed(let message) = answer { return message }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.shield")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(submitting
+                        ? AppLocalization.string("SENDING DECISION")
+                        : (failure == nil ? AppLocalization.string("APPROVAL NEEDED") : AppLocalization.string("TRY AGAIN")))
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.5)
+                        .foregroundStyle(failure == nil ? Color.orange : Color.red)
+                    Text(memberName)
+                        .font(.subheadline.weight(.semibold))
+                    if !approval.description.isEmpty {
+                        Text(approval.description)
+                            .font(.subheadline)
+                            .textSelection(.enabled)
+                    }
+                }
+                Spacer(minLength: 8)
+                if submitting {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            if !approval.command.isEmpty {
+                Text(approval.command)
+                    .font(.caption.monospaced())
+                    .lineLimit(5)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            HStack(spacing: 8) {
+                Button {
+                    respond("once")
+                } label: {
+                    Label(AppLocalization.string("Run"), systemImage: "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!approval.allows("once") || submitting)
+                Spacer(minLength: 0)
+                Button(AppLocalization.string("Reject"), role: .destructive) {
+                    respond("deny")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!approval.allows("deny") || submitting)
+            }
+            .font(.subheadline.weight(.medium))
+            if let failure {
+                Label(failure, systemImage: "exclamationmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding(14)
+        .conduitGlassSurface(cornerRadius: 20, tint: Color.orange.opacity(0.08))
     }
 }
 

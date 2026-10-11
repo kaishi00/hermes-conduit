@@ -258,6 +258,7 @@ struct GroupChatLifecycleOperations {
     var send: (@MainActor (HermesClient, String, String, String, String) async throws -> GroupSendResult)?
     var create: (@MainActor (HermesClient, String, String, [[String: Any]]) async throws -> GroupRoom)?
     var stop: (@MainActor (HermesClient, String) async throws -> Int)?
+    var approve: (@MainActor (HermesClient, String, GroupPendingApproval, String) async throws -> Void)?
     var disband: (@MainActor (HermesClient, String) async throws -> Void)?
 
     static let live = GroupChatLifecycleOperations()
@@ -6729,6 +6730,25 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
 
+    /// Where the user's answer to each of the open room's pending approvals
+    /// stands, keyed by `GroupPendingApproval.id`. A sent answer keeps its
+    /// card hidden even if a poll that started before it lands still lists
+    /// the approval.
+    enum RoomApprovalAnswer: Equatable {
+        case submitting
+        case sent
+        case failed(String)
+    }
+    @Published private(set) var roomApprovalAnswers: [String: RoomApprovalAnswer] = [:]
+
+    /// The open room's approvals still waiting on the user.
+    var activeRoomPendingApprovals: [GroupPendingApproval] {
+        guard groupCapabilities?.supports("groups.approve") == true else { return [] }
+        return (activeRoomDriverStatus?.pendingApprovals ?? []).filter {
+            roomApprovalAnswers[$0.id] != .sent
+        }
+    }
+
     /// The last `activeRoomResponder` answer, keyed on what it reads, so a
     /// render that asks several times replays the log once.
     private var roomResponderCache: (key: String, member: GroupMember?)?
@@ -6817,6 +6837,15 @@ final class AppState: ObservableObject {
     private func groupsStop(_ client: HermesClient, roomID: String) async throws -> Int {
         if let operation = groupChatOperations.stop { return try await operation(client, roomID) }
         return try await client.groupsStop(roomID: roomID)
+    }
+
+    private func groupsApprove(
+        _ client: HermesClient, roomID: String, approval: GroupPendingApproval, choice: String
+    ) async throws {
+        if let operation = groupChatOperations.approve {
+            return try await operation(client, roomID, approval, choice)
+        }
+        return try await client.groupsApprove(roomID: roomID, approval: approval, choice: choice)
     }
 
     private func groupsDisband(_ client: HermesClient, roomID: String) async throws {
@@ -6941,6 +6970,7 @@ final class AppState: ObservableObject {
         activeRoomSurface = nil
         activeRoomReplay = GroupRoomReplay(roomID: "")
         activeRoomDriverStatus = nil
+        roomApprovalAnswers = [:]
         activeRoomSendInFlight = false
         groupRoomOutbox.discard()
         pendingRoomMessage = nil
@@ -7036,6 +7066,7 @@ final class AppState: ObservableObject {
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = GroupRoomReplay(roomID: room.roomID)
         activeRoomDriverStatus = nil
+        roomApprovalAnswers = [:]
         // A send parked when this room was left comes back with its retry
         // key; the tail below settles it if it landed meanwhile.
         groupRoomOutbox = parkedRoomOutboxes.removeValue(
@@ -7348,6 +7379,38 @@ final class AppState: ObservableObject {
             // Surface without closing: stop is advisory to the driver.
             errorMessage = AppLocalization.string("Could not stop this group chat's work: \(UserFacingError.message(for: error))")
         }
+    }
+
+    /// Answer one member's pending approval in the open room
+    /// (`groups.approve`). The room's driver resumes the member's turn on
+    /// its own; the poll that follows picks up the new status.
+    func respondToRoomApproval(_ approval: GroupPendingApproval, choice: String) async {
+        guard let surface = activeRoomSurface, let client, isConnected,
+              groupCapabilities?.supports("groups.approve") == true,
+              approval.allows(choice),
+              roomApprovalAnswers[approval.id] != .submitting,
+              roomApprovalAnswers[approval.id] != .sent else { return }
+        let epoch = groupRoomEpoch
+        roomApprovalAnswers[approval.id] = .submitting
+        do {
+            try await groupsApprove(client, roomID: surface.room.roomID, approval: approval, choice: choice)
+            guard groupRoomEpoch == epoch else { return }
+            roomApprovalAnswers[approval.id] = .sent
+        } catch is CancellationError {
+            guard groupRoomEpoch == epoch else { return }
+            roomApprovalAnswers.removeValue(forKey: approval.id)
+            return
+        } catch {
+            guard groupRoomEpoch == epoch else { return }
+            // A request the gateway no longer holds (answered elsewhere,
+            // timed out, the turn stopped) drops off with the next status.
+            roomApprovalAnswers[approval.id] = .failed(UserFacingError.message(for: error))
+        }
+        await pollActiveRoomOnce(epoch: epoch)
+        guard groupRoomEpoch == epoch else { return }
+        // Forget answers whose approval the gateway no longer lists.
+        let listed = Set((activeRoomDriverStatus?.pendingApprovals ?? []).map(\.id))
+        roomApprovalAnswers = roomApprovalAnswers.filter { listed.contains($0.key) }
     }
 
     /// Permanently disband the open room (destructive; the view confirms).

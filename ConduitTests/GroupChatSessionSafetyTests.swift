@@ -540,6 +540,162 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    // MARK: - Approvals
+
+    private func approvalStatus(requestID: String?) -> GroupDriverStatus {
+        var actions: [[String: AnyCodable]] = []
+        if let requestID {
+            actions.append([
+                "kind": AnyCodable.from("approval"),
+                "task_id": AnyCodable.from("t1"),
+                "execution_generation": AnyCodable.from(3),
+                "member_id": AnyCodable.from("researcher"),
+                "request_id": AnyCodable.from(requestID),
+                "approval": AnyCodable.from(["command": "rm -rf build", "description": "recursive delete"]),
+            ])
+        }
+        return GroupDriverStatus(running: true, working: true, blocked: false, counts: [:], pendingActions: actions)
+    }
+
+    private func approvingCapabilities() -> GroupCapabilities {
+        let base = capabilities(supported: true)
+        return GroupCapabilities(
+            protocolVersion: base.protocolVersion,
+            driverReady: base.driverReady,
+            authorityGatewayID: base.authorityGatewayID,
+            features: base.features,
+            methods: base.methods.union(["groups.approve"]),
+            maxLogLimit: base.maxLogLimit
+        )
+    }
+
+    func testRoomApprovalIsShownAndAnsweredWithItsExactIdentity() async {
+        final class Box {
+            var pending = true
+            var calls: [(String, GroupPendingApproval, String)] = []
+        }
+        let box = Box()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.approvingCapabilities() },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, self.approvalStatus(requestID: box.pending ? "req-1" : nil)) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            approve: { _, roomID, approval, choice in
+                box.calls.append((roomID, approval, choice))
+                box.pending = false
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+
+        XCTAssertEqual(appState.activeRoomPendingApprovals.count, 1)
+        guard let approval = appState.activeRoomPendingApprovals.first else {
+            return XCTFail("expected a pending approval")
+        }
+        XCTAssertEqual(approval.command, "rm -rf build")
+
+        // A choice rooms don't offer is never sent.
+        await appState.respondToRoomApproval(approval, choice: "session")
+        XCTAssertTrue(box.calls.isEmpty)
+
+        await appState.respondToRoomApproval(approval, choice: "once")
+        XCTAssertEqual(box.calls.count, 1)
+        XCTAssertEqual(box.calls.first?.0, "room-1")
+        XCTAssertEqual(box.calls.first?.1.taskID, "t1")
+        XCTAssertEqual(box.calls.first?.1.executionGeneration, 3)
+        XCTAssertEqual(box.calls.first?.1.requestID, "req-1")
+        XCTAssertEqual(box.calls.first?.2, "once")
+        XCTAssertTrue(appState.activeRoomPendingApprovals.isEmpty)
+        XCTAssertTrue(appState.roomApprovalAnswers.isEmpty)
+
+        appState.closeGroupRoom()
+    }
+
+    func testSentRoomApprovalStaysHiddenWhileAStaleStatusStillListsIt() async {
+        final class Box { var approved = 0 }
+        let box = Box()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.approvingCapabilities() },
+            list: { _ in ([room], nil) },
+            // The gateway keeps listing it (a status read before the answer).
+            state: { _, _ in (room, self.approvalStatus(requestID: "req-1")) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            approve: { _, _, _, _ in box.approved += 1 }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        let approval = appState.activeRoomPendingApprovals.first!
+
+        await appState.respondToRoomApproval(approval, choice: "deny")
+        XCTAssertEqual(box.approved, 1)
+        XCTAssertTrue(appState.activeRoomPendingApprovals.isEmpty)
+        // A second tap on the same request never goes out.
+        await appState.respondToRoomApproval(approval, choice: "deny")
+        XCTAssertEqual(box.approved, 1)
+
+        appState.closeGroupRoom()
+    }
+
+    func testFailedRoomApprovalKeepsTheCardWithItsError() async {
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.approvingCapabilities() },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, self.approvalStatus(requestID: "req-1")) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            approve: { _, _, _, _ in throw TestError() }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        let approval = appState.activeRoomPendingApprovals.first!
+
+        await appState.respondToRoomApproval(approval, choice: "once")
+        XCTAssertEqual(appState.activeRoomPendingApprovals.count, 1)
+        guard case .failed = appState.roomApprovalAnswers[approval.id] else {
+            return XCTFail("expected a failed answer, got \(String(describing: appState.roomApprovalAnswers[approval.id]))")
+        }
+
+        appState.closeGroupRoom()
+        XCTAssertTrue(appState.roomApprovalAnswers.isEmpty)
+    }
+
+    func testGatewayWithoutGroupsApproveShowsNoApprovalCards() async {
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, self.approvalStatus(requestID: "req-1")) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomDriverStatus?.pendingApprovals.count, 1)
+        XCTAssertTrue(appState.activeRoomPendingApprovals.isEmpty)
+        appState.closeGroupRoom()
+    }
+
     /// A DIFFERENT text typed after an ambiguous failure must NEVER be
     /// silently converted into a resend of the old pending text (the
     /// data-loss path): it is refused, the pending row stays visible, and
