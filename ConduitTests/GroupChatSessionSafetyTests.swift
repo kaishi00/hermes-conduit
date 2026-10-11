@@ -587,6 +587,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             approve: { _, roomID, approval, choice in
                 box.calls.append((roomID, approval, choice))
                 box.pending = false
+                return true
             }
         )
         let appState = makeAppState(operations: operations)
@@ -612,7 +613,8 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertEqual(box.calls.first?.1.requestID, "req-1")
         XCTAssertEqual(box.calls.first?.2, "once")
         XCTAssertTrue(appState.activeRoomPendingApprovals.isEmpty)
-        XCTAssertTrue(appState.roomApprovalAnswers.isEmpty)
+        // The sent answer outlives the poll, so a stale status can't revive it.
+        XCTAssertEqual(appState.roomApprovalAnswers[approval.id], .sent)
 
         appState.closeGroupRoom()
     }
@@ -630,13 +632,18 @@ final class GroupChatSessionSafetyTests: XCTestCase {
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                              authorityGatewayID: "gw-a", authorityEpoch: 1)
             },
-            approve: { _, _, _, _ in box.approved += 1 }
+            approve: { _, _, _, _ in
+                box.approved += 1
+                return true
+            }
         )
         let appState = makeAppState(operations: operations)
         connect(appState)
         await appState.refreshGroupChatSupport()
         await appState.openGroupRoom(room)
-        let approval = appState.activeRoomPendingApprovals.first!
+        guard let approval = appState.activeRoomPendingApprovals.first else {
+            return XCTFail("expected a pending approval")
+        }
 
         await appState.respondToRoomApproval(approval, choice: "deny")
         XCTAssertEqual(box.approved, 1)
@@ -664,7 +671,9 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         connect(appState)
         await appState.refreshGroupChatSupport()
         await appState.openGroupRoom(room)
-        let approval = appState.activeRoomPendingApprovals.first!
+        guard let approval = appState.activeRoomPendingApprovals.first else {
+            return XCTFail("expected a pending approval")
+        }
 
         await appState.respondToRoomApproval(approval, choice: "once")
         XCTAssertEqual(appState.activeRoomPendingApprovals.count, 1)
@@ -674,6 +683,34 @@ final class GroupChatSessionSafetyTests: XCTestCase {
 
         appState.closeGroupRoom()
         XCTAssertTrue(appState.roomApprovalAnswers.isEmpty)
+    }
+
+    func testRoomApprovalThatResolvedNothingReadsAsNoLongerActive() async {
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.approvingCapabilities() },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, self.approvalStatus(requestID: "req-1")) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            approve: { _, _, _, _ in false }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        guard let approval = appState.activeRoomPendingApprovals.first else {
+            return XCTFail("expected a pending approval")
+        }
+
+        await appState.respondToRoomApproval(approval, choice: "once")
+        XCTAssertEqual(
+            appState.roomApprovalAnswers[approval.id],
+            .failed(AppLocalization.string("This approval is no longer active."))
+        )
+        appState.closeGroupRoom()
     }
 
     func testGatewayWithoutGroupsApproveShowsNoApprovalCards() async {

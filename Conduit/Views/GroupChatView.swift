@@ -304,8 +304,7 @@ struct GroupChatView: View {
     private var pendingApprovals: some View {
         let approvals = appState.activeRoomPendingApprovals
         if !approvals.isEmpty {
-            // One card per waiting member, so a room shows at most a few.
-            VStack(spacing: 8) {
+            let cards = VStack(spacing: 8) {
                 ForEach(approvals) { approval in
                     GroupApprovalCard(
                         approval: approval,
@@ -318,18 +317,24 @@ struct GroupChatView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            if approvals.count == 1 {
+                cards
+            } else {
+                // Several members waiting at once scroll in a bounded strip,
+                // so the transcript and composer keep their room.
+                ScrollView { cards }
+                    .frame(maxHeight: 300)
+            }
         }
     }
 
-    /// Matched on member id or profile, like `GroupActor.displayLabel`: the
-    /// driver names a member by whichever its task carries.
+    /// The driver names a member by whichever id its task carries.
     private func memberName(for memberID: String) -> String {
-        let key = memberID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let member = members.first {
-            $0.memberID?.caseInsensitiveCompare(key) == .orderedSame
-                || $0.profile?.caseInsensitiveCompare(key) == .orderedSame
+        if let member = GroupRoomTurns.member(withID: memberID, in: members) {
+            return GroupRoomTurns.displayName(of: member)
         }
-        return member.map(GroupRoomTurns.displayName(of:)) ?? (key.isEmpty ? AppLocalization.string("A member") : key)
+        let key = memberID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return key.isEmpty ? AppLocalization.string("A member") : key
     }
 
     private var memberSummary: String {
@@ -371,6 +376,8 @@ struct GroupApprovalCard: View {
                 Image(systemName: "checkmark.shield")
                     .foregroundStyle(.orange)
                     .accessibilityHidden(true)
+                // One VoiceOver stop for who is asking and why, so the
+                // command and buttons that follow keep their context.
                 VStack(alignment: .leading, spacing: 2) {
                     Text(submitting
                         ? AppLocalization.string("SENDING DECISION")
@@ -386,9 +393,12 @@ struct GroupApprovalCard: View {
                             .textSelection(.enabled)
                     }
                 }
+                .accessibilityElement(children: .combine)
                 Spacer(minLength: 8)
                 if submitting {
-                    ProgressView().controlSize(.small)
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(Text(AppLocalization.string("SENDING DECISION")))
                 }
             }
             if !approval.command.isEmpty {
@@ -400,20 +410,18 @@ struct GroupApprovalCard: View {
                     .padding(10)
                     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            HStack(spacing: 8) {
-                Button {
-                    respond("once")
-                } label: {
-                    Label(AppLocalization.string("Run"), systemImage: "play.fill")
+            // Large text and longer translations stack the buttons rather
+            // than truncating them, like the chat approval card.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    runButton
+                    Spacer(minLength: 0)
+                    rejectButton
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(!approval.allows("once") || submitting)
-                Spacer(minLength: 0)
-                Button(AppLocalization.string("Reject"), role: .destructive) {
-                    respond("deny")
+                VStack(alignment: .leading, spacing: 8) {
+                    runButton
+                    rejectButton
                 }
-                .buttonStyle(.bordered)
-                .disabled(!approval.allows("deny") || submitting)
             }
             .font(.subheadline.weight(.medium))
             if let failure {
@@ -424,6 +432,24 @@ struct GroupApprovalCard: View {
         }
         .padding(14)
         .conduitGlassSurface(cornerRadius: 20, tint: Color.orange.opacity(0.08))
+    }
+
+    private var runButton: some View {
+        Button {
+            respond("once")
+        } label: {
+            Label(AppLocalization.string("Run"), systemImage: "play.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(!approval.allows("once") || submitting)
+    }
+
+    private var rejectButton: some View {
+        Button(AppLocalization.string("Reject"), role: .destructive) {
+            respond("deny")
+        }
+        .buttonStyle(.bordered)
+        .disabled(!approval.allows("deny") || submitting)
     }
 }
 

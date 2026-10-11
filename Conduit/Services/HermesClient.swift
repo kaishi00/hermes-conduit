@@ -2560,8 +2560,13 @@ final class HermesClient: ObservableObject {
     /// comes from the `pending_actions` row: the gateway resolves only the
     /// exact request it is still holding and refuses a stale one. Only
     /// offered when `groupsCapabilities` advertised the method.
-    func groupsApprove(roomID: String, approval: GroupPendingApproval, choice: String) async throws {
-        _ = try await rpc(
+    ///
+    /// Returns false when the gateway answered but resolved nothing: a local
+    /// member's `result` is its `approval.respond` answer, whose `resolved`
+    /// count is 0 once the request settled elsewhere. A peer member's receipt
+    /// carries no count and counts as delivered.
+    func groupsApprove(roomID: String, approval: GroupPendingApproval, choice: String) async throws -> Bool {
+        let result = try await rpc(
             "groups.approve",
             params: [
                 "room_id": roomID,
@@ -2573,6 +2578,9 @@ final class HermesClient: ObservableObject {
             ],
             scoped: false
         )
+        guard let receipt = result.objectValue?["result"]?.objectValue,
+              let resolved = receipt["resolved"] else { return true }
+        return (Self.exactIntValue(resolved) ?? 1) > 0
     }
 
     // delegateAgentActivity moved to StreamEventParser

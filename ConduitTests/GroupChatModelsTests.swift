@@ -397,6 +397,17 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(approval?.command, "")
     }
 
+    func testPendingApprovalFallsBackToTheApprovalsOwnRequestID() {
+        let approval = GroupPendingApproval(action: [
+            "kind": AnyCodable.from("approval"),
+            "task_id": AnyCodable.from("t1"),
+            "execution_generation": AnyCodable.from(1),
+            "member_id": AnyCodable.from("researcher"),
+            "approval": AnyCodable.from(["request_id": "req-9", "command": "ls"]),
+        ])
+        XCTAssertEqual(approval?.requestID, "req-9")
+    }
+
     // MARK: - Replay
 
     func testReplayInitialHistoryAndCursor() {

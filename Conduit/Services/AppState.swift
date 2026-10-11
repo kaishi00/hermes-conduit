@@ -258,7 +258,7 @@ struct GroupChatLifecycleOperations {
     var send: (@MainActor (HermesClient, String, String, String, String) async throws -> GroupSendResult)?
     var create: (@MainActor (HermesClient, String, String, [[String: Any]]) async throws -> GroupRoom)?
     var stop: (@MainActor (HermesClient, String) async throws -> Int)?
-    var approve: (@MainActor (HermesClient, String, GroupPendingApproval, String) async throws -> Void)?
+    var approve: (@MainActor (HermesClient, String, GroupPendingApproval, String) async throws -> Bool)?
     var disband: (@MainActor (HermesClient, String) async throws -> Void)?
 
     static let live = GroupChatLifecycleOperations()
@@ -6731,9 +6731,10 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
 
     /// Where the user's answer to each of the open room's pending approvals
-    /// stands, keyed by `GroupPendingApproval.id`. A sent answer keeps its
-    /// card hidden even if a poll that started before it lands still lists
-    /// the approval.
+    /// stands, keyed by `GroupPendingApproval.id`. A sent answer stays for
+    /// as long as the room is open, so a poll that started before it and
+    /// lands later still listing the approval can't bring its card back.
+    /// Ids are request-unique, so this grows by one per answer at most.
     enum RoomApprovalAnswer: Equatable {
         case submitting
         case sent
@@ -6841,7 +6842,7 @@ final class AppState: ObservableObject {
 
     private func groupsApprove(
         _ client: HermesClient, roomID: String, approval: GroupPendingApproval, choice: String
-    ) async throws {
+    ) async throws -> Bool {
         if let operation = groupChatOperations.approve {
             return try await operation(client, roomID, approval, choice)
         }
@@ -7184,6 +7185,7 @@ final class AppState: ObservableObject {
                     return
                 }
                 activeRoomDriverStatus = driver
+                sweepRoomApprovalAnswers()
             }
         } catch is CancellationError {
             return
@@ -7393,9 +7395,12 @@ final class AppState: ObservableObject {
         let epoch = groupRoomEpoch
         roomApprovalAnswers[approval.id] = .submitting
         do {
-            try await groupsApprove(client, roomID: surface.room.roomID, approval: approval, choice: choice)
+            let resolved = try await groupsApprove(
+                client, roomID: surface.room.roomID, approval: approval, choice: choice)
             guard groupRoomEpoch == epoch else { return }
-            roomApprovalAnswers[approval.id] = .sent
+            roomApprovalAnswers[approval.id] = resolved
+                ? .sent
+                : .failed(AppLocalization.string("This approval is no longer active."))
         } catch is CancellationError {
             guard groupRoomEpoch == epoch else { return }
             roomApprovalAnswers.removeValue(forKey: approval.id)
@@ -7407,10 +7412,18 @@ final class AppState: ObservableObject {
             roomApprovalAnswers[approval.id] = .failed(UserFacingError.message(for: error))
         }
         await pollActiveRoomOnce(epoch: epoch)
-        guard groupRoomEpoch == epoch else { return }
-        // Forget answers whose approval the gateway no longer lists.
+    }
+
+    /// Forget failures whose approval the gateway no longer lists. Sent
+    /// answers stay (see `roomApprovalAnswers`), and so does an answer
+    /// still in flight.
+    private func sweepRoomApprovalAnswers() {
         let listed = Set((activeRoomDriverStatus?.pendingApprovals ?? []).map(\.id))
-        roomApprovalAnswers = roomApprovalAnswers.filter { listed.contains($0.key) }
+        let kept = roomApprovalAnswers.filter { entry in
+            if case .failed = entry.value { return listed.contains(entry.key) }
+            return true
+        }
+        if kept != roomApprovalAnswers { roomApprovalAnswers = kept }
     }
 
     /// Permanently disband the open room (destructive; the view confirms).
