@@ -1033,8 +1033,8 @@ final class GeminiLiveToolBridge {
             return [
                 "chats": VoiceChatFinder.summary(matches),
                 "message": matches.count == 1
-                    ? "One chat matches. If it fits what the user asked for, call open_chat with number 1."
-                    : "If one clearly fits what the user asked for, call open_chat with its number. Otherwise say the titles of the likeliest two or three, with when, and ask which one.",
+                    ? "One chat matches. If it fits what the user asked for, call open_chat with number 1, or read_chat with number 1 to talk about it."
+                    : "If one clearly fits what the user asked for, call open_chat with its number, or read_chat with its number to talk about it. Otherwise say the titles of the likeliest two or three, with when, and ask which one.",
             ]
         case .noMatches:
             return ["chats": "", "message": "No chats match that. Tell the user, and offer to try other words."]

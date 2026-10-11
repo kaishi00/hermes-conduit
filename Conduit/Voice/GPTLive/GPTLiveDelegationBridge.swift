@@ -1196,8 +1196,8 @@ final class GPTLiveDelegationBridge {
         switch outcome {
         case .found(let matches):
             let next = matches.count == 1
-                ? "One chat matches. If it fits what the user asked for, delegate \"Open chat: 1\"."
-                : "If one clearly fits what the user asked for, delegate \"Open chat:\" with its number, like \"Open chat: 2\". Otherwise say the titles of the likeliest two or three, with when, and ask which one; don't read the lines out."
+                ? "One chat matches. If it fits what the user asked for, delegate \"Open chat: 1\", or \"Read chat: 1\" to talk about it."
+                : "If one clearly fits what the user asked for, delegate \"Open chat:\" with its number, like \"Open chat: 2\", or \"Read chat:\" with its number to talk about it. Otherwise say the titles of the likeliest two or three, with when, and ask which one; don't read the lines out."
             return "[Chats that match:\n\(VoiceChatFinder.summary(matches))\n\(next)]"
         case .noMatches:
             return "[No chats match that. Tell the user, and offer to try other words.]"
