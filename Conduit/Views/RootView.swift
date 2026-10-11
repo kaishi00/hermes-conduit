@@ -74,6 +74,8 @@ struct MainView: View {
     @State private var availableWindowWidth: CGFloat = 0
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
+    /// The page Settings opens at next, for an in-app settings link.
+    @State private var settingsOpensAt: ConduitAppLink.SettingsLink?
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
 
@@ -229,6 +231,29 @@ struct MainView: View {
         }
         .onChange(of: appState.preferredReturnSurfaceRequest) { _, _ in
             presentPreferredReturnSurfaceIfNeeded()
+        }
+        .onChange(of: appState.settingsLinkRequest) { _, page in
+            guard let page else { return }
+            appState.settingsLinkRequest = nil
+            openSettings(at: page)
+        }
+    }
+
+    /// An in-app settings link (`conduit://settings/calls`, in a reply):
+    /// Settings opens at that page. Settings already open stays as it is,
+    /// and so does a voice or other sheet: closing a voice sheet ends its
+    /// call, and only one sheet shows at a time.
+    private func openSettings(at page: ConduitAppLink.SettingsLink) {
+        guard settingsPresentation == nil else { return }
+        let otherSheetUp = appState.showModelPicker || appState.showContextSheet || appState.showWorkspaceSheet
+            || appState.showGatewaySheet || appState.showAgentsSheet || appState.showVoiceSheet
+            || appState.showGeminiLiveSheet || appState.showGrokLiveSheet || appState.showGPTLiveSheet
+        guard !otherSheetUp else { return }
+        settingsOpensAt = page
+        if appState.showSidebar, !isPersistentSidebarActive {
+            presentSettingsFromDrawer()
+        } else {
+            presentSettings()
         }
     }
 
@@ -386,15 +411,21 @@ struct MainView: View {
     /// Persistent mode keeps the sidebar visible, so Settings opens directly
     /// instead of waiting for the drawer sheet to dismiss first.
     private func presentSettingsFromPersistentSidebar() {
-        appState.isSettingsSheetPresented = true
-        settingsPresentation = appState.makeSettingsSnapshot()
+        presentSettings()
     }
 
     private func presentSettingsAfterSidebarDismissal() {
         guard shouldPresentSettingsAfterSidebarDismissal else { return }
         shouldPresentSettingsAfterSidebarDismissal = false
+        presentSettings()
+    }
+
+    private func presentSettings() {
         appState.isSettingsSheetPresented = true
-        settingsPresentation = appState.makeSettingsSnapshot()
+        var snapshot = appState.makeSettingsSnapshot()
+        snapshot.opensAt = settingsOpensAt
+        settingsOpensAt = nil
+        settingsPresentation = snapshot
     }
 
     /// Presents the sessions drawer for a preferred-return-surface request.

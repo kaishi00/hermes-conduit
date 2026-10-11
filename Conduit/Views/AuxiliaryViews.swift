@@ -115,6 +115,8 @@ struct SettingsSnapshot: Identifiable {
     let chatReturnSurface: ChatReturnSurface
     let displayPreferences: ProfileDisplayPreferences
     let cloudflareAccess: CloudflareAccessCredentials?
+    /// The page Settings opens at, for a link (`conduit://settings/calls`).
+    var opensAt: ConduitAppLink.SettingsLink?
 }
 
 private struct LegacySettingsView: View {
@@ -433,7 +435,13 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, workspace, memory, capabilities, gateway, savedDashboards, appearance, notifications, screenQuestion, about
+    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, savedDashboards, appearance, notifications, screenQuestion, about
+
+    init(_ link: ConduitAppLink.SettingsLink) {
+        switch link {
+        case .calls: self = .hermesCalls
+        }
+    }
 }
 
 enum ProfileSettingControl {
@@ -471,6 +479,7 @@ struct SettingsView: View {
     let disconnect: () -> Void
 
     @State private var path: [SettingsDestination] = []
+    @State private var openedAtLink = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -485,6 +494,15 @@ struct SettingsView: View {
                 }
         }
         .preferredColorScheme(appState.themePreference.colorScheme)
+        .onAppear {
+            // A link's page is already open as the sheet comes up; Back
+            // leads to the Settings home.
+            guard !openedAtLink, let page = snapshot.opensAt else { return }
+            openedAtLink = true
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { path = [SettingsDestination(page)] }
+        }
     }
 
     private func wakeSettings(profile: String) -> WakePhraseSettingsModel? {
@@ -668,21 +686,7 @@ struct SettingsView: View {
                         isSaving: appState.isSavingQueuedVoiceCalls,
                         isWaitingOnCall: appState.isLiveVoiceCallActive,
                         saveNow: { await appState.saveQueuedVoiceCallsNow() }
-                    ),
-                    hermesCalls: appState.supportsHermesCalls
-                        ? HermesCallSettingsModel(
-                            profile: appState.activeProfile,
-                            status: appState.activeHermesCallsStatus,
-                            load: {
-                                await appState.refreshHermesCallsStatus()
-                                return appState.activeHermesCallsStatus != nil
-                            },
-                            current: { appState.activeHermesCallsStatus?.settings },
-                            save: { [profile = appState.activeProfile, dashboardID = appState.activeDashboardID] settings in
-                                await appState.saveHermesCallSettings(settings, profile: profile, dashboardID: dashboardID)
-                            }
-                        )
-                        : nil
+                    )
                 )
             } else {
                 SettingsDetailContainer {
@@ -719,6 +723,27 @@ struct SettingsView: View {
             AppearanceSettingsDetail(theme: appState.themePreference, saveTheme: saveTheme)
         case .notifications:
             NotificationsSettingsDetail()
+        case .hermesCalls:
+            HermesCallsSettingsPage(
+                model: HermesCallSettingsModel(
+                    profile: appState.activeProfile,
+                    status: appState.activeHermesCallsStatus,
+                    load: {
+                        await appState.refreshHermesCallsStatus()
+                        return appState.activeHermesCallsStatus != nil
+                    },
+                    current: { appState.activeHermesCallsStatus?.settings },
+                    save: { [profile = appState.activeProfile, dashboardID = appState.activeDashboardID] settings in
+                        await appState.saveHermesCallSettings(settings, profile: profile, dashboardID: dashboardID)
+                    }
+                ),
+                hearsMissedCalls: appState.supportsHermesCallOutcomes,
+                startTestCall: {
+                    dismiss()
+                    Task { await appState.startHermesTestCall() }
+                }
+            )
+                .navigationTitle("Calls from Hermes")
         case .screenQuestion:
             SettingsDetailContainer {
                 ScreenQuestionSettingsSection()
@@ -793,6 +818,9 @@ private struct SettingsHome: View {
                         settingsLink(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"))
                         settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
                         settingsLink(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"))
+                        if appState.supportsHermesCalls {
+                            settingsLink(.hermesCalls, icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls")
+                        }
                         settingsLink(.workspace, icon: "folder", title: AppLocalization.string("Workspace & safety"), detail: AppLocalization.string("Working directory, approvals, and privacy"))
                         settingsLink(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
                         settingsLink(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, toolsets, and categories"))

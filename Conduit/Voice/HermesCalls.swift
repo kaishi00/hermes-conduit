@@ -462,9 +462,9 @@ extension VoiceCallbackAvailability {
     var refusal: String {
         switch self {
         case .available, .callsOff:
-            return "Hermes can't call the user: calls are off for this Hermes profile. They can turn on Hermes can call me in Conduit's Voice settings."
+            return "Hermes can't call the user: calls are off for this Hermes profile. They can turn on Hermes can call me in Conduit's Settings, under Calls from Hermes."
         case .whenAskedOff:
-            return "Hermes can't call the user: Call when I ask is off in Conduit's Voice settings."
+            return "Hermes can't call the user: Call when I ask is off in Conduit's Settings, under Calls from Hermes."
         case .notPaired:
             return "Hermes can't call the user: this Hermes profile isn't set up for Conduit notifications. They can turn them on in Conduit's Settings, under Notifications."
         case .unsupported:
@@ -548,6 +548,9 @@ struct HermesCallSettings: Equatable {
     var minGapSeconds = 120
     var perHour = 6
     var perDay = 20
+    /// The user's own words on what's worth a call Hermes decides to make
+    /// (plugin 0.16+); nil when the host doesn't have the setting.
+    var rules: String?
 
     init() {}
 
@@ -565,6 +568,7 @@ struct HermesCallSettings: Equatable {
         self.minGapSeconds = minGap
         self.perHour = perHour
         self.perDay = perDay
+        self.rules = json["rules"] as? String
     }
 
     /// Only the settings the host has: an older plugin refuses unknown ones.
@@ -572,6 +576,7 @@ struct HermesCallSettings: Equatable {
         var payload: [String: Any] = ["enabled": enabled, "when_asked": whenAsked, "min_gap_s": minGapSeconds, "per_hour": perHour, "per_day": perDay]
         if let decides { payload["decides"] = decides }
         if let alerts { payload["alerts"] = alerts }
+        if let rules { payload["rules"] = rules }
         return payload
     }
 }
@@ -582,11 +587,14 @@ struct HermesCallsStatus: Equatable {
     var minGapBounds: ClosedRange<Int>
     var perHourBounds: ClosedRange<Int>
     var perDayBounds: ClosedRange<Int>
+    /// The longest "what's worth a call" note the host keeps.
+    var rulesMax = HermesCallsStatus.defaultRulesMax
     var watches: Int
 
     static let defaultMinGapBounds = 30...3_600
     static let defaultPerHourBounds = 1...30
     static let defaultPerDayBounds = 1...60
+    static let defaultRulesMax = 500
 
     var callbackAvailability: VoiceCallbackAvailability {
         if !paired { return .notPaired }
@@ -610,6 +618,7 @@ struct HermesCallsStatus: Equatable {
             minGapBounds: range("min_gap_s", defaultMinGapBounds),
             perHourBounds: range("per_hour", defaultPerHourBounds),
             perDayBounds: range("per_day", defaultPerDayBounds),
+            rulesMax: (response["rules_max"] as? Int).flatMap { $0 > 0 ? $0 : nil } ?? defaultRulesMax,
             watches: response["watches"] as? Int ?? 0
         )
     }

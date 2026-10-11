@@ -1330,6 +1330,9 @@ final class AppState: ObservableObject {
     /// Mirrors MainView's Settings sheet item so return-surface decisions can
     /// tell whether Settings owns the surface across a background/foreground cycle.
     @Published var isSettingsSheetPresented = false
+    /// A Settings page a link asked for (`conduit://settings/calls`):
+    /// MainView opens Settings there and clears it.
+    @Published var settingsLinkRequest: ConduitAppLink.SettingsLink?
     @Published var errorMessage: String?
     /// A reasoning write is in flight, from the composer chip or the Model
     /// sheet; both wait for it so picks land in order.
@@ -4580,6 +4583,8 @@ final class AppState: ObservableObject {
             openLinkedSession(id, unavailable: AppLocalization.string("That chat is no longer available."))
         case .bot(let profile):
             openLinkedBotChat(profile)
+        case .settings(let page):
+            settingsLinkRequest = page
         }
     }
 
