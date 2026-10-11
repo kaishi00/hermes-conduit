@@ -24996,6 +24996,8 @@ final class AppState: ObservableObject {
                 answerLength: style.answerLength,
                 onWatch: true,
                 // GPT-Live on the Watch finds chats only through the grant.
+                // mightSupport is true before capabilities are reported; safe,
+                // since a plugin serving grants already reports them.
                 watchChats: notifierPlugin.mightSupport(WatchToolAnswer.chatCapability)
             ) + (hermesCall?.instructionBlock(delegation: true, canAnswer: false) ?? "") + style.instructions,
             // A call Hermes made opens with its brief instead (#449).

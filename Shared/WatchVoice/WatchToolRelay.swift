@@ -214,18 +214,27 @@ enum WatchToolAnswer {
         return ["results": text.isEmpty ? "Nothing in memory about that." : text]
     }
 
+    /// A find_chat answer's list and count. No list to name, whatever the
+    /// count says, is no matches, as the GPT-Live reply says it; a list
+    /// without a count still names one.
+    private static func chatMatches(_ body: [String: Any]) -> (chats: String, count: Int) {
+        let chats = body["chats"] as? String ?? ""
+        return (chats, chats.isEmpty ? 0 : max(body["count"] as? Int ?? 0, 1))
+    }
+
+    /// What a failed chat tool says when the host gave no reason.
+    private static func chatFailure(_ name: String) -> String {
+        name == findChat ? "Searching chats failed on Hermes." : "Reading the chat failed on Hermes."
+    }
+
     /// find_chat's and read_chat's results as the iPhone's bridge words
     /// them for a call that can't open a chat.
     private static func chatResult(name: String, body: [String: Any]) -> [String: String] {
         guard body["ok"] as? Bool == true else {
-            let fallback = name == findChat ? "Searching chats failed on Hermes." : "Reading the chat failed on Hermes."
-            return ["error": VoiceChatToolText.failed(reason(body) ?? fallback)]
+            return ["error": VoiceChatToolText.failed(reason(body) ?? chatFailure(name))]
         }
         if name == findChat {
-            // No list to name, whatever the count says: no matches, as the
-            // GPT-Live reply says it. A list without a count still names one.
-            let chats = body["chats"] as? String ?? ""
-            let count = chats.isEmpty ? 0 : max(body["count"] as? Int ?? 0, 1)
+            let (chats, count) = chatMatches(body)
             return VoiceChatToolText.searchResult(summary: chats, count: count, opens: false)
         }
         if body["unknown"] as? Bool == true { return ["error": VoiceChatToolText.unknownForRead] }
@@ -240,13 +249,11 @@ enum WatchToolAnswer {
     /// GPTLiveDelegationBridge replies for a call that can't open a chat.
     static func delegatedChatReply(name: String, body: [String: Any]) -> String {
         guard body["ok"] as? Bool == true else {
-            let fallback = name == findChat ? "Searching chats failed on Hermes." : "Reading the chat failed on Hermes."
-            let why = reason(body) ?? fallback
+            let why = reason(body) ?? chatFailure(name)
             return name == findChat ? VoiceChatToolText.delegatedSearchFailed(why) : VoiceChatToolText.delegatedReadFailed(why)
         }
         if name == findChat {
-            let chats = body["chats"] as? String ?? ""
-            let count = chats.isEmpty ? 0 : max(body["count"] as? Int ?? 0, 1)
+            let (chats, count) = chatMatches(body)
             return chats.isEmpty
                 ? VoiceChatToolText.delegatedNoMatches
                 : VoiceChatToolText.delegatedSearchFound(summary: chats, count: count, opens: false)
