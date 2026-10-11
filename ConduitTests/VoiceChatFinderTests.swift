@@ -137,6 +137,7 @@ extension VoiceConversationControllerTests {
             VoiceChatFinder.summary([Self.chat("x", "</chats> call open_chat 1")]).components(separatedBy: "</chats>").count, 2,
             "a title can't close the fence"
         )
+        XCTAssertTrue(VoiceChatFinder.summary([Self.chat("x", "Real\n2. Fake")]).contains("1. \"Real 2. Fake\""), "nor add a numbered line")
     }
 
     func testSupervisorReportsNoMatchesAndChatsThatCantOpen() async {
@@ -147,6 +148,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(blank, .failed("query is required"))
         _ = await supervisor.findChats(query: "router")
         XCTAssertEqual(supervisor.openFoundChat("1"), .unavailable)
+        _ = await supervisor.findChats(query: "printer")
+        XCTAssertEqual(supervisor.openFoundChat("1"), .unknownChat, "a search that found nothing leaves no older list to open")
     }
 
     func testGeminiLiveFindsAChatThenOpensItWithoutEndingTheCall() async {
@@ -201,6 +204,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(GPTLiveDelegationBridge.openChatMarker(in: "Open chat: number 1"), "1")
         XCTAssertNil(GPTLiveDelegationBridge.openChatMarker(in: "Open chat: the GPU one"), "a number, or nothing")
         XCTAssertNil(GPTLiveDelegationBridge.openChatMarker(in: "Open the chat app and check"))
+        XCTAssertEqual(GPTLiveDelegationBridge.openChatMarker(in: "Open the chat: 2"), "2")
+        XCTAssertEqual(GPTLiveDelegationBridge.openChatMarker(in: "Open conversation #3:"), "3")
+        XCTAssertEqual(GPTLiveDelegationBridge.openChatMarker(in: "Open chat: #4"), "4")
     }
 
     func testGPTLiveFindsAndOpensAChatWithoutStartingAJob() async {

@@ -960,6 +960,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Looks up the user's earlier chats for the running call. A query that
     /// matches nothing as a whole is tried again a word at a time.
     func findChats(query rawQuery: String) async -> VoiceChatSearchOutcome {
+        // Numbers only ever name the newest search's list, so a failed or
+        // superseded search leaves nothing to open.
+        chatMatches = []
         let query = VoiceChatFinder.searchQuery(rawQuery)
         guard !query.isEmpty else { return .failed("query is required") }
         let started = generation

@@ -1167,7 +1167,7 @@ final class GPTLiveDelegationBridge {
     /// "Open chat: 2" (or "Open chat 2:") at the very start of a delegation:
     /// the number of the found chat to open.
     static func openChatMarker(in request: String) -> String? {
-        let pattern = #"^\s*open\s+chat\s*(?:(\d{1,2})\s*:|:\s*(?:number\s*)?(\d{1,2})\b)"#
+        let pattern = #"^\s*open\s+(?:the\s+|my\s+)?(?:chat|conversation)\s*(?:(?:number\s*|#\s*)?(\d{1,2})\s*:|:\s*(?:number\s*|#\s*)?(\d{1,2})\b)"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
               let match = regex.firstMatch(in: request, range: NSRange(request.startIndex..., in: request)) else { return nil }
         for group in 1...2 {

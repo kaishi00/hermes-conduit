@@ -1631,8 +1631,7 @@ final class AppState: ObservableObject {
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
                         waitsOn: self?.liveHermesCall?.kind,
-                        // The chat opens on the phone: a call CarPlay shows has no use for it.
-                        chats: self?.isCarPlayVoiceSurfaceActive != true
+                        chats: true
                     ),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
@@ -2192,8 +2191,7 @@ final class AppState: ObservableObject {
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
                         waitsOn: self?.liveHermesCall?.kind,
-                        // The chat opens on the phone: a call CarPlay shows has no use for it.
-                        chats: self?.isCarPlayVoiceSurfaceActive != true
+                        chats: true
                     ),
                     voice: self?.grokLiveVoice
                 )
@@ -4867,7 +4865,9 @@ final class AppState: ObservableObject {
     /// list first: a chat the search found can be older than any row here,
     /// and opening it refreshes the list once, as a job link does.
     func openChatFromLiveCall(_ sessionID: String) -> Bool {
-        guard isConnected, client != nil else { return false }
+        // A call CarPlay shows has nowhere to show the chat; the model says
+        // it couldn't open it, as show_on_screen refuses there.
+        guard isConnected, client != nil, !isCarPlayVoiceSurfaceActive else { return false }
         if showGeminiLiveSheet { showGeminiLiveSheet = false }
         if showGPTLiveSheet { showGPTLiveSheet = false }
         if showGrokLiveSheet { showGrokLiveSheet = false }

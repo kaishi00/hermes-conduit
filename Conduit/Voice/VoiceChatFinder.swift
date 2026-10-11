@@ -143,7 +143,9 @@ enum VoiceChatFinder {
     /// Not UI copy, so not localized.
     static func summary(_ matches: [VoiceChatMatch], now: Date = Date()) -> String {
         let lines = matches.enumerated().map { index, match in
-            let title = match.title.isEmpty ? "Untitled chat" : "\"\(match.title)\""
+            // One line each: a title can't add a numbered line of its own.
+            let oneLine = match.title.split(whereSeparator: \.isNewline).joined(separator: " ")
+            let title = oneLine.isEmpty ? "Untitled chat" : "\"\(oneLine)\""
             var line = "\(index + 1). \(title)"
             if let when = match.lastActive { line += ", last active \(spokenAge(of: when, now: now))" }
             if !match.snippet.isEmpty { line += ": \(match.snippet)" }
