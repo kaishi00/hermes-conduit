@@ -1366,7 +1366,8 @@ final class AppState: ObservableObject {
     @Published private(set) var composerPrefillToken = UUID()
     /// The draft the prefill is for, until ComposerBar puts it in. A new
     /// chat's draft load can land in the same update as the prefill, so
-    /// the composer waits until this draft is the one loaded.
+    /// the composer waits until this draft is the one loaded. Set only by
+    /// `prefillComposer`, with the text and then the token.
     private(set) var composerPrefillDraftKey: ComposerDraftKey?
     /// A quote waiting for the composer (#385). ComposerBar, which owns the
     /// draft, applies it and then consumes it.
@@ -6336,7 +6337,7 @@ final class AppState: ObservableObject {
         composerPrefillToken = UUID()
     }
 
-    /// The composer put the prefill in, or left the chat it was for.
+    /// The composer put the prefill in, or moved to a chat it wasn't for.
     func consumeComposerPrefill(_ token: UUID) {
         guard composerPrefillToken == token else { return }
         composerPrefillDraftKey = nil
