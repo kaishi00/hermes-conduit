@@ -583,13 +583,25 @@ final class AppState: ObservableObject {
 
     /// Hermes' @session:<id> links read as the chat's name, cron runs' too.
     private func updateSessionReferenceTitles() {
+        HermesSessionReference.updateTitles(Self.sessionReferenceTitles(cronSessions + sessions))
+    }
+
+    /// Titles by every id a chat answers to. A chat's own id wins over the
+    /// same id reached through a continuation's lineage root or alias.
+    nonisolated static func sessionReferenceTitles(_ sessions: [SessionSummary]) -> [String: String] {
         var titles: [String: String] = [:]
-        for session in cronSessions + sessions where !session.title.isEmpty {
-            for id in [session.id, session.storedSessionId, session.lineageRootId].compactMap({ $0 }) + session.alternateIds {
+        let named = sessions.filter { !$0.title.isEmpty }
+        for session in named {
+            for id in [session.lineageRootId].compactMap({ $0 }) + session.alternateIds {
                 titles[id] = session.title
             }
         }
-        HermesSessionReference.updateTitles(titles)
+        for session in named {
+            for id in [session.id, session.storedSessionId].compactMap({ $0 }) {
+                titles[id] = session.title
+            }
+        }
+        return titles
     }
     @Published private(set) var projects: [ProjectSummary] = []
     @Published private(set) var supportsProjects = false

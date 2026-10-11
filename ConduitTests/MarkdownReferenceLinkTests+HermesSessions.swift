@@ -81,4 +81,22 @@ extension MarkdownReferenceLinkTests {
         spoken += filter.finish()
         XCTAssertEqual(spoken, "We did it in GPU setup. Then the chat again @home")
     }
+
+    func testAChatsOwnIdNamesItBeforeAContinuationsLineage() {
+        func chat(_ id: String, _ title: String, root: String? = nil, aliases: [String] = []) -> SessionSummary {
+            SessionSummary(id: id, alternateIds: aliases, title: title, model: "Hermes", updatedLabel: "now",
+                           profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: root)
+        }
+        let original = chat("o1", "Original")
+        let continued = chat("c1", "Continued", root: "o1", aliases: ["c1-live"])
+        let cronRun = chat("cron1", "Nightly digest")
+        for order in [[original, continued, cronRun], [cronRun, continued, original]] {
+            let titles = AppState.sessionReferenceTitles(order)
+            XCTAssertEqual(titles["o1"], "Original", "the root's own id wins whatever the order")
+            XCTAssertEqual(titles["c1"], "Continued")
+            XCTAssertEqual(titles["c1-live"], "Continued")
+            XCTAssertEqual(titles["cron1"], "Nightly digest")
+        }
+        XCTAssertEqual(AppState.sessionReferenceTitles([continued])["o1"], "Continued", "an unlisted root reads as its continuation")
+    }
 }
