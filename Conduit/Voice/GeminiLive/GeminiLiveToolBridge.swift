@@ -39,6 +39,9 @@
 //  gets answer_approval or answer_question: the user's spoken answer goes
 //  to the pending card in the call's chat, only once they've spoken.
 //
+//  find_chat (phone calls) is NON_BLOCKING too; on Grok, which has none,
+//  the search holds the turn until it answers, like web_search there.
+//
 //  Grok Live has no NON_BLOCKING calls, so its bridge answers start_job
 //  as soon as the job is running (`holdsJobCalls` false); the outcome
 //  arrives later as a text update, like a withdrawn call's.

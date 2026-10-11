@@ -4856,14 +4856,16 @@ final class AppState: ObservableObject {
             let response = try await dashboardTicketBridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
             return VoiceChatFinder.matches(from: response)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
-            return VoiceChatFinder.titleMatches(in: sessions, query: query)
+            return VoiceChatFinder.titleMatches(in: activeProfileSessions, query: query)
         }
     }
 
     /// Opens a chat a call found. The call goes on minimised, as it does
     /// when its screen opens a job's chat. True once the open is on its way:
     /// like that card's Open chat, a chat that turns out to be gone says so
-    /// on screen rather than to the call.
+    /// on screen rather than to the call. Not checked against the loaded
+    /// list first: a chat the search found can be older than any row here,
+    /// and opening it refreshes the list once, as a job link does.
     func openChatFromLiveCall(_ sessionID: String) -> Bool {
         guard isConnected, client != nil else { return false }
         if showGeminiLiveSheet { showGeminiLiveSheet = false }

@@ -963,13 +963,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let query = VoiceChatFinder.searchQuery(rawQuery)
         guard !query.isEmpty else { return .failed("query is required") }
         let started = generation
+        let call = liveCallID
         chatSearchSequence &+= 1
         let sequence = chatSearchSequence
         var matches: [VoiceChatMatch]
         do {
             matches = try await backend.searchChats(query)
+            // A word that fails costs only its own matches.
             for word in matches.isEmpty ? VoiceChatFinder.fallbackWords(query) : [] {
-                for match in try await backend.searchChats(word) where !matches.contains(where: { $0.sessionID == match.sessionID }) {
+                for match in (try? await backend.searchChats(word)) ?? [] where !matches.contains(where: { $0.sessionID == match.sessionID }) {
                     matches.append(match)
                 }
             }
@@ -977,7 +979,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return .failed(error.localizedDescription)
         }
         // A server or profile change meanwhile: these chats aren't its.
-        guard generation == started, chatSearchSequence == sequence else { return .failed("The search was cut short; try again.") }
+        // A newer search, another call, or another server or profile meanwhile.
+        guard generation == started, chatSearchSequence == sequence, liveCallID == call else { return .failed("The search was cut short; try again.") }
         chatMatches = Array(matches.prefix(VoiceChatFinder.resultLimit))
         return chatMatches.isEmpty ? .noMatches : .found(chatMatches)
     }

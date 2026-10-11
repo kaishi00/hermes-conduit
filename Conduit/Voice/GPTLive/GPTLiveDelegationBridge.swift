@@ -1160,7 +1160,7 @@ final class GPTLiveDelegationBridge {
     /// "Find chat: GPU setup" at the very start of a delegation: the words
     /// to look the chat up by.
     static func findChatMarker(in request: String) -> String? {
-        guard let range = request.range(of: #"^\s*find\s+(?:a\s+|the\s+)?chat\s*:"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        guard let range = request.range(of: #"^\s*find\s+(?:a\s+|the\s+|my\s+)?chats?\s*:"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
         return String(request[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
