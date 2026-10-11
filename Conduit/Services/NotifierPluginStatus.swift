@@ -59,6 +59,12 @@ struct NotifierPluginStatus: Equatable {
         return true
     }
 
+    /// True only when the plugin reported this capability.
+    func reports(_ capability: String) -> Bool {
+        if case .reported(_, let capabilities) = state { return capabilities.contains(capability) }
+        return false
+    }
+
     static func state(from response: [String: Any]) -> State {
         guard response["ok"] as? Bool == true, let capabilities = response["capabilities"] as? [String] else {
             return .unknown

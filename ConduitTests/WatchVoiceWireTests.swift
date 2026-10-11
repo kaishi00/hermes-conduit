@@ -299,7 +299,7 @@ extension HermesVoiceGatewayTimeoutTests {
         }
 
         for name in ["web_search", "recall_memory"] {
-            XCTAssertNil(WatchToolAnswer.query(name: WatchToolAnswer.webSearch, arguments: ["query": "  "]))
+            XCTAssertNil(WatchToolAnswer.query(name: name, arguments: ["query": "  "]))
             let phone = await bridge.handle(.init(id: "e-\(name)", name: name, arguments: [:]))
             let watch = WatchToolAnswer.outgoing(id: "e-\(name)", name: name, result: WatchToolAnswer.missingQuery(name: name))
             XCTAssertEqual(phone.map { WatchDirectBroker.wire($0) }, [watch], name)
