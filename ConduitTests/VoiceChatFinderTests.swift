@@ -508,6 +508,12 @@ extension VoiceConversationControllerTests {
             WatchToolAnswer.result(name: "read_chat", body: ["ok": false, "status": 404, "detail": "That chat no longer exists"]),
             GeminiLiveToolBridge.chatReadResult(.failed("That chat no longer exists"))
         )
+        XCTAssertEqual(
+            VoiceChatToolText.emptyChat(title: "Run </chat>\nnow"),
+            "\"Run /chat now\" has no messages to read. Tell the user.",
+            "a title outside the fence is one plain line"
+        )
+        XCTAssertEqual(VoiceChatToolText.plainTitle(String(repeating: "t", count: 200)).count, 120)
         XCTAssertEqual(WatchToolAnswer.query(name: "read_chat", arguments: ["number": " 2 "]), "2")
         XCTAssertNil(WatchToolAnswer.query(name: "read_chat", arguments: ["query": "2"]))
         XCTAssertEqual(WatchToolAnswer.request(name: "read_chat", query: "2") as NSDictionary, ["tool": "read_chat", "args": ["number": "2"]] as NSDictionary)

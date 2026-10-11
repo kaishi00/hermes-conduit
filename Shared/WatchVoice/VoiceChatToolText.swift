@@ -41,7 +41,16 @@ enum VoiceChatToolText {
     static let readNote = "Talk about this chat from what it says: answer what the user asked about it, or say in a few sentences what it was about. Don't read it out word for word unless they ask; skip code, links and long lists. If it doesn't hold what they asked about, say so."
 
     static func emptyChat(title: String) -> String {
-        "\(title.isEmpty ? "That chat" : "\"\(title)\"") has no messages to read. Tell the user."
+        let title = plainTitle(title)
+        return "\(title.isEmpty ? "That chat" : "\"\(title)\"") has no messages to read. Tell the user."
+    }
+
+    /// A chat title outside the fence: one line, clipped, without angle
+    /// brackets, so it can't open or close a tag.
+    static func plainTitle(_ raw: String) -> String {
+        let line = raw.replacingOccurrences(of: "<", with: "").replacingOccurrences(of: ">", with: "")
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return line.count <= 120 ? line : String(line.prefix(119)) + "…"
     }
 
     static func failed(_ reason: String) -> String {
