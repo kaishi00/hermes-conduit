@@ -31,6 +31,7 @@ struct ChatView: View {
     /// scroll ticks never reach SwiftUI state; it publishes only when a value
     /// the body renders from (`renderInputs`) changes.
     @StateObject private var scrollEngine = ChatScrollEngine()
+    @State private var rowDisclosure = ChatRowDisclosure()
     /// Carries the engine's requests to AppState and ScrollViewProxy. Holds
     /// both weakly, so the engine never retains this view.
     @State private var scrollEventRouter = ChatScrollEventRouter()
@@ -329,6 +330,7 @@ struct ChatView: View {
                     .id(bottomAnchor)
             }
             .coordinateSpace(.named(ChatScrollEngine.coordinateSpaceName))
+            .environment(\.chatRowDisclosure, rowDisclosure)
             .background {
                 ChatScrollSurfaceLocator(engine: scrollEngine)
             }
@@ -584,6 +586,7 @@ struct ChatView: View {
         let router = scrollEventRouter
         router.appState = appState
         router.engine = scrollEngine
+        rowDisclosure.engine = scrollEngine
         router.proxy = proxy
         scrollEngine.onEvent = { [weak engine = scrollEngine, weak router] event in
             // Requests made while handling a UIKit callback can land in the
@@ -1650,6 +1653,7 @@ private struct ReviewSummaryCard: View {
     let activity: ReviewActivity
     let timestamp: String
     @EnvironmentObject private var appState: AppState
+    @Environment(\.chatRowDisclosure) private var disclosure
     @State private var expanded = false
 
     private var details: [String] { activity.details?.filter { !$0.isEmpty } ?? [] }
@@ -1658,6 +1662,7 @@ private struct ReviewSummaryCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
                 guard !details.isEmpty else { return }
+                disclosure?.willToggle(nil, to: !expanded)
                 withAnimation(ConduitMotion.response) { expanded.toggle() }
             } label: {
                 HStack(alignment: .center, spacing: 10) {
@@ -1871,7 +1876,14 @@ struct SettledThinkingCardContent: View, Equatable {
     let sizeCategory: ContentSizeCategory
     /// Explicit chat text-size input — see SettledAssistantMessageContent.
     let chatTextSize: ChatTextSize
-    @State private var expanded = false
+    @Environment(\.chatRowDisclosure) private var disclosure
+    /// Nil until tapped here: a rebuilt row (the live card settling, a lazy
+    /// row coming back) takes what the reader chose from `disclosure`.
+    @State private var expanded: Bool?
+
+    private var isExpanded: Bool {
+        expanded ?? disclosure?.isExpanded(message.id, default: false) ?? false
+    }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
@@ -1888,7 +1900,13 @@ struct SettledThinkingCardContent: View, Equatable {
                 displayName: displayName
             )
 
-            DisclosureGroup(isExpanded: $expanded) {
+            DisclosureGroup(isExpanded: Binding(
+                get: { isExpanded },
+                set: { newValue in
+                    disclosure?.willToggle(message.id, to: newValue)
+                    expanded = newValue
+                }
+            )) {
                 SelectableTextView(
                     text: message.content,
                     font: ChatTypography.font(for: .thinking, chatSize: chatTextSize),
@@ -2000,7 +2018,16 @@ private struct SettledToolCardContent: View, Equatable {
     let expandToolsByDefault: Bool
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
-    @State private var expanded = false
+    @Environment(\.chatRowDisclosure) private var disclosure
+    /// Nil until tapped here; see SettledThinkingCardContent.
+    @State private var tapped: Bool?
+
+    /// Open from the start when tools expand by default, rather than opening
+    /// on appear: a row that grows after its first layout moves everything
+    /// below it.
+    private var expanded: Bool {
+        tapped ?? disclosure?.isExpanded(message.id, default: expandToolsByDefault) ?? expandToolsByDefault
+    }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
@@ -2012,9 +2039,11 @@ private struct SettledToolCardContent: View, Equatable {
         if let tool = message.tool {
             VStack(alignment: .leading, spacing: 0) {
                 Button {
+                    let opens = !expanded
+                    disclosure?.willToggle(message.id, to: opens)
                     withAnimation(ConduitMotion.response) {
                         Haptics.light()
-                        expanded.toggle()
+                        tapped = opens
                     }
                 } label: {
                     VStack(alignment: .leading, spacing: 3) {
@@ -2097,11 +2126,6 @@ private struct SettledToolCardContent: View, Equatable {
                 }
             }
             .conduitGlassSurface(cornerRadius: 18, tint: tool.status == .running ? .conduitAccent.opacity(0.10) : .clear)
-            .onAppear {
-                if expandToolsByDefault {
-                    expanded = true
-                }
-            }
         }
     }
 

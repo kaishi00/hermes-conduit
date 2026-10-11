@@ -53,6 +53,8 @@ final class ChatScrollEngineTests: XCTestCase {
     /// keeps only the surface would otherwise talk to a freed engine and
     /// pass without testing anything.
     private var engines: [ChatScrollEngine] = []
+    /// Work the engine scheduled for later, run by the test when it chooses.
+    private var scheduled: [@MainActor () -> Void] = []
 
     private let keyA = ChatScrollSessionKey(profile: "p", sessionID: "a")
     private let keyB = ChatScrollSessionKey(profile: "p", sessionID: "b")
@@ -62,6 +64,7 @@ final class ChatScrollEngineTests: XCTestCase {
         clock = 100
         events = []
         engines = []
+        scheduled = []
     }
 
     /// Runs the main run loop until every block already on the main queue
@@ -101,7 +104,10 @@ final class ChatScrollEngineTests: XCTestCase {
         surface providedSurface: FakeChatScrollSurface? = nil
     ) -> (ChatScrollEngine, FakeChatScrollSurface) {
         let surface = providedSurface ?? FakeChatScrollSurface()
-        let engine = ChatScrollEngine(now: { [unowned self] in self.clock })
+        let engine = ChatScrollEngine(
+            now: { [unowned self] in self.clock },
+            schedule: { [unowned self] _, body in self.scheduled.append(body) }
+        )
         engines.append(engine)
         engine.onEvent = { [unowned self] event in self.events.append(event) }
         surface.engine = engine
@@ -205,7 +211,80 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3200)
     }
 
+    // MARK: - Opening and closing rows
+
+    /// Eric's report: opening a Thinking or tool row at the bottom of the
+    /// chat jumped far down. Following pinned the content's new bottom, so
+    /// the tapped header went off the top and the end of the row showed.
+    func testOpeningARowAtTheBottomKeepsTheTappedRowStill() {
+        let (engine, surface) = makeEngine()
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+
+        engine.userWillToggleRow()
+        surface.layOut(contentHeight: 4600)
+        XCTAssertEqual(surface.contentOffsetY, 3200, "the row the reader tapped stays where it was")
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertTrue(engine.showsJumpToLatest)
+
+        scheduled.forEach { $0() }
+        XCTAssertEqual(engine.mode, .browsing, "the reader is reading what they opened")
+        surface.layOut(contentHeight: 5000)
+        XCTAssertEqual(surface.contentOffsetY, 3200, "new rows below do not pull them away")
+    }
+
+    func testOpeningAShortRowAtTheBottomFollowsAgainOnceItHasOpened() {
+        let (engine, surface) = makeEngine()
+        engine.userWillToggleRow()
+        surface.layOut(contentHeight: 4030)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+
+        scheduled.forEach { $0() }
+        XCTAssertTrue(engine.isFollowingLatest, "still at the bottom, so still following")
+        XCTAssertEqual(surface.contentOffsetY, 3230)
+        surface.layOut(contentHeight: 4400)
+        XCTAssertEqual(surface.contentOffsetY, 3600)
+    }
+
+    func testOnlyTheLatestToggleSettles() {
+        let (engine, surface) = makeEngine()
+        engine.userWillToggleRow()
+        engine.userWillToggleRow()
+        surface.layOut(contentHeight: 4020)
+        scheduled.forEach { $0() }
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertEqual(surface.sets.filter { $0.y == 3220 }.count, 1, "one settle, one pin")
+    }
+
+    func testClosingARowAtTheBottomLeavesNoEmptySpace() {
+        let (engine, surface) = makeEngine()
+        engine.userWillToggleRow()
+        surface.layOut(contentHeight: 3600)
+        XCTAssertEqual(surface.contentOffsetY, 2800, "the shorter content sits on the bottom")
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testAToggleUnderAFingerChangesNothing() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        engine.userWillToggleRow()
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertTrue(scheduled.isEmpty)
+    }
+
     // MARK: - Browsing
+
+    /// A reader just above the bottom whose content shrinks (a row closing,
+    /// a turn's live rows settling) is left over empty space that UIKit
+    /// never closes on its own.
+    func testABrowsingReaderLeftPastTheBottomReturnsToTheLatestMessage() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 3000)
+        XCTAssertEqual(engine.mode, .browsing)
+
+        surface.layOut(contentHeight: 3500)
+        XCTAssertEqual(surface.contentOffsetY, 2700)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
 
     func testDraggingAwayStopsFollowingAndNewContentLeavesTheReaderAlone() {
         let (engine, surface) = makeEngine()
