@@ -9,7 +9,6 @@
 //  the CI test planner is at capacity for new XCTestCase classes.
 //
 
-import SwiftUI
 import XCTest
 @testable import Conduit
 
@@ -17,7 +16,7 @@ import XCTest
 extension VoiceConversationControllerTests {
     /// A supervisor whose chat search answers from `results` by query, and
     /// whose opens are recorded.
-    private func makeChatFinder(
+    func makeChatFinder(
         _ results: [String: [VoiceChatMatch]],
         canOpen: Bool = true
     ) -> (VoiceBackgroundJobSupervisor, ChatFinderLog) {
@@ -41,7 +40,7 @@ extension VoiceConversationControllerTests {
         return (supervisor, log)
     }
 
-    private static func chat(_ id: String, _ title: String, snippet: String = "") -> VoiceChatMatch {
+    static func chat(_ id: String, _ title: String, snippet: String = "") -> VoiceChatMatch {
         VoiceChatMatch(sessionID: id, title: title, snippet: snippet, lastActive: nil)
     }
 
@@ -70,6 +69,7 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(long.count <= VoiceChatFinder.maximumQueryCharacters)
         XCTAssertTrue(long.hasSuffix("abcdefghi"), "cut between words, never inside one")
         XCTAssertEqual(VoiceChatFinder.matchNumber("Number 3"), 3)
+        XCTAssertEqual(VoiceChatFinder.searchQuery(String(repeating: "x", count: 300)).count, VoiceChatFinder.maximumQueryCharacters, "one long word is cut, not dropped")
         XCTAssertNil(VoiceChatFinder.matchNumber("a1b2"))
         XCTAssertEqual(VoiceChatFinder.fallbackWords("GPU home setup"), ["setup", "home"], "longest first, two at most, short words skipped")
         XCTAssertEqual(VoiceChatFinder.fallbackWords("GPU"), [], "a single word was already tried")
@@ -296,4 +296,16 @@ extension VoiceConversationControllerTests {
 @MainActor
 private final class ParkedChatSearch {
     var continuation: CheckedContinuation<Void, Never>?
+}
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testGrokSearchesOnceSinceItsToolCallsHoldTheTurn() async {
+        let (supervisor, log) = makeChatFinder(["setup": [Self.chat("s-1", "Setup")]])
+        let grok = GeminiLiveToolBridge(supervisor: supervisor, holdsJobCalls: false)
+        let found = await grok.handle(.init(id: "g1", name: "find_chat", arguments: ["query": "home setup"]))
+        guard case .toolResponse(_, _, let result, _)? = found.first else { return XCTFail("\(found)") }
+        XCTAssertEqual(log.queries, ["home setup"], "no word-by-word retries on Grok")
+        XCTAssertNotNil(result["message"])
+    }
 }

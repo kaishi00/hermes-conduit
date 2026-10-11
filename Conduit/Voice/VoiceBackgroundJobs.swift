@@ -959,21 +959,24 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// Looks up the user's earlier chats for the running call. A query that
     /// matches nothing as a whole is tried again a word at a time.
-    func findChats(query rawQuery: String) async -> VoiceChatSearchOutcome {
+    /// `retryingWords` false asks once: a call whose tool calls hold its
+    /// turn (Grok) shouldn't wait on three searches.
+    func findChats(query rawQuery: String, retryingWords: Bool = true) async -> VoiceChatSearchOutcome {
         // Numbers only ever name the newest search's list, so a failed or
-        // superseded search leaves nothing to open.
+        // superseded search leaves nothing to open, and an older one still
+        // running can't bring its list back.
         chatMatches = []
+        chatSearchSequence &+= 1
+        let sequence = chatSearchSequence
         let query = VoiceChatFinder.searchQuery(rawQuery)
         guard !query.isEmpty else { return .failed("query is required") }
         let started = generation
         let call = liveCallID
-        chatSearchSequence &+= 1
-        let sequence = chatSearchSequence
         var matches: [VoiceChatMatch]
         do {
             matches = try await backend.searchChats(query)
             // A word that fails costs only its own matches.
-            for word in matches.isEmpty ? VoiceChatFinder.fallbackWords(query) : [] {
+            for word in matches.isEmpty && retryingWords ? VoiceChatFinder.fallbackWords(query) : [] {
                 for match in (try? await backend.searchChats(word)) ?? [] where !matches.contains(where: { $0.sessionID == match.sessionID }) {
                     matches.append(match)
                 }

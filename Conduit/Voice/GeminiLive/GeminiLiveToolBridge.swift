@@ -40,7 +40,8 @@
 //  to the pending card in the call's chat, only once they've spoken.
 //
 //  find_chat (phone calls) is NON_BLOCKING too; on Grok, which has none,
-//  the search holds the turn until it answers, like web_search there.
+//  the search holds the turn until it answers, like web_search there, so
+//  it asks once rather than retrying word by word.
 //
 //  Grok Live has no NON_BLOCKING calls, so its bridge answers start_job
 //  as soon as the job is running (`holdsJobCalls` false); the outcome
@@ -92,7 +93,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome
     func answerQuestion(_ answer: String) async -> VoiceCallDecisionOutcome
     /// The user's earlier chats matching `query`, numbered for open_chat.
-    func findChats(query: String) async -> VoiceChatSearchOutcome
+    func findChats(query: String, retryingWords: Bool) async -> VoiceChatSearchOutcome
     /// Opens one of the last search's chats while the call goes on.
     func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome
 }
@@ -111,7 +112,7 @@ extension GeminiLiveJobSupervising {
     var callWaitsOn: HermesCallRequest.Kind? { nil }
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome { .nothingPending }
     func answerQuestion(_ answer: String) async -> VoiceCallDecisionOutcome { .nothingPending }
-    func findChats(query: String) async -> VoiceChatSearchOutcome { .failed("Searching chats isn't available on this call.") }
+    func findChats(query: String, retryingWords: Bool) async -> VoiceChatSearchOutcome { .failed("Searching chats isn't available on this call.") }
     func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome { .unavailable }
 }
 
@@ -752,7 +753,8 @@ final class GeminiLiveToolBridge {
             guard !query.isEmpty else {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "query is required"], scheduling: .whenIdle)]
             }
-            let outcome = await supervisor.findChats(query: query)
+            // Grok holds its turn on every call: one search, not three.
+            let outcome = await supervisor.findChats(query: query, retryingWords: holdsJobCalls)
             guard !isEnding else { return [] }
             return [.toolResponse(id: call.id, name: call.name, result: Self.chatSearchResult(outcome), scheduling: .whenIdle)]
         case .openChat:

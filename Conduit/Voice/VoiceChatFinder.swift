@@ -58,7 +58,11 @@ enum VoiceChatFinder {
         var query = ""
         for word in String(cleaned).split(whereSeparator: \.isWhitespace) {
             let next = query.isEmpty ? String(word) : query + " " + word
-            guard next.count <= maximumQueryCharacters else { break }
+            // One word longer than the limit is still searched, cut.
+            guard next.count <= maximumQueryCharacters else {
+                if query.isEmpty { query = String(word.prefix(maximumQueryCharacters)) }
+                break
+            }
             query = next
         }
         return query
@@ -95,7 +99,7 @@ enum VoiceChatFinder {
             let id = (text(row["session_id"]) ?? text(row["id"]) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !id.isEmpty, seen.insert(id).inserted else { return nil }
-            let title = (row["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = (text(row["title"]) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let active = epoch(row["last_active"]) ?? epoch(row["session_started"]) ?? epoch(row["started_at"])
             return VoiceChatMatch(
                 sessionID: id,

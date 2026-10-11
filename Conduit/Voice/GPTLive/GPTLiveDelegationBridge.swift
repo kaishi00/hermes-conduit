@@ -289,7 +289,7 @@ final class GPTLiveDelegationBridge {
         if let query = Self.findChatMarker(in: markedWords) {
             spokenWords?.settleWords(.delegation(id))
             // GPT-Live can leave a delegation's text empty: the user's own words then.
-            let outcome = await supervisor.findChats(query: query.isEmpty ? spoken : query)
+            let outcome = await supervisor.findChats(query: query.isEmpty ? spoken : query, retryingWords: true)
             guard callGeneration == call, !isEnding else { return [] }
             return [.delegationReply(delegationID: id, text: Self.chatSearchReply(outcome), channel: .commentary)]
         }
