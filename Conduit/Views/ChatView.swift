@@ -589,6 +589,9 @@ struct ChatView: View {
         router.appState = appState
         router.engine = scrollEngine
         rowDisclosure.engine = scrollEngine
+        rowDisclosure.currentConversation = { [weak appState = appState] in
+            appState?.activeChatScrollSessionIdentity ?? .none
+        }
         router.proxy = proxy
         scrollEngine.onEvent = { [weak engine = scrollEngine, weak router] event in
             // Requests made while handling a UIKit callback can land in the
@@ -1905,6 +1908,7 @@ struct SettledThinkingCardContent: View, Equatable {
             DisclosureGroup(isExpanded: Binding(
                 get: { isExpanded },
                 set: { newValue in
+                    guard newValue != isExpanded else { return }
                     disclosure?.willToggle(message.id, to: newValue)
                     expanded = newValue
                 }

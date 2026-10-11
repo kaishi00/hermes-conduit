@@ -267,6 +267,30 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3200)
     }
 
+    /// Rows resumed without an id are numbered from 0 in every
+    /// conversation, so an opened "0-reasoning" must not open another
+    /// conversation's; another spelling of the same one keeps it.
+    func testOpenedRowsBelongToTheirConversation() {
+        let disclosure = ChatRowDisclosure()
+        var current = identity("a")
+        disclosure.currentConversation = { current }
+        disclosure.willToggle("0-reasoning", to: true)
+        XCTAssertTrue(disclosure.isExpanded("0-reasoning", default: false))
+
+        current = ChatScrollSessionIdentity(
+            profile: "p",
+            canonicalSessionID: "a-server",
+            equivalentSessionIDs: ["a", "a-server"],
+            isReconciling: false,
+            settledRevision: 1
+        )
+        XCTAssertTrue(disclosure.isExpanded("0-reasoning", default: false), "same conversation, new spelling")
+
+        current = identity("b")
+        XCTAssertFalse(disclosure.isExpanded("0-reasoning", default: false), "another conversation")
+        XCTAssertTrue(disclosure.isExpanded("0-tool-0", default: true), "defaults apply there")
+    }
+
     func testClosingARowAtTheBottomLeavesNoEmptySpace() {
         let (engine, surface) = makeEngine()
         engine.userWillToggleRow()

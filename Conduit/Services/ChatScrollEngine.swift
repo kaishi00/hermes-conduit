@@ -183,8 +183,10 @@ final class ChatScrollEngine: ObservableObject {
     /// Bumped when the reader or a command takes over, so a pending
     /// past-the-bottom check does nothing when it runs.
     private var pastBottomCheckGeneration: UInt64 = 0
-    /// Bumped by every row the reader opens or closes, and by anything that
-    /// takes the viewport over, so only the latest settle check acts.
+    /// Bumped by every row the reader opens or closes, and by a drag, the
+    /// explicit commands, a session switch and a restoration, so only the
+    /// latest settle check acts. Anything else that changes the mode leaves
+    /// browsing, which the check requires.
     private var disclosureGeneration: UInt64 = 0
     private let now: () -> TimeInterval
     private let prefersReducedMotion: @MainActor () -> Bool
