@@ -206431,7 +206431,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此设备不支持 Touch ID，仍可保存凭据。"
+            "value" : "此设备上无法使用 Touch ID，但仍可保存凭据。"
           }
         },
         "zh-Hant" : {

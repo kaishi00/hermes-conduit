@@ -22,9 +22,11 @@ struct LoginView: View {
     @State private var password = ""
     @State private var saveCredentials = false
     @State private var useFaceID = false
-    /// Read on appear rather than per view init: each read is a
-    /// LocalAuthentication round trip.
+    /// Read on appear rather than per view init (each read is a
+    /// LocalAuthentication round trip), and again on return to the
+    /// foreground, where a fingerprint or face may just have been set up.
     @State private var biometrics = BiometricAuth.Status(kind: nil, isAvailable: false)
+    @Environment(\.scenePhase) private var scenePhase
     @State var cloudflareEnabled = false
     @State var cloudflareClientID = ""
     @State var cloudflareClientSecret = ""
@@ -132,6 +134,9 @@ struct LoginView: View {
                 Spacer()
                 Button("Done") { focusedField = nil }
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { biometrics = BiometricAuth.status }
         }
         .onAppear {
             biometrics = BiometricAuth.status
