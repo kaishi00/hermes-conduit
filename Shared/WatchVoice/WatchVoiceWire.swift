@@ -314,8 +314,11 @@ enum WatchVoiceWire {
         /// (designs/hermes-calls-watch.md); nil once it has none. Queued, so
         /// it reaches a sleeping iPhone. `key`: the Watch's handoff key,
         /// base64url, which seals an answered call's start and session at
-        /// the relay (HermesRingHandoff); nil from an older Watch.
-        case callsToken(token: String?, key: String? = nil)
+        /// the relay (HermesRingHandoff); nil from an older Watch. `engine`:
+        /// the voice an answered call starts with (a WatchCallVoices.Voice
+        /// raw value), sent again when it changes: the Watch rings only
+        /// while it can start; nil from an older Watch.
+        case callsToken(token: String?, key: String? = nil, engine: String? = nil)
         // iPhone → Watch
         /// Why the iPhone can't serve the call, as the Watch shows it.
         case callRefused(callID: UInt32, reason: String)

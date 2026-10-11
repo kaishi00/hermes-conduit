@@ -1299,16 +1299,45 @@ final class PushNotificationService: ObservableObject {
     private(set) var watchVoIPToken: String? = UserDefaults.standard.string(forKey: PushNotificationService.watchVoIPTokenKey)
     static let watchVoIPTokenKey = "hermesCalls.watchVoIPToken"
 
-    /// The Watch app has a new PushKit token, or none any more.
-    func updateWatchVoIPToken(_ token: String?) {
+    /// The voice a Watch call answers with, as the Watch last said (a
+    /// WatchCallVoices.Voice raw value); nil from an older Watch app.
+    private(set) var watchEngine: String? = UserDefaults.standard.string(forKey: PushNotificationService.watchEngineKey)
+    static let watchEngineKey = "hermesCalls.watchEngine"
+
+    /// Which Watch voices can start, as AppState last found them.
+    private(set) var watchCallVoices: WatchCallVoices = UserDefaults.standard.data(forKey: PushNotificationService.watchCallVoicesKey)
+        .flatMap { try? JSONDecoder().decode(WatchCallVoices.self, from: $0) } ?? WatchCallVoices()
+    static let watchCallVoicesKey = "hermesCalls.watchCallVoices"
+
+    /// The Watch app has a new PushKit token, or none any more, or another
+    /// voice.
+    func updateWatchVoIPToken(_ token: String?, engine: String?) {
         watchVoIPToken = token
+        watchEngine = engine
         UserDefaults.standard.set(token, forKey: Self.watchVoIPTokenKey)
+        UserDefaults.standard.set(engine, forKey: Self.watchEngineKey)
         queueVoIPTokenUpdate()
     }
 
-    /// The Watch rings only alongside this phone: while the phone doesn't
-    /// ring, the relay has neither token.
-    private var ringingWatchVoIPToken: String? { voipToken == nil ? nil : watchVoIPToken }
+    func updateWatchCallVoices(_ voices: WatchCallVoices) {
+        guard voices != watchCallVoices else { return }
+        watchCallVoices = voices
+        UserDefaults.standard.set(try? JSONEncoder().encode(voices), forKey: Self.watchCallVoicesKey)
+        queueVoIPTokenUpdate()
+    }
+
+    private var ringingWatchVoIPToken: String? {
+        Self.ringingWatchToken(phone: voipToken, watch: watchVoIPToken, engine: watchEngine, voices: watchCallVoices)
+    }
+
+    /// The Watch rings only alongside this phone (while the phone doesn't
+    /// ring, the relay has neither token), and only while the voice it
+    /// answers with can start: the Watch has no Classic voice to fall back
+    /// on (WatchCallVoices).
+    static func ringingWatchToken(phone: String?, watch: String?, engine: String?, voices: WatchCallVoices) -> String? {
+        guard phone != nil, voices.rings(engine: engine) else { return nil }
+        return watch
+    }
 
     private func queueVoIPTokenUpdate() {
         guard registration != nil else { return }

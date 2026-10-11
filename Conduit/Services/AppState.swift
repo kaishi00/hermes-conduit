@@ -16815,6 +16815,8 @@ final class AppState: ObservableObject {
         notifierPlugin.state = state
         // Calls declined or missed while this host was out of reach.
         deliverHermesCallOutcomes()
+        // Whether calls can ring the Watch, for this host and profile.
+        Task { await refreshWatchCallVoices() }
         await provisionNotificationEncryption(bridge: bridge)
     }
 
@@ -20737,6 +20739,8 @@ final class AppState: ObservableObject {
                 return false
             }
             Task { await loadChatResumeSlashCommands() }
+            // The new profile's voices decide whether calls ring the Watch.
+            Task { await refreshWatchCallVoices() }
             return true
         } catch {
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
@@ -24584,6 +24588,7 @@ final class AppState: ObservableObject {
         async let personalityLookup = wantsPersonality ? tokens.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         let status = try await tokens.availability()
+        noteWatchCallVoice(.geminiLive, ready: status.isAvailable)
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
         }
@@ -24674,6 +24679,7 @@ final class AppState: ObservableObject {
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         let status = try await gptLiveClient.availability()
+        noteWatchCallVoice(.gptLive, ready: status.isAvailable)
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
         }
@@ -24757,6 +24763,7 @@ final class AppState: ObservableObject {
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         let status = try await grokLiveClient.availability()
+        noteWatchCallVoice(.grokLive, ready: status.isAvailable)
         guard case .available(_, let voice, _) = status else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
         }

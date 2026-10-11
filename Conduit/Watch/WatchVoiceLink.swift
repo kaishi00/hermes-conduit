@@ -27,6 +27,10 @@ final class WatchVoiceLink: ObservableObject {
     /// Sets up and serves the Watch's calls.
     private(set) lazy var direct = WatchDirectBroker(link: self)
     private let proxy = PhoneWatchSessionProxy()
+    /// What the Watch app should show from this phone, and what it was
+    /// last sent.
+    private var context: WatchPhoneContext?
+    private var sharedContext: WatchPhoneContext?
 
     private init() {}
 
@@ -55,6 +59,27 @@ final class WatchVoiceLink: ObservableObject {
         direct.handle(start, reply: reply)
     }
 
+    /// Which Watch voices can start, and whether calls from Hermes ring
+    /// this phone (WatchCallVoices): the session's application context,
+    /// which the Watch reads whenever it runs next. Sent once the session
+    /// is up and the Watch app installed.
+    func share(_ context: WatchPhoneContext) {
+        self.context = context
+        sendContext()
+    }
+
+    private func sendContext() {
+        guard let context, context != sharedContext, WCSession.isSupported() else { return }
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
+        do {
+            try session.updateApplicationContext(context.encoded())
+            sharedContext = context
+        } catch {
+            log.note("watchContextNotShared", ["error": error.localizedDescription])
+        }
+    }
+
     // MARK: Receiving
 
     fileprivate func sessionChanged(_ session: WCSession, activation: Bool = false) {
@@ -65,6 +90,7 @@ final class WatchVoiceLink: ObservableObject {
         if activation {
             log.note("linkActivated", ["paired": session.isPaired, "watchAppInstalled": session.isWatchAppInstalled])
         }
+        sendContext()
     }
 
     fileprivate func received(_ message: WatchVoiceWire.Message, reply: (([String: Any]) -> Void)?) {
@@ -77,12 +103,14 @@ final class WatchVoiceLink: ObservableObject {
             reply?([:])
         case .directStart, .bridgeStart, .grokStart, .directToken, .directTool, .directToolCancel, .directPoll, .directEnd, .directGrant:
             direct.handle(message, reply: reply)
-        case .callsToken(let token, let key):
-            // Calls from Hermes ring the Watch too (designs/hermes-calls-watch.md).
-            // Its key opens an answered call's start (HermesRingHandoff).
+        case .callsToken(let token, let key, let engine):
+            // Calls from Hermes ring the Watch too (designs/hermes-calls-watch.md),
+            // while its voice can start (WatchCallVoices). Its key opens an
+            // answered call's start (HermesRingHandoff).
             let keySaved = key.flatMap(WatchToolSeal.data(base64URL:)).map(HermesRingHandoffKey.save)
-            log.note("watchCallsToken", ["token": token != nil, "key": keySaved.map { $0 ? "saved" : "unsaved" } ?? "none"])
-            PushNotificationService.shared.updateWatchVoIPToken(token)
+            log.note("watchCallsToken", ["token": token != nil, "key": keySaved.map { $0 ? "saved" : "unsaved" } ?? "none", "engine": engine ?? "none"])
+            PushNotificationService.shared.updateWatchVoIPToken(token, engine: engine)
+            AppStateRuntimeRegistry.shared.appState.watchCallTokenChanged()
             reply?([:])
         default:
             reply?([:])

@@ -18,6 +18,9 @@ final class WatchLink: ObservableObject {
     @Published private(set) var isReachable = false
     @Published private(set) var isActivated = false
     @Published private(set) var isCompanionInstalled = false
+    /// What Conduit on the iPhone last shared: which voices can start, and
+    /// whether calls from Hermes ring it. Nil from an older iPhone app.
+    @Published private(set) var phoneContext: WatchPhoneContext?
     /// Every reachable ↔ unreachable change since launch.
     private(set) var reachabilityChanges = 0
 
@@ -74,7 +77,14 @@ final class WatchLink: ObservableObject {
         isActivated = session.activationState == .activated
         isCompanionInstalled = session.isCompanionAppInstalled
         isReachable = session.isReachable
+        // The last one shared before this launch.
+        phoneContext = WatchPhoneContext.decode(session.receivedApplicationContext) ?? phoneContext
         WatchCallLog.shared.note("linkActivated", ["reachable": session.isReachable, "companionInstalled": session.isCompanionAppInstalled])
+    }
+
+    fileprivate func phoneContextChanged(_ context: WatchPhoneContext?) {
+        guard let context, context != phoneContext else { return }
+        phoneContext = context
     }
 
     fileprivate func reachabilityChanged(_ reachable: Bool) {
@@ -109,8 +119,14 @@ private final class SessionDelegateProxy: NSObject, WCSessionDelegate {
         WatchVoiceMain.async { [weak self] in self?.link?.reachabilityChanged(reachable) }
     }
 
-    // The iPhone only ever answers the Watch's messages: anything it sends
-    // on its own is acknowledged and dropped.
+    func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        let context = WatchPhoneContext.decode(applicationContext)
+        WatchVoiceMain.async { [weak self] in self?.link?.phoneContextChanged(context) }
+    }
+
+    // Besides its application context, the iPhone only ever answers the
+    // Watch's messages: any message it sends on its own is acknowledged
+    // and dropped.
     func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
         replyHandler([:])
     }

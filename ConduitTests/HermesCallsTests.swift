@@ -783,10 +783,13 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(HermesCallSettingsFormat.limitRules("abc", to: 3))
         XCTAssertEqual(HermesCallSettingsFormat.limitRules("abcd", to: 3), "abc")
         // The host counts Unicode scalars: a family emoji is one Swift
-        // character but five scalars.
+        // character but five scalars, and is kept whole or not at all.
         let family = "👨‍👩‍👧"
         XCTAssertEqual(family.unicodeScalars.count, 5)
-        XCTAssertEqual(HermesCallSettingsFormat.limitRules("ab" + family, to: 6)?.unicodeScalars.count, 6)
+        XCTAssertEqual(HermesCallSettingsFormat.limitRules("ab" + family + "c", to: 7), "ab" + family)
+        let cut = try XCTUnwrap(HermesCallSettingsFormat.limitRules("ab" + family, to: 6))
+        XCTAssertEqual(cut, "ab")
+        XCTAssertFalse(cut.unicodeScalars.contains("\u{200D}"), "No half emoji left behind")
     }
 
     func testCallSettingsGapChoicesKeepTheCurrentValue() {
@@ -1241,5 +1244,42 @@ extension VoiceConversationControllerTests {
         }
         let older = Data(#"{"callsToken":{"token":"abcd"}}"#.utf8)
         XCTAssertEqual(WatchVoiceWire.decode([WatchVoiceWire.messageKey: older]), .callsToken(token: "abcd", key: nil))
+    }
+
+    // MARK: Ringing the Watch only while its voice can start
+
+    func testTheWatchRingsOnlyWhileTheVoiceItAnswersWithCanStart() {
+        func token(_ engine: String?, _ voices: WatchCallVoices, phone: String? = "ph") -> String? {
+            PushNotificationService.ringingWatchToken(phone: phone, watch: "wa", engine: engine, voices: voices)
+        }
+        var voices = WatchCallVoices()
+        XCTAssertEqual(token("gptLive", voices), "wa", "Not checked yet: rings, as before")
+        voices.note(.gptLive, ready: false, scope: "d|default")
+        voices.note(.geminiLive, ready: true, scope: "d|default")
+        XCTAssertNil(token("gptLive", voices), "GPT-Live can't start: only the iPhone rings")
+        XCTAssertEqual(token("geminiLive", voices), "wa")
+        XCTAssertEqual(token("grokLive", voices), "wa", "Grok not checked yet")
+        XCTAssertEqual(token(nil, voices), "wa", "An older Watch app doesn't say its voice")
+        XCTAssertNil(token("geminiLive", voices, phone: nil), "Never without the iPhone")
+
+        XCTAssertEqual(voices.scoped(to: "d|default"), voices)
+        XCTAssertEqual(voices.scoped(to: "d|work"), WatchCallVoices(scope: "d|work"), "Another profile's checks say nothing about this one")
+        XCTAssertEqual(token("gptLive", voices.scoped(to: "d|work")), "wa", "Its calls ring the Watch until checked")
+        voices.note(.grokLive, ready: true, scope: "d|work")
+        XCTAssertEqual(voices, WatchCallVoices(scope: "d|work", ready: ["grokLive": true]))
+    }
+
+    func testTheWatchSendsItsVoiceWithItsTokenAndHearsWhatToSetUp() {
+        let message = WatchVoiceWire.Message.callsToken(token: "abcd", key: "a2V5", engine: WatchCallVoices.Voice.grokLive.rawValue)
+        XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(message)), message)
+        let older = Data(#"{"callsToken":{"token":"abcd","key":"a2V5"}}"#.utf8)
+        XCTAssertEqual(WatchVoiceWire.decode([WatchVoiceWire.messageKey: older]), .callsToken(token: "abcd", key: "a2V5", engine: nil))
+
+        let context = WatchPhoneContext(voices: ["geminiLive": true, "gptLive": false], callsRing: true)
+        XCTAssertEqual(WatchPhoneContext.decode(context.encoded()), context)
+        XCTAssertTrue(context.notSetUp(.gptLive))
+        XCTAssertFalse(context.notSetUp(.geminiLive))
+        XCTAssertFalse(context.notSetUp(.grokLive), "Not checked: nothing to say")
+        XCTAssertNil(WatchPhoneContext.decode([:]), "An older iPhone app shares nothing")
     }
 }

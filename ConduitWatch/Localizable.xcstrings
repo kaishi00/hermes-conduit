@@ -8134,6 +8134,170 @@
           }
         }
       }
+    },
+    "Not set up on your Hermes host" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf deinem Hermes-Host nicht eingerichtet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin configurar en tu host de Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non configuré sur votre hôte Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum disiapkan di host Hermes Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non configurato sul tuo host Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ホストで未設定"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 호스트에 설정되지 않음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nieskonfigurowane na Twoim hoście Hermes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não configurado no seu host Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не настроено на вашем хосте Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ana makinenizde kurulu değil"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未在你的 Hermes 主机上设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未在你的 Hermes 主機上設定"
+          }
+        }
+      }
+    },
+    "Calls from Hermes ring only your iPhone until %@ is set up. Voice settings in Conduit on your iPhone show what it needs." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe von Hermes klingeln nur auf deinem iPhone, bis %@ eingerichtet ist. Die Spracheinstellungen in Conduit auf deinem iPhone zeigen, was dafür nötig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las llamadas de Hermes solo suenan en tu iPhone hasta que %@ esté configurado. Los ajustes de Voz de Conduit en tu iPhone muestran lo que necesita."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les appels d'Hermes ne sonnent que sur votre iPhone tant que %@ n'est pas configuré. Les réglages Voix de Conduit sur votre iPhone indiquent ce qu'il faut."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan dari Hermes hanya berdering di iPhone Anda sampai %@ disiapkan. Pengaturan Suara di Conduit pada iPhone Anda menunjukkan apa yang diperlukan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiamate da Hermes suonano solo su iPhone finché %@ non è configurato. Le impostazioni Voce di Conduit su iPhone mostrano cosa serve."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が設定されるまで、Hermesからの通話は iPhone でのみ着信します。必要なものは iPhone の Conduit の音声設定で確認できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 설정될 때까지 Hermes의 전화는 iPhone에서만 울려요. 필요한 것은 iPhone의 Conduit 음성 설정에서 확인할 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenia od Hermesa dzwonią tylko na iPhonie, dopóki %@ nie zostanie skonfigurowany. Ustawienia głosu w Conduit na iPhonie pokazują, czego potrzeba."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As chamadas do Hermes tocam só no seu iPhone até que %@ esteja configurado. Os ajustes de Voz do Conduit no iPhone mostram o que é preciso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пока %@ не настроен, звонки от Hermes приходят только на iPhone. Что для этого нужно, показано в настройках голоса Conduit на iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kurulana kadar Hermes'ten aramalar yalnızca iPhone'unuzda çalar. Gerekenleri iPhone'unuzdaki Conduit'in Ses ayarları gösterir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在设置好 %@ 之前，Hermes 来电只会在 iPhone 上响铃。iPhone 上 Conduit 的语音设置会显示所需内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在設定好 %@ 之前，Hermes 來電只會在 iPhone 上響鈴。iPhone 上 Conduit 的語音設定會顯示所需內容。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

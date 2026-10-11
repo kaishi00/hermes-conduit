@@ -50,6 +50,7 @@ final class HermesWatchCalls: NSObject {
     /// What the iPhone was last sent this launch.
     private var sentToken: String?
     private var sentKey: Data?
+    private var sentEngine: WatchVoiceEngine?
     private var hasSentToken = false
     /// Seals an answered call's start and session at the relay; the iPhone
     /// gets it with the token. Nil while the Keychain can't be read.
@@ -104,22 +105,31 @@ final class HermesWatchCalls: NSObject {
         WatchVoiceCall.shared.$phase
             .sink { [weak self] phase in self?.voicePhaseChanged(phase) }
             .store(in: &cancellables)
+        // Calls ring here only while this voice can start (WatchCallVoices):
+        // the iPhone hears of every change. Read once it's set: the
+        // publisher fires before.
+        WatchVoiceCall.shared.$engine
+            .dropFirst()
+            .sink { [weak self] _ in WatchVoiceMain.async { self?.sendToken() } }
+            .store(in: &cancellables)
     }
 
     // MARK: The token
 
     /// Queued to the iPhone, which hands it to the relay, with the handoff
-    /// key. Once a launch at least, so an iPhone that lost them gets them
-    /// again.
+    /// key and the voice an answered call starts with. Once a launch at
+    /// least, so an iPhone that lost them gets them again.
     private func sendToken() {
         if handoffKey == nil { handoffKey = HermesRingHandoffKey.loadOrCreate() }
-        guard tokenKnown, !hasSentToken || sentToken != token || sentKey != handoffKey else { return }
+        let engine = WatchVoiceCall.shared.engine
+        guard tokenKnown, !hasSentToken || sentToken != token || sentKey != handoffKey || sentEngine != engine else { return }
         // Not linked yet: sent once the link is up.
-        guard WatchLink.shared.queue(.callsToken(token: token, key: handoffKey.map(WatchToolSeal.base64URL))) else { return }
+        guard WatchLink.shared.queue(.callsToken(token: token, key: handoffKey.map(WatchToolSeal.base64URL), engine: engine.callVoice.rawValue)) else { return }
         sentToken = token
         sentKey = handoffKey
+        sentEngine = engine
         hasSentToken = true
-        WatchCallLog.shared.note("hermesCallsToken", ["token": token != nil, "key": handoffKey != nil])
+        WatchCallLog.shared.note("hermesCallsToken", ["token": token != nil, "key": handoffKey != nil, "engine": engine.callVoice.rawValue])
     }
 
     // MARK: Ringing
