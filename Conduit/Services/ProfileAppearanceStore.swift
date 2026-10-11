@@ -258,9 +258,11 @@ enum ProfileAvatarImageCache {
         cache.countLimit = 32
         return cache
     }()
-    /// Photos that didn't decode, so a missing or damaged file is tried once
-    /// rather than on every redraw.
-    private static var unreadablePaths: Set<String> = []
+    /// When each photo last failed to decode, so a missing or damaged file
+    /// is retried now and then rather than on every redraw, and a passing
+    /// failure (a file not readable yet) doesn't hide the photo for good.
+    private static var failedReads: [String: TimeInterval] = [:]
+    static let failedReadRetryInterval: TimeInterval = 30
 
     /// The first show of each photo decodes it here, on the main actor, so
     /// the avatar never flashes its initials. ImageIO builds the thumbnail
@@ -268,7 +270,8 @@ enum ProfileAvatarImageCache {
     static func image(at url: URL) -> UIImage? {
         let key = url.path as NSString
         if let cached = images.object(forKey: key) { return cached }
-        guard !unreadablePaths.contains(url.path) else { return nil }
+        let now = ProcessInfo.processInfo.systemUptime
+        if let failedAt = failedReads[url.path], now - failedAt < failedReadRetryInterval { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceShouldCache: false,
@@ -278,21 +281,22 @@ enum ProfileAvatarImageCache {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         else {
-            unreadablePaths.insert(url.path)
+            failedReads[url.path] = now
             return nil
         }
         let image = UIImage(cgImage: thumbnail)
+        failedReads[url.path] = nil
         images.setObject(image, forKey: key)
         return image
     }
 
     static func forget(_ url: URL) {
         images.removeObject(forKey: url.path as NSString)
-        unreadablePaths.remove(url.path)
+        failedReads[url.path] = nil
     }
 
     static func forgetAll() {
         images.removeAllObjects()
-        unreadablePaths.removeAll()
+        failedReads.removeAll()
     }
 }
