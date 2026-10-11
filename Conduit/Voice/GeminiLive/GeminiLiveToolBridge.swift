@@ -757,7 +757,10 @@ final class GeminiLiveToolBridge {
             return [.toolResponse(id: call.id, name: call.name, result: Self.chatSearchResult(outcome), scheduling: .whenIdle)]
         case .openChat:
             guard !isEnding else { return [] }
-            let reference = call.arguments["number"] ?? call.arguments["chat"] ?? ""
+            let reference = (call.arguments["number"] ?? call.arguments["chat"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !reference.isEmpty else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": "number is required"], scheduling: nil)]
+            }
             return [.toolResponse(id: call.id, name: call.name, result: Self.chatOpenResult(supervisor.openFoundChat(reference)), scheduling: nil)]
         case .endConversation:
             // Deliberately unanswered: a response would prompt another turn

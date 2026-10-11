@@ -184,7 +184,7 @@ final class GeminiLiveConversationController: ObservableObject {
 
     /// Finding and opening an earlier chat runs on the phone, so a Watch
     /// call leaves this out.
-    static let findChatParagraph = "When the user asks to find, pull up or open one of their earlier conversations with Hermes, call find_chat with a few words from the topic, then open_chat with the match that fits (ask which one when several could). Opening it doesn't end this call."
+    static let findChatParagraph = "When the user asks to find, pull up or open one of their earlier conversations with Hermes, call find_chat with a few words from the topic, then open_chat with the match that fits (ask which one when several could). Opening it doesn't end this call. If it says the chat can't be opened right now, just tell the user."
 
     /// The Watch shows a job's approval request and, with voice approvals
     /// on, passes it to the model with how to answer it.
@@ -1345,6 +1345,10 @@ final class GeminiLiveConversationController: ObservableObject {
                 return "[The chat search you just made failed: \(error)]"
             }
             return result["message"].map { "[The chat search you just made: \($0)]" }
+        }
+        if name == GeminiLiveToolBridge.Tool.openChat.rawValue {
+            if result["status"] == "opened", let message = result["message"] { return "[The chat you just asked to open: \(message)]" }
+            return result["error"].map { "[Opening the chat failed: \($0)]" }
         }
         guard let title = result["title"], let status = result["status"] else { return nil }
         if let outcome = result["result"] {

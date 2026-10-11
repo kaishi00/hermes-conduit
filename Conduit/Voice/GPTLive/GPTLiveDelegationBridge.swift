@@ -299,7 +299,7 @@ final class GPTLiveDelegationBridge {
         }
         // Routed on the delegation's own words, not the conversation added
         // for context (which would end with whatever was said last).
-        let routingWords = instructions.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? instructions
+        let routingWords = markedWords
         let ownWords = VoiceThreadRouting.removingQuickMarker(routingWords)
         // A read-back asks Hermes nothing and needs no OK (#451): the model
         // marks it "Read back:", and the user's own words catch one it
@@ -1164,10 +1164,10 @@ final class GPTLiveDelegationBridge {
         return String(request[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// "Open chat: 2" (or "Open chat 2:") at the very start of a delegation:
+    /// "Open chat: 2" (or "Open chat 2:", or just "Open chat 2") at the very start of a delegation:
     /// the number of the found chat to open.
     static func openChatMarker(in request: String) -> String? {
-        let pattern = #"^\s*open\s+(?:the\s+|my\s+)?(?:chat|conversation)\s*(?:(?:number\s*|#\s*)?(\d{1,2})\s*:|:\s*(?:number\s*|#\s*)?(\d{1,2})\b)"#
+        let pattern = #"^\s*open\s+(?:the\s+|my\s+)?(?:chat|conversation)\s*(?:(?:number\s*|#\s*)?(\d{1,2})\s*(?::|$)|:\s*(?:number\s*|#\s*)?(\d{1,2})\b)"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
               let match = regex.firstMatch(in: request, range: NSRange(request.startIndex..., in: request)) else { return nil }
         for group in 1...2 {

@@ -175,6 +175,10 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse(_, _, let wrongResult, _)? = wrong.first else { return XCTFail("\(wrong)") }
         XCTAssertNotNil(wrongResult["error"])
 
+        let noNumber = await bridge.handle(.init(id: "o3", name: "open_chat", arguments: [:]))
+        guard case .toolResponse(_, _, let noNumberResult, _)? = noNumber.first else { return XCTFail("\(noNumber)") }
+        XCTAssertEqual(noNumberResult["error"], "number is required")
+
         let empty = await bridge.handle(.init(id: "f2", name: "find_chat", arguments: ["query": " "]))
         guard case .toolResponse(_, _, let emptyResult, _)? = empty.first else { return XCTFail("\(empty)") }
         XCTAssertEqual(emptyResult["error"], "query is required")
@@ -207,6 +211,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(GPTLiveDelegationBridge.openChatMarker(in: "Open the chat: 2"), "2")
         XCTAssertEqual(GPTLiveDelegationBridge.openChatMarker(in: "Open conversation #3:"), "3")
         XCTAssertEqual(GPTLiveDelegationBridge.openChatMarker(in: "Open chat: #4"), "4")
+        XCTAssertEqual(GPTLiveDelegationBridge.openChatMarker(in: "Open chat #2"), "2")
+        XCTAssertNil(GPTLiveDelegationBridge.openChatMarker(in: "Open chat 2 now"), "a bare number ends the delegation")
     }
 
     func testGPTLiveFindsAndOpensAChatWithoutStartingAJob() async {
@@ -247,6 +253,10 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(
             GeminiLiveConversationController.fallbackText(for: ["error": "Offline."], name: "find_chat"),
             "[The chat search you just made failed: Offline.]"
+        )
+        XCTAssertEqual(
+            GeminiLiveConversationController.fallbackText(for: ["status": "opened", "message": "It's open."], name: "open_chat"),
+            "[The chat you just asked to open: It's open.]"
         )
     }
 }

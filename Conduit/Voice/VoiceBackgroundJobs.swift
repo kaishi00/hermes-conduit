@@ -981,7 +981,6 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         } catch {
             return .failed(error.localizedDescription)
         }
-        // A server or profile change meanwhile: these chats aren't its.
         // A newer search, another call, or another server or profile meanwhile.
         guard generation == started, chatSearchSequence == sequence, liveCallID == call else { return .failed("The search was cut short; try again.") }
         chatMatches = Array(matches.prefix(VoiceChatFinder.resultLimit))
