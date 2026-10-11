@@ -58,12 +58,20 @@ enum HermesCallSettingsFormat {
     }
 
     /// The host counts characters as Unicode scalars (Python), so a note
-    /// is held to its limit in those, not in what Swift counts.
+    /// is held to its limit in those, not in what Swift counts. Whole
+    /// characters only: cut inside one (a family emoji, a flag), half of it
+    /// would stay.
     static func limitRules(_ text: String, to max: Int) -> String? {
         guard text.unicodeScalars.count > max else { return nil }
-        var scalars = String.UnicodeScalarView()
-        scalars.append(contentsOf: text.unicodeScalars.prefix(max))
-        return String(scalars)
+        var kept = ""
+        var count = 0
+        for character in text {
+            let scalars = character.unicodeScalars.count
+            guard count + scalars <= max else { break }
+            kept.append(character)
+            count += scalars
+        }
+        return kept
     }
 }
 
@@ -310,12 +318,14 @@ struct HermesCallSettingsSection: View {
             .onChange(of: rulesText) { _, text in
                 if let limited = HermesCallSettingsFormat.limitRules(text, to: max) { rulesText = limited }
             }
-            if rulesFocused {
-                Text(verbatim: "\(rulesText.unicodeScalars.count)/\(max)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
+            // Kept in the layout, so the caption below doesn't jump as the
+            // field gains and loses focus.
+            Text(verbatim: "\(rulesText.unicodeScalars.count)/\(max)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .opacity(rulesFocused ? 1 : 0)
+                .accessibilityHidden(!rulesFocused)
             Text("Hermes reads this before each call it decides to make, and calls only if the news fits. Calls you ask for don't depend on it.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

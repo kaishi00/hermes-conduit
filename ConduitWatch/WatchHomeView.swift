@@ -10,6 +10,12 @@ import SwiftUI
 
 struct WatchHomeView: View {
     @EnvironmentObject private var call: WatchVoiceCall
+    @EnvironmentObject private var link: WatchLink
+
+    /// The iPhone found this voice can't start for its Hermes profile.
+    private var notSetUp: Bool {
+        link.phoneContext?.notSetUp(call.engine.callVoice) == true
+    }
 
     var body: some View {
         ScrollView {
@@ -26,9 +32,7 @@ struct WatchHomeView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(call.engine.title)
                                 .font(.footnote.weight(.semibold))
-                            Text(call.engine.detail)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                            WatchEngineDetail(engine: call.engine, notSetUp: notSetUp)
                         }
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")
@@ -37,6 +41,14 @@ struct WatchHomeView: View {
                     }
                 }
                 .accessibilityLabel(Text("Voice: \(call.engine.title)"))
+                // Calls from Hermes ring the Watch only while its voice can
+                // start (WatchCallVoices).
+                if notSetUp, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
+                    Text("Calls from Hermes ring only your iPhone until \(call.engine.title) is set up. Voice settings in Conduit on your iPhone show what it needs.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
             .padding(.horizontal, 4)
         }
@@ -71,9 +83,29 @@ struct WatchHomeView: View {
     }
 }
 
+/// A voice's line under its name: where it runs, or that the iPhone found
+/// it can't start.
+struct WatchEngineDetail: View {
+    let engine: WatchVoiceEngine
+    let notSetUp: Bool
+
+    var body: some View {
+        if notSetUp {
+            Text("Not set up on your Hermes host")
+                .font(.caption2)
+                .foregroundStyle(Color.watchAttention)
+        } else {
+            Text(engine.detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
 /// Picks the voice the next call talks to.
 struct WatchEnginePicker: View {
     @EnvironmentObject private var call: WatchVoiceCall
+    @EnvironmentObject private var link: WatchLink
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -89,9 +121,7 @@ struct WatchEnginePicker: View {
                             .frame(width: 20)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(engine.title)
-                            Text(engine.detail)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                            WatchEngineDetail(engine: engine, notSetUp: link.phoneContext?.notSetUp(engine.callVoice) == true)
                         }
                         Spacer(minLength: 0)
                         if engine == call.engine {

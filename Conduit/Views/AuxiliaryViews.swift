@@ -589,7 +589,9 @@ struct SettingsView: View {
                         setEnabled: { appState.setGeminiLiveEnabled($0) },
                         checkAvailability: {
                             do {
-                                return .success(try await appState.geminiLiveTokenClient.availability())
+                                let status = try await appState.geminiLiveTokenClient.availability()
+                                await MainActor.run { appState.noteWatchCallVoice(.geminiLive, ready: status.isAvailable) }
+                                return .success(status)
                             } catch {
                                 return .failure(error)
                             }
@@ -612,7 +614,9 @@ struct SettingsView: View {
                         setEnabled: { appState.setGPTLiveEnabled($0) },
                         checkAvailability: {
                             do {
-                                return .success(try await appState.gptLiveClient.availability())
+                                let status = try await appState.gptLiveClient.availability()
+                                await MainActor.run { appState.noteWatchCallVoice(.gptLive, ready: status.isAvailable) }
+                                return .success(status)
                             } catch {
                                 return .failure(error)
                             }
@@ -631,7 +635,9 @@ struct SettingsView: View {
                         setEnabled: { appState.setGrokLiveEnabled($0) },
                         checkAvailability: {
                             do {
-                                return .success(try await appState.grokLiveClient.availability())
+                                let status = try await appState.grokLiveClient.availability()
+                                await MainActor.run { appState.noteWatchCallVoice(.grokLive, ready: status.isAvailable) }
+                                return .success(status)
                             } catch {
                                 return .failure(error)
                             }

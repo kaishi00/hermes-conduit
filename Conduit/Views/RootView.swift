@@ -244,7 +244,8 @@ struct MainView: View {
     /// and so does a voice or other sheet: closing a voice sheet ends its
     /// call, and only one sheet shows at a time.
     private func openSettings(at page: ConduitAppLink.SettingsLink) {
-        guard settingsPresentation == nil else { return }
+        // A host without calls has no such page.
+        guard appState.supportsHermesCalls, settingsPresentation == nil else { return }
         let otherSheetUp = appState.showModelPicker || appState.showContextSheet || appState.showWorkspaceSheet
             || appState.showGatewaySheet || appState.showAgentsSheet || appState.showVoiceSheet
             || appState.showGeminiLiveSheet || appState.showGrokLiveSheet || appState.showGPTLiveSheet
@@ -415,7 +416,11 @@ struct MainView: View {
     }
 
     private func presentSettingsAfterSidebarDismissal() {
-        guard shouldPresentSettingsAfterSidebarDismissal else { return }
+        guard shouldPresentSettingsAfterSidebarDismissal else {
+            // A link's page belongs to the Settings it opened, not a later one.
+            settingsOpensAt = nil
+            return
+        }
         shouldPresentSettingsAfterSidebarDismissal = false
         presentSettings()
     }

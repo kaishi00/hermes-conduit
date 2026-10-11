@@ -51,6 +51,15 @@ enum WatchVoiceEngine: String, CaseIterable, Identifiable {
         }
     }
 
+    /// This voice as the iPhone names it (WatchCallVoices).
+    var callVoice: WatchCallVoices.Voice {
+        switch self {
+        case .geminiLive: return .geminiLive
+        case .gptLive: return .gptLive
+        case .grokLive: return .grokLive
+        }
+    }
+
     var symbol: String {
         switch self {
         case .geminiLive: return "sparkles"
