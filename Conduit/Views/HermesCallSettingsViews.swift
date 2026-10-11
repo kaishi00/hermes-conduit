@@ -49,11 +49,12 @@ enum HermesCallSettingsFormat {
     /// What the test call sends, in the app's language.
     static var testCallPrompt: String { AppLocalization.string("Call me now to test calls.") }
 
-    /// What Have Hermes watch for this sends: a scheduled check for what
-    /// the call note describes. The note goes as typed (saved or not),
-    /// trimmed the way the host keeps it.
+    /// What Have Hermes watch for this sends: scheduled checks for what the
+    /// call note describes, brought in line with an edited note rather
+    /// than added again (plugin 0.16.2's call watches). The note goes as
+    /// typed (saved or not), trimmed the way the host keeps it.
     static func watchPrompt(_ note: String) -> String {
-        AppLocalization.string("Set up a scheduled check that calls me when this happens:\n\(rules(note))")
+        AppLocalization.string("Make my scheduled checks that call me match this note. Update the ones I already have instead of adding new ones:\n\(rules(note))")
     }
 
     /// The note as the host keeps it: each line trimmed, no empty lines.
@@ -309,9 +310,11 @@ struct HermesCallSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: start) {
                 Label(AppLocalization.string("Try a test call"), systemImage: "phone.fill")
-                    .font(.footnote.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
             }
-            .buttonStyle(.borderless)
+            // Bordered, so it reads as a button and not a caption.
+            .buttonStyle(.bordered)
+            .tint(.conduitAccent)
             .accessibilityIdentifier("settings.hermesCallsTest")
             Text(AppLocalization.string("Opens a new chat with “\(HermesCallSettingsFormat.testCallPrompt)” ready to send. Send it, and your iPhone rings when Hermes replies."))
                 .font(.caption)
@@ -323,11 +326,12 @@ struct HermesCallSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: start) {
                 Label(AppLocalization.string("Have Hermes watch for this"), systemImage: "binoculars.fill")
-                    .font(.footnote.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
+            .tint(.conduitAccent)
             .accessibilityIdentifier("settings.hermesCallsWatch")
-            Text("Hermes doesn't check for what your note describes on its own. This opens a new chat asking it to set up a scheduled check that calls you when it happens.")
+            Text("Hermes doesn't check for what your note describes on its own. This opens a new chat asking it to set up scheduled checks that call you when it happens. After you change the note, tap it again to bring the checks up to date.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

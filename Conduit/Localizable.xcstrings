@@ -205868,170 +205868,6 @@
         }
       }
     },
-    "Hermes doesn't check for what your note describes on its own. This opens a new chat asking it to set up a scheduled check that calls you when it happens." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes prüft nicht von selbst, was deine Notiz beschreibt. Das öffnet einen neuen Chat, in dem du ihn bittest, eine geplante Prüfung einzurichten, die dich anruft, wenn es passiert."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes no comprueba por su cuenta lo que describe tu nota. Esto abre un chat nuevo en el que le pides que configure una comprobación programada que te llame cuando ocurra."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes ne vérifie pas de lui-même ce que décrit votre note. Ceci ouvre une nouvelle discussion qui lui demande de mettre en place une vérification planifiée qui vous appelle quand cela arrive."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes tidak memeriksa sendiri hal yang dijelaskan catatan Anda. Ini membuka obrolan baru yang meminta Hermes menyiapkan pemeriksaan terjadwal yang menelepon Anda saat hal itu terjadi."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes non controlla da solo ciò che descrive la tua nota. Questo apre una nuova chat in cui gli chiedi di impostare un controllo pianificato che ti chiami quando succede."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesはメモに書かれたことを自分から確認しません。新しいチャットを開き、それが起きたら電話する定期チェックの設定をHermesに頼みます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes는 메모에 적힌 일을 스스로 확인하지 않아요. 새 채팅을 열어, 그 일이 생기면 전화하는 정기 확인을 설정해 달라고 Hermes에게 요청해요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes sam nie sprawdza tego, co opisuje Twoja notatka. To otwiera nowy czat z prośbą, by ustawił zaplanowane sprawdzanie, które zadzwoni do Ciebie, gdy to się stanie."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O Hermes não verifica sozinho o que sua nota descreve. Isto abre um chat novo pedindo que ele configure uma verificação agendada que ligue para você quando isso acontecer."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes сам не проверяет то, что описано в вашей заметке. Откроется новый чат с просьбой настроить проверку по расписанию, которая позвонит вам, когда это случится."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes, notunuzda anlatılanı kendiliğinden kontrol etmez. Bu, gerçekleştiğinde sizi arayan zamanlanmış bir kontrol kurmasını isteyen yeni bir sohbet açar."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 不会主动检查你的说明里写的事。这会打开一个新聊天，请它设置一个定时检查，在事情发生时给你打电话。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 不會主動檢查你的說明裡寫的事。這會開啟一個新聊天，請它設定一個定時檢查，在事情發生時打電話給你。"
-          }
-        }
-      }
-    },
-    "Set up a scheduled check that calls me when this happens:\n%@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Richte eine geplante Prüfung ein, die mich anruft, wenn das passiert:\n%@"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configura una comprobación programada que me llame cuando pase esto:\n%@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mets en place une vérification planifiée qui m'appelle quand ceci arrive :\n%@"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Siapkan pemeriksaan terjadwal yang menelepon saya saat ini terjadi:\n%@"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imposta un controllo pianificato che mi chiami quando succede questo:\n%@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "これが起きたら電話してくれる定期チェックを設定して：\n%@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이런 일이 생기면 나한테 전화하는 정기 확인을 설정해 줘:\n%@"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ustaw zaplanowane sprawdzanie, które zadzwoni do mnie, gdy to się stanie:\n%@"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configure uma verificação agendada que me ligue quando isto acontecer:\n%@"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Настрой проверку по расписанию, которая позвонит мне, когда это случится:\n%@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu olduğunda beni arayan zamanlanmış bir kontrol kur:\n%@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "设置一个定时检查，在发生这件事时给我打电话：\n%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "設定一個定時檢查，在發生這件事時打電話給我：\n%@"
-          }
-        }
-      }
-    },
     "To be called when something happens, ask Hermes to watch for it: “Check my homelab every 5 minutes and call me if it's down for more than 10 minutes.” Hermes sets up a scheduled check that calls you." : {
       "localizations" : {
         "de" : {
@@ -206110,6 +205946,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "想在某件事發生時接到電話，就請 Hermes 留意它：「每 5 分鐘檢查一次我的家庭實驗室，如果當機超過 10 分鐘就打電話給我。」Hermes 會設定一個定時檢查來打電話給你。"
+          }
+        }
+      }
+    },
+    "Make my scheduled checks that call me match this note. Update the ones I already have instead of adding new ones:\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gleiche meine geplanten Prüfungen, die mich anrufen, mit dieser Notiz ab. Passe die vorhandenen an, statt neue hinzuzufügen:\n%@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haz que mis comprobaciones programadas que me llaman coincidan con esta nota. Actualiza las que ya tengo en lugar de añadir otras nuevas:\n%@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aligne mes vérifications planifiées qui m'appellent sur cette note. Mets à jour celles que j'ai déjà au lieu d'en ajouter de nouvelles :\n%@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesuaikan pemeriksaan terjadwal yang menelepon saya dengan catatan ini. Perbarui yang sudah ada, jangan menambahkan yang baru:\n%@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allinea a questa nota i miei controlli pianificati che mi chiamano. Aggiorna quelli che ho già invece di aggiungerne di nuovi:\n%@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電話してくれる定期チェックをこのメモに合わせて。新しく追加せず、今あるものを更新して：\n%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나한테 전화하는 정기 확인을 이 메모에 맞춰 줘. 새로 추가하지 말고 이미 있는 걸 업데이트해 줘:\n%@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dopasuj do tej notatki moje zaplanowane sprawdzania, które do mnie dzwonią. Zaktualizuj te, które już mam, zamiast dodawać nowe:\n%@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajuste minhas verificações agendadas que me ligam para que correspondam a esta nota. Atualize as que já tenho em vez de adicionar novas:\n%@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приведи мои проверки по расписанию, которые мне звонят, в соответствие с этой заметкой. Обнови уже существующие, а не добавляй новые:\n%@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beni arayan zamanlanmış kontrollerimi bu nota göre düzenle. Yenilerini eklemek yerine mevcut olanları güncelle:\n%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让会给我打电话的定时检查与这条说明保持一致。更新已有的检查，不要再新增：\n%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓會打電話給我的定時檢查與這則說明保持一致。更新現有的檢查，不要再新增：\n%@"
+          }
+        }
+      }
+    },
+    "Hermes doesn't check for what your note describes on its own. This opens a new chat asking it to set up scheduled checks that call you when it happens. After you change the note, tap it again to bring the checks up to date." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes prüft nicht von selbst, was deine Notiz beschreibt. Das öffnet einen neuen Chat, in dem du ihn bittest, geplante Prüfungen einzurichten, die dich anrufen, wenn es passiert. Wenn du die Notiz änderst, tippe erneut, um die Prüfungen anzupassen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no comprueba por su cuenta lo que describe tu nota. Esto abre un chat nuevo en el que le pides que configure comprobaciones programadas que te llamen cuando ocurra. Si cambias la nota, vuelve a tocar para ponerlas al día."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ne vérifie pas de lui-même ce que décrit votre note. Ceci ouvre une nouvelle discussion qui lui demande de mettre en place des vérifications planifiées qui vous appellent quand cela arrive. Après avoir modifié la note, touchez à nouveau pour les mettre à jour."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak memeriksa sendiri hal yang dijelaskan catatan Anda. Ini membuka obrolan baru yang meminta Hermes menyiapkan pemeriksaan terjadwal yang menelepon Anda saat hal itu terjadi. Setelah mengubah catatan, ketuk lagi untuk memperbarui pemeriksaannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non controlla da solo ciò che descrive la tua nota. Questo apre una nuova chat in cui gli chiedi di impostare controlli pianificati che ti chiamino quando succede. Dopo aver modificato la nota, tocca di nuovo per aggiornarli."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesはメモに書かれたことを自分から確認しません。新しいチャットを開き、それが起きたら電話する定期チェックの設定をHermesに頼みます。メモを変えたら、もう一度タップしてチェックを更新しましょう。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 메모에 적힌 일을 스스로 확인하지 않아요. 새 채팅을 열어, 그 일이 생기면 전화하는 정기 확인을 설정해 달라고 Hermes에게 요청해요. 메모를 바꾼 뒤 다시 탭하면 확인이 최신 상태로 맞춰져요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sam nie sprawdza tego, co opisuje Twoja notatka. To otwiera nowy czat z prośbą, by ustawił zaplanowane sprawdzania, które zadzwonią do Ciebie, gdy to się stanie. Po zmianie notatki stuknij ponownie, aby je zaktualizować."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não verifica sozinho o que sua nota descreve. Isto abre um chat novo pedindo que ele configure verificações agendadas que liguem para você quando isso acontecer. Depois de mudar a nota, toque de novo para atualizá-las."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes сам не проверяет то, что описано в вашей заметке. Откроется новый чат с просьбой настроить проверки по расписанию, которые позвонят вам, когда это случится. Изменив заметку, нажмите снова, чтобы обновить проверки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, notunuzda anlatılanı kendiliğinden kontrol etmez. Bu, gerçekleştiğinde sizi arayan zamanlanmış kontroller kurmasını isteyen yeni bir sohbet açar. Notu değiştirdikten sonra kontrolleri güncellemek için tekrar dokunun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 不会主动检查你的说明里写的事。这会打开一个新聊天，请它设置定时检查，在事情发生时给你打电话。修改说明后，再点一次即可更新这些检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 不會主動檢查你的說明裡寫的事。這會開啟一個新聊天，請它設定定時檢查，在事情發生時打電話給你。修改說明後，再點一次即可更新這些檢查。"
           }
         }
       }
