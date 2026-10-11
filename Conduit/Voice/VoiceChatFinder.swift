@@ -54,8 +54,21 @@ enum VoiceChatFinder {
         let cleaned = raw.unicodeScalars.map { scalar -> Character in
             CharacterSet.alphanumerics.contains(scalar) ? Character(scalar) : " "
         }
-        let words = String(cleaned).split(whereSeparator: \.isWhitespace)
-        return String(words.joined(separator: " ").prefix(maximumQueryCharacters))
+        // Whole words only: a cut word would be searched as a fragment.
+        var query = ""
+        for word in String(cleaned).split(whereSeparator: \.isWhitespace) {
+            let next = query.isEmpty ? String(word) : query + " " + word
+            guard next.count <= maximumQueryCharacters else { break }
+            query = next
+        }
+        return query
+    }
+
+    /// The match number in "2", "#2" or "number 2"; nil for anything else,
+    /// so an id that merely holds digits never opens a numbered match.
+    static func matchNumber(_ reference: String) -> Int? {
+        guard let range = reference.range(of: #"^(?:(?:number|no\.?|#)\s*)?(\d{1,2})$"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        return Int(reference[range].filter(\.isNumber))
     }
 
     /// The words a search that matched nothing tries one at a time, longest
@@ -79,7 +92,7 @@ enum VoiceChatFinder {
         guard let rows = response["results"] as? [[String: Any]] else { return [] }
         var seen = Set<String>()
         return rows.compactMap { row -> VoiceChatMatch? in
-            let id = (row["session_id"] as? String ?? row["id"] as? String ?? "")
+            let id = (text(row["session_id"]) ?? text(row["id"]) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !id.isEmpty, seen.insert(id).inserted else { return nil }
             let title = (row["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -150,6 +163,11 @@ enum VoiceChatFinder {
         case 60..<730: return "\(days / 30) months ago"
         default: return "\(days / 365) years ago"
         }
+    }
+
+    private static func text(_ value: Any?) -> String? {
+        if let string = value as? String, !string.isEmpty { return string }
+        return (value as? NSNumber)?.stringValue
     }
 
     private static func epoch(_ value: Any?) -> TimeInterval? {

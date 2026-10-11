@@ -415,6 +415,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The running call's last chat search, numbered from 1 as the model
     /// heard it.
     private(set) var chatMatches: [VoiceChatMatch] = []
+    /// Bumped by each chat search, so an older one finishing late never
+    /// replaces the newer list the model is numbering against.
+    private var chatSearchSequence: UInt64 = 0
     /// The running (or last) live call; jobs it starts carry it, so the
     /// call screen shows only its own jobs.
     @Published private(set) var liveCallID: UUID?
@@ -960,6 +963,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let query = VoiceChatFinder.searchQuery(rawQuery)
         guard !query.isEmpty else { return .failed("query is required") }
         let started = generation
+        chatSearchSequence &+= 1
+        let sequence = chatSearchSequence
         var matches: [VoiceChatMatch]
         do {
             matches = try await backend.searchChats(query)
@@ -972,7 +977,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return .failed(error.localizedDescription)
         }
         // A server or profile change meanwhile: these chats aren't its.
-        guard generation == started else { return .failed("The search was cut short; try again.") }
+        guard generation == started, chatSearchSequence == sequence else { return .failed("The search was cut short; try again.") }
         chatMatches = Array(matches.prefix(VoiceChatFinder.resultLimit))
         return chatMatches.isEmpty ? .noMatches : .found(chatMatches)
     }
@@ -981,11 +986,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// model heard ("2") or its session id.
     func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome {
         let trimmed = reference.trimmingCharacters(in: .whitespacesAndNewlines)
-        let digits = trimmed.drop { !$0.isNumber }.prefix { $0.isNumber }
         let match: VoiceChatMatch?
         if let byID = chatMatches.first(where: { $0.sessionID == trimmed }) {
             match = byID
-        } else if let number = Int(digits), chatMatches.indices.contains(number - 1) {
+        } else if let number = VoiceChatFinder.matchNumber(trimmed), chatMatches.indices.contains(number - 1) {
             match = chatMatches[number - 1]
         } else {
             match = nil

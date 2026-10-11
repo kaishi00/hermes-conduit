@@ -50,10 +50,11 @@ extension VoiceConversationControllerTests {
             ["session_id": "s-tip", "id": "s-tip", "title": "GPU setup", "snippet": "we put the >>>GPU<<< in\nslot two", "last_active": 1_700_000_000.5],
             ["session_id": "s-tip", "title": "Duplicate lineage row"],
             ["session_id": "s-2", "title": NSNull(), "snippet": "", "session_started": 1_690_000_000],
+            ["session_id": 42, "title": "Numeric id"],
             ["title": "No id"],
         ]]
         let matches = VoiceChatFinder.matches(from: response)
-        XCTAssertEqual(matches.map(\.sessionID), ["s-tip", "s-2"])
+        XCTAssertEqual(matches.map(\.sessionID), ["s-tip", "s-2", "42"])
         XCTAssertEqual(matches[0].title, "GPU setup")
         XCTAssertEqual(matches[0].snippet, "we put the GPU in slot two")
         XCTAssertEqual(matches[0].lastActive, Date(timeIntervalSince1970: 1_700_000_000.5))
@@ -65,6 +66,11 @@ extension VoiceConversationControllerTests {
     func testChatSearchQueryIsWordsOnly() {
         XCTAssertEqual(VoiceChatFinder.searchQuery("  \"GPU\" set-up: drivers*  "), "GPU set up drivers")
         XCTAssertEqual(VoiceChatFinder.searchQuery("??"), "")
+        let long = VoiceChatFinder.searchQuery(String(repeating: "abcdefghi ", count: 30))
+        XCTAssertTrue(long.count <= VoiceChatFinder.maximumQueryCharacters)
+        XCTAssertTrue(long.hasSuffix("abcdefghi"), "cut between words, never inside one")
+        XCTAssertEqual(VoiceChatFinder.matchNumber("Number 3"), 3)
+        XCTAssertNil(VoiceChatFinder.matchNumber("a1b2"))
         XCTAssertEqual(VoiceChatFinder.fallbackWords("GPU home setup"), ["setup", "home"], "longest first, two at most, short words skipped")
         XCTAssertEqual(VoiceChatFinder.fallbackWords("GPU"), [], "a single word was already tried")
         XCTAssertEqual(
@@ -122,6 +128,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(log.opened, ["s-home", "s-gpu", "s-home"])
         XCTAssertEqual(supervisor.openFoundChat("3"), .unknownChat)
         XCTAssertEqual(supervisor.openFoundChat("s-elsewhere"), .unknownChat, "never a chat the search didn't find")
+        XCTAssertEqual(supervisor.openFoundChat("s-2"), .unknownChat, "an id holding a digit is no match number")
+        XCTAssertEqual(supervisor.openFoundChat("#2"), .opened(title: "Home server"))
 
         supervisor.beginLiveCall()
         XCTAssertEqual(supervisor.openFoundChat("1"), .unknownChat, "a new call starts with no matches")
@@ -221,6 +229,13 @@ extension VoiceConversationControllerTests {
     func testChatSearchLostWithItsConnectionStillReachesTheModel() {
         let text = GeminiLiveConversationController.fallbackText(for: ["chats": "1. \"GPU setup\"", "message": "Open it."], name: "find_chat")
         XCTAssertEqual(text, "[The chat search you just made found these:\n1. \"GPU setup\"\nOpen it.]")
-        XCTAssertNil(GeminiLiveConversationController.fallbackText(for: ["chats": "", "message": "No chats match that."], name: "find_chat"))
+        XCTAssertEqual(
+            GeminiLiveConversationController.fallbackText(for: ["chats": "", "message": "No chats match that."], name: "find_chat"),
+            "[The chat search you just made: No chats match that.]"
+        )
+        XCTAssertEqual(
+            GeminiLiveConversationController.fallbackText(for: ["error": "Offline."], name: "find_chat"),
+            "[The chat search you just made failed: Offline.]"
+        )
     }
 }

@@ -1338,8 +1338,13 @@ final class GeminiLiveConversationController: ObservableObject {
         }
         if name == GeminiLiveToolBridge.Tool.findChat.rawValue {
             // Its matches stay numbered on the phone, so open_chat still works.
-            guard let chats = result["chats"], !chats.isEmpty else { return nil }
-            return "[The chat search you just made found these:\n\(chats)\n\(result["message"] ?? "")]"
+            if let chats = result["chats"], !chats.isEmpty {
+                return "[The chat search you just made found these:\n\(chats)\n\(result["message"] ?? "")]"
+            }
+            if let error = result["error"], !error.isEmpty {
+                return "[The chat search you just made failed: \(error)]"
+            }
+            return result["message"].map { "[The chat search you just made: \($0)]" }
         }
         guard let title = result["title"], let status = result["status"] else { return nil }
         if let outcome = result["result"] {

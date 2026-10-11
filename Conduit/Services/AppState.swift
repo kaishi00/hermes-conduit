@@ -1631,7 +1631,8 @@ final class AppState: ObservableObject {
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
                         waitsOn: self?.liveHermesCall?.kind,
-                        chats: true
+                        // The chat opens on the phone: a call CarPlay shows has no use for it.
+                        chats: self?.isCarPlayVoiceSurfaceActive != true
                     ),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
@@ -2191,7 +2192,8 @@ final class AppState: ObservableObject {
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
                         waitsOn: self?.liveHermesCall?.kind,
-                        chats: true
+                        // The chat opens on the phone: a call CarPlay shows has no use for it.
+                        chats: self?.isCarPlayVoiceSurfaceActive != true
                     ),
                     voice: self?.grokLiveVoice
                 )
@@ -4859,7 +4861,9 @@ final class AppState: ObservableObject {
     }
 
     /// Opens a chat a call found. The call goes on minimised, as it does
-    /// when its screen opens a job's chat.
+    /// when its screen opens a job's chat. True once the open is on its way:
+    /// like that card's Open chat, a chat that turns out to be gone says so
+    /// on screen rather than to the call.
     func openChatFromLiveCall(_ sessionID: String) -> Bool {
         guard isConnected, client != nil else { return false }
         if showGeminiLiveSheet { showGeminiLiveSheet = false }
