@@ -227,6 +227,8 @@ struct ProfileAvatarView: View {
                     .scaledToFill()
                     .frame(width: size, height: size)
                     .clipped()
+                    // Always beside the profile's name, or inside a labelled button.
+                    .accessibilityHidden(true)
             } else {
                 Text(initials).font(.system(size: max(10, size * 0.36), weight: .bold, design: .rounded))
                     .foregroundStyle(Color.conduitAccent).frame(width: size, height: size)

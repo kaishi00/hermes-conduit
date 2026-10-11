@@ -3152,7 +3152,6 @@ struct ConduitAgentMark: View {
     var isActive = false
     var avatarURL: URL?
     var displayName = "Hermes"
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// One breath in and out: 1.1 s each way, eased at both ends.
     static let breathDuration: TimeInterval = 2.2
@@ -3167,8 +3166,8 @@ struct ConduitAgentMark: View {
     }
 
     var body: some View {
-        if isActive, !reduceMotion {
-            ConduitBreathingTimeline { breath in
+        if isActive {
+            ConduitBreathing { breath in
                 mark(breath: breath)
             }
         } else {
@@ -3184,6 +3183,30 @@ struct ConduitAgentMark: View {
             }
             .shadow(color: Color.conduitAccent.opacity(isActive ? 0.42 : 0), radius: 3 + 6 * breath)
             .scaleEffect(1 + 0.06 * breath)
+    }
+}
+
+/// Breathes under the backdrop's rules: only while the app is active, and
+/// not with Reduce Motion, in Low Power Mode or while the phone runs hot.
+/// Each start (a new turn, or coming back to the app) begins at rest.
+private struct ConduitBreathing<Content: View>: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var devicePower = DevicePowerState.shared
+    @ViewBuilder let content: (CGFloat) -> Content
+
+    var body: some View {
+        if ConduitBackdropMotionPolicy.shouldAnimate(
+            drifts: true,
+            sceneIsActive: scenePhase == .active,
+            reduceMotion: reduceMotion,
+            lowPowerMode: devicePower.isLowPowerModeEnabled,
+            thermalState: devicePower.thermalState
+        ) {
+            ConduitBreathingTimeline(content: content)
+        } else {
+            content(0)
+        }
     }
 }
 
