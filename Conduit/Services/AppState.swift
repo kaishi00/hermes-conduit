@@ -569,14 +569,7 @@ final class AppState: ObservableObject {
         didSet {
             refreshActiveChatScrollSessionIdentity()
             observeChatReadState()
-            // Hermes' @session:<id> links read as the chat's name.
-            var titles: [String: String] = [:]
-            for session in sessions where !session.title.isEmpty {
-                for id in [session.id, session.storedSessionId].compactMap({ $0 }) + session.alternateIds {
-                    titles[id] = session.title
-                }
-            }
-            HermesSessionReference.updateTitles(titles)
+            updateSessionReferenceTitles()
         }
     }
     @Published var cronSessions: [SessionSummary] = [] {
@@ -584,7 +577,19 @@ final class AppState: ObservableObject {
             refreshActiveChatScrollSessionIdentity()
             // Pinned runs carry read state too (#485).
             observeChatReadState()
+            updateSessionReferenceTitles()
         }
+    }
+
+    /// Hermes' @session:<id> links read as the chat's name, cron runs' too.
+    private func updateSessionReferenceTitles() {
+        var titles: [String: String] = [:]
+        for session in cronSessions + sessions where !session.title.isEmpty {
+            for id in [session.id, session.storedSessionId, session.lineageRootId].compactMap({ $0 }) + session.alternateIds {
+                titles[id] = session.title
+            }
+        }
+        HermesSessionReference.updateTitles(titles)
     }
     @Published private(set) var projects: [ProjectSummary] = []
     @Published private(set) var supportsProjects = false
