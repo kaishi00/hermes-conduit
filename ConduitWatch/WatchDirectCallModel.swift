@@ -128,7 +128,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// A reactivation still running after this long counts as failed.
     static let reactivationTimeout: TimeInterval = 10
     /// Calls the iPhone answers once nobody speaks (NON_BLOCKING lookups).
-    static let whenIdleTools: Set<String> = ["web_search", "recall_memory"].union(WatchToolAnswer.chatTools)
+    static let whenIdleTools: Set<String> = WatchToolAnswer.chatTools.union(["web_search", "recall_memory"])
     /// A tool grant this close to its end is renewed while the iPhone can
     /// be reached.
     static let grantRenewMargin: TimeInterval = 10 * 60

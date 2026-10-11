@@ -159,7 +159,7 @@ enum WatchToolAnswer {
     static let findChat = VoiceChatToolText.findChat
     static let readChat = VoiceChatToolText.readChat
     static let chatTools: Set<String> = [findChat, readChat]
-    static let tools: Set<String> = [webSearch, recallMemory].union(chatTools)
+    static let tools: Set<String> = chatTools.union([webSearch, recallMemory])
     /// The plugin's capability for the chat tools.
     static let chatCapability = "watch-chats"
 
