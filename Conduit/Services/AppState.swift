@@ -3319,7 +3319,9 @@ final class AppState: ObservableObject {
         // So do the unsaved voice calls Voice settings counts.
         publishVoiceCallSaveStatus()
         // And the Watch voice checks: this profile's decide whether calls
-        // ring the Watch.
+        // ring the Watch. Rescoped here, not only by the refresh below, so
+        // a Watch call before that refresh's first await can't read the
+        // outgoing profile's checks.
         rescopeWatchCallVoices()
         Task { await refreshWatchCallVoices() }
     }

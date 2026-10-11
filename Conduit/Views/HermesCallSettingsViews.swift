@@ -50,7 +50,8 @@ enum HermesCallSettingsFormat {
     static var testCallPrompt: String { AppLocalization.string("Call me now to test calls.") }
 
     /// What Have Hermes watch for this sends: a scheduled check for what
-    /// the call note describes, the note as the host keeps it.
+    /// the call note describes. The note goes as typed (saved or not),
+    /// trimmed the way the host keeps it.
     static func watchPrompt(_ note: String) -> String {
         AppLocalization.string("Set up a scheduled check that calls me when this happens:\n\(rules(note))")
     }
