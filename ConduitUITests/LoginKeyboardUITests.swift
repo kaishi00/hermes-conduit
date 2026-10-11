@@ -83,19 +83,24 @@ final class LoginKeyboardUITests: XCTestCase {
         let connect = app.buttons[Identity.connect]
         XCTAssertTrue(connect.waitForExistence(timeout: 5))
         let beforeScroll = "connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame)"
-        // The focus scroll centers the secret field in the full screen, which
-        // leaves Connect just under the keyboard toolbar. Scroll it up the way
-        // a person would: drag the form from a point above the keyboard. A
-        // plain app.swipeUp() never moved the form on hosted runs (Connect
-        // kept its exact frame in every nightly since 2026-10-05).
+        // The focus scroll leaves Connect just under the keyboard toolbar.
+        // Scroll it up the way a person would: drag the form from a point
+        // above the keyboard. A plain app.swipeUp() never moved the form on
+        // hosted runs (Connect kept its exact frame in every nightly from
+        // 2026-10-05 to 2026-10-11). Each drag gets a moment to settle before
+        // the next, so a slow scroll is not mistaken for a stuck one.
         var drags = 0
-        while !connect.isHittable && drags < 3 {
+        while !pollAboveKeyboard(connect, in: app, timeout: 1) && drags < 3 {
             dragFormUp(app)
             drags += 1
         }
         XCTAssertTrue(
-            pollHittability(of: connect, timeout: 5),
-            "Connect must remain reachable with the keyboard visible. Before scrolling: \(beforeScroll). After \(drags) drag(s): connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame). Tree:\n\(app.debugDescription)"
+            app.keyboards.firstMatch.exists,
+            "The keyboard must still be up after scrolling, or this test no longer covers the keyboard layout. Tree:\n\(app.debugDescription)"
+        )
+        XCTAssertTrue(
+            pollAboveKeyboard(connect, in: app, timeout: 5),
+            "Connect must remain reachable with the keyboard visible. Before scrolling: \(beforeScroll). After \(drags) drag(s): connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame) done=\(app.buttons["Done"].firstMatch.frame). Tree:\n\(app.debugDescription)"
         )
     }
 
@@ -333,6 +338,26 @@ final class LoginKeyboardUITests: XCTestCase {
         let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.45))
         let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.12))
         start.press(forDuration: 0.1, thenDragTo: end)
+    }
+
+    /// Polls until `element` is hittable AND sits entirely above the keyboard
+    /// and its Done toolbar. isHittable alone is not enough here: XCUI has
+    /// reported Connect hittable behind the keyboard window (see
+    /// dismissKeyboard), so the frame check is what proves it is reachable.
+    private func pollAboveKeyboard(_ element: XCUIElement, in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        func isAbove() -> Bool {
+            guard element.isHittable else { return false }
+            var top = app.keyboards.firstMatch.frame.minY
+            let done = app.buttons["Done"].firstMatch
+            if done.exists { top = min(top, done.frame.minY) }
+            return element.frame.maxY <= top
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if isAbove() { return true }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return isAbove()
     }
 
     /// XCUIElement has no waitForHittability; poll isHittable on a deadline.
