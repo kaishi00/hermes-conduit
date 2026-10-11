@@ -2463,6 +2463,10 @@ final class AppState: ObservableObject {
             searchChats: { [weak self] query in
                 guard let self else { throw HermesError.notConnected }
                 return try await self.searchChatsForVoice(query)
+            },
+            readChat: { [weak self] sessionID in
+                guard let self else { throw HermesError.notConnected }
+                return try await self.readChatForVoice(sessionID)
             }
         ))
         supervisor.callbacks = self.makeHermesCallbackBackend()
@@ -4871,6 +4875,18 @@ final class AppState: ObservableObject {
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
             return VoiceChatFinder.titleMatches(in: activeProfileSessions, query: query)
         }
+    }
+
+    /// A chat a call found, read for the call to talk about: the same text
+    /// turns a resumed call gets, with a long chat's older part summarized
+    /// once and the summary kept on the host.
+    func readChatForVoice(_ sessionID: String) async throws -> VoiceResumeContext {
+        guard isConnected, dashboardTicketBridge != nil else { throw HermesError.notConnected }
+        guard let context = await voiceResumeContext(sessionID: sessionID, profile: activeProfile) else {
+            // Said to the model, not shown: not localized.
+            throw VoiceAudioError.unavailable("Conduit couldn't read that chat.")
+        }
+        return context
     }
 
     /// Opens a chat a call found. The call goes on minimised, as it does

@@ -51,7 +51,14 @@ a job. At most three jobs run at once.
   chats Conduit lists. Up to five matches go to the model, numbered, with
   title, age and a line from the chat; it opens one that clearly fits or
   asks which. Opening minimises the call sheet, as **Open chat** does, and
-  the call goes on. A Watch call doesn't get these tools.
+  the call goes on. A call CarPlay shows has nowhere to open a chat, so
+  `open_chat` refuses there and the model says so. A found chat can also be
+  read into the call so the user can talk about it, opened or not:
+  `read_chat` (the match's number; NON_BLOCKING) or `Read chat: <number>`
+  on GPT-Live. It gets the chat's user and Hermes text the way a resumed
+  call gets a saved call's: word for word when short, else a summary of the
+  older part (made once and kept on the host) plus the latest turns, fenced
+  as data. A Watch call doesn't get these tools.
 - A saved live call gets a line where it started the job ("Started a
   background job: <title>.") with an **Open job** link to the job's chat, so
   the full result is a tap away even when the voice model only summarized it.

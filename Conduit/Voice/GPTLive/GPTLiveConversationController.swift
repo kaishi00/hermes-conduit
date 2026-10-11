@@ -74,7 +74,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// Finding and opening an earlier chat: the phone's delegation bridge
     /// answers "Find chat:" and "Open chat:" itself, so a Watch call leaves
     /// it out.
-    static let phoneFindChat = "When the user asks to find, pull up or open one of their earlier conversations with Hermes, delegate \"Find chat:\" with one to three distinctive words from the topic, like \"Find chat: GPU setup\". Conduit answers with numbered matches: when one clearly fits, delegate \"Open chat:\" with its number, like \"Open chat: 2\"; when several could, say the titles of the likeliest two or three and ask which. Opening it doesn't end this call. These markers are for Conduit only: never say them aloud."
+    static let phoneFindChat = "When the user asks to find, pull up or open one of their earlier conversations with Hermes, delegate \"Find chat:\" with one to three distinctive words from the topic, like \"Find chat: GPU setup\". Conduit answers with numbered matches: when one clearly fits, delegate \"Open chat:\" with its number, like \"Open chat: 2\"; when several could, say the titles of the likeliest two or three and ask which. Opening it doesn't end this call; if Conduit says the chat can't be opened right now, just tell the user. When the user wants to talk about a found chat or asks what was said in it, delegate \"Read chat:\" with its number, like \"Read chat: 2\", and answer from what Conduit sends back. These markers are for Conduit only: never say them aloud."
 
     /// Job corrections ("Job 2: …", #455): the phone's delegation bridge
     /// and the Watch's (through the relay's interrupt_job) both route them.

@@ -298,6 +298,12 @@ struct VoiceBackgroundJobBackend {
         // Said to the model, not shown: not localized.
         throw VoiceAudioError.unavailable("Searching chats isn't available on this call.")
     }
+    /// A chat's text for a call to talk about: word for word when short,
+    /// else a summary of the older part plus the latest turns.
+    var readChat: @MainActor (_ sessionID: String) async throws -> VoiceResumeContext = { _ in
+        // Said to the model, not shown: not localized.
+        throw VoiceAudioError.unavailable("Reading chats isn't available on this call.")
+    }
 }
 
 /// The attached chat started another turn (a typed message) between the
@@ -993,18 +999,36 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Opens one of the last search's chats, by its number in the list the
     /// model heard ("2") or its session id.
     func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome {
-        let trimmed = reference.trimmingCharacters(in: .whitespacesAndNewlines)
-        let match: VoiceChatMatch?
-        if let byID = chatMatches.first(where: { $0.sessionID == trimmed }) {
-            match = byID
-        } else if let number = VoiceChatFinder.matchNumber(trimmed), chatMatches.indices.contains(number - 1) {
-            match = chatMatches[number - 1]
-        } else {
-            match = nil
-        }
-        guard let match else { return .unknownChat }
+        guard let match = foundChat(reference) else { return .unknownChat }
         guard openChat?(match) == true else { return .unavailable }
         return .opened(title: match.title)
+    }
+
+    /// Reads one of the last search's chats into the call, so the user can
+    /// talk about it. Reading doesn't open it.
+    func readFoundChat(_ reference: String) async -> VoiceChatReadOutcome {
+        guard let match = foundChat(reference) else { return .unknownChat }
+        let started = generation
+        let call = liveCallID
+        let context: VoiceResumeContext
+        do {
+            context = try await backend.readChat(match.sessionID)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+        // Another call, or another server or profile meanwhile.
+        guard generation == started, liveCallID == call else { return .failed("Reading the chat was cut short; try again.") }
+        guard !context.isEmpty else { return .empty(title: match.title) }
+        return .read(title: match.title, text: VoiceChatFinder.readout(context, of: match))
+    }
+
+    /// One of the last search's chats, by its number in the list the model
+    /// heard ("2") or its session id.
+    private func foundChat(_ reference: String) -> VoiceChatMatch? {
+        let trimmed = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let byID = chatMatches.first(where: { $0.sessionID == trimmed }) { return byID }
+        guard let number = VoiceChatFinder.matchNumber(trimmed), chatMatches.indices.contains(number - 1) else { return nil }
+        return chatMatches[number - 1]
     }
 
     /// `markdown` within the card limit; a code fence the cut leaves open
