@@ -496,6 +496,13 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         }
     }
 
+    func testAgentMarkBreathStartsAtRestAndPeaksHalfwayThrough() {
+        XCTAssertEqual(ConduitAgentMark.breath(at: 0), 0, accuracy: 0.000_001)
+        XCTAssertEqual(ConduitAgentMark.breath(at: ConduitAgentMark.breathDuration / 2), 1, accuracy: 0.000_001)
+        XCTAssertEqual(ConduitAgentMark.breath(at: ConduitAgentMark.breathDuration), 0, accuracy: 0.000_001)
+        XCTAssertEqual(ConduitAgentMark.breath(at: 0.4), ConduitAgentMark.breath(at: ConduitAgentMark.breathDuration - 0.4), accuracy: 0.000_001)
+    }
+
     func testBackdropMotionClockKeepsStaticStartAndResumesWithoutJump() {
         var clock = ConduitBackdropMotionClock(now: 0)
         clock.setAnimating(false, at: 0)

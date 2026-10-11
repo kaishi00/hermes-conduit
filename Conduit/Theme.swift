@@ -79,7 +79,10 @@ enum ConduitMotion {
 /// circles are expensive to composite continuously. Keep their motion bounded
 /// and stop scheduling frames when the app or device should conserve work.
 enum ConduitBackdropMotionPolicy {
-    static let framesPerSecond = 30
+    /// Every frame also redraws each glass surface on top, which samples the
+    /// backdrop. The circles are blurred by 72-84 pt and drift slowly, so a
+    /// 10 fps step (about 3 pt on a phone) can't be seen.
+    static let framesPerSecond = 10
     static let cycleDuration: TimeInterval = 26
 
     /// `drifts` is false for sheets (the sidebar drawer included) and pushed

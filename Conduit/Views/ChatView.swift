@@ -3153,24 +3153,49 @@ struct ConduitAgentMark: View {
     var avatarURL: URL?
     var displayName = "Hermes"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isBreathing = false
+
+    /// One breath in and out: 1.1 s each way, eased at both ends.
+    static let breathDuration: TimeInterval = 2.2
+    /// The mark breathes for the whole turn, redrawing its glow each frame.
+    /// A forever animation runs at the display's rate; 30 fps looks the same
+    /// on a 30 pt avatar at half the frames or less.
+    static let breathingFramesPerSecond: Double = 30
+
+    /// 0 at rest, 1 at the full breath.
+    static func breath(at elapsed: TimeInterval) -> CGFloat {
+        CGFloat((1 - cos(2 * .pi * elapsed / breathDuration)) / 2)
+    }
 
     var body: some View {
+        if isActive, !reduceMotion {
+            ConduitBreathingTimeline { breath in
+                mark(breath: breath)
+            }
+        } else {
+            mark(breath: 0)
+        }
+    }
+
+    private func mark(breath: CGFloat) -> some View {
         ProfileAvatarView(profile: "", displayName: displayName, url: avatarURL)
             .overlay {
                 Circle()
                     .strokeBorder(Color.conduitAccent.opacity(isActive ? 0.52 : 0.22), lineWidth: 1)
             }
-            .shadow(color: Color.conduitAccent.opacity(isActive ? 0.42 : 0), radius: isBreathing ? 9 : 3)
-            .scaleEffect(isBreathing ? 1.06 : 1)
-            .task(id: isActive) {
-                guard isActive, !reduceMotion else {
-                    isBreathing = false
-                    return
-                }
-                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                    isBreathing = true
-                }
-            }
+            .shadow(color: Color.conduitAccent.opacity(isActive ? 0.42 : 0), radius: 3 + 6 * breath)
+            .scaleEffect(1 + 0.06 * breath)
+    }
+}
+
+/// Drives a breath from the moment it appears, so each turn's breathing
+/// starts at rest.
+private struct ConduitBreathingTimeline<Content: View>: View {
+    @State private var startedAt = Date()
+    @ViewBuilder let content: (CGFloat) -> Content
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / ConduitAgentMark.breathingFramesPerSecond)) { timeline in
+            content(ConduitAgentMark.breath(at: timeline.date.timeIntervalSince(startedAt)))
+        }
     }
 }

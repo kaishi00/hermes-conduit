@@ -561,4 +561,53 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(store.loadDefaultName(dashboardID: review.id), ProfileAppearanceStore.defaultName)
         XCTAssertTrue(store.loadAvatarURLs(dashboardID: review.id).isEmpty)
     }
+
+    // MARK: - Avatar images
+
+    private func photoData(_ color: UIColor, side: CGFloat) -> Data {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
+            color.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+        }.pngData()!
+    }
+
+    private func averageColor(of image: UIImage) throws -> (red: CGFloat, green: CGFloat, blue: CGFloat) {
+        let cgImage = try XCTUnwrap(image.cgImage)
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = try XCTUnwrap(CGContext(
+            data: &pixel,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return (CGFloat(pixel[0]) / 255, CGFloat(pixel[1]) / 255, CGFloat(pixel[2]) / 255)
+    }
+
+    func testAvatarImagesAreDownsampledAndFollowSavesAndRemoval() throws {
+        let store = makeAppearanceStore()
+        let dashboardID = UUID()
+        let url = try store.saveAvatar(photoData(.red, side: 1_200), for: "default", dashboardID: dashboardID)
+
+        let first = try XCTUnwrap(ProfileAvatarImageCache.image(at: url))
+        let firstImage = try XCTUnwrap(first.cgImage)
+        XCTAssertLessThanOrEqual(CGFloat(max(firstImage.width, firstImage.height)), ProfileAvatarImageCache.maxPixelSize)
+        XCTAssertTrue(ProfileAvatarImageCache.image(at: url) === first, "a second read comes from the cache")
+        XCTAssertGreaterThan(try averageColor(of: first).red, 0.8)
+
+        // A new photo is written to the same file name.
+        let replacedURL = try store.saveAvatar(photoData(.blue, side: 600), for: "default", dashboardID: dashboardID)
+        XCTAssertEqual(replacedURL, url)
+        let replaced = try XCTUnwrap(ProfileAvatarImageCache.image(at: url))
+        XCTAssertGreaterThan(try averageColor(of: replaced).blue, 0.8)
+        XCTAssertLessThan(try averageColor(of: replaced).red, 0.2)
+
+        store.removeAvatar(for: "default", dashboardID: dashboardID)
+        XCTAssertNil(ProfileAvatarImageCache.image(at: url))
+    }
 }

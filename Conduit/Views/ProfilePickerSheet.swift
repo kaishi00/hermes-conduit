@@ -221,7 +221,7 @@ struct ProfileAvatarView: View {
     }
     var body: some View {
         Group {
-            if let url, let image = UIImage(contentsOfFile: url.path) {
+            if let url, let image = ProfileAvatarImageCache.image(at: url) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
