@@ -1017,7 +1017,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return .failed(error.localizedDescription)
         }
         // Another call, or another server or profile meanwhile.
-        guard generation == started, liveCallID == call else { return .failed("Reading the chat was cut short; try again.") }
+        guard generation == started, liveCallID == call else { return .failed("The call changed while reading the chat; find it again first.") }
         guard !context.isEmpty else { return .empty(title: match.title) }
         return .read(title: match.title, text: VoiceChatFinder.readout(context, of: match))
     }

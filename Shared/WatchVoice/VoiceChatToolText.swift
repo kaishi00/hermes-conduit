@@ -45,10 +45,10 @@ enum VoiceChatToolText {
         return "\(title.isEmpty ? "That chat" : "\"\(title)\"") has no messages to read. Tell the user."
     }
 
-    /// A chat title outside the fence: one line, clipped, without angle
-    /// brackets, so it can't open or close a tag.
+    /// A chat title outside the fence: one line, clipped, without angle or
+    /// square brackets, so it can't open or close a tag or a bracketed note.
     static func plainTitle(_ raw: String) -> String {
-        let line = raw.replacingOccurrences(of: "<", with: "").replacingOccurrences(of: ">", with: "")
+        let line = String(raw.unicodeScalars.filter { !"<>[]".unicodeScalars.contains($0) }.map(Character.init))
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return line.count <= 120 ? line : String(line.prefix(119)) + "…"
     }

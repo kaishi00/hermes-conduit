@@ -1195,6 +1195,7 @@ final class GPTLiveDelegationBridge {
     static func chatOpenReply(_ outcome: VoiceChatOpenOutcome) -> String {
         switch outcome {
         case .opened(let title):
+            let title = VoiceChatToolText.plainTitle(title)
             let name = title.isEmpty ? "The chat" : "\"\(title)\""
             return "[\(name) is open in Conduit; this call goes on. Tell the user in a few words.]"
         case .unknownChat:

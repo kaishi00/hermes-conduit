@@ -1059,6 +1059,7 @@ final class GeminiLiveToolBridge {
     static func chatOpenResult(_ outcome: VoiceChatOpenOutcome) -> [String: String] {
         switch outcome {
         case .opened(let title):
+            let title = VoiceChatToolText.plainTitle(title)
             let name = title.isEmpty ? "The chat" : "\"\(title)\""
             return ["status": "opened", "message": "\(name) is open in Conduit; this call goes on, minimised. Tell the user in a few words."]
         case .unknownChat:
