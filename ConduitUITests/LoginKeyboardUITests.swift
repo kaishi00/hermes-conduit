@@ -82,13 +82,20 @@ final class LoginKeyboardUITests: XCTestCase {
         // compact keyboard-obscured layout.
         let connect = app.buttons[Identity.connect]
         XCTAssertTrue(connect.waitForExistence(timeout: 5))
-        let beforeSwipe = "connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame)"
-        if !connect.isHittable {
-            app.swipeUp()
+        let beforeScroll = "connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame)"
+        // The focus scroll centers the secret field in the full screen, which
+        // leaves Connect just under the keyboard toolbar. Scroll it up the way
+        // a person would: drag the form from a point above the keyboard. A
+        // plain app.swipeUp() never moved the form on hosted runs (Connect
+        // kept its exact frame in every nightly since 2026-10-05).
+        var drags = 0
+        while !connect.isHittable && drags < 3 {
+            dragFormUp(app)
+            drags += 1
         }
         XCTAssertTrue(
             pollHittability(of: connect, timeout: 5),
-            "Connect must remain reachable with the keyboard visible. Before swipe: \(beforeSwipe). After: connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame). Tree:\n\(app.debugDescription)"
+            "Connect must remain reachable with the keyboard visible. Before scrolling: \(beforeScroll). After \(drags) drag(s): connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame). Tree:\n\(app.debugDescription)"
         )
     }
 
@@ -314,6 +321,18 @@ final class LoginKeyboardUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.1)
         }
         return switchIsOn(element)
+    }
+
+    /// Drags the login form up by about a third of the screen, starting in
+    /// the left margin (outside every card, so no field, switch or button
+    /// takes the touch) at 45% of the height, which is above the keyboard
+    /// and its toolbar on every iPhone. The short press before the move makes
+    /// it a drag, not a fling, so the distance scrolled is predictable.
+    private func dragFormUp(_ app: XCUIApplication) {
+        let window = app.windows.firstMatch
+        let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.45))
+        let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.12))
+        start.press(forDuration: 0.1, thenDragTo: end)
     }
 
     /// XCUIElement has no waitForHittability; poll isHittable on a deadline.

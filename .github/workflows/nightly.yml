@@ -77,7 +77,10 @@ jobs:
 
       - name: Build and boot the simulator in parallel
         env:
-          BUILD_TIMEOUT_SECS: 900
+          # Six macOS jobs share the account's runners here, so builds run
+          # slower than in PR CI: 850-900 s builds were common and one hit the
+          # old 900 s budget on 2026-10-11.
+          BUILD_TIMEOUT_SECS: 1200
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the timing families
@@ -129,7 +132,10 @@ jobs:
 
       - name: Build and boot the simulator in parallel
         env:
-          BUILD_TIMEOUT_SECS: 900
+          # Six macOS jobs share the account's runners here, so builds run
+          # slower than in PR CI: 850-900 s builds were common and one hit the
+          # old 900 s budget on 2026-10-11.
+          BUILD_TIMEOUT_SECS: 1200
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's UI classes
