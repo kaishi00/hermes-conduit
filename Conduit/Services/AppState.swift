@@ -1364,6 +1364,10 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
+    /// The draft the prefill is for, until ComposerBar puts it in. A new
+    /// chat's draft load can land in the same update as the prefill, so
+    /// the composer waits until this draft is the one loaded.
+    private(set) var composerPrefillDraftKey: ComposerDraftKey?
     /// A quote waiting for the composer (#385). ComposerBar, which owns the
     /// draft, applies it and then consumes it.
     @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
@@ -6322,10 +6326,18 @@ final class AppState: ObservableObject {
         composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
     }
 
-    /// Puts `text` in the composer, replacing the draft, and focuses it.
+    /// Puts `text` in the open chat's composer, replacing the draft, and
+    /// focuses it.
     func prefillComposer(_ text: String) {
+        composerPrefillDraftKey = ComposerBar.composerDraftKey(for: activeSessionId, profile: activeProfile)
         composerPrefillText = text
         composerPrefillToken = UUID()
+    }
+
+    /// The composer put the prefill in, or left the chat it was for.
+    func consumeComposerPrefill(_ token: UUID) {
+        guard composerPrefillToken == token else { return }
+        composerPrefillDraftKey = nil
     }
 
     /// The composer took the quote: drop it, so the quoted text is not kept
@@ -18476,8 +18488,7 @@ final class AppState: ObservableObject {
             }
             let message = obj["message"]?.stringValue ?? output
             if !message.isEmpty, isCurrentComposerSubmission(context) {
-                composerPrefillText = message
-                composerPrefillToken = UUID()
+                prefillComposer(message)
             }
         case "alias":
             // Re-execute with the target command

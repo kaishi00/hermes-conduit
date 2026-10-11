@@ -18,6 +18,45 @@ final class ComposerDraftStoreTests: XCTestCase {
         )
     }
 
+    func testPrefillForANewChatWaitsForThatChatsDraft() {
+        let leaving = ComposerBar.composerDraftKey(for: "open-chat", profile: "default")
+        let opened = ComposerBar.composerDraftKey(for: "new-chat", profile: "default")
+
+        // The new chat and its prefill arrive in one update: until the new
+        // chat's draft is loaded, the prefill stays out of the one being left.
+        XCTAssertFalse(ComposerBar.shouldApplyPrefill(for: opened, loaded: leaving))
+        XCTAssertTrue(ComposerBar.shouldApplyPrefill(for: opened, loaded: opened))
+        XCTAssertFalse(ComposerBar.shouldApplyPrefill(for: nil, loaded: opened), "Nothing waiting")
+        XCTAssertFalse(
+            ComposerBar.shouldApplyPrefill(
+                for: opened,
+                loaded: ComposerBar.composerDraftKey(for: "new-chat", profile: "work")
+            ),
+            "Another profile's chat with the same id"
+        )
+    }
+
+    func testPrefillIsForTheOpenChatUntilTheComposerTakesIt() {
+        let suite = "ComposerDraftStoreTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.activeSessionId = "new-chat"
+
+        appState.prefillComposer("Set up a scheduled check")
+        let token = appState.composerPrefillToken
+
+        XCTAssertEqual(
+            appState.composerPrefillDraftKey,
+            ComposerBar.composerDraftKey(for: "new-chat", profile: appState.activeProfile)
+        )
+        appState.consumeComposerPrefill(UUID())
+        XCTAssertNotNil(appState.composerPrefillDraftKey, "An older prefill's token doesn't take a newer one")
+        appState.consumeComposerPrefill(token)
+        XCTAssertNil(appState.composerPrefillDraftKey)
+        XCTAssertEqual(appState.composerPrefillText, "Set up a scheduled check")
+    }
+
     func testFailedSubmissionDoesNotClobberNewerSavedDraftForOriginalKey() {
         let store = ComposerDraftStore(capacity: 12)
         let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default")

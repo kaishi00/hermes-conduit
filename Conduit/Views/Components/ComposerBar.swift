@@ -94,6 +94,12 @@ struct ComposerBar: View {
         )
     }
 
+    /// A prefill goes in only over the draft it was made for.
+    static func shouldApplyPrefill(for target: ComposerDraftKey?, loaded: ComposerDraftKey?) -> Bool {
+        guard let target else { return false }
+        return target == loaded
+    }
+
     static func draftKeysAreEquivalent(
         _ lhs: ComposerDraftKey,
         _ rhs: ComposerDraftKey,
@@ -318,9 +324,7 @@ struct ComposerBar: View {
             }
         }
         .onChange(of: appState.composerPrefillToken) { _, _ in
-            replaceComposerText(appState.composerPrefillText)
-            isFocused = !text.isEmpty
-            isShowingSlashSuggestions = slashPrefix != nil
+            applyPendingPrefill()
         }
         .onChange(of: appState.composerQuoteRequest) { _, request in
             applyQuoteRequest(request)
@@ -353,6 +357,7 @@ struct ComposerBar: View {
             if loadedDraftKey == nil {
                 loadDraft(for: activeDraftKey)
             }
+            applyPendingPrefill()
             // A screenshot chat can open before this composer is on screen.
             applyFocusRequest(appState.composerFocusRequest)
         }
@@ -1624,6 +1629,26 @@ struct ComposerBar: View {
         loadDraft(for: destinationKey)
         composerTextHeight = ComposerPasteTextView.minimumHeight
         isFocused = false
+        // A prefill for this chat goes in over its draft; one for a chat
+        // left behind is dropped.
+        if let target = appState.composerPrefillDraftKey, target != destinationKey {
+            appState.consumeComposerPrefill(appState.composerPrefillToken)
+        } else {
+            applyPendingPrefill()
+        }
+    }
+
+    /// Puts a waiting prefill in once its chat's draft is the one loaded.
+    /// Opening a chat with a prefill (Try a test call, Have Hermes watch
+    /// for this) changes the chat and the prefill in one update, and that
+    /// chat's draft load can run after the prefill: put in first, it was
+    /// saved into the chat being left and the new chat opened blank.
+    private func applyPendingPrefill() {
+        guard Self.shouldApplyPrefill(for: appState.composerPrefillDraftKey, loaded: loadedDraftKey) else { return }
+        appState.consumeComposerPrefill(appState.composerPrefillToken)
+        replaceComposerText(appState.composerPrefillText)
+        isFocused = !text.isEmpty
+        isShowingSlashSuggestions = slashPrefix != nil
     }
 
     private func rotateAttachmentGeneration() {
