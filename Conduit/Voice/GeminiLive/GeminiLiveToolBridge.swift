@@ -221,9 +221,11 @@ final class GeminiLiveToolBridge {
     static func findChatDeclaration(opens: Bool) -> GeminiLiveProtocol.FunctionDeclaration {
         .init(
             name: Tool.findChat.rawValue,
-            description: opens
-                ? "Find one of the user's earlier Hermes chats (conversations) by what was said in it or its title, when they ask to find, pull up, open or go back to a conversation (\"find the chat where we discussed the GPU setup\"). Pass one to three distinctive words from the topic, not filler like chat, conversation or discussed. It returns up to five numbered matches, best first, each with its title, when it was last active and a line from it. If the user asked to open it and one match clearly fits, call open_chat with its number right away; if they want to talk about it or know what was said, call read_chat with its number. If several could fit, say the titles of the top two or three, with when, and ask which one; never read the lines or ids out. If none fits, say so and offer to try other words."
-                : "Find one of the user's earlier Hermes chats (conversations) by what was said in it or its title, when they ask to find, pull up, open or go back to a conversation (\"find the chat where we discussed the GPU setup\"). Pass one to three distinctive words from the topic, not filler like chat, conversation or discussed. It returns up to five numbered matches, best first, each with its title, when it was last active and a line from it. If one match clearly fits, call read_chat with its number to talk about it; this call can't open a chat on the phone. If several could fit, say the titles of the top two or three, with when, and ask which one; never read the lines or ids out. If none fits, say so and offer to try other words.",
+            description: "Find one of the user's earlier Hermes chats (conversations) by what was said in it or its title, when they ask to find, pull up, open or go back to a conversation (\"find the chat where we discussed the GPU setup\"). Pass one to three distinctive words from the topic, not filler like chat, conversation or discussed. It returns up to five numbered matches, best first, each with its title, when it was last active and a line from it. "
+                + (opens
+                    ? "If the user asked to open it and one match clearly fits, call open_chat with its number right away; if they want to talk about it or know what was said, call read_chat with its number."
+                    : "If one match clearly fits, call read_chat with its number to talk about it; this call can't open a chat on the phone.")
+                + " If several could fit, say the titles of the top two or three, with when, and ask which one; never read the lines or ids out. If none fits, say so and offer to try other words.",
             parameters: [
                 "type": "OBJECT",
                 "properties": [
