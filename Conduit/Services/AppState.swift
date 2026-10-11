@@ -9216,9 +9216,9 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Face ID for a saved password. Test seam.
+    /// Face ID or Touch ID for a saved password. Test seam.
     var unlockWithFaceID: @MainActor () async -> Bool = {
-        guard BiometricAuth.isFaceIDAvailable else { return false }
+        guard BiometricAuth.isAvailable else { return false }
         return await BiometricAuth.authenticate(reason: AppLocalization.string("Unlock Conduit"))
     }
 

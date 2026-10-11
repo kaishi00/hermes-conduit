@@ -22,6 +22,7 @@ struct LoginView: View {
     @State private var password = ""
     @State private var saveCredentials = false
     @State private var useFaceID = false
+    private let biometricKind = BiometricAuth.availableKind
     @State var cloudflareEnabled = false
     @State var cloudflareClientID = ""
     @State var cloudflareClientSecret = ""
@@ -59,6 +60,25 @@ struct LoginView: View {
     /// user actually begins a browser sign-in.
     @State private var signInWebKitStoreID: UUID?
     @FocusState private var focusedField: LoginField?
+
+    private var biometricToggleTitle: String {
+        biometricKind == .touchID
+            ? AppLocalization.string("Use Touch ID")
+            : AppLocalization.string("Use Face ID")
+    }
+
+    private var biometricFootnote: String {
+        switch (biometricKind, useFaceID) {
+        case (.touchID, true):
+            return AppLocalization.string("Touch ID, with device passcode recovery, is required on launch.")
+        case (.touchID, false):
+            return AppLocalization.string("Saved credentials reconnect without a Touch ID prompt.")
+        case (_, true):
+            return AppLocalization.string("Face ID, with device passcode recovery, is required on launch.")
+        case (_, false):
+            return AppLocalization.string("Saved credentials reconnect without a Face ID prompt.")
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -355,18 +375,18 @@ struct LoginView: View {
                             if !savesCredentials { useFaceID = false }
                         }
 
-                    Toggle("Use Face ID", isOn: $useFaceID)
+                    // Face ID and Touch ID share this one setting; the
+                    // wording follows the device's sensor.
+                    Toggle(biometricToggleTitle, isOn: $useFaceID)
                         .tint(.conduitAccent)
-                        .disabled(!saveCredentials || !BiometricAuth.isFaceIDAvailable)
+                        .disabled(!saveCredentials || biometricKind == nil)
 
-                    if !BiometricAuth.isFaceIDAvailable {
+                    if biometricKind == nil {
                         Text("Face ID is not available on this device. You can still save credentials.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else if saveCredentials {
-                        Text(useFaceID
-                            ? AppLocalization.string("Face ID, with device passcode recovery, is required on launch.")
-                            : AppLocalization.string("Saved credentials reconnect without a Face ID prompt."))
+                        Text(biometricFootnote)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
