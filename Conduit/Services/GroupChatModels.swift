@@ -175,6 +175,56 @@ struct GroupDriverStatus: Equatable {
     let blocked: Bool
     let counts: [String: Int]
     let pendingActions: [[String: AnyCodable]]
+
+    /// The approvals members are waiting on, in the gateway's order. A row
+    /// missing any part of its identity is skipped: `groups.approve` must
+    /// name the exact request, or the gateway refuses it.
+    var pendingApprovals: [GroupPendingApproval] {
+        pendingActions.compactMap(GroupPendingApproval.init(action:))
+    }
+}
+
+/// One `kind: "approval"` row of `pending_actions`: a member's tool call the
+/// hosted driver is holding until someone answers it with `groups.approve`
+/// (`tui_gateway/hosted_room_driver.py` `_report_pending_action`). A room
+/// member's session has no attached client, so no `approval` server request
+/// ever reaches Conduit for it; this row is the only way to see it.
+struct GroupPendingApproval: Equatable, Identifiable {
+    let memberID: String
+    let taskID: String
+    let executionGeneration: Int
+    let requestID: String
+    let command: String
+    let description: String
+    /// Rooms answer `once` or `deny` only (`GroupsApproveParams.choice`).
+    let choices: [String]
+
+    var id: String { "\(memberID)|\(taskID)|\(executionGeneration)|\(requestID)" }
+
+    func allows(_ choice: String) -> Bool { choices.contains(choice) }
+
+    init?(action: [String: AnyCodable]) {
+        guard action["kind"]?.stringValue == "approval",
+              let memberID = action["member_id"]?.stringValue, !memberID.isEmpty,
+              let taskID = action["task_id"]?.stringValue, !taskID.isEmpty,
+              let generation = HermesClient.exactIntValue(action["execution_generation"])
+        else { return nil }
+        let approval = action["approval"]?.objectValue ?? [:]
+        // The driver copies the queue id to the row; the approval keeps its own.
+        guard let requestID = action["request_id"]?.stringValue ?? approval["request_id"]?.stringValue,
+              !requestID.isEmpty
+        else { return nil }
+        self.memberID = memberID
+        self.taskID = taskID
+        self.executionGeneration = generation
+        self.requestID = requestID
+        self.command = approval["command"]?.stringValue ?? ""
+        self.description = approval["description"]?.stringValue ?? ""
+        let offered = (approval["choices"]?.arrayValue ?? [])
+            .compactMap(\.stringValue)
+            .filter { $0 == "once" || $0 == "deny" }
+        self.choices = offered.isEmpty ? ["once", "deny"] : offered
+    }
 }
 
 /// One `groups.log` page.
@@ -774,8 +824,9 @@ enum GroupRoomTurns {
         (member.memberID ?? member.identityKey).lowercased()
     }
 
-    private static func member(withID id: String, in members: [GroupMember]) -> GroupMember? {
-        let id = id.lowercased()
+    /// The member a driver id names: its member id first, then its profile.
+    static func member(withID id: String, in members: [GroupMember]) -> GroupMember? {
+        let id = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return members.first(where: { routingID(of: $0) == id })
             ?? members.first(where: { $0.profile?.caseInsensitiveCompare(id) == .orderedSame })
     }
