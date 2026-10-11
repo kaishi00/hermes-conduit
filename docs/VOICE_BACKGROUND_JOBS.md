@@ -58,7 +58,13 @@ a job. At most three jobs run at once.
   on GPT-Live. It gets the chat's user and Hermes text the way a resumed
   call gets a saved call's: word for word when short, else a summary of the
   older part (made once and kept on the host) plus the latest turns, fenced
-  as data. A Watch call doesn't get these tools.
+  as data. A Watch call (Gemini, Grok, GPT-Live) finds and reads chats but
+  can't open one. With conduit_push 0.18 on the host (capability
+  `watch-chats`) both tools run through the call's relay grant, wrist up or
+  down, and the host keeps the numbered matches `read_chat` names; the
+  plugin reads the chat in process and trims the answer to 16 KB. With an
+  older plugin a Gemini or Grok Watch call asks the phone instead, wrist up
+  only.
 - A saved live call gets a line where it started the job ("Started a
   background job: <title>.") with an **Open job** link to the job's chat, so
   the full result is a tap away even when the voice model only summarized it.

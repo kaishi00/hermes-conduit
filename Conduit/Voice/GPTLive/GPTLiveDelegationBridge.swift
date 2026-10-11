@@ -1166,43 +1166,28 @@ final class GPTLiveDelegationBridge {
     /// "Find chat: GPU setup" at the very start of a delegation: the words
     /// to look the chat up by.
     static func findChatMarker(in request: String) -> String? {
-        guard let range = request.range(of: #"^\s*find\s+(?:a\s+|the\s+|my\s+)?chats?\s*:"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
-        return String(request[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        VoiceChatToolText.findChatMarker(in: request)
     }
 
-    /// "Open chat: 2" (or "Open chat 2:", or just "Open chat 2") at the very start of a delegation:
-    /// the number of the found chat to open.
+    /// "Open chat: 2" (or "Open chat 2:", or just "Open chat 2"): the number of the found chat to open.
     static func openChatMarker(in request: String) -> String? {
-        chatNumberMarker(verb: "open", in: request)
+        VoiceChatToolText.openChatMarker(in: request)
     }
 
     /// "Read chat: 2", like "Open chat: 2": the number of the found chat to read.
     static func readChatMarker(in request: String) -> String? {
-        chatNumberMarker(verb: "read", in: request)
+        VoiceChatToolText.readChatMarker(in: request)
     }
 
-    private static func chatNumberMarker(verb: String, in request: String) -> String? {
-        let pattern = #"^\s*"# + verb + #"\s+(?:the\s+|my\s+)?(?:chats?|conversations?)\s*(?:(?:number\s*|#\s*)?(\d{1,2})\s*(?::|$)|:\s*(?:number\s*|#\s*)?(\d{1,2})\b)"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-              let match = regex.firstMatch(in: request, range: NSRange(request.startIndex..., in: request)) else { return nil }
-        for group in 1...2 {
-            if let range = Range(match.range(at: group), in: request) { return String(request[range]) }
-        }
-        return nil
-    }
-
-    /// What a "Find chat:" delegation is answered with. Not UI copy.
+    /// What a "Find chat:" delegation is answered with (VoiceChatToolText).
     static func chatSearchReply(_ outcome: VoiceChatSearchOutcome) -> String {
         switch outcome {
         case .found(let matches):
-            let next = matches.count == 1
-                ? "One chat matches. If it fits what the user asked for, delegate \"Open chat: 1\", or \"Read chat: 1\" to talk about it."
-                : "If one clearly fits what the user asked for, delegate \"Open chat:\" with its number, like \"Open chat: 2\", or \"Read chat:\" with its number to talk about it. Otherwise say the titles of the likeliest two or three, with when, and ask which one; don't read the lines out."
-            return "[Chats that match:\n\(VoiceChatFinder.summary(matches))\n\(next)]"
+            return VoiceChatToolText.delegatedSearchFound(summary: VoiceChatFinder.summary(matches), count: matches.count, opens: true)
         case .noMatches:
-            return "[No chats match that. Tell the user, and offer to try other words.]"
+            return VoiceChatToolText.delegatedNoMatches
         case .failed(let reason):
-            return "[Conduit couldn't search the chats: \(reason) Tell the user in a few words.]"
+            return VoiceChatToolText.delegatedSearchFailed(reason)
         }
     }
 
@@ -1219,18 +1204,17 @@ final class GPTLiveDelegationBridge {
         }
     }
 
-    /// What a "Read chat:" delegation is answered with. Not UI copy.
+    /// What a "Read chat:" delegation is answered with (VoiceChatToolText).
     static func chatReadReply(_ outcome: VoiceChatReadOutcome) -> String {
         switch outcome {
         case .read(_, let text):
-            return "[\(text)\n\(GeminiLiveToolBridge.chatReadNote)]"
+            return VoiceChatToolText.delegatedRead(chat: text)
         case .empty(let title):
-            let name = title.isEmpty ? "That chat" : "\"\(title)\""
-            return "[\(name) has no messages to read. Tell the user.]"
+            return VoiceChatToolText.delegatedEmptyChat(title: title)
         case .unknownChat:
-            return "[That isn't one of the chats found. Delegate \"Find chat:\" with a few words from the topic first.]"
+            return VoiceChatToolText.delegatedUnknownChat
         case .failed(let reason):
-            return "[Conduit couldn't read the chat: \(reason) Tell the user in a few words.]"
+            return VoiceChatToolText.delegatedReadFailed(reason)
         }
     }
 

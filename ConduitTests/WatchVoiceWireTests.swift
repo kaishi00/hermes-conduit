@@ -248,7 +248,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WatchToolAnswer.webSearchLimit, GeminiLiveTokenClient.webSearchLimit)
         XCTAssertEqual(WatchToolAnswer.memoryRecallLimit, GeminiLiveTokenClient.memoryRecallLimit)
         XCTAssertEqual(WatchToolAnswer.lookupAnswerNote, GeminiLiveToolBridge.lookupAnswerNote)
-        XCTAssertEqual(WatchToolAnswer.tools, [GeminiLiveToolBridge.Tool.webSearch.rawValue, GeminiLiveToolBridge.Tool.recallMemory.rawValue])
+        XCTAssertEqual(WatchToolAnswer.tools, [
+            GeminiLiveToolBridge.Tool.webSearch.rawValue, GeminiLiveToolBridge.Tool.recallMemory.rawValue,
+            GeminiLiveToolBridge.Tool.findChat.rawValue, GeminiLiveToolBridge.Tool.readChat.rawValue,
+        ])
 
         let searchBodies: [[String: Any]] = [
             ["ok": true, "query": "q", "results": [

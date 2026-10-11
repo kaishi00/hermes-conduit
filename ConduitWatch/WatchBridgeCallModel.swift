@@ -1106,6 +1106,23 @@ final class WatchBridgeCallModel: ObservableObject {
             answer(id, WatchBridgeDelegation.notStarted("the Watch has no way to reach Hermes for this call."), channel: .speakable)
             return
         }
+        // "Find chat: GPU setup" and "Read chat: 2": the user's earlier
+        // chats, found and read on the host through the grant, as the phone
+        // finds and reads them. Neither is work for Hermes.
+        if let query = VoiceChatToolText.findChatMarker(in: ownWords) {
+            // GPT-Live can leave the words out: the user's own then.
+            let words = query.isEmpty ? userWords : query
+            runChatTool(for: id, name: WatchToolAnswer.findChat, query: WatchBridgeDelegation.clipped(words, bytes: 300), relay: relay)
+            return
+        }
+        if let number = VoiceChatToolText.readChatMarker(in: ownWords) {
+            runChatTool(for: id, name: WatchToolAnswer.readChat, query: number, relay: relay)
+            return
+        }
+        if VoiceChatToolText.openChatMarker(in: ownWords) != nil {
+            answer(id, WatchToolAnswer.delegatedCantOpen, channel: .commentary)
+            return
+        }
         // "Job 2: make it Alex" puts the user's words into job 2 while it
         // runs (#455). A number with no job is just new work.
         // Read where the phone reads it: the delegation's own text, else
@@ -1284,6 +1301,47 @@ final class WatchBridgeCallModel: ObservableObject {
         case .finished: return "finished"
         case .failed: return "failed"
         case .unknownJob: return "unknownJob"
+        }
+    }
+
+    /// A chat search or read through the grant, answered on the delegation
+    /// as quiet context, as the phone answers it.
+    private func runChatTool(for delegationID: String, name: String, query: String, relay: WatchToolRelayClient) {
+        let failed: (String) -> String = { reason in
+            name == WatchToolAnswer.findChat ? VoiceChatToolText.delegatedSearchFailed(reason) : VoiceChatToolText.delegatedReadFailed(reason)
+        }
+        guard !query.isEmpty else {
+            answer(delegationID, failed(name == WatchToolAnswer.findChat ? "it had no words to search for." : "it had no chat number."), channel: .commentary)
+            return
+        }
+        guard relay.tools.contains(name) else {
+            answer(delegationID, failed("the Hermes host's Conduit plugin needs an update (0.18) for chats on the Watch."), channel: .commentary)
+            return
+        }
+        guard relay.canRun(name) else {
+            answer(delegationID, failed(WatchBridgeDelegation.grantRanOut), channel: .commentary)
+            return
+        }
+        let id = callID
+        let sentAt = now
+        Task { [weak self] in
+            let outcome = await relay.run(name: name, query: query)
+            guard let self, self.callID == id, self.isActive else { return }
+            let text: String
+            switch outcome {
+            case .answered(let body):
+                text = WatchToolAnswer.delegatedChatReply(name: name, body: body)
+            case .timedOut:
+                text = failed("that took too long.")
+            case .unavailable(let reason, let grantGone, let sent):
+                if Self.grantRanOut(reason: reason, grantGone: grantGone, sent: sent) {
+                    text = failed(WatchBridgeDelegation.grantRanOut)
+                } else {
+                    text = failed(sent ? "Hermes didn't answer." : "Hermes couldn't be reached from the Watch.")
+                }
+            }
+            self.note("bridgeChat", ["tool": name, "outcome": outcome.logLabel, "ms": Int((self.now - sentAt) * 1000)])
+            self.answer(delegationID, text, channel: .commentary)
         }
     }
 

@@ -204,9 +204,9 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(GeminiLiveConversationController.instructions(search: .hermes).contains("read_chat"))
         XCTAssertTrue(GPTLiveConversationController.briefing(onWatch: false).contains("\"Read chat:\""))
         XCTAssertTrue(GeminiLiveConversationController.instructions(search: .hermes).contains("find_chat"))
-        XCTAssertFalse(GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, onWatch: true).contains("find_chat"))
+        XCTAssertFalse(GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, onWatch: true).contains("open_chat"))
         XCTAssertTrue(GPTLiveConversationController.briefing(onWatch: false).contains("\"Find chat:\""))
-        XCTAssertFalse(GPTLiveConversationController.briefing(onWatch: true).contains("Find chat"))
+        XCTAssertFalse(GPTLiveConversationController.briefing(onWatch: true).contains("Open chat"))
     }
 
     func testGPTLiveChatMarkers() {
@@ -441,5 +441,104 @@ extension VoiceConversationControllerTests {
             GeminiLiveConversationController.fallbackText(for: ["chat": "", "message": "It has no messages."], name: "read_chat"),
             "[The chat you just asked to read: It has no messages.]"
         )
+    }
+}
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testAWatchCallFindsAndReadsChatsButNeverOpensOne() {
+        let watch = GeminiLiveToolBridge.watchDeclarations(webSearch: true, memoryRecall: false, chats: true)
+        let names = watch.map(\.name)
+        XCTAssertTrue(names.contains("find_chat"))
+        XCTAssertTrue(names.contains("read_chat"))
+        XCTAssertFalse(names.contains("open_chat"), "the chat would open on a phone nobody's looking at")
+        let find = watch.first { $0.name == "find_chat" }
+        XCTAssertEqual(find?.behavior, .nonBlocking)
+        XCTAssertFalse(find?.description.contains("open_chat") ?? true, find?.description ?? "")
+        XCTAssertFalse(watch.first { $0.name == "read_chat" }?.description.contains("open_chat") ?? true)
+        let instructions = GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, onWatch: true)
+        XCTAssertTrue(instructions.contains("read_chat"))
+        XCTAssertFalse(instructions.contains("open_chat"))
+        let briefing = GPTLiveConversationController.briefing(onWatch: true)
+        XCTAssertTrue(briefing.contains("\"Find chat:\""))
+        XCTAssertTrue(briefing.contains("\"Read chat:\""))
+        XCTAssertFalse(briefing.contains("Open chat"))
+    }
+
+    func testAWatchCallsBridgeNeverSuggestsOpeningAChat() async {
+        let (supervisor, log) = makeChatFinder(["GPU": [Self.chat("s-gpu", "GPU setup")]],
+                                               contents: ["s-gpu": VoiceResumeContext(summary: nil, recent: [.init(speaker: .user, text: "Hi")])])
+        let watchSupervisor = WatchCallJobSupervisor(supervisor)
+        let bridge = GeminiLiveToolBridge(supervisor: watchSupervisor, holdsJobCalls: false, opensChats: false)
+        let found = await bridge.handle(.init(id: "f1", name: "find_chat", arguments: ["query": "GPU"]))
+        guard case .toolResponse(_, _, let result, _)? = found.first else { return XCTFail("\(found)") }
+        XCTAssertEqual(result["message"], VoiceChatToolText.searchNext(count: 1, opens: false))
+        XCTAssertFalse(result["message"]?.contains("open_chat") ?? true)
+        let read = await bridge.handle(.init(id: "r1", name: "read_chat", arguments: ["number": "1"]))
+        guard case .toolResponse(_, _, let readResult, _)? = read.first else { return XCTFail("\(read)") }
+        XCTAssertTrue(readResult["chat"]?.contains("User: Hi") == true, "a Watch call's chats are read through the phone's supervisor too")
+        XCTAssertEqual(watchSupervisor.openFoundChat("1"), .unavailable)
+        XCTAssertTrue(log.opened.isEmpty)
+    }
+
+    func testRelayedChatAnswersMatchThePhonesWords() {
+        let summary = VoiceChatFinder.summary([Self.chat("s-gpu", "GPU setup")])
+        let host: [String: Any] = ["ok": true, "count": 1, "chats": summary]
+        XCTAssertEqual(
+            WatchToolAnswer.result(name: "find_chat", body: host),
+            GeminiLiveToolBridge.chatSearchResult(.found([Self.chat("s-gpu", "GPU setup")]), opens: false)
+        )
+        XCTAssertEqual(
+            WatchToolAnswer.result(name: "find_chat", body: ["ok": true, "count": 0, "chats": ""]),
+            GeminiLiveToolBridge.chatSearchResult(.noMatches, opens: false)
+        )
+        XCTAssertEqual(
+            WatchToolAnswer.result(name: "read_chat", body: ["ok": true, "chat": "<chat>x</chat>", "title": "T"]),
+            GeminiLiveToolBridge.chatReadResult(.read(title: "T", text: "<chat>x</chat>"))
+        )
+        XCTAssertEqual(
+            WatchToolAnswer.result(name: "read_chat", body: ["ok": true, "chat": "", "title": "T"]),
+            GeminiLiveToolBridge.chatReadResult(.empty(title: "T"))
+        )
+        XCTAssertEqual(
+            WatchToolAnswer.result(name: "read_chat", body: ["ok": true, "unknown": true]),
+            GeminiLiveToolBridge.chatReadResult(.unknownChat)
+        )
+        XCTAssertEqual(
+            WatchToolAnswer.result(name: "read_chat", body: ["ok": false, "status": 404, "detail": "That chat no longer exists"]),
+            GeminiLiveToolBridge.chatReadResult(.failed("That chat no longer exists"))
+        )
+        XCTAssertEqual(WatchToolAnswer.query(name: "read_chat", arguments: ["number": " 2 "]), "2")
+        XCTAssertNil(WatchToolAnswer.query(name: "read_chat", arguments: ["query": "2"]))
+        XCTAssertEqual(WatchToolAnswer.request(name: "read_chat", query: "2") as NSDictionary, ["tool": "read_chat", "args": ["number": "2"]] as NSDictionary)
+        XCTAssertEqual(WatchToolAnswer.request(name: "find_chat", query: "GPU") as NSDictionary, ["tool": "find_chat", "args": ["query": "GPU"]] as NSDictionary)
+        XCTAssertEqual(WatchToolAnswer.missingQuery(name: "read_chat"), ["error": "number is required"])
+        guard case .toolResponse(_, _, _, let scheduling, let fallback) = WatchToolAnswer.outgoing(id: "c", name: "read_chat", result: ["chat": "<chat>x</chat>", "message": "Talk."]) else {
+            return XCTFail("not a tool response")
+        }
+        XCTAssertEqual(scheduling, GeminiLiveProtocol.Scheduling.whenIdle.rawValue)
+        XCTAssertEqual(fallback, GeminiLiveConversationController.fallbackText(for: ["chat": "<chat>x</chat>", "message": "Talk."], name: "read_chat"))
+    }
+
+    func testRelayedChatDelegationsMatchThePhonesReplies() {
+        let summary = VoiceChatFinder.summary([Self.chat("a", "One"), Self.chat("b", "Two")])
+        let found = WatchToolAnswer.delegatedChatReply(name: "find_chat", body: ["ok": true, "count": 2, "chats": summary])
+        XCTAssertEqual(found, VoiceChatToolText.delegatedSearchFound(summary: summary, count: 2, opens: false))
+        XCTAssertTrue(found.contains("\"Read chat:\""))
+        XCTAssertFalse(found.contains("Open chat"))
+        XCTAssertEqual(
+            VoiceChatToolText.delegatedSearchFound(summary: summary, count: 2, opens: true),
+            GPTLiveDelegationBridge.chatSearchReply(.found([Self.chat("a", "One"), Self.chat("b", "Two")]))
+        )
+        XCTAssertEqual(WatchToolAnswer.delegatedChatReply(name: "find_chat", body: ["ok": true, "count": 0, "chats": ""]),
+                       GPTLiveDelegationBridge.chatSearchReply(.noMatches))
+        XCTAssertEqual(WatchToolAnswer.delegatedChatReply(name: "read_chat", body: ["ok": true, "chat": "<chat>x</chat>", "title": "T"]),
+                       GPTLiveDelegationBridge.chatReadReply(.read(title: "T", text: "<chat>x</chat>")))
+        XCTAssertEqual(WatchToolAnswer.delegatedChatReply(name: "read_chat", body: ["ok": true, "unknown": true]),
+                       GPTLiveDelegationBridge.chatReadReply(.unknownChat))
+        XCTAssertEqual(WatchToolAnswer.delegatedChatReply(name: "read_chat", body: ["ok": false, "detail": "Gone."]),
+                       GPTLiveDelegationBridge.chatReadReply(.failed("Gone.")))
+        XCTAssertEqual(WatchToolAnswer.delegatedChatReply(name: "find_chat", body: ["ok": false, "detail": "Down."]),
+                       GPTLiveDelegationBridge.chatSearchReply(.failed("Down.")))
     }
 }

@@ -24911,7 +24911,8 @@ final class AppState: ObservableObject {
             ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
-                memoryRecall: memory?.canRecall == true
+                memoryRecall: memory?.canRecall == true,
+                chats: true
             ),
             googleSearch: search == .google,
             voice: geminiLiveVoice,
@@ -25084,7 +25085,8 @@ final class AppState: ObservableObject {
             ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
-                memoryRecall: memory?.canRecall == true
+                memoryRecall: memory?.canRecall == true,
+                chats: true
             ),
             voice: voice,
             openingPrompt: hermesCall?.watchOpeningTurn ?? style.openingPrompt,

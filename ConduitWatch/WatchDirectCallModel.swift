@@ -128,7 +128,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// A reactivation still running after this long counts as failed.
     static let reactivationTimeout: TimeInterval = 10
     /// Calls the iPhone answers once nobody speaks (NON_BLOCKING lookups).
-    static let whenIdleTools: Set<String> = ["web_search", "recall_memory"]
+    static let whenIdleTools: Set<String> = ["web_search", "recall_memory"].union(WatchToolAnswer.chatTools)
     /// A tool grant this close to its end is renewed while the iPhone can
     /// be reached.
     static let grantRenewMargin: TimeInterval = 10 * 60
@@ -1533,7 +1533,10 @@ final class WatchDirectCallModel: ObservableObject {
             answer(.toolResponse(id: call.id, name: call.name, result: WatchJobAnswer.followUpResult(.failed(reason)), scheduling: GeminiLiveProtocol.Scheduling.whenIdle.rawValue, fallback: nil), generation: generation)
             return
         }
-        if let relay = toolRelay, relay.canRun(call.name), WatchToolAnswer.tools.contains(call.name), wristDown || !link.isReachable {
+        // Chats go through the grant wrist up or down when it has them: the
+        // host keeps the numbered matches read_chat names.
+        if let relay = toolRelay, relay.canRun(call.name), WatchToolAnswer.tools.contains(call.name),
+           wristDown || !link.isReachable || WatchToolAnswer.chatTools.contains(call.name) {
             runThroughRelay(wire, relay: relay, generation: generation, wristDown: wristDown, phoneTried: false)
             return
         }
@@ -1588,7 +1591,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// The log carries the tool, the time and how it went: never the query
     /// or the answer.
     private func runThroughRelay(_ wire: WatchVoiceWire.DirectToolCall, relay: WatchToolRelayClient, generation: Int?, wristDown: Bool, phoneTried: Bool) {
-        guard let query = WatchToolAnswer.query(wire.arguments) else {
+        guard let query = WatchToolAnswer.query(name: wire.name, arguments: wire.arguments) else {
             // The bridge's answer, no lookup needed.
             answer(WatchToolAnswer.outgoing(id: wire.id, name: wire.name, result: WatchToolAnswer.missingQuery(name: wire.name)), generation: generation)
             return

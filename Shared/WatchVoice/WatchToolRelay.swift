@@ -148,12 +148,20 @@ enum WatchToolSeal {
 /// What a relayed lookup hands the model: the result the iPhone's tool
 /// bridge builds for the same host response (GeminiLiveToolBridge's
 /// web_search and recall_memory, GeminiLiveTokenClient's parsing), with
-/// the scheduling and fallback the iPhone's broker sends the Watch.
+/// the scheduling and fallback the iPhone's broker sends the Watch. The
+/// chat tools (plugin 0.18) come back from the host as the model's text,
+/// numbered and fenced as the iPhone's are; read_chat names a match of the
+/// grant's own newest find_chat, which the host keeps.
 /// Written for the model, not shown, so not localized.
 enum WatchToolAnswer {
     static let webSearch = "web_search"
     static let recallMemory = "recall_memory"
-    static let tools: Set<String> = [webSearch, recallMemory]
+    static let findChat = VoiceChatToolText.findChat
+    static let readChat = VoiceChatToolText.readChat
+    static let chatTools: Set<String> = [findChat, readChat]
+    static let tools: Set<String> = [webSearch, recallMemory].union(chatTools)
+    /// The plugin's capability for the chat tools.
+    static let chatCapability = "watch-chats"
 
     /// GeminiLiveTokenClient.webSearchLimit.
     static let webSearchLimit = 3
@@ -164,26 +172,33 @@ enum WatchToolAnswer {
     /// A lookup that outlasted its wait, as the iPhone's broker answers it.
     static let tookTooLong: [String: String] = ["error": "That took too long. Tell the user in a few words."]
 
-    /// The trimmed query; nil when there is none.
-    static func query(_ arguments: [String: String]) -> String? {
-        let query = arguments["query"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    /// The trimmed query (read_chat's match number); nil when there is none.
+    static func query(name: String, arguments: [String: String]) -> String? {
+        let query = arguments[name == readChat ? "number" : "query"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return query.isEmpty ? nil : query
+    }
+
+    /// A lookup's trimmed query.
+    static func query(_ arguments: [String: String]) -> String? {
+        query(name: webSearch, arguments: arguments)
     }
 
     /// What the host runs: the tool and the arguments the iPhone's client
     /// would send its route.
     static func request(name: String, query: String) -> [String: Any] {
-        let arguments: [String: Any] = name == webSearch ? ["query": query, "limit": webSearchLimit] : ["query": query]
+        let arguments: [String: Any] = name == webSearch ? ["query": query, "limit": webSearchLimit]
+            : name == readChat ? ["number": query] : ["query": query]
         return ["tool": name, "args": arguments]
     }
 
     /// The bridge's answer to a call without a query.
     static func missingQuery(name: String) -> [String: String] {
-        noted(["error": "query is required"], name: name)
+        noted(["error": name == readChat ? "number is required" : "query is required"], name: name)
     }
 
     /// The bridge's answer for the host's response to `name`.
     static func result(name: String, body: [String: Any]) -> [String: String] {
+        if chatTools.contains(name) { return chatResult(name: name, body: body) }
         if name == webSearch {
             guard body["ok"] as? Bool == true, let items = body["results"] as? [[String: Any]] else {
                 return noted(["error": reason(body) ?? "The Hermes web search returned no results"], name: name)
@@ -204,6 +219,50 @@ enum WatchToolAnswer {
         return ["results": text.isEmpty ? "Nothing in memory about that." : text]
     }
 
+    /// find_chat's and read_chat's results as the iPhone's bridge words
+    /// them for a call that can't open a chat.
+    private static func chatResult(name: String, body: [String: Any]) -> [String: String] {
+        guard body["ok"] as? Bool == true else {
+            let fallback = name == findChat ? "Searching chats failed on Hermes." : "Reading the chat failed on Hermes."
+            return ["error": VoiceChatToolText.failed(reason(body) ?? fallback)]
+        }
+        if name == findChat {
+            let count = body["count"] as? Int ?? 0
+            return VoiceChatToolText.searchResult(summary: body["chats"] as? String ?? "", count: count, opens: false)
+        }
+        if body["unknown"] as? Bool == true { return ["error": VoiceChatToolText.unknownForRead] }
+        let chat = body["chat"] as? String ?? ""
+        return chat.isEmpty
+            ? VoiceChatToolText.emptyReadResult(title: body["title"] as? String ?? "")
+            : VoiceChatToolText.readResult(chat: chat)
+    }
+
+    /// What a Watch GPT-Live call's "Find chat:" or "Read chat:" delegation
+    /// is answered with, from the host's answer: the iPhone's
+    /// GPTLiveDelegationBridge replies for a call that can't open a chat.
+    static func delegatedChatReply(name: String, body: [String: Any]) -> String {
+        guard body["ok"] as? Bool == true else {
+            let fallback = name == findChat ? "Searching chats failed on Hermes." : "Reading the chat failed on Hermes."
+            let why = reason(body) ?? fallback
+            return name == findChat ? VoiceChatToolText.delegatedSearchFailed(why) : VoiceChatToolText.delegatedReadFailed(why)
+        }
+        if name == findChat {
+            let count = body["count"] as? Int ?? 0
+            let chats = body["chats"] as? String ?? ""
+            return count == 0 || chats.isEmpty
+                ? VoiceChatToolText.delegatedNoMatches
+                : VoiceChatToolText.delegatedSearchFound(summary: chats, count: count, opens: false)
+        }
+        if body["unknown"] as? Bool == true { return VoiceChatToolText.delegatedUnknownChat }
+        let chat = body["chat"] as? String ?? ""
+        return chat.isEmpty
+            ? VoiceChatToolText.delegatedEmptyChat(title: body["title"] as? String ?? "")
+            : VoiceChatToolText.delegatedRead(chat: chat)
+    }
+
+    /// A Watch call can't open a chat: what an "Open chat:" delegation hears.
+    static let delegatedCantOpen = "[This call can't open a chat on the phone. Tell the user to open it in Conduit on their iPhone, or delegate \"Read chat:\" with its number to talk about it here.]"
+
     /// The answer as the iPhone's broker would send it to the Watch.
     static func outgoing(id: String, name: String, result: [String: String]) -> WatchVoiceWire.DirectOutgoing {
         .toolResponse(
@@ -211,7 +270,7 @@ enum WatchToolAnswer {
             name: name,
             result: result,
             scheduling: GeminiLiveProtocol.Scheduling.whenIdle.rawValue,
-            fallback: fallbackText(for: result)
+            fallback: chatTools.contains(name) ? VoiceChatToolText.fallbackText(for: result, name: name) : fallbackText(for: result)
         )
     }
 
