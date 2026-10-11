@@ -206359,6 +206359,88 @@
           }
         }
       }
+    },
+    "Touch ID is not available on this device. You can still save credentials." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID ist auf diesem Gerät nicht verfügbar. Du kannst Zugangsdaten trotzdem sichern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID no está disponible en este dispositivo. Aun así, puedes guardar las credenciales."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID n'est pas disponible sur cet appareil. Vous pouvez quand même enregistrer les identifiants."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID tidak tersedia di perangkat ini. Anda tetap dapat menyimpan kredensial."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID non è disponibile su questo dispositivo. Puoi comunque salvare le credenziali."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このデバイスではTouch IDを利用できません。認証情報は引き続き保存できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 기기에서는 Touch ID를 사용할 수 없어요. 자격 증명은 저장할 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID nie jest dostępny na tym urządzeniu. Nadal możesz zapisać dane logowania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Touch ID não está disponível neste aparelho. Você ainda pode salvar as credenciais."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID недоступен на этом устройстве. Учётные данные всё равно можно сохранить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu cihazda Touch ID kullanılamıyor. Kimlik bilgilerini yine de kaydedebilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备不支持 Touch ID，仍可保存凭据。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此裝置無法使用 Touch ID。你仍可以儲存認證資訊。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

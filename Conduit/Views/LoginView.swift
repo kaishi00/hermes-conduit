@@ -22,7 +22,9 @@ struct LoginView: View {
     @State private var password = ""
     @State private var saveCredentials = false
     @State private var useFaceID = false
-    private let biometricKind = BiometricAuth.availableKind
+    /// Read on appear rather than per view init: each read is a
+    /// LocalAuthentication round trip.
+    @State private var biometrics = BiometricAuth.Status(kind: nil, isAvailable: false)
     @State var cloudflareEnabled = false
     @State var cloudflareClientID = ""
     @State var cloudflareClientSecret = ""
@@ -62,21 +64,25 @@ struct LoginView: View {
     @FocusState private var focusedField: LoginField?
 
     private var biometricToggleTitle: String {
-        biometricKind == .touchID
+        biometrics.kind == .touchID
             ? AppLocalization.string("Use Touch ID")
             : AppLocalization.string("Use Face ID")
     }
 
     private var biometricFootnote: String {
-        switch (biometricKind, useFaceID) {
-        case (.touchID, true):
+        switch (biometrics.kind, biometrics.isAvailable, useFaceID) {
+        case (.touchID, false, _):
+            return AppLocalization.string("Touch ID is not available on this device. You can still save credentials.")
+        case (.touchID, true, true):
             return AppLocalization.string("Touch ID, with device passcode recovery, is required on launch.")
-        case (.touchID, false):
+        case (.touchID, true, false):
             return AppLocalization.string("Saved credentials reconnect without a Touch ID prompt.")
-        case (_, true):
+        case (.faceID, true, true):
             return AppLocalization.string("Face ID, with device passcode recovery, is required on launch.")
-        case (_, false):
+        case (.faceID, true, false):
             return AppLocalization.string("Saved credentials reconnect without a Face ID prompt.")
+        case (.faceID, false, _), (nil, _, _):
+            return AppLocalization.string("Face ID is not available on this device. You can still save credentials.")
         }
     }
 
@@ -128,6 +134,7 @@ struct LoginView: View {
             }
         }
         .onAppear {
+            biometrics = BiometricAuth.status
             guard serverUrl.isEmpty else { return }
             serverUrl = appState.lastDashboardURL
             if let access = appState.dashboardScopedCloudflareAccess(for: serverUrl) {
@@ -379,13 +386,9 @@ struct LoginView: View {
                     // wording follows the device's sensor.
                     Toggle(biometricToggleTitle, isOn: $useFaceID)
                         .tint(.conduitAccent)
-                        .disabled(!saveCredentials || biometricKind == nil)
+                        .disabled(!saveCredentials || !biometrics.isAvailable)
 
-                    if biometricKind == nil {
-                        Text("Face ID is not available on this device. You can still save credentials.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if saveCredentials {
+                    if !biometrics.isAvailable || saveCredentials {
                         Text(biometricFootnote)
                             .font(.caption)
                             .foregroundStyle(.secondary)

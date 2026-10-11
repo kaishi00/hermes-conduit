@@ -9145,7 +9145,7 @@ final class AppState: ObservableObject {
             guard await unlockWithFaceID() else {
                 // A superseded switch owns the flow: present nothing.
                 guard restoreOwnsFlow(switchGeneration) else { return }
-                // Face ID can't show off the phone screen (a call from Hermes
+                // Face ID or Touch ID can't show off the phone screen (a call from Hermes
                 // woke Conduit, or only CarPlay shows it): the saved session
                 // connects, as it does when a locked phone keeps the
                 // password unreadable.

@@ -14,17 +14,22 @@ enum BiometricAuth {
         case touchID
     }
 
-    /// The enrolled sensor on this device, nil when there is none (no
-    /// sensor, nothing enrolled, or biometrics locked out).
-    static var availableKind: Kind? {
-        let context = LAContext()
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) else {
-            return nil
-        }
-        return kind(for: context.biometryType)
+    /// The sensor this device has, and whether it can guard a credential
+    /// right now (something enrolled, not locked out). The kind is known
+    /// even when nothing is enrolled, so the wording can still name it.
+    struct Status: Equatable {
+        var kind: Kind?
+        var isAvailable: Bool
     }
 
-    static var isAvailable: Bool { availableKind != nil }
+    static var status: Status {
+        let context = LAContext()
+        let canEvaluate = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+        let kind = kind(for: context.biometryType)
+        return Status(kind: kind, isAvailable: canEvaluate && kind != nil)
+    }
+
+    static var isAvailable: Bool { status.isAvailable }
 
     static func kind(for biometryType: LABiometryType) -> Kind? {
         switch biometryType {
