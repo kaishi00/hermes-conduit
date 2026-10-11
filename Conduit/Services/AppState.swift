@@ -20739,6 +20739,8 @@ final class AppState: ObservableObject {
                 return false
             }
             Task { await loadChatResumeSlashCommands() }
+            // The new profile's voices decide whether calls ring the Watch.
+            Task { await refreshWatchCallVoices() }
             return true
         } catch {
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {

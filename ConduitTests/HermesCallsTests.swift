@@ -1262,8 +1262,11 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(token(nil, voices), "wa", "An older Watch app doesn't say its voice")
         XCTAssertNil(token("geminiLive", voices, phone: nil), "Never without the iPhone")
 
+        XCTAssertEqual(voices.scoped(to: "d|default"), voices)
+        XCTAssertEqual(voices.scoped(to: "d|work"), WatchCallVoices(scope: "d|work"), "Another profile's checks say nothing about this one")
+        XCTAssertEqual(token("gptLive", voices.scoped(to: "d|work")), "wa", "Its calls ring the Watch until checked")
         voices.note(.grokLive, ready: true, scope: "d|work")
-        XCTAssertEqual(voices, WatchCallVoices(scope: "d|work", ready: ["grokLive": true]), "Another profile's checks say nothing about this one")
+        XCTAssertEqual(voices, WatchCallVoices(scope: "d|work", ready: ["grokLive": true]))
     }
 
     func testTheWatchSendsItsVoiceWithItsTokenAndHearsWhatToSetUp() {

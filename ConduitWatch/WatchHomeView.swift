@@ -41,6 +41,7 @@ struct WatchHomeView: View {
                     }
                 }
                 .accessibilityLabel(Text("Voice: \(call.engine.title)"))
+                .accessibilityValue(notSetUp ? Text("Not set up on your Hermes host") : Text(call.engine.detail))
                 // Calls from Hermes ring the Watch only while its voice can
                 // start (WatchCallVoices).
                 if notSetUp, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {

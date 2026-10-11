@@ -119,14 +119,18 @@ extension AppState {
     /// Checks each Watch voice for the active profile: calls from Hermes
     /// ring the Watch only while the voice it answers with can start
     /// (WatchCallVoices; Eric chose "Live only", 2026-10-11). On each
-    /// connect and profile switch, once a Watch has a call token.
+    /// connect and profile switch, and when the Watch first sends its call
+    /// token.
     func refreshWatchCallVoices() async {
         guard PushNotificationService.shared.watchVoIPToken != nil else { return }
+        let scope = hermesCallsKey(profile: activeProfile)
+        // Another server's or profile's checks don't decide this one's
+        // calls: until checked, the Watch rings.
+        PushNotificationService.shared.updateWatchCallVoices(PushNotificationService.shared.watchCallVoices.scoped(to: scope))
         guard supportsHermesCalls else {
             shareWatchCallVoices()
             return
         }
-        let scope = hermesCallsKey(profile: activeProfile)
         async let gemini = watchCallVoiceCheck(.geminiLive)
         async let gpt = watchCallVoiceCheck(.gptLive)
         async let grok = watchCallVoiceCheck(.grokLive)
@@ -140,6 +144,17 @@ extension AppState {
         }
         PushNotificationService.shared.updateWatchCallVoices(voices)
         shareWatchCallVoices()
+    }
+
+    /// The Watch sent its call token or voice: its voices are checked now
+    /// if this profile's never were, and it hears what the iPhone knows.
+    func watchCallTokenChanged() {
+        let voices = PushNotificationService.shared.watchCallVoices
+        if voices.scope != hermesCallsKey(profile: activeProfile) || voices.ready.isEmpty {
+            Task { await refreshWatchCallVoices() }
+        } else {
+            shareWatchCallVoices()
+        }
     }
 
     /// A Watch voice's availability, checked anywhere else (Voice settings,

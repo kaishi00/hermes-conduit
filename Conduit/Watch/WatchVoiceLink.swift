@@ -110,6 +110,7 @@ final class WatchVoiceLink: ObservableObject {
             let keySaved = key.flatMap(WatchToolSeal.data(base64URL:)).map(HermesRingHandoffKey.save)
             log.note("watchCallsToken", ["token": token != nil, "key": keySaved.map { $0 ? "saved" : "unsaved" } ?? "none", "engine": engine ?? "none"])
             PushNotificationService.shared.updateWatchVoIPToken(token, engine: engine)
+            AppStateRuntimeRegistry.shared.appState.watchCallTokenChanged()
             reply?([:])
         default:
             reply?([:])

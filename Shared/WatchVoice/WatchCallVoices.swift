@@ -35,10 +35,15 @@ struct WatchCallVoices: Codable, Equatable {
         return ready[engine] ?? true
     }
 
-    /// One voice's check. Checks for another dashboard or profile go first:
-    /// they say nothing about this one.
+    /// This record for `scope`: another dashboard's or profile's checks
+    /// say nothing about it, so they go.
+    func scoped(to scope: String) -> WatchCallVoices {
+        scope == self.scope ? self : WatchCallVoices(scope: scope)
+    }
+
+    /// One voice's check, for `scope`.
     mutating func note(_ voice: Voice, ready isReady: Bool, scope: String) {
-        if scope != self.scope { self = WatchCallVoices(scope: scope) }
+        self = scoped(to: scope)
         ready[voice.rawValue] = isReady
     }
 }
