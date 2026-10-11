@@ -359,6 +359,6 @@ private struct VoiceConversationTranscriptBubble: View {
         .background((isUser ? Color.conduitAccent : Color.conduitAura).opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(isUser ? AppLocalization.string("You") : "Hermes"): \(shownText)")
+        .accessibilityLabel("\(isUser ? AppLocalization.string("You") : AppLocalization.string("Hermes")): \(shownText)")
     }
 }

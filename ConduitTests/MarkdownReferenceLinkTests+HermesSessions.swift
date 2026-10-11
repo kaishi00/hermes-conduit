@@ -45,6 +45,17 @@ extension MarkdownReferenceLinkTests {
         XCTAssertEqual(HermesSessionReference.plain("It's in @session:default/zzz."), "It's in.")
         XCTAssertEqual(HermesSessionReference.plain("See [the old chat](@session:default/zzz) now"), "See the old chat now")
         XCTAssertEqual(SpokenTextFilter.filter("Open @session:default/abc to see it."), "Open GPU setup to see it.")
+        XCTAssertEqual(HermesSessionReference.plain("Type `@session:default/abc` as is"), "Type `@session:default/abc` as is",
+                       "inline code stays as written")
+    }
+
+    func testAChatNamedLaterRendersAgain() {
+        defer { HermesSessionReference.updateTitles([:]) }
+        let text = "In @session:default/abc we chose."
+        let before = HermesSessionReference.titleKey(for: text)
+        HermesSessionReference.updateTitles(["abc": "GPU setup"])
+        XCTAssertNotEqual(HermesSessionReference.titleKey(for: text), before, "the render cache keys on it")
+        XCTAssertEqual(HermesSessionReference.titleKey(for: "No reference here"), "")
     }
 
     func testASessionReferenceSplitAcrossDeltasIsSaidWhole() {

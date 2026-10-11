@@ -49,6 +49,14 @@ struct HermesSessionReference: Equatable {
         return title?.isEmpty == false ? title : nil
     }
 
+    /// The titles the references in `text` get now, for a cache of parsed
+    /// messages to key on: a chat Conduit learns the name of later re-renders.
+    /// Empty when `text` has none.
+    static func titleKey(for text: String) -> String {
+        guard text.contains("@session:") else { return "" }
+        return references(in: text).map { title(for: $0.id) ?? "" }.joined(separator: "\u{1F}")
+    }
+
     /// The references in `text`, in order.
     static func references(in text: String) -> [HermesSessionReference] {
         guard text.contains("@session:") else { return [] }
@@ -74,9 +82,9 @@ struct HermesSessionReference: Equatable {
     /// chat's name, or nothing when Conduit doesn't list it.
     static func plain(_ text: String) -> String {
         guard text.contains("@session:") else { return text }
-        let labels = replacingLinks(in: text)
-        let replaced = replacing(bare, in: labels) { reference in title(for: reference.id) ?? "" }
-        var result = replaced
+        var result = outsideInlineCode(text) { segment in
+            replacing(bare, in: replacingLinks(in: segment)) { reference in title(for: reference.id) ?? "" }
+        }
         while result.contains("  ") { result = result.replacingOccurrences(of: "  ", with: " ") }
         for mark in [" .", " ,", " ;", " !", " ?"] {
             result = result.replacingOccurrences(of: mark, with: String(mark.dropFirst()))
@@ -137,6 +145,9 @@ struct HermesSessionReference: Equatable {
 /// then said as `HermesSessionReference.plain` says it.
 struct SessionReferenceSpeechFilter {
     private static let marker = "@session:"
+    /// Longer than any reference (a 64-character profile and a 128-character
+    /// id): text past it is said as it is, not held.
+    private static let longest = 210
     private var pending = ""
 
     mutating func reset() { pending = "" }
@@ -165,7 +176,8 @@ struct SessionReferenceSpeechFilter {
             let tail = pending[at...]
             let mayGrow = tail.count < Self.marker.count
                 ? Self.marker.hasPrefix(tail)
-                : tail.hasPrefix(Self.marker) && !tail.contains(where: { $0.isWhitespace || $0 == ")" })
+                : tail.hasPrefix(Self.marker) && tail.count <= Self.longest
+                    && !tail.contains(where: { $0.isWhitespace || $0 == ")" })
             if mayGrow {
                 let before = pending[..<at]
                 let link = before.range(of: #"\[[^\]\n]{0,300}\]\(\s*$"#, options: .regularExpression)
