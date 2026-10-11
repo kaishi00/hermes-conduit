@@ -2350,7 +2350,8 @@ enum MarkdownParser {
                 index += span.lineCount
                 continue
             }
-            visibleLines.append(line)
+            // Hermes' `@session:<id>` chat references open the chat.
+            visibleLines.append(HermesSessionReference.linkingMarkdown(line))
             index += 1
         }
 

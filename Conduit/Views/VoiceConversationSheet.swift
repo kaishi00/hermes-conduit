@@ -339,13 +339,16 @@ private struct VoiceConversationTranscriptBubble: View {
     let entry: VoiceConversationTranscriptEntry
 
     private var isUser: Bool { entry.speaker == .user }
+    /// Hermes' `@session:<id>` chat links read as the chat's name; the reply
+    /// in the chat links them.
+    private var shownText: String { isUser ? entry.text : HermesSessionReference.plain(entry.text) }
 
     var body: some View {
         VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
             Text(isUser ? AppLocalization.string("You") : AppLocalization.string("Hermes"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text(entry.text)
+            Text(shownText)
                 .font(.body)
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
@@ -356,6 +359,6 @@ private struct VoiceConversationTranscriptBubble: View {
         .background((isUser ? Color.conduitAccent : Color.conduitAura).opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(isUser ? AppLocalization.string("You") : "Hermes"): \(entry.text)")
+        .accessibilityLabel("\(isUser ? AppLocalization.string("You") : "Hermes"): \(shownText)")
     }
 }

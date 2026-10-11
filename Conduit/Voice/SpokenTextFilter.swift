@@ -5,7 +5,9 @@
 //  Drops what a persona writes but nobody should hear: emoji and narrated
 //  actions in single asterisks or underscores ("*sets down the gavel*").
 //  Hermes' own speech cleanup strips the markers but keeps the words, so the
-//  action would still be read aloud. The chat transcript is never filtered.
+//  action would still be read aloud. Hermes' `@session:<id>` chat links
+//  are said as the chat's name (HermesSessionReference). The chat
+//  transcript is never filtered.
 //
 
 import Foundation
@@ -19,6 +21,7 @@ struct SpokenTextFilter {
     static let maximumHeldCharacters = 400
 
     private var pending: [Character] = []
+    private var sessionReferences = SessionReferenceSpeechFilter()
     /// The last character released, so a marker at the start of the next
     /// delta still knows whether it sits inside a word (snake_case).
     private var before: Character?
@@ -26,16 +29,18 @@ struct SpokenTextFilter {
     mutating func reset() {
         pending = []
         before = nil
+        sessionReferences.reset()
     }
 
     /// Speakable text that can be released now.
     mutating func feed(_ text: String) -> String {
-        pending.append(contentsOf: text)
+        pending.append(contentsOf: sessionReferences.feed(text))
         return drain(final: false)
     }
 
     /// Everything still held, at the end of the reply.
     mutating func finish() -> String {
+        pending.append(contentsOf: sessionReferences.finish())
         let text = drain(final: true)
         reset()
         return text

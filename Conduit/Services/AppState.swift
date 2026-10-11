@@ -569,6 +569,14 @@ final class AppState: ObservableObject {
         didSet {
             refreshActiveChatScrollSessionIdentity()
             observeChatReadState()
+            // Hermes' @session:<id> links read as the chat's name.
+            var titles: [String: String] = [:]
+            for session in sessions where !session.title.isEmpty {
+                for id in [session.id, session.storedSessionId].compactMap({ $0 }) + session.alternateIds {
+                    titles[id] = session.title
+                }
+            }
+            HermesSessionReference.updateTitles(titles)
         }
     }
     @Published var cronSessions: [SessionSummary] = [] {
