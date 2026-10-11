@@ -347,7 +347,8 @@ struct LargeMarkdownPreparedDocument {
     }
 
     static func identity(of source: String) -> String {
-        "\(source.utf8.count)-\(source.hashValue)"
+        // Hermes' @session links take the chat's name once Conduit lists it.
+        "\(source.utf8.count)-\(source.hashValue)-\(HermesSessionReference.titleKey(for: source).hashValue)"
     }
 
     /// Web-page units per chunk (diagrams and formulas are chunks of

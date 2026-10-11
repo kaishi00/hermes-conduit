@@ -45,7 +45,8 @@ struct HermesSessionReference: Equatable {
     static func title(for id: String) -> String? {
         titleLock.lock()
         defer { titleLock.unlock() }
-        let title = titles[id]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // One line: a label or a spoken name can't break the message's lines.
+        let title = titles[id]?.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return title?.isEmpty == false ? title : nil
     }
 
@@ -72,8 +73,12 @@ struct HermesSessionReference: Equatable {
             let targets = replacing(markdownTarget, in: segment) { reference in
                 "](\(reference.appLink.url.absoluteString))"
             }
-            return replacing(bare, in: targets) { reference in
-                reference.appLink.markdown(label: title(for: reference.id) ?? AppLocalization.string("Open chat"))
+            // A reference inside a link's label stays as written: a link
+            // can't hold another.
+            return outsideLinks(targets) { prose in
+                replacing(bare, in: prose) { reference in
+                    reference.appLink.markdown(label: title(for: reference.id) ?? AppLocalization.string("Open chat"))
+                }
             }
         }
     }
@@ -82,14 +87,15 @@ struct HermesSessionReference: Equatable {
     /// chat's name, or nothing when Conduit doesn't list it.
     static func plain(_ text: String) -> String {
         guard text.contains("@session:") else { return text }
-        var result = outsideInlineCode(text) { segment in
-            replacing(bare, in: replacingLinks(in: segment)) { reference in title(for: reference.id) ?? "" }
+        return outsideInlineCode(text) { segment in
+            guard segment.contains("@session:") else { return segment }
+            var result = replacing(bare, in: replacingLinks(in: segment)) { reference in title(for: reference.id) ?? "" }
+            while result.contains("  ") { result = result.replacingOccurrences(of: "  ", with: " ") }
+            for mark in [" .", " ,", " ;", " !", " ?"] {
+                result = result.replacingOccurrences(of: mark, with: String(mark.dropFirst()))
+            }
+            return result
         }
-        while result.contains("  ") { result = result.replacingOccurrences(of: "  ", with: " ") }
-        for mark in [" .", " ,", " ;", " !", " ?"] {
-            result = result.replacingOccurrences(of: mark, with: String(mark.dropFirst()))
-        }
-        return result
     }
 
     /// `[label](@session:…)` as its label.
@@ -127,6 +133,23 @@ struct HermesSessionReference: Equatable {
             cursor = range.upperBound
         }
         return result + text[cursor...]
+    }
+
+    private static let anyLink = try! NSRegularExpression(pattern: #"!?\[(?:\\.|[^\]\\\n])*\]\([^)\n]*\)"#)
+
+    /// Applies `transform` to the parts of `text` outside Markdown links.
+    private static func outsideLinks(_ text: String, _ transform: (String) -> String) -> String {
+        let matches = anyLink.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        guard !matches.isEmpty else { return transform(text) }
+        var result = ""
+        var cursor = text.startIndex
+        for match in matches {
+            guard let range = Range(match.range, in: text) else { continue }
+            result += transform(String(text[cursor..<range.lowerBound]))
+            result += text[range]
+            cursor = range.upperBound
+        }
+        return result + transform(String(text[cursor...]))
     }
 
     /// Applies `transform` to the parts of `line` outside backtick code spans.

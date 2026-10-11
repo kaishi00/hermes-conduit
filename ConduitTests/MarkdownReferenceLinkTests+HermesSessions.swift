@@ -24,6 +24,17 @@ extension MarkdownReferenceLinkTests {
         )
         XCTAssertEqual(HermesSessionReference.linkingMarkdown("mail me@session:x or a/@session:y"), "mail me@session:x or a/@session:y")
         XCTAssertEqual(
+            HermesSessionReference.linkingMarkdown("[see @session:default/abc](https://example.com)"),
+            "[see @session:default/abc](https://example.com)",
+            "a link can't hold another"
+        )
+        HermesSessionReference.updateTitles(["abc": "GPU\nsetup"])
+        XCTAssertEqual(
+            HermesSessionReference.linkingMarkdown("In @session:abc."),
+            "In [GPU setup](conduit://session/abc).",
+            "a title stays on one line"
+        )
+        XCTAssertEqual(
             HermesSessionReference.references(in: "@session:default/a1 and @session:b2"),
             [HermesSessionReference(id: "a1", profile: "default"), HermesSessionReference(id: "b2", profile: nil)]
         )
@@ -47,6 +58,7 @@ extension MarkdownReferenceLinkTests {
         XCTAssertEqual(SpokenTextFilter.filter("Open @session:default/abc to see it."), "Open GPU setup to see it.")
         XCTAssertEqual(HermesSessionReference.plain("Type `@session:default/abc` as is"), "Type `@session:default/abc` as is",
                        "inline code stays as written")
+        XCTAssertEqual(HermesSessionReference.plain("Type `a  b` in @session:default/abc ."), "Type `a  b` in GPU setup.")
     }
 
     func testAChatNamedLaterRendersAgain() {
