@@ -609,5 +609,10 @@ extension AppStateMultiDashboardTests {
 
         store.removeAvatar(for: "default", dashboardID: dashboardID)
         XCTAssertNil(ProfileAvatarImageCache.image(at: url))
+
+        // A photo saved where a read had failed is read again.
+        _ = try store.saveAvatar(photoData(.green, side: 300), for: "default", dashboardID: dashboardID)
+        let restored = try XCTUnwrap(ProfileAvatarImageCache.image(at: url))
+        XCTAssertGreaterThan(try averageColor(of: restored).green, 0.6)
     }
 }

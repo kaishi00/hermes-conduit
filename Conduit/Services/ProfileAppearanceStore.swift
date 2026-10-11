@@ -252,15 +252,23 @@ enum ProfileAvatarImageCache {
     /// at 3x with room to spare.
     static let maxPixelSize: CGFloat = 192
 
+    /// A 192 px bitmap is ~150 KB, so the count bounds the memory too.
     private static let images: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
         cache.countLimit = 32
         return cache
     }()
+    /// Photos that didn't decode, so a missing or damaged file is tried once
+    /// rather than on every redraw.
+    private static var unreadablePaths: Set<String> = []
 
+    /// The first show of each photo decodes it here, on the main actor, so
+    /// the avatar never flashes its initials. ImageIO builds the thumbnail
+    /// without decoding the full photo, so that one read is small.
     static func image(at url: URL) -> UIImage? {
         let key = url.path as NSString
         if let cached = images.object(forKey: key) { return cached }
+        guard !unreadablePaths.contains(url.path) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceShouldCache: false,
@@ -269,7 +277,10 @@ enum ProfileAvatarImageCache {
         ]
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-        else { return nil }
+        else {
+            unreadablePaths.insert(url.path)
+            return nil
+        }
         let image = UIImage(cgImage: thumbnail)
         images.setObject(image, forKey: key)
         return image
@@ -277,9 +288,11 @@ enum ProfileAvatarImageCache {
 
     static func forget(_ url: URL) {
         images.removeObject(forKey: url.path as NSString)
+        unreadablePaths.remove(url.path)
     }
 
     static func forgetAll() {
         images.removeAllObjects()
+        unreadablePaths.removeAll()
     }
 }

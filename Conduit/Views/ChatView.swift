@@ -3188,14 +3188,15 @@ struct ConduitAgentMark: View {
 }
 
 /// Drives a breath from the moment it appears, so each turn's breathing
-/// starts at rest.
+/// starts at rest. Timed by system uptime like the backdrop, so a clock
+/// change mid-turn can't jump the phase.
 private struct ConduitBreathingTimeline<Content: View>: View {
-    @State private var startedAt = Date()
+    @State private var startedAt = ProcessInfo.processInfo.systemUptime
     @ViewBuilder let content: (CGFloat) -> Content
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / ConduitAgentMark.breathingFramesPerSecond)) { timeline in
-            content(ConduitAgentMark.breath(at: timeline.date.timeIntervalSince(startedAt)))
+        TimelineView(.animation(minimumInterval: 1 / ConduitAgentMark.breathingFramesPerSecond)) { _ in
+            content(ConduitAgentMark.breath(at: ProcessInfo.processInfo.systemUptime - startedAt))
         }
     }
 }
