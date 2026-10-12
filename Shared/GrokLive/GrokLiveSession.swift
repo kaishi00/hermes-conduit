@@ -83,6 +83,9 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     /// Whether the current response's transcript came as deltas; if not,
     /// its final transcript is shown instead.
     private var responseHadTranscript = false
+    /// The latest input transcript snapshot per xAI item on this
+    /// connection, so a repeated or growing snapshot adds only its new words.
+    private var inputSnapshots: [String: String] = [:]
 
     init(
         client: GrokLiveConnecting,
@@ -328,6 +331,8 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         awaitingSetup = (id, attempt)
         responseActive = false
         responseRequested = false
+        // Item ids belong to the xAI session, which a new connection replaces.
+        inputSnapshots = [:]
         receiveTask = Task { [weak self] in await self?.receiveLoop(socket, id: id) }
         // A server that neither confirms the session nor closes would leave
         // the call connecting forever.
@@ -408,6 +413,18 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             if responseRequested { sendResponseCreate() }
         case .outputTranscriptDone(let text):
             if !responseHadTranscript { onEvent?(.outputTranscription(text)) }
+        case .inputTranscriptSnapshot(let itemID, let text):
+            // Without an item id there is nothing to compare against: the
+            // snapshot goes through as it is.
+            guard let itemID else {
+                onEvent?(.inputTranscription(text))
+                return
+            }
+            let previous = inputSnapshots[itemID] ?? ""
+            if text.count >= previous.count || !previous.hasPrefix(text) { inputSnapshots[itemID] = text }
+            if let added = GrokLiveProtocol.inputTranscriptDelta(previous: previous, snapshot: text) {
+                onEvent?(.inputTranscription(added))
+            }
         case .event(let event):
             if case .outputTranscription = event { responseHadTranscript = true }
             if responseActive { armResponseWatchdog() }

@@ -22,6 +22,12 @@ enum GrokLiveProtocol {
     /// The transcription model xAI's own voice clients use.
     static let transcriptionModel = "grok-transcribe"
 
+    /// Added to Grok Live's instructions after the shared ones. Grok answered
+    /// "check my email" itself (it has no access) instead of calling
+    /// start_job, where Gemini and GPT-Live hand it to Hermes. Written for
+    /// the model, not shown as UI copy, so not localized.
+    static let delegationInstructions = "\nYou can't see the user's email, messages, calendar, health or patient portals, bank or other accounts, files or systems, and web_search can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there, call start_job with their request. Never tell them you can't access it, never answer it from guesses, and never use web_search for it."
+
     // MARK: Client → server
 
     /// The session's configuration: server-side turn detection (the user's
@@ -178,6 +184,11 @@ enum GrokLiveProtocol {
         /// A response's whole spoken transcript; only used when no deltas
         /// carried it.
         case outputTranscriptDone(String)
+        /// The user's words so far in one input item. xAI sends these as
+        /// cumulative snapshots, sometimes more than once per item, not as
+        /// deltas: the session turns them into the new words only.
+        /// `itemID` is nil when xAI sent none.
+        case inputTranscriptSnapshot(itemID: String?, text: String)
         case event(GeminiLiveProtocol.ServerEvent)
     }
 
@@ -202,7 +213,8 @@ enum GrokLiveProtocol {
             return [.event(.interrupted)]
         case "conversation.item.input_audio_transcription.completed":
             guard let text = object["transcript"] as? String, !text.isEmpty else { return [] }
-            return [.event(.inputTranscription(text))]
+            let itemID = (object["item_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            return [.inputTranscriptSnapshot(itemID: itemID, text: text)]
         case "response.output_audio.delta", "response.audio.delta":
             guard let base64 = object["delta"] as? String, let pcm = Data(base64Encoded: base64), !pcm.isEmpty else { return [] }
             return [.event(.audio(pcm, sampleRate: outputSampleRate))]
@@ -218,6 +230,23 @@ enum GrokLiveProtocol {
         default:
             return []
         }
+    }
+
+    /// What a cumulative input transcript snapshot adds to the item's last
+    /// one, as the delta the shared controller appends; nil when it adds
+    /// nothing. A snapshot that revises earlier words can't take them back
+    /// from the transcript, so only what it says past the words the two
+    /// share is added, and a revision no longer than before adds nothing.
+    static func inputTranscriptDelta(previous: String, snapshot: String) -> String? {
+        if snapshot == previous { return nil }
+        if snapshot.hasPrefix(previous) {
+            let added = String(snapshot.dropFirst(previous.count))
+            return added.isEmpty ? nil : added
+        }
+        guard snapshot.count > previous.count else { return nil }
+        let shared = zip(previous, snapshot).prefix(while: { $0 == $1 }).count
+        let added = String(snapshot.dropFirst(shared))
+        return added.isEmpty ? nil : added
     }
 
     /// `arguments` is a JSON string; Conduit's tools take string values.
