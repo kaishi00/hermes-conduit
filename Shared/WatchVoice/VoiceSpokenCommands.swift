@@ -134,8 +134,9 @@ enum VoiceSpokenCommands {
     /// "End call:" at the very start of a GPT-Live delegation: the model,
     /// having said its goodbye, asks Conduit to close the call (GPT-Live
     /// has no function tools, so this stands in for end_conversation).
+    /// "End the call:" counts too, should the model paraphrase it.
     static func isEndCallMarker(_ request: String) -> Bool {
-        request.range(of: #"^\s*(end[ -]?call|hang[ -]?up)\s*:"#, options: [.regularExpression, .caseInsensitive]) != nil
+        request.range(of: #"^\s*(end[ -]?(?:(?:the|this)\s+)?call|hang[ -]?up)\s*:"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     private static func commandWords(_ text: String) -> [String] {

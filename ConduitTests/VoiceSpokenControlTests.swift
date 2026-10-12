@@ -110,6 +110,7 @@ final class VoiceSpokenCommandMatchingTests: XCTestCase {
         XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("End call:"))
         XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("  end-call: goodbye"))
         XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("Hang up:"))
+        XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("End the call: the user said goodbye"))
         XCTAssertFalse(VoiceSpokenCommands.isEndCallMarker("Send: end call reminders"))
     }
 
