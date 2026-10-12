@@ -60,6 +60,8 @@ targets:
       - target: ConduitWatch
       # Embedded as Conduit.app/PlugIns/ConduitNotificationService.appex.
       - target: ConduitNotificationService
+      # The configured launcher widgets are embedded with the app.
+      - target: ConduitWidgets
     postBuildScripts:
       # A draft language (Info.plist ConduitDraftLanguages) is compiled from
       # the String Catalogs like any other; drop its lproj so it never ships.
@@ -124,6 +126,7 @@ targets:
           - "WatchVoice/**"
           - "GeminiLive/**"
           - "GrokLive/**"
+          - "Widgets/**"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.NotificationService
@@ -135,6 +138,42 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: "Conduit Notification Service App Store"
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
+  ConduitWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ConduitWidgets
+        excludes:
+          - "Info.plist"
+          - "ConduitWidgets.entitlements"
+          - "Resources/**"
+      - path: ConduitWidgets/Resources/Assets.xcassets
+        buildPhase: resources
+      - path: Shared/Widgets
+      - path: Conduit/Localizable.xcstrings
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.widgets
+        PRODUCT_NAME: ConduitWidgets
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: ConduitWidgets/Info.plist
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        CODE_SIGN_ENTITLEMENTS: ConduitWidgets/ConduitWidgets.entitlements
+        PROVISIONING_PROFILE_SPECIFIER: "Conduit Widgets App Store"
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      - name: Strip draft localizations
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/strip-draft-localizations.py" \
+            --info-plist "$SRCROOT/$INFOPLIST_FILE" \
+            --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
+            --development-language "$DEVELOPMENT_LANGUAGE"
   ConduitTests:
     type: bundle.unit-test
     platform: iOS

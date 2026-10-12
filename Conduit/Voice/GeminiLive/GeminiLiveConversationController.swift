@@ -298,6 +298,7 @@ final class GeminiLiveConversationController: ObservableObject {
     static let outcomeSpeechGrace: TimeInterval = 6
 
     private var session: GeminiLiveSessionControlling?
+    private var initialWidgetCaptureAuthorization: WidgetInitialCaptureAuthorization?
     /// Set by the Interrupt button: the rest of the current model turn is
     /// dropped locally until the server ends or interrupts it.
     private var suppressingModelTurn = false
@@ -431,6 +432,7 @@ final class GeminiLiveConversationController: ObservableObject {
     /// another voice mode on its own.
     func start() async {
         guard !isActive else { return }
+        let widgetAuthorization = initialWidgetCaptureAuthorization
         // A mute belongs to the conversation it was set in: a new one (one
         // started from CarPlay, which has no mute control, included) is heard.
         // Cleared before the call goes active so the headset mute starts
@@ -473,23 +475,30 @@ final class GeminiLiveConversationController: ObservableObject {
         do {
             let status = try await availability()
             guard phase == .connecting else { return }
+            guard widgetAuthorization?.mayStartCapture != false else { phase = .idle; initialWidgetCaptureAuthorization = nil; return }
             guard status.isAvailable else {
+                initialWidgetCaptureAuthorization = nil
                 hostIssue = LiveVoiceHostIssue(status)
                 phase = .failed(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
                 return
             }
         } catch {
             guard phase == .connecting else { return }
+            initialWidgetCaptureAuthorization = nil
             hostIssue = LiveVoiceHostIssue(error: error)
             phase = .failed(UserFacingError.message(for: error))
             return
         }
         guard await input.requestPermission() else {
             guard phase == .connecting else { return }
+            initialWidgetCaptureAuthorization = nil
             phase = .failed(VoiceAudioError.microphonePermissionDenied.localizedDescription)
             return
         }
-        guard phase == .connecting else { return }
+        guard phase == .connecting, widgetAuthorization?.mayStartCapture != false else {
+            if widgetAuthorization?.mayStartCapture == false { phase = .idle; initialWidgetCaptureAuthorization = nil }
+            return
+        }
         // A retry after a failed connection starts a new server session:
         // calls opened on the old one can't be answered there, so their
         // results must go out as text updates.
@@ -517,7 +526,12 @@ final class GeminiLiveConversationController: ObservableObject {
         session.start()
     }
 
+    func installInitialWidgetCaptureAuthorization(_ authorization: WidgetInitialCaptureAuthorization?) {
+        initialWidgetCaptureAuthorization = authorization
+    }
+
     func stop() {
+        initialWidgetCaptureAuthorization = nil
         idleFlushTask?.cancel()
         idleFlushTask = nil
         endTask?.cancel()
@@ -820,13 +834,8 @@ final class GeminiLiveConversationController: ObservableObject {
             // Any cue seen during this pause counts, whoever asks.
             guard audioReturned || audioReturnSeen else { return false }
         } else if !inputRunning {
-            do {
-                try input.start()
-                inputRunning = true
-            } catch {
-                geminiLiveLogger.notice("Live voice microphone not back yet: \(String(describing: error), privacy: .public)")
-                return false
-            }
+            // A failed first start still holds its widget launch lease.
+            guard startInput(pausingOnFailure: true, scheduleRetryOnFailure: false) else { return false }
         }
         clearAudioPause()
         geminiLiveLogger.notice("Live voice resumed after an audio interruption")
@@ -870,7 +879,7 @@ final class GeminiLiveConversationController: ObservableObject {
             if audioPaused, !restartAudioAfterPause(audioReturned: false) {
                 // Still paused: the microphone stays off until the other
                 // sound ends, and nothing is sent the user can't hear.
-                if endRequestedAt == nil { phase = .paused }
+                if isActive, endRequestedAt == nil { phase = .paused }
                 return
             }
             // An alarm that rang while connecting holds the audio: the call
@@ -1357,12 +1366,20 @@ final class GeminiLiveConversationController: ObservableObject {
 
     /// False when the microphone couldn't start; the phase is then failed.
     @discardableResult
-    private func startInput(pausingOnFailure: Bool = false) -> Bool {
+    private func startInput(pausingOnFailure: Bool = false, scheduleRetryOnFailure: Bool = true) -> Bool {
         guard !inputRunning else { return true }
         // Ending: the microphone stays closed.
         guard endRequestedAt == nil else { return true }
+        guard initialWidgetCaptureAuthorization?.mayStartCapture != false else {
+            // A pending widget call cannot become an ordinary call on a
+            // later ready/retry callback after its launch lease expires.
+            stop()
+            return false
+        }
         do {
             try input.start()
+            initialWidgetCaptureAuthorization?.captureDidStart()
+            initialWidgetCaptureAuthorization = nil
             inputRunning = true
             return true
         } catch {
@@ -1370,7 +1387,9 @@ final class GeminiLiveConversationController: ObservableObject {
                 geminiLiveLogger.notice("Live voice microphone couldn't start; pausing: \(String(describing: error), privacy: .public)")
                 pauseForAudioInterruption()
                 if endRequestedAt == nil { phase = .paused }
-                scheduleAudioResume(delays: Self.earlyResumeDelays, audioReturned: false)
+                if scheduleRetryOnFailure {
+                    scheduleAudioResume(delays: Self.earlyResumeDelays, audioReturned: false)
+                }
                 return false
             }
             phase = .failed(UserFacingError.message(for: error))

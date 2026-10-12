@@ -64,6 +64,7 @@ final class GPTLiveSession {
     /// Runs while the connection is interrupted; fails the call if it
     /// doesn't come back in time.
     private var reconnectWatchdog: Task<Void, Never>?
+    private var initialCaptureAuthorization: WidgetInitialCaptureAuthorization?
 
     init(
         client: GPTLiveSessionProviding,
@@ -88,7 +89,12 @@ final class GPTLiveSession {
     var isReady: Bool { state == .ready }
 
     func start() {
+        start(initialCaptureAuthorization: nil)
+    }
+
+    func start(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?) {
         guard state == .idle || state == .stopped || isFailed else { return }
+        self.initialCaptureAuthorization = initialCaptureAuthorization
         sessionID = nil
         state = .connecting
         let peer = makePeer()
@@ -162,6 +168,17 @@ final class GPTLiveSession {
 
     private func connect(_ peer: GPTLivePeer) async {
         do {
+            guard isCurrent(peer), !Task.isCancelled else { return }
+            guard initialCaptureAuthorization?.mayStartCapture != false else {
+                initialCaptureAuthorization = nil
+                fail(AppLocalization.string("WidgetLaunch.Expired"))
+                return
+            }
+            // `makeOffer` starts the WebRTC audio session and microphone in
+            // its synchronous prefix, before its first suspension. This is
+            // the real capture boundary, not `start()`'s task scheduling.
+            initialCaptureAuthorization?.captureDidStart()
+            initialCaptureAuthorization = nil
             let offer = try await peer.makeOffer()
             guard isCurrent(peer) else { return }
             let answer = try await client.createSession(offer: offer, history: history, voice: voice, briefing: briefing, greeting: greeting)

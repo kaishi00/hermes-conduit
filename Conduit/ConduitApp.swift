@@ -136,13 +136,18 @@ struct ConduitApp: App {
                 // re-resolve outside SwiftUI state, so view re-renders alone
                 // cannot refresh them.
                 appState.appLanguageDidChange()
+                appState.publishWidgetLanguage()
                 HermesCallNotifications.registerCategory()
             }
             .preferredColorScheme(appState.themePreference.colorScheme)
             .tint(.conduitAccent)
+#if DEBUG
+            .modifier(WidgetLaunchUITestFixture.modifier(appState: appState))
+#endif
             // Links Conduit writes into chats (a voice call's job link)
             // open inside the app; every other link goes to the system.
             .environment(\.openURL, OpenURLAction { url in
+                if appState.routeWidgetLaunchURL(url) { return .handled }
                 guard let link = ConduitAppLink(url: url) else {
                     // The scheme is registered, so the system would hand a
                     // conduit link Conduit can't read straight back to it.
@@ -160,6 +165,7 @@ struct ConduitApp: App {
             // Another app opening a chat: only session links, opened through
             // the same route as an in-app link once Hermes is connected.
             .onOpenURL { url in
+                if appState.routeWidgetLaunchURL(url) { return }
                 guard let link = ConduitAppLink(externalURL: url) else { return }
                 pendingExternalLink = link
             }

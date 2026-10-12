@@ -1,0 +1,110 @@
+import Foundation
+
+extension AppState {
+    /// Widget URLs have their own strict parser. A malformed URL in this
+    /// namespace is still consumed so it cannot fall through to permissive
+    /// app-link parsing.
+    func routeWidgetLaunchURL(_ url: URL) -> Bool {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme?.lowercased() == "conduit",
+              components.host?.lowercased() == "widget" else { return false }
+        guard let link = WidgetLaunchLink(url: url) else { return true }
+        cancelChatResumeRestoration()
+        widgetLaunchCoordinator.receive(link)
+        return true
+    }
+
+    func prepareWidgetLaunch(_ link: WidgetLaunchLink, lease: WidgetLaunchLease) async -> WidgetLaunchOutcome {
+        guard lease.isCurrent else { return .deferred }
+        guard widgetForegroundReady else { return .deferred }
+        if link.action == .open, link.workspace == nil { return .handled }
+        guard let workspace = link.workspace else { return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable")) }
+        guard savedDashboardRegistry.dashboard(with: workspace.dashboardID) != nil else {
+            return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
+        }
+        if isVoiceCallInProgress {
+            guard link.action == .open,
+                  workspace.dashboardID == activeDashboardID,
+                  workspace.profile == activeProfile else {
+                return .failed(AppLocalization.string("End the call to open a chat in another workspace."))
+            }
+            return .handled
+        }
+
+        if workspace.dashboardID != activeDashboardID {
+            await switchDashboard(to: workspace.dashboardID, widgetLease: lease)
+            guard lease.isCurrent else { return .deferred }
+            guard activeDashboardID == workspace.dashboardID else {
+                return showLogin ? .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable")) : .deferred
+            }
+        } else if !isConnected && !isConnecting {
+            await switchDashboard(to: workspace.dashboardID, widgetLease: lease)
+            guard lease.isCurrent else { return .deferred }
+        }
+        guard activeDashboardID == workspace.dashboardID else {
+            return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
+        }
+        if showLogin, widgetAwaitingInteractiveAuthenticationDashboardID == workspace.dashboardID {
+            return .deferred
+        }
+        guard isConnected else {
+            return isConnecting ? .deferred : .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
+        }
+        guard profiles.contains(where: { $0 == workspace.profile })
+                || workspace.profile == "default"
+                || workspace.profile == defaultProfileName else {
+            return widgetSettledCatalogOwner == nil
+                ? .deferred
+                : .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
+        }
+        if activeProfile != workspace.profile {
+            let switched = await switchProfileForWidget(to: workspace.profile, lease: lease)
+            guard lease.isCurrent else { return .deferred }
+            guard switched, activeProfile == workspace.profile else {
+                return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
+            }
+        }
+        guard lease.isCurrent else { return .deferred }
+        lease.bindTargetOwnership { [weak self] in
+            self?.activeDashboardID == workspace.dashboardID && self?.activeProfile == workspace.profile
+        }
+        if link.action != .open, widgetSettledCatalogOwner != workspace { return .deferred }
+        if link.action == .resume, let reference = link.reference, reference.kind == .dashboard {
+            guard widgetSettledCatalogOwner == workspace else { return .deferred }
+            guard activeProfileSessions.contains(where: { $0.id == reference.sessionID
+                || $0.alternateIds.contains(reference.sessionID)
+                || $0.storedSessionId == reference.sessionID }) else {
+                return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+            }
+        }
+        return .handled
+    }
+
+    func performWidgetLaunch(_ link: WidgetLaunchLink, lease: WidgetLaunchLease) async -> WidgetLaunchOutcome {
+        guard lease.isCurrent else { return .deferred }
+        if link.action == .open { return .handled }
+        guard let workspace = link.workspace,
+              activeDashboardID == workspace.dashboardID,
+              activeProfile == workspace.profile else {
+            return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
+        }
+        switch link.action {
+        case .open:
+            return .handled
+        case .newChat:
+            let previous = activeSessionId
+            await createNewSession(widgetLease: lease)
+            guard lease.isCurrent else { return .deferred }
+            return activeSessionId != previous
+                ? .handled
+                : .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+        case .resume:
+            guard let reference = link.reference else {
+                return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+            }
+            return await openWidgetConversation(reference, workspace: workspace, lease: lease)
+        case .talk:
+            return await openWidgetVoice(workspace: workspace, lease: lease)
+        }
+    }
+}

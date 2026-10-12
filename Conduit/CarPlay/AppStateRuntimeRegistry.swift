@@ -24,7 +24,16 @@ final class AppStateRuntimeRegistry {
     /// readiness without waiting for any phone view to run.
     var appState: AppState {
         if let stored { return stored }
-        let created = AppState()
+        let created: AppState
+#if DEBUG
+        if let fixture = WidgetLaunchUITestFixture.createAppStateIfEnabled() {
+            created = fixture
+        } else {
+            created = AppState()
+        }
+#else
+        created = AppState()
+#endif
         stored = created
         return created
     }

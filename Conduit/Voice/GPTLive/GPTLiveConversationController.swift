@@ -33,6 +33,7 @@ protocol GPTLiveSessionControlling: AnyObject {
     /// True when the host already made the model greet first.
     var greetingApplied: Bool { get }
     func start()
+    func start(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?)
     /// Ends the call (telling GPT-Live, when it can hear it).
     func stop()
     /// True once any of `text` went out (never resend it); false when none did.
@@ -44,6 +45,7 @@ protocol GPTLiveSessionControlling: AnyObject {
 
 extension GPTLiveSessionControlling {
     var greetingApplied: Bool { false }
+    func start(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?) { start() }
 }
 
 extension GPTLiveSession: GPTLiveSessionControlling {}
@@ -196,6 +198,7 @@ final class GPTLiveConversationController: ObservableObject {
     var onEndConversation: (@MainActor () -> Void)?
 
     private var session: GPTLiveSessionControlling?
+    private var initialWidgetCaptureAuthorization: WidgetInitialCaptureAuthorization?
     private var modelTurnActive = false
     private var lastUserSpeechAt: Date?
     private var lastModelOutputAt: Date?
@@ -281,6 +284,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// voice mode (or to API billing) on its own.
     func start() async {
         guard !isActive else { return }
+        let widgetAuthorization = initialWidgetCaptureAuthorization
+        initialWidgetCaptureAuthorization = nil
         // A mute belongs to the call it was set in: a new call (one started
         // from CarPlay, which has no mute control, included) is heard.
         // Cleared before the call goes active so the headset mute starts
@@ -313,6 +318,7 @@ final class GPTLiveConversationController: ObservableObject {
         do {
             let status = try await availability()
             guard phase == .connecting else { return }
+            guard widgetAuthorization?.mayStartCapture != false else { phase = .idle; return }
             guard status.isAvailable else {
                 hostIssue = LiveVoiceHostIssue(status)
                 phase = .failed(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
@@ -329,7 +335,10 @@ final class GPTLiveConversationController: ObservableObject {
             phase = .failed(VoiceAudioError.microphonePermissionDenied.localizedDescription)
             return
         }
-        guard phase == .connecting else { return }
+        guard phase == .connecting, widgetAuthorization?.mayStartCapture != false else {
+            if widgetAuthorization?.mayStartCapture == false { phase = .idle }
+            return
+        }
         bridge.connectionReplaced()
         retireSession()
         let session = makeSession()
@@ -338,7 +347,11 @@ final class GPTLiveConversationController: ObservableObject {
         session.onAudioPaused = { [weak self] in self?.audioPauseChanged($0) }
         audioPaused = false
         self.session = session
-        session.start()
+        session.start(initialCaptureAuthorization: widgetAuthorization)
+    }
+
+    func installInitialWidgetCaptureAuthorization(_ authorization: WidgetInitialCaptureAuthorization?) {
+        initialWidgetCaptureAuthorization = authorization
     }
 
     func stop() {

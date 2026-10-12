@@ -154,6 +154,7 @@ final class VoiceConversationController: ObservableObject {
     /// events can never alias onto the new turn's ownership.
     private var suspendedInFlightTurnOrphaned = false
     private var operationGeneration: UInt64 = 0
+    private var initialWidgetCaptureAuthorization: WidgetInitialCaptureAuthorization?
     private var utteranceTask: Task<Void, Never>?
     /// Live speech-to-text for the open listening window: opened when speech
     /// starts, fed the recording as it grows, finished with the utterance.
@@ -373,7 +374,10 @@ final class VoiceConversationController: ObservableObject {
     }
 
     func startListening(includePreRoll: Bool = false) async {
+        let widgetAuthorization = initialWidgetCaptureAuthorization
+        initialWidgetCaptureAuthorization = nil
         guard isForegroundActive else { return }
+        guard widgetAuthorization?.mayStartCapture != false else { return }
         let generation = operationGeneration
         isVoiceSessionActive = true
         // A fresh listen re-arms the runtime: suspended state ends here.
@@ -390,9 +394,10 @@ final class VoiceConversationController: ObservableObject {
             state = .failed(VoiceAudioError.microphonePermissionDenied.localizedDescription)
             return
         }
-        guard isCurrent(generation) else { return }
+        guard isCurrent(generation), widgetAuthorization?.mayStartCapture != false else { return }
         do {
             try capture.startListening(includePreRoll: includePreRoll)
+            widgetAuthorization?.captureDidStart()
             resetLiveTranscription()
             // Starting may choose this conversation's audio (echo-cancelling
             // or not), which decides the route policy: classify it afresh
@@ -418,6 +423,10 @@ final class VoiceConversationController: ObservableObject {
                 ? AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue.")
                 : UserFacingError.message(for: error))
         }
+    }
+
+    func installInitialWidgetCaptureAuthorization(_ authorization: WidgetInitialCaptureAuthorization?) {
+        initialWidgetCaptureAuthorization = authorization
     }
 
     func pauseMicrophone() {
