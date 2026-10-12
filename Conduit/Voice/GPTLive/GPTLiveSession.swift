@@ -255,9 +255,11 @@ final class GPTLiveSession {
         quietTask?.cancel()
         quietTask = nil
         guard turns.hasOpenTurn, let current = peer else { return }
+        let quiet = turns.openTurnQuietInterval
         quietTask = Task { [weak self, weak current] in
-            do { try await Task.sleep(for: GPTLiveProtocol.TurnAssembler.quietInterval) } catch { return }
-            guard let self, let current, self.peer === current else { return }
+            do { try await Task.sleep(for: quiet) } catch { return }
+            // Replaced by a newer timer after the sleep ended: that one decides.
+            guard !Task.isCancelled, let self, let current, self.peer === current else { return }
             self.quietTask = nil
             if let done = self.turns.flush() { self.process(done) }
         }

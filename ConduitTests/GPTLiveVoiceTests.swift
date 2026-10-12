@@ -3602,6 +3602,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(turns.flush())
         _ = turns.receive(.outputTranscript("Bye"))
         XCTAssertEqual(turns.receive(.sessionClosed(reason: nil)), [.turnDone(role: "assistant", transcript: "Bye"), .sessionClosed(reason: nil)])
+
+        _ = turns.receive(.inputTranscript("hello"))
+        XCTAssertEqual(turns.openTurnQuietInterval, GPTLiveProtocol.TurnAssembler.userQuietInterval, "A user's pause lasts longer")
+        XCTAssertEqual(turns.receive(.turnDone(role: "user", transcript: "hello")), [.turnDone(role: "user", transcript: "hello")])
+        XCTAssertNil(turns.flush(), "A real turn.done is never followed by a made-up one")
     }
 
     func testGPTLiveSessionOnTheAPIKeySpeaksThePublicEventsAndMakesTheTurns() async throws {
@@ -3660,6 +3665,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(GPTLiveAPICallLimit.duration(roundTrip.gptLiveAPIMaxMinutes), "0 is no limit")
         XCTAssertEqual(GPTLiveAPICallLimit.duration(nil), .seconds(GPTLiveAPICallLimit.defaultMinutes * 60))
         XCTAssertEqual(GPTLiveAPICallLimit.duration(-3), .seconds(GPTLiveAPICallLimit.defaultMinutes * 60))
+        XCTAssertEqual(GPTLiveAPICallLimit.duration(Int.max), .seconds(GPTLiveAPICallLimit.defaultMinutes * 60),
+                       "An untrustworthy stored value never overflows")
     }
 }
 

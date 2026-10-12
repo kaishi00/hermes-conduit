@@ -196,13 +196,20 @@ enum GPTLiveProtocol {
     /// request is over), or after `quietInterval` without new words
     /// (`flush`, which the session calls on a timer). Pure, so testable.
     struct TurnAssembler {
+        /// The model's turn ends after this long without new words.
         static let quietInterval: Duration = .milliseconds(1500)
+        /// The user's lasts longer: people pause mid-sentence, and the model
+        /// answering or delegating ends their turn first anyway.
+        static let userQuietInterval: Duration = .seconds(3)
 
         private var role: String?
         private var text = ""
 
         /// Whether a turn is open (and a quiet timer should run).
         var hasOpenTurn: Bool { role != nil }
+
+        /// How long the open turn may go quiet before it ends.
+        var openTurnQuietInterval: Duration { role == "user" ? Self.userQuietInterval : Self.quietInterval }
 
         /// The events to hand on for `event`: a `turnDone` first when it
         /// closes the open turn, then the event itself.
@@ -218,6 +225,12 @@ enum GPTLiveProtocol {
             case .sessionClosed:
                 guard let done = flush() else { return [event] }
                 return [done, event]
+            case .turnDone:
+                // A real one (should the API ever send it) ends the turn,
+                // so the quiet timer never ends it a second time.
+                role = nil
+                text = ""
+                return [event]
             default:
                 return [event]
             }

@@ -906,6 +906,8 @@ final class GPTLiveConversationController: ObservableObject {
         guard let old = session else { return }
         session = nil
         voiceNote = nil
+        billing = nil
+        limitNote = nil
         old.onEvent = nil
         old.onStateChange = nil
         old.onAudioPaused = nil

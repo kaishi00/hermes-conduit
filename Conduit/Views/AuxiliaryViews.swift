@@ -615,11 +615,14 @@ struct SettingsView: View {
                         setEnabled: { appState.setGPTLiveEnabled($0) },
                         checkAvailability: {
                             do {
-                                let status = try await appState.gptLiveClient.availability()
+                                // The path the picker shows, even while a call Hermes placed
+                                // would start on the subscription.
+                                let billing = await MainActor.run { appState.gptLiveBilling }
+                                let status = try await appState.gptLiveClient.availability(billing: billing)
                                 // The Watch's GPT-Live is always the subscription's: an API-key
                                 // check says nothing about it.
                                 await MainActor.run {
-                                    if appState.gptLiveBilling == .subscription {
+                                    if billing == .subscription {
                                         appState.noteWatchCallVoice(.gptLive, ready: status.isAvailable)
                                     }
                                 }

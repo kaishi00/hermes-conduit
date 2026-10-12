@@ -420,11 +420,14 @@ struct GeminiLiveVoice: Equatable, Identifiable {
 /// How long an API-key GPT-Live call may run (#559).
 enum GPTLiveAPICallLimit {
     static let defaultMinutes = 20
+    /// The longest limit Conduit honours; anything above is a stored value
+    /// it can't trust (and would overflow as seconds).
+    static let maximumMinutes = 24 * 60
     /// The choices Settings offers; 0 is no limit.
     static let choices = [5, 10, 20, 30, 60, 0]
 
     static func minutes(_ stored: Int?) -> Int {
-        guard let stored, stored >= 0 else { return defaultMinutes }
+        guard let stored, (0...maximumMinutes).contains(stored) else { return defaultMinutes }
         return stored
     }
 
