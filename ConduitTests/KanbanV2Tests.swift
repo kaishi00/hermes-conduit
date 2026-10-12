@@ -465,6 +465,22 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Which API key?")
     }
 
+    func testBlockedQuestionTieGoesToTheFirstEventBecauseEventsAreNewestFirst() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "blocked", payload: .object(["reason": .string("new question")]), createdAt: 100),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("old question")]), createdAt: 100),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "new question")
+    }
+
+    func testBlockedEventWithoutTimestampCountsAsNewest() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "blocked", payload: .object(["reason": .string("untimed question")])),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("old question")]), createdAt: 100),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "untimed question")
+    }
+
     func testManualBlockWithoutReasonHasNoQuestion() throws {
         let detail = try blockedDetail(
             events: [KanbanEvent(id: "1", taskID: "t", kind: "blocked", createdAt: 100)],

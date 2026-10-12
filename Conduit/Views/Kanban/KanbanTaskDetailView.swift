@@ -171,10 +171,13 @@ struct KanbanTaskDetailView: View {
                         if currentTask.status == "ready", (currentTask.assignee ?? "").isEmpty, !hasDispatcherFallback {
                             readyUnassignedCallout
                         }
-                        // A blocked task is waiting on the operator: its
-                        // question and the reply box sit together up top.
+                        // A blocked task is waiting on the operator: the
+                        // worker's question (when it asked one) and the reply
+                        // box sit together up top.
                         if isBlocked {
-                            blockedCallout
+                            if let detail, let question = KanbanBlockedQuestion.reason(in: detail) {
+                                blockedCallout(question: question)
+                            }
                             commentsSection
                         }
                         diagnosticsSection
@@ -662,17 +665,15 @@ struct KanbanTaskDetailView: View {
         }
     }
 
-    private var blockedCallout: some View {
+    private func blockedCallout(question: String) -> some View {
         let tint = KanbanStatusPresentation.forStatus("blocked").tint
         return VStack(alignment: .leading, spacing: 6) {
             Label("Waiting on you", systemImage: "questionmark.bubble")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(tint)
-            if let detail, let reason = KanbanBlockedQuestion.reason(in: detail) {
-                Text(reason)
-                    .font(.footnote)
-                    .textSelection(.enabled)
-            }
+            Text(question)
+                .font(.footnote)
+                .textSelection(.enabled)
             Text("Reply & unblock posts your answer and moves the task back to Ready, so the next run sees it.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -887,7 +888,7 @@ struct KanbanTaskDetailView: View {
                     }
                 }
                 .buttonStyle(.bordered)
-                .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAddingComment)
+                .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAddingComment || isUnblocking || isRequeuing)
                 if isRunning {
                     // Upstream "Note & requeue": post the note, then reclaim so
                     // the dispatcher re-runs the task with the note in context.
@@ -902,7 +903,7 @@ struct KanbanTaskDetailView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.orange)
-                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing)
+                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing || isAddingComment)
                 }
                 if isBlocked {
                     // A comment alone leaves the task parked in Blocked; the

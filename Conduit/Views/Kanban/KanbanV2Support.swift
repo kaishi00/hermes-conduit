@@ -497,13 +497,16 @@ enum KanbanActivityFormatter {
 /// from the detail screen. The newest `blocked` event wins; a backend that
 /// records the reason only on the run falls back to the newest run that
 /// ended `blocked`. A manual block carries no reason and yields nil.
+///
+/// Events arrive newest-first, so array order breaks timestamp ties and an
+/// event without a timestamp is taken as the newest.
 enum KanbanBlockedQuestion {
     static func reason(in detail: KanbanTaskDetail) -> String? {
         let blockedEvents = detail.events.enumerated().filter { $0.element.kind == "blocked" }
         if let newest = blockedEvents.max(by: { lhs, rhs in
-            let left = lhs.element.createdAt ?? 0
-            let right = rhs.element.createdAt ?? 0
-            return left == right ? lhs.offset < rhs.offset : left < right
+            let left = lhs.element.createdAt ?? Int.max
+            let right = rhs.element.createdAt ?? Int.max
+            return left == right ? lhs.offset > rhs.offset : left < right
         }) {
             return nonEmpty(newest.element.payload?.objectValue?["reason"]?.stringValue)
         }

@@ -1956,8 +1956,8 @@ private struct KanbanCardView: View {
             Button { copy(text: task.title, notice: AppLocalization.string("Title copied")) } label: {
                 Label("Copy Task Title", systemImage: "doc.on.doc.fill")
             }
-            Divider()
             if task.status != "archived" {
+                Divider()
                 Button(action: onArchive) { Label("Archive", systemImage: "archivebox") }
                     .disabled(isMenusDisabled)
             }
