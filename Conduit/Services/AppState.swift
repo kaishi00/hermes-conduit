@@ -2271,19 +2271,23 @@ final class AppState: ObservableObject {
             makeSession: { [weak self] in
                 let search = self?.grokLiveSearchSource ?? GeminiLiveSearchSource.none
                 let memory = self?.grokLiveMemoryContext
+                // Built a step at a time: one long `+` chain of optionals is
+                // slow for the type checker.
+                var instructions: String = GeminiLiveConversationController.instructions(
+                    search: search,
+                    memory: memory,
+                    personality: self?.grokLivePersonality,
+                    answerLength: self?.liveVoiceStyle.answerLength ?? .standard
+                )
+                instructions += GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
+                instructions += self?.liveVoiceResumeContext?.instructionBlock ?? ""
+                instructions += self?.liveHermesCall?.instructionBlock(delegation: false) ?? ""
+                instructions += self?.liveVoiceThreadInstructions(delegation: false) ?? ""
+                instructions += LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
+                instructions += self?.liveVoiceStyle.instructions ?? ""
                 return GrokLiveSession(
                     client: client,
-                    instructions: GeminiLiveConversationController.instructions(
-                        search: search,
-                        memory: memory,
-                        personality: self?.grokLivePersonality,
-                        answerLength: self?.liveVoiceStyle.answerLength ?? .standard
-                    ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
-                        + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
-                        + (self?.liveHermesCall?.instructionBlock(delegation: false) ?? "")
-                        + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
-                        + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
-                        + (self?.liveVoiceStyle.instructions ?? ""),
+                    instructions: instructions,
                     functions: GeminiLiveToolBridge.declarations(
                         webSearch: search == .hermes,
                         memoryRecall: memory?.canRecall == true,
