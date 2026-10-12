@@ -48,7 +48,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let text = GrokLiveProtocol.delegationInstructions
         XCTAssertTrue(text.contains("start_job"))
         XCTAssertTrue(text.contains("email"))
-        XCTAssertTrue(text.contains("never use web_search"))
+        XCTAssertTrue(text.contains("never look it up on the web"))
     }
 
     func testGrokLiveSessionUpdateCarriesInstructionsVoiceAndLowercaseFunctionTools() throws {
@@ -295,7 +295,7 @@ extension VoiceConversationControllerTests {
         socket.deliver(["type": event, "item_id": "i1", "transcript": "Can you check my email right now?"])
         socket.deliver(["type": event, "item_id": "i1", "transcript": "Can you check my email right now?"])
         socket.deliver(["type": event, "item_id": "i2", "transcript": "Thanks."])
-        await grokSettle()
+        await grokSettle(until: { heard.count == 3 })
         XCTAssertEqual(heard.joined(), "Can you check my email right now?Thanks.")
         XCTAssertEqual(heard, ["Can you check", " my email right now?", "Thanks."])
         session.stop()
@@ -318,7 +318,7 @@ extension VoiceConversationControllerTests {
         let event = "conversation.item.input_audio_transcription.completed"
         socket.deliver(["type": event, "transcript": "thanks"])
         socket.deliver(["type": event, "transcript": "thanks"])
-        await grokSettle()
+        await grokSettle(until: { heard.count == 2 })
         XCTAssertEqual(heard, ["thanks", "thanks"], "a repeated short utterance with no id is kept")
 
         heard = []
@@ -327,6 +327,7 @@ extension VoiceConversationControllerTests {
         }
         socket.deliver(["type": event, "item_id": "i6", "transcript": "Line 6 done"])
         socket.deliver(["type": event, "item_id": "i6", "transcript": "Line 6 done"])
+        await grokSettle(until: { heard.count == 7 })
         await grokSettle()
         XCTAssertEqual(heard, ["Line 1", "Line 2", "Line 3", "Line 4", "Line 5", "Line 6", " done"])
         session.stop()
@@ -351,6 +352,7 @@ extension VoiceConversationControllerTests {
         socket.deliver(["type": event, "item_id": "i1", "transcript": "I like grapes"])
         socket.deliver(["type": event, "item_id": "i1", "transcript": "I like apples pie"])
         socket.deliver(["type": event, "item_id": "i1", "transcript": "I like apples"])
+        await grokSettle(until: { heard.joined() == "I like apples pie" })
         await grokSettle()
         XCTAssertEqual(heard.joined(), "I like apples pie")
         session.stop()
