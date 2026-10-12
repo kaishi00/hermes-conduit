@@ -177,11 +177,6 @@ final class WidgetLaunchCoordinator {
         advance(request)
     }
 
-    func currentLease(for link: WidgetLaunchLink) -> WidgetLaunchLease? {
-        guard let request, request.link == link else { return nil }
-        return lease(for: request)
-    }
-
     private func lease(for request: Request) -> WidgetLaunchLease {
         activeLease ?? makeLease(generation: request.generation, deadline: request.deadline)
     }

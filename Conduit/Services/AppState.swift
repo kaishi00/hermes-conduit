@@ -9074,7 +9074,7 @@ final class AppState: ObservableObject {
                 }
             }
             await restoreSavedCredentials(credentials, dashboardID: id, switchGeneration: generation, widgetLease: widgetLease)
-            guard widgetLease?.isCurrent != false else { return }
+            settleExpiredWidgetDashboardSwitch(generation: generation, widgetLease: widgetLease)
             return
         }
         if let saved = KeychainHelper.loadConnection(dashboardID: id) {
@@ -9086,13 +9086,26 @@ final class AppState: ObservableObject {
             isConnecting = true
             turnState = .synchronizing
             await restoreSavedConnection(saved, switchGeneration: generation, widgetLease: widgetLease)
-            guard widgetLease?.isCurrent != false else { return }
+            settleExpiredWidgetDashboardSwitch(generation: generation, widgetLease: widgetLease)
             return
         }
         // No reusable auth: present the sign-in surface seeded for this
         // dashboard's address.
         turnState = .idle
         if widgetLease != nil { widgetAwaitingInteractiveAuthenticationDashboardID = id }
+        showLogin = true
+    }
+
+    /// A widget launch that expired while its dashboard switch was restoring
+    /// stopped before connecting. The target is already selected and the
+    /// outgoing connection retired, so it gets the sign-in surface a failed
+    /// restore shows, not a connecting state nothing will finish.
+    private func settleExpiredWidgetDashboardSwitch(generation: UInt64, widgetLease: WidgetLaunchLease?) {
+        guard widgetLease?.isCurrent == false,
+              switchGenerationIsCurrent(generation),
+              !isConnected, client == nil else { return }
+        isConnecting = false
+        turnState = .idle
         showLogin = true
     }
 
@@ -9297,7 +9310,9 @@ final class AppState: ObservableObject {
             if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
                 return
             }
-            guard widgetLease?.isCurrent != false else { return }
+            // The user just unlocked the saved password for the selected
+            // dashboard: the sign-in finishes even if the widget launch
+            // expired meanwhile.
             if let scopedDashboardID {
                 presentOfflineChatIfAvailable(dashboardID: scopedDashboardID)
                 if offlineChatPresentation != nil {
@@ -9328,12 +9343,10 @@ final class AppState: ObservableObject {
             if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
                 return
             }
-            guard widgetLease?.isCurrent != false else { return }
             if let scopedDashboardID {
                 authenticatedConnection.commitCookies(dashboardID: scopedDashboardID)
             }
             await connect(with: HermesConnection(baseUrl: credentials.baseURL, ticket: authenticatedConnection.ticket), profile: activeProfile)
-            guard widgetLease?.isCurrent != false else { return }
         } catch is CancellationError {
             // A superseded connect owns the flow from here; fall back to the
             // login screen silently — but only if THIS restore still owns
@@ -15814,7 +15827,17 @@ final class AppState: ObservableObject {
             conversationProfile: conversationProfile,
             widgetLease: widgetLease
         )
-        guard widgetLease?.isCurrent != false else { return .superseded }
+        guard widgetLease?.isCurrent != false else {
+            // The widget launch expired with nothing newer on screen: settle
+            // like a failed open, so the composer doesn't stay synchronizing
+            // a transcript this open will never publish.
+            if chatViewportTransitionIsCurrent(generation: transitionGeneration) {
+                settleReconciliation(token)
+                finishChatViewportTransition(generation: transitionGeneration)
+                if turnState == .synchronizing { turnState = .idle }
+            }
+            return .superseded
+        }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
             return .superseded
         }
@@ -16310,6 +16333,7 @@ final class AppState: ObservableObject {
         cacheMessagePresentation()
         let newTitle = AppLocalization.string("New conversation")
         activeSessionTitle = newTitle
+        let previousTurnState = turnState
         let token = beginReconciliation()
         turnState = .synchronizing
         await createAndReconcileSession(
@@ -16319,6 +16343,12 @@ final class AppState: ObservableObject {
             cwd: cwd,
             widgetLease: widgetLease
         )
+        // An expired widget launch adopts nothing: the chat still open gets
+        // its own turn state back unless something newer took it over.
+        if widgetLease?.isCurrent == false, token == reconciliationToken,
+           activeSessionId == previousSessionID, turnState == .synchronizing {
+            turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
+        }
         // No chat started: the one still open keeps its own title. A title
         // set for it meanwhile (not the placeholder) is left alone.
         if chatViewportTransitionIsCurrent(generation: transitionGeneration),
@@ -21232,6 +21262,7 @@ final class AppState: ObservableObject {
         let previousArchivedSessions = archivedSessions
         let previousProjects = projects
         let previousSupportsProjects = supportsProjects
+        let previousTurnState = turnState
         isProfileSwitching = true
         defer { isProfileSwitching = false }
         invalidateReconciliation()
@@ -21252,6 +21283,16 @@ final class AppState: ObservableObject {
                 ticket = try await mintChatResumeTicket(for: savedConnection)
             }
             guard widgetLease?.isCurrent != false else {
+                // Nothing has changed over yet: the previous profile keeps
+                // its approval state and, unless a newer navigation owns the
+                // chat, its turn state.
+                runtime.approvalsMode = previousApprovalsMode
+                runtime.yolo = previousYolo
+                lastReportedSessionYolo = previousLastReportedSessionYolo
+                if chatViewportTransitionIsCurrent(generation: transitionGeneration),
+                   turnState == .synchronizing {
+                    turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
+                }
                 cancelChatViewportTransitionIfNoReplacement(generation: transitionGeneration)
                 return false
             }
@@ -21299,7 +21340,10 @@ final class AppState: ObservableObject {
             restoreActiveSessionState(for: target)
             restorePinnedSessions(for: target)
             try await connectChatResumeClient(nextClient)
-            guard widgetLease?.isCurrent != false else { return false }
+            // The new profile is connected and already active: an expired
+            // widget launch still finishes the switch (the caller stops
+            // before opening anything), or the old socket and a half-switched
+            // profile would be left behind.
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration),
                   self.client === nextClient else { return false }
             // Keep the previous socket alive until the new profile has

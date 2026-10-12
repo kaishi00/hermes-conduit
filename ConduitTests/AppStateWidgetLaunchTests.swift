@@ -232,6 +232,7 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         await creating.value
 
         XCTAssertEqual(appState.activeSessionId, "existing-session")
+        XCTAssertEqual(appState.turnState, .idle, "the chat still open must not stay synchronizing")
     }
 
     func testWidgetResumeDoesNotAdoptResponseAfterLeaseRevocation() async throws {
@@ -286,6 +287,7 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         _ = await opening.value
 
         XCTAssertFalse(appState.messages.contains(where: { $0.id == "resume-response" }), "a revoked response with matching durable identity must not publish its transcript")
+        XCTAssertNotEqual(appState.turnState, .synchronizing, "an expired open settles like a failed one")
     }
 
     func testCurrentWidgetResumeAdoptsIdentityConsistentResponse() async throws {
@@ -381,6 +383,7 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         let switched = await switching.value
         XCTAssertFalse(switched)
         XCTAssertEqual(appState.activeProfile, "default", "a canceled profile ticket must not commit the new profile")
+        XCTAssertNotEqual(appState.turnState, .synchronizing, "the previous profile gets its turn state back")
     }
 
     func testWidgetVoiceCapabilityWaitStopsBeforeSessionCreationAfterRevocation() async throws {

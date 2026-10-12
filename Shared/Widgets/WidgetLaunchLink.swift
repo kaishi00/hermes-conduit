@@ -47,9 +47,10 @@ struct WidgetLaunchLink: Equatable {
         let items = components.queryItems ?? []
         let known = Set(["dashboard", "profile", "kind", "scope", "bot", "session", "unverified"])
         guard items.allSatisfy({ known.contains($0.name) }),
-              Set(items.map(\.name)).count == items.count,
-              items.allSatisfy({ $0.value != nil }) else { return nil }
-        let values = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value!) })
+              Set(items.map(\.name)).count == items.count else { return nil }
+        let pairs = items.compactMap { item in item.value.map { (item.name, $0) } }
+        guard pairs.count == items.count else { return nil }
+        let values = Dictionary(uniqueKeysWithValues: pairs)
         let hasDashboard = values["dashboard"] != nil
         let hasProfile = values["profile"] != nil
         guard hasDashboard == hasProfile else { return nil }
