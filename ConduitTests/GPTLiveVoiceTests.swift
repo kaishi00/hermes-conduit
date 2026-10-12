@@ -1302,6 +1302,18 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.submissions.count, 0, "Never a Hermes job")
     }
 
+    func testGPTLiveEndCallDelegationKeepsTheCallOpenWhenEndingByVoiceIsOff() async {
+        let (controller, session, _, fake) = makeGPTController(endPhrases: [], clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.delegation(id: "del_end", text: "End call:"))
+        XCTAssertNotEqual(controller.phase, .ending, "An emptied end list turns ending by voice off")
+        XCTAssertTrue(controller.isActive)
+        await Task.yield()
+        XCTAssertEqual(fake.submissions.count, 0, "Still never a Hermes job")
+        controller.stop()
+    }
+
     func testGPTLiveAPIKeyDelegationOnAHangUpRequestEndsTheCall() async {
         // An API-key delegation carries no text: the user's words are the request.
         let (controller, session, _, fake) = makeGPTController(endPhrases: ["goodbye"], clock: Date.init)

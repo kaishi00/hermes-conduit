@@ -1104,10 +1104,13 @@ final class WatchBridgeCallModel: ObservableObject {
         ])
         // "End call:" (or the user's own words asking to end, when the
         // delegation carries none): the call ends once the goodbye has
-        // played, as after a spoken end phrase. Never a job for Hermes.
+        // played, as after a spoken end phrase, unless the user emptied
+        // their end phrases to turn ending by voice off. Never a job for Hermes.
         if VoiceSpokenCommands.isEndCallMarker(ownWords) || VoiceSpokenCommands.asksToEndCall(ownWords, endPhrases: endPhrases) {
-            goodbyeHeardAt = now
-            note("bridgeEndCallDelegated", [:])
+            if !endPhrases.isEmpty {
+                goodbyeHeardAt = now
+                note("bridgeEndCallDelegated", [:])
+            }
             return
         }
         guard !request.isEmpty else {

@@ -654,11 +654,12 @@ final class GPTLiveConversationController: ObservableObject {
             let parts = delegationRequest(itemText: text)
             // "End call:" (or, on an API-key call whose delegations carry no
             // text, the user's words asking to end): close once the
-            // goodbye has played. Never a job for Hermes.
+            // goodbye has played, unless the user emptied their end
+            // phrases to turn ending by voice off. Never a job for Hermes.
             let ownWords = parts.request.components(separatedBy: Self.delegationContextMarker).first ?? parts.request
             if VoiceSpokenCommands.isEndCallMarker(ownWords)
                 || VoiceSpokenCommands.asksToEndCall(ownWords, endPhrases: activeEndPhrases) {
-                requestEnd()
+                if !activeEndPhrases.isEmpty { requestEnd() }
                 return
             }
             Task { [weak self] in

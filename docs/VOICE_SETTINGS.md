@@ -105,7 +105,7 @@ The two are kept apart so nobody pays for the one they didn't pick:
 
 ### Ending a live call by voice
 
-Gemini Live, Grok Live and GPT-Live end hands-free. One of your goodbye phrases ends the call even with courtesies around it or several in a row ("Cool. Okay, goodbye.", "Bye. Goodbye."). On GPT-Live, asking it to "hang up" or "end the call" works too (English only), unless you've emptied the End Conversation phrases. When the goodbye is part of a longer sentence, the model decides: it says a short goodbye, then ends the call. Gemini and Grok do this with their end_conversation tool. GPT-Live has no tools, so it delegates an "End call:" marker instead. Background jobs keep running on Hermes after the call ends.
+Gemini Live, Grok Live and GPT-Live end hands-free. One of your goodbye phrases ends the call even with courtesies around it or several in a row ("Cool. Okay, goodbye.", "Bye. Goodbye."). On GPT-Live, asking it to "hang up" or "end the call" works too (English only), unless you've emptied the End Conversation phrases. When the goodbye is part of a longer sentence, the model decides: it says a short goodbye, then ends the call. Gemini and Grok do this with their end_conversation tool. GPT-Live has no tools, so it delegates an "End call:" marker instead; with the End Conversation phrases emptied, GPT-Live doesn't end the call that way either. Background jobs keep running on Hermes after the call ends.
 
 ## Talking over the agent (barge-in)
 
