@@ -1080,7 +1080,9 @@ final class WatchBridgeCallModel: ObservableObject {
     /// the phone runs one; a web lookup when the user allows no jobs from
     /// the Watch.
     private func delegated(id: String, itemText: String) {
-        guard seenDelegations.insert(id).inserted, endRequestedAt == nil else { return }
+        // Once a goodbye is heard the call is closing: no new work starts,
+        // as on the phone.
+        guard seenDelegations.insert(id).inserted, endRequestedAt == nil, goodbyeHeardAt == nil else { return }
         delegations += 1
         delegationConnection[id] = connection
         var lines = transcript.enumerated().map { index, turn in
@@ -1104,10 +1106,8 @@ final class WatchBridgeCallModel: ObservableObject {
         // delegation carries none): the call ends once the goodbye has
         // played, as after a spoken end phrase. Never a job for Hermes.
         if VoiceSpokenCommands.isEndCallMarker(ownWords) || VoiceSpokenCommands.asksToEndCall(ownWords, endPhrases: endPhrases) {
-            if goodbyeHeardAt == nil {
-                goodbyeHeardAt = now
-                note("bridgeEndCallDelegated", [:])
-            }
+            goodbyeHeardAt = now
+            note("bridgeEndCallDelegated", [:])
             return
         }
         guard !request.isEmpty else {
