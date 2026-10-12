@@ -2709,6 +2709,7 @@ final class AppState: ObservableObject {
     /// intent first, and it is consumed on the main actor right before the
     /// listen, so a Close in between wins.
     func startDeferredVoiceSheetAutoListen() {
+        // Early out only: the consume inside the task is the decision.
         guard showVoiceSheet, voiceSheetShouldAutoListen else { return }
         Task { [weak self] in
             guard let self, self.showVoiceSheet, self.consumeVoiceSheetAutoListenIfPresenting() else { return }
@@ -4083,7 +4084,7 @@ final class AppState: ObservableObject {
     @Published var isNativeHermesCallActive = false
     /// That call was answered here (not only ringing): see
     /// `isNativeCallVoiceSurfaceActive`.
-    @Published private(set) var isNativeHermesCallAnswered = false
+    @Published internal(set) var isNativeHermesCallAnswered = false
     /// The call's CallKit mute: a classic voice the call opens while muted
     /// doesn't start listening on its own.
     internal(set) var isNativeHermesCallMuted = false

@@ -2212,6 +2212,33 @@ final class CarPlayVoicePhoneAttachTests: XCTestCase {
         )
     }
 
+    /// #558: a classic voice a Hermes call opens arms the sheet's
+    /// auto-listen, unless the call was muted in CallKit before it opened.
+    func testHermesCallOpenArmsAutoListenUnlessMuted() async {
+        for muted in [false, true] {
+            let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+            addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+                defaults.removePersistentDomain(forName: suite)
+            }
+            harness.appState.activeSessionId = "session-S"
+            harness.controller.beginVoiceTurn(sessionID: "session-S")
+            await harness.controller.startListening()
+            harness.coordinator.handleConnect(harness.spy)
+            if muted { harness.appState.setVoiceMutedForNativeCall(true) }
+
+            let opened = await harness.appState.openVoiceConversation(
+                PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .hermesCall)
+            )
+
+            XCTAssertTrue(opened)
+            XCTAssertTrue(harness.appState.showVoiceSheet)
+            XCTAssertEqual(
+                harness.appState.voiceSheetShouldAutoListen, !muted,
+                muted ? "a call muted before its voice opened keeps the mic off" : "the call's voice listens on its own"
+            )
+        }
+    }
+
     /// The same continuation while an assistant turn is IN FLIGHT: phone
     /// presentation attaches instead of rejecting with "Stop the current
     /// response" merely because the live session already owns the turn.
