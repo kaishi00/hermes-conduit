@@ -139,7 +139,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(ConduitAppLink(url: url), .settings(.calls))
         XCTAssertEqual(ConduitAppLink.settings(.calls).url, url)
         XCTAssertEqual(ConduitAppLink(url: try XCTUnwrap(URL(string: "conduit://Settings/Calls"))), .settings(.calls))
-        XCTAssertNil(ConduitAppLink(url: try XCTUnwrap(URL(string: "conduit://settings/voice"))), "Only pages Hermes links to")
+        XCTAssertNil(ConduitAppLink(url: try XCTUnwrap(URL(string: "conduit://settings/gateway"))), "Only pages Hermes links to")
         XCTAssertNil(ConduitAppLink(externalURL: url), "Another app can't open Settings")
         XCTAssertEqual(ConduitAppLink.removingLinks(from: "Turn them on under [Calls from Hermes](conduit://settings/calls)."), "Turn them on under.")
 
