@@ -126,9 +126,11 @@ enum VoiceSpokenCommands {
     ]
 
     /// True when a live call's user turn, all of it, asks to end the call:
-    /// one of their end phrases, or asking to hang up.
+    /// one of their end phrases, or asking to hang up. An emptied end list
+    /// turns ending by voice off, hang-up requests included.
     static func asksToEndCall(_ utterance: String, endPhrases: [String]) -> Bool {
-        matchesSpokenCommand(utterance, phrases: endPhrases + hangUpPhrases)
+        guard !endPhrases.isEmpty else { return false }
+        return matchesSpokenCommand(utterance, phrases: endPhrases + hangUpPhrases)
     }
 
     /// "End call:" at the very start of a GPT-Live delegation: the model,
@@ -136,7 +138,7 @@ enum VoiceSpokenCommands {
     /// has no function tools, so this stands in for end_conversation).
     /// "End the call:" counts too, should the model paraphrase it.
     static func isEndCallMarker(_ request: String) -> Bool {
-        request.range(of: #"^\s*(end[ -]?(?:(?:the|this)\s+)?call|hang[ -]?up)\s*:"#, options: [.regularExpression, .caseInsensitive]) != nil
+        request.range(of: #"^\s*end[ -]?(?:(?:the|this)\s+)?call\s*:"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     private static func commandWords(_ text: String) -> [String] {

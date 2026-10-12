@@ -109,9 +109,10 @@ final class VoiceSpokenCommandMatchingTests: XCTestCase {
         }
         XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("End call:"))
         XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("  end-call: goodbye"))
-        XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("Hang up:"))
+        XCTAssertFalse(VoiceSpokenCommands.isEndCallMarker("Hang up: the posters in the garage"))
         XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("End the call: the user said goodbye"))
         XCTAssertFalse(VoiceSpokenCommands.isEndCallMarker("Send: end call reminders"))
+        XCTAssertFalse(VoiceSpokenCommands.asksToEndCall("End the call.", endPhrases: []), "An emptied end list turns ending by voice off")
     }
 
     func testSpokenCommandMatchingHandlesConfiguredPhrasesWithCourtesies() {

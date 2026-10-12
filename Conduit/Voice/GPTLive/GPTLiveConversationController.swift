@@ -101,7 +101,7 @@ final class GPTLiveConversationController: ObservableObject {
 
     /// GPT-Live has no function tools: "End call:" stands in for Gemini
     /// and Grok's end_conversation, on the phone and the Watch.
-    static let endCallRule = "When the user says goodbye, even at the end of a longer sentence, or asks to end, hang up or close the call, say a short goodbye, then delegate \"End call:\": Conduit closes the call. Background jobs keep running on Hermes. Never say the marker aloud."
+    static let endCallRule = "When the user says goodbye to you, even at the end of a longer sentence (not a goodbye to someone or something else), or asks to end, hang up or close the call, say a short goodbye, then delegate \"End call:\": Conduit closes the call. Background jobs keep running on Hermes. Never say the marker aloud."
 
     /// Hermes calls you (#449): only when the host takes call watches, so
     /// AppState adds it to the instructions itself.
