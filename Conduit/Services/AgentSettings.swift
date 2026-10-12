@@ -331,7 +331,9 @@ final class AgentSettingsSync: ObservableObject {
         var forReview: [AgentSettingsReviewItem] = []
         var appliedNow: [AgentSettingsAppliedNotice.Change] = []
         var answered = false
-        for request in pending where !alreadyAnswered.contains(request.id) {
+        var seen = Set<String>()
+        // One decision per id, even if the host lists a request twice.
+        for request in pending where !alreadyAnswered.contains(request.id) && seen.insert(request.id).inserted {
             let descriptor = byKey[request.key]
             switch AgentSettingDecision.decide(request, descriptor: descriptor, mode: mode) {
             case .answer(let status, let note):

@@ -83,7 +83,7 @@ extension AppState {
         catalog.append(choiceDescriptor(
             key: "voice.gemini.search", section: "Gemini Live", title: "Gemini Live lookups",
             description: "Where Gemini Live searches for quick facts: automatic (Hermes' web search when the host has one, else Google), hermes, google, or off.",
-            tier: .small, displayTitle: { AppLocalization.string("Gemini Live lookups") },
+            tier: .ask, displayTitle: { AppLocalization.string("Gemini Live lookups") },
             choices: [(value: "automatic", title: "Automatic"), (value: "hermes", title: "Hermes web search"), (value: "google", title: "Google Search"), (value: "off", title: "Off")],
             display: { value in
                 switch value {
