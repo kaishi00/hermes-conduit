@@ -48,7 +48,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let text = GrokLiveProtocol.delegationInstructions
         XCTAssertTrue(text.contains("start_job"))
         XCTAssertTrue(text.contains("email"))
-        XCTAssertTrue(text.contains("never look it up on the web"))
+        XCTAssertTrue(text.contains("if start_job fails, tell them plainly"))
     }
 
     func testGrokLiveSessionUpdateCarriesInstructionsVoiceAndLowercaseFunctionTools() throws {

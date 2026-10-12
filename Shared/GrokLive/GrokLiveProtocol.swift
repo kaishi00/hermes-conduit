@@ -27,7 +27,7 @@ enum GrokLiveProtocol {
     /// which Gemini and GPT-Live hand to Hermes. Written for
     /// the model and sent verbatim (the Voice settings preview shows it as
     /// sent, like the rest of the instructions), so not localized.
-    static let delegationInstructions = "\nYou can't see the user's email, messages, calendar, health or patient portals, bank or other accounts, files or systems, and web lookups can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there, call start_job with their request. Never tell them you can't access it, never answer it from guesses, and never look it up on the web."
+    static let delegationInstructions = "\nYou can't see the user's email, messages, calendar, health or patient portals, bank or other accounts, files or systems, and web lookups can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there, call start_job with their request instead of saying you can't. If they only ask whether you can see it, say Hermes can check it for them. Never answer it from guesses or a web lookup, and if start_job fails, tell them plainly."
 
     // MARK: Client → server
 
