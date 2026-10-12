@@ -313,7 +313,10 @@ struct KanbanTaskDetailView: View {
                 modelOverrideSession = nil
             }
             .sheet(isPresented: $showReassignSheet) {
-                KanbanReassignSheet(taskID: displayedTaskID, currentAssignee: displayedTask?.assignee)
+                KanbanReassignSheet(taskID: displayedTaskID, currentAssignee: displayedTask?.assignee) {
+                    // Show the new assignee now rather than at the next poll.
+                    Task { await loadDetail(force: true) }
+                }
                     .environmentObject(store)
                     .presentationDetents([.medium])
             }
@@ -1147,7 +1150,13 @@ struct KanbanTaskDetailView: View {
             }
             patch.status = status
         }
-        guard !patch.isEmpty else { return }
+        guard !patch.isEmpty else {
+            // Only whitespace around the title changed: nothing to send, so
+            // drop the no-op draft instead of leaving the editor dirty (which
+            // would keep every poll from adopting server changes).
+            title = baseline.title
+            return
+        }
         isSaving = true
         errorMessage = nil
         // A stale completion must not clear a saving spinner that now belongs
@@ -1693,6 +1702,7 @@ struct KanbanReassignSheet: View {
     @Environment(\.dismiss) private var dismiss
     let taskID: String
     let currentAssignee: String?
+    var onReassigned: () -> Void = {}
 
     @State private var pendingProfile: String?
     @State private var errorMessage: String?
@@ -1757,6 +1767,7 @@ struct KanbanReassignSheet: View {
         do {
             // The dedicated reassignment endpoint (reclaim-first, upstream).
             try await store.reassignTask(taskID: taskID, profile: profile, reclaimFirst: true)
+            onReassigned()
             dismiss()
         } catch {
             errorMessage = UserFacingError.message(for: error)
