@@ -14378,28 +14378,30 @@ final class AppState: ObservableObject {
             }
             guard profile == activeProfile else { return false }
 
-            widgetSnapshotPublicationSuppressionDepth += 1
-            var updated = session
-            updated.isArchived = archived
-            if archived {
-                sessionYoloStore.clearOverride(
-                    for: profile,
-                    sessionIDs: [updated.id] + updated.alternateIds
-                )
-                removeSessionFromLiveCatalog(updated)
-                archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
-                removePinnedState(for: updated)
-                clearActiveSessionIfNeeded(updated, replacement: .archive)
-            } else {
-                archivedSessions.removeAll { sessionMatches($0, updated) }
-                // A restored cron run goes back to the Cron list, not the chats.
-                if updated.source == .cron {
-                    cronSessions = [updated] + cronSessions.filter { !sessionMatches($0, updated) }
+            do {
+                widgetSnapshotPublicationSuppressionDepth += 1
+                defer { widgetSnapshotPublicationSuppressionDepth -= 1 }
+                var updated = session
+                updated.isArchived = archived
+                if archived {
+                    sessionYoloStore.clearOverride(
+                        for: profile,
+                        sessionIDs: [updated.id] + updated.alternateIds
+                    )
+                    removeSessionFromLiveCatalog(updated)
+                    archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
+                    removePinnedState(for: updated)
+                    clearActiveSessionIfNeeded(updated, replacement: .archive)
                 } else {
-                    sessions = [updated] + sessions.filter { !sessionMatches($0, updated) }
+                    archivedSessions.removeAll { sessionMatches($0, updated) }
+                    // A restored cron run goes back to the Cron list, not the chats.
+                    if updated.source == .cron {
+                        cronSessions = [updated] + cronSessions.filter { !sessionMatches($0, updated) }
+                    } else {
+                        sessions = [updated] + sessions.filter { !sessionMatches($0, updated) }
+                    }
                 }
             }
-            widgetSnapshotPublicationSuppressionDepth -= 1
             publishWidgetSnapshot()
             return true
         } catch {
@@ -15297,8 +15299,8 @@ final class AppState: ObservableObject {
     func openWidgetVoice(workspace: WidgetWorkspaceID, lease: WidgetLaunchLease) async -> WidgetLaunchOutcome {
         guard lease.isCurrent,
               activeDashboardID == workspace.dashboardID,
-              activeProfile == workspace.profile,
-              !isVoiceCallInProgress else {
+              activeProfile == workspace.profile else { return .deferred }
+        guard !isVoiceCallInProgress else {
             return .failed(AppLocalization.string("End the call before starting another voice conversation."))
         }
         let authorization = lease.initialCaptureAuthorization()

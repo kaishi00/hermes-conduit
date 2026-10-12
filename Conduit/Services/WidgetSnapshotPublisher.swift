@@ -55,13 +55,9 @@ struct WidgetSnapshotPublisher {
     }
 
     private func writeIfChanged(_ snapshot: WidgetSnapshot) throws {
-        // WidgetConversationReference equality deliberately ignores botLabel,
-        // so compare the actual deterministic representation before deciding
-        // whether to publish a metadata change.
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        let next = try encoder.encode(snapshot)
-        if let previous = store.read(), try encoder.encode(previous) == next { return }
+        // The store compares the deterministic encoding with the bytes on
+        // disk (WidgetConversationReference equality deliberately ignores
+        // botLabel), so an unchanged snapshot is neither written nor reloaded.
         guard try store.write(snapshot) else { return }
         reload()
     }

@@ -1,5 +1,12 @@
 import Foundation
 
+/// WidgetKit kinds, shared so the app reloads the same widgets the
+/// extension declares.
+enum ConduitWidgetKind {
+    static let native = "com.milim.relay.widgets.native"
+    static let character = "com.milim.relay.widgets.character"
+}
+
 struct WidgetWorkspaceID: Codable, Hashable {
     let dashboardID: UUID
     let profile: String

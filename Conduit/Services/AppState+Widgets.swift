@@ -9,8 +9,8 @@ extension AppState {
     private var widgetReload: () -> Void {
         if let widgetSnapshotReloadOverride { return widgetSnapshotReloadOverride }
         return {
-            WidgetCenter.shared.reloadTimelines(ofKind: "com.milim.relay.widgets.native")
-            WidgetCenter.shared.reloadTimelines(ofKind: "com.milim.relay.widgets.character")
+            WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.native)
+            WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.character)
         }
     }
 

@@ -7,7 +7,7 @@ private enum LauncherWidgetStyle: Equatable {
 }
 
 struct NativeLauncherWidget: Widget {
-    let kind = "com.milim.relay.widgets.native"
+    let kind = ConduitWidgetKind.native
 
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: kind, intent: LauncherWidgetConfigurationIntent.self, provider: LauncherTimelineProvider()) { entry in
@@ -20,7 +20,7 @@ struct NativeLauncherWidget: Widget {
 }
 
 struct CharacterLauncherWidget: Widget {
-    let kind = "com.milim.relay.widgets.character"
+    let kind = ConduitWidgetKind.character
 
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: kind, intent: LauncherWidgetConfigurationIntent.self, provider: LauncherTimelineProvider()) { entry in
@@ -116,6 +116,7 @@ private struct LauncherWidgetView: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .privacySensitive()
     }
 
     @ViewBuilder

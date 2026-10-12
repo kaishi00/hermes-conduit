@@ -199,6 +199,31 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertNil(mismatched.resumeLink.reference)
     }
 
+    func testConfiguredDashboardConversationFromOtherProfileKeepsWorkspaceActions() {
+        let work = workspace("work")
+        let personal = WidgetWorkspaceID(dashboardID: work.dashboardID, profile: "personal")
+        let snapshot = WidgetSnapshot(appLanguage: "en", currentWorkspaceID: personal, workspaces: [
+            workspaceSnapshot(personal, last: nil)
+        ])
+
+        let entry = WidgetSelection.resolve(
+            snapshot: snapshot,
+            workspace: nil,
+            conversation: reference(profile: "work", session: "work-session"),
+            conversationWorkspace: work
+        )
+
+        XCTAssertEqual(entry.title, "Open Conduit to refresh")
+        XCTAssertEqual(entry.dashboardLabel, "personal")
+        XCTAssertEqual(entry.profileLabel, "personal")
+        XCTAssertEqual(entry.resumeLink.action, .open)
+        XCTAssertEqual(entry.resumeLink.workspace, personal)
+        XCTAssertEqual(entry.newChatLink?.action, .newChat)
+        XCTAssertEqual(entry.newChatLink?.workspace, personal)
+        XCTAssertEqual(entry.talkLink?.action, .talk)
+        XCTAssertEqual(entry.talkLink?.workspace, personal)
+    }
+
     func testNoWorkspaceShowsSetup() {
         let entry = WidgetSelection.resolve(snapshot: nil, workspace: nil, conversation: nil)
 

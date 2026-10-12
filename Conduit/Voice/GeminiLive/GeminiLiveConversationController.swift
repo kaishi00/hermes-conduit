@@ -889,7 +889,14 @@ final class GeminiLiveConversationController: ObservableObject {
             }
             // An alarm that rang while connecting holds the audio: the call
             // pauses instead of failing (#376).
-            if !isMicrophoneMuted, !startInput(pausingOnFailure: true) { return }
+            if isMicrophoneMuted {
+                // Muted while connecting: the call is established without
+                // the microphone, so a later unmute is an ordinary unmute,
+                // not a widget launch that may have expired since.
+                guard initialWidgetCaptureAuthorization?.mayStartCapture != false else { stop(); return }
+                initialWidgetCaptureAuthorization?.captureDidStart()
+                initialWidgetCaptureAuthorization = nil
+            } else if !startInput(pausingOnFailure: true) { return }
             // Ending: the microphone is closed, so it isn't listening.
             phase = endRequestedAt != nil ? .ending : modelTurnActive ? .speaking : .listening
             sendOpeningIfNeeded()

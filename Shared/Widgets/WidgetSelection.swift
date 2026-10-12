@@ -45,7 +45,8 @@ enum WidgetSelection {
             guard let selectedID, let reference else { return nil }
             return WidgetLaunchLink(action: .resume, workspace: selectedID, reference: reference)
         }()
-        let hasInvalidTarget = hasInvalidWorkspace || (reference != nil && resumeCandidate == nil)
+        let hasInvalidTarget = hasInvalidWorkspace ||
+            (!hasMismatchedConversationOwner && reference != nil && resumeCandidate == nil)
         let choice = reference.flatMap { ref in selected?.choices.first { $0.reference == ref } }
 
         if hasInvalidTarget {

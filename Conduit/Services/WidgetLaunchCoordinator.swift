@@ -96,6 +96,10 @@ final class WidgetLaunchCoordinator {
 
     private enum Stage { case prepare, perform }
 
+    /// How long a widget launch may wait for readiness; the lease deadline
+    /// and the expiry task both use it.
+    static let launchTimeout: Duration = .seconds(30)
+
     private let now: () -> Duration
     private let prepare: Operation
     private let perform: Operation
@@ -125,12 +129,12 @@ final class WidgetLaunchCoordinator {
         if let request, request.link == link, request.inFlight { return }
         supersede()
         generation &+= 1
-        let next = Request(link: link, generation: generation, deadline: now() + .seconds(30))
+        let next = Request(link: link, generation: generation, deadline: now() + Self.launchTimeout)
         request = next
         activeLease = makeLease(generation: next.generation, deadline: next.deadline)
         let requestGeneration = next.generation
         next.expiryTask = Task { @MainActor [weak self] in
-            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            do { try await Task.sleep(for: Self.launchTimeout) } catch { return }
             guard let self, self.generation == requestGeneration else { return }
             if let request = self.request, request.generation == requestGeneration {
                 self.expire(request)
@@ -261,7 +265,7 @@ final class WidgetLaunchCoordinator {
     private func expireHandedOffTalk(generation leaseGeneration: UInt64) {
         guard generation == leaseGeneration,
               handedOffTalkGeneration == leaseGeneration,
-              activeLease?.isCurrent == false else { return }
+              activeLease?.isCurrent != true else { return }
         handedOffTalkGeneration = nil
         activeLease = nil
         activeTalkDeadline = nil
