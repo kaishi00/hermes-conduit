@@ -407,12 +407,14 @@ final class AgentSettingsSync: ObservableObject {
         guard scope == reviewScope, applied == notice else { return }
         applied = nil
         let byKey = Dictionary(catalog.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        var restored = false
         for change in notice.changes {
             guard let descriptor = byKey[change.request.key], descriptor.read() == change.request.value else { continue }
             descriptor.write(change.previous)
+            restored = true
             record(change.request.id, status: "undone", note: "The user tapped Undo.", scope: scope)
         }
-        revision += 1
+        if restored { revision += 1 }
     }
 
     /// Forgets review items when the dashboard or profile changes; their

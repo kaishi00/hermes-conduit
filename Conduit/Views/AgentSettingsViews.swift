@@ -25,9 +25,19 @@ struct AgentSettingsBanner: View {
     var body: some View {
         let review = appState.agentSettingsReview
         let visible = review.filter { !hiddenReviewIDs.contains($0.id) }
-        // Nothing to show: no overlay at all, so it never takes a touch.
-        if sync.applied != nil || !visible.isEmpty {
-            banners(review: review, visible: visible)
+        // Nothing to show: a zero-size overlay, so it never takes a touch.
+        // The sheet hangs off this stable view, so it closes normally when
+        // the last banner goes.
+        ZStack(alignment: .top) {
+            Color.clear.frame(width: 0, height: 0).allowsHitTesting(false)
+            if sync.applied != nil || !visible.isEmpty {
+                banners(review: review, visible: visible)
+            }
+        }
+        .sheet(isPresented: $reviewing) {
+            AgentSettingsReviewSheet(sync: sync)
+                .environmentObject(appState)
+                .presentationDetents([.medium, .large])
         }
     }
 
@@ -71,11 +81,6 @@ struct AgentSettingsBanner: View {
         .padding(.top, 6)
         .animation(.snappy, value: review.map(\.id))
         .animation(.snappy, value: sync.applied?.id)
-        .sheet(isPresented: $reviewing) {
-            AgentSettingsReviewSheet(sync: sync)
-                .environmentObject(appState)
-                .presentationDetents([.medium, .large])
-        }
     }
 
     private func bannerRow(
