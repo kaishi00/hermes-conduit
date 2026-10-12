@@ -293,7 +293,6 @@ final class AgentSettingsSync: ObservableObject {
         isCurrent: @MainActor () -> Bool, request: Request
     ) async {
         let answers = results(for: scope)
-        let mode = self.mode
         let body: [String: Any] = [
             "installation_id": installationID,
             "device": UIDevice.current.name,
@@ -314,7 +313,12 @@ final class AgentSettingsSync: ObservableObject {
         // Delivered: only answers added during the request are kept.
         let sentIDs = Set(answers.compactMap { $0["id"] as? String })
         setResults(results(for: scope).filter { !sentIDs.contains($0["id"] as? String ?? "") }, for: scope)
+        // Requests just answered are never decided twice, even if the host
+        // lists them again.
         let pending = (response["pending"] as? [Any] ?? []).compactMap(AgentSettingRequest.init(json:))
+            .filter { !sentIDs.contains($0.id) }
+        // The mode now, not when the request left: the user may have
+        // switched it to Off meanwhile.
         if take(pending, scope: scope, catalog: catalog, mode: mode) { syncAgain = true }
     }
 
@@ -370,8 +374,13 @@ final class AgentSettingsSync: ObservableObject {
         let byKey = Dictionary(catalog.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
         var changed = false
         for item in items {
-            guard apply, let descriptor = byKey[item.request.key], descriptor.accepts(item.request.value) else {
+            guard apply else {
                 record(item.id, status: "dismissed", note: "", scope: scope)
+                continue
+            }
+            guard let descriptor = byKey[item.request.key], descriptor.accepts(item.request.value) else {
+                record(item.id, status: "refused", note: "Conduit no longer lets Hermes change this setting to that value.",
+                       scope: scope)
                 continue
             }
             descriptor.write(item.request.value)
@@ -383,16 +392,18 @@ final class AgentSettingsSync: ObservableObject {
         if changed { revision += 1 }
     }
 
-    /// Puts back the values a notice's changes replaced.
+    /// Puts back the values a notice's changes replaced, unless the user
+    /// changed the setting again since.
     func undo(_ notice: AgentSettingsAppliedNotice, scope: String, catalog: [AgentSettingDescriptor]) {
-        guard scope == reviewScope else { return }
+        // A notice from another dashboard or profile never writes here.
+        guard scope == reviewScope, applied == notice else { return }
+        applied = nil
         let byKey = Dictionary(catalog.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
         for change in notice.changes {
-            guard let descriptor = byKey[change.request.key] else { continue }
+            guard let descriptor = byKey[change.request.key], descriptor.read() == change.request.value else { continue }
             descriptor.write(change.previous)
             record(change.request.id, status: "undone", note: "The user tapped Undo.", scope: scope)
         }
-        if applied == notice { applied = nil }
         revision += 1
     }
 

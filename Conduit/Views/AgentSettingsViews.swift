@@ -19,7 +19,7 @@ struct AgentSettingsBanner: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @State private var reviewing = false
     /// Review requests whose banner the user closed; a new request brings
-    /// it back. They stay waiting, in Voice settings too.
+    /// it back. They stay waiting, reachable from Voice settings.
     @State private var hiddenReviewIDs: Set<String> = []
 
     var body: some View {
@@ -166,7 +166,8 @@ struct AgentSettingsReviewSheet: View {
                     .fontWeight(.medium)
             }
             .font(.subheadline)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: AppLocalization.string("From \(item.oldValue) to \(item.newValue)")))
             if !item.request.reason.isEmpty {
                 // The reason is Hermes' own words: shown as a quote, never
                 // as Conduit's.
@@ -194,7 +195,9 @@ struct AgentSettingsReviewSheet: View {
 
 /// "Let Hermes change settings" in Voice settings, on this device.
 struct AgentSettingsModeSection: View {
+    @EnvironmentObject private var appState: AppState
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    @State private var reviewing = false
     @AppStorage(AgentSettingsMode.storageKey) private var storedMode = AgentSettingsMode.defaultMode.rawValue
     /// Shares the new mode with Hermes.
     var onChange: () -> Void = {}
@@ -214,12 +217,23 @@ struct AgentSettingsModeSection: View {
                 Text("Let Hermes change settings").foregroundStyle(.secondary)
             }
             .accessibilityIdentifier("voice.agentSettingsMode")
+            if !appState.agentSettingsReview.isEmpty {
+                // Requests whose banner was closed are still here.
+                Button(AppLocalization.string("Review changes from Hermes")) { reviewing = true }
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("voice.agentSettingsReview")
+            }
             Text(verbatim: mode.summary)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text("Hermes never sees your keys, wake phrase, call permissions or Apple Watch access, and can't change this choice.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+        .sheet(isPresented: $reviewing) {
+            AgentSettingsReviewSheet(sync: appState.agentSettings)
+                .environmentObject(appState)
+                .presentationDetents([.medium, .large])
         }
     }
 }

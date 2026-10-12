@@ -108,7 +108,7 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(results?.first?["status"] as? String, "applied")
     }
 
-    func testSmallChangesApplyWithAnUndoAndTheRestStillAsk() async {
+    func testSmallChangesApplyWithAnUndoAndTheRestStillAsk() async throws {
         let fake = FakeAgentSettings()
         let memory = pending("req-memory-1", "voice.gemini.memory", true, from: false)
         fake.responses = [
@@ -124,18 +124,32 @@ extension HermesVoiceConfigurationServiceTests {
         // The phone's own tier decides, not the "small" the request claims.
         XCTAssertEqual(fake.values["voice.gemini.memory"], .bool(false))
         XCTAssertEqual(sync.review.map(\.id), ["req-memory-1"])
-        let notice = try? XCTUnwrap(sync.applied)
-        XCTAssertEqual(notice?.changes.map(\.request.id), ["req-tone-1"])
+        let notice = try XCTUnwrap(sync.applied)
+        XCTAssertEqual(notice.changes.map(\.request.id), ["req-tone-1"])
         // The applied answer went out straight away, in a second round.
         XCTAssertEqual(fake.bodies.count, 2)
         XCTAssertEqual((fake.bodies[1]["results"] as? [[String: Any]])?.first?["status"] as? String, "applied")
 
-        sync.undo(notice!, scope: "h|default", catalog: fake.catalog)
+        sync.undo(notice, scope: "h|default", catalog: fake.catalog)
 
         XCTAssertEqual(fake.values["voice.live.tone"], .string("default"))
         XCTAssertNil(sync.applied)
         await sync.sync(scope: "h|default", profile: "default", catalog: fake.catalog, request: fake.request)
         XCTAssertEqual((fake.bodies.last?["results"] as? [[String: Any]])?.last?["status"] as? String, "undone")
+    }
+
+    func testUndoKeepsAValueTheUserChangedAfterHermes() async throws {
+        let fake = FakeAgentSettings()
+        fake.responses = [["ok": true, "pending": [pending("req-tone-1", "voice.live.tone", "relaxed", from: "default")]]]
+        let sync = AgentSettingsSync(defaults: agentDefaults(mode: .small))
+        await sync.sync(scope: "h|default", profile: "default", catalog: fake.catalog, request: fake.request)
+        let notice = try XCTUnwrap(sync.applied)
+
+        fake.values["voice.live.tone"] = .string("professional")
+        sync.undo(notice, scope: "h|default", catalog: fake.catalog)
+
+        XCTAssertEqual(fake.values["voice.live.tone"], .string("professional"))
+        XCTAssertNil(sync.applied)
     }
 
     func testAValueTheUserChangedSinceHermesReadItIsKept() async {
