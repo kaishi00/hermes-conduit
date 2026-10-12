@@ -103,6 +103,10 @@ The two are kept apart so nobody pays for the one they didn't pick:
 - When Hermes calls you, the call uses the ChatGPT plan unless "Calls from Hermes on the API key" is on.
 - Apple Watch GPT-Live calls always use the ChatGPT plan.
 
+### Ending a live call by voice
+
+Gemini Live, Grok Live and GPT-Live end hands-free. One of your goodbye phrases ends the call even with courtesies around it or several in a row ("Cool. Okay, goodbye.", "Bye. Goodbye."). On GPT-Live, asking it to "hang up" or "end the call" works too. When the goodbye is part of a longer sentence, the model decides: it says a short goodbye, then ends the call. Gemini and Grok do this with their end_conversation tool. GPT-Live has no tools, so it delegates an "End call:" marker instead. Background jobs keep running on Hermes after the call ends.
+
 ## Talking over the agent (barge-in)
 
 Every voice mode lets you cut in by speaking when you wear headphones, AirPods or a wired headset: the microphone stays open while the agent talks, and the agent stops when you start. GPT-Live also allows it on the phone's speaker and in the car, because WebRTC cancels the speaker's echo.

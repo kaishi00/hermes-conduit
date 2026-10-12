@@ -90,6 +90,29 @@ final class VoiceSpokenCommandMatchingTests: XCTestCase {
         }
     }
 
+    func testSpokenCommandMatchingTakesDifferentEndPhrasesBackToBack() {
+        let phrases = VoiceSpokenCommands.legacyEndConversationPhrases
+        for utterance in ["Bye Goodbye", "Bye. Goodbye.", "Okay, bye, goodbye, thanks!", "That's all, bye."] {
+            XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand(utterance, phrases: phrases), utterance)
+        }
+        XCTAssertFalse(VoiceSpokenCommands.matchesSpokenCommand("bye bye bye bye", phrases: phrases), "At most three")
+        XCTAssertFalse(VoiceSpokenCommands.matchesSpokenCommand("Bye, I mean, goodbye to the old server", phrases: phrases))
+    }
+
+    func testAskingToEndCallTakesHangUpRequestsAndTheEndCallMarker() {
+        let phrases = ["goodbye"]
+        for utterance in ["End the call.", "Hang up please.", "Okay, you can hang up.", "Cool. Okay, goodbye."] {
+            XCTAssertTrue(VoiceSpokenCommands.asksToEndCall(utterance, endPhrases: phrases), utterance)
+        }
+        for utterance in ["Hang up the laundry reminder", "End the call with Alex at five", "Tell Sam goodbye"] {
+            XCTAssertFalse(VoiceSpokenCommands.asksToEndCall(utterance, endPhrases: phrases), utterance)
+        }
+        XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("End call:"))
+        XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("  end-call: goodbye"))
+        XCTAssertTrue(VoiceSpokenCommands.isEndCallMarker("Hang up:"))
+        XCTAssertFalse(VoiceSpokenCommands.isEndCallMarker("Send: end call reminders"))
+    }
+
     func testSpokenCommandMatchingHandlesConfiguredPhrasesWithCourtesies() {
         XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand("Okay, bye.", phrases: ["okay bye"]))
         XCTAssertTrue(VoiceSpokenCommands.matchesSpokenCommand("Bye.", phrases: ["okay bye"]))

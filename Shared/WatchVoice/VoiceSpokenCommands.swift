@@ -79,32 +79,63 @@ enum VoiceSpokenCommands {
     /// words so "for now" goes as a whole.
     private static let leadingCourtesies: [[String]] = [
         ["all", "right"], ["thank", "you"],
-        ["ok"], ["okay"], ["alright"], ["thanks"], ["cool"], ["great"], ["well"], ["so"], ["好的"], ["好"], ["谢谢"],
+        ["ok"], ["okay"], ["alright"], ["thanks"], ["cool"], ["great"], ["well"], ["so"], ["please"], ["好的"], ["好"], ["谢谢"],
     ]
     private static let trailingCourtesies: [[String]] = [
         ["for", "now"], ["thank", "you"],
-        ["thanks"], ["now"], ["then"], ["谢谢"],
+        ["thanks"], ["now"], ["then"], ["please"], ["谢谢"],
     ]
 
     /// Like `matches`, but for how a live model transcribes speech: inner
-    /// spaces and punctuation don't count ("Good bye." is "goodbye"), a
-    /// phrase may be repeated ("bye bye"), and courtesies around it are
-    /// allowed ("Okay, goodbye.", "Bye, thanks!"). Anything else in the
-    /// utterance still means it isn't a command ("goodbye to the old
-    /// server" never matches).
+    /// spaces and punctuation don't count ("Good bye." is "goodbye"), up to
+    /// three phrases may follow each other ("bye bye", "Bye. Goodbye."), and
+    /// courtesies around them are allowed ("Okay, goodbye.", "Bye, thanks!").
+    /// Anything else in the utterance still means it isn't a command
+    /// ("goodbye to the old server" never matches).
     static func matchesSpokenCommand(_ utterance: String, phrases: [String]) -> Bool {
         if matches(utterance, phrases: phrases) { return true }
         var words = commandWords(utterance)
         stripCourtesies(&words)
         let spoken = words.joined()
         guard !spoken.isEmpty else { return false }
-        return phrases.contains { phrase in
+        let keys = Set(phrases.map { phrase -> String in
             var phraseWords = commandWords(phrase)
             stripCourtesies(&phraseWords)
-            let key = phraseWords.joined()
-            guard !key.isEmpty else { return false }
-            return (1...3).contains { spoken == String(repeating: key, count: $0) }
+            return phraseWords.joined()
+        }.filter { !$0.isEmpty })
+        return isSequence(Substring(spoken), of: keys, upTo: 3)
+    }
+
+    /// True when `text` is 1...`limit` of `keys` back to back.
+    private static func isSequence(_ text: Substring, of keys: Set<String>, upTo limit: Int) -> Bool {
+        guard limit > 0 else { return false }
+        return keys.contains { key in
+            guard text.hasPrefix(key) else { return false }
+            let rest = text.dropFirst(key.count)
+            return rest.isEmpty || isSequence(rest, of: keys, upTo: limit - 1)
         }
+    }
+
+    /// Asking a live call to hang up (English). These end a GPT-Live call
+    /// alongside the user's end phrases, as end_conversation ends a Gemini
+    /// or Grok call when the user asks.
+    static let hangUpPhrases = [
+        "hang up", "end the call", "end this call", "end call",
+        "end the conversation", "end this conversation", "close the call",
+        "you can hang up", "go ahead and hang up",
+    ]
+
+    /// True when a live call's user turn, all of it, asks to end the call:
+    /// one of their end phrases, or asking to hang up.
+    static func asksToEndCall(_ utterance: String, endPhrases: [String]) -> Bool {
+        matchesSpokenCommand(utterance, phrases: endPhrases + hangUpPhrases)
+    }
+
+    /// "End call:" at the very start of a GPT-Live delegation: the model,
+    /// having said its goodbye, asks Conduit to close the call (GPT-Live
+    /// has no function tools, so this stands in for end_conversation).
+    static func isEndCallMarker(_ request: String) -> Bool {
+        request.range(of: #"^\s*(end[ -]?call|hang[ -]?up)\s*:"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     private static func commandWords(_ text: String) -> [String] {

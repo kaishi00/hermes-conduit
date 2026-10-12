@@ -1269,6 +1269,58 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.stopped, 1)
     }
 
+    func testGPTLiveGoodbyeWithCourtesiesOrAHangUpRequestEndsTheCall() async {
+        for utterance in ["Cool. Okay, goodbye.", "Bye. Goodbye.", "End the call.", "Okay, hang up please."] {
+            let (controller, session, _, fake) = makeGPTController(endPhrases: ["goodbye", "bye"], clock: Date.init)
+            await controller.start()
+            session.becomeReady()
+            session.onEvent?(.turnDone(role: "user", transcript: utterance))
+            XCTAssertEqual(controller.phase, .ending, utterance)
+            XCTAssertEqual(fake.submissions.count, 0, utterance)
+            controller.stop()
+        }
+    }
+
+    func testGPTLiveEndCallDelegationEndsTheCallAfterAGoodbyeInsideALongerSentence() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, fake) = makeGPTController(endPhrases: ["goodbye"], clock: { current })
+        var closed = 0
+        controller.onEndConversation = { closed += 1 }
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "That's everything I needed today, goodbye."))
+        XCTAssertNotEqual(controller.phase, .ending, "A whole sentence isn't an end phrase: GPT-Live decides")
+        session.onEvent?(.outputTranscript("Goodbye!"))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "Goodbye!"))
+        session.onEvent?(.delegation(id: "del_end", text: "End call:"))
+        XCTAssertEqual(controller.phase, .ending)
+        XCTAssertEqual(session.microphoneEnabled, false)
+        current += GPTLiveConversationController.endGrace + 0.1
+        XCTAssertTrue(controller.finishEndIfDrained())
+        XCTAssertEqual(closed, 1)
+        await Task.yield()
+        XCTAssertEqual(fake.submissions.count, 0, "Never a Hermes job")
+    }
+
+    func testGPTLiveAPIKeyDelegationOnAHangUpRequestEndsTheCall() async {
+        // An API-key delegation carries no text: the user's words are the request.
+        let (controller, session, _, fake) = makeGPTController(endPhrases: ["goodbye"], clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.inputTranscript("Please end the call"))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        XCTAssertEqual(controller.phase, .ending)
+        await Task.yield()
+        XCTAssertEqual(fake.submissions.count, 0)
+        controller.stop()
+    }
+
+    func testGPTLiveBriefingAsksForEndCallOnGoodbye() {
+        for onWatch in [false, true] {
+            XCTAssertTrue(GPTLiveConversationController.briefing(onWatch: onWatch).contains(GPTLiveConversationController.endCallRule))
+        }
+    }
+
     func testGPTLiveTurnDoneFoldsATurnInterleavedWithTheOtherSpeakerBackIntoOneEntry() async {
         let (controller, session, _, _) = makeGPTController(clock: Date.init)
         await controller.start()

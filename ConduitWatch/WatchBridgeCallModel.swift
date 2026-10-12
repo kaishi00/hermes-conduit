@@ -830,7 +830,7 @@ final class WatchBridgeCallModel: ObservableObject {
                 caption = String(text.suffix(120))
             }
             if role == "user", goodbyeHeardAt == nil, endRequestedAt == nil,
-               VoiceSpokenCommands.matches(text, phrases: endPhrases) {
+               VoiceSpokenCommands.asksToEndCall(text, endPhrases: endPhrases) {
                 goodbyeHeardAt = now
                 note("bridgeGoodbyeHeard", [:])
             }
@@ -1100,6 +1100,16 @@ final class WatchBridgeCallModel: ObservableObject {
             "jobs": relay?.hasJobs == true,
             "screen": "\(scenePhase)",
         ])
+        // "End call:" (or the user's own words asking to end, when the
+        // delegation carries none): the call ends once the goodbye has
+        // played, as after a spoken end phrase. Never a job for Hermes.
+        if VoiceSpokenCommands.isEndCallMarker(ownWords) || VoiceSpokenCommands.asksToEndCall(ownWords, endPhrases: endPhrases) {
+            if goodbyeHeardAt == nil {
+                goodbyeHeardAt = now
+                note("bridgeEndCallDelegated", [:])
+            }
+            return
+        }
         guard !request.isEmpty else {
             answer(id, WatchBridgeDelegation.noRequest, channel: .speakable)
             return

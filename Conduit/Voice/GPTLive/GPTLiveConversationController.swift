@@ -97,7 +97,11 @@ final class GPTLiveConversationController: ObservableObject {
     /// does either, so a Watch call leaves them out.
     static let phoneFollowUps = jobFollowUps + " In a call not attached to a chat, while just one background job is running, Conduit puts a delegation without that start into it too; to start separate new work while it runs, start the delegation with \"New job:\"."
         + "\nAsking first: when it is on for this call, a new delegation waits for the user's OK, and Conduit answers that it is waiting. Then tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, delegate \"Send:\". When they change it, delegate the new request; Conduit holds it again, and Hermes gets the user's own words, changes included. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Until Conduit says a request went to Hermes, don't say it's sent, being sent or on its way: acknowledge with something like \"Okay\" instead. Corrections (\"Job 2: …\") and read-backs never wait; one Conduit puts into the only running job does, and Conduit says which job. When the user asks you to check with them before sending things to Hermes, delegate \"Mode: ask first\"; to stop checking, delegate \"Mode: send directly\"."
-        + "\nMarkers like \"Send:\", \"Read back:\", \"Job 2:\", \"New job:\" and \"Mode:\" are for Conduit only: never say them aloud."
+        + "\nMarkers like \"Send:\", \"Read back:\", \"Job 2:\", \"New job:\", \"Mode:\" and \"End call:\" are for Conduit only: never say them aloud."
+
+    /// GPT-Live has no function tools: "End call:" stands in for Gemini
+    /// and Grok's end_conversation, on the phone and the Watch.
+    static let endCallRule = "When the user says goodbye, even at the end of a longer sentence, or asks to end, hang up or close the call, say a short goodbye, then delegate \"End call:\": Conduit closes the call. Background jobs keep running on Hermes. Never say the marker aloud."
 
     /// Hermes calls you (#449): only when the host takes call watches, so
     /// AppState adds it to the instructions itself.
@@ -114,7 +118,7 @@ final class GPTLiveConversationController: ObservableObject {
         Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? (watchChats ? "\n" + watchFindChat : "") : "\n" + phoneReadBack + "\n" + phoneFindChat)
         Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number. \(onWatch ? watchFollowUps : phoneFollowUps)
         \(onWatch ? watchApprovals : "Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.")
-        When the user says goodbye, say a short goodbye.]
+        \(endCallRule)]
         """
         if let personality, !personality.isEmpty {
             let body = personality.replacingOccurrences(of: "</hermes_persona>", with: "</ hermes_persona>", options: .caseInsensitive)
@@ -459,7 +463,8 @@ final class GPTLiveConversationController: ObservableObject {
     // MARK: Hands-free end
 
     /// Ends the conversation hands-free (the user's whole utterance was one
-    /// of their end phrases). The microphone closes now; the call closes
+    /// of their end phrases or asked to hang up, or GPT-Live delegated "End
+    /// call:"). The microphone closes now; the call closes
     /// once GPT-Live's goodbye has played (or after `endTimeout`).
     func requestEnd() {
         guard isActive, endRequestedAt == nil else { return }
@@ -647,6 +652,15 @@ final class GPTLiveConversationController: ObservableObject {
                 delegationWords[id] = Set(transcript.filter { $0.speaker == .user && !delegatedEntries.contains($0.id) }.map(\.id))
             }
             let parts = delegationRequest(itemText: text)
+            // "End call:" (or, on an API-key call whose delegations carry no
+            // text, the user's words asking to end): close once the
+            // goodbye has played. Never a job for Hermes.
+            let ownWords = parts.request.components(separatedBy: Self.delegationContextMarker).first ?? parts.request
+            if VoiceSpokenCommands.isEndCallMarker(ownWords)
+                || VoiceSpokenCommands.asksToEndCall(ownWords, endPhrases: activeEndPhrases) {
+                requestEnd()
+                return
+            }
             Task { [weak self] in
                 guard let self else { return }
                 let outgoing = await self.bridge.handleDelegation(id: id, request: parts.request, userWords: parts.userWords)
@@ -665,7 +679,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// answered here rather than becoming Hermes jobs.
     private func userFinished(_ text: String) {
         guard endRequestedAt == nil else { return }
-        if VoiceSpokenCommands.matches(text, phrases: activeEndPhrases) {
+        if VoiceSpokenCommands.asksToEndCall(text, endPhrases: activeEndPhrases) {
             requestEnd()
             return
         }
