@@ -25,7 +25,8 @@ enum GrokLiveProtocol {
     /// Added to Grok Live's instructions after the shared ones. On a user's
     /// calls Grok never called start_job for requests like "check my email",
     /// which Gemini and GPT-Live hand to Hermes. Written for
-    /// the model, not shown as UI copy, so not localized.
+    /// the model and sent verbatim (the Voice settings preview shows it as
+    /// sent, like the rest of the instructions), so not localized.
     static let delegationInstructions = "\nYou can't see the user's email, messages, calendar, health or patient portals, bank or other accounts, files or systems, and web lookups can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there, call start_job with their request. Never tell them you can't access it, never answer it from guesses, and never look it up on the web."
 
     // MARK: Client → server

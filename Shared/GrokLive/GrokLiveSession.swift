@@ -427,6 +427,9 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             let previous = inputSnapshots[itemID] ?? ""
             // The longest snapshot is the baseline: a shorter revision adds
             // nothing, and must not lower what later snapshots diff against.
+            // Assumes an item id names one utterance, as conversation item
+            // ids do in the Realtime protocol xAI follows; unverified on a
+            // real xAI call.
             if text.count > previous.count { rememberInputSnapshot(text, for: itemID) }
             if let added = GrokLiveProtocol.inputTranscriptDelta(previous: previous, snapshot: text) {
                 onEvent?(.inputTranscription(added))
