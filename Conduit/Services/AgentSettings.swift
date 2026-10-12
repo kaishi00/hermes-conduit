@@ -268,7 +268,10 @@ final class AgentSettingsSync: ObservableObject {
 
     /// One sync: upload the settings and the answers waiting, take what
     /// Hermes asked for. Overlapping calls run one more sync afterwards.
-    func sync(scope: String, profile: String, catalog: [AgentSettingDescriptor], request: Request) async {
+    func sync(
+        scope: String, profile: String, catalog: [AgentSettingDescriptor],
+        isCurrent: @MainActor () -> Bool = { true }, request: Request
+    ) async {
         if syncing {
             syncAgain = true
             return
@@ -281,11 +284,14 @@ final class AgentSettingsSync: ObservableObject {
         repeat {
             syncAgain = false
             rounds += 1
-            await syncOnce(scope: scope, profile: profile, catalog: catalog, request: request)
+            await syncOnce(scope: scope, profile: profile, catalog: catalog, isCurrent: isCurrent, request: request)
         } while syncAgain && rounds < 3
     }
 
-    private func syncOnce(scope: String, profile: String, catalog: [AgentSettingDescriptor], request: Request) async {
+    private func syncOnce(
+        scope: String, profile: String, catalog: [AgentSettingDescriptor],
+        isCurrent: @MainActor () -> Bool, request: Request
+    ) async {
         let answers = results(for: scope)
         let mode = self.mode
         let body: [String: Any] = [
@@ -302,7 +308,9 @@ final class AgentSettingsSync: ObservableObject {
         } catch {
             return
         }
-        guard response["ok"] as? Bool == true else { return }
+        // The profile or host changed during the request: the catalog would
+        // read one profile and write another. The requests wait on the host.
+        guard response["ok"] as? Bool == true, isCurrent() else { return }
         // Delivered: only answers added during the request are kept.
         let sentIDs = Set(answers.compactMap { $0["id"] as? String })
         setResults(results(for: scope).filter { !sentIDs.contains($0["id"] as? String ?? "") }, for: scope)

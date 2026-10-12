@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// The banner over the main screen and the review sheet it opens.
 struct AgentSettingsBanner: View {
@@ -23,6 +24,14 @@ struct AgentSettingsBanner: View {
 
     var body: some View {
         let review = appState.agentSettingsReview
+        let visible = review.filter { !hiddenReviewIDs.contains($0.id) }
+        // Nothing to show: no overlay at all, so it never takes a touch.
+        if sync.applied != nil || !visible.isEmpty {
+            banners(review: review, visible: visible)
+        }
+    }
+
+    private func banners(review: [AgentSettingsReviewItem], visible: [AgentSettingsReviewItem]) -> some View {
         VStack(spacing: 8) {
             if let notice = sync.applied {
                 bannerRow(
@@ -34,21 +43,28 @@ struct AgentSettingsBanner: View {
                     close: { sync.applied = nil }
                 )
                 .task(id: notice.id) {
+                    UIAccessibility.post(notification: .announcement, argument: notice.message)
+                    // With VoiceOver on, the Undo stays until closed.
+                    guard !UIAccessibility.isVoiceOverRunning else { return }
                     try? await Task.sleep(for: .seconds(10))
                     if sync.applied == notice { sync.applied = nil }
                 }
             }
-            if review.contains(where: { !hiddenReviewIDs.contains($0.id) }) {
+            if let first = visible.first {
+                let text = visible.count == 1
+                    ? AppLocalization.string("Hermes wants to change \(first.title)")
+                    : AppLocalization.string("Hermes wants to change \(visible.count) settings")
                 bannerRow(
                     symbol: "checkmark.shield",
-                    text: review.count == 1
-                        ? AppLocalization.string("Hermes wants to change \(review[0].title)")
-                        : AppLocalization.string("Hermes wants to change \(review.count) settings"),
+                    text: text,
                     action: AppLocalization.string("Review"),
                     identifier: "agentSettings.review",
                     perform: { reviewing = true },
                     close: { hiddenReviewIDs.formUnion(review.map(\.id)) }
                 )
+                .task(id: visible.map(\.id)) {
+                    UIAccessibility.post(notification: .announcement, argument: text)
+                }
             }
         }
         .padding(.horizontal, 16)

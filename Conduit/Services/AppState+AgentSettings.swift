@@ -30,13 +30,18 @@ extension AppState {
               let scope = agentSettingsScope,
               let bridge = dashboardTicketBridge else { return }
         let profile = activeProfile
-        await agentSettings.sync(scope: scope, profile: profile, catalog: agentSettingsCatalog) { [weak self] path, body in
+        await agentSettings.sync(
+            scope: scope, profile: profile, catalog: agentSettingsCatalog,
+            // Requests are decided only for the host and profile they came from.
+            isCurrent: { [weak self] in bridge === self?.dashboardTicketBridge && profile == self?.activeProfile }
+        ) { [weak self] path, body in
             // A bridge or profile swapped mid-sync belongs to another host.
             guard let self, bridge === self.dashboardTicketBridge, profile == self.activeProfile else {
                 throw DashboardTicketBridgeError.notReady
             }
             return try await bridge.requestJSON(path: path, method: "PUT", body: body)
         }
+        objectWillChange.send()
     }
 
     /// The review sheet's items for the dashboard and profile in use.
@@ -47,16 +52,21 @@ extension AppState {
     func resolveAgentSettings(_ items: [AgentSettingsReviewItem], apply: Bool) {
         guard let scope = agentSettingsScope else { return }
         agentSettings.resolve(items, apply: apply, scope: scope, catalog: agentSettingsCatalog)
+        // Open settings pages reseed from the new revision.
+        objectWillChange.send()
         Task { await syncAgentSettings() }
     }
 
     func undoAgentSettings(_ notice: AgentSettingsAppliedNotice) {
         guard let scope = agentSettingsScope else { return }
         agentSettings.undo(notice, scope: scope, catalog: agentSettingsCatalog)
+        objectWillChange.send()
         Task { await syncAgentSettings() }
     }
 
     /// Every setting Hermes may see, read and written for the active profile.
+    /// Built for each sync or answer and never stored, so its closures hold
+    /// AppState strongly for that long only.
     var agentSettingsCatalog: [AgentSettingDescriptor] {
         var catalog: [AgentSettingDescriptor] = []
         catalog.append(voiceModeDescriptor)
@@ -67,8 +77,8 @@ extension AppState {
             tier: .small, displayTitle: { AppLocalization.string("Gemini Live voice") },
             choices: [(value: "default", title: "Gemini's default")] + GeminiLiveVoice.all.map { (value: $0.name, title: "\($0.name) (\($0.style))") },
             display: { $0 == "default" ? AppLocalization.string("Default") : $0 },
-            read: { [unowned self] in self.geminiLiveVoice ?? "default" },
-            write: { [unowned self] in self.setGeminiLiveVoice($0 == "default" ? nil : $0) }
+            read: { self.geminiLiveVoice ?? "default" },
+            write: { self.setGeminiLiveVoice($0 == "default" ? nil : $0) }
         ))
         catalog.append(choiceDescriptor(
             key: "voice.gemini.search", section: "Gemini Live", title: "Gemini Live lookups",
@@ -83,8 +93,8 @@ extension AppState {
                 default: return AppLocalization.string("Automatic")
                 }
             },
-            read: { [unowned self] in self.geminiLiveSearchMode.rawValue },
-            write: { [unowned self] in self.setGeminiLiveSearchMode(GeminiLiveSearchMode(rawValue: $0) ?? .automatic) }
+            read: { self.geminiLiveSearchMode.rawValue },
+            write: { self.setGeminiLiveSearchMode(GeminiLiveSearchMode(rawValue: $0) ?? .automatic) }
         ))
         catalog.append(choiceDescriptor(
             key: "voice.gpt.voice", section: "GPT-Live", title: "GPT-Live voice",
@@ -92,22 +102,22 @@ extension AppState {
             tier: .small, displayTitle: { AppLocalization.string("GPT-Live voice") },
             choices: [(value: "default", title: "Host's configured voice")] + GPTLiveVoice.all.map { (value: $0.name, title: "\($0.name) (\($0.style))") },
             display: { $0 == "default" ? AppLocalization.string("Default") : $0.capitalized },
-            read: { [unowned self] in self.gptLiveVoice ?? "default" },
-            write: { [unowned self] in self.setGPTLiveVoice($0 == "default" ? nil : $0) }
+            read: { self.gptLiveVoice ?? "default" },
+            write: { self.setGPTLiveVoice($0 == "default" ? nil : $0) }
         ))
         for (engine, title, company) in [("gemini", "Gemini Live", "Google"), ("gpt", "GPT-Live", "OpenAI"), ("grok", "Grok Live", "xAI")] {
             catalog.append(boolDescriptor(
                 key: "voice.\(engine).memory", section: title, title: "\(title) memory",
                 description: "Gives \(title) what Hermes remembers about the user. This sends that memory to \(company).",
                 tier: .ask, displayTitle: { AppLocalization.string("\(title) memory") },
-                read: { [unowned self] in
+                read: {
                     switch engine {
                     case "gemini": return self.geminiLiveMemoryEnabled
                     case "gpt": return self.gptLiveMemoryEnabled
                     default: return self.grokLiveMemoryEnabled
                     }
                 },
-                write: { [unowned self] enabled in
+                write: { enabled in
                     switch engine {
                     case "gemini": self.setGeminiLiveMemoryEnabled(enabled)
                     case "gpt": self.setGPTLiveMemoryEnabled(enabled)
@@ -119,14 +129,14 @@ extension AppState {
                 key: "voice.\(engine).personality", section: title, title: "\(title) personality",
                 description: "Makes \(title) speak as this Hermes profile's persona (SOUL.md). This sends SOUL.md to \(company).",
                 tier: .ask, displayTitle: { AppLocalization.string("\(title) personality") },
-                read: { [unowned self] in
+                read: {
                     switch engine {
                     case "gemini": return self.geminiLivePersonalityEnabled
                     case "gpt": return self.gptLivePersonalityEnabled
                     default: return self.grokLivePersonalityEnabled
                     }
                 },
-                write: { [unowned self] enabled in
+                write: { enabled in
                     switch engine {
                     case "gemini": self.setGeminiLivePersonalityEnabled(enabled)
                     case "gpt": self.setGPTLivePersonalityEnabled(enabled)
@@ -139,29 +149,30 @@ extension AppState {
             key: "voice.live.save_calls", section: "Live voice", title: "Save live calls",
             description: "Saves each live voice call (Gemini Live, GPT-Live, Grok Live) to Hermes' chat history. Off means calls aren't kept.",
             tier: .ask, displayTitle: { AppLocalization.string("Save live calls") },
-            read: { [unowned self] in self.voiceCallSavingEnabled },
-            write: { [unowned self] in self.setVoiceCallSavingEnabled($0) }
+            read: { self.voiceCallSavingEnabled },
+            write: { self.setVoiceCallSavingEnabled($0) }
         ))
         catalog.append(boolDescriptor(
             key: "voice.live.speaker_talk_over", section: "Live voice", title: "Talk over Hermes on the speaker",
             description: "Keeps the microphone open while a live model speaks on the loudspeaker or in the car, so the user can interrupt (echo cancelling, experimental).",
             tier: .ask, displayTitle: { AppLocalization.string("Talk over Hermes on the speaker") },
-            read: { [unowned self] in self.liveVoiceSpeakerBargeInEnabled },
-            write: { [unowned self] in self.setLiveVoiceSpeakerBargeInEnabled($0) }
+            read: { self.liveVoiceSpeakerBargeInEnabled },
+            write: { self.setLiveVoiceSpeakerBargeInEnabled($0) }
         ))
         catalog.append(boolDescriptor(
             key: "voice.continuous_conversation", section: "Conversation", title: "Continuous Conversation",
             description: "In Classic voice, listens again after each reply instead of waiting for a tap.",
-            tier: .small, displayTitle: { AppLocalization.string("Continuous Conversation") },
-            read: { [unowned self] in self.continuousConversationEnabled },
-            write: { [unowned self] in _ = self.setContinuousConversation($0) }
+            // It keeps the microphone on: asks, like every such setting.
+            tier: .ask, displayTitle: { AppLocalization.string("Continuous Conversation") },
+            read: { self.continuousConversationEnabled },
+            write: { _ = self.setContinuousConversation($0) }
         ))
         catalog.append(boolDescriptor(
             key: "voice.keep_listening_when_locked", section: "Conversation", title: "Keep listening when locked",
             description: "Keeps a Classic voice conversation listening with the phone locked or Conduit in the background.",
             tier: .ask, displayTitle: { AppLocalization.string("Keep listening when locked") },
-            read: { [unowned self] in self.keepVoiceListeningWhenLocked },
-            write: { [unowned self] in _ = self.setKeepVoiceListeningWhenLocked($0) }
+            read: { self.keepVoiceListeningWhenLocked },
+            write: { _ = self.setKeepVoiceListeningWhenLocked($0) }
         ))
         return catalog
     }
@@ -180,13 +191,13 @@ extension AppState {
                 default: return AppLocalization.string("Classic")
                 }
             },
-            read: { [unowned self] in
+            read: {
                 if self.isGeminiLiveEnabled { return "gemini" }
                 if self.isGPTLiveEnabled { return "gpt" }
                 if self.isGrokLiveEnabled { return "grok" }
                 return "classic"
             },
-            write: { [unowned self] value in
+            write: { value in
                 switch value {
                 case "gemini": self.setGeminiLiveEnabled(true)
                 case "gpt": self.setGPTLiveEnabled(true)
@@ -214,7 +225,7 @@ extension AppState {
                 tier: .small, displayTitle: { AppLocalization.string("Tone") },
                 choices: [(value: "default", title: "Model's own")] + LiveVoiceTone.allCases.map { (value: $0.rawValue, title: $0.rawValue.capitalized) },
                 display: { LiveVoiceTone(rawValue: $0)?.label ?? AppLocalization.string("Default") },
-                read: { [unowned self] in self.liveVoiceStyle.tone?.rawValue ?? "default" },
+                read: { self.liveVoiceStyle.tone?.rawValue ?? "default" },
                 write: { value in update { $0.tone = LiveVoiceTone(rawValue: value) } }
             ),
             choiceDescriptor(
@@ -223,21 +234,21 @@ extension AppState {
                 tier: .small, displayTitle: { AppLocalization.string("Answer length") },
                 choices: LiveVoiceAnswerLength.allCases.map { (value: $0.rawValue, title: $0.rawValue.capitalized) },
                 display: { LiveVoiceAnswerLength(rawValue: $0)?.label ?? AppLocalization.string("Default") },
-                read: { [unowned self] in self.liveVoiceStyle.answerLength.rawValue },
+                read: { self.liveVoiceStyle.answerLength.rawValue },
                 write: { value in update { $0.answerLength = LiveVoiceAnswerLength(rawValue: value) ?? .standard } }
             ),
             boolDescriptor(
                 key: "voice.live.backchannels", section: "Live voice", title: "Backchannels",
                 description: "Whether live models say short \"mm-hmm\" sounds while the user talks.",
                 tier: .small, displayTitle: { AppLocalization.string("Backchannels") },
-                read: { [unowned self] in self.liveVoiceStyle.backchannels },
+                read: { self.liveVoiceStyle.backchannels },
                 write: { enabled in update { $0.backchannels = enabled } }
             ),
             boolDescriptor(
                 key: "voice.live.ask_before_sending", section: "Live voice", title: "Ask before sending to Hermes",
                 description: "Live calls start by reading each request back and waiting for the user's OK before it goes to Hermes.",
                 tier: .ask, displayTitle: { AppLocalization.string("Ask before sending to Hermes") },
-                read: { [unowned self] in self.liveVoiceStyle.asksBeforeSending },
+                read: { self.liveVoiceStyle.asksBeforeSending },
                 write: { enabled in update { $0.asksBeforeSending = enabled } }
             ),
         ]
