@@ -235,24 +235,15 @@ enum GrokLiveProtocol {
 
     /// What a cumulative input transcript snapshot adds to the item's last
     /// one, as the delta the shared controller appends; nil when it adds
-    /// nothing. A snapshot that revises earlier words can't take them back
-    /// from the transcript, so only what it says past the words the two
-    /// share is added (with a space when both sides of the seam are word
-    /// characters), and a revision no longer than before adds nothing.
+    /// nothing. Only a snapshot that extends the last one adds words: an
+    /// appended transcript can't take words back, so a revision of earlier
+    /// words ("send mail" then "send the mail") adds nothing rather than
+    /// repeating them. The session keeps the revision as the baseline, so
+    /// words said after it still arrive.
     static func inputTranscriptDelta(previous: String, snapshot: String) -> String? {
-        if snapshot == previous { return nil }
-        if snapshot.hasPrefix(previous) {
-            let added = String(snapshot.dropFirst(previous.count))
-            return added.isEmpty ? nil : added
-        }
-        guard snapshot.count > previous.count else { return nil }
-        let shared = zip(previous, snapshot).prefix(while: { $0.0 == $0.1 }).count
-        let added = String(snapshot.dropFirst(shared))
-        guard let first = added.first, let last = previous.last else { return added.isEmpty ? nil : added }
-        // The revision diverges mid-sentence: "apples" then "bananas" must
-        // not run together on the transcript.
-        let isWord: (Character) -> Bool = { $0.isLetter || $0.isNumber }
-        return isWord(first) && isWord(last) ? " " + added : added
+        guard snapshot != previous, snapshot.hasPrefix(previous) else { return nil }
+        let added = String(snapshot.dropFirst(previous.count))
+        return added.isEmpty ? nil : added
     }
 
     /// `arguments` is a JSON string; Conduit's tools take string values.

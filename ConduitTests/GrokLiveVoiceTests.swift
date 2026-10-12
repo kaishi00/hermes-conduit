@@ -147,9 +147,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(delta("Can you check", "Can you check my email right now?"), " my email right now?")
         XCTAssertNil(delta("Can you check my email right now?", "Can you check my email right now?"), "a repeated snapshot adds nothing")
         XCTAssertNil(delta("Can you check my email", "Can you check"), "an older, shorter snapshot adds nothing")
-        XCTAssertEqual(delta("Hello?", "Hello, my name is"), ", my name is", "a revision adds what it says past the shared words")
+        XCTAssertNil(delta("Hello?", "Hello, my name is"), "a revision adds nothing: appending can't take words back")
+        XCTAssertNil(delta("send mail", "send the mail"), "an interior revision never repeats words already shown")
         XCTAssertNil(delta("Hello there", "Hello, Sam"), "a revision no longer than before adds nothing")
-        XCTAssertEqual(delta("I like apples", "I like bananas"), " bananas", "a divergent revision doesn't run into the old words")
     }
 
     func testGrokLiveAvailabilityParsesTheHostStatus() {
@@ -330,6 +330,30 @@ extension VoiceConversationControllerTests {
         await grokSettle(until: { heard.count == 7 })
         await grokSettle()
         XCTAssertEqual(heard, ["Line 1", "Line 2", "Line 3", "Line 4", "Line 5", "Line 6", " done"])
+        session.stop()
+    }
+
+    /// A longer revision adds nothing but becomes the baseline, so words
+    /// said after it arrive without repeating the revised ones.
+    func testGrokLiveSessionAddsWordsAfterARevisionWithoutRepeating() async throws {
+        let (session, sockets) = makeGrokSession()
+        var heard: [String] = []
+        session.onEvent = { event in
+            if case .inputTranscription(let text) = event { heard.append(text) }
+        }
+        session.start()
+        await grokSettle()
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        await grokSettle()
+
+        let event = "conversation.item.input_audio_transcription.completed"
+        socket.deliver(["type": event, "item_id": "i1", "transcript": "send mail"])
+        socket.deliver(["type": event, "item_id": "i1", "transcript": "send the mail"])
+        socket.deliver(["type": event, "item_id": "i1", "transcript": "send the mail to Sam"])
+        await grokSettle(until: { heard.count == 2 })
+        await grokSettle()
+        XCTAssertEqual(heard, ["send mail", " to Sam"])
         session.stop()
     }
 
