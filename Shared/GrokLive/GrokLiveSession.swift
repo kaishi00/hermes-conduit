@@ -86,6 +86,9 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     /// The latest input transcript snapshot per xAI item on this
     /// connection, so a repeated or growing snapshot adds only its new words.
     private var inputSnapshots: [String: String] = [:]
+    /// Item ids in the order they arrived, oldest first.
+    private var inputSnapshotOrder: [String] = []
+    static let rememberedInputItems = 4
 
     init(
         client: GrokLiveConnecting,
@@ -333,6 +336,7 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         responseRequested = false
         // Item ids belong to the xAI session, which a new connection replaces.
         inputSnapshots = [:]
+        inputSnapshotOrder = []
         receiveTask = Task { [weak self] in await self?.receiveLoop(socket, id: id) }
         // A server that neither confirms the session nor closes would leave
         // the call connecting forever.
@@ -421,7 +425,9 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
                 return
             }
             let previous = inputSnapshots[itemID] ?? ""
-            if text.count >= previous.count || !previous.hasPrefix(text) { inputSnapshots[itemID] = text }
+            // The longest snapshot is the baseline: a shorter revision adds
+            // nothing, and must not lower what later snapshots diff against.
+            if text.count > previous.count { rememberInputSnapshot(text, for: itemID) }
             if let added = GrokLiveProtocol.inputTranscriptDelta(previous: previous, snapshot: text) {
                 onEvent?(.inputTranscription(added))
             }
@@ -430,6 +436,18 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             if responseActive { armResponseWatchdog() }
             onEvent?(event)
         }
+    }
+
+    /// Keeps a few recent items only: xAI's snapshots belong to the item in
+    /// flight, and a long call would otherwise hold every utterance.
+    private func rememberInputSnapshot(_ text: String, for itemID: String) {
+        if inputSnapshots[itemID] == nil {
+            inputSnapshotOrder.append(itemID)
+            while inputSnapshotOrder.count > Self.rememberedInputItems {
+                inputSnapshots[inputSnapshotOrder.removeFirst()] = nil
+            }
+        }
+        inputSnapshots[itemID] = text
     }
 
     private func connectionFailed(_ id: UUID, error: Error, serverClose: GeminiLiveServerClose? = nil) {

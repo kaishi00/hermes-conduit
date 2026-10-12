@@ -300,6 +300,30 @@ extension VoiceConversationControllerTests {
         session.stop()
     }
 
+    /// A shorter revision adds nothing and leaves the longest snapshot as
+    /// the baseline, so growth after it never repeats words already shown.
+    func testGrokLiveSessionKeepsTheLongestSnapshotAcrossARevision() async throws {
+        let (session, sockets) = makeGrokSession()
+        var heard: [String] = []
+        session.onEvent = { event in
+            if case .inputTranscription(let text) = event { heard.append(text) }
+        }
+        session.start()
+        await grokSettle()
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        await grokSettle()
+
+        let event = "conversation.item.input_audio_transcription.completed"
+        socket.deliver(["type": event, "item_id": "i1", "transcript": "I like apples"])
+        socket.deliver(["type": event, "item_id": "i1", "transcript": "I like grapes"])
+        socket.deliver(["type": event, "item_id": "i1", "transcript": "I like apples pie"])
+        socket.deliver(["type": event, "item_id": "i1", "transcript": "I like apples"])
+        await grokSettle()
+        XCTAssertEqual(heard.joined(), "I like apples pie")
+        session.stop()
+    }
+
     func testGrokLiveARefusedResponseRequestDoesNotBlockLaterTurns() async throws {
         let (session, sockets) = makeGrokSession()
         session.start()

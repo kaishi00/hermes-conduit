@@ -4166,7 +4166,7 @@ final class AppState: ObservableObject {
                 memory: grokLiveMemoryEnabled ? placeholderMemory : nil,
                 personality: grokLivePersonalityEnabled ? placeholderPersona : nil,
                 answerLength: style.answerLength
-            )
+            ) + GrokLiveProtocol.delegationInstructions
         } else if isGeminiLiveEnabled {
             mode = "Gemini Live"
             text = GeminiLiveConversationController.instructions(

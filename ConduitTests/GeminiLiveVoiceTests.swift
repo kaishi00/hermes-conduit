@@ -1013,9 +1013,11 @@ extension VoiceConversationControllerTests {
         appState.setGrokLiveEnabled(true)
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.mode, "Grok Live")
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "Grok Live")
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(GrokLiveProtocol.delegationInstructions), true, "Grok Live's own delegation rules")
         appState.setGPTLiveEnabled(true)
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.mode, "GPT-Live")
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "GPT-Live")
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(GrokLiveProtocol.delegationInstructions), false, "only Grok gets them")
 
         appState.setLiveVoiceStyle(LiveVoiceStyle())
         XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, "Default is stored as nothing")

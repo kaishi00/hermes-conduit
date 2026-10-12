@@ -22,9 +22,9 @@ enum GrokLiveProtocol {
     /// The transcription model xAI's own voice clients use.
     static let transcriptionModel = "grok-transcribe"
 
-    /// Added to Grok Live's instructions after the shared ones. Grok answered
-    /// "check my email" itself (it has no access) instead of calling
-    /// start_job, where Gemini and GPT-Live hand it to Hermes. Written for
+    /// Added to Grok Live's instructions after the shared ones. On a user's
+    /// calls Grok never called start_job for requests like "check my email",
+    /// which Gemini and GPT-Live hand to Hermes. Written for
     /// the model, not shown as UI copy, so not localized.
     static let delegationInstructions = "\nYou can't see the user's email, messages, calendar, health or patient portals, bank or other accounts, files or systems, and web_search can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there, call start_job with their request. Never tell them you can't access it, never answer it from guesses, and never use web_search for it."
 
@@ -244,7 +244,7 @@ enum GrokLiveProtocol {
             return added.isEmpty ? nil : added
         }
         guard snapshot.count > previous.count else { return nil }
-        let shared = zip(previous, snapshot).prefix(while: { $0 == $1 }).count
+        let shared = zip(previous, snapshot).prefix(while: { $0.0 == $0.1 }).count
         let added = String(snapshot.dropFirst(shared))
         return added.isEmpty ? nil : added
     }
