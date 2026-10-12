@@ -378,6 +378,9 @@ final class HermesNativeCalls: NSObject {
         // CallKit activates the session once the action is fulfilled.
         VoiceAudioSessionCoordinator.shared.configureForIncomingCall()
         action.fulfill()
+        // Answering is the go-ahead for the call's voice to listen, locked
+        // or not.
+        AppStateRuntimeRegistry.shared.appState.setNativeHermesCallAnswered(true)
         let id = action.callUUID
         // The Apple Watch stops ringing (Conduit is running the call, so no
         // background time is needed).

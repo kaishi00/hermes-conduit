@@ -314,6 +314,10 @@ extension AppState {
                 opened = await self.openVoiceConversation(intent)
                 if !opened || !self.showVoiceSheet {
                     self.voiceBackgroundJobSupervisor.clearCallOpening(opening.spokenBrief)
+                } else {
+                    // Off screen the sheet may not run its own auto-listen;
+                    // the answered call lets it start from here.
+                    self.startDeferredVoiceSheetAutoListen()
                 }
             }
             let shown = self.errorMessage != nil && self.errorMessage != errorBefore
@@ -510,9 +514,20 @@ extension AppState {
     /// A call from Hermes rings or runs in CallKit: transport recovery runs
     /// with the phone locked until it's over.
     func setNativeHermesCallActive(_ active: Bool) {
+        // Every call over clears the answer, even one that ended before it
+        // was marked active.
+        if !active { setNativeHermesCallAnswered(false) }
         guard isNativeHermesCallActive != active else { return }
         isNativeHermesCallActive = active
         if active { recoverTransportForCarPlayIfNeeded(immediately: true) }
+    }
+
+    /// The user answered the call in CallKit: the classic Voice it opens
+    /// may listen with the phone locked (#558). Cleared when the call ends.
+    func setNativeHermesCallAnswered(_ answered: Bool) {
+        guard isNativeHermesCallAnswered != answered else { return }
+        isNativeHermesCallAnswered = answered
+        reassertVoiceSurfaceGate()
     }
 
     /// The user hung up the CallKit call: the voice conversation it opened

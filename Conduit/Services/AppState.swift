@@ -2708,7 +2708,7 @@ final class AppState: ObservableObject {
     /// microphone (Close, background suspension, a CallKit mute) disarms the
     /// intent first, and it is consumed on the main actor right before the
     /// listen, so a Close in between wins.
-    private func startDeferredVoiceSheetAutoListen() {
+    func startDeferredVoiceSheetAutoListen() {
         guard showVoiceSheet, voiceSheetShouldAutoListen else { return }
         Task { [weak self] in
             guard let self, self.showVoiceSheet, self.consumeVoiceSheetAutoListenIfPresenting() else { return }
@@ -2789,6 +2789,22 @@ final class AppState: ObservableObject {
     /// phone-specific behavior.
     var hasActiveVoiceSurface: Bool {
         (isSceneActive && showVoiceSheet) || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive
+            || isNativeCallVoiceSurfaceActive
+    }
+
+    /// A call from Hermes the user answered in CallKit presents the classic
+    /// Voice it opened, with the phone locked or Conduit in the background
+    /// (#558): answering was the user's go-ahead, and the CallKit screen
+    /// keeps mute and hang-up in reach. Only while that Voice sheet is open;
+    /// hanging up closes it.
+    var isNativeCallVoiceSurfaceActive: Bool {
+        isNativeHermesCallAnswered && showVoiceSheet
+    }
+
+    /// Off screen, nobody can tap Listen: the conversation keeps listening
+    /// on its own while it is kept running locked or carried by a call.
+    private var isBackgroundVoiceListeningSurfaceActive: Bool {
+        !isSceneActive && (isLockedVoiceSurfaceActive || isNativeCallVoiceSurfaceActive)
     }
 
     /// "Keep listening when locked": an open classic Voice conversation that
@@ -2815,6 +2831,7 @@ final class AppState: ObservableObject {
     /// gate there refused legitimate actions.
     var hasForegroundApplicationSurface: Bool {
         isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive
+            || isNativeCallVoiceSurfaceActive
     }
 
     /// Publishes every Voice runtime gate from the current surface
@@ -2833,7 +2850,7 @@ final class AppState: ObservableObject {
     private func publishVoiceRuntimeGates() {
         voiceConversationController.setForegroundActive(hasActiveVoiceSurface)
         voiceConversationController.setApplicationForegroundActive(hasForegroundApplicationSurface)
-        voiceConversationController.setBackgroundListening(!isSceneActive && isLockedVoiceSurfaceActive)
+        voiceConversationController.setBackgroundListening(isBackgroundVoiceListeningSurfaceActive)
     }
 
     /// Re-asserts the Voice runtime gates from the current surface
@@ -4064,6 +4081,9 @@ final class AppState: ObservableObject {
     /// a CarPlay or Watch call, it keeps transport recovery going with the
     /// phone locked.
     @Published var isNativeHermesCallActive = false
+    /// That call was answered here (not only ringing): see
+    /// `isNativeCallVoiceSurfaceActive`.
+    @Published private(set) var isNativeHermesCallAnswered = false
     /// A profile's call settings on the host (AppState+HermesCalls), for
     /// the dashboard and profile in `hermesCallsStatusKey`.
     @Published var hermesCallsStatus: HermesCallsStatus?
@@ -12927,7 +12947,7 @@ final class AppState: ObservableObject {
             // conversation kept running while locked can still count as a
             // foreground surface.
             voiceConversationController.setApplicationForegroundActive(hasForegroundApplicationSurface)
-            voiceConversationController.setBackgroundListening(isLockedVoiceSurfaceActive)
+            voiceConversationController.setBackgroundListening(isLockedVoiceSurfaceActive || isNativeCallVoiceSurfaceActive)
             // Suspension is not Close: an open Voice conversation releases its
             // runtime ownership and is recorded for foreground restoration,
             // and the sheet presentation intentionally survives the

@@ -714,6 +714,61 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         XCTAssertEqual(harness.capture.startCount, 0, "a CallKit mute keeps the microphone off")
     }
 
+    /// #558: answered with the phone locked, Conduit never comes on screen.
+    /// The answered call is what lets the call's classic voice listen.
+    private func openVoiceForNativeCall(_ harness: Harness, answered: Bool) {
+        harness.appState.handleScenePhase(.background)
+        harness.appState.setNativeHermesCallActive(true)
+        if answered { harness.appState.setNativeHermesCallAnswered(true) }
+        harness.openVoice(session: "session-1")
+        harness.appState.voiceSheetShouldAutoListen = true
+        harness.appState.reassertVoiceSurfaceGate()
+    }
+
+    func testAnsweredNativeCallListensWithConduitOffScreen() async {
+        let harness = makeHarness()
+        openVoiceForNativeCall(harness, answered: true)
+
+        harness.appState.startDeferredVoiceSheetAutoListen()
+
+        let listening = await harness.controller.waitForState(.listening)
+        XCTAssertTrue(listening, "the answered call's voice speaks and listens without a tap")
+        XCTAssertEqual(harness.capture.startCount, 1)
+        XCTAssertTrue(harness.controller.isBackgroundListening, "nobody can tap Listen during a locked call")
+    }
+
+    func testRingingNativeCallDoesNotLetVoiceListenOffScreen() {
+        let harness = makeHarness()
+        openVoiceForNativeCall(harness, answered: false)
+
+        XCTAssertFalse(harness.appState.isNativeCallVoiceSurfaceActive)
+        XCTAssertFalse(
+            harness.appState.consumeVoiceSheetAutoListenIfPresenting(),
+            "only an answered call is a go-ahead to listen"
+        )
+    }
+
+    func testEndedNativeCallNoLongerPresentsVoice() {
+        let harness = makeHarness()
+        openVoiceForNativeCall(harness, answered: true)
+        XCTAssertTrue(harness.appState.isNativeCallVoiceSurfaceActive)
+
+        harness.appState.setNativeHermesCallActive(false)
+
+        XCTAssertFalse(harness.appState.isNativeHermesCallAnswered)
+        XCTAssertFalse(harness.appState.isNativeCallVoiceSurfaceActive)
+        XCTAssertFalse(harness.appState.hasActiveVoiceSurface)
+    }
+
+    func testCallEndedBeforeMarkedActiveStillClearsTheAnswer() {
+        let harness = makeHarness()
+        harness.appState.setNativeHermesCallAnswered(true)
+
+        harness.appState.setNativeHermesCallActive(false)
+
+        XCTAssertFalse(harness.appState.isNativeHermesCallAnswered)
+    }
+
     func testInactiveThenBackgroundThenActiveRestoresExactlyOnce() async {
         let harness = makeHarness()
         harness.openVoice(session: "session-1")
