@@ -490,6 +490,36 @@ enum KanbanActivityFormatter {
     }
 }
 
+// MARK: - Blocked question
+
+/// What a blocked task is waiting on: the reason the worker gave when it
+/// blocked (upstream `kanban_block(reason)`), so the operator can answer it
+/// from the detail screen. The newest `blocked` event wins; a backend that
+/// records the reason only on the run falls back to the newest run that
+/// ended `blocked`. A manual block carries no reason and yields nil.
+enum KanbanBlockedQuestion {
+    static func reason(in detail: KanbanTaskDetail) -> String? {
+        let blockedEvents = detail.events.enumerated().filter { $0.element.kind == "blocked" }
+        if let newest = blockedEvents.max(by: { lhs, rhs in
+            let left = lhs.element.createdAt ?? 0
+            let right = rhs.element.createdAt ?? 0
+            return left == right ? lhs.offset < rhs.offset : left < right
+        }) {
+            return nonEmpty(newest.element.payload?.objectValue?["reason"]?.stringValue)
+        }
+        let blockedRuns = detail.runs.filter { $0.outcome == "blocked" }
+        guard let run = blockedRuns.max(by: { ($0.endedAt ?? $0.startedAt ?? 0) < ($1.endedAt ?? $1.startedAt ?? 0) }) else {
+            return nil
+        }
+        return nonEmpty(run.summary) ?? nonEmpty(run.error)
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+}
+
 // MARK: - Run presentation
 
 /// Shared run-row classification (upstream drawer runs list).

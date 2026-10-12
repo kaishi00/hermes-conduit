@@ -47,6 +47,7 @@ struct KanbanTaskDetailView: View {
     @State private var isSaving = false
     @State private var isAddingComment = false
     @State private var isRequeuing = false
+    @State private var isUnblocking = false
     @State private var isLoadingDetail = false
     @State private var showDeleteConfirmation = false
     /// Triage actions (V3A): Specify / Decompose are offered ONLY for
@@ -115,6 +116,10 @@ struct KanbanTaskDetailView: View {
         displayedTask?.status == "running"
     }
 
+    private var isBlocked: Bool {
+        displayedTask?.status == "blocked"
+    }
+
     private var hasUnsavedChanges: Bool {
         KanbanDetailDraftPolicy.isDirty(
             draftTitle: title,
@@ -166,9 +171,17 @@ struct KanbanTaskDetailView: View {
                         if currentTask.status == "ready", (currentTask.assignee ?? "").isEmpty, !hasDispatcherFallback {
                             readyUnassignedCallout
                         }
+                        // A blocked task is waiting on the operator: its
+                        // question and the reply box sit together up top.
+                        if isBlocked {
+                            blockedCallout
+                            commentsSection
+                        }
                         diagnosticsSection
                         dependenciesSection
-                        commentsSection
+                        if !isBlocked {
+                            commentsSection
+                        }
                         activitySection
                         runsSection
                         workerLogLink
@@ -274,6 +287,7 @@ struct KanbanTaskDetailView: View {
                 // stay frozen forever, and A's unsent text could post to B.
                 isAddingComment = false
                 isRequeuing = false
+                isUnblocking = false
                 comment = ""
                 // No sheet/alert may stay armed over the replacement
                 // identity: a presented editor or confirmation belongs to
@@ -645,6 +659,30 @@ struct KanbanTaskDetailView: View {
         }
     }
 
+    private var blockedCallout: some View {
+        let tint = KanbanStatusPresentation.forStatus("blocked").tint
+        return VStack(alignment: .leading, spacing: 6) {
+            Label("Waiting on you", systemImage: "questionmark.bubble")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
+            if let detail, let reason = KanbanBlockedQuestion.reason(in: detail) {
+                Text(reason)
+                    .font(.footnote)
+                    .textSelection(.enabled)
+            }
+            Text("Reply & unblock posts your answer and moves the task back to Ready, so the next run sees it.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(tint.opacity(0.35), lineWidth: 1)
+        }
+    }
+
     // MARK: - Diagnostics
 
     @ViewBuilder
@@ -863,6 +901,22 @@ struct KanbanTaskDetailView: View {
                     .tint(.orange)
                     .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing)
                 }
+                if isBlocked {
+                    // A comment alone leaves the task parked in Blocked; the
+                    // worker only reads the answer once the task runs again.
+                    Button {
+                        Task { await replyAndUnblock() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if isUnblocking { ProgressView() } else { Label("Reply & unblock", systemImage: "arrowshape.turn.up.left") }
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.conduitAccent)
+                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isUnblocking || isAddingComment)
+                }
             }
         }
     }
@@ -993,7 +1047,7 @@ struct KanbanTaskDetailView: View {
 
     private func loadDetail(force: Bool = false) async {
         // A poll never runs underneath an active save/comment write.
-        guard force || (!isSaving && !isAddingComment && !isRequeuing), !isLoadingDetail else { return }
+        guard force || (!isSaving && !isAddingComment && !isRequeuing && !isUnblocking), !isLoadingDetail else { return }
         // Freeze THIS fetch's identity up front. If the operator taps a
         // dependency mid-flight, every completion below is discarded: no
         // data, no error text, no baseline churn may cross identities.
@@ -1221,6 +1275,37 @@ struct KanbanTaskDetailView: View {
             errorMessage = message
             return
         }
+        await loadDetail(force: true)
+    }
+
+    /// Reply & unblock: the same comment-then-transition composition as Note
+    /// & requeue, with the transition being a PATCH to Ready (upstream
+    /// `unblock_task`). The draft is consumed once the reply posts, so a
+    /// failed unblock never reposts it.
+    private func replyAndUnblock() async {
+        let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let expectedID = displayedTaskID
+        isUnblocking = true
+        errorMessage = nil
+        defer {
+            if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                isUnblocking = false
+            }
+        }
+        let outcome = await KanbanNoteAndRequeueFlow.perform(
+            text: text,
+            postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
+            reclaim: { _ = try await store.updateTask(id: expectedID, patch: KanbanTaskPatch(status: "ready")) },
+            onCommentPosted: {
+                if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                    comment = ""
+                }
+            }
+        )
+        guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+        errorMessage = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock)
+        // Refresh even on partial success so the posted reply shows up.
         await loadDetail(force: true)
     }
 
@@ -1571,14 +1656,27 @@ enum KanbanNoteAndRequeueFlow {
         return Outcome(commentPosted: true, requeued: true, failureDetail: nil)
     }
 
-    /// User-facing wording. A posted note + failed reclaim is PARTIAL success
-    /// and must be described as such — the note is already on the server.
-    static func message(for outcome: Outcome) -> String? {
+    /// The step that follows the note: a reclaim of a running task, or the
+    /// unblock of a blocked one (Reply & unblock).
+    enum Transition {
+        case requeue
+        case unblock
+    }
+
+    /// User-facing wording. A posted note + failed transition is PARTIAL
+    /// success and must be described as such — the note is already on the
+    /// server.
+    static func message(for outcome: Outcome, transition: Transition = .requeue) -> String? {
         switch (outcome.commentPosted, outcome.requeued, outcome.failureDetail) {
         case (false, _, let detail?):
             return detail
         case (true, false, let detail?):
-            return AppLocalization.string("The note was posted, but the task could not be requeued. (\(detail))")
+            switch transition {
+            case .requeue:
+                return AppLocalization.string("The note was posted, but the task could not be requeued. (\(detail))")
+            case .unblock:
+                return AppLocalization.string("The reply was posted, but the task could not be unblocked. (\(detail))")
+            }
         default:
             return nil
         }

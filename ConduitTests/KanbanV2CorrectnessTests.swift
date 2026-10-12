@@ -779,6 +779,19 @@ final class KanbanV2CorrectnessTests: XCTestCase {
         XCTAssertNil(KanbanNoteAndRequeueFlow.message(for: outcome))
     }
 
+    func testReplyPostedThenUnblockFailedSaysUnblocked() async throws {
+        let outcome = await KanbanNoteAndRequeueFlow.perform(
+            text: "use the staging key",
+            postComment: { _ in },
+            reclaim: { throw CorrectnessTestError.failed("409") },
+            onCommentPosted: { }
+        )
+        let message = try XCTUnwrap(KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock))
+        XCTAssertTrue(message.contains("reply was posted"), message)
+        XCTAssertTrue(message.contains("could not be unblocked"), message)
+        XCTAssertTrue(message.contains("409"), message)
+    }
+
     // MARK: - 9. Worker-log cached content on refresh failure
 
     func testWorkerLogInitialFailureShowsFullUnavailableState() {

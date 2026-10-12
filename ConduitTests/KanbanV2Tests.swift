@@ -449,6 +449,41 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertEqual(row.detail, "parent t_p reopened")
     }
 
+    // MARK: Blocked question
+
+    private func blockedDetail(events: [KanbanEvent] = [], runsJSON: String = "[]") throws -> KanbanTaskDetail {
+        let runs = try JSONDecoder().decode([KanbanRun].self, from: Data(runsJSON.utf8))
+        return KanbanTaskDetail(task: KanbanTask(id: "t", title: "T", status: "blocked"), events: events, runs: runs)
+    }
+
+    func testBlockedQuestionIsNewestBlockedEventReason() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "blocked", payload: .object(["reason": .string("Which API key?")]), createdAt: 200),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("old question")]), createdAt: 100),
+            KanbanEvent(id: "3", taskID: "t", kind: "commented", payload: .object(["author": .string("me")]), createdAt: 300),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Which API key?")
+    }
+
+    func testManualBlockWithoutReasonHasNoQuestion() throws {
+        let detail = try blockedDetail(
+            events: [KanbanEvent(id: "1", taskID: "t", kind: "blocked", createdAt: 100)],
+            runsJSON: #"[{"id": "r1", "status": "done", "outcome": "blocked", "summary": "stale run question", "ended_at": 50}]"#
+        )
+        XCTAssertNil(KanbanBlockedQuestion.reason(in: detail), "the newest block is manual; an older run's question must not resurface")
+    }
+
+    func testBlockedQuestionFallsBackToNewestBlockedRun() throws {
+        let detail = try blockedDetail(runsJSON: #"""
+        [
+          {"id": "r1", "status": "done", "outcome": "blocked", "summary": "first", "ended_at": 100},
+          {"id": "r2", "status": "done", "outcome": "blocked", "summary": "  ", "error": "Need the repo URL", "ended_at": 200},
+          {"id": "r3", "status": "done", "outcome": "completed", "summary": "done", "ended_at": 300}
+        ]
+        """#)
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Need the repo URL")
+    }
+
     // MARK: - Runs presentation (V2 §17)
 
     func testRunFailureClassificationMatchesUpstreamSet() {
