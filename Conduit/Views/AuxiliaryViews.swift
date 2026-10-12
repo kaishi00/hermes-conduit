@@ -440,6 +440,7 @@ private enum SettingsDestination: Hashable {
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
         case .calls: self = .hermesCalls
+        case .voice: self = .voice
         }
     }
 }
@@ -692,8 +693,14 @@ struct SettingsView: View {
                         isSaving: appState.isSavingQueuedVoiceCalls,
                         isWaitingOnCall: appState.isLiveVoiceCallActive,
                         saveNow: { await appState.saveQueuedVoiceCallsNow() }
-                    )
+                    ),
+                    agentSettingsChanged: appState.notifierPlugin.reports(AgentSettingsSync.capability)
+                        ? { Task { await appState.syncAgentSettings() } }
+                        : nil
                 )
+                // A change Hermes made reseeds the page's values.
+                .id(appState.agentSettings.revision)
+                .task { await appState.syncAgentSettings() }
             } else {
                 SettingsDetailContainer {
                     ConduitSettingsSection(title: AppLocalization.string("Voice"), symbol: "mic.slash", tint: .orange) {

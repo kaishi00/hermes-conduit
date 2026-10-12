@@ -91,6 +91,10 @@ struct MainView: View {
 
     var body: some View {
         sidebarLayoutContent
+        // Changes Hermes asked for or just made (AgentSettings.swift).
+        .overlay(alignment: .top) {
+            AgentSettingsBanner(sync: appState.agentSettings)
+        }
         .sheet(isPresented: $appState.showModelPicker) {
             ModelPickerView()
                 .presentationDetents([.medium, .large])
@@ -239,7 +243,7 @@ struct MainView: View {
         }
     }
 
-    /// An in-app settings link (`conduit://settings/calls`, in a reply):
+    /// An in-app settings link (`conduit://settings/calls` or `/voice`, in a reply):
     /// Settings opens at that page. Settings already open stays as it is,
     /// and so does a voice or other sheet: closing a voice sheet ends its
     /// call, and only one sheet shows at a time.
@@ -251,7 +255,10 @@ struct MainView: View {
         guard !otherSheetUp else { return }
         // A host without calls (or not heard from yet) has no such page:
         // Settings opens at its start.
-        settingsOpensAt = appState.supportsHermesCalls ? page : nil
+        switch page {
+        case .calls: settingsOpensAt = appState.supportsHermesCalls ? page : nil
+        case .voice: settingsOpensAt = page
+        }
         if appState.showSidebar, !isPersistentSidebarActive {
             presentSettingsFromDrawer()
         } else {

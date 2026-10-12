@@ -36,6 +36,9 @@ struct VoiceSettingsRoute: View {
     let lockedListening: VoiceLockedListeningSettingsModel?
     let speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     let callSaves: VoiceCallSaveStatusModel?
+    /// Set when the host lets Hermes change settings: shows the choice and
+    /// shares a new one.
+    let agentSettingsChanged: (() -> Void)?
 
     init(
         bridge: DashboardTicketBridge,
@@ -63,8 +66,10 @@ struct VoiceSettingsRoute: View {
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
-        callSaves: VoiceCallSaveStatusModel? = nil
+        callSaves: VoiceCallSaveStatusModel? = nil,
+        agentSettingsChanged: (() -> Void)? = nil
     ) {
+        self.agentSettingsChanged = agentSettingsChanged
         self.geminiLive = geminiLive
         self.gptLive = gptLive
         self.grokLive = grokLive
@@ -118,7 +123,8 @@ struct VoiceSettingsRoute: View {
             wake: wake,
             lockedListening: lockedListening,
             speakerTalkOver: speakerTalkOver,
-            callSaves: callSaves
+            callSaves: callSaves,
+            agentSettingsChanged: agentSettingsChanged
         )
     }
 }
@@ -189,6 +195,7 @@ struct VoiceSettingsView: View {
     var lockedListening: VoiceLockedListeningSettingsModel?
     var speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     var callSaves: VoiceCallSaveStatusModel?
+    var agentSettingsChanged: (() -> Void)?
     @State private var keepListeningWhenLocked: Bool
     @State private var speakerTalkOverEnabled: Bool
     /// The phrase lists as last saved from this page. AppState doesn't
@@ -228,8 +235,10 @@ struct VoiceSettingsView: View {
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
-        callSaves: VoiceCallSaveStatusModel? = nil
+        callSaves: VoiceCallSaveStatusModel? = nil,
+        agentSettingsChanged: (() -> Void)? = nil
     ) {
+        self.agentSettingsChanged = agentSettingsChanged
         self.geminiLive = geminiLive
         self.gptLive = gptLive
         self.grokLive = grokLive
@@ -284,6 +293,9 @@ struct VoiceSettingsView: View {
                     voiceModeSection
                     liveModeSettings
                     conversationSection
+                    if let agentSettingsChanged {
+                        AgentSettingsModeSection(onChange: agentSettingsChanged)
+                    }
                     wakeSection
                     CarPlaySettingsSection()
                     WatchSettingsSection()

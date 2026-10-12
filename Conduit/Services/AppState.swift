@@ -511,7 +511,11 @@ final class AppState: ObservableObject {
 
     // MARK: - Connection
 
-    @Published var connection: HermesConnection?
+    @Published var connection: HermesConnection? {
+        didSet {
+            if oldValue?.baseUrl != connection?.baseUrl { agentSettings.leave(scope: agentSettingsScope) }
+        }
+    }
     @Published var client: HermesClient?
     @Published var isConnected = false {
         didSet {
@@ -549,7 +553,10 @@ final class AppState: ObservableObject {
     @Published private(set) var activeProfile: String = "default" {
         didSet {
             refreshActiveChatScrollSessionIdentity()
-            if oldValue != activeProfile { dismissChatTakeover() }
+            if oldValue != activeProfile {
+                dismissChatTakeover()
+                agentSettings.leave(scope: agentSettingsScope)
+            }
         }
     }
     /// The saved multi-dashboard registry (#148). `activeDashboardID` is the
@@ -17419,6 +17426,10 @@ final class AppState: ObservableObject {
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus()
 
+    /// The settings Hermes may change, and the changes it asked for
+    /// (AgentSettings.swift).
+    lazy var agentSettings = AgentSettingsSync(defaults: defaults)
+
     /// Asks the plugin what it serves. Cheap, so it runs on every connect.
     func refreshNotifierPluginStatus() async {
         guard let bridge = dashboardTicketBridge else { return }
@@ -17436,6 +17447,8 @@ final class AppState: ObservableObject {
         deliverHermesCallOutcomes()
         // Whether calls can ring the Watch, for this host and profile.
         Task { await refreshWatchCallVoices() }
+        // Settings Hermes may change: share them, take its requests.
+        Task { await syncAgentSettings() }
         await provisionNotificationEncryption(bridge: bridge)
     }
 
@@ -23320,6 +23333,8 @@ final class AppState: ObservableObject {
 
         case .toolComplete(_, let name, let output, let eventToolID):
             if name.lowercased() == "clarify" { break }
+            // Hermes just read or asked to change Conduit's settings.
+            if name.lowercased() == "conduit_settings" { Task { await syncAgentSettings() } }
             settleReasoningSegmentIntoTranscript()
             resetReasoningSegment()
             let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
