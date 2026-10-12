@@ -616,7 +616,13 @@ struct SettingsView: View {
                         checkAvailability: {
                             do {
                                 let status = try await appState.gptLiveClient.availability()
-                                await MainActor.run { appState.noteWatchCallVoice(.gptLive, ready: status.isAvailable) }
+                                // The Watch's GPT-Live is always the subscription's: an API-key
+                                // check says nothing about it.
+                                await MainActor.run {
+                                    if appState.gptLiveBilling == .subscription {
+                                        appState.noteWatchCallVoice(.gptLive, ready: status.isAvailable)
+                                    }
+                                }
                                 return .success(status)
                             } catch {
                                 return .failure(error)
@@ -629,7 +635,15 @@ struct SettingsView: View {
                         personality: appState.gptLivePersonalityEnabled,
                         setPersonality: { appState.setGPTLivePersonalityEnabled($0) },
                         saveCalls: appState.voiceCallSavingEnabled,
-                        setSaveCalls: { appState.setVoiceCallSavingEnabled($0) }
+                        setSaveCalls: { appState.setVoiceCallSavingEnabled($0) },
+                        billing: appState.gptLiveBilling,
+                        setBilling: { appState.setGPTLiveBilling($0) },
+                        apiVoice: appState.gptLiveAPIVoice,
+                        setAPIVoice: { appState.setGPTLiveAPIVoice($0) },
+                        apiMaxMinutes: appState.gptLiveAPIMaxMinutes,
+                        setAPIMaxMinutes: { appState.setGPTLiveAPIMaxMinutes($0) },
+                        apiHermesCalls: appState.gptLiveAPIHermesCalls,
+                        setAPIHermesCalls: { appState.setGPTLiveAPIHermesCalls($0) }
                     ),
                     grokLive: GrokLiveSettingsModel(
                         enabled: appState.isGrokLiveEnabled,

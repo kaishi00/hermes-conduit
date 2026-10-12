@@ -89,7 +89,8 @@ private struct GPTLiveBarContent: View {
 
     var body: some View {
         LiveVoiceBarRow(
-            name: "GPT-Live",
+            // The bar says an API-key call is one, like the call screen.
+            name: controller.billing == .api ? AppLocalization.string("GPT-Live · API key") : "GPT-Live",
             status: status,
             symbol: symbol,
             thread: jobs.liveThread?.title,

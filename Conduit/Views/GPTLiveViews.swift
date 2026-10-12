@@ -23,6 +23,18 @@ struct GPTLiveSettingsModel {
     /// Save calls to the Hermes host's session history (Sessions > Voice).
     var saveCalls: Bool = true
     var setSaveCalls: (Bool) -> Void = { _ in }
+    /// Who pays for calls (#559). Settings asks before choosing the API key.
+    var billing: GPTLiveBilling = .subscription
+    var setBilling: (GPTLiveBilling) -> Void = { _ in }
+    /// The API key's voice; nil is the voice set on the Hermes server.
+    var apiVoice: String? = nil
+    var setAPIVoice: (String?) -> Void = { _ in }
+    /// Minutes an API-key call may run; 0 is no limit.
+    var apiMaxMinutes: Int = GPTLiveAPICallLimit.defaultMinutes
+    var setAPIMaxMinutes: (Int) -> Void = { _ in }
+    /// Whether calls Hermes places may run on the API key.
+    var apiHermesCalls: Bool = false
+    var setAPIHermesCalls: (Bool) -> Void = { _ in }
 }
 
 struct GPTLiveSettingsSection: View {
@@ -36,6 +48,12 @@ struct GPTLiveSettingsSection: View {
     @State private var memory: Bool
     @State private var personality: Bool
     @State private var saveCalls: Bool
+    @State private var billing: GPTLiveBilling
+    @State private var apiVoice: String
+    @State private var apiMaxMinutes: Int
+    @State private var apiHermesCalls: Bool
+    /// The API key was picked and waits for the user to confirm the cost.
+    @State private var confirmingAPIBilling = false
     @State private var status: String?
     @State private var isAvailable: Bool?
     @State private var isChecking = false
@@ -50,6 +68,51 @@ struct GPTLiveSettingsSection: View {
         _memory = State(initialValue: model.memory)
         _personality = State(initialValue: model.personality)
         _saveCalls = State(initialValue: model.saveCalls)
+        _billing = State(initialValue: model.billing)
+        _apiVoice = State(initialValue: model.apiVoice ?? "")
+        _apiMaxMinutes = State(initialValue: model.apiMaxMinutes)
+        _apiHermesCalls = State(initialValue: model.apiHermesCalls)
+    }
+
+    private var billingChoices: [(id: GPTLiveBilling, title: String)] {
+        GPTLiveBilling.allCases.map { (id: $0, title: $0.badge) }
+    }
+
+    private var apiVoiceChoices: [(id: String, title: String)] {
+        var choices = [(id: "", title: AppLocalization.string("Server default"))]
+        choices += GPTLiveVoice.apiNames.map { (id: $0, title: "\($0.prefix(1).uppercased())\($0.dropFirst())") }
+        if !apiVoice.isEmpty, !GPTLiveVoice.apiNames.contains(apiVoice) {
+            choices.append((id: apiVoice, title: apiVoice))
+        }
+        return choices
+    }
+
+    private var limitChoices: [(id: Int, title: String)] {
+        var minutes = GPTLiveAPICallLimit.choices
+        if !minutes.contains(apiMaxMinutes) { minutes.insert(apiMaxMinutes, at: 0) }
+        return minutes.map { value -> (id: Int, title: String) in
+            guard value > 0 else { return (id: value, title: AppLocalization.string("No limit")) }
+            let title = Duration.seconds(value * 60)
+                .formatted(.units(allowed: [.hours, .minutes], width: .abbreviated).locale(AppLocalization.formattingLocale))
+            return (id: value, title: title)
+        }
+    }
+
+    private func selectBilling(_ requested: GPTLiveBilling) {
+        guard requested != billing else { return }
+        if requested == .api {
+            // Never without saying what it costs.
+            confirmingAPIBilling = true
+            return
+        }
+        applyBilling(.subscription)
+    }
+
+    private func applyBilling(_ chosen: GPTLiveBilling) {
+        billing = chosen
+        model.setBilling(chosen)
+        // The status line checks the path now chosen.
+        Task { await check() }
     }
 
     private var voiceChoices: [(id: String, title: String)] {
@@ -99,21 +162,26 @@ struct GPTLiveSettingsSection: View {
                 }
                 .disabled(isChecking)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
-                ConduitMenuPicker(
-                    value: voice,
-                    choices: voiceChoices,
-                    onSelect: { chosen in
-                        voice = chosen
-                        model.setVoice(chosen.isEmpty ? nil : chosen)
-                        // The status line names the voice in use.
-                        if status != nil { Task { await check() } }
+                billingSettings
+                if billing == .subscription {
+                    ConduitMenuPicker(
+                        value: voice,
+                        choices: voiceChoices,
+                        onSelect: { chosen in
+                            voice = chosen
+                            model.setVoice(chosen.isEmpty ? nil : chosen)
+                            // The status line names the voice in use.
+                            if status != nil { Task { await check() } }
+                        }
+                    ) {
+                        Text("Voice").foregroundStyle(.secondary)
                     }
-                ) {
-                    Text("Voice").foregroundStyle(.secondary)
+                    Text("The voice GPT-Live speaks with. Server default uses the voice set on your Hermes server (voice.gpt_live in the profile's config). The model is set there too. Applies to the next conversation.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    apiSettings
                 }
-                Text("The voice GPT-Live speaks with. Server default uses the voice set on your Hermes server (voice.gpt_live in the profile's config). The model is set there too. Applies to the next conversation.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 Toggle("Use Hermes memory", isOn: Binding(
                     get: { memory },
                     set: { requested in
@@ -146,12 +214,79 @@ struct GPTLiveSettingsSection: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .alert("Bill GPT-Live to the API key?", isPresented: $confirmingAPIBilling) {
+            Button("Use the API key") { applyBilling(.api) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("GPT-Live calls will use your Hermes server's OpenAI API key, which OpenAI bills per minute of call time, separately from any ChatGPT plan. Your Hermes server has to allow it too (voice.gpt_live.conduit_api_billing in the profile's config).")
+        }
         .task { if enabled { await check() } }
         .onChange(of: model.enabled) { _, newValue in enabled = newValue }
         .onChange(of: model.voice) { _, newValue in voice = newValue ?? "" }
         .onChange(of: model.memory) { _, newValue in memory = newValue }
         .onChange(of: model.personality) { _, newValue in personality = newValue }
         .onChange(of: model.saveCalls) { _, newValue in saveCalls = newValue }
+        .onChange(of: model.billing) { _, newValue in billing = newValue }
+        .onChange(of: model.apiVoice) { _, newValue in apiVoice = newValue ?? "" }
+        .onChange(of: model.apiMaxMinutes) { _, newValue in apiMaxMinutes = newValue }
+        .onChange(of: model.apiHermesCalls) { _, newValue in apiHermesCalls = newValue }
+    }
+
+    /// Who pays: the ChatGPT plan, or the API key after a confirmation.
+    @ViewBuilder private var billingSettings: some View {
+        ConduitMenuPicker(value: billing, choices: billingChoices, onSelect: selectBilling) {
+            Text("Billing").foregroundStyle(.secondary)
+        }
+        if billing == .api {
+            Text("Bills your Hermes server's OpenAI API key per minute of call time, separately from any ChatGPT plan. The call screen shows which one a call is on.")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        } else {
+            Text("Bills the ChatGPT subscription your Hermes server is signed in to. A call never moves to the API key on its own.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The API key's own voice, time limit and Hermes calls.
+    @ViewBuilder private var apiSettings: some View {
+        ConduitMenuPicker(
+            value: apiVoice,
+            choices: apiVoiceChoices,
+            onSelect: { chosen in
+                apiVoice = chosen
+                model.setAPIVoice(chosen.isEmpty ? nil : chosen)
+                if status != nil { Task { await check() } }
+            }
+        ) {
+            Text("Voice").foregroundStyle(.secondary)
+        }
+        Text("The voice GPT-Live speaks with on the API key. Server default uses voice.gpt_live.voice in the profile's config. Applies to the next conversation.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        ConduitMenuPicker(
+            value: apiMaxMinutes,
+            choices: limitChoices,
+            onSelect: { chosen in
+                apiMaxMinutes = chosen
+                model.setAPIMaxMinutes(chosen)
+            }
+        ) {
+            Text("Time limit per call").foregroundStyle(.secondary)
+        }
+        Text("An API-key call says goodbye and ends when it reaches this limit.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        Toggle("Calls from Hermes on the API key", isOn: Binding(
+            get: { apiHermesCalls },
+            set: { requested in
+                apiHermesCalls = requested
+                model.setAPIHermesCalls(requested)
+            }
+        ))
+        Text("When Hermes calls you, the call uses the ChatGPT subscription unless this is on.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     private func check() async {
@@ -163,7 +298,7 @@ struct GPTLiveSettingsSection: View {
             isAvailable = availability.isAvailable
             switch availability {
             // The host reports its own voice; a voice chosen here overrides it.
-            case .available(let modelName, let hostVoice?) where voice.isEmpty:
+            case .available(let modelName, let hostVoice?) where (billing == .api ? apiVoice : voice).isEmpty:
                 status = AppLocalization.string("Available (\(modelName), voice \(hostVoice))")
             case .available(let modelName, _):
                 status = AppLocalization.string("Available (\(modelName))")
@@ -186,9 +321,10 @@ struct GPTLiveVoiceSheet: View {
     var body: some View {
         LiveVoiceCallSheet(
             title: "GPT-Live",
+            billingBadge: controller.billing,
             phase: Self.callPhase(controller.phase, microphoneMuted: controller.isMicrophoneMuted),
             statusText: statusText,
-            note: controller.voiceNote,
+            note: controller.limitNote ?? controller.voiceNote,
             transcript: controller.transcript,
             assistantLabel: { AppLocalization.string("GPT-Live: \($0)") },
             jobs: jobs,
@@ -222,6 +358,9 @@ struct GPTLiveVoiceSheet: View {
                 : AppLocalization.string("Assistant's sound back on")).post()
         }
         .onChange(of: controller.voiceNote) { _, note in
+            if let note { AccessibilityNotification.Announcement(note).post() }
+        }
+        .onChange(of: controller.limitNote) { _, note in
             if let note { AccessibilityNotification.Announcement(note).post() }
         }
         // Each turn once, with its final text (not the first fragment).

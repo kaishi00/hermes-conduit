@@ -5,11 +5,34 @@
 //  GPT-Live starts on the Hermes host, never the phone: the conduit_push
 //  dashboard plugin holds the host's Codex (ChatGPT) sign-in, exchanges
 //  Conduit's WebRTC offer for GPT-Live's answer, and bills the ChatGPT
-//  subscription. The OAuth token never reaches Conduit, and there is no
-//  API-key fallback: every failure is reported, never worked around.
+//  subscription. The OAuth token never reaches Conduit.
+//
+//  A profile can instead choose GPT-Live on the host's OpenAI API key,
+//  billed per minute (`GPTLiveBilling.api`). Conduit names the path in
+//  every request, the host answers with the path it used (`auth`), and a
+//  call whose answer names any other path is dropped before its audio
+//  starts. Neither path ever falls back to the other.
 //
 
 import Foundation
+
+/// Who pays for a GPT-Live call. The raw values are the host's `billing`
+/// request field and its answer's `auth`.
+enum GPTLiveBilling: String, Codable, Equatable, CaseIterable {
+    /// The ChatGPT subscription the Hermes host is signed in to.
+    case subscription
+    /// The Hermes host's OpenAI API key, billed per minute.
+    case api
+
+    /// The short label the call screen, the minimised bar and Settings
+    /// show, so a call always says which path it's on.
+    var badge: String {
+        switch self {
+        case .subscription: return AppLocalization.string("ChatGPT plan")
+        case .api: return AppLocalization.string("API key · billed per minute")
+        }
+    }
+}
 
 enum GPTLiveAvailability: Equatable {
     case available(model: String, voice: String?)
@@ -56,6 +79,9 @@ struct GPTLiveSessionAnswer: Equatable {
     /// plugin keeps it silent and the opening is asked for after the call
     /// starts.
     var greetingApplied: Bool = false
+    /// The path the host confirmed it billed. The call speaks that path's
+    /// protocol (the subscription's Codex events or the public API's).
+    var billing: GPTLiveBilling = .subscription
 }
 
 enum GPTLiveClientError: LocalizedError, Equatable {
@@ -66,6 +92,9 @@ enum GPTLiveClientError: LocalizedError, Equatable {
     case malformedResponse
     /// The host answered with something other than subscription billing.
     case notSubscription(String?)
+    /// Asked for the API key, the host answered with another path (an
+    /// older plugin answers every request on the subscription).
+    case notAPIKey(String?)
 
     var errorDescription: String? {
         switch self {
@@ -77,6 +106,8 @@ enum GPTLiveClientError: LocalizedError, Equatable {
             return AppLocalization.string("Hermes returned an invalid GPT-Live answer.")
         case .notSubscription:
             return AppLocalization.string("Hermes did not start GPT-Live on the ChatGPT subscription, so Conduit did not connect.")
+        case .notAPIKey:
+            return AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect. Update the Hermes notifier plugin.")
         }
     }
 }
@@ -111,9 +142,13 @@ final class GPTLiveClient: GPTLiveSessionProviding {
     private let request: Request
     /// The Hermes profile whose sign-in and settings the host uses.
     private let profile: @MainActor () -> String
+    /// The path the next check and call are billed on, read each time so a
+    /// change in Settings applies to the next call.
+    private let billing: @MainActor () -> GPTLiveBilling
 
-    init(profile: @escaping @MainActor () -> String = { "default" }, request: @escaping Request) {
+    init(profile: @escaping @MainActor () -> String = { "default" }, billing: @escaping @MainActor () -> GPTLiveBilling = { .subscription }, request: @escaping Request) {
         self.profile = profile
+        self.billing = billing
         self.request = request
     }
 
@@ -122,6 +157,12 @@ final class GPTLiveClient: GPTLiveSessionProviding {
     }
 
     func availability() async throws -> GPTLiveAvailability {
+        try await availability(billing: billing())
+    }
+
+    /// The readiness of one path, whatever the profile chose: the Watch's
+    /// GPT-Live always runs on the subscription.
+    func availability(billing: GPTLiveBilling) async throws -> GPTLiveAvailability {
         let response: [String: Any]
         do {
             response = try await request(scoped(Self.statusPath), "GET", nil, 12_000)
@@ -129,11 +170,14 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             if GeminiLiveTokenClient.isMissingRoute(error) { return .pluginMissing }
             throw error
         }
-        return Self.availability(from: response)
+        return Self.availability(from: response, billing: billing)
     }
 
     func createSession(offer: String, history: [[String: Any]], voice: String? = nil, briefing: String? = nil, greeting: String? = nil, callOpening: Bool = false) async throws -> GPTLiveSessionAnswer {
-        var body: [String: Any] = ["sdp": offer]
+        let billing = self.billing()
+        // Always named, the subscription too: the host bills only the path
+        // asked for (an older plugin ignores it and uses the subscription).
+        var body: [String: Any] = ["sdp": offer, "billing": billing.rawValue]
         if let briefing, !briefing.isEmpty { body["briefing"] = briefing }
         if let greeting { body["greeting"] = greeting }
         // An older plugin ignores it and keeps the model silent; Conduit
@@ -151,12 +195,15 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             if case .http(_, let detail) = error, !detail.isEmpty { throw GPTLiveClientError.host(detail) }
             throw error
         }
-        return try Self.answer(from: response)
+        return try Self.answer(from: response, billing: billing)
     }
 
     // MARK: Parsing (static for tests)
 
-    static func availability(from response: [String: Any]) -> GPTLiveAvailability {
+    static func availability(from response: [String: Any], billing: GPTLiveBilling = .subscription) -> GPTLiveAvailability {
+        if billing == .api {
+            return apiAvailability(from: response)
+        }
         let reason = response["reason"] as? String ?? response["detail"] as? String ?? response["error"] as? String
         guard response["ok"] as? Bool == true, response["available"] as? Bool == true else {
             return .unavailable(reason: reason)
@@ -171,14 +218,36 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         return .available(model: model, voice: voice)
     }
 
-    static func answer(from response: [String: Any]) throws -> GPTLiveSessionAnswer {
+    /// The API-key path's readiness, which the host reports under `api`; a
+    /// plugin without it can't start an API-billed call.
+    static func apiAvailability(from response: [String: Any]) -> GPTLiveAvailability {
+        guard response["ok"] as? Bool == true else {
+            return .unavailable(reason: response["reason"] as? String ?? response["detail"] as? String ?? response["error"] as? String)
+        }
+        guard let api = response["api"] as? [String: Any] else {
+            return .unavailable(reason: AppLocalization.string("GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer."))
+        }
+        guard api["available"] as? Bool == true, api["auth"] as? String == GPTLiveBilling.api.rawValue else {
+            return .unavailable(reason: api["reason"] as? String)
+        }
+        let model = (api["model"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "gpt-live-1"
+        let voice = (api["voice"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return .available(model: model, voice: voice)
+    }
+
+    static func answer(from response: [String: Any], billing: GPTLiveBilling = .subscription) throws -> GPTLiveSessionAnswer {
         guard response["ok"] as? Bool == true else {
             let detail = response["detail"] as? String ?? response["reason"] as? String ?? response["error"] as? String
             if let detail, !detail.isEmpty { throw GPTLiveClientError.host(detail) }
             throw GPTLiveClientError.malformedResponse
         }
-        guard response["auth"] as? String == "subscription" else {
-            throw GPTLiveClientError.notSubscription(response["auth"] as? String)
+        // The path the host billed must be the one asked for, or nothing
+        // connects: the peer is closed before any audio flows.
+        guard response["auth"] as? String == billing.rawValue else {
+            switch billing {
+            case .subscription: throw GPTLiveClientError.notSubscription(response["auth"] as? String)
+            case .api: throw GPTLiveClientError.notAPIKey(response["auth"] as? String)
+            }
         }
         guard let transport = response["transport"] as? [String: Any],
               transport["type"] as? String == "webrtc",
@@ -192,7 +261,8 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             sdp: sdp,
             voice: voice,
             briefingApplied: response["briefing_applied"] as? Bool == true,
-            greetingApplied: response["greeting_applied"] as? Bool == true
+            greetingApplied: response["greeting_applied"] as? Bool == true,
+            billing: billing
         )
     }
 }

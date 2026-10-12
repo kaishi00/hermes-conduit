@@ -210287,6 +210287,1482 @@
           }
         }
       }
+    },
+    "ChatGPT plan" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ChatGPT-Abo"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plan de ChatGPT"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forfait ChatGPT"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paket ChatGPT"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Piano ChatGPT"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ChatGPTプラン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ChatGPT 요금제"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plan ChatGPT"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plano do ChatGPT"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тариф ChatGPT"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ChatGPT planı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ChatGPT 套餐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ChatGPT 方案"
+          }
+        }
+      }
+    },
+    "API key · billed per minute" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel · Abrechnung pro Minute"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clave de API · cobro por minuto"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clé API · facturée à la minute"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunci API · ditagih per menit"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiave API · addebito al minuto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APIキー・分単位で課金"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 키 · 분당 과금"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klucz API · rozliczenie za minutę"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chave de API · cobrança por minuto"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-ключ · поминутная оплата"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API anahtarı · dakika başına ücretlendirilir"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 密钥 · 按分钟计费"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 金鑰 · 按分鐘計費"
+          }
+        }
+      }
+    },
+    "Hermes did not start GPT-Live on the API key, so Conduit did not connect. Update the Hermes notifier plugin." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hat GPT-Live nicht über den API-Schlüssel gestartet, daher hat Conduit keine Verbindung hergestellt. Aktualisiere das Hermes-Notifier-Plug-in."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no inició GPT-Live con la clave de API, así que Conduit no se conectó. Actualiza el plugin de notificaciones de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n'a pas démarré GPT-Live avec la clé API : Conduit ne s'est donc pas connecté. Mettez à jour le plugin de notification Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak memulai GPT-Live dengan kunci API, jadi Conduit tidak terhubung. Perbarui plugin notifier Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non ha avviato GPT-Live con la chiave API, quindi Conduit non si è connesso. Aggiorna il plugin di notifica di Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HermesがAPIキーでGPT-Liveを開始しなかったため、Conduitは接続しませんでした。Hermes通知プラグインをアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 API 키로 GPT-Live를 시작하지 않아서 Conduit이 연결하지 않았어요. Hermes 알림 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie uruchomił GPT-Live z kluczem API, więc Conduit nie nawiązał połączenia. Zaktualizuj wtyczkę powiadomień Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não iniciou o GPT-Live com a chave de API, então o Conduit não se conectou. Atualize o plugin notificador do Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не запустил GPT-Live с API-ключом, поэтому Conduit не подключился. Обновите плагин уведомлений Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, GPT-Live'ı API anahtarıyla başlatmadı; bu nedenle Conduit bağlanmadı. Hermes bildirim eklentisini güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 没有使用 API 密钥启动 GPT-Live，因此 Conduit 没有连接。请更新 Hermes 通知插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 沒有透過 API 金鑰啟動 GPT-Live，因此 Conduit 沒有連線。請更新 Hermes 通知外掛程式。"
+          }
+        }
+      }
+    },
+    "GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live mit einem API-Schlüssel braucht das Hermes-Notifier-Plug-in 0.22 oder neuer."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live con una clave de API necesita el plugin de notificaciones de Hermes 0.22 o posterior."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live avec une clé API nécessite le plugin de notification Hermes 0.22 ou ultérieur."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live dengan kunci API memerlukan plugin notifier Hermes 0.22 atau yang lebih baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live con una chiave API richiede il plugin di notifica di Hermes 0.22 o successivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APIキーでGPT-Liveを使うには、Hermes通知プラグイン0.22以降が必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 키로 GPT-Live를 쓰려면 Hermes 알림 플러그인 0.22 이상이 필요해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live z kluczem API wymaga wtyczki powiadomień Hermes w wersji 0.22 lub nowszej."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O GPT-Live com chave de API precisa do plugin notificador do Hermes 0.22 ou mais recente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для GPT-Live с API-ключом нужен плагин уведомлений Hermes версии 0.22 или новее."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API anahtarıyla GPT-Live için Hermes bildirim eklentisinin 0.22 veya daha yeni bir sürümü gerekir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过 API 密钥使用 GPT-Live 需要 Hermes 通知插件 0.22 或更高版本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過 API 金鑰使用 GPT-Live 需要 Hermes 通知外掛程式 0.22 或更新版本。"
+          }
+        }
+      }
+    },
+    "This call reached its time limit on the API key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Anruf hat sein Zeitlimit für den API-Schlüssel erreicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta llamada alcanzó su límite de tiempo con la clave de API."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet appel a atteint sa limite de durée sur la clé API."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan ini telah mencapai batas waktunya pada kunci API."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa chiamata ha raggiunto il limite di tempo sulla chiave API."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この通話はAPIキーでの制限時間に達しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 통화가 API 키 사용 시간 제한에 도달했어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To połączenie osiągnęło limit czasu na kluczu API."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta chamada atingiu o limite de tempo na chave de API."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот звонок достиг лимита времени для API-ключа."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu arama API anahtarındaki süre sınırına ulaştı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次通话已达到 API 密钥的时长上限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這通通話已達到 API 金鑰的時間上限。"
+          }
+        }
+      }
+    },
+    "Billing" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrechnung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facturación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facturation"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Penagihan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Addebito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "課金"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "과금"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozliczenie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cobrança"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оплата"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ücretlendirme"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "计费"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "計費"
+          }
+        }
+      }
+    },
+    "Bills the ChatGPT subscription your Hermes server is signed in to. A call never moves to the API key on its own." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechnet über das ChatGPT-Abo ab, mit dem dein Hermes-Server angemeldet ist. Ein Anruf wechselt nie von selbst zum API-Schlüssel."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se cobra a la suscripción de ChatGPT con la que tu servidor Hermes inició sesión. Una llamada nunca pasa sola a la clave de API."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facturé sur l'abonnement ChatGPT auquel votre serveur Hermes est connecté. Un appel ne passe jamais de lui-même sur la clé API."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ditagihkan ke langganan ChatGPT yang dipakai server Hermes Anda untuk masuk. Panggilan tidak pernah pindah ke kunci API dengan sendirinya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Addebitato sull'abbonamento ChatGPT con cui il tuo server Hermes ha effettuato l'accesso. Una chiamata non passa mai da sola alla chiave API."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HermesサーバがサインインしているChatGPTサブスクリプションに課金されます。通話が勝手にAPIキーに切り替わることはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 서버가 로그인한 ChatGPT 구독으로 과금돼요. 통화가 저절로 API 키로 넘어가는 일은 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozliczane w ramach subskrypcji ChatGPT, na którą zalogowany jest Twój serwer Hermes. Połączenie nigdy samo nie przechodzi na klucz API."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cobra a assinatura do ChatGPT em que seu servidor Hermes está conectado. Uma chamada nunca passa sozinha para a chave de API."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оплачивается подпиской ChatGPT, под которой вошёл ваш сервер Hermes. Звонок никогда сам не переходит на API-ключ."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sunucunuzun oturum açtığı ChatGPT aboneliğinden ücretlendirilir. Bir arama hiçbir zaman kendiliğinden API anahtarına geçmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向 Hermes 服务器登录的 ChatGPT 订阅计费。通话绝不会自行改用 API 密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向你的 Hermes 伺服器登入的 ChatGPT 訂閱計費。通話絕不會自行改用 API 金鑰。"
+          }
+        }
+      }
+    },
+    "Bills your Hermes server's OpenAI API key per minute of call time, separately from any ChatGPT plan. The call screen shows which one a call is on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechnet über den OpenAI-API-Schlüssel deines Hermes-Servers pro Gesprächsminute ab, getrennt von jedem ChatGPT-Abo. Der Anrufbildschirm zeigt, worüber ein Anruf läuft."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se cobra a la clave de API de OpenAI de tu servidor Hermes por minuto de llamada, aparte de cualquier plan de ChatGPT. La pantalla de llamada muestra cuál usa cada llamada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facturé sur la clé API OpenAI de votre serveur Hermes à la minute d'appel, en dehors de tout forfait ChatGPT. L'écran d'appel indique lequel un appel utilise."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ditagihkan ke kunci API OpenAI server Hermes Anda per menit panggilan, terpisah dari paket ChatGPT mana pun. Layar panggilan menunjukkan mana yang dipakai panggilan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Addebitato sulla chiave API OpenAI del tuo server Hermes per ogni minuto di chiamata, separatamente da qualsiasi piano ChatGPT. La schermata della chiamata mostra quale usa ogni chiamata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HermesサーバのOpenAI APIキーに通話時間1分ごとに課金されます。ChatGPTプランとは別です。どちらで通話しているかは通話画面に表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 서버의 OpenAI API 키로 통화 시간 1분마다 과금돼요. ChatGPT 요금제와는 별도예요. 통화 화면에 어느 쪽으로 통화 중인지 표시돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozliczane z klucza API OpenAI Twojego serwera Hermes za każdą minutę połączenia, osobno od planu ChatGPT. Ekran połączenia pokazuje, z czego korzysta połączenie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cobra a chave de API da OpenAI do seu servidor Hermes por minuto de chamada, à parte de qualquer plano do ChatGPT. A tela da chamada mostra qual a chamada está usando."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оплачивается с OpenAI API-ключа вашего сервера Hermes за каждую минуту звонка, отдельно от любого тарифа ChatGPT. На экране звонка видно, чем оплачивается звонок."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sunucunuzun OpenAI API anahtarından arama süresinin her dakikası için, ChatGPT planlarından ayrı olarak ücretlendirilir. Arama ekranı, aramanın hangisini kullandığını gösterir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按通话分钟向 Hermes 服务器的 OpenAI API 密钥计费，与任何 ChatGPT 套餐分开。通话界面会显示通话使用的是哪一种。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按通話分鐘向你的 Hermes 伺服器的 OpenAI API 金鑰計費，與任何 ChatGPT 方案分開。通話畫面會顯示通話使用的是哪一種。"
+          }
+        }
+      }
+    },
+    "Bill GPT-Live to the API key?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live über den API-Schlüssel abrechnen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Cobrar GPT-Live a la clave de API?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facturer GPT-Live sur la clé API ?"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tagihkan GPT-Live ke kunci API?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Addebitare GPT-Live sulla chiave API?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-LiveをAPIキーに課金しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live를 API 키로 과금할까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozliczać GPT-Live z klucza API?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cobrar o GPT-Live na chave de API?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оплачивать GPT-Live с API-ключа?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live API anahtarından ücretlendirilsin mi?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要向 API 密钥计费 GPT-Live 吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要向 API 金鑰計費 GPT-Live 嗎？"
+          }
+        }
+      }
+    },
+    "GPT-Live calls will use your Hermes server's OpenAI API key, which OpenAI bills per minute of call time, separately from any ChatGPT plan. Your Hermes server has to allow it too (voice.gpt_live.conduit_api_billing in the profile's config)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live-Anrufe nutzen dann den OpenAI-API-Schlüssel deines Hermes-Servers, den OpenAI pro Gesprächsminute abrechnet, getrennt von jedem ChatGPT-Abo. Dein Hermes-Server muss es ebenfalls erlauben (voice.gpt_live.conduit_api_billing in der Konfiguration des Profils)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las llamadas de GPT-Live usarán la clave de API de OpenAI de tu servidor Hermes, que OpenAI cobra por minuto de llamada, aparte de cualquier plan de ChatGPT. Tu servidor Hermes también tiene que permitirlo (voice.gpt_live.conduit_api_billing en la configuración del perfil)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les appels GPT-Live utiliseront la clé API OpenAI de votre serveur Hermes, qu'OpenAI facture à la minute d'appel, en dehors de tout forfait ChatGPT. Votre serveur Hermes doit aussi l'autoriser (voice.gpt_live.conduit_api_billing dans la configuration du profil)."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan GPT-Live akan memakai kunci API OpenAI server Hermes Anda, yang ditagih OpenAI per menit panggilan, terpisah dari paket ChatGPT mana pun. Server Hermes Anda juga harus mengizinkannya (voice.gpt_live.conduit_api_billing di konfigurasi profil)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiamate GPT-Live useranno la chiave API OpenAI del tuo server Hermes, che OpenAI addebita per ogni minuto di chiamata, separatamente da qualsiasi piano ChatGPT. Anche il tuo server Hermes deve consentirlo (voice.gpt_live.conduit_api_billing nella configurazione del profilo)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Liveの通話にHermesサーバのOpenAI APIキーを使います。OpenAIは通話時間1分ごとに課金し、ChatGPTプランとは別に請求されます。Hermesサーバ側でも許可が必要です（プロファイルの設定のvoice.gpt_live.conduit_api_billing）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 통화에 Hermes 서버의 OpenAI API 키를 사용해요. OpenAI는 통화 시간 1분마다 과금하며 ChatGPT 요금제와는 별도로 청구돼요. Hermes 서버에서도 허용해야 해요(프로필 설정의 voice.gpt_live.conduit_api_billing)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenia GPT-Live będą korzystać z klucza API OpenAI Twojego serwera Hermes, który OpenAI rozlicza za każdą minutę połączenia, osobno od planu ChatGPT. Twój serwer Hermes też musi na to pozwolić (voice.gpt_live.conduit_api_billing w konfiguracji profilu)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As chamadas do GPT-Live vão usar a chave de API da OpenAI do seu servidor Hermes, que a OpenAI cobra por minuto de chamada, à parte de qualquer plano do ChatGPT. Seu servidor Hermes também precisa permitir isso (voice.gpt_live.conduit_api_billing na configuração do perfil)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонки GPT-Live будут использовать OpenAI API-ключ вашего сервера Hermes, который OpenAI оплачивает поминутно, отдельно от любого тарифа ChatGPT. Сервер Hermes тоже должен это разрешить (voice.gpt_live.conduit_api_billing в конфигурации профиля)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live aramaları Hermes sunucunuzun OpenAI API anahtarını kullanacak; OpenAI bunu arama süresinin her dakikası için, ChatGPT planlarından ayrı olarak ücretlendirir. Hermes sunucunuzun da buna izin vermesi gerekir (profil yapılandırmasında voice.gpt_live.conduit_api_billing)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 通话将使用 Hermes 服务器的 OpenAI API 密钥，OpenAI 按通话分钟计费，与任何 ChatGPT 套餐分开。Hermes 服务器也必须允许（配置文件设置中的 voice.gpt_live.conduit_api_billing）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 通話將使用你的 Hermes 伺服器的 OpenAI API 金鑰，OpenAI 按通話分鐘計費，與任何 ChatGPT 方案分開。你的 Hermes 伺服器也必須允許（設定檔設定中的 voice.gpt_live.conduit_api_billing）。"
+          }
+        }
+      }
+    },
+    "Use the API key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel verwenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar la clave de API"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utiliser la clé API"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gunakan kunci API"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa la chiave API"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APIキーを使う"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 키 사용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Użyj klucza API"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar a chave de API"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Использовать API-ключ"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API anahtarını kullan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 API 密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 API 金鑰"
+          }
+        }
+      }
+    },
+    "No limit" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Limit"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin límite"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sans limite"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tanpa batas"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessun limite"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "制限なし"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제한 없음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bez limitu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sem limite"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Без ограничения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sınır yok"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不限"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不限"
+          }
+        }
+      }
+    },
+    "The voice GPT-Live speaks with on the API key. Server default uses voice.gpt_live.voice in the profile's config. Applies to the next conversation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Stimme, mit der GPT-Live über den API-Schlüssel spricht. Serverstandard verwendet voice.gpt_live.voice in der Konfiguration des Profils. Gilt ab dem nächsten Gespräch."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voz con la que habla GPT-Live con la clave de API. Predeterminado del servidor usa voice.gpt_live.voice en la configuración del perfil. Se aplica desde la próxima conversación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voix de GPT-Live sur la clé API. Par défaut du serveur utilise voice.gpt_live.voice dans la configuration du profil. S'applique à la prochaine conversation."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suara yang dipakai GPT-Live pada kunci API. Default server memakai voice.gpt_live.voice di konfigurasi profil. Berlaku mulai percakapan berikutnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voce con cui parla GPT-Live sulla chiave API. Predefinito del server usa voice.gpt_live.voice nella configurazione del profilo. Vale dalla prossima conversazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APIキーでGPT-Liveが話す声です。「サーバのデフォルト」はプロファイルの設定のvoice.gpt_live.voiceを使います。次の会話から適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 키로 통화할 때 GPT-Live가 말하는 목소리예요. 서버 기본값은 프로필 설정의 voice.gpt_live.voice를 사용해요. 다음 대화부터 적용돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Głos, którym GPT-Live mówi na kluczu API. Według serwera używa voice.gpt_live.voice z konfiguracji profilu. Obowiązuje od następnej rozmowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A voz com que o GPT-Live fala na chave de API. Padrão do servidor usa voice.gpt_live.voice na configuração do perfil. Vale a partir da próxima conversa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Голос, которым GPT-Live говорит с API-ключом. «Как на сервере» использует voice.gpt_live.voice из конфигурации профиля. Применяется со следующего разговора."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live'ın API anahtarında konuştuğu ses. Sunucu varsayılanı, profil yapılandırmasındaki voice.gpt_live.voice ayarını kullanır. Sonraki konuşmadan itibaren geçerlidir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 使用 API 密钥时说话的声音。“服务器默认”使用配置文件设置中的 voice.gpt_live.voice。从下一次对话开始生效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 使用 API 金鑰時說話的聲音。「伺服器預設」使用設定檔設定中的 voice.gpt_live.voice。從下一次對話開始套用。"
+          }
+        }
+      }
+    },
+    "Time limit per call" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeitlimit pro Anruf"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Límite de tiempo por llamada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Durée maximale par appel"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batas waktu per panggilan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limite di tempo per chiamata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1回の通話の制限時間"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화당 시간 제한"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limit czasu połączenia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limite de tempo por chamada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Лимит времени на звонок"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arama başına süre sınırı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次通话时长上限"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每通通話時間上限"
+          }
+        }
+      }
+    },
+    "An API-key call says goodbye and ends when it reaches this limit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Anruf über den API-Schlüssel verabschiedet sich und endet, wenn er dieses Limit erreicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una llamada con la clave de API se despide y termina cuando llega a este límite."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un appel sur la clé API dit au revoir et se termine quand il atteint cette limite."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan dengan kunci API mengucapkan salam penutup lalu berakhir saat mencapai batas ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una chiamata sulla chiave API saluta e termina quando raggiunge questo limite."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APIキーでの通話は、この制限に達するとあいさつをして終了します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API 키 통화는 이 제한에 도달하면 인사하고 종료돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenie na kluczu API żegna się i kończy, gdy osiągnie ten limit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma chamada na chave de API se despede e termina quando atinge este limite."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонок с API-ключом прощается и завершается, когда достигает этого лимита."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API anahtarıyla yapılan bir arama bu sınıra ulaştığında vedalaşır ve sona erer."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 API 密钥的通话达到此上限时会道别并结束。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 API 金鑰的通話達到此上限時會道別並結束。"
+          }
+        }
+      }
+    },
+    "Calls from Hermes on the API key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe von Hermes über den API-Schlüssel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llamadas de Hermes con la clave de API"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appels d'Hermes sur la clé API"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan dari Hermes dengan kunci API"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamate da Hermes sulla chiave API"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HermesからのAPIキーでの通話"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes의 전화에 API 키 사용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenia od Hermesa na kluczu API"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chamadas do Hermes na chave de API"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонки от Hermes с API-ключом"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in aramaları API anahtarıyla"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 来电使用 API 密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 來電使用 API 金鑰"
+          }
+        }
+      }
+    },
+    "When Hermes calls you, the call uses the ChatGPT subscription unless this is on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn Hermes dich anruft, läuft der Anruf über das ChatGPT-Abo, außer diese Option ist an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuando Hermes te llama, la llamada usa la suscripción de ChatGPT salvo que esto esté activado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand Hermes vous appelle, l'appel utilise l'abonnement ChatGPT, sauf si cette option est activée."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat Hermes menelepon Anda, panggilan memakai langganan ChatGPT kecuali opsi ini aktif."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando Hermes ti chiama, la chiamata usa l'abbonamento ChatGPT, a meno che questa opzione sia attiva."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesから電話がかかってきたときは、これがオンでない限りChatGPTサブスクリプションを使います。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 전화를 걸면 이 옵션이 켜져 있지 않은 한 ChatGPT 구독을 사용해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy Hermes do Ciebie dzwoni, połączenie korzysta z subskrypcji ChatGPT, chyba że ta opcja jest włączona."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando o Hermes liga para você, a chamada usa a assinatura do ChatGPT, a menos que isto esteja ativado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда Hermes вам звонит, звонок использует подписку ChatGPT, если этот параметр не включён."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sizi aradığında, bu seçenek açık değilse arama ChatGPT aboneliğini kullanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 给你打电话时，除非打开此选项，否则通话使用 ChatGPT 订阅。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 打給你時，除非開啟此選項，否則通話會使用 ChatGPT 訂閱。"
+          }
+        }
+      }
+    },
+    "GPT-Live · API key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · API-Schlüssel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · clave de API"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · clé API"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · kunci API"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · chiave API"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live・APIキー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · API 키"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · klucz API"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · chave de API"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · API-ключ"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · API anahtarı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · API 密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live · API 金鑰"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

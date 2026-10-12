@@ -23,6 +23,9 @@ enum LiveVoiceCallPhase: Equatable {
 
 struct LiveVoiceCallSheet: View {
     let title: String
+    /// Who pays for the call, under the title for as long as it runs (a
+    /// GPT-Live call's ChatGPT plan or API key). Nil shows nothing.
+    var billingBadge: GPTLiveBilling? = nil
     let phase: LiveVoiceCallPhase
     let statusText: String
     var note: String?
@@ -181,6 +184,9 @@ struct LiveVoiceCallSheet: View {
                 Text(verbatim: title)
                     .font(.headline)
                     .lineLimit(1)
+                if let billingBadge {
+                    LiveVoiceBillingBadge(billing: billingBadge)
+                }
                 LiveVoiceCallThreadLabel(jobs: jobs)
             }
             .frame(maxWidth: .infinity)
@@ -374,6 +380,27 @@ struct LiveVoiceCallSheet: View {
         .padding(.horizontal, 12)
         .padding(.top, 14)
         .padding(.bottom, 12)
+    }
+}
+
+/// Who pays for a GPT-Live call. The API key stands out in orange: it is
+/// billed per minute, unlike the ChatGPT plan.
+struct LiveVoiceBillingBadge: View {
+    let billing: GPTLiveBilling
+
+    var body: some View {
+        let tint: Color = billing == .api ? .orange : .secondary
+        Label {
+            Text(verbatim: billing.badge)
+        } icon: {
+            Image(systemName: billing == .api ? "creditcard" : "person.crop.circle")
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(tint.opacity(0.15)))
+        .lineLimit(1)
     }
 }
 

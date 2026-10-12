@@ -138,6 +138,20 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var gptLiveMemory: Bool? = nil
     /// Whether GPT-Live speaks as the profile's SOUL.md persona. Nil is off.
     var gptLivePersonality: Bool? = nil
+    /// Who pays for GPT-Live calls. Nil is the ChatGPT subscription; the
+    /// API key is only ever chosen in Settings, after a confirmation.
+    var gptLiveBilling: GPTLiveBilling? = nil
+    /// GPT-Live's voice on the API key ("marin", "cedar"…), which has its
+    /// own voices. Nil is the host's (voice.gpt_live.voice).
+    var gptLiveAPIVoice: String? = nil
+    /// Whether a call Hermes places (#449) may run on the API key. Nil is
+    /// off: such calls use the ChatGPT subscription.
+    var gptLiveAPIHermesCalls: Bool? = nil
+    /// Minutes an API-key call may run before it ends itself. Nil is
+    /// `GPTLiveAPICallLimit.defaultMinutes`; 0 is no limit.
+    var gptLiveAPIMaxMinutes: Int? = nil
+
+    var resolvedGPTLiveBilling: GPTLiveBilling { gptLiveBilling ?? .subscription }
     /// Opt-in Grok Live voice mode through the host's SuperGrok sign-in (off
     /// by default; older blobs decode off). Never on with another live mode.
     var grokLiveEnabled: Bool = false
@@ -229,6 +243,12 @@ struct VoiceProfilePreferences: Codable, Equatable {
         gptLiveVoice = (try? container.decodeIfPresent(String.self, forKey: .gptLiveVoice)) ?? nil
         gptLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .gptLiveMemory)) ?? nil
         gptLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .gptLivePersonality)) ?? nil
+        // Anything unreadable (a newer build's value) is the subscription:
+        // nothing ever turns into API billing by accident.
+        gptLiveBilling = (try? container.decodeIfPresent(GPTLiveBilling.self, forKey: .gptLiveBilling)) ?? nil
+        gptLiveAPIVoice = (try? container.decodeIfPresent(String.self, forKey: .gptLiveAPIVoice)) ?? nil
+        gptLiveAPIHermesCalls = (try? container.decodeIfPresent(Bool.self, forKey: .gptLiveAPIHermesCalls)) ?? nil
+        gptLiveAPIMaxMinutes = (try? container.decodeIfPresent(Int.self, forKey: .gptLiveAPIMaxMinutes)) ?? nil
         grokLiveEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .grokLiveEnabled)) ?? false
         grokLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .grokLiveMemory)) ?? nil
         grokLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .grokLivePersonality)) ?? nil
@@ -397,6 +417,23 @@ struct GeminiLiveVoice: Equatable, Identifiable {
     }
 }
 
+/// How long an API-key GPT-Live call may run (#559).
+enum GPTLiveAPICallLimit {
+    static let defaultMinutes = 20
+    /// The choices Settings offers; 0 is no limit.
+    static let choices = [5, 10, 20, 30, 60, 0]
+
+    static func minutes(_ stored: Int?) -> Int {
+        guard let stored, stored >= 0 else { return defaultMinutes }
+        return stored
+    }
+
+    static func duration(_ stored: Int?) -> Duration? {
+        let minutes = minutes(stored)
+        return minutes == 0 ? nil : .seconds(minutes * 60)
+    }
+}
+
 /// A GPT-Live voice: the name the host sends to GPT-Live, and how it sounds.
 /// The names are ChatGPT's voices; a voice the account doesn't have is
 /// refused by GPT-Live when the call starts.
@@ -420,6 +457,13 @@ struct GPTLiveVoice: Equatable, Identifiable {
             GPTLiveVoice(name: "vale", style: AppLocalization.string("Bright")),
         ]
     }
+
+    /// The public GPT-Live API's voices (an API-key call), as Hermes lists
+    /// them. A voice GPT-Live doesn't have is refused when the call starts.
+    static let apiNames = [
+        "marin", "cedar", "quartz", "ripple", "vesper", "willow", "stone",
+        "gleam", "meridian", "bossa", "tempo", "beacon", "delta", "cinder",
+    ]
 
     /// The name as shown in the picker ("Cove · Composed").
     var label: String { "\(name.prefix(1).uppercased())\(name.dropFirst()) · \(style)" }

@@ -86,6 +86,23 @@ voice calls" section saying why, with Save Now to retry at once.
 
 Swiping down the Gemini Live, Grok Live or GPT-Live sheet minimises the call instead of ending it. The call keeps running, and a bar above the composer shows its state, with mute and end controls. When the call is attached to a chat, the bar also names that chat. Tapping the bar or swiping it up, or the composer's voice button, brings the sheet back. End (in the sheet or on the bar), a spoken goodbye, sign-out and server or profile changes still end the call. While minimised the screen can lock as usual; only the full sheet keeps the phone awake. Classic Voice is unchanged: swiping its sheet away still closes it.
 
+## GPT-Live billing: ChatGPT plan or API key
+
+GPT-Live's settings have a **Billing** choice, per profile:
+
+- **ChatGPT plan** (the default): the call bills the ChatGPT subscription the Hermes server is signed in to (`hermes auth`, OpenAI Codex), with ChatGPT's voices.
+- **API key · billed per minute**: the call uses the public GPT-Live API (`gpt-live-1`, the same one Hermes desktop's voice mode uses) on the server's OpenAI API key. OpenAI bills that key per minute of call time, separately from any ChatGPT plan. It has its own voices (marin, cedar, …) and needs the Hermes notifier plugin 0.22 or newer.
+
+The two are kept apart so nobody pays for the one they didn't pick:
+
+- Choosing the API key asks first and says what it costs. Anything Conduit can't read back from an older or newer build counts as the ChatGPT plan.
+- The server has to allow it too: `voice.gpt_live.conduit_api_billing: true` in the profile's config. An OpenAI key that is there for speech-to-text or TTS is not enough on its own. The server also caps API-key calls per day (`voice.gpt_live.conduit_api_daily_calls`, 20 by default).
+- Every call asks the server for one path by name, and the server answers with the path it used. If they differ, Conduit hangs up before any audio, and neither path ever falls back to the other.
+- The call screen shows which path a call is on, under its title ("ChatGPT plan", or "API key · billed per minute" in orange), and the minimised bar says "GPT-Live · API key".
+- An API-key call has a time limit (20 minutes by default, or none): when it's reached, the model says goodbye and the call ends.
+- When Hermes calls you, the call uses the ChatGPT plan unless "Calls from Hermes on the API key" is on.
+- Apple Watch GPT-Live calls always use the ChatGPT plan.
+
 ## Talking over the agent (barge-in)
 
 Every voice mode lets you cut in by speaking when you wear headphones, AirPods or a wired headset: the microphone stays open while the agent talks, and the agent stops when you start. GPT-Live also allows it on the phone's speaker and in the car, because WebRTC cancels the speaker's echo.

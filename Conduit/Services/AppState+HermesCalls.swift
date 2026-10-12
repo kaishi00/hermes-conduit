@@ -188,7 +188,8 @@ extension AppState {
     private func watchCallVoiceCheck(_ voice: WatchCallVoices.Voice) async -> Bool? {
         switch voice {
         case .geminiLive: return (try? await geminiLiveTokenClient.availability())?.isAvailable
-        case .gptLive: return (try? await gptLiveClient.availability())?.isAvailable
+        // The Watch's GPT-Live is the subscription's, whatever the phone uses.
+        case .gptLive: return (try? await gptLiveClient.availability(billing: .subscription))?.isAvailable
         case .grokLive: return (try? await grokLiveClient.availability())?.isAvailable
         }
     }

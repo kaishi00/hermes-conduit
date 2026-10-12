@@ -3,10 +3,11 @@
 //  Conduit
 //
 //  One GPT-Live call: the WebRTC offer goes to the Hermes host, which
-//  starts the call on the ChatGPT subscription and returns GPT-Live's
-//  answer; the session is ready once GPT-Live reports `session.started` on
-//  the data channel. A call that drops is not resumed (a new call is a new
-//  conversation): the session fails and the user can start again.
+//  starts the call on the path the profile chose (the ChatGPT subscription
+//  or the host's API key) and returns GPT-Live's answer; the session is
+//  ready once GPT-Live reports `session.started` on the data channel. A
+//  call that drops is not resumed (a new call is a new conversation): the
+//  session fails and the user can start again.
 //
 
 import Foundation
@@ -42,6 +43,14 @@ final class GPTLiveSession {
     /// True when the host made the model speak first: a greeting, or a call
     /// Hermes placed (#544).
     private(set) var greetingApplied = false
+    /// The path the host confirmed it billed this call on; it also picks
+    /// the event set the call speaks.
+    private(set) var billing: GPTLiveBilling = .subscription
+    private var dialect: GPTLiveProtocol.Dialect { GPTLiveProtocol.Dialect(billing) }
+    /// Builds the API's missing `turn.done`s.
+    private var turns = GPTLiveProtocol.TurnAssembler()
+    /// Closes an API turn once nobody has said anything for a moment.
+    private var quietTask: Task<Void, Never>?
 
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
     var onStateChange: (@MainActor (State) -> Void)?
@@ -101,6 +110,8 @@ final class GPTLiveSession {
         guard state == .idle || state == .stopped || isFailed else { return }
         self.initialCaptureAuthorization = initialCaptureAuthorization
         sessionID = nil
+        billing = .subscription
+        turns = GPTLiveProtocol.TurnAssembler()
         state = .connecting
         let peer = makePeer()
         self.peer = peer
@@ -143,7 +154,7 @@ final class GPTLiveSession {
     @discardableResult
     func appendContext(_ text: String, channel: GPTLiveProtocol.Channel, delegationID: String?) -> Bool {
         guard state == .ready, let peer else { return false }
-        let messages = GPTLiveProtocol.contextAppendMessages(text, channel: channel, delegationID: delegationID)
+        let messages = GPTLiveProtocol.contextAppendMessages(text, channel: channel, delegationID: delegationID, dialect: dialect)
         guard !messages.isEmpty else { return true }
         for (index, message) in messages.enumerated() {
             guard let encoded = try? GPTLiveProtocol.encode(message), peer.send(encoded) else {
@@ -189,6 +200,7 @@ final class GPTLiveSession {
             let answer = try await client.createSession(offer: offer, history: history, voice: voice, briefing: briefing, greeting: greeting, callOpening: callOpening)
             guard isCurrent(peer) else { return }
             sessionID = answer.sessionID
+            billing = answer.billing
             briefingApplied = answer.briefingApplied
             greetingApplied = answer.greetingApplied
             voiceNote = Self.voiceNote(requested: voice, applied: answer.voice)
@@ -225,6 +237,33 @@ final class GPTLiveSession {
 
     private func received(_ text: String) {
         guard let event = GPTLiveProtocol.decode(text) else { return }
+        guard dialect == .api else {
+            process(event)
+            return
+        }
+        let current = peer
+        for assembled in turns.receive(event) {
+            process(assembled)
+            // A close or failure tore the call down: nothing after it is heard.
+            guard peer != nil, peer === current else { return }
+        }
+        scheduleQuietFlush()
+    }
+
+    /// Ends the open API turn once the talk has been quiet for a moment.
+    private func scheduleQuietFlush() {
+        quietTask?.cancel()
+        quietTask = nil
+        guard turns.hasOpenTurn, let current = peer else { return }
+        quietTask = Task { [weak self, weak current] in
+            do { try await Task.sleep(for: GPTLiveProtocol.TurnAssembler.quietInterval) } catch { return }
+            guard let self, let current, self.peer === current else { return }
+            self.quietTask = nil
+            if let done = self.turns.flush() { self.process(done) }
+        }
+    }
+
+    private func process(_ event: GPTLiveProtocol.ServerEvent) {
         switch event {
         case .sessionStarted(let id):
             if let id { sessionID = id }
@@ -290,6 +329,8 @@ final class GPTLiveSession {
         startWatchdog = nil
         reconnectWatchdog?.cancel()
         reconnectWatchdog = nil
+        quietTask?.cancel()
+        quietTask = nil
         peer?.onMessage = nil
         peer?.onDisconnected = nil
         peer?.onConnectionInterrupted = nil

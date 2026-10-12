@@ -32,6 +32,8 @@ protocol GPTLiveSessionControlling: AnyObject {
     var briefingApplied: Bool { get }
     /// True when the host already made the model greet first.
     var greetingApplied: Bool { get }
+    /// The path the host confirmed it billed the call on.
+    var billing: GPTLiveBilling { get }
     func start()
     func start(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?)
     /// Ends the call (telling GPT-Live, when it can hear it).
@@ -45,6 +47,7 @@ protocol GPTLiveSessionControlling: AnyObject {
 
 extension GPTLiveSessionControlling {
     var greetingApplied: Bool { false }
+    var billing: GPTLiveBilling { .subscription }
     func start(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?) { start() }
 }
 
@@ -161,6 +164,15 @@ final class GPTLiveConversationController: ObservableObject {
     @Published private(set) var isSpeakerMuted = false
     /// Why the chosen voice isn't the one speaking, when the host didn't use it.
     @Published private(set) var voiceNote: String?
+    /// The path the running call is billed on, once the host confirmed it;
+    /// nil before then. Shown on the call so it's never a surprise.
+    @Published private(set) var billing: GPTLiveBilling?
+    /// Set when an API-key call reached its time limit and is ending.
+    @Published private(set) var limitNote: String?
+    /// How long an API-key call may run before it ends itself; nil for no
+    /// limit. Read when the call connects.
+    var apiCallLimit: (@MainActor () -> Duration?)?
+    private var callLimitTask: Task<Void, Never>?
 
     /// A turn `turn.done` just completed, with its final text: what
     /// VoiceOver announces (the streamed fragments before it aren't).
@@ -302,6 +314,8 @@ final class GPTLiveConversationController: ObservableObject {
         phase = .connecting
         transcript = []
         voiceNote = nil
+        billing = nil
+        limitNote = nil
         hasSentOpening = false
         finishedTurn = nil
         endTask?.cancel()
@@ -363,6 +377,8 @@ final class GPTLiveConversationController: ObservableObject {
     func stop() {
         idleFlushTask?.cancel()
         idleFlushTask = nil
+        callLimitTask?.cancel()
+        callLimitTask = nil
         endTask?.cancel()
         endTask = nil
         endRequestedAt = nil
@@ -419,6 +435,26 @@ final class GPTLiveConversationController: ObservableObject {
         if changesJobs { sendJobStatus() }
     }
 
+    // MARK: API-key time limit
+
+    /// An API-key call is billed per minute: past the user's limit it says
+    /// goodbye and ends, like a spoken "goodbye".
+    private func startCallLimitIfNeeded() {
+        guard billing == .api, callLimitTask == nil, let limit = apiCallLimit?() else { return }
+        callLimitTask = Task { [weak self] in
+            do { try await Task.sleep(for: limit) } catch { return }
+            guard let self, self.isActive, !self.isEnding else { return }
+            self.callLimitTask = nil
+            self.limitNote = AppLocalization.string("This call reached its time limit on the API key.")
+            self.session?.appendContext(Self.timeLimitGoodbye, channel: .speakable, delegationID: nil)
+            self.requestEnd()
+        }
+    }
+
+    /// Asks the model to wrap up when the time limit ends the call. Written
+    /// for the model, not shown as UI copy, so not localized.
+    static let timeLimitGoodbye = "[Conduit: this call has reached the time limit the user set. Tell them in one short sentence that the call is ending now, then say goodbye.]"
+
     // MARK: Hands-free end
 
     /// Ends the conversation hands-free (the user's whole utterance was one
@@ -467,6 +503,8 @@ final class GPTLiveConversationController: ObservableObject {
         switch state {
         case .ready:
             voiceNote = session?.voiceNote
+            billing = session?.billing
+            startCallLimitIfNeeded()
             session?.setMicrophoneEnabled(!isMicrophoneMuted && endRequestedAt == nil)
             session?.setSpeakerEnabled(!isSpeakerMuted)
             // Given with the call when the host takes it there: appended after
@@ -863,6 +901,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// Detaches and closes the current session so none of its callbacks
     /// reach this controller again.
     private func retireSession() {
+        callLimitTask?.cancel()
+        callLimitTask = nil
         guard let old = session else { return }
         session = nil
         voiceNote = nil

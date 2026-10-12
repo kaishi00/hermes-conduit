@@ -1916,6 +1916,81 @@ final class AppState: ObservableObject {
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
     }
 
+    // MARK: GPT-Live billing (#559)
+
+    /// Who pays for this profile's GPT-Live calls, as chosen in Settings.
+    var gptLiveBilling: GPTLiveBilling {
+        loadVoiceProfilePreferences(profile: activeProfile).resolvedGPTLiveBilling
+    }
+
+    /// Applies from the next GPT-Live conversation. Settings only calls it
+    /// with `.api` after the user confirmed per-minute billing.
+    func setGPTLiveBilling(_ billing: GPTLiveBilling) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: GPTLiveBilling? = billing == .subscription ? nil : billing
+        guard preferences.gptLiveBilling != stored else { return }
+        objectWillChange.send()
+        preferences.gptLiveBilling = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// The path the next GPT-Live call asks the host for. A call Hermes
+    /// placed stays on the subscription unless the user allowed API-key
+    /// calls for those too: nobody is billed for a call they didn't start
+    /// without having said so.
+    var gptLiveCallBilling: GPTLiveBilling {
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        guard preferences.resolvedGPTLiveBilling == .api else { return .subscription }
+        let hermesPlacedCall = liveHermesCall != nil || pendingHermesCall != nil
+        if hermesPlacedCall, preferences.gptLiveAPIHermesCalls != true { return .subscription }
+        return .api
+    }
+
+    /// The voice for the next call, from the list of the path it's billed on.
+    var gptLiveCallVoice: String? {
+        gptLiveCallBilling == .api ? gptLiveAPIVoice : gptLiveVoice
+    }
+
+    var gptLiveAPIVoice: String? {
+        loadVoiceProfilePreferences(profile: activeProfile).gptLiveAPIVoice
+    }
+
+    func setGPTLiveAPIVoice(_ voice: String?) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored = voice.flatMap { $0.isEmpty ? nil : $0 }
+        guard preferences.gptLiveAPIVoice != stored else { return }
+        objectWillChange.send()
+        preferences.gptLiveAPIVoice = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    var gptLiveAPIHermesCalls: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).gptLiveAPIHermesCalls ?? false
+    }
+
+    func setGPTLiveAPIHermesCalls(_ allowed: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Bool? = allowed ? true : nil
+        guard preferences.gptLiveAPIHermesCalls != stored else { return }
+        objectWillChange.send()
+        preferences.gptLiveAPIHermesCalls = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
+    /// Minutes an API-key call may run; 0 is no limit.
+    var gptLiveAPIMaxMinutes: Int {
+        GPTLiveAPICallLimit.minutes(loadVoiceProfilePreferences(profile: activeProfile).gptLiveAPIMaxMinutes)
+    }
+
+    func setGPTLiveAPIMaxMinutes(_ minutes: Int) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        let stored: Int? = minutes == GPTLiveAPICallLimit.defaultMinutes ? nil : max(0, minutes)
+        guard preferences.gptLiveAPIMaxMinutes != stored else { return }
+        objectWillChange.send()
+        preferences.gptLiveAPIMaxMinutes = stored
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+    }
+
     /// Whether GPT-Live gets the Hermes host's memory on this profile. Off
     /// until the user turns it on: it sends that memory to OpenAI.
     var gptLiveMemoryEnabled: Bool {
@@ -1981,6 +2056,9 @@ final class AppState: ObservableObject {
     /// through whichever dashboard bridge is current at call time.
     lazy var gptLiveClient = GPTLiveClient(profile: { [weak self] in
         self?.activeProfile ?? "default"
+    }, billing: { [weak self] in
+        // Never the API key without an AppState to say the user chose it.
+        self?.gptLiveCallBilling ?? .subscription
     }, request: { [weak self] path, method, body, timeout in
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
@@ -2004,7 +2082,7 @@ final class AppState: ObservableObject {
                 GPTLiveSession(
                     client: client,
                     history: self?.liveVoiceResumeContext?.gptLiveHistory ?? [],
-                    voice: self?.gptLiveVoice,
+                    voice: self?.gptLiveCallVoice,
                     briefing: GPTLiveConversationController.briefing(
                         memory: self?.gptLiveMemoryContext,
                         personality: self?.gptLivePersonality,
@@ -2053,6 +2131,10 @@ final class AppState: ObservableObject {
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeGPTLiveConversation() }
+        controller.apiCallLimit = { [weak self] in
+            guard let self else { return nil }
+            return GPTLiveAPICallLimit.duration(self.loadVoiceProfilePreferences(profile: self.activeProfile).gptLiveAPIMaxMinutes)
+        }
         return controller
     }()
 
@@ -25365,7 +25447,8 @@ final class AppState: ObservableObject {
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
-        let status = try await gptLiveClient.availability()
+        // The host's Watch bridge only starts GPT-Live on the subscription.
+        let status = try await gptLiveClient.availability(billing: .subscription)
         noteWatchCallVoice(.gptLive, ready: status.isAvailable)
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))

@@ -91,6 +91,7 @@ final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
     var voiceNote: String?
     var briefingApplied = false
     var greetingApplied = false
+    var billing: GPTLiveBilling = .subscription
     var failAppends = false
     private(set) var started = 0
     private(set) var stopped = 0
@@ -3490,6 +3491,243 @@ extension VoiceConversationControllerTests {
         await settle(20)
         XCTAssertEqual(fake.created, 0, "\(fake.submissions)")
         controller.stop()
+    }
+}
+
+// MARK: - Billing: ChatGPT plan or API key (#559)
+
+@MainActor
+extension HermesVoiceGatewayTimeoutTests {
+    func testGPTLiveNamesTheBillingInEveryRequestAndRefusesAnAnswerOnAnotherPath() async throws {
+        var billing = GPTLiveBilling.subscription
+        var bodies: [[String: Any]?] = []
+        var reply: [String: Any] = [
+            "ok": true, "auth": "subscription", "session": ["id": "rtc_abc"],
+            "transport": ["type": "webrtc", "sdp": "v=0 answer"],
+        ]
+        let client = GPTLiveClient(billing: { billing }, request: { _, _, body, _ in
+            bodies.append(body)
+            return reply
+        })
+        let subscription = try await client.createSession(offer: "v=0 offer", history: [])
+        XCTAssertEqual(bodies.last??["billing"] as? String, "subscription", "Named even when it's the subscription")
+        XCTAssertEqual(subscription.billing, .subscription)
+
+        billing = .api
+        do {
+            _ = try await client.createSession(offer: "v=0 offer", history: [])
+            XCTFail("An older plugin answers on the subscription: never connected as an API call")
+        } catch {
+            XCTAssertEqual(error as? GPTLiveClientError, .notAPIKey("subscription"))
+        }
+        XCTAssertEqual(bodies.last??["billing"] as? String, "api")
+
+        reply["auth"] = "api"
+        reply["session"] = ["id": "sess_live1"]
+        let api = try await client.createSession(offer: "v=0 offer", history: [])
+        XCTAssertEqual(api.billing, .api)
+        XCTAssertEqual(api.sessionID, "sess_live1")
+
+        billing = .subscription
+        do {
+            _ = try await client.createSession(offer: "v=0 offer", history: [])
+            XCTFail("An API-billed answer to a subscription request is refused")
+        } catch {
+            XCTAssertEqual(error as? GPTLiveClientError, .notSubscription("api"))
+        }
+    }
+
+    func testGPTLiveAPIAvailabilityIsReadFromItsOwnStatusBlock() {
+        let older: [String: Any] = ["ok": true, "auth": "subscription", "available": true, "model": "gpt-live-1-codex"]
+        XCTAssertTrue(GPTLiveClient.availability(from: older).isAvailable)
+        let olderAPI = GPTLiveClient.availability(from: older, billing: .api)
+        XCTAssertFalse(olderAPI.isAvailable, "A plugin without the api block can't bill the API key")
+        XCTAssertEqual(olderAPI, .unavailable(reason: "GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer."))
+
+        var status = older
+        status["api"] = ["auth": "api", "enabled": false, "available": false, "reason": "It is off"]
+        XCTAssertEqual(GPTLiveClient.availability(from: status, billing: .api), .unavailable(reason: "It is off"))
+        XCTAssertTrue(GPTLiveClient.availability(from: status).isAvailable, "The subscription keeps its own verdict")
+
+        status["api"] = ["auth": "api", "enabled": true, "available": true, "model": "gpt-live-1", "voice": "marin"]
+        XCTAssertEqual(GPTLiveClient.availability(from: status, billing: .api), .available(model: "gpt-live-1", voice: "marin"))
+        status["available"] = false
+        XCTAssertTrue(GPTLiveClient.availability(from: status, billing: .api).isAvailable, "Each path is checked on its own")
+    }
+
+    func testGPTLiveDecodesThePublicAPIEvents() {
+        XCTAssertEqual(GPTLiveProtocol.decode(#"{"type":"session.input_transcript.delta","delta":"check ","start_ms":0,"end_ms":400}"#), .inputTranscript("check "))
+        XCTAssertEqual(GPTLiveProtocol.decode(#"{"type":"session.output_transcript.delta","delta":"On it"}"#), .outputTranscript("On it"))
+        XCTAssertEqual(
+            GPTLiveProtocol.decode(#"{"type":"session.delegation.created","delegation":{"id":"dlg_1","type":"client","target":"client"}}"#),
+            .delegation(id: "dlg_1", text: ""),
+            "The API's delegation carries no text: the request is in the transcript"
+        )
+        XCTAssertNil(GPTLiveProtocol.decode(#"{"type":"session.delegation.created","delegation":{"id":"dlg_2","target":"responses"}}"#))
+        XCTAssertEqual(GPTLiveProtocol.decode(#"{"type":"session.closed","reason":"client_closed","usage":{"seconds":61}}"#), .sessionClosed(reason: "client_closed"))
+    }
+
+    func testGPTLiveAPIAppendsAreCommentaryOrThinkingWithANullDelegationForTheSession() throws {
+        let said = GPTLiveProtocol.contextAppendMessages("Hermes found it.", channel: .speakable, delegationID: "dlg_1", dialect: .api)
+        XCTAssertEqual(said.count, 1)
+        XCTAssertEqual(said[0]["type"] as? String, "session.commentary.append")
+        XCTAssertEqual(said[0]["content"] as? String, "Hermes found it.")
+        XCTAssertEqual(said[0]["delegation_id"] as? String, "dlg_1")
+
+        let quiet = GPTLiveProtocol.contextAppendMessages("Job 1 is running.", channel: .commentary, dialect: .api)
+        XCTAssertEqual(quiet[0]["type"] as? String, "session.thinking.append")
+        let encoded = try GPTLiveProtocol.encode(quiet[0])
+        XCTAssertTrue(encoded.contains(#""delegation_id":null"#), encoded)
+
+        let long = GPTLiveProtocol.contextAppendMessages(String(repeating: "a", count: 1_200), channel: .speakable, dialect: .api)
+        XCTAssertEqual(long.count, 3, "Chunked like the subscription's appends")
+    }
+
+    func testGPTLiveTurnAssemblerEndsATurnWhenTheOtherSpeakerStartsOrTheModelDelegates() {
+        var turns = GPTLiveProtocol.TurnAssembler()
+        XCTAssertEqual(turns.receive(.inputTranscript("check ")), [.inputTranscript("check ")])
+        XCTAssertEqual(turns.receive(.inputTranscript("the build")), [.inputTranscript("the build")])
+        XCTAssertTrue(turns.hasOpenTurn)
+        XCTAssertEqual(turns.receive(.delegation(id: "dlg_1", text: "")), [
+            .turnDone(role: "user", transcript: "check the build"), .delegation(id: "dlg_1", text: ""),
+        ])
+        XCTAssertFalse(turns.hasOpenTurn)
+        XCTAssertEqual(turns.receive(.outputTranscript("On it.")), [.outputTranscript("On it.")])
+        XCTAssertEqual(turns.receive(.delegation(id: "dlg_2", text: "")), [.delegation(id: "dlg_2", text: "")],
+                       "A delegation doesn't end the model's own turn")
+        XCTAssertEqual(turns.receive(.inputTranscript("thanks")), [
+            .turnDone(role: "assistant", transcript: "On it."), .inputTranscript("thanks"),
+        ])
+        XCTAssertEqual(turns.flush(), .turnDone(role: "user", transcript: "thanks"))
+        XCTAssertNil(turns.flush())
+        _ = turns.receive(.outputTranscript("Bye"))
+        XCTAssertEqual(turns.receive(.sessionClosed(reason: nil)), [.turnDone(role: "assistant", transcript: "Bye"), .sessionClosed(reason: nil)])
+    }
+
+    func testGPTLiveSessionOnTheAPIKeySpeaksThePublicEventsAndMakesTheTurns() async throws {
+        let client = FakeGPTLiveClient()
+        client.answerResult = .success(GPTLiveSessionAnswer(sessionID: "sess_1", sdp: "v=0 answer", billing: .api))
+        let (session, peer) = makeGPTSession(client: client)
+        var events: [GPTLiveProtocol.ServerEvent] = []
+        session.onEvent = { events.append($0) }
+        session.start()
+        await settle()
+        XCTAssertEqual(session.billing, .api)
+        peer.deliver(["type": "session.started", "session": ["id": "sess_1"]])
+        XCTAssertEqual(session.state, .ready)
+
+        peer.deliver(["type": "session.input_transcript.delta", "delta": "what's up"])
+        peer.deliver(["type": "session.output_transcript.delta", "delta": "Not much."])
+        XCTAssertTrue(events.contains(.turnDone(role: "user", transcript: "what's up")), "\(events)")
+
+        // The model goes quiet: its turn ends on its own.
+        try await Task.sleep(for: GPTLiveProtocol.TurnAssembler.quietInterval + .milliseconds(300))
+        XCTAssertEqual(events.last, .turnDone(role: "assistant", transcript: "Not much."))
+
+        XCTAssertTrue(session.appendContext("Hermes says hi.", channel: .speakable, delegationID: "dlg_1"))
+        XCTAssertEqual(peer.sent.last?["type"] as? String, "session.commentary.append")
+        XCTAssertEqual(peer.sent.last?["delegation_id"] as? String, "dlg_1")
+        session.stop()
+        XCTAssertEqual(peer.sent.last?["type"] as? String, "session.close")
+    }
+
+    func testGPTLiveSubscriptionSessionKeepsTheCodexEventsAndItsOwnTurns() async {
+        let (session, peer) = makeGPTSession(client: FakeGPTLiveClient())
+        var events: [GPTLiveProtocol.ServerEvent] = []
+        session.onEvent = { events.append($0) }
+        session.start()
+        await settle()
+        XCTAssertEqual(session.billing, .subscription)
+        peer.deliver(["type": "session.started", "session": ["id": "sess_1"]])
+        peer.deliver(["type": "input_transcript.added", "item": ["text": "hi"]])
+        peer.deliver(["type": "output_transcript.added", "item": ["text": "hello"]])
+        XCTAssertFalse(events.contains { if case .turnDone = $0 { return true }; return false },
+                       "The subscription sends its own turn.done")
+        XCTAssertTrue(session.appendContext("note", channel: .commentary, delegationID: nil))
+        XCTAssertEqual(peer.sent.last?["type"] as? String, "session.context.append")
+    }
+
+    func testGPTLiveBillingPreferencesDefaultToTheSubscriptionAndUnknownValuesStayThere() throws {
+        let preferences = VoiceProfilePreferences()
+        XCTAssertEqual(preferences.resolvedGPTLiveBilling, .subscription)
+        let unknown = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data(#"{"gptLiveEnabled":true,"gptLiveBilling":"both"}"#.utf8))
+        XCTAssertEqual(unknown.resolvedGPTLiveBilling, .subscription, "An unreadable value never becomes API billing")
+        var api = VoiceProfilePreferences()
+        api.gptLiveBilling = .api
+        api.gptLiveAPIMaxMinutes = 0
+        let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(api))
+        XCTAssertEqual(roundTrip.resolvedGPTLiveBilling, .api)
+        XCTAssertNil(GPTLiveAPICallLimit.duration(roundTrip.gptLiveAPIMaxMinutes), "0 is no limit")
+        XCTAssertEqual(GPTLiveAPICallLimit.duration(nil), .seconds(GPTLiveAPICallLimit.defaultMinutes * 60))
+        XCTAssertEqual(GPTLiveAPICallLimit.duration(-3), .seconds(GPTLiveAPICallLimit.defaultMinutes * 60))
+    }
+}
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testGPTLiveCallShowsTheBillingTheHostConfirmed() async {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        await controller.start()
+        XCTAssertNil(controller.billing, "Nothing is claimed before the host confirmed it")
+        session.billing = .api
+        session.becomeReady()
+        XCTAssertEqual(controller.billing, .api)
+        controller.stop()
+        await controller.start()
+        XCTAssertNil(controller.billing, "A new call starts unconfirmed again")
+        controller.stop()
+    }
+
+    func testGPTLiveAPIKeyCallEndsItselfAtItsTimeLimit() async throws {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        controller.apiCallLimit = { .milliseconds(50) }
+        await controller.start()
+        session.billing = .api
+        session.becomeReady()
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(controller.phase, .ending)
+        XCTAssertNotNil(controller.limitNote)
+        XCTAssertTrue(session.speakable.contains { $0.text == GPTLiveConversationController.timeLimitGoodbye })
+        controller.stop()
+    }
+
+    func testGPTLiveSubscriptionCallHasNoTimeLimit() async throws {
+        let (controller, session, _, _) = makeGPTController(clock: Date.init)
+        controller.apiCallLimit = { .milliseconds(50) }
+        await controller.start()
+        session.becomeReady()
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertNotEqual(controller.phase, .ending)
+        XCTAssertNil(controller.limitNote)
+        controller.stop()
+    }
+}
+
+@MainActor
+extension AppStateVoiceCapabilityTests {
+    func testGPTLiveAPIBillingIsChosenPerProfileAndCallsFromHermesStayOnTheSubscription() {
+        let appState = makeGPTLiveAppState()
+        XCTAssertEqual(appState.gptLiveBilling, .subscription)
+        XCTAssertEqual(appState.gptLiveCallBilling, .subscription)
+
+        appState.setGPTLiveBilling(.api)
+        XCTAssertEqual(appState.gptLiveCallBilling, .api)
+        appState.setGPTLiveAPIVoice("cedar")
+        appState.setGPTLiveVoice("ember")
+        XCTAssertEqual(appState.gptLiveCallVoice, "cedar", "The API key's own voice list")
+
+        appState.pendingHermesCall = HermesCallOpening(kind: .done, title: "Build", result: nil, reason: nil, sessionIDs: [])
+        XCTAssertEqual(appState.gptLiveCallBilling, .subscription, "A call Hermes placed isn't billed to the key unless allowed")
+        XCTAssertEqual(appState.gptLiveCallVoice, "ember")
+        appState.setGPTLiveAPIHermesCalls(true)
+        XCTAssertEqual(appState.gptLiveCallBilling, .api)
+        appState.pendingHermesCall = nil
+
+        appState.setGPTLiveBilling(.subscription)
+        XCTAssertEqual(appState.gptLiveCallBilling, .subscription)
+        XCTAssertEqual(appState.gptLiveAPIMaxMinutes, GPTLiveAPICallLimit.defaultMinutes)
+        appState.setGPTLiveAPIMaxMinutes(0)
+        XCTAssertEqual(appState.gptLiveAPIMaxMinutes, 0)
     }
 }
 

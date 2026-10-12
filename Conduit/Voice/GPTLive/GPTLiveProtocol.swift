@@ -14,6 +14,14 @@
 //  for quiet progress) and adds context of its own with
 //  `session.context.append`. Each appended text is at most 500 UTF-8 bytes.
 //
+//  GPT-Live on an API key speaks the public GPT-Live API's events instead
+//  (`Dialect.api`, the same ones Hermes desktop's voice mode uses):
+//  `session.input_transcript.delta` / `session.output_transcript.delta`,
+//  `session.delegation.created` (which carries no text), and appends as
+//  `session.commentary.append` (said aloud) or `session.thinking.append`
+//  (quiet). It has no `turn.done`: `TurnAssembler` makes one when the other
+//  speaker starts, a delegation comes, or the talk goes quiet.
+//
 
 import Foundation
 
@@ -22,6 +30,18 @@ enum GPTLiveProtocol {
     static let dataChannelLabel = "oai-events"
     /// The most UTF-8 bytes one context append may carry.
     static let contextAppendMaxBytes = 500
+
+    /// Which event set a call speaks, from the path the host billed.
+    enum Dialect: Equatable {
+        /// The ChatGPT subscription's Codex "frameless" events.
+        case codex
+        /// The public GPT-Live API (an API-key call).
+        case api
+
+        init(_ billing: GPTLiveBilling) {
+            self = billing == .api ? .api : .codex
+        }
+    }
 
     // MARK: Server → client
 
@@ -54,6 +74,18 @@ enum GPTLiveProtocol {
             return transcriptText(object).map(ServerEvent.inputTranscript)
         case "output_transcript.added":
             return transcriptText(object).map(ServerEvent.outputTranscript)
+        // The public API's names: no event shares a name with the Codex
+        // set, so one decoder reads both.
+        case "session.input_transcript.delta":
+            return (object["delta"] as? String).map(ServerEvent.inputTranscript)
+        case "session.output_transcript.delta":
+            return (object["delta"] as? String).map(ServerEvent.outputTranscript)
+        case "session.delegation.created":
+            // The request itself is in the transcript, never in the event.
+            guard let delegation = object["delegation"] as? [String: Any],
+                  (delegation["target"] as? String ?? "client") == "client",
+                  let id = delegation["id"] as? String, !id.isEmpty else { return nil }
+            return .delegation(id: id, text: "")
         case "turn.done":
             guard let turn = object["turn"] as? [String: Any],
                   let role = turn["role"] as? String,
@@ -96,8 +128,18 @@ enum GPTLiveProtocol {
     /// Context appends for `text`, one message per 500-byte chunk. With a
     /// delegation id they answer that delegation; without, they add to the
     /// session.
-    static func contextAppendMessages(_ text: String, channel: Channel, delegationID: String? = nil) -> [[String: Any]] {
-        chunks(text).map { chunk in
+    static func contextAppendMessages(_ text: String, channel: Channel, delegationID: String? = nil, dialect: Dialect = .codex) -> [[String: Any]] {
+        if dialect == .api {
+            return chunks(text).map { chunk -> [String: Any] in
+                [
+                    "type": channel == .speakable ? "session.commentary.append" : "session.thinking.append",
+                    "content": chunk,
+                    // Null adds to the session rather than a delegation.
+                    "delegation_id": delegationID.map { $0 as Any } ?? NSNull(),
+                ]
+            }
+        }
+        return chunks(text).map { chunk in
             var message: [String: Any] = [
                 "type": delegationID == nil ? "session.context.append" : "delegation.context.append",
                 "channel": channel.rawValue,
@@ -145,6 +187,58 @@ enum GPTLiveProtocol {
     static func encode(_ message: [String: Any]) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: message, options: [.sortedKeys])
         return String(decoding: data, as: UTF8.self)
+    }
+
+    // MARK: Turns (public API)
+
+    /// Makes the `turn.done` the public API doesn't send: a turn ends when
+    /// the other speaker starts, when the model delegates (the user's
+    /// request is over), or after `quietInterval` without new words
+    /// (`flush`, which the session calls on a timer). Pure, so testable.
+    struct TurnAssembler {
+        static let quietInterval: Duration = .milliseconds(1500)
+
+        private var role: String?
+        private var text = ""
+
+        /// Whether a turn is open (and a quiet timer should run).
+        var hasOpenTurn: Bool { role != nil }
+
+        /// The events to hand on for `event`: a `turnDone` first when it
+        /// closes the open turn, then the event itself.
+        mutating func receive(_ event: ServerEvent) -> [ServerEvent] {
+            switch event {
+            case .inputTranscript(let fragment):
+                return take(fragment, role: "user") + [event]
+            case .outputTranscript(let fragment):
+                return take(fragment, role: "assistant") + [event]
+            case .delegation:
+                guard role == "user", let done = flush() else { return [event] }
+                return [done, event]
+            case .sessionClosed:
+                guard let done = flush() else { return [event] }
+                return [done, event]
+            default:
+                return [event]
+            }
+        }
+
+        /// Closes the open turn, if any.
+        mutating func flush() -> ServerEvent? {
+            guard let role else { return nil }
+            let done = ServerEvent.turnDone(role: role, transcript: text)
+            self.role = nil
+            text = ""
+            return done
+        }
+
+        private mutating func take(_ fragment: String, role: String) -> [ServerEvent] {
+            var closed: [ServerEvent] = []
+            if self.role != role, let done = flush() { closed.append(done) }
+            self.role = role
+            text += fragment
+            return closed
+        }
     }
 
     // MARK: Seeded history
