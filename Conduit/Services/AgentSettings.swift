@@ -385,6 +385,12 @@ final class AgentSettingsSync: ObservableObject {
                        scope: scope)
                 continue
             }
+            // The user changed it while the request waited: their value stays.
+            if let from = item.request.from, descriptor.read() != from {
+                record(item.id, status: "conflict",
+                       note: "The user changed this setting after Hermes read it; the user's value was kept.", scope: scope)
+                continue
+            }
             descriptor.write(item.request.value)
             changed = true
             record(item.id, status: "applied", note: "The user approved it.", scope: scope)

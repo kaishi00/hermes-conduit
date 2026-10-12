@@ -152,6 +152,20 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertNil(sync.applied)
     }
 
+    func testApplyKeepsAValueTheUserChangedWhileTheRequestWaited() async {
+        let fake = FakeAgentSettings()
+        fake.responses = [["ok": true, "pending": [pending("req-tone-1", "voice.live.tone", "relaxed", from: "default")]]]
+        let sync = AgentSettingsSync(defaults: agentDefaults())
+        await sync.sync(scope: "h|default", profile: "default", catalog: fake.catalog, request: fake.request)
+
+        fake.values["voice.live.tone"] = .string("professional")
+        sync.resolve(sync.review, apply: true, scope: "h|default", catalog: fake.catalog)
+
+        XCTAssertEqual(fake.values["voice.live.tone"], .string("professional"))
+        await sync.sync(scope: "h|default", profile: "default", catalog: fake.catalog, request: fake.request)
+        XCTAssertEqual((fake.bodies.last?["results"] as? [[String: Any]])?.first?["status"] as? String, "conflict")
+    }
+
     func testAValueTheUserChangedSinceHermesReadItIsKept() async {
         let fake = FakeAgentSettings()
         fake.values["voice.live.tone"] = .string("relaxed")
