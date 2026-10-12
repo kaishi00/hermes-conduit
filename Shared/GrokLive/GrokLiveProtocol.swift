@@ -27,7 +27,25 @@ enum GrokLiveProtocol {
     /// which Gemini and GPT-Live hand to Hermes. Written for
     /// the model and sent verbatim (the Voice settings preview shows it as
     /// sent, like the rest of the instructions), so not localized.
-    static let delegationInstructions = "\nYou can't see the user's email, messages, calendar, health or patient portals, bank or other accounts, files or systems, and web lookups can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there, call start_job with their request instead of saying you can't. If they only ask whether you can see it, say Hermes can check it for them. Never answer it from guesses or a web lookup, and if start_job fails, tell them plainly."
+    static let delegationInstructions = "\nYou can't see the user's email, messages, calendar and schedule, to-dos, health or patient portals, bank or other accounts, files or systems, and web lookups can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there (\"what's on my plate today?\" included), call start_job with their request instead of saying you can't. If they only ask whether you can see it, say Hermes can check it for them. Never answer it from guesses or a web lookup, and if start_job fails, tell them plainly."
+
+    /// What Grok's instructions add after the shared ones: the delegation
+    /// rules and the clock.
+    static func grokInstructions(now: Date, timeZone: TimeZone) -> String {
+        delegationInstructions + clockInstructions(now: now, timeZone: timeZone)
+    }
+
+    /// The phone's clock at the start of the call, for Grok's instructions.
+    /// Grok has no clock of its own: asked the time, it searched the web
+    /// and answered with the wrong zone and hour. Written for the model, so
+    /// formatted in a fixed English locale, not localized.
+    static func clockInstructions(now: Date, timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "EEEE, MMMM d, yyyy, h:mm a"
+        return "\nWhen this call started it was \(formatter.string(from: now)) in the user's time zone (\(timeZone.identifier)). Use that for the time, date and day of the week, counting on from it as the call goes; never look them up on the web."
+    }
 
     // MARK: Client → server
 
@@ -238,8 +256,9 @@ enum GrokLiveProtocol {
     /// nothing. Only a snapshot that extends the last one adds words: an
     /// appended transcript can't take words back, so a revision of earlier
     /// words ("send mail" then "send the mail") adds nothing rather than
-    /// repeating them. The session keeps the revision as the baseline, so
-    /// words said after it still arrive.
+    /// repeating them. The session keeps a longer revision as the baseline:
+    /// words a later snapshot adds after it still arrive, but the revised
+    /// words themselves never reach the transcript.
     static func inputTranscriptDelta(previous: String, snapshot: String) -> String? {
         guard snapshot != previous, snapshot.hasPrefix(previous) else { return nil }
         let added = String(snapshot.dropFirst(previous.count))

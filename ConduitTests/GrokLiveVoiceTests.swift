@@ -51,6 +51,16 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(text.contains("if start_job fails, tell them plainly"))
     }
 
+    func testGrokLiveClockInstructionsGiveTheLocalDateTimeAndZone() throws {
+        let zone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        // 2026-10-11 22:44 UTC: 6:44 PM on Sunday in New York (EDT).
+        let now = Date(timeIntervalSince1970: 1_791_758_640)
+        let text = GrokLiveProtocol.clockInstructions(now: now, timeZone: zone)
+        XCTAssertTrue(text.contains("Sunday, October 11, 2026, 6:44 PM"), text)
+        XCTAssertTrue(text.contains("America/New_York"))
+        XCTAssertTrue(text.contains("never look them up on the web"))
+    }
+
     func testGrokLiveSessionUpdateCarriesInstructionsVoiceAndLowercaseFunctionTools() throws {
         let update = GrokLiveProtocol.sessionUpdate(
             instructions: "be brief",

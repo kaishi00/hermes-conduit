@@ -2278,7 +2278,7 @@ final class AppState: ObservableObject {
                         memory: memory,
                         personality: self?.grokLivePersonality,
                         answerLength: self?.liveVoiceStyle.answerLength ?? .standard
-                    ) + GrokLiveProtocol.delegationInstructions
+                    ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
                         + (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                         + (self?.liveHermesCall?.instructionBlock(delegation: false) ?? "")
                         + (self?.liveVoiceThreadInstructions(delegation: false) ?? "")
@@ -4166,7 +4166,7 @@ final class AppState: ObservableObject {
                 memory: grokLiveMemoryEnabled ? placeholderMemory : nil,
                 personality: grokLivePersonalityEnabled ? placeholderPersona : nil,
                 answerLength: style.answerLength
-            ) + GrokLiveProtocol.delegationInstructions
+            ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
         } else if isGeminiLiveEnabled {
             mode = "Gemini Live"
             text = GeminiLiveConversationController.instructions(
@@ -25486,7 +25486,7 @@ final class AppState: ObservableObject {
                 answerLength: style.answerLength,
                 asksFirst: false,
                 onWatch: true
-            ) + GrokLiveProtocol.delegationInstructions
+            ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
                 + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
