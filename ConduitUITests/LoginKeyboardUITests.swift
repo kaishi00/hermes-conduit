@@ -82,13 +82,25 @@ final class LoginKeyboardUITests: XCTestCase {
         // compact keyboard-obscured layout.
         let connect = app.buttons[Identity.connect]
         XCTAssertTrue(connect.waitForExistence(timeout: 5))
-        let beforeSwipe = "connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame)"
-        if !connect.isHittable {
-            app.swipeUp()
+        let beforeScroll = "connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame)"
+        // The focus scroll leaves Connect just under the keyboard toolbar.
+        // Scroll it up the way a person would: drag the form from a point
+        // above the keyboard. A plain app.swipeUp() never moved the form on
+        // hosted runs (Connect kept its exact frame in every nightly from
+        // 2026-10-05 to 2026-10-11). Each drag gets a moment to settle before
+        // the next, so a slow scroll is not mistaken for a stuck one.
+        var drags = 0
+        while app.keyboards.firstMatch.exists && !pollAboveKeyboard(connect, in: app, timeout: 1) && drags < 3 {
+            dragFormUp(app)
+            drags += 1
         }
         XCTAssertTrue(
-            pollHittability(of: connect, timeout: 5),
-            "Connect must remain reachable with the keyboard visible. Before swipe: \(beforeSwipe). After: connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame). Tree:\n\(app.debugDescription)"
+            app.keyboards.firstMatch.exists,
+            "The keyboard must still be up after scrolling, or this test no longer covers the keyboard layout. Tree:\n\(app.debugDescription)"
+        )
+        XCTAssertTrue(
+            pollAboveKeyboard(connect, in: app, timeout: 5),
+            "Connect must remain reachable with the keyboard visible. Before scrolling: \(beforeScroll). After \(drags) drag(s): connect=\(connect.frame) enabled=\(connect.isEnabled) keyboard=\(app.keyboards.firstMatch.frame) done=\(app.buttons["Done"].firstMatch.frame). Tree:\n\(app.debugDescription)"
         )
     }
 
@@ -314,6 +326,40 @@ final class LoginKeyboardUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.1)
         }
         return switchIsOn(element)
+    }
+
+    /// Drags the login form up by about a third of the screen. It starts at
+    /// 6% of the width, left of every control (on the iPhone 17 Pro the
+    /// nightly runs, that is the card's own padding, and controls start at
+    /// 44 pt), at 45% of the height, which is above the keyboard and its
+    /// toolbar there. The short press before the move makes it a drag, not a
+    /// fling, so the distance scrolled is predictable.
+    private func dragFormUp(_ app: XCUIApplication) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.45))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.12))
+        start.press(forDuration: 0.1, thenDragTo: end)
+    }
+
+    /// Polls until `element` is hittable AND sits entirely above the keyboard
+    /// and its Done toolbar. isHittable alone is not enough here: XCUI has
+    /// reported Connect hittable behind the keyboard window (see
+    /// dismissKeyboard), so the frame check is what proves it is reachable.
+    private func pollAboveKeyboard(_ element: XCUIElement, in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        func isAbove() -> Bool {
+            // No keyboard means no keyboard layout to check; the caller's
+            // keyboard assertion reports that case.
+            guard app.keyboards.firstMatch.exists, element.isHittable else { return false }
+            var top = app.keyboards.firstMatch.frame.minY
+            let done = app.buttons["Done"].firstMatch
+            if done.exists { top = min(top, done.frame.minY) }
+            return element.frame.maxY <= top
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if isAbove() { return true }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return isAbove()
     }
 
     /// XCUIElement has no waitForHittability; poll isHittable on a deadline.

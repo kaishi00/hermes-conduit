@@ -498,6 +498,35 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertTrue(mounted.engine.isFollowingLatest)
     }
 
+    /// Eric's report: opening a Thinking or tool row at the bottom of the
+    /// chat jumped far down. A row growing in place (as an opening one does)
+    /// after the reader taps it keeps its top where it was.
+    func testOpeningARowAtTheBottomKeepsItsTopStill() throws {
+        let mounted = try mount(Self.uneven(0..<60))
+        let recorder = ScrollRecorder(mounted.scrollView)
+        assertAtLatest(mounted, "opens on the latest message")
+        let lastID = "uneven-59"
+        let before = try XCTUnwrap(screenY(of: lastID, in: mounted))
+
+        let mark = recorder.mark()
+        mounted.engine.userWillToggleRow()
+        mounted.appState.messages[59] = ChatMessage(
+            id: lastID,
+            role: .assistant,
+            content: String(repeating: "What the opened row reveals, line after line. ", count: 120),
+            timestamp: "2026-01-01T00:00:00Z"
+        )
+        // Past the settle check, which must leave a reader this far from
+        // the bottom where they are.
+        settle(mounted.host.view, seconds: ChatScrollEngine.disclosureSettleDelay + 0.4)
+        checkpoint("opened", mounted, recorder)
+
+        let after = try XCTUnwrap(screenY(of: lastID, in: mounted))
+        XCTAssertEqual(after, before, accuracy: 1, "the tapped row stays put\n\(recorder.dump(since: mark))")
+        XCTAssertEqual(mounted.engine.mode, .browsing)
+        XCTAssertTrue(mounted.engine.showsJumpToLatest)
+    }
+
     /// Issue #302: the transcript bounced on its own until touched. With no
     /// input and nothing new arriving, the offset must not move at all.
     func testAnIdleTranscriptHoldsStill() throws {

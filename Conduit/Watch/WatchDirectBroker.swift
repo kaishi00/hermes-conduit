@@ -287,7 +287,7 @@ final class WatchDirectBroker {
             // as the user allows; the call goes on without a grant when the
             // host can't give one.
             let declared = plan.functions.map(\.name)
-            grantTools = declared.filter { WatchToolAnswer.tools.contains($0) }
+            grantTools = grantable(declared.filter { WatchToolAnswer.tools.contains($0) })
             grantMaxJobs = WatchJobSettings.jobsPerCall
             grantJobTools = grantMaxJobs > 0 ? declared.filter { WatchJobAnswer.tools.contains($0) } : []
             grantJobOptions = plan.jobOptions
@@ -383,7 +383,9 @@ final class WatchDirectBroker {
             }
             connection = plan.connection
             ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
-            grantTools = ["web_search"]
+            // GPT-Live delegates its lookups and chats to the Watch, which
+            // runs them all through the grant.
+            grantTools = grantable([WatchToolAnswer.webSearch] + WatchToolAnswer.chatTools.sorted())
             grantMaxJobs = WatchJobSettings.jobsPerCall
             grantJobTools = grantMaxJobs > 0 ? WatchJobAnswer.tools.sorted() : []
             grantJobOptions = plan.jobOptions
@@ -488,7 +490,7 @@ final class WatchDirectBroker {
             connection = plan.connection
             ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
             let declared = plan.functions.map(\.name)
-            grantTools = declared.filter { WatchToolAnswer.tools.contains($0) }
+            grantTools = grantable(declared.filter { WatchToolAnswer.tools.contains($0) })
             grantMaxJobs = WatchJobSettings.jobsPerCall
             grantJobTools = grantMaxJobs > 0 ? declared.filter { WatchJobAnswer.tools.contains($0) } : []
             grantJobOptions = plan.jobOptions
@@ -622,7 +624,8 @@ final class WatchDirectBroker {
             supervisor: supervisor,
             webSearch: tokens,
             memory: tokens,
-            holdsJobCalls: false
+            holdsJobCalls: false,
+            opensChats: false
         )
     }
 
@@ -859,9 +862,17 @@ final class WatchDirectBroker {
     /// Asks with live_token while the host takes it. A plugin before 0.8
     /// refuses a tool it doesn't know (400): asked again without it, and
     /// this call's later grants leave it out.
+    /// A plugin before 0.18 refuses the chat tools (400) the same way: asked
+    /// again without them first, and this call's later grants leave them out.
     private func requestGrantWithToken(_ id: UInt32, profile: String, withJobs: Bool, carryJobsFrom: String?) async -> Result<WatchVoiceWire.DirectToolGrant, Error> {
         let asked = grantLiveToken
-        let first = await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: asked, carryJobsFrom: carryJobsFrom)
+        var first = await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: asked, carryJobsFrom: carryJobsFrom)
+        if case .failure(let error) = first, callID == id, Self.isRefusedChatTool(error),
+           grantTools.contains(where: { WatchToolAnswer.chatTools.contains($0) }) {
+            grantTools.removeAll { WatchToolAnswer.chatTools.contains($0) }
+            guard !grantTools.isEmpty || asked || (withJobs && !grantJobTools.isEmpty) || grantAudio else { return first }
+            first = await requestGrant(id, profile: profile, withJobs: withJobs, liveToken: asked, carryJobsFrom: carryJobsFrom)
+        }
         guard case .failure(let error) = first, asked, callID == id, Self.isRefusedTool(error) else { return first }
         grantLiveToken = false
         guard !grantTools.isEmpty || (withJobs && !grantJobTools.isEmpty) else { return first }
@@ -886,6 +897,20 @@ final class WatchDirectBroker {
     /// The plugin's WATCH_JOB_MAX_PROFILES (and its name pattern above):
     /// it refuses a longer ask outright, so the two move together.
     static let maxGrantJobProfiles = 32
+
+    /// `tools` less the chat tools when the host's plugin reported its
+    /// features without them: it would refuse the whole grant.
+    private func grantable(_ tools: [String]) -> [String] {
+        guard !appState.notifierPlugin.mightSupport(WatchToolAnswer.chatCapability) else { return tools }
+        return tools.filter { !WatchToolAnswer.chatTools.contains($0) }
+    }
+
+    /// A plugin before 0.18 refusing the chat tools: its 400 lists what the
+    /// Watch can be granted, without them. Any other 400 keeps them.
+    static func isRefusedChatTool(_ error: Error) -> Bool {
+        guard case DashboardTicketBridgeError.http(let status, let detail) = error, status == 400 else { return false }
+        return detail.contains("can only be granted") && !detail.contains(WatchToolAnswer.findChat)
+    }
 
     static func isRefusedTool(_ error: Error) -> Bool {
         if case DashboardTicketBridgeError.http(let status, _) = error, status == 400 { return true }
@@ -1364,4 +1389,12 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
     func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome {
         await base.followUp(jobID: jobID, words: words)
     }
+
+    // Chats are found and read as on the phone, for a call whose grant
+    // can't (a plugin before 0.18); opening one stays on the phone.
+    func findChats(query: String, retryingWords: Bool) async -> VoiceChatSearchOutcome {
+        await base.findChats(query: query, retryingWords: retryingWords)
+    }
+    func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome { .unavailable }
+    func readFoundChat(_ reference: String) async -> VoiceChatReadOutcome { await base.readFoundChat(reference) }
 }

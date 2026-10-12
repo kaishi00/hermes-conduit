@@ -14,6 +14,7 @@
 //
 
 import Foundation
+import ImageIO
 import UIKit
 
 /// Main-actor isolated: its read-modify-write of the defaults maps relies
@@ -63,6 +64,16 @@ final class ProfileAppearanceStore {
         return saved
     }
 
+    /// Every dashboard's main profile name, by dashboard UUID string: the
+    /// Apple Watch names a call with them (HermesCallerName).
+    func defaultNamesByDashboard() -> [String: String] {
+        defaultNames().reduce(into: [String: String]()) { result, entry in
+            let name = entry.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let id = UUID(uuidString: entry.key), !name.isEmpty else { return }
+            result[id.uuidString] = name
+        }
+    }
+
     private func defaultNames() -> [String: String] {
         defaults.dictionary(forKey: Self.defaultNamesKey) as? [String: String] ?? [:]
     }
@@ -88,12 +99,15 @@ final class ProfileAppearanceStore {
         }
         let url = directory.appendingPathComponent(Self.fileName(for: profile), isDirectory: false)
         try jpeg.write(to: url, options: .atomic)
+        ProfileAvatarImageCache.forget(url)
         return url
     }
 
     func removeAvatar(for profile: String, dashboardID: UUID?) {
         guard let directory = avatarsDirectory(dashboardID: dashboardID, create: false) else { return }
-        try? FileManager.default.removeItem(at: directory.appendingPathComponent(Self.fileName(for: profile)))
+        let url = directory.appendingPathComponent(Self.fileName(for: profile))
+        try? FileManager.default.removeItem(at: url)
+        ProfileAvatarImageCache.forget(url)
     }
 
     /// Remove Dashboard: its label and photos go with it.
@@ -105,6 +119,7 @@ final class ProfileAppearanceStore {
         if let directory = avatarsDirectory(dashboardID: dashboardID, create: false) {
             try? FileManager.default.removeItem(at: directory)
         }
+        ProfileAvatarImageCache.forgetAll()
     }
 
     // MARK: Legacy adoption
@@ -131,6 +146,8 @@ final class ProfileAppearanceStore {
         let legacyFiles = legacyAvatarDirectories().flatMap(Self.avatarFiles(in:))
         guard !legacyFiles.isEmpty,
               let target = avatarsDirectory(dashboardID: dashboardID, create: true) else { return }
+        // A newer legacy photo can replace one already at its destination.
+        defer { ProfileAvatarImageCache.forgetAll() }
         let manager = FileManager.default
         for file in legacyFiles {
             let destination = target.appendingPathComponent(file.url.lastPathComponent)
@@ -231,4 +248,65 @@ final class ProfileAppearanceStore {
 enum ProfileAppearanceError: LocalizedError {
     case invalidImage
     var errorDescription: String? { AppLocalization.string("That photo could not be read.") }
+}
+
+
+/// Profile photos decoded once, at the largest size an avatar shows. An
+/// avatar sits in the live reply and thinking rows, whose bodies run at
+/// streaming rate; reading and decoding the whole photo there cost a disk
+/// read and a full-size image decode per frame. A saved or removed photo
+/// keeps its file name, so the store drops the entry when it writes.
+@MainActor
+enum ProfileAvatarImageCache {
+    /// The largest avatar is 48 pt (the profile picker); 192 px covers it
+    /// at 3x with room to spare.
+    static let maxPixelSize: CGFloat = 192
+
+    /// A 192 px bitmap is ~150 KB, so the count bounds the memory too.
+    private static let images: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 32
+        return cache
+    }()
+    /// When each photo last failed to decode, so a missing or damaged file
+    /// is retried now and then rather than on every redraw, and a passing
+    /// failure (a file not readable yet) doesn't hide the photo for good.
+    private static var failedReads: [String: TimeInterval] = [:]
+    static let failedReadRetryInterval: TimeInterval = 30
+
+    /// The first show of each photo decodes it here, on the main actor, so
+    /// the avatar never flashes its initials. ImageIO reads the file once
+    /// and builds the thumbnail without decoding the photo at full size.
+    static func image(at url: URL) -> UIImage? {
+        let key = url.path as NSString
+        if let cached = images.object(forKey: key) { return cached }
+        let now = ProcessInfo.processInfo.systemUptime
+        if let failedAt = failedReads[url.path], now - failedAt < failedReadRetryInterval { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCache: false,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else {
+            failedReads[url.path] = now
+            return nil
+        }
+        let image = UIImage(cgImage: thumbnail)
+        failedReads[url.path] = nil
+        images.setObject(image, forKey: key)
+        return image
+    }
+
+    static func forget(_ url: URL) {
+        images.removeObject(forKey: url.path as NSString)
+        failedReads[url.path] = nil
+    }
+
+    static func forgetAll() {
+        images.removeAllObjects()
+        failedReads.removeAll()
+    }
 }

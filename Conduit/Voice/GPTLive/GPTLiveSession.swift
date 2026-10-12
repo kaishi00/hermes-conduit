@@ -39,7 +39,8 @@ final class GPTLiveSession {
     /// True when the host already gave the model the briefing (see
     /// `GPTLiveSessionAnswer.briefingApplied`).
     private(set) var briefingApplied = false
-    /// True when the host made the model greet first.
+    /// True when the host made the model speak first: a greeting, or a call
+    /// Hermes placed (#544).
     private(set) var greetingApplied = false
 
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
@@ -55,6 +56,8 @@ final class GPTLiveSession {
     private let briefing: String?
     /// The greeting the user asked for when the call connects (#290).
     private let greeting: String?
+    /// A call Hermes placed: the host makes the model open it (#544).
+    private let callOpening: Bool
     private let makePeer: @MainActor () -> GPTLivePeer
     private let startTimeout: Duration
     private let reconnectGrace: Duration
@@ -72,6 +75,7 @@ final class GPTLiveSession {
         voice: String? = nil,
         briefing: String? = nil,
         greeting: String? = nil,
+        callOpening: Bool = false,
         makePeer: @escaping @MainActor () -> GPTLivePeer = { WebRTCGPTLivePeer() },
         startTimeout: Duration = GPTLiveSession.startTimeout,
         reconnectGrace: Duration = GPTLiveSession.reconnectGrace
@@ -81,6 +85,7 @@ final class GPTLiveSession {
         self.voice = voice
         self.briefing = briefing
         self.greeting = greeting
+        self.callOpening = callOpening
         self.makePeer = makePeer
         self.startTimeout = startTimeout
         self.reconnectGrace = reconnectGrace
@@ -181,7 +186,7 @@ final class GPTLiveSession {
             initialCaptureAuthorization = nil
             let offer = try await peer.makeOffer()
             guard isCurrent(peer) else { return }
-            let answer = try await client.createSession(offer: offer, history: history, voice: voice, briefing: briefing, greeting: greeting)
+            let answer = try await client.createSession(offer: offer, history: history, voice: voice, briefing: briefing, greeting: greeting, callOpening: callOpening)
             guard isCurrent(peer) else { return }
             sessionID = answer.sessionID
             briefingApplied = answer.briefingApplied

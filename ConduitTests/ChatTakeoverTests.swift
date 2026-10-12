@@ -208,6 +208,10 @@ extension HermesClientTests {
                       "Desktop read sync needs plugin 0.12")
         XCTAssertTrue(NotifierPluginStatus(state: .predatesCapabilities).mightSupport("session-takeover"),
                       "A plugin older than capability reporting may still serve the route")
+        XCTAssertFalse(NotifierPluginStatus(state: .unknown).reports("watch-chats"), "not reported yet")
+        XCTAssertFalse(NotifierPluginStatus(state: .predatesCapabilities).reports("watch-chats"))
+        XCTAssertFalse(missingTakeover.reports("session-takeover"))
+        XCTAssertTrue(missingTakeover.reports("voice-tags"))
     }
 }
 

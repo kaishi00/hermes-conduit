@@ -101,13 +101,21 @@ struct HermesCallRequest: Equatable {
 enum HermesCallCopy {
     static var notificationTitle: String { AppLocalization.string("Hermes wants to talk") }
     /// A ringing call that didn't connect (#449 step 2).
-    static var missedCallTitle: String { AppLocalization.string("Missed call from Hermes") }
+    static var missedCallTitle: String { missedCallTitle(from: HermesCallerName.fallback) }
+    /// Names the profile that called (HermesCallerName), as the call did.
+    static func missedCallTitle(from name: String) -> String {
+        guard name != HermesCallerName.fallback else { return AppLocalization.string("Missed call from Hermes") }
+        return AppLocalization.string("Missed call from \(name)")
+    }
 
-    /// The name a ringing call shows, the only text CallKit gives it:
-    /// "Hermes", with the job's title when the call carries one.
-    static func callerName(title: String?) -> String {
-        guard let title = HermesCallRequest.cleanedTitle(title) else { return "Hermes" }
-        return "Hermes · " + title
+    /// The name a ringing call shows, the only text CallKit gives it: the
+    /// calling profile (HermesCallerName), with the job's title when the
+    /// call carries one.
+    static func callerName(profile: String?, mainName: String?, title: String?) -> String {
+        HermesCallerName.line(
+            name: HermesCallerName.name(profile: profile, mainName: mainName),
+            title: HermesCallRequest.cleanedTitle(title)
+        )
     }
     static var talkAction: String { AppLocalization.string("Talk") }
     static var jobCardNote: String { AppLocalization.string("Calls you when done") }
@@ -257,7 +265,7 @@ struct HermesCallOpening: Equatable {
         } else {
             block += "Its final reply couldn't be read here; it's in the chat. "
         }
-        block += "Your first words in this call tell the user what came of it: the substance, with the details that matter, in your own spoken words. Skip what doesn't work by ear, like code, long tables or links. Never open with a greeting question or by asking how you can help. After that, carry on as usual."
+        block += "Your first words in this call tell the user what came of it: the substance, with the details that matter, in your own spoken words. Skip what doesn't work by ear, like code, long tables or links. End it with a short question about what they want to do next, fitting what came of it (like whether to reply), not a general offer of help. Never open with a greeting question or by asking how you can help. After that, carry on as usual."
         return block
     }
 
@@ -268,21 +276,25 @@ struct HermesCallOpening: Equatable {
     /// give Hermes the approval or answer it waits on.
     var watchOpeningTurn: String { firstTurn(canAnswer: false) }
 
+    /// Opens every first turn: with an older plugin GPT-Live is told not to
+    /// speak first, and this turn has to win over that (#544).
+    static let speakFirst = "The call just connected. Speak first now; don't wait for the user to speak."
+
     private func firstTurn(canAnswer: Bool) -> String {
         if waitsOnUser, !canAnswer {
-            return "[The call just connected. You called the user because Hermes is waiting on them. Tell them what it's waiting on and where to answer, as your instructions say. Don't ask how you can help. Then wait for them.]"
+            return "[\(Self.speakFirst) You called the user because Hermes is waiting on them. Tell them what it's waiting on and where to answer, as your instructions say. Don't ask how you can help. Then wait for them.]"
         }
         switch kind {
         case .approval?:
-            return "[The call just connected. You called the user because Hermes needs their approval. Tell them what it wants to do, as your instructions say, and ask whether to allow it. Don't ask how you can help. Then wait for them.]"
+            return "[\(Self.speakFirst) You called the user because Hermes needs their approval. Tell them what it wants to do, as your instructions say, and ask whether to allow it. Don't ask how you can help. Then wait for them.]"
         case .question?:
-            return "[The call just connected. You called the user because Hermes has a question for them. Ask it now, as your instructions say. Don't ask how you can help. Then wait for them.]"
+            return "[\(Self.speakFirst) You called the user because Hermes has a question for them. Ask it now, as your instructions say. Don't ask how you can help. Then wait for them.]"
         default:
             break
         }
         let source = result == nil ? "" : ", from its final reply in your instructions"
         let why = reason == nil ? "\(job) \(outcome)" : "of what your instructions say Hermes called about"
-        return "[The call just connected. You called the user because \(why). Tell them now what came of it\(source). Don't ask how you can help. Then wait for them.]"
+        return "[\(Self.speakFirst) You called the user because \(why). Tell them now what came of it\(source), then ask in a few words what they want to do next. Don't ask how you can help. Then wait for them.]"
     }
 
     /// What classic voice says before it listens: spoken as is, so in the
@@ -462,9 +474,9 @@ extension VoiceCallbackAvailability {
     var refusal: String {
         switch self {
         case .available, .callsOff:
-            return "Hermes can't call the user: calls are off for this Hermes profile. They can turn on Hermes can call me in Conduit's Voice settings."
+            return "Hermes can't call the user: calls are off for this Hermes profile. They can turn on Hermes can call me in Conduit's Settings, under Calls from Hermes."
         case .whenAskedOff:
-            return "Hermes can't call the user: Call when I ask is off in Conduit's Voice settings."
+            return "Hermes can't call the user: Call when I ask is off in Conduit's Settings, under Calls from Hermes."
         case .notPaired:
             return "Hermes can't call the user: this Hermes profile isn't set up for Conduit notifications. They can turn them on in Conduit's Settings, under Notifications."
         case .unsupported:
@@ -548,6 +560,9 @@ struct HermesCallSettings: Equatable {
     var minGapSeconds = 120
     var perHour = 6
     var perDay = 20
+    /// The user's own words on what's worth a call Hermes decides to make
+    /// (plugin 0.16+); nil when the host doesn't have the setting.
+    var rules: String?
 
     init() {}
 
@@ -565,6 +580,7 @@ struct HermesCallSettings: Equatable {
         self.minGapSeconds = minGap
         self.perHour = perHour
         self.perDay = perDay
+        self.rules = json["rules"] as? String
     }
 
     /// Only the settings the host has: an older plugin refuses unknown ones.
@@ -572,6 +588,7 @@ struct HermesCallSettings: Equatable {
         var payload: [String: Any] = ["enabled": enabled, "when_asked": whenAsked, "min_gap_s": minGapSeconds, "per_hour": perHour, "per_day": perDay]
         if let decides { payload["decides"] = decides }
         if let alerts { payload["alerts"] = alerts }
+        if let rules { payload["rules"] = rules }
         return payload
     }
 }
@@ -582,11 +599,14 @@ struct HermesCallsStatus: Equatable {
     var minGapBounds: ClosedRange<Int>
     var perHourBounds: ClosedRange<Int>
     var perDayBounds: ClosedRange<Int>
+    /// The longest "what's worth a call" note the host keeps.
+    var rulesMax = HermesCallsStatus.defaultRulesMax
     var watches: Int
 
     static let defaultMinGapBounds = 30...3_600
     static let defaultPerHourBounds = 1...30
     static let defaultPerDayBounds = 1...60
+    static let defaultRulesMax = 500
 
     var callbackAvailability: VoiceCallbackAvailability {
         if !paired { return .notPaired }
@@ -610,6 +630,7 @@ struct HermesCallsStatus: Equatable {
             minGapBounds: range("min_gap_s", defaultMinGapBounds),
             perHourBounds: range("per_hour", defaultPerHourBounds),
             perDayBounds: range("per_day", defaultPerDayBounds),
+            rulesMax: (response["rules_max"] as? Int).flatMap { $0 > 0 ? $0 : nil } ?? defaultRulesMax,
             watches: response["watches"] as? Int ?? 0
         )
     }
@@ -978,9 +999,10 @@ enum HermesCallNotifications {
     }
 
     /// The local notification for `target`, routed like a call push.
-    static func localRequest(for target: VoiceCallbackTarget, kind: HermesCallRequest.Kind?, profile: String, dashboardID: UUID?, reason: String? = nil, missed: Bool = false) -> UNNotificationRequest {
+    /// `callerName`: who a missed call was from (HermesCallerName).
+    static func localRequest(for target: VoiceCallbackTarget, kind: HermesCallRequest.Kind?, profile: String, dashboardID: UUID?, reason: String? = nil, missed: Bool = false, callerName: String = HermesCallerName.fallback) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
-        content.title = missed ? HermesCallCopy.missedCallTitle : HermesCallCopy.notificationTitle
+        content.title = missed ? HermesCallCopy.missedCallTitle(from: callerName) : HermesCallCopy.notificationTitle
         content.body = HermesCallCopy.summary(kind: kind, title: HermesCallRequest.cleanedTitle(target.title), reason: HermesCallRequest.cleanedReason(reason))
         content.sound = .default
         content.categoryIdentifier = categoryIdentifier
@@ -1004,7 +1026,7 @@ enum HermesCallNotifications {
     /// declined, late, or one Conduit couldn't start (`missed`), or one that
     /// couldn't ring because voice was already in use. Talk opens it like
     /// the call.
-    static func callRequest(for target: ConduitNotificationTarget, missed: Bool) -> UNNotificationRequest? {
+    static func callRequest(for target: ConduitNotificationTarget, missed: Bool, callerName: String = HermesCallerName.fallback) -> UNNotificationRequest? {
         guard let call = target.call else { return nil }
         let callback = VoiceCallbackTarget(
             title: call.title ?? "",
@@ -1013,7 +1035,7 @@ enum HermesCallNotifications {
             storedSessionID: target.durableSessionID,
             profile: target.profile
         )
-        return localRequest(for: callback, kind: call.kind, profile: target.profile ?? "", dashboardID: target.dashboardID, reason: call.reason, missed: missed)
+        return localRequest(for: callback, kind: call.kind, profile: target.profile ?? "", dashboardID: target.dashboardID, reason: call.reason, missed: missed, callerName: callerName)
     }
 
     /// A call Conduit couldn't read (its keys are locked away until the

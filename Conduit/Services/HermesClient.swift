@@ -2556,6 +2556,33 @@ final class HermesClient: ObservableObject {
         return Self.exactIntValue(result.objectValue?["cancelled"]) ?? 0
     }
 
+    /// Answer one member's pending approval (`groups.approve`). Every field
+    /// comes from the `pending_actions` row: the gateway resolves only the
+    /// exact request it is still holding and refuses a stale one. Only
+    /// offered when `groupsCapabilities` advertised the method.
+    ///
+    /// Returns false when the gateway answered but resolved nothing: a local
+    /// member's `result` is its `approval.respond` answer, whose `resolved`
+    /// count is 0 once the request settled elsewhere. A peer member's receipt
+    /// carries no count and counts as delivered.
+    func groupsApprove(roomID: String, approval: GroupPendingApproval, choice: String) async throws -> Bool {
+        let result = try await rpc(
+            "groups.approve",
+            params: [
+                "room_id": roomID,
+                "member_id": approval.memberID,
+                "task_id": approval.taskID,
+                "execution_generation": approval.executionGeneration,
+                "choice": choice,
+                "request_id": approval.requestID,
+            ],
+            scoped: false
+        )
+        guard let receipt = result.objectValue?["result"]?.objectValue,
+              let resolved = receipt["resolved"] else { return true }
+        return (Self.exactIntValue(resolved) ?? 1) > 0
+    }
+
     // delegateAgentActivity moved to StreamEventParser
 }
 

@@ -27,13 +27,15 @@ final class FakeGPTLiveClient: GPTLiveSessionProviding {
     private(set) var voices: [String?] = []
     private(set) var briefings: [String?] = []
     private(set) var greetings: [String?] = []
+    private(set) var callOpenings: [Bool] = []
 
     func availability() async throws -> GPTLiveAvailability { try availabilityResult.get() }
 
-    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?) async throws -> GPTLiveSessionAnswer {
+    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?, callOpening: Bool) async throws -> GPTLiveSessionAnswer {
         offers.append(offer)
         briefings.append(briefing)
         greetings.append(greeting)
+        callOpenings.append(callOpening)
         voices.append(voice)
         histories.append(history)
         return try answerResult.get()
@@ -808,6 +810,31 @@ extension VoiceConversationControllerTests {
         olderSession.becomeReady()
         XCTAssertEqual(olderSession.speakable.map(\.text), ["[greet]"], "Once per call")
         older.stop()
+    }
+
+    /// #544: a call Hermes placed asks the host to have the model speak
+    /// first, instead of the "don't speak first" policy that kept it silent.
+    func testGPTLiveCallHermesPlacedAsksTheHostToSpeakFirst() async throws {
+        var bodies: [[String: Any]?] = []
+        let client = GPTLiveClient(request: { _, _, body, _ in
+            bodies.append(body)
+            return ["ok": true, "auth": "subscription", "session": ["id": "rtc_abc"],
+                    "transport": ["type": "webrtc", "sdp": "v=0 answer"], "greeting_applied": true]
+        })
+        let answer = try await client.createSession(offer: "v=0 offer", history: [], briefing: "[call]", callOpening: true)
+        XCTAssertEqual(bodies[0]?["call_opening"] as? Bool, true)
+        XCTAssertNil(bodies[0]?["greeting"])
+        XCTAssertTrue(answer.greetingApplied)
+        _ = try await client.createSession(offer: "v=0 offer", history: [])
+        XCTAssertNil(bodies[1]?["call_opening"], "Other calls keep the usual opening")
+
+        let fake = FakeGPTLiveClient()
+        let peer = FakeGPTLivePeer()
+        let session = GPTLiveSession(client: fake, briefing: "[call]", callOpening: true, makePeer: { peer })
+        session.start()
+        await settle()
+        XCTAssertEqual(fake.callOpenings, [true])
+        XCTAssertEqual(fake.greetings, [nil])
     }
 
     func testGPTLivePublishesSpeakingOncePerTurnNotOnEveryFragment() async {

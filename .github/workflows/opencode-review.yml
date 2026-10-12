@@ -21,7 +21,7 @@ jobs:
       matrix:
         include:
           - reviewer: DeepSeek V4.1 Flash
-            model: go-custom/deepseek-flash
+            model: commandcode/deepseek/deepseek-v4.1-flash
           - reviewer: GLM-5.3-Flash
             model: zai-custom/glm-5.3-flash
     permissions:
@@ -101,7 +101,7 @@ jobs:
       - name: Run opencode review
         run: GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=${{ github.repository_owner }} opencode github run
         env:
-          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+          COMMANDCODE_API_KEY: ${{ secrets.COMMANDCODE_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.OPENCODE_GH_PAT }}
           MODEL: ${{ matrix.model }}

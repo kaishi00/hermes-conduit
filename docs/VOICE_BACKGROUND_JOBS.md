@@ -40,6 +40,31 @@ a job. At most three jobs run at once.
   call screen isn't up (a call only CarPlay shows, a minimised call, the app
   in the background) the tool refuses and the model says it instead.
   GPT-Live has no screen tool yet.
+- A phone call can also find one of the user's earlier chats and open it
+  ("find the chat where we discussed the GPU setup and open it"). Gemini
+  Live and Grok Live call `find_chat` (a few words from the topic) and then
+  `open_chat` (the match's number); GPT-Live delegates `Find chat: <words>`
+  and `Open chat: <number>`, which Conduit answers itself. The search is
+  Hermes' own `GET /api/sessions/search` on the profile in use (ids, message
+  text, then titles); a query that matches nothing as a whole is tried a word
+  at a time, and a Hermes without the route is searched by the titles of the
+  chats Conduit lists. Up to five matches go to the model, numbered, with
+  title, age and a line from the chat; it opens one that clearly fits or
+  asks which. Opening minimises the call sheet, as **Open chat** does, and
+  the call goes on. A call CarPlay shows has nowhere to open a chat, so
+  `open_chat` refuses there and the model says so. A found chat can also be
+  read into the call so the user can talk about it, opened or not, CarPlay
+  included: `read_chat` (the match's number; NON_BLOCKING) or
+  `Read chat: <number>` on GPT-Live. It gets the chat's user and Hermes text
+  the way a resumed call gets a saved call's: word for word when short, else
+  a summary of the older part (a saved call's stored one, else made for the
+  read) plus the latest turns, fenced as data. A Watch call (Gemini, Grok,
+  GPT-Live) finds and reads chats but can't open one. With conduit_push 0.18 on the host (capability
+  `watch-chats`) both tools run through the call's relay grant, wrist up or
+  down, and the host keeps the numbered matches `read_chat` names; the
+  plugin reads the chat in process and trims the answer to 16 KB. With an
+  older plugin a Gemini or Grok Watch call asks the phone instead, wrist up
+  only.
 - A saved live call gets a line where it started the job ("Started a
   background job: <title>.") with an **Open job** link to the job's chat, so
   the full result is a tap away even when the voice model only summarized it.

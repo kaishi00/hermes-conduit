@@ -5,8 +5,8 @@
 //  Links Conduit writes into saved text that open inside the app, such as
 //  the link to a background job a voice call started. They are handled by
 //  the root view's `openURL` action. A model's reply could write one too; a
-//  tap on it only opens a chat on the profile in use or a bot's chat, as the
-//  sidebar would.
+//  tap on it only opens a chat on the profile in use, a bot's chat or a
+//  Settings page, as the sidebar would.
 //
 //  The `conduit` scheme is also registered, so another app (a notification
 //  from ntfy, a Shortcut) can open a chat with `conduit://session/<id>`.
@@ -18,6 +18,10 @@
 //  switches to it first, as a notification for that chat does. Without it
 //  the chat is on the profile in use.
 //
+//  `conduit://settings/calls` opens Settings at Calls from Hermes: Hermes
+//  links it when the user asks for a call while calls are off. Only inside
+//  the app, like a bot link.
+//
 
 import Foundation
 
@@ -28,6 +32,13 @@ enum ConduitAppLink: Equatable {
     /// A bot's Bot Chat, by the bot's profile name: a bot has one chat, and
     /// it opens through the bot's profile.
     case bot(profile: String)
+    /// A Settings page.
+    case settings(SettingsLink)
+
+    enum SettingsLink: String, Equatable {
+        /// Calls from Hermes.
+        case calls
+    }
 
     static let scheme = "conduit"
     private static let sessionRoot = URL(string: "conduit://session")!
@@ -40,6 +51,9 @@ enum ConduitAppLink: Equatable {
         switch components.host?.lowercased() {
         case "session": self = .session(id: id, profile: Self.profile(in: components))
         case "bot": self = .bot(profile: id)
+        case "settings":
+            guard let page = SettingsLink(rawValue: id.lowercased()) else { return nil }
+            self = .settings(page)
         default: return nil
         }
     }
@@ -81,6 +95,9 @@ enum ConduitAppLink: Equatable {
         case .bot(let profile):
             components.host = "bot"
             components.path = "/" + profile
+        case .settings(let page):
+            components.host = "settings"
+            components.path = "/" + page.rawValue
         }
         // A session id or profile name is a plain token; a URL that can't
         // be built is a programming error, never user input.

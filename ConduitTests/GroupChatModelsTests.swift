@@ -352,6 +352,62 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupDecoders.driverStatus(nil))
     }
 
+    func testPendingApprovalsDecodeOnlyCompleteApprovalRows() {
+        let status = GroupDecoders.driverStatus(any([
+            "running": true,
+            "working": true,
+            "blocked": false,
+            "pending_actions": [
+                ["kind": "retry", "task_id": "t0"],
+                [
+                    "kind": "approval", "task_id": "t1", "execution_generation": 2,
+                    "member_id": "researcher", "request_id": "req-1", "session_id": "s1",
+                    "approval": [
+                        "command": "rm -rf build", "description": "recursive delete",
+                        "choices": ["once", "session", "deny"], "request_id": "req-1",
+                    ],
+                ],
+                // No request id: groups.approve could not name it.
+                ["kind": "approval", "task_id": "t2", "execution_generation": 1, "member_id": "writer"],
+            ],
+        ]))
+        let approvals = status?.pendingApprovals ?? []
+        XCTAssertEqual(approvals.count, 1)
+        let approval = approvals[0]
+        XCTAssertEqual(approval.memberID, "researcher")
+        XCTAssertEqual(approval.taskID, "t1")
+        XCTAssertEqual(approval.executionGeneration, 2)
+        XCTAssertEqual(approval.requestID, "req-1")
+        XCTAssertEqual(approval.command, "rm -rf build")
+        XCTAssertEqual(approval.description, "recursive delete")
+        // Rooms answer once or deny only.
+        XCTAssertEqual(approval.choices, ["once", "deny"])
+        XCTAssertFalse(approval.allows("session"))
+    }
+
+    func testPendingApprovalWithoutChoicesOffersRunAndReject() {
+        let approval = GroupPendingApproval(action: [
+            "kind": AnyCodable.from("approval"),
+            "task_id": AnyCodable.from("t1"),
+            "execution_generation": AnyCodable.from(1),
+            "member_id": AnyCodable.from("researcher"),
+            "request_id": AnyCodable.from("req-1"),
+        ])
+        XCTAssertEqual(approval?.choices, ["once", "deny"])
+        XCTAssertEqual(approval?.command, "")
+    }
+
+    func testPendingApprovalFallsBackToTheApprovalsOwnRequestID() {
+        let approval = GroupPendingApproval(action: [
+            "kind": AnyCodable.from("approval"),
+            "task_id": AnyCodable.from("t1"),
+            "execution_generation": AnyCodable.from(1),
+            "member_id": AnyCodable.from("researcher"),
+            "approval": AnyCodable.from(["request_id": "req-9", "command": "ls"]),
+        ])
+        XCTAssertEqual(approval?.requestID, "req-9")
+    }
+
     // MARK: - Replay
 
     func testReplayInitialHistoryAndCursor() {

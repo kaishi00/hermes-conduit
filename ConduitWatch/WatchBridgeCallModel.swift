@@ -128,6 +128,12 @@ final class WatchBridgeCallModel: ObservableObject {
     private var openingTurn: String?
     /// The call from Hermes this call answers.
     private var ring: String?
+    /// Answered from the call screen, where the link to the iPhone is down:
+    /// the iPhone's answer comes through the relay too (HermesRingHandoff).
+    private var answer: HermesRingAnswer?
+    private var handoff: Task<Void, Never>?
+    /// The link's requests ran out of time while the relay's fetch went on.
+    private var linkGaveUp = false
     private var voice: String?
     private var relay: WatchToolRelayClient?
 
@@ -281,10 +287,13 @@ final class WatchBridgeCallModel: ObservableObject {
 
     // MARK: Controls
 
-    func start(ring: String? = nil) async {
+    func start(ring: String? = nil, answer: HermesRingAnswer? = nil) async {
         guard !isActive else { return }
         reset()
         self.ring = ring
+        // The id the start sent through the relay named.
+        self.answer = answer
+        if let answer { callID = answer.callID }
         phase = .preparing
         let id = callID
         guard await WatchAudio.requestPermission() else {
@@ -453,20 +462,17 @@ final class WatchBridgeCallModel: ObservableObject {
 
     // MARK: The call from the iPhone
 
+    static func startRequest(callID: UInt32, ring: String?) -> WatchVoiceWire.Message {
+        .bridgeStart(callID: callID, version: WatchVoiceWire.version, engine: engine, ring: ring)
+    }
+
     private func requestSession() {
         sessionRequests += 1
         let id = callID
-        link.send(.bridgeStart(callID: id, version: WatchVoiceWire.version, engine: Self.engine, ring: ring), reply: { [weak self] answer in
+        if sessionRequests == 1, let answer { fetchHandoff(answer) }
+        link.send(Self.startRequest(callID: id, ring: ring), reply: { [weak self] answer in
             guard let self, self.callID == id, self.phase == .preparing else { return }
-            switch answer {
-            case .bridgeSession(_, let session)?:
-                self.begin(session)
-            case .callRefused(_, let reason)?:
-                self.note("bridgeRefused", ["reason": reason])
-                self.finish(reason)
-            default:
-                self.finish(String(localized: "Conduit on the iPhone sent something this Watch app can't read. Update both."))
-            }
+            self.sessionAnswered(answer)
         }, failure: { [weak self] error in
             guard let self, self.callID == id, self.phase == .preparing else { return }
             self.note("bridgeStartFailed", [
@@ -475,6 +481,11 @@ final class WatchBridgeCallModel: ObservableObject {
                 "attempt": self.sessionRequests,
             ])
             guard self.now - self.callStartedAt < Self.sessionWait else {
+                // The relay's fetch may still bring it.
+                if self.handoff != nil {
+                    self.linkGaveUp = true
+                    return
+                }
                 self.finish(String(localized: "Couldn't reach Conduit on your iPhone."))
                 return
             }
@@ -485,6 +496,40 @@ final class WatchBridgeCallModel: ObservableObject {
                 }
             }
         })
+    }
+
+    /// The iPhone's answer to the start, over the link or through the relay.
+    private func sessionAnswered(_ answer: WatchVoiceWire.Message?) {
+        switch answer {
+        case .bridgeSession(_, let session)?:
+            begin(session)
+        case .callRefused(_, let reason)?:
+            note("bridgeRefused", ["reason": reason])
+            finish(reason)
+        default:
+            finish(String(localized: "Conduit on the iPhone sent something this Watch app can't read. Update both."))
+        }
+    }
+
+    /// The iPhone's answer through the relay, for a call answered from the
+    /// call screen: whichever of it and the link's answer comes first
+    /// starts the call.
+    private func fetchHandoff(_ answer: HermesRingAnswer) {
+        let id = callID
+        let deadline = Date().addingTimeInterval(Self.sessionWait - (now - callStartedAt))
+        handoff = Task { [weak self] in
+            let outcome = await HermesRingHandoff.fetchSession(answer, until: deadline)
+            guard let self, self.callID == id, self.phase == .preparing else { return }
+            self.handoff = nil
+            switch outcome {
+            case .message(let message):
+                self.note("bridgeHandoff", ["session": true, "afterTapMs": Int((self.now - self.callStartedAt) * 1000)])
+                self.sessionAnswered(message)
+            case .unavailable(let why):
+                self.note("bridgeHandoff", ["session": false, "why": why, "afterTapMs": Int((self.now - self.callStartedAt) * 1000)])
+                if self.linkGaveUp { self.finish(String(localized: "Couldn't reach Conduit on your iPhone.")) }
+            }
+        }
     }
 
     private func begin(_ session: WatchVoiceWire.BridgeSession) {
@@ -603,6 +648,7 @@ final class WatchBridgeCallModel: ObservableObject {
             voice: voice,
             briefing: briefing,
             greeting: rejoining ? nil : greeting,
+            callOpening: !rejoining && openingTurn != nil,
             history: history
         ), kind: .control)
         startSentAt = now
@@ -722,8 +768,9 @@ final class WatchBridgeCallModel: ObservableObject {
                 return
             }
             // A call from Hermes: the model says what it called about, as
-            // the phone's GPT-Live call asks it to. Once, never on a rejoin.
-            if !rejoining, let openingTurn {
+            // the phone's GPT-Live call asks it to. Once, never on a rejoin,
+            // and only when the host didn't already have it speak first.
+            if WatchAudioBridgeWire.sendsOpeningTurn(rejoining: rejoining, started: info), let openingTurn {
                 pendingSends.insert(Pending(text: openingTurn, channel: .speakable, delegationID: nil), at: 0)
             }
             flushPending()
@@ -1061,6 +1108,23 @@ final class WatchBridgeCallModel: ObservableObject {
             answer(id, WatchBridgeDelegation.notStarted("the Watch has no way to reach Hermes for this call."), channel: .speakable)
             return
         }
+        // "Find chat: GPU setup" and "Read chat: 2": the user's earlier
+        // chats, found and read on the host through the grant, as the phone
+        // finds and reads them. Neither is work for Hermes.
+        if let query = VoiceChatToolText.findChatMarker(in: ownWords) {
+            // GPT-Live can leave the words out: the user's own then.
+            let words = query.isEmpty ? userWords : query
+            runChatTool(for: id, name: WatchToolAnswer.findChat, query: WatchBridgeDelegation.clipped(words, bytes: 300), relay: relay)
+            return
+        }
+        if let number = VoiceChatToolText.readChatMarker(in: ownWords) {
+            runChatTool(for: id, name: WatchToolAnswer.readChat, query: number, relay: relay)
+            return
+        }
+        if VoiceChatToolText.openChatMarker(in: ownWords) != nil {
+            answer(id, WatchToolAnswer.delegatedCantOpen, channel: .commentary)
+            return
+        }
         // "Job 2: make it Alex" puts the user's words into job 2 while it
         // runs (#455). A number with no job is just new work.
         // Read where the phone reads it: the delegation's own text, else
@@ -1239,6 +1303,47 @@ final class WatchBridgeCallModel: ObservableObject {
         case .finished: return "finished"
         case .failed: return "failed"
         case .unknownJob: return "unknownJob"
+        }
+    }
+
+    /// A chat search or read through the grant, answered on the delegation
+    /// as quiet context, as the phone answers it.
+    private func runChatTool(for delegationID: String, name: String, query: String, relay: WatchToolRelayClient) {
+        let failed: (String) -> String = { reason in
+            name == WatchToolAnswer.findChat ? VoiceChatToolText.delegatedSearchFailed(reason) : VoiceChatToolText.delegatedReadFailed(reason)
+        }
+        guard !query.isEmpty else {
+            answer(delegationID, failed(name == WatchToolAnswer.findChat ? "it had no words to search for." : "it had no chat number."), channel: .commentary)
+            return
+        }
+        guard relay.tools.contains(name) else {
+            answer(delegationID, failed("the Hermes host's Conduit plugin needs an update (0.18) for chats on the Watch."), channel: .commentary)
+            return
+        }
+        guard relay.canRun(name) else {
+            answer(delegationID, failed(WatchBridgeDelegation.grantRanOut), channel: .commentary)
+            return
+        }
+        let id = callID
+        let sentAt = now
+        Task { [weak self] in
+            let outcome = await relay.run(name: name, query: query)
+            guard let self, self.callID == id, self.isActive else { return }
+            let text: String
+            switch outcome {
+            case .answered(let body):
+                text = WatchToolAnswer.delegatedChatReply(name: name, body: body)
+            case .timedOut:
+                text = failed("that took too long.")
+            case .unavailable(let reason, let grantGone, let sent):
+                if Self.grantRanOut(reason: reason, grantGone: grantGone, sent: sent) {
+                    text = failed(WatchBridgeDelegation.grantRanOut)
+                } else {
+                    text = failed(sent ? "Hermes didn't answer." : "Hermes couldn't be reached from the Watch.")
+                }
+            }
+            self.note("bridgeChat", ["tool": name, "outcome": outcome.logLabel, "ms": Int((self.now - sentAt) * 1000)])
+            self.answer(delegationID, text, channel: .commentary)
         }
     }
 
@@ -1582,6 +1687,10 @@ final class WatchBridgeCallModel: ObservableObject {
     }
 
     private func reset() {
+        answer = nil
+        handoff?.cancel()
+        handoff = nil
+        linkGaveUp = false
         callID = UInt32.random(in: 1...UInt32.max)
         callUUID = UUID()
         callStartedDate = Date()
@@ -1695,6 +1804,8 @@ final class WatchBridgeCallModel: ObservableObject {
         guard isActive else { return }
         timers.forEach { $0.invalidate() }
         timers = []
+        handoff?.cancel()
+        handoff = nil
         closeSocket()
         stream = nil
         live = false

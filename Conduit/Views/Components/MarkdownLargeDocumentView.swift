@@ -35,6 +35,7 @@ struct LargeMarkdownDocumentView: View {
     let usesAccentSurface: Bool
     let gatewayMediaDataURL: ((String) async -> String?)?
 
+    @Environment(\.chatRowDisclosure) private var disclosure
     @State private var expanded = false
 
     var body: some View {
@@ -68,7 +69,10 @@ struct LargeMarkdownDocumentView: View {
             LargeDocumentBanner(
                 byteCount: source.utf8.count,
                 usesAccentSurface: usesAccentSurface,
-                expand: { expanded = true }
+                expand: {
+                    disclosure?.willToggle(nil, to: true)
+                    expanded = true
+                }
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -343,7 +347,8 @@ struct LargeMarkdownPreparedDocument {
     }
 
     static func identity(of source: String) -> String {
-        "\(source.utf8.count)-\(source.hashValue)"
+        // Hermes' @session links take the chat's name once Conduit lists it.
+        "\(source.utf8.count)-\(source.hashValue)-\(HermesSessionReference.titleKey(for: source).hashValue)"
     }
 
     /// Web-page units per chunk (diagrams and formulas are chunks of
@@ -902,6 +907,7 @@ struct LargeCodeBlockView: View {
     let language: String
     let usesAccentSurface: Bool
 
+    @Environment(\.chatRowDisclosure) private var disclosure
     @State private var expanded = false
     @State private var copied = false
     @State private var slices: [String]?
@@ -940,6 +946,7 @@ struct LargeCodeBlockView: View {
                         )
                         if lineStats?.hasMore == true {
                             Button {
+                                disclosure?.willToggle(nil, to: true)
                                 withAnimation(.easeInOut(duration: 0.15)) { expanded = true }
                             } label: {
                                 Label("Show all \(lineStats?.count ?? 0) lines", systemImage: "chevron.down")

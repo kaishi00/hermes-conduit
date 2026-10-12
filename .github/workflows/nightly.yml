@@ -26,6 +26,10 @@ permissions:
 env:
   SIMULATOR_NAME: "iPhone 17 Pro"
   DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
+  # Build budget for scripts/ci-hosted-build.sh. Six macOS jobs share the
+  # account's runners here, so builds run slower than in PR CI (900 s there):
+  # builds of 850-890 s were common, and UI shard 3 hit 900 s on 2026-10-11.
+  BUILD_TIMEOUT_SECS: "1200"
 
 jobs:
   plan:
@@ -58,7 +62,7 @@ jobs:
     name: Timing families (repeat ${{ matrix.repeat }})
     needs: plan
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
@@ -76,8 +80,6 @@ jobs:
         run: xcodegen generate
 
       - name: Build and boot the simulator in parallel
-        env:
-          BUILD_TIMEOUT_SECS: 900
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the timing families
@@ -128,8 +130,6 @@ jobs:
         run: xcodegen generate
 
       - name: Build and boot the simulator in parallel
-        env:
-          BUILD_TIMEOUT_SECS: 900
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's UI classes

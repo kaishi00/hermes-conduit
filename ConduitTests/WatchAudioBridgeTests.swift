@@ -97,6 +97,19 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(first["briefing"] as? String, "Be brief.")
         XCTAssertEqual(first["greeting"] as? String, "Say hi.")
         XCTAssertNil(first["history"])
+        XCTAssertNil(first["call_opening"])
+        // A call Hermes placed: the host has the model speak first (#544).
+        let called = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
+            engine: "gpt_live", voice: nil, briefing: "About this call", greeting: nil, callOpening: true, history: []
+        )) as? [String: Any])
+        XCTAssertEqual(called["call_opening"] as? Bool, true)
+        // The Watch's own opening turn: only when the host didn't open, never on a rejoin.
+        let hostOpened = WatchAudioBridgeWire.Started(engine: "gpt_live", voice: nil, inputRate: 16_000, outputRate: 24_000, briefingApplied: true, greetingApplied: true)
+        var olderHost = hostOpened
+        olderHost.greetingApplied = false
+        XCTAssertFalse(WatchAudioBridgeWire.sendsOpeningTurn(rejoining: false, started: hostOpened))
+        XCTAssertTrue(WatchAudioBridgeWire.sendsOpeningTurn(rejoining: false, started: olderHost))
+        XCTAssertFalse(WatchAudioBridgeWire.sendsOpeningTurn(rejoining: true, started: olderHost))
         // A rejoin: the conversation so far, no second greeting.
         let rejoin = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
             engine: "gpt_live", voice: nil, briefing: nil, greeting: nil,

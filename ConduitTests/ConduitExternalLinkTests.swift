@@ -3,7 +3,8 @@
 //  ConduitTests
 //
 //  `conduit://session/<id>` opened by another app (a notification, a
-//  Shortcut): only plain chat links are accepted from outside. Written as
+//  Shortcut): only plain chat links are accepted from outside; bot and
+//  Settings links open only from inside the app. Written as
 //  an extension of the existing link suite: the CI test planner is at
 //  capacity for new XCTestCase classes.
 //
@@ -131,6 +132,21 @@ extension HermesVoiceGatewayTimeoutTests {
             )
             XCTAssertNotEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
         }
+    }
+
+    func testSettingsLinkOpensCallsFromHermesOnlyInsideTheApp() throws {
+        let url = try XCTUnwrap(URL(string: "conduit://settings/calls"))
+        XCTAssertEqual(ConduitAppLink(url: url), .settings(.calls))
+        XCTAssertEqual(ConduitAppLink.settings(.calls).url, url)
+        XCTAssertEqual(ConduitAppLink(url: try XCTUnwrap(URL(string: "conduit://Settings/Calls"))), .settings(.calls))
+        XCTAssertNil(ConduitAppLink(url: try XCTUnwrap(URL(string: "conduit://settings/voice"))), "Only pages Hermes links to")
+        XCTAssertNil(ConduitAppLink(externalURL: url), "Another app can't open Settings")
+        XCTAssertEqual(ConduitAppLink.removingLinks(from: "Turn them on under [Calls from Hermes](conduit://settings/calls)."), "Turn them on under.")
+
+        let appState = try makeLinkAppState()
+        appState.openAppLink(.settings(.calls))
+        XCTAssertEqual(appState.settingsLinkRequest, .calls, "MainView opens Settings at the page")
+        XCTAssertEqual(appState.activeProfile, "default")
     }
 
     func testLinkNamingTheProfileInUseStaysOnIt() throws {

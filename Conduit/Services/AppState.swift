@@ -258,6 +258,7 @@ struct GroupChatLifecycleOperations {
     var send: (@MainActor (HermesClient, String, String, String, String) async throws -> GroupSendResult)?
     var create: (@MainActor (HermesClient, String, String, [[String: Any]]) async throws -> GroupRoom)?
     var stop: (@MainActor (HermesClient, String) async throws -> Int)?
+    var approve: (@MainActor (HermesClient, String, GroupPendingApproval, String) async throws -> Bool)?
     var disband: (@MainActor (HermesClient, String) async throws -> Void)?
 
     static let live = GroupChatLifecycleOperations()
@@ -581,6 +582,7 @@ final class AppState: ObservableObject {
         didSet {
             refreshActiveChatScrollSessionIdentity()
             observeChatReadState()
+            updateSessionReferenceTitles()
         }
     }
     /// Catalog owner captured only after its asynchronous load is admitted.
@@ -619,7 +621,31 @@ final class AppState: ObservableObject {
             refreshActiveChatScrollSessionIdentity()
             // Pinned runs carry read state too (#485).
             observeChatReadState()
+            updateSessionReferenceTitles()
         }
+    }
+
+    /// Hermes' @session:<id> links read as the chat's name, cron runs' too.
+    private func updateSessionReferenceTitles() {
+        HermesSessionReference.updateTitles(Self.sessionReferenceTitles(cronSessions + sessions))
+    }
+
+    /// Titles by every id a chat answers to. A chat's own id wins over the
+    /// same id reached through a continuation's lineage root or alias.
+    nonisolated static func sessionReferenceTitles(_ sessions: [SessionSummary]) -> [String: String] {
+        var titles: [String: String] = [:]
+        let named = sessions.filter { !$0.title.isEmpty }
+        for session in named {
+            for id in [session.lineageRootId].compactMap({ $0 }) + session.alternateIds {
+                titles[id] = session.title
+            }
+        }
+        for session in named {
+            for id in [session.id, session.storedSessionId].compactMap({ $0 }) {
+                titles[id] = session.title
+            }
+        }
+        return titles
     }
     @Published private(set) var projects: [ProjectSummary] = []
     @Published private(set) var supportsProjects = false
@@ -1377,6 +1403,9 @@ final class AppState: ObservableObject {
     /// Mirrors MainView's Settings sheet item so return-surface decisions can
     /// tell whether Settings owns the surface across a background/foreground cycle.
     @Published var isSettingsSheetPresented = false
+    /// A Settings page a link asked for (`conduit://settings/calls`):
+    /// MainView opens Settings there and clears it.
+    @Published var settingsLinkRequest: ConduitAppLink.SettingsLink?
     @Published var errorMessage: String?
     /// A reasoning write is in flight, from the composer chip or the Model
     /// sheet; both wait for it so picks land in order.
@@ -1403,10 +1432,30 @@ final class AppState: ObservableObject {
             // authentication failure it must not reappear on the next sign-in.
             // (The files stay until sign-out/removal/switch wipes them.)
             if showLogin { dismissOfflineChatPresentation() }
+            // Sign-in raised with Conduit off the phone screen (a call from
+            // Hermes or the Apple Watch launched it in the background, or
+            // only CarPlay shows it): Face ID can't show there, and a locked
+            // phone keeps a saved password unreadable. The saved sign-in
+            // runs again once Conduit is on screen instead of leaving the
+            // user signed out.
+            signInWaitsForForeground = showLogin && phoneScreenIsAway()
         }
+    }
+    /// A sign-in screen came up while Conduit was off the phone screen; the
+    /// next return to the screen retries the saved sign-in.
+    private(set) var signInWaitsForForeground = false
+    /// Whether no phone screen of Conduit is in the foreground: a launch in
+    /// the background, or CarPlay alone. Test seam.
+    var phoneScreenIsAway: @MainActor () -> Bool = {
+        !PhoneScenePresence.isInForeground
     }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
+    /// The draft the prefill is for, until ComposerBar puts it in. A new
+    /// chat's draft load can land in the same update as the prefill, so
+    /// the composer waits until this draft is the one loaded. Set only by
+    /// `prefillComposer`, with the text and then the token.
+    private(set) var composerPrefillDraftKey: ComposerDraftKey?
     /// A quote waiting for the composer (#385). ComposerBar, which owns the
     /// draft, applies it and then consumes it.
     @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
@@ -1668,7 +1717,8 @@ final class AppState: ObservableObject {
                         memoryRecall: memory?.canRecall == true,
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
-                        waitsOn: self?.liveHermesCall?.kind
+                        waitsOn: self?.liveHermesCall?.kind,
+                        chats: true
                     ),
                     googleSearch: search == .google,
                     voice: self?.geminiLiveVoice
@@ -1959,8 +2009,10 @@ final class AppState: ObservableObject {
                         + (self?.hermesCallsInstructions(delegation: true) ?? "")
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
-                    // A call Hermes made opens with its brief instead (#449).
-                    greeting: self?.liveHermesCall == nil ? self?.liveVoiceStyle.greeting : nil
+                    // A call Hermes made opens with its brief instead (#449),
+                    // spoken first rather than waiting for the user (#544).
+                    greeting: self?.liveHermesCall == nil ? self?.liveVoiceStyle.greeting : nil,
+                    callOpening: self?.liveHermesCall != nil
                 )
             },
             availability: { [weak self] in
@@ -2229,7 +2281,8 @@ final class AppState: ObservableObject {
                         memoryRecall: memory?.canRecall == true,
                         thread: self?.voiceBackgroundJobSupervisor.liveThread != nil,
                         callback: self?.supportsHermesCalls == true,
-                        waitsOn: self?.liveHermesCall?.kind
+                        waitsOn: self?.liveHermesCall?.kind,
+                        chats: true
                     ),
                     voice: self?.grokLiveVoice
                 )
@@ -2483,6 +2536,14 @@ final class AppState: ObservableObject {
                 guard let self, self.isOpenChat(thread),
                       let message = Self.liveVoiceUnansweredPrompt(in: self.messages) else { return nil }
                 return Self.liveVoiceTypedPrompt(message)
+            },
+            searchChats: { [weak self] query in
+                guard let self else { throw HermesError.notConnected }
+                return try await self.searchChatsForVoice(query)
+            },
+            readChat: { [weak self] sessionID in
+                guard let self else { throw HermesError.notConnected }
+                return try await self.readChatForVoice(sessionID)
             }
         ))
         supervisor.callbacks = self.makeHermesCallbackBackend()
@@ -2513,6 +2574,9 @@ final class AppState: ObservableObject {
         supervisor.liveCallScreenIsVisible = { [weak self] in
             guard let self else { return false }
             return self.isSceneActive && (self.showGeminiLiveSheet || self.showGrokLiveSheet)
+        }
+        supervisor.openChat = { [weak self] match in
+            self?.openChatFromLiveCall(match.sessionID) ?? false
         }
         supervisor.onThreadTurnStarted = { [weak self] job, thread in
             guard let self, let recorder = self.voiceCallRecorder else { return }
@@ -3362,6 +3426,12 @@ final class AppState: ObservableObject {
         dismissOfflineChatPresentation()
         // So do the unsaved voice calls Voice settings counts.
         publishVoiceCallSaveStatus()
+        // And the Watch voice checks: this profile's decide whether calls
+        // ring the Watch. Rescoped here, not only by the refresh below, so
+        // a Watch call before that refresh's first await can't read the
+        // outgoing profile's checks.
+        rescopeWatchCallVoices()
+        Task { await refreshWatchCallVoices() }
     }
 
 #if DEBUG
@@ -3417,42 +3487,59 @@ final class AppState: ObservableObject {
     private let clearSessionPresentationCache: () -> Void
     private let initialChatResumeServerIdentity: String?
 
-    /// Every id the open conversation answers to: a review summary is keyed
-    /// by the stream's RUNTIME session id, and each resume mints a new one,
-    /// so matching the record against one id loses it on the next reload.
-    private func reviewCacheSessionIDs(for sessionId: String) -> Set<String> {
-        var ids: Set<String> = [sessionId]
-        for id in [
-            reconciliation?.requestedSessionId,
-            reconciliation?.resolvedSessionId
-        ].compactMap({ $0 }) {
-            ids.insert(id)
+    /// The id a review summary is saved under: the open chat's durable id
+    /// when Hermes confirmed one, else its row's stored id, else the open id.
+    /// The event's runtime id is replaced on the next resume, and the scroll
+    /// identity's canonical id can still be the chat open before a new one.
+    /// Never a row found through its alternate ids, which another row can
+    /// share: a runtime key Hermes confirms later still matches.
+    private func reviewRecordSessionID(eventSessionId: String) -> String {
+        guard let active = activeSessionId, !active.isEmpty else { return eventSessionId }
+        if let durable = confirmedDurableSessionID(forRuntime: active) { return durable }
+        // Only a row that alone names the chat, in this profile: two rows
+        // claiming it are not settled by list order.
+        if let key = ChatScrollIdentityNormalization.sessionID(active) {
+            let rows = (activeProfileSessions + activeProfileCronSessions).filter { row in
+                [row.id, row.storedSessionId].contains { ChatScrollIdentityNormalization.sessionID($0) == key }
+            }
+            if rows.count == 1, let row = rows.first,
+               let id = ChatScrollIdentityNormalization.sessionID(row.storedSessionId)
+                ?? ChatScrollIdentityNormalization.sessionID(row.id) {
+                return id
+            }
         }
-        // The scroll identity may still describe the OUTGOING conversation
-        // mid-switch; borrow its aliases only when it names this one.
-        if let identityIDs = activeScrollIdentityIDs(containing: ids) {
-            ids.formUnion(identityIDs)
+        if let stored = ChatScrollIdentityNormalization.sessionID(voiceSessionAliases.storedID(forRuntime: active)) {
+            return stored
         }
-        let seedIDs = ids
-        for row in sessions {
-            let rowIDs = Set([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
-            guard !rowIDs.isDisjoint(with: seedIDs) else { continue }
-            ids.formUnion(rowIDs)
-        }
-        return Set(ids.compactMap { ChatScrollIdentityNormalization.sessionID($0) })
+        return ChatScrollIdentityNormalization.sessionID(active) ?? active
     }
 
-    private func activeScrollIdentityIDs(containing ids: Set<String>) -> Set<String>? {
-        let identity = activeChatScrollSessionIdentity
-        var identityIDs = identity.equivalentSessionIDs
-        if let canonical = identity.canonicalSessionID { identityIDs.insert(canonical) }
-        return identityIDs.isDisjoint(with: ids) ? nil : identityIDs
+    /// The durable id Hermes confirmed for a chat's runtime id: a Bot Chat's
+    /// mapping is under the bot's profile, and the dashboard's is tried too.
+    private func confirmedDurableSessionID(forRuntime sessionId: String) -> String? {
+        botConversationProfile(for: sessionId)
+            .flatMap { conversationIdentityIndex.durableID(forRuntime: sessionId, profile: $0) }
+            ?? conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+    }
+
+    /// Whether a saved review belongs to the open chat: its key is one of the
+    /// chat's own ids, or a runtime id Hermes confirmed as one of them. Never
+    /// the scroll identity's aliases or a reconciliation's ids, which keep the
+    /// previous chat's ids after a new chat and pinned its reviews there.
+    private func reviewRecordBelongs(_ record: ReviewSummaryRecord, toOwnIDs ownIDs: Set<String>) -> Bool {
+        if let key = ChatScrollIdentityNormalization.sessionID(record.sessionId), ownIDs.contains(key) {
+            return true
+        }
+        guard let durable = ChatScrollIdentityNormalization.sessionID(
+            confirmedDurableSessionID(forRuntime: record.sessionId)
+        ) else { return false }
+        return ownIDs.contains(durable)
     }
 
     private func mergeCachedReviews(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
-        let sessionIDs = reviewCacheSessionIDs(for: sessionId)
+        let ownIDs = chatOwnSessionIDs(for: sessionId)
         let records = cachedReviews().filter {
-            $0.profile == activeProfile && sessionIDs.contains($0.sessionId)
+            $0.profile == activeProfile && reviewRecordBelongs($0, toOwnIDs: ownIDs)
         }
         guard !records.isEmpty else { return history }
         var merged = history
@@ -3510,11 +3597,7 @@ final class AppState: ObservableObject {
     private func chatOwnSessionIDs(for sessionId: String) -> Set<String> {
         // An opened saved chat resumes under a new runtime id the list may
         // not show yet; the resume (or the create) recorded its durable id.
-        // A Bot Chat's mapping is under the bot's profile; the dashboard's
-        // is tried too, so an earlier mapping there still counts.
-        let durable = botConversationProfile(for: sessionId)
-            .flatMap { conversationIdentityIndex.durableID(forRuntime: sessionId, profile: $0) }
-            ?? conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+        let durable = confirmedDurableSessionID(forRuntime: sessionId)
         let seeds = [sessionId, durable, voiceSessionAliases.storedID(forRuntime: sessionId)].compactMap { $0 }
         return Self.ownSessionIDs(for: seeds, in: sessions + cronSessions)
     }
@@ -3713,7 +3796,7 @@ final class AppState: ObservableObject {
         themePreference = ThemePreference(
             rawValue: defaults.string(forKey: themePreferenceKey) ?? ""
         ) ?? .dark
-        adoptLegacyProfilePreferences()
+        adoptLegacyProfilePreferences(into: initialRegistry.dashboards.first?.id)
         modelVisibility = scopedModelVisibility(dashboardID: initialDashboardID)
         if let savedFilterOrder = defaults.stringArray(forKey: sessionFilterOrderKey) {
             sessionFilterOrder = Self.normalizedSessionFilterOrder(savedFilterOrder)
@@ -4633,6 +4716,8 @@ final class AppState: ObservableObject {
             openLinkedSession(id, unavailable: AppLocalization.string("That chat is no longer available."))
         case .bot(let profile):
             openLinkedBotChat(profile)
+        case .settings(let page):
+            settingsLinkRequest = page
         }
     }
 
@@ -4866,6 +4951,52 @@ final class AppState: ObservableObject {
         if isGeminiLiveActive || showGeminiLiveSheet || minimisedLiveVoice == .geminiLive { closeGeminiLiveConversation() }
         if isGPTLiveActive || showGPTLiveSheet || minimisedLiveVoice == .gptLive { closeGPTLiveConversation() }
         if isGrokLiveActive || showGrokLiveSheet || minimisedLiveVoice == .grokLive { closeGrokLiveConversation() }
+    }
+
+    // MARK: Finding chats from a call
+
+    /// The user's earlier chats on the profile in use that match `query`,
+    /// for a call asked to find one: Hermes' own search over ids, message
+    /// text and titles. A Hermes without that route is asked by the titles
+    /// of the chats Conduit lists.
+    func searchChatsForVoice(_ query: String) async throws -> [VoiceChatMatch] {
+        guard isConnected, let dashboardTicketBridge else { throw HermesError.notConnected }
+        let profile = activeProfile
+        do {
+            let response = try await dashboardTicketBridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
+            return VoiceChatFinder.matches(from: response)
+        } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
+            return VoiceChatFinder.titleMatches(in: activeProfileSessions, query: query)
+        }
+    }
+
+    /// A chat a call found, read for the call to talk about: the same text
+    /// turns a resumed call gets, with a long chat's older part summarized
+    /// once and the summary kept on the host.
+    func readChatForVoice(_ sessionID: String) async throws -> VoiceResumeContext {
+        guard isConnected, dashboardTicketBridge != nil else { throw HermesError.notConnected }
+        guard let context = await voiceResumeContext(sessionID: sessionID, profile: activeProfile) else {
+            // Said to the model, not shown: not localized.
+            throw VoiceAudioError.unavailable("Conduit couldn't read that chat.")
+        }
+        return context
+    }
+
+    /// Opens a chat a call found. The call goes on minimised, as it does
+    /// when its screen opens a job's chat. True once the open is on its way:
+    /// like that card's Open chat, a chat that turns out to be gone says so
+    /// on screen rather than to the call. Not checked against the loaded
+    /// list first: a chat the search found can be older than any row here,
+    /// and opening it refreshes the list once, as a job link does.
+    func openChatFromLiveCall(_ sessionID: String) -> Bool {
+        // A call CarPlay shows has nowhere to show the chat; the model says
+        // it couldn't open it, as show_on_screen refuses there.
+        guard isConnected, client != nil, !isCarPlayVoiceSurfaceActive else { return false }
+        if showGeminiLiveSheet { showGeminiLiveSheet = false }
+        if showGPTLiveSheet { showGPTLiveSheet = false }
+        if showGrokLiveSheet { showGrokLiveSheet = false }
+        openAppLink(.session(id: sessionID))
+        return true
     }
 
     // MARK: Minimised live voice
@@ -6377,10 +6508,18 @@ final class AppState: ObservableObject {
         composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
     }
 
-    /// Puts `text` in the composer, replacing the draft, and focuses it.
+    /// Puts `text` in the open chat's composer, replacing the draft, and
+    /// focuses it.
     func prefillComposer(_ text: String) {
+        composerPrefillDraftKey = ComposerBar.composerDraftKey(for: activeSessionId, profile: activeProfile)
         composerPrefillText = text
         composerPrefillToken = UUID()
+    }
+
+    /// The composer put the prefill in, or moved to a chat it wasn't for.
+    func consumeComposerPrefill(_ token: UUID) {
+        guard composerPrefillToken == token else { return }
+        composerPrefillDraftKey = nil
     }
 
     /// The composer took the quote: drop it, so the quoted text is not kept
@@ -6789,6 +6928,26 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
 
+    /// Where the user's answer to each of the open room's pending approvals
+    /// stands, keyed by `GroupPendingApproval.id`. A sent answer stays for
+    /// as long as the room is open, so a poll that started before it and
+    /// lands later still listing the approval can't bring its card back.
+    /// Ids are request-unique, so this grows by one per answer at most.
+    enum RoomApprovalAnswer: Equatable {
+        case submitting
+        case sent
+        case failed(String)
+    }
+    @Published private(set) var roomApprovalAnswers: [String: RoomApprovalAnswer] = [:]
+
+    /// The open room's approvals still waiting on the user.
+    var activeRoomPendingApprovals: [GroupPendingApproval] {
+        guard groupCapabilities?.supports("groups.approve") == true else { return [] }
+        return (activeRoomDriverStatus?.pendingApprovals ?? []).filter {
+            roomApprovalAnswers[$0.id] != .sent
+        }
+    }
+
     /// The last `activeRoomResponder` answer, keyed on what it reads, so a
     /// render that asks several times replays the log once.
     private var roomResponderCache: (key: String, member: GroupMember?)?
@@ -6877,6 +7036,15 @@ final class AppState: ObservableObject {
     private func groupsStop(_ client: HermesClient, roomID: String) async throws -> Int {
         if let operation = groupChatOperations.stop { return try await operation(client, roomID) }
         return try await client.groupsStop(roomID: roomID)
+    }
+
+    private func groupsApprove(
+        _ client: HermesClient, roomID: String, approval: GroupPendingApproval, choice: String
+    ) async throws -> Bool {
+        if let operation = groupChatOperations.approve {
+            return try await operation(client, roomID, approval, choice)
+        }
+        return try await client.groupsApprove(roomID: roomID, approval: approval, choice: choice)
     }
 
     private func groupsDisband(_ client: HermesClient, roomID: String) async throws {
@@ -7001,6 +7169,7 @@ final class AppState: ObservableObject {
         activeRoomSurface = nil
         activeRoomReplay = GroupRoomReplay(roomID: "")
         activeRoomDriverStatus = nil
+        roomApprovalAnswers = [:]
         activeRoomSendInFlight = false
         groupRoomOutbox.discard()
         pendingRoomMessage = nil
@@ -7096,6 +7265,7 @@ final class AppState: ObservableObject {
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = GroupRoomReplay(roomID: room.roomID)
         activeRoomDriverStatus = nil
+        roomApprovalAnswers = [:]
         // A send parked when this room was left comes back with its retry
         // key; the tail below settles it if it landed meanwhile.
         groupRoomOutbox = parkedRoomOutboxes.removeValue(
@@ -7213,6 +7383,7 @@ final class AppState: ObservableObject {
                     return
                 }
                 activeRoomDriverStatus = driver
+                sweepRoomApprovalAnswers()
             }
         } catch is CancellationError {
             return
@@ -7408,6 +7579,49 @@ final class AppState: ObservableObject {
             // Surface without closing: stop is advisory to the driver.
             errorMessage = AppLocalization.string("Could not stop this group chat's work: \(UserFacingError.message(for: error))")
         }
+    }
+
+    /// Answer one member's pending approval in the open room
+    /// (`groups.approve`). The room's driver resumes the member's turn on
+    /// its own; the poll that follows picks up the new status.
+    func respondToRoomApproval(_ approval: GroupPendingApproval, choice: String) async {
+        guard let surface = activeRoomSurface, let client, isConnected,
+              groupCapabilities?.supports("groups.approve") == true,
+              approval.allows(choice),
+              roomApprovalAnswers[approval.id] != .submitting,
+              roomApprovalAnswers[approval.id] != .sent else { return }
+        let epoch = groupRoomEpoch
+        roomApprovalAnswers[approval.id] = .submitting
+        do {
+            let resolved = try await groupsApprove(
+                client, roomID: surface.room.roomID, approval: approval, choice: choice)
+            guard groupRoomEpoch == epoch else { return }
+            roomApprovalAnswers[approval.id] = resolved
+                ? .sent
+                : .failed(AppLocalization.string("This approval is no longer active."))
+        } catch is CancellationError {
+            guard groupRoomEpoch == epoch else { return }
+            roomApprovalAnswers.removeValue(forKey: approval.id)
+            return
+        } catch {
+            guard groupRoomEpoch == epoch else { return }
+            // A request the gateway no longer holds (answered elsewhere,
+            // timed out, the turn stopped) drops off with the next status.
+            roomApprovalAnswers[approval.id] = .failed(UserFacingError.message(for: error))
+        }
+        await pollActiveRoomOnce(epoch: epoch)
+    }
+
+    /// Forget failures whose approval the gateway no longer lists. Sent
+    /// answers stay (see `roomApprovalAnswers`), and so does an answer
+    /// still in flight.
+    private func sweepRoomApprovalAnswers() {
+        let listed = Set((activeRoomDriverStatus?.pendingApprovals ?? []).map(\.id))
+        let kept = roomApprovalAnswers.filter { entry in
+            if case .failed = entry.value { return listed.contains(entry.key) }
+            return true
+        }
+        if kept != roomApprovalAnswers { roomApprovalAnswers = kept }
     }
 
     /// Permanently disband the open room (destructive; the view confirms).
@@ -7743,6 +7957,12 @@ final class AppState: ObservableObject {
     func saveDefaultProfileName(_ name: String) {
         defaultProfileName = profileAppearanceStore.saveDefaultName(name, dashboardID: activeDashboardID)
         publishWidgetSnapshot()
+        // A call ringing on the Watch shows it.
+        shareWatchCallVoices()
+    }
+
+    var mainProfileNamesByDashboard: [String: String] {
+        profileAppearanceStore.defaultNamesByDashboard()
     }
 
     func selectAppIcon(_ choice: AppIconChoice) async -> Bool {
@@ -7809,8 +8029,8 @@ final class AppState: ObservableObject {
     /// One-time move of the pre-scoping global profile order and model
     /// visibility into the registry's first dashboard (the one they were set
     /// on). A later dashboard starts from its own defaults.
-    private func adoptLegacyProfilePreferences() {
-        guard let primary = savedDashboardRegistry.dashboards.first?.id else { return }
+    private func adoptLegacyProfilePreferences(into primary: UUID?) {
+        guard let primary else { return }
         let bucket = Self.dashboardPreferenceBucket(primary)
         if let legacyOrder = defaults.stringArray(forKey: profileOrderKey) {
             var orders = defaults.dictionary(forKey: profileOrderByDashboardKey) as? [String: [String]] ?? [:]
@@ -7884,6 +8104,8 @@ final class AppState: ObservableObject {
     /// dashboard.
     private func removeDashboardScopedPresentation(_ id: UUID) {
         profileAppearanceStore.removeAll(dashboardID: id)
+        // The Watch forgets its main profile name.
+        shareWatchCallVoices()
         forgetActiveProfile(for: id)
         let bucket = Self.dashboardPreferenceBucket(id)
         var orders = defaults.dictionary(forKey: profileOrderByDashboardKey) as? [String: [String]] ?? [:]
@@ -7979,7 +8201,9 @@ final class AppState: ObservableObject {
     }
 #endif
 
-    func loadSavedConnection() {
+    /// `trigger` names what started the restore in the connection
+    /// timeline and the call trace.
+    func loadSavedConnection(trigger: String = "cold launch") {
         #if DEBUG
         if let stub = Self.uiTestFailedConnectionStub() {
             let failureKind = Self.uiTestFailureKind()
@@ -8014,8 +8238,12 @@ final class AppState: ObservableObject {
             return
         }
         rememberDashboardURL(dashboard.normalizedURL)
+        // A dashboard switch made while this restore runs (the sign-in
+        // retried on screen, then the user picked another dashboard) owns
+        // the flow.
+        let switchGeneration = dashboardSwitchGeneration
         if KeychainHelper.loadNativeOAuthTokens(dashboardID: activeID) != nil {
-            beginConnectionTimeline("cold launch, browser sign-in (OAuth)")
+            beginConnectionTimeline("\(trigger), browser sign-in (OAuth)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
             showLogin = false
             isConnecting = true
@@ -8023,14 +8251,15 @@ final class AppState: ObservableObject {
             Task {
                 await restoreNativeOAuthConnection(
                     baseURL: dashboard.normalizedURL,
-                    dashboardID: activeID
+                    dashboardID: activeID,
+                    switchGeneration: switchGeneration
                 )
             }
         } else if let credentials = KeychainHelper.loadCredentials(dashboardID: activeID) {
             beginConnectionTimeline(
                 credentials.requiresFaceID
-                    ? "cold launch, password sign-in with Face ID"
-                    : "cold launch, password sign-in"
+                    ? "\(trigger), password sign-in with Face ID"
+                    : "\(trigger), password sign-in"
             )
             // A Face ID-protected dashboard reveals its saved copy only after
             // this launch's Face ID succeeds (restoreSavedCredentials).
@@ -8041,9 +8270,15 @@ final class AppState: ObservableObject {
                     isConnecting = true
                 }
             }
-            Task { await restoreSavedCredentials(credentials, dashboardID: activeID) }
+            Task {
+                await restoreSavedCredentials(
+                    credentials,
+                    dashboardID: activeID,
+                    switchGeneration: switchGeneration
+                )
+            }
         } else if let saved = KeychainHelper.loadConnection(dashboardID: activeID) {
-            beginConnectionTimeline("cold launch, browser sign-in (saved ticket)")
+            beginConnectionTimeline("\(trigger), browser sign-in (saved ticket)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
             // Keep the authenticated app shell in place while WebKit restores
             // its cookie process. A cold WebKit launch is not evidence that the
@@ -8052,7 +8287,7 @@ final class AppState: ObservableObject {
             showLogin = false
             isConnecting = true
             turnState = .synchronizing
-            Task { await restoreSavedConnection(saved) }
+            Task { await restoreSavedConnection(saved, switchGeneration: switchGeneration) }
         } else {
             // The selected dashboard has no reusable auth left (signed out or
             // removed on another surface): present its sign-in, seeded with
@@ -8061,17 +8296,24 @@ final class AppState: ObservableObject {
         }
     }
 
-    func restoreNativeOAuthConnection(baseURL: String, dashboardID: UUID) async {
+    func restoreNativeOAuthConnection(
+        baseURL: String,
+        dashboardID: UUID,
+        switchGeneration: UInt64? = nil
+    ) async {
         do {
             let ticket = try await mintChatResumeTicket(for: HermesConnection(baseUrl: baseURL, ticket: ""))
+            // A dashboard switch made meanwhile owns the flow.
+            guard restoreOwnsFlow(switchGeneration) else { return }
             await connect(with: HermesConnection(baseUrl: baseURL, ticket: ticket), profile: activeProfile)
             if isConnected {
                 KeychainHelper.clearCredentials(dashboardID: dashboardID)
                 KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
             }
         } catch is CancellationError {
-            isConnecting = false
+            if restoreOwnsFlow(switchGeneration) { isConnecting = false }
         } catch {
+            guard restoreOwnsFlow(switchGeneration) else { return }
             // A rejected grant can clear storage while the bridge still owns
             // its old in-memory session. Tear it down before presenting login.
             dashboardTicketBridge?.invalidate()
@@ -8726,7 +8968,7 @@ final class AppState: ObservableObject {
             // Pre-scoping appearance/preferences with no dashboard to own
             // them yet belong to the first one (same rule as launch).
             profileAppearanceStore.adoptLegacyAppearance(into: id)
-            adoptLegacyProfilePreferences()
+            adoptLegacyProfilePreferences(into: id)
             // No reload: a registered dashboard is not selected yet, and
             // selecting it (adoptDashboard/switch) reloads through didSet.
         }
@@ -9029,18 +9271,25 @@ final class AppState: ObservableObject {
         rememberDashboardURL(credentials.baseURL)
 
         if credentials.requiresFaceID {
-            let authenticated: Bool
-            if BiometricAuth.isFaceIDAvailable {
-                authenticated = await BiometricAuth.authenticate(reason: AppLocalization.string("Unlock Conduit"))
-            } else {
-                authenticated = false
-            }
-            guard authenticated else {
+            guard await unlockWithFaceID() else {
                 // A superseded switch owns the flow: present nothing.
-                if restoreOwnsFlow(switchGeneration), widgetLease?.isCurrent != false {
-                    showLogin = true
-                    widgetLease?.fail(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
+                guard restoreOwnsFlow(switchGeneration) else { return }
+                guard widgetLease?.isCurrent != false else { return }
+                // Face ID or Touch ID can't show off the phone screen (a call from Hermes
+                // woke Conduit, or only CarPlay shows it): the saved session
+                // connects, as it does when a locked phone keeps the
+                // password unreadable.
+                if widgetLease == nil, phoneScreenIsAway(), let scopedDashboardID,
+                   restoreSavedSessionOffScreen(
+                    dashboardID: scopedDashboardID,
+                    baseURL: credentials.baseURL,
+                    switchGeneration: switchGeneration
+                   ) {
+                    return
                 }
+                guard widgetLease?.isCurrent != false else { return }
+                showLogin = true
+                widgetLease?.fail(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
                 return
             }
             // Re-fence after the biometric await: a superseded switch owns
@@ -9102,6 +9351,81 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Face ID or Touch ID for a saved password. Test seam.
+    var unlockWithFaceID: @MainActor () async -> Bool = {
+        guard BiometricAuth.isAvailable else { return false }
+        return await BiometricAuth.authenticate(reason: AppLocalization.string("Unlock Conduit"))
+    }
+
+    /// Connects with the dashboard's saved session (its ticket, renewed with
+    /// its cookies) instead of the Face ID-protected password, for a restore
+    /// running off the phone screen. False when there is no saved session
+    /// for that address.
+    private func restoreSavedSessionOffScreen(
+        dashboardID: UUID,
+        baseURL: String,
+        switchGeneration: UInt64?
+    ) -> Bool {
+        guard let saved = KeychainHelper.loadConnection(dashboardID: dashboardID),
+              saved.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                == baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) else {
+            return false
+        }
+        HermesCallTrace.shared.note("Face ID can't show off screen: using the saved session")
+        noteConnectionStep("Saved session (Face ID can't show off screen)")
+        connection = saved
+        showLogin = false
+        isConnecting = true
+        turnState = .synchronizing
+        Task { await restoreSavedConnection(saved, switchGeneration: switchGeneration) }
+        return true
+    }
+
+    /// The saved sign-in, again, now that Conduit is on screen: the attempt
+    /// made in the background couldn't show Face ID or read a password the
+    /// locked phone kept. A dashboard with nothing saved left just shows its
+    /// sign-in, as before.
+    private func retrySignInFromBackground() {
+        signInWaitsForForeground = false
+        // Launched before the first unlock after a restart, the Keychain
+        // couldn't give the saved dashboards: read them again now. An
+        // upgrade that ran on a locked phone couldn't read the old saved
+        // password: it joins its dashboard now.
+        if savedDashboardRegistry.dashboards.isEmpty {
+            let stored = SavedDashboardMigrator.loadRegistry(defaults: defaults)
+            if let primary = stored.dashboards.first?.id {
+                // Pre-scoping appearance and preferences belong to the first
+                // dashboard (same rule as launch). Adopted before selecting
+                // it, so the selection's reload reads them.
+                profileAppearanceStore.adoptLegacyAppearance(into: primary)
+                adoptLegacyProfilePreferences(into: primary)
+                savedDashboardRegistry = stored
+                // Launch ordered the cached profiles with no dashboard's order.
+                profiles = orderedProfiles(profiles)
+            }
+        } else {
+            SavedDashboardMigrator.adoptLeftoverCredentials(into: savedDashboardRegistry)
+        }
+        // Nothing saved to sign in with (an off-screen switch to a dashboard
+        // with no reusable auth): the sign-in card keeps its explanation.
+        guard let dashboardID = activeDashboardID, hasSavedSignIn(dashboardID: dashboardID) else { return }
+        HermesCallTrace.shared.note("Signing in again on screen (signed out in the background)")
+        // The failure belongs to the background attempt; the retry reports
+        // its own.
+        pendingLoginFailure = nil
+        lastConnectionFailure = nil
+        errorMessage = nil
+        loadSavedConnection(trigger: "retry on screen")
+    }
+
+    /// Whether the dashboard has anything `loadSavedConnection` signs in
+    /// with: an OAuth grant, a saved password or a saved session.
+    private func hasSavedSignIn(dashboardID: UUID) -> Bool {
+        KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID) != nil
+            || KeychainHelper.loadCredentials(dashboardID: dashboardID) != nil
+            || KeychainHelper.loadConnection(dashboardID: dashboardID) != nil
+    }
+
     /// Whether a restore that started under this switch generation may still
     /// write state. Nil generations (non-switch restore paths) always own.
     private func restoreOwnsFlow(_ generation: UInt64?) -> Bool {
@@ -9161,7 +9485,7 @@ final class AppState: ObservableObject {
     func retryFromOfflineChat() {
         guard offlineChatPresentation != nil, !isConnecting else { return }
         if connection == nil {
-            loadSavedConnection()
+            loadSavedConnection(trigger: "retry from offline copy")
         } else {
             // Same purpose rule as a foreground recovery: with no conversation
             // selected yet (a cold launch), the automatic resume picks it.
@@ -9295,12 +9619,19 @@ final class AppState: ObservableObject {
         projects = []
         supportsProjects = false
         projectsLoading = false
-        if let dashboardID = activeDashboardID {
-            // Forced sign-out is scoped like Disconnect: only the active
-            // dashboard's saved ticket (and cookie mirror) is retired.
-            KeychainHelper.clearConnection(dashboardID: dashboardID)
+        // Off the phone screen, a renewal is refused on thinner evidence: no
+        // page retries, and a locked phone can't re-sign in with the saved
+        // password. The saved session and copy stay for the retry on screen
+        // (signInWaitsForForeground), which retires them if the dashboard
+        // refuses it there too.
+        if !phoneScreenIsAway() {
+            if let dashboardID = activeDashboardID {
+                // Forced sign-out is scoped like Disconnect: only the active
+                // dashboard's saved ticket (and cookie mirror) is retired.
+                KeychainHelper.clearConnection(dashboardID: dashboardID)
+            }
+            wipeOfflineChatCache(dashboardID: activeDashboardID)
         }
-        wipeOfflineChatCache(dashboardID: activeDashboardID)
         turnState = .idle
         retireOutstandingPreferredReturnSurfaceRequests()
         // The banner content belonged to the session being torn down; with
@@ -12364,6 +12695,13 @@ final class AppState: ObservableObject {
             // a stale request after the user signs back in.
             let didReturnFromBackground = hasEnteredBackgroundScenePhase
             hasEnteredBackgroundScenePhase = false
+            if showLogin, signInWaitsForForeground {
+                // The freshness arming belongs to the session that was torn
+                // down; the retry's connect syncs from scratch.
+                foregroundFreshnessCheckArmed = false
+                retrySignInFromBackground()
+                return nil
+            }
             guard connection != nil else {
                 // A cold-launch restore that failed offline left the saved
                 // copy up without a connection: try the restore again.
@@ -15249,6 +15587,11 @@ final class AppState: ObservableObject {
         chatOwnSessionIDs(for: sessionID)
     }
 
+    /// The saved review rows a chat shows when its history loads.
+    func cachedReviewRowsForTesting(_ sessionID: String) -> [ChatMessage] {
+        mergeCachedReviews(into: [], sessionId: sessionID)
+    }
+
     /// The ownership verdict a cross-profile decision would reach for this
     /// profile, so tests can pin all three cases without driving a switch.
     func profileOwnershipVerdictForTesting(_ profile: String) -> ProfileOwnershipVerdict {
@@ -17059,6 +17402,8 @@ final class AppState: ObservableObject {
         notifierPlugin.state = state
         // Calls declined or missed while this host was out of reach.
         deliverHermesCallOutcomes()
+        // Whether calls can ring the Watch, for this host and profile.
+        Task { await refreshWatchCallVoices() }
         await provisionNotificationEncryption(bridge: bridge)
     }
 
@@ -18638,8 +18983,7 @@ final class AppState: ObservableObject {
             }
             let message = obj["message"]?.stringValue ?? output
             if !message.isEmpty, isCurrentComposerSubmission(context) {
-                composerPrefillText = message
-                composerPrefillToken = UUID()
+                prefillComposer(message)
             }
         case "alias":
             // Re-execute with the target command
@@ -23045,13 +23389,7 @@ final class AppState: ObservableObject {
             persistReview(ReviewSummaryRecord(
                 id: id,
                 profile: activeProfile,
-                // The durable key when the conversation has one: the runtime
-                // id this event carries is replaced on the next resume.
-                sessionId: activeScrollIdentityIDs(containing: [sessionId]) != nil
-                    ? (ChatScrollIdentityNormalization.sessionID(
-                        activeChatScrollSessionIdentity.canonicalSessionID
-                    ) ?? sessionId)
-                    : sessionId,
+                sessionId: reviewRecordSessionID(eventSessionId: sessionId),
                 timestamp: Self.localTimestamp(),
                 activity: activity
             ))
@@ -24875,6 +25213,7 @@ final class AppState: ObservableObject {
         async let personalityLookup = wantsPersonality ? tokens.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         let status = try await tokens.availability()
+        noteWatchCallVoice(.geminiLive, ready: status.isAvailable)
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
         }
@@ -24910,7 +25249,8 @@ final class AppState: ObservableObject {
             ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
-                memoryRecall: memory?.canRecall == true
+                memoryRecall: memory?.canRecall == true,
+                chats: true
             ),
             googleSearch: search == .google,
             voice: geminiLiveVoice,
@@ -24965,6 +25305,7 @@ final class AppState: ObservableObject {
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         let status = try await gptLiveClient.availability()
+        noteWatchCallVoice(.gptLive, ready: status.isAvailable)
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
         }
@@ -24991,7 +25332,11 @@ final class AppState: ObservableObject {
                 memory: memory,
                 personality: personality,
                 answerLength: style.answerLength,
-                onWatch: true
+                onWatch: true,
+                // GPT-Live on the Watch finds chats only through the grant,
+                // and has no phone to fall back on: briefed only once the host
+                // has reported them.
+                watchChats: notifierPlugin.reports(WatchToolAnswer.chatCapability)
             ) + (hermesCall?.instructionBlock(delegation: true, canAnswer: false) ?? "") + style.instructions,
             // A call Hermes made opens with its brief instead (#449).
             greeting: hermesCall == nil ? style.greeting : nil,
@@ -25048,6 +25393,7 @@ final class AppState: ObservableObject {
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         let status = try await grokLiveClient.availability()
+        noteWatchCallVoice(.grokLive, ready: status.isAvailable)
         guard case .available(_, let voice, _) = status else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
         }
@@ -25081,7 +25427,8 @@ final class AppState: ObservableObject {
             ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
-                memoryRecall: memory?.canRecall == true
+                memoryRecall: memory?.canRecall == true,
+                chats: true
             ),
             voice: voice,
             openingPrompt: hermesCall?.watchOpeningTurn ?? style.openingPrompt,
@@ -25657,6 +26004,9 @@ enum KeychainHelper {
         func update(_ data: Data, for query: [String: Any]) -> Int32
         func add(_ query: [String: Any]) -> Int32
         func delete(_ query: [String: Any])
+        /// Changes an existing item's accessibility class, which a data
+        /// update never does.
+        func setAccessibility(_ accessibility: CFString, for query: [String: Any]) -> Int32
     }
 
     struct SystemKeychainBackend: Backend {
@@ -25683,6 +26033,12 @@ enum KeychainHelper {
         func delete(_ query: [String: Any]) {
             SecItemDelete(query as CFDictionary)
         }
+
+        func setAccessibility(_ accessibility: CFString, for query: [String: Any]) -> Int32 {
+            SecItemUpdate(query as CFDictionary, [
+                kSecAttrAccessible as String: accessibility
+            ] as CFDictionary)
+        }
     }
 
     nonisolated(unsafe) private(set) static var backend: Backend = SystemKeychainBackend()
@@ -25691,6 +26047,37 @@ enum KeychainHelper {
     /// run serially within a simulator, and the swap is restored in teardown.
     static func useBackendForTesting(_ backend: Backend) {
         Self.backend = backend
+        credentialsAccessibilityMoves.lock()
+        credentialsMovedAccounts = []
+        credentialsAccessibilityMoves.unlock()
+    }
+
+    /// Saved passwords are readable after the first unlock, like the saved
+    /// session and cookies: a call from Hermes that wakes Conduit on a
+    /// locked phone can sign in again with one (Eric's choice, 2026-10-11).
+    /// Face ID guards the on-screen launch restore only; a silent renewal
+    /// reads the password without it, as it already did while unlocked.
+    static let credentialsAccessibility = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    private static let credentialsAccessibilityMoves = NSLock()
+    nonisolated(unsafe) private static var credentialsMovedAccounts: Set<String> = []
+
+    /// Moves a saved password to `credentialsAccessibility`. Passwords saved
+    /// by earlier builds were readable only while unlocked, and a data
+    /// update keeps an item's class, so the class is set explicitly: once
+    /// per launch, when the password is read (so the phone is unlocked) or
+    /// saved. It is a synchronous Keychain call on the caller's thread,
+    /// like the read beside it.
+    private static func moveCredentialsAccessibility(account: String, force: Bool) {
+        credentialsAccessibilityMoves.lock()
+        defer { credentialsAccessibilityMoves.unlock() }
+        guard force || !credentialsMovedAccounts.contains(account) else { return }
+        var status = backend.setAccessibility(credentialsAccessibility, for: scopedQuery(account: account))
+        if status == errSecItemNotFound {
+            status = backend.setAccessibility(credentialsAccessibility, for: legacyQuery(account: account))
+        }
+        if status == errSecSuccess {
+            credentialsMovedAccounts.insert(account)
+        }
     }
 
     private static let key = "hermes-conduit.connection.v1"
@@ -25715,6 +26102,11 @@ enum KeychainHelper {
         load(account: dashboardCookieKey)
     }
 
+    /// The record from before saved dashboards. Only the migrator reads it,
+    /// and it rewrites it as a dashboard's own record (readable after the
+    /// first unlock). Unreadable on a locked launch, it stays until a later
+    /// launch or the retry on screen can read it
+    /// (`SavedDashboardMigrator.adoptLeftoverCredentials`).
     static func saveCredentials(_ credentials: DashboardCredentials) {
         guard let data = try? JSONEncoder().encode(credentials) else { return }
         save(
@@ -25875,15 +26267,16 @@ enum KeychainHelper {
 
     static func saveCredentials(_ credentials: DashboardCredentials, dashboardID: UUID) {
         guard let data = try? JSONEncoder().encode(credentials) else { return }
-        save(
-            data,
-            account: scopedAccount(credentialsKey, dashboardID: dashboardID),
-            accessibility: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        )
+        let account = scopedAccount(credentialsKey, dashboardID: dashboardID)
+        save(data, account: account, accessibility: credentialsAccessibility)
+        // Saved over an earlier build's password, the item kept its class.
+        moveCredentialsAccessibility(account: account, force: true)
     }
 
     static func loadCredentials(dashboardID: UUID) -> DashboardCredentials? {
-        guard let data = load(account: scopedAccount(credentialsKey, dashboardID: dashboardID)) else { return nil }
+        let account = scopedAccount(credentialsKey, dashboardID: dashboardID)
+        guard let data = load(account: account) else { return nil }
+        moveCredentialsAccessibility(account: account, force: false)
         return try? JSONDecoder().decode(DashboardCredentials.self, from: data)
     }
 

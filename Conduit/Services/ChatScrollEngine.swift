@@ -86,8 +86,9 @@ struct ChatScrollRenderInputs: Equatable {
 ///    top, so messages arriving below never move what the user is reading.
 ///    The one change above the reader, a "Load earlier messages" prepend,
 ///    keeps the distance from the bottom instead.
-/// 3. Only the user leaves following (a drag), and only being near the
-///    bottom (or an explicit command) returns to it.
+/// 3. Only the user leaves following (a drag, or opening or closing a row
+///    such as Thinking or a tool card), and only being near the bottom (or
+///    an explicit command) returns to it.
 @MainActor
 final class ChatScrollEngine: ObservableObject {
     enum Mode: Equatable {
@@ -148,6 +149,10 @@ final class ChatScrollEngine: ObservableObject {
     static let prependSettleLimit: TimeInterval = 5
     /// How long an animated jump to latest suspends pinning.
     static let latestAnimationDuration: TimeInterval = 0.4
+    /// How long after the reader opens or closes a row the engine waits
+    /// before checking whether they are still at the bottom: the row
+    /// animates open with ConduitMotion.response (a 0.34 s spring).
+    static let disclosureSettleDelay: TimeInterval = 0.5
     static let coordinateSpaceName = "chat-transcript-stack"
 
     var onEvent: (@MainActor (ChatScrollEngineEvent) -> Void)?
@@ -178,15 +183,25 @@ final class ChatScrollEngine: ObservableObject {
     /// Bumped when the reader or a command takes over, so a pending
     /// past-the-bottom check does nothing when it runs.
     private var pastBottomCheckGeneration: UInt64 = 0
+    /// Bumped by every row the reader opens or closes, and by a drag, the
+    /// explicit commands, a session switch and a restoration, so only the
+    /// latest settle check acts. Anything else that changes the mode leaves
+    /// browsing, which the check requires.
+    private var disclosureGeneration: UInt64 = 0
     private let now: () -> TimeInterval
     private let prefersReducedMotion: @MainActor () -> Bool
+    private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Void
 
     init(
         now: @escaping () -> TimeInterval = { CACurrentMediaTime() },
-        prefersReducedMotion: @escaping @MainActor () -> Bool = { UIAccessibility.isReduceMotionEnabled }
+        prefersReducedMotion: @escaping @MainActor () -> Bool = { UIAccessibility.isReduceMotionEnabled },
+        schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Void = { delay, body in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated(body) }
+        }
     ) {
         self.now = now
         self.prefersReducedMotion = prefersReducedMotion
+        self.schedule = schedule
     }
 
     // MARK: - Derived facts
@@ -253,6 +268,7 @@ final class ChatScrollEngine: ObservableObject {
         defer { surfaceCallbackDepth -= 1 }
         guard let surface, !isPaused else { return }
         holdPrependAnchor(on: surface)
+        relatchIfPastTheBottom(surface)
         if canPinWhileFollowing(surface) {
             pin(surface)
         }
@@ -291,9 +307,13 @@ final class ChatScrollEngine: ObservableObject {
                   surface.distanceFromBottom > Self.nearBottomTolerance {
             setMode(.browsing)
             emit(.persistSnapshot(renderedSessionKey))
-        } else if canPinWhileFollowing(surface),
-                  !isDragging,
-                  surface.distanceFromBottom < -0.5 {
+        }
+        // Not an else: a reader who relatched above may have done it past
+        // the bottom (content shrank under them), and that is empty space
+        // to close now, not on some later layout pass.
+        if canPinWhileFollowing(surface),
+           !isDragging,
+           surface.distanceFromBottom < -0.5 {
             // Past the bottom with no finger or momentum: empty space under
             // the last message. UIKit never clamps an offset when content
             // shrinks, and SwiftUI writes offsets of its own during its
@@ -343,6 +363,7 @@ final class ChatScrollEngine: ObservableObject {
         defer { surfaceCallbackDepth -= 1 }
         isDragging = true
         cancelPastBottomCheck()
+        cancelDisclosureSettle()
         latestAnimationUntil = nil
         prependAnchor = nil
         restoration = nil
@@ -365,6 +386,49 @@ final class ChatScrollEngine: ObservableObject {
         }
         emit(.persistSnapshot(renderedSessionKey))
         emit(.flushPersistence)
+    }
+
+    // MARK: - Opening and closing rows
+
+    /// The reader is about to open or close a row (Thinking, a tool card,
+    /// "Show all"). The row they tapped must stay where it is. Following
+    /// would pin the content's bottom instead, so opening a row at the
+    /// bottom of the chat threw its header off the top of the screen and
+    /// showed the end of what it revealed. So this is the reader taking
+    /// over, like a drag: UIKit keeps the distance from the top, which keeps
+    /// the tapped row still. Once the row has animated, a reader still at
+    /// the bottom (the row was short, or it closed) follows again.
+    func userWillToggleRow() {
+        // Momentum is not excluded: following would pin the opened row's
+        // new bottom as soon as the momentum ended.
+        guard !isPaused, !isDragging, surface?.isTracking != true else { return }
+        cancelPastBottomCheck()
+        latestAnimationUntil = nil
+        // Both hold the viewport to something the toggle is about to change.
+        prependAnchor = nil
+        if restoration != nil {
+            restoration = nil
+            emit(.cancelAutomaticRestoration)
+        }
+        if mode != .browsing {
+            setMode(.browsing)
+            emit(.persistSnapshot(renderedSessionKey))
+        }
+        cancelDisclosureSettle()
+        let generation = disclosureGeneration
+        schedule(Self.disclosureSettleDelay) { [weak self] in
+            guard let self, generation == self.disclosureGeneration else { return }
+            self.disclosureSettled()
+        }
+    }
+
+    private func disclosureSettled() {
+        guard mode == .browsing, !isPaused, !isDragging, let surface,
+              !surface.isTracking, !surface.isDecelerating,
+              surface.distanceFromBottom <= Self.nearBottomTolerance else { return }
+        setMode(.following)
+        pin(surface)
+        emit(.persistSnapshot(renderedSessionKey))
     }
 
     // MARK: - Session identity
@@ -400,6 +464,7 @@ final class ChatScrollEngine: ObservableObject {
         }
         prependAnchor = nil
         latestAnimationUntil = nil
+        cancelDisclosureSettle()
         topVisibleMessageID = nil
         rowFrames = [:]
         refreshTrackedMessageVisibility()
@@ -521,6 +586,7 @@ final class ChatScrollEngine: ObservableObject {
         if surface?.isTracking == true { return }
         restoration = nil
         prependAnchor = nil
+        cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
         setMode(.following)
         // In the background, setPaused(false) catches up and pins.
@@ -554,6 +620,7 @@ final class ChatScrollEngine: ObservableObject {
         prependAnchor = nil
         latestAnimationUntil = nil
         cancelPastBottomCheck()
+        cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
         setMode(.browsing)
         emit(.revealRow(id: id))
@@ -576,6 +643,7 @@ final class ChatScrollEngine: ObservableObject {
         prependAnchor = nil
         latestAnimationUntil = nil
         cancelPastBottomCheck()
+        cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
         setMode(.browsing)
         guard !isPaused else { return }
@@ -602,6 +670,7 @@ final class ChatScrollEngine: ObservableObject {
         }
         prependAnchor = nil
         latestAnimationUntil = nil
+        cancelDisclosureSettle()
         restoration = Restoration(
             request: request,
             destination: resolveRestorationDestination(for: request)
@@ -758,6 +827,10 @@ final class ChatScrollEngine: ObservableObject {
         }
     }
 
+    private func cancelDisclosureSettle() {
+        disclosureGeneration &+= 1
+    }
+
     private func cancelPastBottomCheck() {
         pastBottomCheckGeneration &+= 1
         pastBottomCheckScheduled = false
@@ -778,6 +851,19 @@ final class ChatScrollEngine: ObservableObject {
             self.pin(surface)
             self.refreshJumpButton()
         }
+    }
+
+    /// A reader whose content shrank under them (a row closing, a turn's
+    /// live rows settling into a shorter reply) can be left looking at empty
+    /// space below the last message, which UIKit never closes on its own.
+    /// Nothing there is worth staying on, so they are back at the latest
+    /// message and follow it.
+    private func relatchIfPastTheBottom(_ surface: ChatScrollSurface) {
+        guard mode == .browsing, !isDragging, !surface.isTracking, !surface.isDecelerating,
+              !latestAnimationInFlight, prependAnchor == nil,
+              surface.distanceFromBottom < -0.5 else { return }
+        setMode(.following)
+        emit(.persistSnapshot(renderedSessionKey))
     }
 
     /// Following, with no finger, momentum or jump animation moving the

@@ -51,8 +51,9 @@ struct GPTLiveSessionAnswer: Equatable {
     /// instructions; an older plugin ignores it and the briefing must be sent
     /// as context after the call starts.
     var briefingApplied: Bool = false
-    /// True when the host made the model greet first (#290); an older
-    /// plugin keeps it silent and the greeting is asked for after the call
+    /// True when the host made the model speak first: a greeting (#290) or
+    /// the opening of a call Hermes placed (`call_opening`, #544). An older
+    /// plugin keeps it silent and the opening is asked for after the call
     /// starts.
     var greetingApplied: Bool = false
 }
@@ -89,7 +90,10 @@ protocol GPTLiveSessionProviding: AnyObject {
     /// `briefing` is Conduit's rules, persona and memory for this call: the
     /// host adds it to the session's instructions. `greeting` (nil for none,
     /// empty for the model's own words) makes the model greet first.
-    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?) async throws -> GPTLiveSessionAnswer
+    /// `callOpening` marks a call Hermes placed: the model speaks first with
+    /// the opening the briefing gives (#544). Callers send no greeting with
+    /// it; the host lets it win over one.
+    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?, callOpening: Bool) async throws -> GPTLiveSessionAnswer
 }
 
 @MainActor
@@ -128,10 +132,13 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         return Self.availability(from: response)
     }
 
-    func createSession(offer: String, history: [[String: Any]], voice: String? = nil, briefing: String? = nil, greeting: String? = nil) async throws -> GPTLiveSessionAnswer {
+    func createSession(offer: String, history: [[String: Any]], voice: String? = nil, briefing: String? = nil, greeting: String? = nil, callOpening: Bool = false) async throws -> GPTLiveSessionAnswer {
         var body: [String: Any] = ["sdp": offer]
         if let briefing, !briefing.isEmpty { body["briefing"] = briefing }
         if let greeting { body["greeting"] = greeting }
+        // An older plugin ignores it and keeps the model silent; Conduit
+        // then sends the opening turn itself (greeting_applied false).
+        if callOpening { body["call_opening"] = true }
         if !history.isEmpty { body["history"] = history }
         if let voice, !voice.isEmpty { body["voice"] = voice }
         let response: [String: Any]

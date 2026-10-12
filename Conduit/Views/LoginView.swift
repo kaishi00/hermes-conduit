@@ -22,6 +22,12 @@ struct LoginView: View {
     @State private var password = ""
     @State private var saveCredentials = false
     @State private var useFaceID = false
+    /// Read on appear rather than per view init (each read is a
+    /// LocalAuthentication round trip), and again on return to the
+    /// foreground, where a fingerprint or face may just have been set up.
+    @State private var biometrics = BiometricAuth.Status(kind: nil, isAvailable: false)
+    @State private var biometricsLoaded = false
+    @Environment(\.scenePhase) private var scenePhase
     @State var cloudflareEnabled = false
     @State var cloudflareClientID = ""
     @State var cloudflareClientSecret = ""
@@ -59,6 +65,29 @@ struct LoginView: View {
     /// user actually begins a browser sign-in.
     @State private var signInWebKitStoreID: UUID?
     @FocusState private var focusedField: LoginField?
+
+    private var biometricToggleTitle: String {
+        biometrics.kind == .touchID
+            ? AppLocalization.string("Use Touch ID")
+            : AppLocalization.string("Use Face ID")
+    }
+
+    private var biometricFootnote: String {
+        switch (biometrics.kind, biometrics.isAvailable, useFaceID) {
+        case (.touchID, false, _):
+            return AppLocalization.string("Touch ID is not available on this device. You can still save credentials.")
+        case (.touchID, true, true):
+            return AppLocalization.string("Touch ID, with device passcode recovery, is required on launch.")
+        case (.touchID, true, false):
+            return AppLocalization.string("Saved credentials reconnect without a Touch ID prompt.")
+        case (.faceID, true, true):
+            return AppLocalization.string("Face ID, with device passcode recovery, is required on launch.")
+        case (.faceID, true, false):
+            return AppLocalization.string("Saved credentials reconnect without a Face ID prompt.")
+        case (.faceID, false, _), (nil, _, _):
+            return AppLocalization.string("Face ID is not available on this device. You can still save credentials.")
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -107,7 +136,14 @@ struct LoginView: View {
                 Button("Done") { focusedField = nil }
             }
         }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            biometrics = BiometricAuth.status
+            if !biometrics.isAvailable { useFaceID = false }
+        }
         .onAppear {
+            biometrics = BiometricAuth.status
+            biometricsLoaded = true
             guard serverUrl.isEmpty else { return }
             serverUrl = appState.lastDashboardURL
             if let access = appState.dashboardScopedCloudflareAccess(for: serverUrl) {
@@ -355,18 +391,17 @@ struct LoginView: View {
                             if !savesCredentials { useFaceID = false }
                         }
 
-                    Toggle("Use Face ID", isOn: $useFaceID)
+                    // Face ID and Touch ID share this one setting; the
+                    // wording follows the device's sensor.
+                    Toggle(biometricToggleTitle, isOn: $useFaceID)
                         .tint(.conduitAccent)
-                        .disabled(!saveCredentials || !BiometricAuth.isFaceIDAvailable)
+                        .accessibilityIdentifier("login.biometric-toggle")
+                        .disabled(!saveCredentials || !biometrics.isAvailable)
 
-                    if !BiometricAuth.isFaceIDAvailable {
-                        Text("Face ID is not available on this device. You can still save credentials.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if saveCredentials {
-                        Text(useFaceID
-                            ? AppLocalization.string("Face ID, with device passcode recovery, is required on launch.")
-                            : AppLocalization.string("Saved credentials reconnect without a Face ID prompt."))
+                    // No footnote before the first status read, so a Face ID
+                    // phone never flashes "not available".
+                    if biometricsLoaded && (!biometrics.isAvailable || saveCredentials) {
+                        Text(biometricFootnote)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

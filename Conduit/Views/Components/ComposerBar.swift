@@ -94,6 +94,17 @@ struct ComposerBar: View {
         )
     }
 
+    /// A prefill goes in only over the draft it was made for, or the same
+    /// chat under its other id.
+    static func shouldApplyPrefill(
+        for target: ComposerDraftKey?,
+        loaded: ComposerDraftKey?,
+        identity: ChatScrollSessionIdentity
+    ) -> Bool {
+        guard let target, let loaded else { return false }
+        return draftKeysAreEquivalent(target, loaded, identity: identity)
+    }
+
     static func draftKeysAreEquivalent(
         _ lhs: ComposerDraftKey,
         _ rhs: ComposerDraftKey,
@@ -318,9 +329,7 @@ struct ComposerBar: View {
             }
         }
         .onChange(of: appState.composerPrefillToken) { _, _ in
-            replaceComposerText(appState.composerPrefillText)
-            isFocused = !text.isEmpty
-            isShowingSlashSuggestions = slashPrefix != nil
+            applyPendingPrefill()
         }
         .onChange(of: appState.composerQuoteRequest) { _, request in
             applyQuoteRequest(request)
@@ -353,6 +362,7 @@ struct ComposerBar: View {
             if loadedDraftKey == nil {
                 loadDraft(for: activeDraftKey)
             }
+            applyPendingPrefill()
             // A screenshot chat can open before this composer is on screen.
             applyFocusRequest(appState.composerFocusRequest)
         }
@@ -1151,7 +1161,6 @@ struct ComposerBar: View {
             replyingTo: submittedReply
         )
         let submittedAction = action
-        let prefillToken = appState.composerPrefillToken
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
         let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
         let submissionContext = appState.composerSubmissionContext()
@@ -1183,10 +1192,9 @@ struct ComposerBar: View {
             }
             draftStore.removeDraft(for: submittedDraftBucket)
             guard loadedDraftKey == submittedDraftKey else { return }
-            if appState.composerPrefillToken != prefillToken {
-                replaceComposerText(appState.composerPrefillText)
-                isFocused = !text.isEmpty
-            }
+            // A prefill the reply asked for (a slash command's) goes in
+            // here if its update hasn't put it in yet.
+            applyPendingPrefill()
             isShowingSlashSuggestions = slashPrefix != nil
         }
     }
@@ -1624,6 +1632,31 @@ struct ComposerBar: View {
         loadDraft(for: destinationKey)
         composerTextHeight = ComposerPasteTextView.minimumHeight
         isFocused = false
+        // A prefill for this chat goes in over its draft; one for a chat
+        // left behind is dropped.
+        if let target = appState.composerPrefillDraftKey,
+           !Self.draftKeysAreEquivalent(target, destinationKey, identity: appState.activeChatScrollSessionIdentity) {
+            appState.consumeComposerPrefill(appState.composerPrefillToken)
+        } else {
+            applyPendingPrefill()
+        }
+    }
+
+    /// Puts a waiting prefill in once its chat's draft is the one loaded.
+    /// Opening a chat with a prefill (Try a test call, Have Hermes watch
+    /// for this) changes the chat and the prefill in one update, and that
+    /// chat's draft load can run after the prefill: put in first, it was
+    /// saved into the chat being left and the new chat opened blank.
+    private func applyPendingPrefill() {
+        guard Self.shouldApplyPrefill(
+            for: appState.composerPrefillDraftKey,
+            loaded: loadedDraftKey,
+            identity: appState.activeChatScrollSessionIdentity
+        ) else { return }
+        appState.consumeComposerPrefill(appState.composerPrefillToken)
+        replaceComposerText(appState.composerPrefillText)
+        isFocused = !text.isEmpty
+        isShowingSlashSuggestions = slashPrefix != nil
     }
 
     private func rotateAttachmentGeneration() {

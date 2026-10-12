@@ -201506,6 +201506,88 @@
         }
       }
     },
+    "Missed call from %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verpasster Anruf von %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llamada perdida de %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appel manqué de %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan tak terjawab dari %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamata persa da %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@からの不在着信"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 부재중 전화"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nieodebrane połączenie: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chamada perdida de %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пропущенный звонок: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cevapsız arama: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的未接来电"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的未接來電"
+          }
+        }
+      }
+    },
     "Hermes needs your OK." : {
       "localizations" : {
         "de" : {
@@ -203556,88 +203638,6 @@
         }
       }
     },
-    "End the call before starting another voice conversation." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beende den Anruf, bevor du ein weiteres Sprachgespräch beginnst."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Finaliza la llamada antes de iniciar otra conversación de voz."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Terminez l’appel avant de démarrer une autre conversation vocale."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Akhiri panggilan sebelum memulai percakapan suara lainnya."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Termina la chiamata prima di avviare un’altra conversazione vocale."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "別の音声会話を始める前に、通話を終了してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다른 음성 대화를 시작하기 전에 통화를 종료하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zakończ połączenie przed rozpoczęciem kolejnej rozmowy głosowej."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Encerre a chamada antes de iniciar outra conversa por voz."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Завершите звонок, прежде чем начинать следующий голосовой разговор."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yeni bir sesli görüşme başlatmadan önce aramayı bitirin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请先结束通话，再开始另一段语音对话。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請先結束通話，再開始另一段語音對話。"
-          }
-        }
-      }
-    },
     "End the call to open a chat in another profile." : {
       "localizations" : {
         "de" : {
@@ -203716,88 +203716,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請先結束通話，再開啟其他設定檔中的聊天。"
-          }
-        }
-      }
-    },
-    "End the call to open a chat in another workspace." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beende den Anruf, um einen Chat in einem anderen Arbeitsbereich zu öffnen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Finaliza la llamada para abrir un chat en otro espacio de trabajo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Terminez l’appel pour ouvrir une discussion dans un autre espace de travail."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Akhiri panggilan untuk membuka obrolan di ruang kerja lain."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Termina la chiamata per aprire una chat in un altro spazio di lavoro."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "別のワークスペースでチャットを開くには、通話を終了してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다른 작업 공간에서 채팅을 열려면 통화를 종료하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zakończ połączenie, aby otworzyć czat w innym obszarze roboczym."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Encerre a chamada para abrir um chat em outro espaço de trabalho."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Завершите звонок, чтобы открыть чат в другой рабочей области."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Başka bir çalışma alanında sohbet açmak için aramayı bitirin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请先结束通话，再打开其他工作区中的聊天。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請先結束通話，再開啟其他工作區中的聊天。"
           }
         }
       }
@@ -204880,6 +204798,1892 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "再見|掰掰|拜拜|結束對話|就這樣吧"
+          }
+        }
+      }
+    },
+    "When Hermes may phone you" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wann Hermes dich anrufen darf"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuándo puede llamarte Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand Hermes peut vous appeler"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapan Hermes boleh menelepon Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando Hermes può chiamarti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが電話してよいとき"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 전화해도 되는 때"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kiedy Hermes może do Ciebie dzwonić"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando o Hermes pode ligar para você"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда Hermes может вам звонить"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in sizi ne zaman arayabileceği"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 何时可以给你打电话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 何時可以打電話給你"
+          }
+        }
+      }
+    },
+    "How to use calls" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So nutzt du Anrufe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cómo usar las llamadas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utiliser les appels"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cara menggunakan panggilan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Come usare le chiamate"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話の使い方"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전화 사용 방법"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jak korzystać z połączeń"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Como usar as chamadas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Как пользоваться звонками"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramalar nasıl kullanılır"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如何使用来电"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如何使用來電"
+          }
+        }
+      }
+    },
+    "Ask in any chat or voice call: “Call me when the tests finish.” Your iPhone rings once the job is done, and answering opens voice in that chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frag in einem beliebigen Chat oder Sprachanruf: „Ruf mich an, wenn die Tests fertig sind.“ Dein iPhone klingelt, sobald der Job erledigt ist, und nach dem Annehmen sprichst du in diesem Chat mit Hermes."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pídelo en cualquier chat o llamada de voz: «Llámame cuando terminen las pruebas». Tu iPhone suena cuando el trabajo está listo y, al contestar, hablas con Hermes en ese chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demandez-le dans n'importe quelle discussion ou appel vocal : « Appelle-moi quand les tests sont finis. » Votre iPhone sonne une fois le job terminé, et en répondant, vous parlez à Hermes dans cette discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minta di obrolan atau panggilan suara mana pun: “Telepon saya kalau tesnya sudah selesai.” iPhone Anda berdering setelah pekerjaan selesai, dan saat dijawab, Anda berbicara dengan Hermes di obrolan itu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiedilo in qualsiasi chat o chiamata vocale: «Chiamami quando i test sono finiti». L'iPhone squilla appena il job è terminato e, rispondendo, parli con Hermes in quella chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "どのチャットや音声通話でも「テストが終わったら電話して」と頼んでください。ジョブが完了するとiPhoneが着信し、応答するとそのチャットで音声会話が始まります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어느 채팅이나 음성 통화에서든 “테스트 끝나면 전화해 줘”라고 부탁하세요. 작업이 끝나면 iPhone이 울리고, 받으면 그 채팅에서 음성 대화가 열려요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Poproś na dowolnym czacie lub w połączeniu głosowym: „Zadzwoń, jak testy się skończą”. iPhone zadzwoni, gdy zlecenie będzie gotowe, a po odebraniu rozmawiasz z Hermesem w tym czacie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peça em qualquer chat ou chamada de voz: “Me liga quando os testes terminarem.” Seu iPhone toca quando o trabalho termina e, ao atender, você conversa com o Hermes naquele chat."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Попросите в любом чате или голосовом звонке: «Позвони, когда тесты закончатся». iPhone зазвонит, как только задание будет готово, а ответив, вы поговорите с Hermes в этом чате."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herhangi bir sohbette ya da sesli aramada isteyin: “Testler bitince beni ara.” İş bittiğinde iPhone'unuz çalar; yanıtladığınızda o sohbette Hermes'le sesli konuşursunuz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在任意聊天或语音通话中说：“测试跑完后给我打电话。”任务完成后你的 iPhone 会响铃，接听后即可在该聊天中语音对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在任何聊天或語音通話中說：「測試跑完後打電話給我。」工作完成後你的 iPhone 會響鈴，接聽後即可在該聊天中語音對話。"
+          }
+        }
+      }
+    },
+    "To let Hermes call on its own, turn on Hermes decides when to call and write what's worth a call. Hermes checks your note before each call it decides to make." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit Hermes von sich aus anruft, schalte „Hermes entscheidet, wann er anruft“ ein und schreib auf, was einen Anruf wert ist. Hermes prüft deine Notiz vor jedem Anruf, den er selbst beschließt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para que Hermes llame por su cuenta, activa «Hermes decide cuándo llamar» y escribe qué merece una llamada. Hermes revisa tu nota antes de cada llamada que decide hacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour qu'Hermes appelle de lui-même, activez « Hermes décide quand appeler » et écrivez ce qui mérite un appel. Hermes relit votre note avant chaque appel qu'il décide de passer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agar Hermes bisa menelepon atas inisiatifnya sendiri, aktifkan Hermes memutuskan kapan menelepon dan tulis hal yang layak ditelepon. Hermes memeriksa catatan Anda sebelum setiap panggilan yang ia putuskan sendiri."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per far chiamare Hermes di sua iniziativa, attiva «Hermes decide quando chiamare» e scrivi cosa merita una chiamata. Hermes controlla la tua nota prima di ogni chiamata che decide di fare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが自分の判断で電話できるようにするには、「電話するタイミングをHermesに任せる」をオンにして、電話してほしいことを書いてください。Hermesは自分の判断で電話する前に、毎回そのメモを確認します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 스스로 전화하게 하려면 ‘전화할 때를 Hermes가 결정’을 켜고 전화할 만한 일을 적어 두세요. Hermes는 스스로 전화하기 전에 매번 메모를 확인해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aby Hermes mógł dzwonić sam, włącz „Hermes decyduje, kiedy dzwonić” i napisz, co jest warte telefonu. Hermes sprawdza Twoją notatkę przed każdym połączeniem, o którym decyduje sam."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para o Hermes ligar por conta própria, ative “O Hermes decide quando ligar” e escreva o que vale uma ligação. O Hermes confere sua nota antes de cada ligação que decide fazer."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы Hermes звонил сам, включите «Hermes сам решает, когда звонить» и напишите, что стоит звонка. Hermes сверяется с вашей заметкой перед каждым звонком, который решает сделать сам."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in kendiliğinden araması için “Ne zaman arayacağına Hermes karar verir” seçeneğini açın ve neyin aramaya değer olduğunu yazın. Hermes, kendi karar verdiği her aramadan önce notunuzu kontrol eder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要让 Hermes 主动来电，请打开“由 Hermes 决定何时来电”，并写下什么事值得来电。Hermes 每次决定主动来电前都会先查看你的说明。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要讓 Hermes 主動來電，請開啟「由 Hermes 決定何時來電」，並寫下什麼事值得來電。Hermes 每次決定主動來電前都會先查看你的說明。"
+          }
+        }
+      }
+    },
+    "To let Hermes call on its own when news can't wait, turn on Hermes decides when to call." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit Hermes von sich aus anruft, wenn Neuigkeiten nicht warten können, schalte „Hermes entscheidet, wann er anruft“ ein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para que Hermes llame por su cuenta cuando una noticia no puede esperar, activa «Hermes decide cuándo llamar»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour qu'Hermes appelle de lui-même quand une nouvelle ne peut pas attendre, activez « Hermes décide quand appeler »."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agar Hermes bisa menelepon atas inisiatifnya sendiri saat ada kabar yang tidak bisa menunggu, aktifkan Hermes memutuskan kapan menelepon."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per far chiamare Hermes di sua iniziativa quando una notizia non può aspettare, attiva «Hermes decide quando chiamare»."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待てない知らせがあるときにHermesが自分の判断で電話できるようにするには、「電話するタイミングをHermesに任せる」をオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기다릴 수 없는 소식이 있을 때 Hermes가 스스로 전화하게 하려면 ‘전화할 때를 Hermes가 결정’을 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aby Hermes mógł dzwonić sam, gdy wiadomość nie może czekać, włącz „Hermes decyduje, kiedy dzwonić”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para o Hermes ligar por conta própria quando uma notícia não pode esperar, ative “O Hermes decide quando ligar”."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы Hermes звонил сам, когда новость не терпит отлагательств, включите «Hermes сам решает, когда звонить»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekleyemeyecek bir haber olduğunda Hermes'in kendiliğinden araması için “Ne zaman arayacağına Hermes karar verir” seçeneğini açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要让 Hermes 在有等不及的消息时主动来电，请打开“由 Hermes 决定何时来电”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要讓 Hermes 在有等不及的消息時主動來電，請開啟「由 Hermes 決定何時來電」。"
+          }
+        }
+      }
+    },
+    "If you decline or miss a call, Hermes knows the next time you write in that chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du einen Anruf ablehnst oder verpasst, erfährt Hermes es, sobald du das nächste Mal in diesem Chat schreibst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si rechazas o pierdes una llamada, Hermes lo sabrá la próxima vez que escribas en ese chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si vous refusez ou manquez un appel, Hermes le saura la prochaine fois que vous écrirez dans cette discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jika Anda menolak atau melewatkan panggilan, Hermes akan tahu saat Anda menulis lagi di obrolan itu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se rifiuti o perdi una chiamata, Hermes lo saprà la prossima volta che scrivi in quella chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話を拒否したり出られなかったりした場合は、次にそのチャットでメッセージを送ったときにHermesに伝わります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전화를 거절하거나 놓치면, 다음에 그 채팅에 글을 쓸 때 Hermes가 알게 돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeśli odrzucisz lub przegapisz połączenie, Hermes dowie się o tym, gdy następnym razem napiszesz w tym czacie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se você recusar ou perder uma ligação, o Hermes fica sabendo na próxima vez que você escrever naquele chat."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Если вы отклоните или пропустите звонок, Hermes узнает об этом, когда вы в следующий раз напишете в этот чат."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir aramayı reddeder ya da kaçırırsanız, o sohbete bir sonraki yazışınızda Hermes bunu öğrenir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果你拒接或错过来电，下次你在该聊天中发消息时，Hermes 就会知道。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果你拒接或錯過來電，下次你在該聊天中傳訊息時，Hermes 就會知道。"
+          }
+        }
+      }
+    },
+    "Call me now to test calls." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruf mich jetzt an, um Anrufe zu testen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llámame ahora para probar las llamadas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appelle-moi maintenant pour tester les appels."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Telepon saya sekarang untuk menguji panggilan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamami ora per provare le chiamate."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話のテストのため、今すぐ電話して。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화 테스트를 위해 지금 전화해 줘."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zadzwoń do mnie teraz, żeby przetestować połączenia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Me ligue agora para testar as chamadas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Позвони мне сейчас, чтобы проверить звонки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramaları test etmek için beni şimdi ara."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现在给我打个电话，测试一下来电。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在打個電話給我，測試一下來電。"
+          }
+        }
+      }
+    },
+    "Try a test call" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Testanruf ausprobieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Probar una llamada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Essayer un appel test"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coba panggilan uji"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prova una chiamata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テスト通話をする"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "테스트 전화 걸어 보기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wypróbuj połączenie testowe"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fazer uma chamada de teste"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пробный звонок"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test araması yap"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "试一次测试来电"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "試一次測試來電"
+          }
+        }
+      }
+    },
+    "Opens a new chat with “%@” ready to send. Send it, and your iPhone rings when Hermes replies." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet einen neuen Chat mit „%@“, bereit zum Senden. Sende es, und dein iPhone klingelt, wenn Hermes antwortet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre un chat nuevo con «%@» listo para enviar. Envíalo y tu iPhone sonará cuando Hermes responda."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvre une nouvelle discussion avec « %@ » prêt à envoyer. Envoyez-le, et votre iPhone sonne quand Hermes répond."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membuka obrolan baru dengan “%@” siap dikirim. Kirim, dan iPhone Anda berdering saat Hermes membalas."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apre una nuova chat con «%@» pronto da inviare. Invialo e l'iPhone squillerà quando Hermes risponde."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」を入力済みの新しいチャットを開きます。送信すると、Hermesが返信したときにiPhoneが着信します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” 문구가 입력된 새 채팅을 열어요. 보내면 Hermes가 답할 때 iPhone이 울려요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwiera nowy czat z gotową do wysłania wiadomością „%@”. Wyślij ją, a iPhone zadzwoni, gdy Hermes odpowie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre um chat novo com “%@” pronto para enviar. Envie, e seu iPhone toca quando o Hermes responder."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открывает новый чат с готовым к отправке сообщением «%@». Отправьте его, и iPhone зазвонит, когда Hermes ответит."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gönderilmeye hazır “%@” mesajıyla yeni bir sohbet açar. Gönderin; Hermes yanıt verdiğinde iPhone'unuz çalar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开一个新聊天，已填好“%@”。发送后，Hermes 回复时你的 iPhone 就会响铃。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟一個新聊天，已填好「%@」。傳送後，Hermes 回覆時你的 iPhone 就會響鈴。"
+          }
+        }
+      }
+    },
+    "What's worth a call" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was einen Anruf wert ist"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qué merece una llamada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce qui mérite un appel"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hal yang layak ditelepon"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cosa merita una chiamata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電話してほしいこと"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전화할 만한 일"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Co jest warte telefonu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que vale uma ligação"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Что стоит звонка"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neler aramaya değer"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "什么事值得来电"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "什麼事值得來電"
+          }
+        }
+      }
+    },
+    "For example: only if production is down or a deploy fails. Never before 9 am." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Beispiel: nur wenn die Produktion ausfällt oder ein Deploy fehlschlägt. Nie vor 9 Uhr."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por ejemplo: solo si producción cae o falla un despliegue. Nunca antes de las 9."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Par exemple : seulement si la production tombe ou si un déploiement échoue. Jamais avant 9 h."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contoh: hanya jika produksi mati atau deploy gagal. Jangan sebelum pukul 9 pagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ad esempio: solo se la produzione è giù o un deploy fallisce. Mai prima delle 9."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例：本番環境が落ちたときやデプロイに失敗したときだけ。午前9時より前は不可。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "예: 프로덕션이 다운되거나 배포가 실패했을 때만. 오전 9시 전에는 안 됨."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na przykład: tylko gdy produkcja leży albo wdrożenie się nie uda. Nigdy przed 9:00."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por exemplo: só se a produção cair ou um deploy falhar. Nunca antes das 9h."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Например: только если упал прод или не прошёл деплой. Не раньше 9 утра."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Örneğin: yalnızca canlı sistem çökerse ya da bir dağıtım başarısız olursa. Sabah 9'dan önce asla."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例如：只在生产环境宕机或部署失败时。早上 9 点前不要打。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例如：只在正式環境當機或部署失敗時。早上 9 點前不要打。"
+          }
+        }
+      }
+    },
+    "Hermes reads this before each call it decides to make, and calls only if the news fits. Calls you ask for don't depend on it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes liest das vor jedem Anruf, den er selbst beschließt, und ruft nur an, wenn die Neuigkeit dazu passt. Anrufe, um die du bittest, hängen nicht davon ab."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes lo lee antes de cada llamada que decide hacer y solo llama si la noticia encaja. Las llamadas que tú pides no dependen de esto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes le lit avant chaque appel qu'il décide de passer, et n'appelle que si la nouvelle y correspond. Les appels que vous demandez n'en dépendent pas."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes membaca ini sebelum setiap panggilan yang ia putuskan sendiri, dan hanya menelepon jika kabarnya sesuai. Panggilan yang Anda minta tidak bergantung pada ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes lo legge prima di ogni chiamata che decide di fare e chiama solo se la notizia corrisponde. Le chiamate che chiedi tu non ne dipendono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesは自分の判断で電話する前に毎回これを読み、内容が当てはまる場合だけ電話します。あなたが頼んだ電話はこれに左右されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 스스로 전화하기 전에 매번 이 내용을 읽고, 소식이 해당할 때만 전화해요. 직접 요청한 전화는 이와 상관없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes czyta to przed każdym połączeniem, o którym decyduje sam, i dzwoni tylko wtedy, gdy wiadomość pasuje. Połączenia, o które prosisz, od tego nie zależą."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes lê isto antes de cada ligação que decide fazer e só liga se a notícia se encaixar. As ligações que você pede não dependem disso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes читает это перед каждым звонком, который решает сделать сам, и звонит, только если новость подходит. Звонки, о которых вы просите, от этого не зависят."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, kendi karar verdiği her aramadan önce bunu okur ve yalnızca haber buna uyuyorsa arar. Sizin istediğiniz aramalar buna bağlı değildir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 每次决定主动来电前都会先读这段说明，只有消息符合时才会打电话。你要求的来电不受它影响。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 每次決定主動來電前都會先讀這段說明，只有消息符合時才會打電話。你要求的來電不受它影響。"
+          }
+        }
+      }
+    },
+    "Couldn't start a new chat. Check your connection and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuer Chat konnte nicht gestartet werden. Prüfe deine Verbindung und versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo iniciar un chat nuevo. Revisa tu conexión e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de lancer une nouvelle discussion. Vérifiez votre connexion et réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat memulai obrolan baru. Periksa koneksi Anda dan coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile avviare una nuova chat. Controlla la connessione e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいチャットを開始できませんでした。接続を確認して、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 채팅을 시작할 수 없었어요. 연결을 확인하고 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się rozpocząć nowego czatu. Sprawdź połączenie z siecią i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível iniciar um chat novo. Verifique sua conexão e tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось начать новый чат. Проверьте подключение и повторите попытку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni sohbet başlatılamadı. Bağlantınızı kontrol edip yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法开始新聊天。请检查网络连接后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法開始新聊天。請檢查連線後再試一次。"
+          }
+        }
+      }
+    },
+    "Have Hermes watch for this" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes darauf achten lassen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Que Hermes lo vigile"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faire surveiller ceci par Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minta Hermes memantau ini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fai controllare a Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesに見張ってもらう"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에게 지켜보게 하기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niech Hermes tego pilnuje"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pedir ao Hermes para vigiar isto"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поручить Hermes следить за этим"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunu Hermes takip etsin"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Hermes 留意这件事"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓 Hermes 留意這件事"
+          }
+        }
+      }
+    },
+    "To be called when something happens, ask Hermes to watch for it: “Check my homelab every 5 minutes and call me if it's down for more than 10 minutes.” Hermes sets up a scheduled check that calls you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit du angerufen wirst, wenn etwas passiert, bitte Hermes, darauf zu achten: „Prüf mein Homelab alle 5 Minuten und ruf mich an, wenn es länger als 10 Minuten down ist.“ Hermes richtet eine geplante Prüfung ein, die dich anruft."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para recibir una llamada cuando pase algo, pide a Hermes que lo vigile: «Revisa mi homelab cada 5 minutos y llámame si lleva caído más de 10 minutos». Hermes configura una comprobación programada que te llama."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour recevoir un appel quand quelque chose se produit, demandez à Hermes de le surveiller : « Vérifie mon homelab toutes les 5 minutes et appelle-moi s'il est hors ligne depuis plus de 10 minutes. » Hermes met en place une vérification planifiée qui vous appelle."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agar ditelepon saat sesuatu terjadi, minta Hermes memantaunya: “Periksa homelab saya setiap 5 menit dan telepon saya kalau mati lebih dari 10 menit.” Hermes menyiapkan pemeriksaan terjadwal yang menelepon Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per ricevere una chiamata quando succede qualcosa, chiedi a Hermes di controllarlo: «Controlla il mio homelab ogni 5 minuti e chiamami se è giù da più di 10 minuti». Hermes imposta un controllo pianificato che ti chiama."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "何かが起きたときに電話してほしいなら、Hermesに見張りを頼んでください：「5分ごとにホームラボを確認して、10分以上ダウンしていたら電話して」。Hermesが、電話してくれる定期チェックを設定します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어떤 일이 생겼을 때 전화를 받으려면 Hermes에게 지켜봐 달라고 부탁하세요: “5분마다 홈랩을 확인하고 10분 넘게 다운되면 전화해 줘.” Hermes가 전화해 주는 정기 확인을 설정해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aby dostać telefon, gdy coś się stanie, poproś Hermesa, żeby tego pilnował: „Sprawdzaj mój homelab co 5 minut i zadzwoń, jeśli nie działa dłużej niż 10 minut”. Hermes ustawi zaplanowane sprawdzanie, które do Ciebie zadzwoni."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para receber uma ligação quando algo acontecer, peça ao Hermes para vigiar: “Verifique meu homelab a cada 5 minutos e me ligue se ele ficar fora do ar por mais de 10 minutos.” O Hermes configura uma verificação agendada que liga para você."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы вам позвонили, когда что-то случится, попросите Hermes следить за этим: «Проверяй мой homelab каждые 5 минут и позвони, если он лежит больше 10 минут». Hermes настроит проверку по расписанию, которая вам позвонит."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir şey olduğunda aranmak için Hermes'ten onu takip etmesini isteyin: “Homelab'imi 5 dakikada bir kontrol et, 10 dakikadan uzun süre çökük kalırsa beni ara.” Hermes sizi arayan zamanlanmış bir kontrol kurar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "想在某件事发生时接到电话，就请 Hermes 留意它：“每 5 分钟检查一次我的家庭实验室，如果宕机超过 10 分钟就给我打电话。”Hermes 会设置一个定时检查来给你打电话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "想在某件事發生時接到電話，就請 Hermes 留意它：「每 5 分鐘檢查一次我的家庭實驗室，如果當機超過 10 分鐘就打電話給我。」Hermes 會設定一個定時檢查來打電話給你。"
+          }
+        }
+      }
+    },
+    "Make my scheduled checks that call me match this note. Update the ones I already have instead of adding new ones:\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gleiche meine geplanten Prüfungen, die mich anrufen, mit dieser Notiz ab. Passe die vorhandenen an, statt neue hinzuzufügen:\n%@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haz que mis comprobaciones programadas que me llaman coincidan con esta nota. Actualiza las que ya tengo en lugar de añadir otras nuevas:\n%@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aligne mes vérifications planifiées qui m'appellent sur cette note. Mets à jour celles que j'ai déjà au lieu d'en ajouter de nouvelles :\n%@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesuaikan pemeriksaan terjadwal yang menelepon saya dengan catatan ini. Perbarui yang sudah ada, jangan menambahkan yang baru:\n%@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allinea a questa nota i miei controlli pianificati che mi chiamano. Aggiorna quelli che ho già invece di aggiungerne di nuovi:\n%@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電話してくれる定期チェックをこのメモに合わせて。新しく追加せず、今あるものを更新して：\n%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나한테 전화하는 정기 확인을 이 메모에 맞춰 줘. 새로 추가하지 말고 이미 있는 걸 업데이트해 줘:\n%@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dopasuj do tej notatki moje zaplanowane sprawdzania, które do mnie dzwonią. Zaktualizuj te, które już mam, zamiast dodawać nowe:\n%@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajuste minhas verificações agendadas que me ligam para que correspondam a esta nota. Atualize as que já tenho em vez de adicionar novas:\n%@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приведи мои проверки по расписанию, которые мне звонят, в соответствие с этой заметкой. Обнови уже существующие, а не добавляй новые:\n%@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beni arayan zamanlanmış kontrollerimi bu nota göre düzenle. Yenilerini eklemek yerine mevcut olanları güncelle:\n%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让会给我打电话的定时检查与这条说明保持一致。更新已有的检查，不要再新增：\n%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓會打電話給我的定時檢查與這則說明保持一致。更新現有的檢查，不要再新增：\n%@"
+          }
+        }
+      }
+    },
+    "Hermes doesn't check for what your note describes on its own. This opens a new chat asking it to set up scheduled checks that call you when it happens. After you change the note, tap it again to bring the checks up to date." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes prüft nicht von selbst, was deine Notiz beschreibt. Das öffnet einen neuen Chat, in dem du ihn bittest, geplante Prüfungen einzurichten, die dich anrufen, wenn es passiert. Wenn du die Notiz änderst, tippe erneut, um die Prüfungen anzupassen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no comprueba por su cuenta lo que describe tu nota. Esto abre un chat nuevo en el que le pides que configure comprobaciones programadas que te llamen cuando ocurra. Si cambias la nota, vuelve a tocar para ponerlas al día."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ne vérifie pas de lui-même ce que décrit votre note. Ceci ouvre une nouvelle discussion qui lui demande de mettre en place des vérifications planifiées qui vous appellent quand cela arrive. Après avoir modifié la note, touchez à nouveau pour les mettre à jour."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak memeriksa sendiri hal yang dijelaskan catatan Anda. Ini membuka obrolan baru yang meminta Hermes menyiapkan pemeriksaan terjadwal yang menelepon Anda saat hal itu terjadi. Setelah mengubah catatan, ketuk lagi untuk memperbarui pemeriksaannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non controlla da solo ciò che descrive la tua nota. Questo apre una nuova chat in cui gli chiedi di impostare controlli pianificati che ti chiamino quando succede. Dopo aver modificato la nota, tocca di nuovo per aggiornarli."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesはメモに書かれたことを自分から確認しません。新しいチャットを開き、それが起きたら電話する定期チェックの設定をHermesに頼みます。メモを変えたら、もう一度タップしてチェックを更新しましょう。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 메모에 적힌 일을 스스로 확인하지 않아요. 새 채팅을 열어, 그 일이 생기면 전화하는 정기 확인을 설정해 달라고 Hermes에게 요청해요. 메모를 바꾼 뒤 다시 탭하면 확인이 최신 상태로 맞춰져요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sam nie sprawdza tego, co opisuje Twoja notatka. To otwiera nowy czat z prośbą, by ustawił zaplanowane sprawdzania, które zadzwonią do Ciebie, gdy to się stanie. Po zmianie notatki stuknij ponownie, aby je zaktualizować."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não verifica sozinho o que sua nota descreve. Isto abre um chat novo pedindo que ele configure verificações agendadas que liguem para você quando isso acontecer. Depois de mudar a nota, toque de novo para atualizá-las."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes сам не проверяет то, что описано в вашей заметке. Откроется новый чат с просьбой настроить проверки по расписанию, которые позвонят вам, когда это случится. Изменив заметку, нажмите снова, чтобы обновить проверки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, notunuzda anlatılanı kendiliğinden kontrol etmez. Bu, gerçekleştiğinde sizi arayan zamanlanmış kontroller kurmasını isteyen yeni bir sohbet açar. Notu değiştirdikten sonra kontrolleri güncellemek için tekrar dokunun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 不会主动检查你的说明里写的事。这会打开一个新聊天，请它设置定时检查，在事情发生时给你打电话。修改说明后，再点一次即可更新这些检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 不會主動檢查你的說明裡寫的事。這會開啟一個新聊天，請它設定定時檢查，在事情發生時打電話給你。修改說明後，再點一次即可更新這些檢查。"
+          }
+        }
+      }
+    },
+    "Use Touch ID" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID verwenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar Touch ID"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utiliser Touch ID"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gunakan Touch ID"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa Touch ID"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch IDを使用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID 사용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Używaj Touch ID"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar Touch ID"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Использовать Touch ID"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID kullan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Touch ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Touch ID"
+          }
+        }
+      }
+    },
+    "Touch ID, with device passcode recovery, is required on launch." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Start ist Touch ID erforderlich, mit dem Gerätecode als Ausweichmöglichkeit."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se requiere Touch ID, con recuperación mediante el código del dispositivo, al abrir la app."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID, avec récupération par le code de l'appareil, est requis au lancement."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID, dengan pemulihan kode sandi perangkat, diperlukan saat app dibuka."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All'avvio è richiesto Touch ID, con recupero tramite il codice del dispositivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起動時にTouch IDによる認証が必要です（デバイスのパスコードでも解除できます）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행할 때 Touch ID가 필요해요(기기 암호로 복구 가능)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przy uruchamianiu wymagany jest Touch ID (z możliwością użycia kodu urządzenia)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Touch ID, com recuperação pelo código do aparelho, é exigido ao abrir o app."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "При запуске требуется Touch ID (с восстановлением через код-пароль устройства)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Açılışta, cihaz parolasıyla kurtarma seçeneği sunan Touch ID gereklidir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启动时需要触控 ID，可使用设备密码找回。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "啟動時需要 Touch ID，並可使用裝置密碼復原。"
+          }
+        }
+      }
+    },
+    "Saved credentials reconnect without a Touch ID prompt." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit gespeicherten Zugangsdaten wird ohne Abfrage per Touch ID neu verbunden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con las credenciales guardadas, la reconexión no pide Touch ID."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avec des identifiants enregistrés, la reconnexion se fait sans demande Touch ID."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kredensial yang disimpan terhubung ulang tanpa permintaan Touch ID."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con le credenziali salvate la riconnessione avviene senza richiesta di Touch ID."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存した認証情報を使うと、Touch IDの確認なしで再接続できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 자격 증명으로 Touch ID 확인 없이 다시 연결해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dzięki zapisanym danym logowania ponowne połączenie nie wymaga Touch ID."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As credenciais salvas reconectam sem pedir o Touch ID."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранённые учётные данные позволяют переподключаться без запроса Touch ID."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kayıtlı kimlik bilgileri Touch ID istemi olmadan yeniden bağlanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存的凭据可重新连接，无需触控 ID 验证。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已儲存的認證資訊可直接重新連線，不需 Touch ID 驗證。"
+          }
+        }
+      }
+    },
+    "Touch ID is not available on this device. You can still save credentials." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID ist auf diesem Gerät nicht verfügbar. Du kannst Zugangsdaten trotzdem sichern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID no está disponible en este dispositivo. Aun así, puedes guardar las credenciales."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID n'est pas disponible sur cet appareil. Vous pouvez quand même enregistrer les identifiants."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID tidak tersedia di perangkat ini. Anda tetap dapat menyimpan kredensial."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID non è disponibile su questo dispositivo. Puoi comunque salvare le credenziali."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このデバイスではTouch IDを利用できません。認証情報は引き続き保存できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 기기에서는 Touch ID를 사용할 수 없어요. 자격 증명은 저장할 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID nie jest dostępny na tym urządzeniu. Nadal możesz zapisać dane logowania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Touch ID não está disponível neste aparelho. Você ainda pode salvar as credenciais."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touch ID недоступен на этом устройстве. Учётные данные всё равно можно сохранить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu cihazda Touch ID kullanılamıyor. Kimlik bilgilerini yine de kaydedebilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备上无法使用 Touch ID，但仍可保存凭据。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此裝置無法使用 Touch ID。你仍可以儲存認證資訊。"
+          }
+        }
+      }
+    },
+    "End the call before starting another voice conversation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beende den Anruf, bevor du ein weiteres Sprachgespräch beginnst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finaliza la llamada antes de iniciar otra conversación de voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminez l’appel avant de démarrer une autre conversation vocale."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akhiri panggilan sebelum memulai percakapan suara lainnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina la chiamata prima di avviare un’altra conversazione vocale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別の音声会話を始める前に、通話を終了してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 음성 대화를 시작하기 전에 통화를 종료하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zakończ połączenie przed rozpoczęciem kolejnej rozmowy głosowej."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encerre a chamada antes de iniciar outra conversa por voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершите звонок, прежде чем начинать следующий голосовой разговор."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni bir sesli görüşme başlatmadan önce aramayı bitirin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先结束通话，再开始另一段语音对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先結束通話，再開始另一段語音對話。"
+          }
+        }
+      }
+    },
+    "End the call to open a chat in another workspace." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beende den Anruf, um einen Chat in einem anderen Arbeitsbereich zu öffnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finaliza la llamada para abrir un chat en otro espacio de trabajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminez l’appel pour ouvrir une discussion dans un autre espace de travail."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akhiri panggilan untuk membuka obrolan di ruang kerja lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina la chiamata per aprire una chat in un altro spazio di lavoro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のワークスペースでチャットを開くには、通話を終了してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 작업 공간에서 채팅을 열려면 통화를 종료하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zakończ połączenie, aby otworzyć czat w innym obszarze roboczym."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encerre a chamada para abrir um chat em outro espaço de trabalho."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершите звонок, чтобы открыть чат в другой рабочей области."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başka bir çalışma alanında sohbet açmak için aramayı bitirin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先结束通话，再打开其他工作区中的聊天。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先結束通話，再開啟其他工作區中的聊天。"
           }
         }
       }

@@ -30,6 +30,8 @@ struct NotifierPluginStatus: Equatable {
         "e2e-notifications",
         "desktop-views",
         "hermes-calls",
+        // "watch-chats" is left out on purpose: only Watch calls use it, and
+        // they fall back to the phone without it, so it's no reason to nag.
     ]
 
     var state: State = .unknown
@@ -55,6 +57,12 @@ struct NotifierPluginStatus: Equatable {
     func mightSupport(_ capability: String) -> Bool {
         if case .reported(_, let capabilities) = state { return capabilities.contains(capability) }
         return true
+    }
+
+    /// True only when the plugin reported this capability.
+    func reports(_ capability: String) -> Bool {
+        if case .reported(_, let capabilities) = state { return capabilities.contains(capability) }
+        return false
     }
 
     static func state(from response: [String: Any]) -> State {

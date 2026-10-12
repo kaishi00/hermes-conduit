@@ -290,7 +290,7 @@ private final class SuspendedWidgetLiveInput: GeminiLiveAudioInput {
 @MainActor
 private final class WidgetGPTClient: GPTLiveSessionProviding {
     func availability() async throws -> GPTLiveAvailability { .available(model: "gpt-live", voice: nil) }
-    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?) async throws -> GPTLiveSessionAnswer {
+    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?, callOpening: Bool) async throws -> GPTLiveSessionAnswer {
         GPTLiveSessionAnswer(sessionID: "widget-gpt", sdp: "answer")
     }
 }

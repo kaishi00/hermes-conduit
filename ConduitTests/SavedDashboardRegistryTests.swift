@@ -325,6 +325,64 @@ final class SavedDashboardRegistryTests: XCTestCase {
         XCTAssertNotNil(KeychainHelper.loadDashboardCookies(dashboardID: id))
     }
 
+    /// An upgrade that first runs on a locked phone (a call from Hermes
+    /// launched Conduit) can't read the old password, saved readable only
+    /// while unlocked. It keeps it, and the next load hands it to the
+    /// dashboard.
+    func testUpgradeOnALockedPhoneKeepsThePasswordForLater() throws {
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: legacyURL, ticket: "ticket-1"))
+        KeychainHelper.saveCredentials(legacyCredentials)
+        backend.phoneLocked = true
+
+        let registry = SavedDashboardMigrator.loadRegistry(defaults: defaults)
+        let id = try XCTUnwrap(registry.activeDashboardID)
+        track(id)
+        XCTAssertEqual(try XCTUnwrap(KeychainHelper.loadConnection(dashboardID: id)).ticket, "ticket-1")
+        XCTAssertNil(KeychainHelper.loadCredentials(dashboardID: id))
+        // Still locked: the next load leaves the unread password alone.
+        XCTAssertEqual(SavedDashboardMigrator.loadRegistry(defaults: defaults), registry)
+
+        backend.phoneLocked = false
+        XCTAssertEqual(SavedDashboardMigrator.loadRegistry(defaults: defaults), registry)
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: id), legacyCredentials)
+        XCTAssertNil(KeychainHelper.loadCredentials(), "the old record goes once handed over")
+    }
+
+    /// Only the password saved: the locked upgrade finds nothing it can
+    /// read and commits an empty registry. The next load migrates again.
+    func testPasswordOnlyUpgradeOnALockedPhoneMigratesOnceReadable() throws {
+        KeychainHelper.saveCredentials(legacyCredentials)
+        backend.phoneLocked = true
+
+        XCTAssertTrue(SavedDashboardMigrator.loadRegistry(defaults: defaults).dashboards.isEmpty)
+
+        backend.phoneLocked = false
+        let registry = SavedDashboardMigrator.loadRegistry(defaults: defaults)
+        let id = try XCTUnwrap(registry.activeDashboardID)
+        track(id)
+        XCTAssertEqual(registry.dashboards.first?.normalizedURL, legacyURL)
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: id), legacyCredentials)
+        XCTAssertNil(KeychainHelper.loadCredentials())
+        XCTAssertEqual(SavedDashboardMigrator.loadRegistry(defaults: defaults), registry)
+    }
+
+    /// A dashboard that has its own password by then keeps it.
+    func testLeftoverOldPasswordNeverReplacesTheDashboardsOwn() throws {
+        let id = track(UUID())
+        SavedDashboardRegistryStore.save(SavedDashboardRegistry(
+            activeDashboardID: id,
+            dashboards: [SavedDashboard(id: id, label: "Mac", normalizedURL: legacyURL)]
+        ))
+        let own = DashboardCredentials(baseURL: legacyURL, username: "hermes", password: "newer", requiresFaceID: false)
+        KeychainHelper.saveCredentials(own, dashboardID: id)
+        KeychainHelper.saveCredentials(legacyCredentials)
+
+        _ = SavedDashboardMigrator.loadRegistry(defaults: defaults)
+
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: id), own)
+        XCTAssertNil(KeychainHelper.loadCredentials())
+    }
+
     // MARK: - Cross-dashboard isolation (scoped records)
 
     func testScopedRecordsAreIsolatedBetweenDashboards() throws {

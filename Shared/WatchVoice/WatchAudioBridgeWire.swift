@@ -165,12 +165,14 @@ enum WatchAudioBridgeWire {
 
     /// Starts the engine. `briefing` is Conduit's rules, persona and
     /// memory (GPT-Live puts it in the instructions); `greeting` asks for
-    /// a first line; `history` seeds a rejoined call's conversation.
-    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, history: [[String: Any]]) -> Data {
+    /// a first line; `callOpening` makes the model open a call Hermes
+    /// placed (#544), sent without a greeting (the host lets it win); `history` seeds a rejoined call's conversation.
+    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, callOpening: Bool = false, history: [[String: Any]]) -> Data {
         var message: [String: Any] = ["type": "start", "engine": engine]
         if let voice, !voice.isEmpty { message["voice"] = voice }
         if let briefing, !briefing.isEmpty { message["briefing"] = briefing }
         if let greeting { message["greeting"] = greeting }
+        if callOpening { message["call_opening"] = true }
         if !history.isEmpty { message["history"] = history }
         return (try? WatchToolSeal.json(message)) ?? Data()
     }
@@ -183,7 +185,16 @@ enum WatchAudioBridgeWire {
         var inputRate: Int
         var outputRate: Int
         var briefingApplied: Bool
+        /// The host made the model speak first: a greeting or a call
+        /// Hermes placed (`call_opening`).
         var greetingApplied: Bool
+    }
+
+    /// Whether the Watch sends a call Hermes placed its own opening turn:
+    /// once, never on a rejoin, and only when the host didn't already have
+    /// the model speak first (#544).
+    static func sendsOpeningTurn(rejoining: Bool, started: Started) -> Bool {
+        !rejoining && !started.greetingApplied
     }
 
     enum Control: Equatable {

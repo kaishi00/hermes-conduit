@@ -2,10 +2,10 @@
 //  AppState+HermesCalls.swift
 //  Conduit
 //
-//  Hermes calls you (#449): the host's call settings for Voice settings,
-//  the job layer's watches on the host, answering a call from Hermes,
-//  which opens voice in the job's chat with what came of the job, and
-//  telling the host about a call the user declined or missed.
+//  Hermes calls you (#449): the host's call settings and a test call for
+//  Settings, the job layer's watches on the host, answering a call from
+//  Hermes, which opens voice in the job's chat with what came of the job,
+//  and telling the host about a call the user declined or missed.
 //  Design: /mnt/project-files/designs/hermes-calls-you-449.md
 //
 
@@ -93,6 +93,118 @@ extension AppState {
             errorMessage = AppLocalization.string("Couldn't save Hermes' call settings. Check your connection and try again.")
             return false
         }
+    }
+
+    /// Settings' Try a test call: a new chat with the test request in the
+    /// composer, for the user to send. The phone rings when Hermes's reply
+    /// ends, like any call they ask for.
+    func startHermesTestCall() async {
+        await startHermesCallsChat(prefill: HermesCallSettingsFormat.testCallPrompt)
+    }
+
+    /// Settings' Have Hermes watch for this: a new chat asking Hermes to set
+    /// up a scheduled check for what the user's call note describes. The
+    /// note only decides which calls Hermes makes; nothing checks for what
+    /// it says unless a job does (Eric, 2026-10-11).
+    func startHermesWatch(for note: String) async {
+        await startHermesCallsChat(prefill: HermesCallSettingsFormat.watchPrompt(note))
+    }
+
+    /// A new chat with `prefill` in the composer, for the user to send.
+    private func startHermesCallsChat(prefill: String) async {
+        let previous = activeSessionId
+        await createNewSession()
+        guard let created = activeSessionId, created != previous else {
+            // Settings has closed: a chat that didn't start says so.
+            if errorMessage == nil {
+                errorMessage = AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
+            }
+            return
+        }
+        showSidebar = false
+        prefillComposer(prefill)
+        // Held until the composer unlocks.
+        requestComposerFocus(on: created)
+    }
+
+    // MARK: Ringing the Watch
+
+    /// Checks each Watch voice for the active profile: calls from Hermes
+    /// ring the Watch only while the voice it answers with can start
+    /// (WatchCallVoices; Eric chose "Live only", 2026-10-11). On each
+    /// connect and profile switch, and when the Watch first sends its call
+    /// token.
+    func refreshWatchCallVoices() async {
+        guard PushNotificationService.shared.watchVoIPToken != nil else { return }
+        let scope = hermesCallsKey(profile: activeProfile)
+        rescopeWatchCallVoices()
+        guard supportsHermesCalls else {
+            shareWatchCallVoices()
+            return
+        }
+        async let gemini = watchCallVoiceCheck(.geminiLive)
+        async let gpt = watchCallVoiceCheck(.gptLive)
+        async let grok = watchCallVoiceCheck(.grokLive)
+        let checks: [(WatchCallVoices.Voice, Bool?)] = [(.geminiLive, await gemini), (.gptLive, await gpt), (.grokLive, await grok)]
+        // Another server or profile by now: these say nothing about it.
+        guard scope == hermesCallsKey(profile: activeProfile) else { return }
+        var voices = PushNotificationService.shared.watchCallVoices
+        // A check that failed (the host out of reach) keeps the last answer.
+        for case let (voice, ready?) in checks {
+            voices.note(voice, ready: ready, scope: scope)
+        }
+        PushNotificationService.shared.updateWatchCallVoices(voices)
+        shareWatchCallVoices()
+    }
+
+    /// Another server's or profile's checks don't decide this one's calls:
+    /// until checked, the Watch rings. Nothing to do without a Watch.
+    func rescopeWatchCallVoices() {
+        let notifications = PushNotificationService.shared
+        guard notifications.watchVoIPToken != nil else { return }
+        notifications.updateWatchCallVoices(notifications.watchCallVoices.scoped(to: hermesCallsKey(profile: activeProfile)))
+    }
+
+    /// The Watch sent its call token or voice: its voices are checked now
+    /// if this profile's never were, and it hears what the iPhone knows.
+    func watchCallTokenChanged() {
+        let voices = PushNotificationService.shared.watchCallVoices
+        if voices.scope != hermesCallsKey(profile: activeProfile) || voices.ready.isEmpty {
+            Task { await refreshWatchCallVoices() }
+        } else {
+            shareWatchCallVoices()
+        }
+    }
+
+    /// A Watch voice's availability, checked anywhere else (Voice settings,
+    /// a Watch call's start), for the active profile.
+    func noteWatchCallVoice(_ voice: WatchCallVoices.Voice, ready: Bool) {
+        var voices = PushNotificationService.shared.watchCallVoices
+        voices.note(voice, ready: ready, scope: hermesCallsKey(profile: activeProfile))
+        PushNotificationService.shared.updateWatchCallVoices(voices)
+        shareWatchCallVoices()
+    }
+
+    private func watchCallVoiceCheck(_ voice: WatchCallVoices.Voice) async -> Bool? {
+        switch voice {
+        case .geminiLive: return (try? await geminiLiveTokenClient.availability())?.isAvailable
+        case .gptLive: return (try? await gptLiveClient.availability())?.isAvailable
+        case .grokLive: return (try? await grokLiveClient.availability())?.isAvailable
+        }
+    }
+
+    /// The Watch app says what to set up when its voice can't start, and
+    /// that calls then ring only the iPhone.
+    /// Also how a call ringing on the Watch names the main profile.
+    func shareWatchCallVoices() {
+        let notifications = PushNotificationService.shared
+        let voices = notifications.watchCallVoices
+        WatchVoiceLink.shared.share(WatchPhoneContext(
+            voices: voices.scope == hermesCallsKey(profile: activeProfile) ? voices.ready : [:],
+            callsRing: supportsHermesCalls && notifications.voipToken != nil,
+            mainProfileNames: mainProfileNamesByDashboard,
+            activeDashboardID: activeDashboardID?.uuidString
+        ))
     }
 
     /// How GPT-Live asks for a call, when the host takes call watches.

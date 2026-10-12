@@ -248,7 +248,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WatchToolAnswer.webSearchLimit, GeminiLiveTokenClient.webSearchLimit)
         XCTAssertEqual(WatchToolAnswer.memoryRecallLimit, GeminiLiveTokenClient.memoryRecallLimit)
         XCTAssertEqual(WatchToolAnswer.lookupAnswerNote, GeminiLiveToolBridge.lookupAnswerNote)
-        XCTAssertEqual(WatchToolAnswer.tools, [GeminiLiveToolBridge.Tool.webSearch.rawValue, GeminiLiveToolBridge.Tool.recallMemory.rawValue])
+        XCTAssertEqual(WatchToolAnswer.tools, [
+            GeminiLiveToolBridge.Tool.webSearch.rawValue, GeminiLiveToolBridge.Tool.recallMemory.rawValue,
+            GeminiLiveToolBridge.Tool.findChat.rawValue, GeminiLiveToolBridge.Tool.readChat.rawValue,
+        ])
 
         let searchBodies: [[String: Any]] = [
             ["ok": true, "query": "q", "results": [
@@ -296,7 +299,7 @@ extension HermesVoiceGatewayTimeoutTests {
         }
 
         for name in ["web_search", "recall_memory"] {
-            XCTAssertNil(WatchToolAnswer.query(["query": "  "]))
+            XCTAssertNil(WatchToolAnswer.query(name: name, arguments: ["query": "  "]))
             let phone = await bridge.handle(.init(id: "e-\(name)", name: name, arguments: [:]))
             let watch = WatchToolAnswer.outgoing(id: "e-\(name)", name: name, result: WatchToolAnswer.missingQuery(name: name))
             XCTAssertEqual(phone.map { WatchDirectBroker.wire($0) }, [watch], name)
@@ -316,7 +319,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(searchArgs["limit"] as? Int, GeminiLiveTokenClient.webSearchLimit)
         let recall = WatchToolAnswer.request(name: "recall_memory", query: "tea")
         XCTAssertEqual(recall["args"] as? [String: String], ["query": "tea"])
-        XCTAssertEqual(WatchToolAnswer.query(["query": "  tea "]), "tea")
+        XCTAssertEqual(WatchToolAnswer.query(name: WatchToolAnswer.webSearch, arguments: ["query": "  tea "]), "tea")
     }
 
     @MainActor
@@ -778,6 +781,10 @@ extension HermesVoiceGatewayTimeoutTests {
         // A plugin before 0.8 refuses the tool (400): asked again without it.
         XCTAssertTrue(WatchDirectBroker.isRefusedTool(DashboardTicketBridgeError.http(status: 400, detail: "The Watch can only be granted web_search")))
         XCTAssertFalse(WatchDirectBroker.isRefusedTool(DashboardTicketBridgeError.http(status: 502, detail: "Couldn't reach the push relay")))
+        // Chats are dropped only when a plugin before 0.18 lists what it grants without them.
+        XCTAssertTrue(WatchDirectBroker.isRefusedChatTool(DashboardTicketBridgeError.http(status: 400, detail: "The Watch can only be granted web_search, recall_memory, start_job")))
+        XCTAssertFalse(WatchDirectBroker.isRefusedChatTool(DashboardTicketBridgeError.http(status: 400, detail: "job_profiles must list at most 32 profiles")))
+        XCTAssertFalse(WatchDirectBroker.isRefusedChatTool(DashboardTicketBridgeError.http(status: 400, detail: "The Watch can only be granted web_search, find_chat, read_chat")))
     }
 
     /// The phone keeps each Watch call's connection, its end and the

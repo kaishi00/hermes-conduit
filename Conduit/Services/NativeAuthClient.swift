@@ -12,7 +12,11 @@ struct DashboardCredentials: Codable, Equatable {
     let username: String
     let password: String
     /// Face ID is an optional gate for a saved credential, not a requirement
-    /// for credential persistence itself.
+    /// for credential persistence itself. It guards the launch restore on
+    /// the phone screen only: off screen (a call from Hermes woke Conduit,
+    /// or only CarPlay shows it) the saved session connects instead, and a
+    /// silent renewal signs in again with the password, locked or not
+    /// (Eric's choice, 2026-10-11, so a call always connects).
     let requiresFaceID: Bool
 }
 

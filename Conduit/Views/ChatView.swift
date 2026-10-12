@@ -31,6 +31,9 @@ struct ChatView: View {
     /// scroll ticks never reach SwiftUI state; it publishes only when a value
     /// the body renders from (`renderInputs`) changes.
     @StateObject private var scrollEngine = ChatScrollEngine()
+    /// Not observable on purpose: one stable instance rows read when built
+    /// and write when tapped (see ChatRowDisclosure).
+    @State private var rowDisclosure = ChatRowDisclosure()
     /// Carries the engine's requests to AppState and ScrollViewProxy. Holds
     /// both weakly, so the engine never retains this view.
     @State private var scrollEventRouter = ChatScrollEventRouter()
@@ -329,6 +332,7 @@ struct ChatView: View {
                     .id(bottomAnchor)
             }
             .coordinateSpace(.named(ChatScrollEngine.coordinateSpaceName))
+            .environment(\.chatRowDisclosure, rowDisclosure)
             .background {
                 ChatScrollSurfaceLocator(engine: scrollEngine)
             }
@@ -584,6 +588,10 @@ struct ChatView: View {
         let router = scrollEventRouter
         router.appState = appState
         router.engine = scrollEngine
+        rowDisclosure.engine = scrollEngine
+        rowDisclosure.currentConversation = { [weak appState = appState] in
+            appState?.activeChatScrollSessionIdentity ?? .none
+        }
         router.proxy = proxy
         scrollEngine.onEvent = { [weak engine = scrollEngine, weak router] event in
             // Requests made while handling a UIKit callback can land in the
@@ -1650,6 +1658,7 @@ private struct ReviewSummaryCard: View {
     let activity: ReviewActivity
     let timestamp: String
     @EnvironmentObject private var appState: AppState
+    @Environment(\.chatRowDisclosure) private var disclosure
     @State private var expanded = false
 
     private var details: [String] { activity.details?.filter { !$0.isEmpty } ?? [] }
@@ -1658,6 +1667,7 @@ private struct ReviewSummaryCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
                 guard !details.isEmpty else { return }
+                disclosure?.willToggle(nil, to: !expanded)
                 withAnimation(ConduitMotion.response) { expanded.toggle() }
             } label: {
                 HStack(alignment: .center, spacing: 10) {
@@ -1871,7 +1881,14 @@ struct SettledThinkingCardContent: View, Equatable {
     let sizeCategory: ContentSizeCategory
     /// Explicit chat text-size input — see SettledAssistantMessageContent.
     let chatTextSize: ChatTextSize
-    @State private var expanded = false
+    @Environment(\.chatRowDisclosure) private var disclosure
+    /// Nil until tapped here: a rebuilt row (the live card settling, a lazy
+    /// row coming back) takes what the reader chose from `disclosure`.
+    @State private var expanded: Bool?
+
+    private var isExpanded: Bool {
+        expanded ?? disclosure?.isExpanded(message.id, default: false) ?? false
+    }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
@@ -1888,7 +1905,14 @@ struct SettledThinkingCardContent: View, Equatable {
                 displayName: displayName
             )
 
-            DisclosureGroup(isExpanded: $expanded) {
+            DisclosureGroup(isExpanded: Binding(
+                get: { isExpanded },
+                set: { newValue in
+                    guard newValue != isExpanded else { return }
+                    disclosure?.willToggle(message.id, to: newValue)
+                    expanded = newValue
+                }
+            )) {
                 SelectableTextView(
                     text: message.content,
                     font: ChatTypography.font(for: .thinking, chatSize: chatTextSize),
@@ -2000,7 +2024,16 @@ private struct SettledToolCardContent: View, Equatable {
     let expandToolsByDefault: Bool
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
-    @State private var expanded = false
+    @Environment(\.chatRowDisclosure) private var disclosure
+    /// Nil until tapped here; see SettledThinkingCardContent.
+    @State private var tapped: Bool?
+
+    /// Open from the start when tools expand by default, rather than opening
+    /// on appear: a row that grows after its first layout moves everything
+    /// below it.
+    private var expanded: Bool {
+        tapped ?? disclosure?.isExpanded(message.id, default: expandToolsByDefault) ?? expandToolsByDefault
+    }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message
@@ -2012,9 +2045,11 @@ private struct SettledToolCardContent: View, Equatable {
         if let tool = message.tool {
             VStack(alignment: .leading, spacing: 0) {
                 Button {
+                    let opens = !expanded
+                    disclosure?.willToggle(message.id, to: opens)
                     withAnimation(ConduitMotion.response) {
                         Haptics.light()
-                        expanded.toggle()
+                        tapped = opens
                     }
                 } label: {
                     VStack(alignment: .leading, spacing: 3) {
@@ -2097,11 +2132,6 @@ private struct SettledToolCardContent: View, Equatable {
                 }
             }
             .conduitGlassSurface(cornerRadius: 18, tint: tool.status == .running ? .conduitAccent.opacity(0.10) : .clear)
-            .onAppear {
-                if expandToolsByDefault {
-                    expanded = true
-                }
-            }
         }
     }
 
@@ -3152,25 +3182,74 @@ struct ConduitAgentMark: View {
     var isActive = false
     var avatarURL: URL?
     var displayName = "Hermes"
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isBreathing = false
+
+    /// One breath in and out: 1.1 s each way, eased at both ends.
+    static let breathDuration: TimeInterval = 2.2
+    /// The mark breathes for the whole turn, redrawing its glow each frame.
+    /// A forever animation runs at the display's rate; 30 fps looks the same
+    /// on a 30 pt avatar at half the frames or less.
+    static let breathingFramesPerSecond: Double = 30
+
+    /// 0 at rest, 1 at the full breath.
+    static func breath(at elapsed: TimeInterval) -> CGFloat {
+        CGFloat((1 - cos(2 * .pi * elapsed / breathDuration)) / 2)
+    }
 
     var body: some View {
+        if isActive {
+            ConduitBreathing { breath in
+                mark(breath: breath)
+            }
+        } else {
+            mark(breath: 0)
+        }
+    }
+
+    private func mark(breath: CGFloat) -> some View {
         ProfileAvatarView(profile: "", displayName: displayName, url: avatarURL)
             .overlay {
                 Circle()
                     .strokeBorder(Color.conduitAccent.opacity(isActive ? 0.52 : 0.22), lineWidth: 1)
             }
-            .shadow(color: Color.conduitAccent.opacity(isActive ? 0.42 : 0), radius: isBreathing ? 9 : 3)
-            .scaleEffect(isBreathing ? 1.06 : 1)
-            .task(id: isActive) {
-                guard isActive, !reduceMotion else {
-                    isBreathing = false
-                    return
-                }
-                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                    isBreathing = true
-                }
-            }
+            .shadow(color: Color.conduitAccent.opacity(isActive ? 0.42 : 0), radius: 3 + 6 * breath)
+            .scaleEffect(1 + 0.06 * breath)
+    }
+}
+
+/// Breathes under the backdrop's rules: only while the app is active, and
+/// not with Reduce Motion, in Low Power Mode or while the phone runs hot.
+/// Each start (a new turn, or coming back to the app) begins at rest.
+private struct ConduitBreathing<Content: View>: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var devicePower = DevicePowerState.shared
+    @ViewBuilder let content: (CGFloat) -> Content
+
+    var body: some View {
+        if ConduitBackdropMotionPolicy.shouldAnimate(
+            drifts: true,
+            sceneIsActive: scenePhase == .active,
+            reduceMotion: reduceMotion,
+            lowPowerMode: devicePower.isLowPowerModeEnabled,
+            thermalState: devicePower.thermalState
+        ) {
+            ConduitBreathingTimeline(content: content)
+        } else {
+            content(0)
+        }
+    }
+}
+
+/// Drives a breath from the moment it appears, so each turn's breathing
+/// starts at rest. Timed by system uptime like the backdrop, so a clock
+/// change mid-turn can't jump the phase.
+private struct ConduitBreathingTimeline<Content: View>: View {
+    @State private var startedAt = ProcessInfo.processInfo.systemUptime
+    @ViewBuilder let content: (CGFloat) -> Content
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / ConduitAgentMark.breathingFramesPerSecond)) { _ in
+            content(ConduitAgentMark.breath(at: ProcessInfo.processInfo.systemUptime - startedAt))
+        }
     }
 }

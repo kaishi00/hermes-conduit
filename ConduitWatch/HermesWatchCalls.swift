@@ -9,7 +9,11 @@
 //  that opens with what Hermes called about: the iPhone got the same call
 //  and builds the opening. Answering or declining on either device tells
 //  the relay, which stops the other one ringing; the iPhone's ringing call
-//  cuts its link to the Watch, so the two can't tell each other.
+//  cuts its link to the Watch, so the two can't tell each other. The app
+//  stays in the background under the call screen, where its link to the
+//  iPhone is down too, so an answer's start goes to the iPhone with the
+//  relay's stop, and the call's session comes back through the relay
+//  (HermesRingHandoff).
 //
 
 import AVFAudio
@@ -45,11 +49,17 @@ final class HermesWatchCalls: NSObject {
     private var tokenKnown = false
     /// What the iPhone was last sent this launch.
     private var sentToken: String?
+    private var sentKey: Data?
+    private var sentEngine: WatchVoiceEngine?
     private var hasSentToken = false
+    /// Seals an answered call's start and session at the relay; the iPhone
+    /// gets it with the token. Nil while the Keychain can't be read.
+    private var handoffKey: Data?
 
     private struct Call {
         let ring: HermesRing
-        let title: String?
+        /// Who the call says is calling (HermesCallerName).
+        let callerName: String
         var answered = false
         var unanswered: Task<Void, Never>?
         var work: Task<Void, Never>?
@@ -84,6 +94,7 @@ final class HermesWatchCalls: NSObject {
         // methods assume it.
         provider.setDelegate(self, queue: .main)
         self.provider = provider
+        handoffKey = HermesRingHandoffKey.loadOrCreate()
         let registry = PKPushRegistry(queue: .main)
         registry.delegate = self
         registry.desiredPushTypes = [.voIP]
@@ -95,19 +106,31 @@ final class HermesWatchCalls: NSObject {
         WatchVoiceCall.shared.$phase
             .sink { [weak self] phase in self?.voicePhaseChanged(phase) }
             .store(in: &cancellables)
+        // Calls ring here only while this voice can start (WatchCallVoices):
+        // the iPhone hears of every change. Read once it's set: the
+        // publisher fires before.
+        WatchVoiceCall.shared.$engine
+            .dropFirst()
+            .sink { [weak self] _ in WatchVoiceMain.async { self?.sendToken() } }
+            .store(in: &cancellables)
     }
 
     // MARK: The token
 
-    /// Queued to the iPhone, which hands it to the relay. Once a launch at
-    /// least, so an iPhone that lost it gets it again.
+    /// Queued to the iPhone, which hands it to the relay, with the handoff
+    /// key and the voice an answered call starts with. Once a launch at
+    /// least, so an iPhone that lost them gets them again.
     private func sendToken() {
-        guard tokenKnown, !hasSentToken || sentToken != token else { return }
+        if handoffKey == nil { handoffKey = HermesRingHandoffKey.loadOrCreate() }
+        let engine = WatchVoiceCall.shared.engine
+        guard tokenKnown, !hasSentToken || sentToken != token || sentKey != handoffKey || sentEngine != engine else { return }
         // Not linked yet: sent once the link is up.
-        guard WatchLink.shared.queue(.callsToken(token: token)) else { return }
+        guard WatchLink.shared.queue(.callsToken(token: token, key: handoffKey.map(WatchToolSeal.base64URL), engine: engine.callVoice.rawValue)) else { return }
         sentToken = token
+        sentKey = handoffKey
+        sentEngine = engine
         hasSentToken = true
-        WatchCallLog.shared.note("hermesCallsToken", ["token": token != nil])
+        WatchCallLog.shared.note("hermesCallsToken", ["token": token != nil, "key": handoffKey != nil, "engine": engine.callVoice.rawValue])
     }
 
     // MARK: Ringing
@@ -129,12 +152,12 @@ final class HermesWatchCalls: NSObject {
         let settled = ring.map { settledRings[$0.id] != nil } ?? false
         let id = UUID()
         let rings = ring != nil && !late && !busy && !settled
-        let title = HermesRingPush.title(userInfo)
-        if rings, let ring { calls[id] = Call(ring: ring, title: title) }
+        let callerName = Self.callerName(userInfo)
+        if rings, let ring { calls[id] = Call(ring: ring, callerName: callerName) }
         WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled])
         // Every VoIP push is reported before this returns, even one that
         // can't ring here (the iPhone rings it).
-        provider.reportNewIncomingCall(with: id, update: Self.update(title: title)) { error in
+        provider.reportNewIncomingCall(with: id, update: Self.update(callerName: callerName)) { error in
             Task { @MainActor in
                 defer { completion() }
                 if let error {
@@ -165,7 +188,7 @@ final class HermesWatchCalls: NSObject {
         let reason: CXCallEndedReason = settled.outcome == .answered ? .answeredElsewhere : .declinedElsewhere
         noteSettled(settled.id)
         WatchCallLog.shared.note("hermesCallSettledOnPhone", ["outcome": settled.outcome.rawValue, "here": calls[id] != nil])
-        provider.reportNewIncomingCall(with: id, update: Self.update(title: calls[id]?.title)) { _ in
+        provider.reportNewIncomingCall(with: id, update: Self.update(callerName: calls[id]?.callerName ?? HermesCallerName.fallback)) { _ in
             Task { @MainActor in
                 if let call = self.calls[id] {
                     // Answered here too: `connect` settles that race.
@@ -184,14 +207,37 @@ final class HermesWatchCalls: NSObject {
         settledRings[ringID] = now
     }
 
-    private static func update(title: String?) -> CXCallUpdate {
+    private static func update(callerName: String) -> CXCallUpdate {
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: "hermes")
-        // The agent's name and the job, when the push carries them in the
-        // clear; a sealed one only the iPhone can open.
-        update.localizedCallerName = title.map { "Hermes · " + $0 } ?? "Hermes"
+        update.localizedCallerName = callerName
         update.hasVideo = false
         return update
+    }
+
+    /// The calling profile and the job, when the push carries them in the
+    /// clear; "Hermes" for a sealed one, which only the iPhone can open.
+    /// The main profile goes by the name the iPhone last shared.
+    private static func callerName(_ userInfo: [AnyHashable: Any]) -> String {
+        let caller = HermesRingPush.caller(userInfo)
+        let names = UserDefaults.standard.dictionary(forKey: mainProfileNamesKey) as? [String: String]
+        let active = UserDefaults.standard.string(forKey: activeDashboardKey)
+        let mainName = HermesCallerName.mainName(dashboardID: caller.dashboardID, in: names, activeDashboardID: active)
+        return HermesCallerName.line(
+            name: HermesCallerName.name(profile: caller.profile, mainName: mainName),
+            title: HermesRingPush.title(userInfo)
+        )
+    }
+
+    private nonisolated static let mainProfileNamesKey = "hermesCalls.mainProfileNames"
+    private nonisolated static let activeDashboardKey = "hermesCalls.activeDashboardID"
+
+    /// Kept for a call that launches the app before the iPhone's context
+    /// is read; nil (an older iPhone app) keeps the last.
+    nonisolated static func keepMainProfileNames(_ context: WatchPhoneContext?) {
+        guard let context, let names = context.mainProfileNames else { return }
+        UserDefaults.standard.set(names, forKey: mainProfileNamesKey)
+        UserDefaults.standard.set(context.activeDashboardID, forKey: activeDashboardKey)
     }
 
     // MARK: Answering
@@ -215,8 +261,9 @@ final class HermesWatchCalls: NSObject {
         calls[id]?.work = Task { await self.connect(id, ring: call.ring) }
     }
 
-    /// Tells the relay (the iPhone stops ringing) while CallKit's audio
-    /// comes up, then starts the Watch voice call.
+    /// Tells the relay (the iPhone stops ringing, and gets the call's
+    /// start) while CallKit's audio comes up, then starts the Watch voice
+    /// call, which fetches its session from the relay.
     private func connect(_ id: UUID, ring: HermesRing) async {
         // A Watch call the user started meanwhile keeps going, and the
         // iPhone goes on ringing: nothing is settled.
@@ -225,11 +272,14 @@ final class HermesWatchCalls: NSObject {
             return
         }
         noteSettled(ring.id)
-        let settling = Task { await HermesRingSettler.settle(ring, by: .watch, outcome: .answered) }
+        let engine = WatchVoiceCall.shared.engine
+        let answer = handoffKey.map { HermesRingAnswer(ring: ring, callID: UInt32.random(in: 1...UInt32.max), key: $0) }
+        let start = answer.flatMap { HermesRingHandoff.sealStart(WatchVoiceCall.startRequest(engine: engine, callID: $0.callID, ring: ring.id), answer: $0) }
+        let settling = Task { await HermesRingSettler.settle(ring, by: .watch, outcome: .answered, start: start) }
         await waitForAudio()
         let settled = await settling.value
         guard calls[id] != nil, !Task.isCancelled else { return }
-        WatchCallLog.shared.note("hermesCallAnswered", ["settled": "\(settled)", "audio": audioActive])
+        WatchCallLog.shared.note("hermesCallAnswered", ["settled": "\(settled)", "audio": audioActive, "start": start != nil])
         // The iPhone got there first: the call is there. Declined there
         // first, the decline stands, unlike on the iPhone: the iPhone has
         // already told Hermes the call was declined.
@@ -243,7 +293,8 @@ final class HermesWatchCalls: NSObject {
             return
         }
         voiceCall = id
-        WatchVoiceCall.shared.start(ring: ring.id)
+        // Only a start the relay took reaches the iPhone.
+        WatchVoiceCall.shared.start(ring: ring.id, answer: settled == .settled && start != nil ? answer : nil, engine: engine)
     }
 
     /// The Watch voice call ended (hung up on its screen, or it failed):

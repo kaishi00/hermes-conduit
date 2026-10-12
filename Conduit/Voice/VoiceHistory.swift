@@ -504,7 +504,7 @@ enum VoiceResumePlan: Equatable {
 
     /// Instructions for the one-shot summary. Written for the model, not
     /// shown as UI copy, so not localized.
-    static let summaryInstructions = "Summarize this spoken conversation between a user and their voice assistant so a new call can pick it up. Keep the facts, decisions, the user's preferences, open questions and anything promised for later. Plain prose, at most 200 words, in the conversation's language. Return only the summary."
+    static let summaryInstructions = "Summarize this conversation between a user and their assistant so a new call can pick it up. Keep the facts, decisions, the user's preferences, open questions and anything promised for later. Plain prose, at most 200 words, in the conversation's language. Return only the summary."
     /// The most transcript a summary request carries (its newest part).
     static let summaryInputCharacters = 24_000
 

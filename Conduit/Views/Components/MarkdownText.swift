@@ -307,6 +307,9 @@ enum MarkdownRenderCache {
             usesAccentSurface ? "1" : "0",
             UIApplication.shared.preferredContentSizeCategory.rawValue,
             chatTextSize.cacheIdentity,
+            // Hermes' @session links are titled with the chat's name once
+            // Conduit lists it.
+            HermesSessionReference.titleKey(for: source),
             source
         ].joined(separator: "|") as NSString
 
@@ -2350,7 +2353,8 @@ enum MarkdownParser {
                 index += span.lineCount
                 continue
             }
-            visibleLines.append(line)
+            // Hermes' `@session:<id>` chat references open the chat.
+            visibleLines.append(HermesSessionReference.linkingMarkdown(line))
             index += 1
         }
 
