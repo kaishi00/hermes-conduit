@@ -493,11 +493,16 @@ final class KanbanV2Tests: XCTestCase {
         let detail = try blockedDetail(runsJSON: #"""
         [
           {"id": "r1", "status": "done", "outcome": "blocked", "summary": "first", "ended_at": 100},
-          {"id": "r2", "status": "done", "outcome": "blocked", "summary": "  ", "error": "Need the repo URL", "ended_at": 200},
+          {"id": "r2", "status": "blocked", "summary": "Need the repo URL", "error": "traceback", "ended_at": 200},
           {"id": "r3", "status": "done", "outcome": "completed", "summary": "done", "ended_at": 300}
         ]
         """#)
-        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Need the repo URL")
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Need the repo URL", "a run marked blocked only by status still counts")
+    }
+
+    func testBlockedRunErrorIsNeverShownAsTheQuestion() throws {
+        let detail = try blockedDetail(runsJSON: #"[{"id": "r1", "status": "done", "outcome": "blocked", "error": "Traceback: boom", "ended_at": 100}]"#)
+        XCTAssertNil(KanbanBlockedQuestion.reason(in: detail))
     }
 
     // MARK: - Runs presentation (V2 §17)

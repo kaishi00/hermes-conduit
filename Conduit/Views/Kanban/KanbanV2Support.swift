@@ -496,7 +496,8 @@ enum KanbanActivityFormatter {
 /// blocked (upstream `kanban_block(reason)`), so the operator can answer it
 /// from the detail screen. The newest `blocked` event wins; a backend that
 /// records the reason only on the run falls back to the newest run that
-/// ended `blocked`. A manual block carries no reason and yields nil.
+/// ended `blocked` (its summary only). A manual or dependency block carries
+/// no reason and yields nil.
 ///
 /// Events arrive newest-first, so array order breaks timestamp ties and an
 /// event without a timestamp is taken as the newest.
@@ -510,11 +511,13 @@ enum KanbanBlockedQuestion {
         }) {
             return nonEmpty(newest.element.payload?.objectValue?["reason"]?.stringValue)
         }
-        let blockedRuns = detail.runs.filter { $0.outcome == "blocked" }
+        let blockedRuns = detail.runs.filter { ($0.outcome ?? $0.status) == "blocked" }
         guard let run = blockedRuns.max(by: { ($0.endedAt ?? $0.startedAt ?? 0) < ($1.endedAt ?? $1.startedAt ?? 0) }) else {
             return nil
         }
-        return nonEmpty(run.summary) ?? nonEmpty(run.error)
+        // Only the summary is the worker's own words; a run error is not a
+        // question to put in front of the operator.
+        return nonEmpty(run.summary)
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

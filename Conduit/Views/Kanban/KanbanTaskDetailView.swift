@@ -120,6 +120,13 @@ struct KanbanTaskDetailView: View {
         displayedTask?.status == "blocked"
     }
 
+    /// The worker's question on a blocked task. Nil for a manual or
+    /// dependency block, which get neither the callout nor Reply & unblock.
+    private var blockedQuestion: String? {
+        guard isBlocked, let detail else { return nil }
+        return KanbanBlockedQuestion.reason(in: detail)
+    }
+
     private var hasUnsavedChanges: Bool {
         KanbanDetailDraftPolicy.isDirty(
             draftTitle: title,
@@ -175,7 +182,7 @@ struct KanbanTaskDetailView: View {
                         // worker's question (when it asked one) and the reply
                         // box sit together up top.
                         if isBlocked {
-                            if let detail, let question = KanbanBlockedQuestion.reason(in: detail) {
+                            if let question = blockedQuestion {
                                 blockedCallout(question: question)
                             }
                             commentsSection
@@ -905,7 +912,7 @@ struct KanbanTaskDetailView: View {
                     .tint(.orange)
                     .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing || isAddingComment)
                 }
-                if isBlocked {
+                if blockedQuestion != nil {
                     // A comment alone leaves the task parked in Blocked; the
                     // worker only reads the answer once the task runs again.
                     Button {
@@ -1294,7 +1301,7 @@ struct KanbanTaskDetailView: View {
     /// failed unblock never reposts it.
     private func replyAndUnblock() async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !isUnblocking, !isAddingComment else { return }
         let expectedID = displayedTaskID
         isUnblocking = true
         errorMessage = nil
