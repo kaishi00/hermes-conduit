@@ -661,6 +661,59 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         XCTAssertFalse(harness.appState.consumeVoiceSheetAutoListen(), "the intent is consumed exactly once")
     }
 
+    /// #558: an answered Hermes call opens classic voice while Conduit is in
+    /// the background. The sheet's one-shot auto-listen must wait for the
+    /// app to come on screen rather than be spent on a refused listen.
+    private func openVoiceFromBackground(_ harness: Harness) {
+        harness.appState.handleScenePhase(.background)
+        harness.openVoice(session: "session-1")
+        harness.appState.voiceSheetShouldAutoListen = true
+        harness.appState.reassertVoiceSurfaceGate()
+        XCTAssertFalse(
+            harness.appState.consumeVoiceSheetAutoListenIfPresenting(),
+            "a sheet that appears off screen cannot listen yet"
+        )
+        XCTAssertTrue(harness.appState.voiceSheetShouldAutoListen, "the intent stays armed for the foreground")
+    }
+
+    func testAutoListenOfSheetOpenedInBackgroundStartsWhenAppComesOnScreen() async {
+        let harness = makeHarness()
+        openVoiceFromBackground(harness)
+
+        harness.appState.handleScenePhase(.inactive)
+        let scene = harness.appState.handleScenePhase(.active)
+        scene?.cancel()
+
+        let listening = await harness.controller.waitForState(.listening)
+        XCTAssertTrue(listening, "returning to Conduit starts the listen the call's open asked for")
+        XCTAssertEqual(harness.capture.startCount, 1)
+        XCTAssertFalse(harness.appState.consumeVoiceSheetAutoListen(), "the deferred intent is consumed exactly once")
+    }
+
+    func testAutoListenOfSheetOpenedInBackgroundNeverStartsAfterClose() async {
+        let harness = makeHarness()
+        openVoiceFromBackground(harness)
+
+        harness.appState.closeVoiceConversation()
+        let scene = harness.appState.handleScenePhase(.active)
+        scene?.cancel()
+        for _ in 0..<5 { await Task.yield() }
+
+        XCTAssertEqual(harness.capture.startCount, 0, "Close disarms the deferred listen")
+    }
+
+    func testAutoListenOfSheetOpenedInBackgroundNeverStartsAfterCallKitMute() async {
+        let harness = makeHarness()
+        openVoiceFromBackground(harness)
+
+        harness.appState.setVoiceMutedForNativeCall(true)
+        let scene = harness.appState.handleScenePhase(.active)
+        scene?.cancel()
+        for _ in 0..<5 { await Task.yield() }
+
+        XCTAssertEqual(harness.capture.startCount, 0, "a CallKit mute keeps the microphone off")
+    }
+
     func testInactiveThenBackgroundThenActiveRestoresExactlyOnce() async {
         let harness = makeHarness()
         harness.openVoice(session: "session-1")

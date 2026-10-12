@@ -2680,7 +2680,8 @@ final class AppState: ObservableObject {
     @Published private(set) var suspendedVoiceConversation: SuspendedVoiceConversation?
     /// One-shot intent for the Voice sheet's auto-listen on fresh
     /// presentation. Armed only by `openVoiceConversation` and consumed
-    /// exactly once by the sheet, so a restored suspended conversation can
+    /// exactly once (by the sheet, or by the `.active` edge for a sheet that
+    /// appeared off screen), so a restored suspended conversation can
     /// never hot-start the microphone when SwiftUI recreates the sheet's
     /// view identity. Lifecycle suspension and every destructive Voice
     /// boundary disarm it.
@@ -2691,6 +2692,30 @@ final class AppState: ObservableObject {
         voiceSheetShouldAutoListen = false
         return true
     }
+
+    /// The sheet's auto-listen. A sheet that appears while no Voice surface
+    /// is presenting — Conduit opened in the background by an answered
+    /// Hermes call (#558) — leaves the intent armed instead of spending it on
+    /// a listen the capture gate would refuse; the `.active` scene edge
+    /// starts it (`startDeferredVoiceSheetAutoListen`).
+    func consumeVoiceSheetAutoListenIfPresenting() -> Bool {
+        guard hasActiveVoiceSurface else { return false }
+        return consumeVoiceSheetAutoListen()
+    }
+
+    /// Starts the auto-listen a sheet left armed because it appeared before
+    /// Conduit was on screen. Every boundary that must not hot-start the
+    /// microphone (Close, background suspension, a CallKit mute) disarms the
+    /// intent first, and it is consumed on the main actor right before the
+    /// listen, so a Close in between wins.
+    private func startDeferredVoiceSheetAutoListen() {
+        guard showVoiceSheet, voiceSheetShouldAutoListen else { return }
+        Task { [weak self] in
+            guard let self, self.showVoiceSheet, self.consumeVoiceSheetAutoListenIfPresenting() else { return }
+            await self.voiceConversationController.startListening()
+        }
+    }
+
     /// The profile the voice conversation controller's current session was
     /// opened for. Close-time mute persistence is keyed on this rather than
     /// on session liveness alone: an audio interruption or any boundary that
@@ -12704,6 +12729,7 @@ final class AppState: ObservableObject {
             // the Voice settings state, and it must still admit permission
             // requests and provider tests.
             publishVoiceRuntimeGates()
+            startDeferredVoiceSheetAutoListen()
             messageReadAloudController.setForegroundActive(true)
             // Voice restoration deliberately does NOT run here: the socket,
             // bridge, and runtime session identity may all be stale after a

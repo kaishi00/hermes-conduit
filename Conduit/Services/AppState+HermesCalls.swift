@@ -560,6 +560,10 @@ extension AppState {
             } else {
                 Task { await voiceConversationController.resumeMicrophone() }
             }
+        } else if muted {
+            // Muted before Conduit came on screen (#558): the classic voice
+            // waiting for the foreground to listen must not open the mic.
+            voiceSheetShouldAutoListen = false
         }
     }
 }

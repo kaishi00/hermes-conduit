@@ -176,7 +176,7 @@ struct MainView: View {
                 backgroundJobs: appState.voiceBackgroundJobSupervisor,
                 profile: appState.activeProfile,
                 onClose: appState.closeVoiceConversation,
-                shouldAutoListen: { appState.consumeVoiceSheetAutoListen() }
+                shouldAutoListen: { appState.consumeVoiceSheetAutoListenIfPresenting() }
             )
                 .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
                 .presentationDetents([.large])
