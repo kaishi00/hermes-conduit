@@ -496,15 +496,15 @@ enum KanbanActivityFormatter {
 /// blocked (upstream `kanban_block(reason)`), so the operator can answer it
 /// from the detail screen.
 ///
-/// Only the CURRENT block counts: the newest lifecycle transition decides.
-/// A `blocked` event yields its reason; a newer `status` move (a dependency
-/// block such as parent_reopened), `unblocked`, claim or completion means
-/// an older question is stale and yields nil. A backend that records no
-/// transitions at all falls back to the newest run that ended `blocked`
-/// (its summary only). A manual or dependency block yields nil.
+/// Only the CURRENT block counts: the newest `blocked` event yields its
+/// reason unless a strictly newer transition follows it - a `status` move (a
+/// dependency block such as parent_reopened), `unblocked`, claim or
+/// completion makes the question stale and yields nil. A backend that
+/// records no transitions at all falls back to the newest run that ended
+/// `blocked` (its summary only). A manual or dependency block yields nil.
 ///
-/// Events arrive newest-first, so array order breaks timestamp ties and an
-/// event without a timestamp is taken as the newest.
+/// Events arrive newest-first, so array order breaks ties between blocked
+/// events, and an event without a timestamp is taken as the newest.
 enum KanbanBlockedQuestion {
     static let transitionKinds: Set<String> = [
         "blocked", "unblocked", "status", "claimed", "completed", "reclaimed", "scheduled", "promoted", "archived",
@@ -512,13 +512,22 @@ enum KanbanBlockedQuestion {
 
     static func reason(in detail: KanbanTaskDetail) -> String? {
         let transitions = detail.events.enumerated().filter { transitionKinds.contains($0.element.kind) }
-        if let newest = transitions.max(by: { lhs, rhs in
-            let left = lhs.element.createdAt ?? Int.max
-            let right = rhs.element.createdAt ?? Int.max
-            return left == right ? lhs.offset > rhs.offset : left < right
-        }) {
-            guard newest.element.kind == "blocked" else { return nil }
-            return nonEmpty(newest.element.payload?.objectValue?["reason"]?.stringValue)
+        if !transitions.isEmpty {
+            let blocks = transitions.filter { $0.element.kind == "blocked" }
+            guard let block = blocks.max(by: { lhs, rhs in
+                let left = lhs.element.createdAt ?? Int.max
+                let right = rhs.element.createdAt ?? Int.max
+                return left == right ? lhs.offset > rhs.offset : left < right
+            }) else { return nil }
+            // A transition strictly newer than the block supersedes it. One
+            // logged in the same second (a `status` row written alongside the
+            // block) does not.
+            let blockTime = block.element.createdAt ?? Int.max
+            let superseded = transitions.contains { other in
+                other.element.kind != "blocked" && (other.element.createdAt ?? Int.max) > blockTime
+            }
+            guard !superseded else { return nil }
+            return nonEmpty(block.element.payload?.objectValue?["reason"]?.stringValue)
         }
         let blockedRuns = detail.runs.filter { ($0.outcome ?? $0.status) == "blocked" }
         guard let run = blockedRuns.max(by: { ($0.endedAt ?? $0.startedAt ?? 0) < ($1.endedAt ?? $1.startedAt ?? 0) }) else {

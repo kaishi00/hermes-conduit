@@ -480,7 +480,7 @@ struct KanbanTaskDetailView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.conduitAccent)
-            .disabled(isSaving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(isSaving || isAddingComment || isRequeuing || isUnblocking || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -1239,7 +1239,7 @@ struct KanbanTaskDetailView: View {
 
     private func addComment() async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !isAddingComment, !isRequeuing, !isUnblocking else { return }
         let expectedID = displayedTaskID
         isAddingComment = true
         errorMessage = nil
@@ -1266,7 +1266,7 @@ struct KanbanTaskDetailView: View {
     /// success without ever reposting the note.
     private func noteAndRequeue() async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !isRequeuing, !isAddingComment, !isUnblocking else { return }
         let expectedID = displayedTaskID
         isRequeuing = true
         errorMessage = nil
