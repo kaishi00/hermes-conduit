@@ -706,12 +706,27 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         let harness = makeHarness()
         openVoiceFromBackground(harness)
 
+        // The off-screen voice is already prepared (a live session), the
+        // path the mute takes in the #558 flow.
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession)
         harness.appState.setVoiceMutedForNativeCall(true)
+        XCTAssertFalse(harness.appState.voiceSheetShouldAutoListen, "the mute disarms the pending listen")
         let scene = harness.appState.handleScenePhase(.active)
         scene?.cancel()
         for _ in 0..<5 { await Task.yield() }
 
         XCTAssertEqual(harness.capture.startCount, 0, "a CallKit mute keeps the microphone off")
+    }
+
+    func testCallKitMuteBeforeVoiceOpensIsRememberedUntilTheCallEnds() {
+        let harness = makeHarness()
+        harness.appState.setNativeHermesCallActive(true)
+
+        harness.appState.setVoiceMutedForNativeCall(true)
+        XCTAssertTrue(harness.appState.isNativeHermesCallMuted, "a voice the call opens later reads the mute")
+
+        harness.appState.setNativeHermesCallActive(false)
+        XCTAssertFalse(harness.appState.isNativeHermesCallMuted, "the next call starts unmuted")
     }
 
     /// #558: answered with the phone locked, Conduit never comes on screen.

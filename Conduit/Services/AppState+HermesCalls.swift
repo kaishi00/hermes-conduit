@@ -514,9 +514,12 @@ extension AppState {
     /// A call from Hermes rings or runs in CallKit: transport recovery runs
     /// with the phone locked until it's over.
     func setNativeHermesCallActive(_ active: Bool) {
-        // Every call over clears the answer, even one that ended before it
-        // was marked active.
-        if !active { setNativeHermesCallAnswered(false) }
+        // Every call over clears the answer and its mute, even one that
+        // ended before it was marked active.
+        if !active {
+            isNativeHermesCallMuted = false
+            setNativeHermesCallAnswered(false)
+        }
         guard isNativeHermesCallActive != active else { return }
         isNativeHermesCallActive = active
         if active { recoverTransportForCarPlayIfNeeded(immediately: true) }
@@ -563,6 +566,12 @@ extension AppState {
 
     /// The CallKit call's mute button.
     func setVoiceMutedForNativeCall(_ muted: Bool) {
+        isNativeHermesCallMuted = muted
+        // A classic voice still waiting to start its first listen (#558)
+        // must not open the mic against the mute, whether or not its
+        // session is prepared yet; `openVoiceConversation` reads the mute
+        // for a voice that opens after it.
+        if muted { voiceSheetShouldAutoListen = false }
         if isGeminiLiveActive {
             geminiLiveController.setMicrophoneMuted(muted)
         } else if isGPTLiveActive {
@@ -575,10 +584,6 @@ extension AppState {
             } else {
                 Task { await voiceConversationController.resumeMicrophone() }
             }
-        } else if muted {
-            // Muted before Conduit came on screen (#558): the classic voice
-            // waiting for the foreground to listen must not open the mic.
-            voiceSheetShouldAutoListen = false
         }
     }
 }

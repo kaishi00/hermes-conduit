@@ -4084,6 +4084,9 @@ final class AppState: ObservableObject {
     /// That call was answered here (not only ringing): see
     /// `isNativeCallVoiceSurfaceActive`.
     @Published private(set) var isNativeHermesCallAnswered = false
+    /// The call's CallKit mute: a classic voice the call opens while muted
+    /// doesn't start listening on its own.
+    internal(set) var isNativeHermesCallMuted = false
     /// A profile's call settings on the host (AppState+HermesCalls), for
     /// the dashboard and profile in `hermesCallsStatusKey`.
     @Published var hermesCallsStatus: HermesCallsStatus?
@@ -25072,7 +25075,8 @@ final class AppState: ObservableObject {
         // A connected car shows its voice screen before the sheet's
         // auto-listen opens the microphone.
         CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
-        voiceSheetShouldAutoListen = true
+        // A call muted in CallKit before its voice opened keeps the mic off.
+        voiceSheetShouldAutoListen = !(intent.source == .hermesCall && isNativeHermesCallMuted)
         showVoiceSheet = true
         // The sheet is now the presenting Voice surface: re-assert the gate
         // before the sheet's auto-listen runs (with CarPlay absent the gate
