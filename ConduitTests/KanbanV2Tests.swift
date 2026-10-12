@@ -525,6 +525,20 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Need the repo URL", "a run marked blocked only by status still counts")
     }
 
+    func testRunFallbackSurvivesOlderTransitionsButNotNewerOnes() throws {
+        let runs = #"[{"id": "r1", "status": "done", "outcome": "blocked", "summary": "Which region?", "ended_at": 200}]"#
+        let claimedBefore = try blockedDetail(
+            events: [KanbanEvent(id: "1", taskID: "t", kind: "claimed", createdAt: 100)],
+            runsJSON: runs
+        )
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: claimedBefore), "Which region?")
+        let unblockedAfter = try blockedDetail(
+            events: [KanbanEvent(id: "1", taskID: "t", kind: "unblocked", createdAt: 300)],
+            runsJSON: runs
+        )
+        XCTAssertNil(KanbanBlockedQuestion.reason(in: unblockedAfter))
+    }
+
     func testBlockedRunErrorIsNeverShownAsTheQuestion() throws {
         let detail = try blockedDetail(runsJSON: #"[{"id": "r1", "status": "done", "outcome": "blocked", "error": "Traceback: boom", "ended_at": 100}]"#)
         XCTAssertNil(KanbanBlockedQuestion.reason(in: detail))

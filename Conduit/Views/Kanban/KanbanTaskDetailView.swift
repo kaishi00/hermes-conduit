@@ -896,6 +896,7 @@ struct KanbanTaskDetailView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAddingComment || isUnblocking || isRequeuing)
+                .accessibilityLabel(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment"))
                 if isRunning {
                     // Upstream "Note & requeue": post the note, then reclaim so
                     // the dispatcher re-runs the task with the note in context.
@@ -911,6 +912,7 @@ struct KanbanTaskDetailView: View {
                     .buttonStyle(.bordered)
                     .tint(.orange)
                     .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing || isAddingComment || isUnblocking)
+                    .accessibilityLabel("Note & requeue")
                 }
                 if blockedQuestion != nil {
                     // A comment alone leaves the task parked in Blocked; the
