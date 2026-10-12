@@ -83,12 +83,12 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     /// Whether the current response's transcript came as deltas; if not,
     /// its final transcript is shown instead.
     private var responseHadTranscript = false
-    /// The latest input transcript snapshot per xAI item on this
+    /// The longest input transcript snapshot seen per xAI item on this
     /// connection, so a repeated or growing snapshot adds only its new words.
     private var inputSnapshots: [String: String] = [:]
     /// Item ids in the order they arrived, oldest first.
     private var inputSnapshotOrder: [String] = []
-    static let rememberedInputItems = 4
+    private static let rememberedInputItems = 4
 
     init(
         client: GrokLiveConnecting,
