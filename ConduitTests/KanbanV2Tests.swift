@@ -481,6 +481,23 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "untimed question")
     }
 
+    func testOldQuestionIsStaleOnceANewerDependencyBlockFollows() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "3", taskID: "t", kind: "status", payload: .object(["status": .string("blocked"), "reason": .string("parent_reopened")]), createdAt: 300),
+            KanbanEvent(id: "2", taskID: "t", kind: "unblocked", payload: .object(["status": .string("ready")]), createdAt: 200),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("old question")]), createdAt: 100),
+        ])
+        XCTAssertNil(KanbanBlockedQuestion.reason(in: detail), "the current block is a dependency block, not the old question")
+    }
+
+    func testCommentsAfterTheBlockDoNotHideTheQuestion() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "commented", payload: .object(["author": .string("me")]), createdAt: 200),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("Which branch?")]), createdAt: 100),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Which branch?")
+    }
+
     func testManualBlockWithoutReasonHasNoQuestion() throws {
         let detail = try blockedDetail(
             events: [KanbanEvent(id: "1", taskID: "t", kind: "blocked", createdAt: 100)],

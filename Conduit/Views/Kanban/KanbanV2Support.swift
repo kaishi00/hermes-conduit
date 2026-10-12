@@ -494,21 +494,30 @@ enum KanbanActivityFormatter {
 
 /// What a blocked task is waiting on: the reason the worker gave when it
 /// blocked (upstream `kanban_block(reason)`), so the operator can answer it
-/// from the detail screen. The newest `blocked` event wins; a backend that
-/// records the reason only on the run falls back to the newest run that
-/// ended `blocked` (its summary only). A manual or dependency block carries
-/// no reason and yields nil.
+/// from the detail screen.
+///
+/// Only the CURRENT block counts: the newest lifecycle transition decides.
+/// A `blocked` event yields its reason; a newer `status` move (a dependency
+/// block such as parent_reopened), `unblocked`, claim or completion means
+/// an older question is stale and yields nil. A backend that records no
+/// transitions at all falls back to the newest run that ended `blocked`
+/// (its summary only). A manual or dependency block yields nil.
 ///
 /// Events arrive newest-first, so array order breaks timestamp ties and an
 /// event without a timestamp is taken as the newest.
 enum KanbanBlockedQuestion {
+    static let transitionKinds: Set<String> = [
+        "blocked", "unblocked", "status", "claimed", "completed", "reclaimed", "scheduled", "promoted", "archived",
+    ]
+
     static func reason(in detail: KanbanTaskDetail) -> String? {
-        let blockedEvents = detail.events.enumerated().filter { $0.element.kind == "blocked" }
-        if let newest = blockedEvents.max(by: { lhs, rhs in
+        let transitions = detail.events.enumerated().filter { transitionKinds.contains($0.element.kind) }
+        if let newest = transitions.max(by: { lhs, rhs in
             let left = lhs.element.createdAt ?? Int.max
             let right = rhs.element.createdAt ?? Int.max
             return left == right ? lhs.offset > rhs.offset : left < right
         }) {
+            guard newest.element.kind == "blocked" else { return nil }
             return nonEmpty(newest.element.payload?.objectValue?["reason"]?.stringValue)
         }
         let blockedRuns = detail.runs.filter { ($0.outcome ?? $0.status) == "blocked" }

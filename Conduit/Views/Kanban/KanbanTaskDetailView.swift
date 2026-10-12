@@ -910,7 +910,7 @@ struct KanbanTaskDetailView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.orange)
-                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing || isAddingComment)
+                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing || isAddingComment || isUnblocking)
                 }
                 if blockedQuestion != nil {
                     // A comment alone leaves the task parked in Blocked; the
@@ -926,7 +926,8 @@ struct KanbanTaskDetailView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.conduitAccent)
-                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isUnblocking || isAddingComment)
+                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isUnblocking || isAddingComment || isRequeuing)
+                    .accessibilityLabel("Reply & unblock")
                 }
             }
         }
@@ -1301,7 +1302,7 @@ struct KanbanTaskDetailView: View {
     /// failed unblock never reposts it.
     private func replyAndUnblock() async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isUnblocking, !isAddingComment else { return }
+        guard !text.isEmpty, !isUnblocking, !isAddingComment, !isRequeuing else { return }
         let expectedID = displayedTaskID
         isUnblocking = true
         errorMessage = nil
