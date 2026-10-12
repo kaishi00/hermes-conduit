@@ -133,19 +133,11 @@ private struct ProfilePickerRow: View {
             .buttonStyle(.plain).disabled(!canSelect)
 
             if isReordering {
-                VStack(spacing: 0) {
-                    Button(action: moveEarlier) {
-                        Image(systemName: "chevron.up").font(.caption.weight(.bold)).frame(width: 34, height: 22)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!canMoveEarlier)
-                    .accessibilityLabel("Move \(appState.profileDisplayName(profile)) earlier")
-                    Button(action: moveLater) {
-                        Image(systemName: "chevron.down").font(.caption.weight(.bold)).frame(width: 34, height: 22)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!canMoveLater)
-                    .accessibilityLabel("Move \(appState.profileDisplayName(profile)) later")
+                HStack(spacing: 2) {
+                    reorderArrow("chevron.up", enabled: canMoveEarlier, action: moveEarlier)
+                        .accessibilityLabel("Move \(appState.profileDisplayName(profile)) earlier")
+                    reorderArrow("chevron.down", enabled: canMoveLater, action: moveLater)
+                        .accessibilityLabel("Move \(appState.profileDisplayName(profile)) later")
                 }
             } else if isCurrent {
                 Label("Current", systemImage: "checkmark.circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.conduitAccent)
@@ -207,6 +199,26 @@ private struct ProfilePickerRow: View {
             }
             pickedImage = nil
         }
+    }
+
+    /// A reorder arrow with a full 44 pt tap target (#552). A `.plain` button
+    /// hit-tests only its label's drawn content, so without the content shape
+    /// just the small chevron glyph took taps; the space around it fell to the
+    /// disabled text button and the disabled selection surface behind the row,
+    /// which swallow taps, and the arrows looked dead on device.
+    private func reorderArrow(_ systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Color.conduitAccent)
+                .frame(width: 34, height: 34)
+                .background(Color.conduitAccent.opacity(0.12), in: Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.35)
     }
 }
 

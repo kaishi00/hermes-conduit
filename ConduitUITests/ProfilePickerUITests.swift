@@ -137,6 +137,42 @@ final class ProfilePickerUITests: XCTestCase {
         )
     }
 
+    /// Reorder mode's arrows move a profile (#552). The tap lands near the top
+    /// edge of the arrow's frame, away from the chevron glyph: the arrows once
+    /// took taps only on the glyph itself, so a tap at the element's centre
+    /// passed while taps on device beside the glyph did nothing.
+    func testReorderArrowMovesTheProfileLater() throws {
+        let app = launchWithSeededProfiles()
+        openProfilePicker(app)
+        let reorder = app.buttons["Reorder"]
+        XCTAssertTrue(reorder.waitForExistence(timeout: 5), "Reorder control missing. Tree:\n\(app.debugDescription)")
+        reorder.tap()
+
+        // The top row's "later" arrow: whatever order a previous run saved,
+        // the first row can always move later.
+        let laterArrows = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@ AND label ENDSWITH %@", "Move ", " later")
+        )
+        XCTAssertTrue(laterArrows.firstMatch.waitForExistence(timeout: 5), "Reorder arrows missing. Tree:\n\(app.debugDescription)")
+        let topArrow = laterArrows.allElementsBoundByIndex.min { $0.frame.minY < $1.frame.minY }
+        let label = try XCTUnwrap(topArrow?.label)
+        let arrow = app.buttons[label]
+        XCTAssertTrue(arrow.isEnabled, "The top row must be able to move later. Tree:\n\(app.debugDescription)")
+        let before = arrow.frame.midY
+
+        arrow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline, arrow.frame.midY <= before + 4 {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        XCTAssertGreaterThan(
+            arrow.frame.midY,
+            before + 4,
+            "Tapping the arrow must move \(label.dropFirst(5).dropLast(6)) one row down. Tree:\n\(app.debugDescription)"
+        )
+    }
+
     // MARK: - Helpers
 
     /// Launches the remembered-connected stub with the seeded profile roster.
