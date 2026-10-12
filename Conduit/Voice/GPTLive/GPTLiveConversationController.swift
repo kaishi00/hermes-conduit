@@ -440,10 +440,11 @@ final class GPTLiveConversationController: ObservableObject {
     /// An API-key call is billed per minute: past the user's limit it says
     /// goodbye and ends, like a spoken "goodbye".
     private func startCallLimitIfNeeded() {
-        guard billing == .api, callLimitTask == nil, let limit = apiCallLimit?() else { return }
-        callLimitTask = Task { [weak self] in
+        guard billing == .api, callLimitTask == nil, let limit = apiCallLimit?(), let call = session else { return }
+        callLimitTask = Task { [weak self, weak call] in
             do { try await Task.sleep(for: limit) } catch { return }
-            guard let self, self.isActive, !self.isEnding else { return }
+            // Only the call it was set for: a newer call has its own limit.
+            guard !Task.isCancelled, let self, let call, self.session === call, self.isActive, !self.isEnding else { return }
             self.callLimitTask = nil
             self.limitNote = AppLocalization.string("This call reached its time limit on the API key.")
             self.session?.appendContext(Self.timeLimitGoodbye, channel: .speakable, delegationID: nil)

@@ -25,6 +25,16 @@
 
 import Foundation
 
+/// Who pays for a GPT-Live call. The raw values are the host's `billing`
+/// request field and its answer's `auth`. Here, not with the client, because
+/// the Watch target shares this file.
+enum GPTLiveBilling: String, Codable, Equatable, CaseIterable {
+    /// The ChatGPT subscription the Hermes host is signed in to.
+    case subscription
+    /// The Hermes host's OpenAI API key, billed per minute.
+    case api
+}
+
 enum GPTLiveProtocol {
     /// The data channel the events travel on (negotiated with the offer).
     static let dataChannelLabel = "oai-events"

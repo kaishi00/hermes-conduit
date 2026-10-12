@@ -16,14 +16,7 @@
 
 import Foundation
 
-/// Who pays for a GPT-Live call. The raw values are the host's `billing`
-/// request field and its answer's `auth`.
-enum GPTLiveBilling: String, Codable, Equatable, CaseIterable {
-    /// The ChatGPT subscription the Hermes host is signed in to.
-    case subscription
-    /// The Hermes host's OpenAI API key, billed per minute.
-    case api
-
+extension GPTLiveBilling {
     /// The short label the call screen, the minimised bar and Settings
     /// show, so a call always says which path it's on.
     var badge: String {
