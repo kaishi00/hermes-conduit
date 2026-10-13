@@ -5214,8 +5214,19 @@ final class AppState: ObservableObject {
         }
         Task { [weak self] in
             guard let self else { return }
-            let calls = try? await self.voiceHistoryClient.chatCalls(chatID: chatID, profile: link.profile)
-            guard let call = calls?.first(where: { $0.callID == link.callID }), !call.turns.isEmpty else {
+            let calls: [VoiceChatCall]
+            do {
+                calls = try await self.voiceHistoryClient.chatCalls(chatID: chatID, profile: link.profile)
+            } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.rowUnavailable {
+                self.errorMessage = unavailable
+                return
+            } catch {
+                // Offline or a host hiccup: the transcript may well be there.
+                let name = AppLocalization.string("Voice call")
+                self.errorMessage = AppLocalization.string("Could not load \(name): \(UserFacingError.message(for: error))")
+                return
+            }
+            guard let call = calls.first(where: { $0.callID == link.callID }), !call.turns.isEmpty else {
                 self.errorMessage = unavailable
                 return
             }
