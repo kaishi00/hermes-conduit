@@ -251,7 +251,7 @@ final class HealthKitDataSource: HealthDataSource {
     func earliestDate() -> Date { store.earliestPermittedSampleDate() }
 
     func observe(_ categories: Set<HealthCategory>, onChange: @escaping (_ done: @escaping () -> Void) -> Void) async {
-        await stopObserving()
+        let mine = await stopAll()
         var types: [HKSampleType] = []
         for category in categories {
             switch category {
@@ -266,7 +266,8 @@ final class HealthKitDataSource: HealthDataSource {
                 types.append(Self.quantityType(metric))
             }
         }
-        let mine = lock.withLock { generation }
+        // Another stop or observe ran meanwhile: the latest one wins.
+        guard lock.withLock({ generation == mine }) else { return }
         for type in types {
             let query = HKObserverQuery(sampleType: type, predicate: nil) { _, completion, error in
                 // An error means no data came with this call; HealthKit
@@ -307,13 +308,20 @@ final class HealthKitDataSource: HealthDataSource {
     }
 
     func stopObserving() async {
-        let running = lock.withLock { () -> [HKObserverQuery] in
+        await stopAll()
+    }
+
+    /// The generation this stop started; a later stop or observe bumps it.
+    @discardableResult
+    private func stopAll() async -> Int {
+        let (running, mine) = lock.withLock { () -> ([HKObserverQuery], Int) in
             generation += 1
             defer { observers = [] }
-            return observers
+            return (observers, generation)
         }
         for query in running { store.stop(query) }
         try? await store.disableAllBackgroundDelivery()
+        return mine
     }
 
     // MARK: Mapping

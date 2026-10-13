@@ -43,6 +43,11 @@ extension AppState {
         let preferences = healthSyncPreferences
         guard preferences.isOn, let destination = preferences.destination else { return .off }
         let engine = healthSync
+        // "Switch back to it" holds only while another dashboard is in use.
+        if engine.state.pause == .otherDashboard,
+           activeDashboardID == nil || activeDashboardID == destination.dashboardID {
+            engine.note(nil)
+        }
         // Coming back to the app often isn't news; Apple Health's own wakes
         // and the background refresh cover the rest.
         if reason == .foreground, let last = engine.state.lastAttempt, Date().timeIntervalSince(last) < 180 {
@@ -56,10 +61,7 @@ extension AppState {
             }
         }
         // No dashboard in use yet: nothing to switch back to, try later.
-        guard let activeDashboardID else {
-            if engine.state.pause == .otherDashboard { engine.note(nil) }
-            return .unfinished
-        }
+        guard let activeDashboardID else { return .unfinished }
         guard activeDashboardID == destination.dashboardID else {
             engine.note(.otherDashboard)
             return .paused(.otherDashboard)
