@@ -619,6 +619,7 @@ struct KanbanView: View {
         .sheet(isPresented: $showNewTask) {
             KanbanTaskComposerView(initialStatus: newTaskStatus)
                 .environmentObject(store)
+                .environmentObject(appState)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }

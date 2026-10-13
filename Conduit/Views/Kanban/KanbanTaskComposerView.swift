@@ -89,10 +89,12 @@ struct KanbanTaskComposerView: View {
             }
             .sheet(isPresented: $showModelSheet) {
                 KanbanModelOverrideSheet(value: modelOverrideBinding)
+                    .environmentObject(store)
                     .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showSkillsSheet) {
                 KanbanSkillsPickerSheet(selected: skillsBinding)
+                    .environmentObject(appState)
                     .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showParentSheet) {
@@ -100,6 +102,7 @@ struct KanbanTaskComposerView: View {
                     selectedParentID: parentBinding,
                     excludedTaskID: nil
                 )
+                .environmentObject(store)
                 .presentationDetents([.medium, .large])
             }
         }
