@@ -247,18 +247,35 @@ enum CarPlayBrowseTemplateFactory {
 
     /// A list or grid icon that reads on the car's light and dark screens.
     /// CarPlay draws a plain SF Symbol black whatever its appearance, so the
-    /// symbol is tinted for each style and both go in one image asset, which
-    /// lets the car swap them when its appearance changes (CarPlay
-    /// Developer Guide, "Images"). Dark is the fallback: CarPlay screens are
-    /// dark nearly always.
+    /// symbol is drawn black and white as bitmaps and both go in one image
+    /// asset, which lets the car swap them when its appearance changes
+    /// (CarPlay Developer Guide, "Images"). Dark is the fallback: CarPlay
+    /// screens are dark nearly always. Assets are kept per symbol, since an
+    /// image only weakly holds the asset it came from.
     static func symbolImage(_ name: String) -> UIImage {
-        let symbol = UIImage(systemName: name) ?? UIImage(systemName: "circle.fill") ?? UIImage()
         let light = UITraitCollection(userInterfaceStyle: .light)
         let dark = UITraitCollection(userInterfaceStyle: .dark)
-        let asset = UIImageAsset()
-        asset.register(symbol.withTintColor(.black, renderingMode: .alwaysOriginal), with: light)
-        asset.register(symbol.withTintColor(.white, renderingMode: .alwaysOriginal), with: dark)
+        let asset = symbolAssets[name] ?? {
+            let symbol = UIImage(systemName: name) ?? UIImage(systemName: "circle.fill") ?? UIImage()
+            let asset = UIImageAsset()
+            asset.register(drawn(symbol, color: .black), with: light)
+            asset.register(drawn(symbol, color: .white), with: dark)
+            symbolAssets[name] = asset
+            return asset
+        }()
         return asset.image(with: carStyle == .light ? light : dark)
+    }
+
+    private static var symbolAssets: [String: UIImageAsset] = [:]
+
+    private static func drawn(_ symbol: UIImage, color: UIColor) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        // 3x, the sharpest car screen; a 2x screen scales it down.
+        format.scale = 3
+        let tinted = symbol.withTintColor(color, renderingMode: .alwaysOriginal)
+        return UIGraphicsImageRenderer(size: symbol.size, format: format)
+            .image { _ in tinted.draw(in: CGRect(origin: .zero, size: symbol.size)) }
+            .withRenderingMode(.alwaysOriginal)
     }
 
     static func chatsTemplate(
