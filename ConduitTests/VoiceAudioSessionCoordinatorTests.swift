@@ -587,11 +587,11 @@ extension VoiceAudioSessionCoordinatorTests {
         session.reportsCurrentCategory = true
         session.systemAddedOptions = [.defaultToSpeaker]
         coordinator.configureForIncomingCall()
-        session.resetRecordings()
+        let before = session.categoryCalls.count
 
         _ = try coordinator.acquire(.conversationCapture)
 
-        XCTAssertEqual(session.categoryCalls.count, 1, "a speaker default must be cleared, or the Speaker button can't reach the earpiece")
+        XCTAssertEqual(session.categoryCalls.count, before + 1, "a speaker default must be cleared, or the Speaker button can't reach the earpiece")
     }
 
     func testReapplyInANativeCallLeavesTheEarpieceTheUserChose() throws {
