@@ -295,9 +295,12 @@ final class HealthKitDataSource: HealthDataSource {
             }
             if lock.withLock({ generation != mine }) {
                 // Stopped while this was being turned on. The stop may have
-                // run before the query did, so stop it again here.
+                // run before the query did, so stop it again here. Delivery
+                // stays on if a newer observe already owns it.
                 store.stop(query)
-                try? await store.disableBackgroundDelivery(for: type)
+                if lock.withLock({ observers.isEmpty }) {
+                    try? await store.disableBackgroundDelivery(for: type)
+                }
                 return
             }
         }
