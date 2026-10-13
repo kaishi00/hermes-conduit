@@ -149,7 +149,6 @@ struct MainView: View {
                 onClose: appState.closeGeminiLiveConversation,
                 onRetry: { Task { await appState.geminiLiveController.start() } }
             )
-            .environmentObject(appState)
             .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -163,7 +162,6 @@ struct MainView: View {
                 onClose: appState.closeGrokLiveConversation,
                 onRetry: { Task { await appState.grokLiveController.start() } }
             )
-            .environmentObject(appState)
             .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -176,7 +174,6 @@ struct MainView: View {
                 onClose: appState.closeGPTLiveConversation,
                 onRetry: { Task { await appState.gptLiveController.start() } }
             )
-            .environmentObject(appState)
             .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)

@@ -117,6 +117,64 @@ class SheetEnvironmentTests(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertIn("File1.swift:15", found[0])  # Root's sheet, not the drawer's
 
+    def test_view_that_reads_and_passes_on_an_object_still_needs_it(self):
+        # KanbanTaskDetailView's shape: it reads the store and injects it
+        # into a NavigationLink destination; its sheet still has to hand it
+        # the store.
+        found = problems("""
+        struct Log: View {
+            @EnvironmentObject private var store: KanbanStore
+            var body: some View { Text(store.name) }
+        }
+        struct Detail: View {
+            @EnvironmentObject private var store: KanbanStore
+            var body: some View {
+                NavigationLink { Log().environmentObject(store) } label: { Text(store.name) }
+            }
+        }
+        struct Board: View {
+            @StateObject private var store = KanbanStore()
+            @State private var shown = false
+            var body: some View {
+                Color.clear.sheet(isPresented: $shown) { Detail() }
+            }
+        }
+        """)
+        self.assertEqual(len(found), 1)
+        self.assertIn("needs KanbanStore", found[0])
+        self.assertIn(".environmentObject(store)", found[0])
+
+    def test_self_qualified_injection_counts(self):
+        self.assertEqual(problems(APP_STATE_CHILD, """
+        struct Parent: View {
+            @EnvironmentObject var appState: AppState
+            @State private var shown = false
+            var body: some View {
+                Color.clear.sheet(isPresented: $shown) {
+                    Child().environmentObject(self.appState)
+                }
+            }
+        }
+        """), [])
+
+    def test_helpers_are_followed_through_other_helpers(self):
+        found = problems(APP_STATE_CHILD, """
+        struct Parent: View {
+            @EnvironmentObject var appState: AppState
+            @State private var shown = false
+            var body: some View {
+                Color.clear.sheet(isPresented: $shown) { outerSheet }
+            }
+            private var outerSheet: some View {
+                NavigationStack { innerContent }
+            }
+            private var innerContent: some View {
+                Child()
+            }
+        }
+        """)
+        self.assertEqual(len(found), 1)
+
     def test_content_after_on_dismiss_is_the_content_checked(self):
         found = problems(APP_STATE_CHILD, """
         struct Parent: View {

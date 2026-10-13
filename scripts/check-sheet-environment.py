@@ -11,8 +11,9 @@ Text-level, like check-l10n-coverage.py: it parses Swift just far enough to
 find view structs, their `@EnvironmentObject` dependencies, the views each one
 builds, and the content closure of every `.sheet` / `.fullScreenCover` /
 `.popover`. A view's needs are its own dependencies plus those of every view
-it references, minus the objects it injects itself (a view that owns a store
-and injects it, like KanbanView, satisfies its children).
+it references that it doesn't inject itself (a view that owns a store and
+injects it, like KanbanView, satisfies its children; a view that reads an
+object and passes it on still needs it from above).
 
 Usage: check-sheet-environment.py [--repo-root DIR]
 """
@@ -122,6 +123,8 @@ class Index:
         found = set()
         for m in INJECTION.finditer(text):
             expr = m.group(1)
+            if expr.startswith("self."):
+                expr = expr[len("self."):]
             head = expr.split(".")[0]
             if head in held:
                 found.add(held[head])
@@ -140,10 +143,12 @@ class Index:
             outside = without_presentations(body)
             refs |= {r for r in TYPE_REF.findall(outside) if r in self.views and r != name}
             provided |= self.injected_types(outside, name)
-        result = set(own)
+        children = set()
         for ref in refs:
-            result |= self.needs(ref, stack + (name,))
-        result -= provided
+            children |= self.needs(ref, stack + (name,))
+        # What a view injects reaches only the views it builds; its own
+        # environment reads still have to come from above.
+        result = own | (children - provided)
         self._needs[name] = result
         return result
 
@@ -213,7 +218,15 @@ def find_problems(sources):
             owner = index.owner_at(path, m.start())
             texts = [content]
             if owner:
-                texts += index.member_bodies(owner, set(re.findall(r"\b([a-z]\w*)\b", content)))
+                # Helpers the content builds, and the helpers those build.
+                seen = set()
+                frontier = [content]
+                while frontier:
+                    names = set(re.findall(r"\b([a-z]\w*)\b", frontier.pop())) - seen
+                    seen |= names
+                    for member in index.member_bodies(owner, names):
+                        texts.append(member)
+                        frontier.append(member)
             needed = set()
             for chunk in texts:
                 for ref in TYPE_REF.findall(chunk):
