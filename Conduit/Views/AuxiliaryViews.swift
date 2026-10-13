@@ -1601,7 +1601,12 @@ private struct ProfileModelSettingsDetail: View {
     private func chooseProvider(_ next: String) {
         guard next != provider else { return }
         provider = next
-        model = defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? ""
+        // Keep a model the new provider also lists (e.g. one saved with no
+        // provider) rather than swapping it for the row's first model.
+        let models = defaults?.providers.first(where: { $0.name == next })?.models ?? []
+        if !models.contains(where: { $0.id == model }) {
+            model = models.first?.id ?? ""
+        }
     }
     private func persist() {
         Task {
