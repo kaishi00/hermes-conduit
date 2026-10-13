@@ -927,7 +927,8 @@ extension HermesVoiceGatewayTimeoutTests {
         let harness = RecorderHarness()
         let recorder = harness.makeRecorder()
         recorder.chatID = "st-chat"
-        recorder.capture([entry(.user, "Call me when it's done"), entry(.assistant, "Will do.")], unsettled: [])
+        let said = [entry(.user, "Call me when it's done"), entry(.assistant, "Will do.")]
+        recorder.capture(said, unsettled: [])
         await recorder.flush()
         XCTAssertEqual(harness.requests.first?.chatID, "st-chat")
         XCTAssertNil(harness.requests.first?.sessionID)
@@ -936,7 +937,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(recorder.sessionID)
         XCTAssertNil(recorder.outboxRequest)
 
-        recorder.capture([entry(.user, "Call me when it's done"), entry(.assistant, "Will do."), entry(.user, "Thanks")], unsettled: [])
+        recorder.capture(said + [entry(.user, "Thanks")], unsettled: [])
         XCTAssertEqual(recorder.outboxRequest?.chatID, "st-chat")
         await recorder.flush()
         XCTAssertEqual(harness.requests.last?.turns.map(\.index), [2])
@@ -947,10 +948,11 @@ extension HermesVoiceGatewayTimeoutTests {
         let harness = RecorderHarness()
         let recorder = harness.makeRecorder()
         recorder.chatID = "st-chat"
-        recorder.capture([entry(.user, "One")], unsettled: [])
+        let one = entry(.user, "One")
+        recorder.capture([one], unsettled: [])
         await recorder.flush()
         harness.results = [.failure(VoiceHistoryError.rowUnavailable)]
-        recorder.capture([entry(.user, "One"), entry(.user, "Two")], unsettled: [])
+        recorder.capture([one, entry(.user, "Two")], unsettled: [])
         await recorder.flush()
         let retry = harness.requests.last
         XCTAssertNil(retry?.chatID)
