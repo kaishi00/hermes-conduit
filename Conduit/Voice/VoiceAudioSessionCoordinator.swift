@@ -90,9 +90,12 @@ final class SystemVoiceAudioSession: VoiceAudioSessionControlling {
 
     func isConfigured(as configuration: VoiceAudioSessionConfiguration) -> Bool {
         let session = AVAudioSession.sharedInstance()
+        // Options the system adds on its own (CallKit, the mode) don't
+        // count; whether the speaker is the default does.
         return session.category == configuration.category
             && session.mode == configuration.mode
-            && session.categoryOptions == configuration.options
+            && session.categoryOptions.isSuperset(of: configuration.options)
+            && session.categoryOptions.contains(.defaultToSpeaker) == configuration.options.contains(.defaultToSpeaker)
     }
 
     func overrideOutputToSpeaker() throws {
@@ -387,8 +390,12 @@ final class VoiceAudioSessionCoordinator {
                     try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
                 }
                 try session.setActive(true, options: [])
-                // Best effort: losing the speaker must not fail capture.
-                if changesCategory, keepsSpeaker { try? session.overrideOutputToSpeaker() }
+                // Best effort: losing the speaker must not fail capture. And
+                // only if the change really took it: an override posts a
+                // route change of its own.
+                if changesCategory, keepsSpeaker, !session.isOutputOnBuiltInSpeaker {
+                    try? session.overrideOutputToSpeaker()
+                }
                 appliedPolicy = .conversation
             case .standalonePlayback:
                 // Chosen when standalone speech takes the session: alongside

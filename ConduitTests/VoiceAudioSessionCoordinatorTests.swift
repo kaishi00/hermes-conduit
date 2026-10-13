@@ -558,6 +558,17 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(session.activationCount, 2, "the session is still reactivated")
     }
 
+    func testReapplyThatLeavesTheSpeakerOnDoesNotOverrideAgain() throws {
+        coordinator.configureForIncomingCall()
+        session.isOutputOnBuiltInReceiver = false
+        // On the speaker without an override to clear (as if the category
+        // change didn't touch it).
+        session.isOutputOnBuiltInSpeaker = true
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertEqual(session.speakerOverrides, 0, "an override posts a route change: only when it's needed")
+    }
+
     func testReapplyInANativeCallLeavesTheEarpieceTheUserChose() throws {
         coordinator.configureForIncomingCall()
         coordinator.nativeCallAudioActivated()
@@ -655,6 +666,7 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     }
 
     var overrideError: Error?
+    private var speakerOverridden = false
 
     func isConfigured(as configuration: VoiceAudioSessionConfiguration) -> Bool {
         guard reportsCurrentCategory, let last = categoryCalls.last else { return false }
@@ -664,6 +676,7 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     func overrideOutputToSpeaker() throws {
         if let overrideError { throw overrideError }
         speakerOverrides += 1
+        speakerOverridden = true
         isOutputOnBuiltInSpeaker = true
         isOutputOnBuiltInReceiver = false
     }
@@ -675,6 +688,12 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     ) throws {
         if let categoryError { throw categoryError }
         categoryCalls.append(CategoryCall(category: category, mode: mode, options: options))
+        // A category change clears a speaker override, as on a device.
+        if speakerOverridden {
+            speakerOverridden = false
+            isOutputOnBuiltInSpeaker = false
+            isOutputOnBuiltInReceiver = true
+        }
     }
 
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {
