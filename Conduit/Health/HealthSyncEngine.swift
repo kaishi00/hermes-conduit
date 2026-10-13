@@ -180,6 +180,9 @@ final class HealthSyncEngine: ObservableObject {
             do {
                 _ = try await request("\(Self.base)/wipe", "POST", ["device_id": state.deviceID])
                 deleted = true
+            } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+                // No health sync on this host any more: nothing left to delete.
+                deleted = true
             } catch {
                 lastError = Self.describe(error)
             }
