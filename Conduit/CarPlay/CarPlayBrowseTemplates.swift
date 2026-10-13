@@ -256,7 +256,11 @@ enum CarPlayBrowseTemplateFactory {
         let light = UITraitCollection(userInterfaceStyle: .light)
         let dark = UITraitCollection(userInterfaceStyle: .dark)
         let asset = symbolAssets[name] ?? {
-            let symbol = UIImage(systemName: name) ?? UIImage(systemName: "circle.fill") ?? UIImage()
+            // Large enough for the biggest slot (grid buttons), so the car
+            // only ever scales it down.
+            let configuration = UIImage.SymbolConfiguration(pointSize: 44)
+            let symbol = UIImage(systemName: name, withConfiguration: configuration)
+                ?? UIImage(systemName: "circle.fill", withConfiguration: configuration) ?? UIImage()
             let asset = UIImageAsset()
             asset.register(drawn(symbol, color: .black), with: light)
             asset.register(drawn(symbol, color: .white), with: dark)
@@ -270,7 +274,7 @@ enum CarPlayBrowseTemplateFactory {
 
     private static func drawn(_ symbol: UIImage, color: UIColor) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
-        // 3x, the sharpest car screen; a 2x screen scales it down.
+        // 3x, the sharpest car screen.
         format.scale = 3
         let tinted = symbol.withTintColor(color, renderingMode: .alwaysOriginal)
         return UIGraphicsImageRenderer(size: symbol.size, format: format)
