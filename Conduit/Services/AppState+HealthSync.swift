@@ -56,7 +56,10 @@ extension AppState {
             }
         }
         // No dashboard in use yet: nothing to switch back to, try later.
-        guard let activeDashboardID else { return .unfinished }
+        guard let activeDashboardID else {
+            if engine.state.pause == .otherDashboard { engine.note(nil) }
+            return .unfinished
+        }
         guard activeDashboardID == destination.dashboardID else {
             engine.note(.otherDashboard)
             return .paused(.otherDashboard)
@@ -96,7 +99,7 @@ extension AppState {
         // A deletion still owed on this dashboard runs first: afterwards it
         // would take the new data with it. One owed elsewhere waits there.
         if let error = await finishHealthDeletionLeftOnHost(),
-           HealthSyncPendingDeletion.load()?.dashboardID == dashboardID {
+           HealthSyncPendingDeletion.owed(on: dashboardID) != nil {
             throw error
         }
         try await healthSync.source.requestAuthorization(for: categories, detailed: detailed)
@@ -163,16 +166,16 @@ extension AppState {
     /// Why a deletion owed on the active dashboard couldn't run, or nil.
     @discardableResult
     func finishHealthDeletionLeftOnHost() async -> Error? {
-        guard let pending = HealthSyncPendingDeletion.load(), activeDashboardID == pending.dashboardID else { return nil }
+        guard let activeDashboardID, let pending = HealthSyncPendingDeletion.owed(on: activeDashboardID) else { return nil }
         guard let bridge = dashboardTicketBridge else { return DashboardTicketBridgeError.notReady }
         do {
             _ = try await bridge.requestJSON(
                 path: DashboardPath.withProfile("\(HealthSyncEngine.base)/wipe", profile: pending.profile),
                 method: "POST", body: ["device_id": pending.deviceID])
-            HealthSyncPendingDeletion.clear()
+            pending.clear()
         } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
             // No health sync on this host any more: nothing left to delete.
-            HealthSyncPendingDeletion.clear()
+            pending.clear()
         } catch {
             Self.healthSyncLog.info("Health deletion still pending: \(HealthSyncEngine.describe(error), privacy: .public)")
             return error

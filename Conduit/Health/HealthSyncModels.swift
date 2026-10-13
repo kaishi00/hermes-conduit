@@ -242,24 +242,38 @@ struct HealthSyncPreferences: Codable, Equatable {
 
 /// A deletion the user asked for while the host couldn't be reached: this
 /// phone's data on that dashboard and profile, deleted on the next connect.
+/// One may be owed on each of several dashboards.
 struct HealthSyncPendingDeletion: Codable, Equatable {
     var dashboardID: UUID
     var profile: String
     var deviceID: String
 
-    static let storageKey = "conduit.healthSync.pendingDeletion.v1"
+    static let storageKey = "conduit.healthSync.pendingDeletions.v1"
 
-    static func load(from defaults: UserDefaults = .standard) -> HealthSyncPendingDeletion? {
-        defaults.data(forKey: storageKey).flatMap { try? JSONDecoder().decode(HealthSyncPendingDeletion.self, from: $0) }
+    static func all(in defaults: UserDefaults = .standard) -> [HealthSyncPendingDeletion] {
+        defaults.data(forKey: storageKey).flatMap { try? JSONDecoder().decode([HealthSyncPendingDeletion].self, from: $0) } ?? []
+    }
+
+    /// The deletion owed on a dashboard, if any.
+    static func owed(on dashboardID: UUID, in defaults: UserDefaults = .standard) -> HealthSyncPendingDeletion? {
+        all(in: defaults).first { $0.dashboardID == dashboardID }
     }
 
     func save(to defaults: UserDefaults = .standard) {
-        guard let data = try? JSONEncoder().encode(self) else { return }
-        defaults.set(data, forKey: Self.storageKey)
+        Self.store(Self.all(in: defaults).filter { $0 != self } + [self], in: defaults)
     }
 
-    static func clear(from defaults: UserDefaults = .standard) {
-        defaults.removeObject(forKey: storageKey)
+    func clear(from defaults: UserDefaults = .standard) {
+        Self.store(Self.all(in: defaults).filter { $0 != self }, in: defaults)
+    }
+
+    private static func store(_ deletions: [HealthSyncPendingDeletion], in defaults: UserDefaults) {
+        guard !deletions.isEmpty else {
+            defaults.removeObject(forKey: storageKey)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(deletions) else { return }
+        defaults.set(data, forKey: storageKey)
     }
 }
 

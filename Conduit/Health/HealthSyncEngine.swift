@@ -128,6 +128,8 @@ final class HealthSyncEngine: ObservableObject {
     private let deviceName: () -> String
     var calendar: Calendar
     private var running: Task<Outcome, Never>?
+    private var runningPreferences: HealthSyncPreferences?
+    private var turnOffs = 0
 
     init(
         source: HealthDataSource,
@@ -146,15 +148,28 @@ final class HealthSyncEngine: ObservableObject {
         self.state = store.load()
     }
 
-    /// Runs a pass, or joins the one already running.
+    /// Runs a pass, or joins the one already running. A pass started with
+    /// other choices is followed by one with these, so a change isn't lost.
     func sync(preferences: HealthSyncPreferences, deadline: Date, request: @escaping Request) async -> Outcome {
-        if let running { return await running.value }
+        let turnOffs = self.turnOffs
+        while let current = running {
+            let joined = runningPreferences
+            let outcome = await current.value
+            if joined == preferences { return outcome }
+            // Turned off meanwhile: these choices no longer hold.
+            guard self.turnOffs == turnOffs else { return .off }
+            if running == current { running = nil }
+        }
         let task = Task { await self.pass(preferences: preferences, deadline: deadline, request: request) }
         running = task
+        runningPreferences = preferences
         isSyncing = true
         let outcome = await task.value
-        running = nil
-        isSyncing = false
+        // A follow-up may have taken over already.
+        if running == task {
+            running = nil
+            isSyncing = false
+        }
         return outcome
     }
 
@@ -169,6 +184,7 @@ final class HealthSyncEngine: ObservableObject {
     /// optionally delete this phone's data on the host first. True when the
     /// host confirmed the deletion.
     func turnOff(deleteFromHost request: Request?) async -> Bool {
+        turnOffs += 1
         // A pass still running could save a key after it was forgotten.
         if let running {
             running.cancel()
