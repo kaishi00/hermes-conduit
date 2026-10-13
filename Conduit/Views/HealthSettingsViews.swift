@@ -176,7 +176,7 @@ struct HealthSettingsPage: View {
                     Task {
                         await appState.runHealthSync(reason: .manual)
                         // Without a connection the pass can't start: say so.
-                        errorMessage = appState.dashboardTicketBridge == nil
+                        errorMessage = appState.dashboardTicketBridge == nil || appState.activeDashboardID == nil
                             ? DashboardTicketBridgeError.notReady.errorDescription : nil
                     }
                 } label: {
