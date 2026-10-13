@@ -131,6 +131,7 @@ struct HealthSettingsPage: View {
                         Toggle("Include detailed readings", isOn: detailedBinding(category))
                             .font(.subheadline)
                             .padding(.leading, 28)
+                            .accessibilityLabel(AppLocalization.string("Include detailed readings for \(category.title)"))
                     }
                 }
             }
