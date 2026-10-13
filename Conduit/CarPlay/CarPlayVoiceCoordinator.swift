@@ -49,14 +49,18 @@ protocol CarPlayInterfacing: AnyObject {
     )
     /// The car screen's scale, which the voice screen's icons are drawn at.
     var carDisplayScale: CGFloat { get }
+    /// The car screen's appearance, which list and grid icons are tinted for.
+    var carUserInterfaceStyle: UIUserInterfaceStyle { get }
 }
 
 extension CarPlayInterfacing {
     var carDisplayScale: CGFloat { CarPlayVoiceArtwork.defaultScale }
+    var carUserInterfaceStyle: UIUserInterfaceStyle { .unspecified }
 }
 
 extension CPInterfaceController: CarPlayInterfacing {
     var carDisplayScale: CGFloat { carTraitCollection.displayScale }
+    var carUserInterfaceStyle: UIUserInterfaceStyle { carTraitCollection.userInterfaceStyle }
 }
 
 /// The Voice mode the profile uses, which decides the controller CarPlay
@@ -271,6 +275,7 @@ final class CarPlayVoiceCoordinator {
         chosenChat = nil
         isBrowsing = false
         self.interfacing = interfacing
+        CarPlayBrowseTemplateFactory.carStyle = interfacing.carUserInterfaceStyle
         lastActivatedState = nil
         isTemplatePresented = false
         pendingPresentationState = nil

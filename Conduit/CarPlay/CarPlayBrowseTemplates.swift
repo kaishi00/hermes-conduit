@@ -242,8 +242,23 @@ enum CarPlayBrowseTemplateFactory {
         CPBarButton(title: kind.title) { _ in action() }
     }
 
+    /// The car screen's appearance at connect. Icons start in its colours.
+    static var carStyle: UIUserInterfaceStyle = .unspecified
+
+    /// A list or grid icon that reads on the car's light and dark screens.
+    /// CarPlay draws a plain SF Symbol black whatever its appearance, so the
+    /// symbol is tinted for each style and both go in one image asset, which
+    /// lets the car swap them when its appearance changes (CarPlay
+    /// Developer Guide, "Images"). Dark is the fallback: CarPlay screens are
+    /// dark nearly always.
     static func symbolImage(_ name: String) -> UIImage {
-        UIImage(systemName: name) ?? UIImage(systemName: "circle.fill") ?? UIImage()
+        let symbol = UIImage(systemName: name) ?? UIImage(systemName: "circle.fill") ?? UIImage()
+        let light = UITraitCollection(userInterfaceStyle: .light)
+        let dark = UITraitCollection(userInterfaceStyle: .dark)
+        let asset = UIImageAsset()
+        asset.register(symbol.withTintColor(.black, renderingMode: .alwaysOriginal), with: light)
+        asset.register(symbol.withTintColor(.white, renderingMode: .alwaysOriginal), with: dark)
+        return asset.image(with: carStyle == .light ? light : dark)
     }
 
     static func chatsTemplate(
@@ -404,7 +419,7 @@ enum CarPlayBrowseTemplateFactory {
             text: title,
             detailText: nil,
             image: symbolImage(symbol),
-            accessoryImage: isSelected ? UIImage(systemName: "checkmark") : nil,
+            accessoryImage: isSelected ? symbolImage("checkmark") : nil,
             accessoryType: .none
         )
         item.handler = { _, completion in
