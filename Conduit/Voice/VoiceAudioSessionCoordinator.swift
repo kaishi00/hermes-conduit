@@ -264,9 +264,11 @@ final class VoiceAudioSessionCoordinator {
     /// interruption, and that must not undo the earpiece the user chose.
     func nativeCallAudioActivated() {
         guard isInNativeCall, !nativeCallSpeakerChosen else { return }
-        nativeCallSpeakerChosen = true
         do {
             try session.overrideOutputToSpeaker()
+            // Only once it took: a failed move retries on the next
+            // activation rather than leaving the call on the earpiece.
+            nativeCallSpeakerChosen = true
         } catch {
             audioSessionLogger.error("call speaker override failed: \(String(describing: error), privacy: .public)")
         }

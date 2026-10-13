@@ -504,6 +504,17 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(session.speakerOverrides, 0)
     }
 
+    func testFailedSpeakerMoveRetriesOnTheNextActivation() {
+        coordinator.configureForIncomingCall()
+        session.overrideError = VoiceAudioSessionMockError.configurationFailed
+        coordinator.nativeCallAudioActivated()
+        session.overrideError = nil
+
+        coordinator.nativeCallAudioActivated()
+
+        XCTAssertEqual(session.speakerOverrides, 1, "the call must not be left on the earpiece by one failure")
+    }
+
     func testReapplyInANativeCallKeepsTheSpeakerWhileItIsOn() throws {
         coordinator.configureForIncomingCall()
         coordinator.nativeCallAudioActivated()
@@ -606,7 +617,10 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
         speakerOverrides = 0
     }
 
+    var overrideError: Error?
+
     func overrideOutputToSpeaker() throws {
+        if let overrideError { throw overrideError }
         speakerOverrides += 1
         isOutputOnBuiltInSpeaker = true
     }
