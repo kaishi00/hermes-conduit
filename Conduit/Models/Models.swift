@@ -797,6 +797,10 @@ struct SessionSummary: Identifiable, Equatable {
     /// Hermes' `last_read_at` watermark (epoch seconds). 0 means someone
     /// explicitly marked the chat unread; nil means never tracked.
     var readWatermark: Double? = nil
+    /// Hermes' shared pin flag (`pinned` on dashboard rows, #555), which
+    /// Desktop pins with too. Nil when the listing didn't carry it (the
+    /// `session.list` RPC, hosts older than the flag).
+    var isPinned: Bool? = nil
     var lineageRootId: String?
 }
 
