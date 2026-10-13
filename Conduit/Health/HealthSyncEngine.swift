@@ -55,7 +55,14 @@ struct HealthSyncStateStore {
     }
 
     func load() -> HealthSyncState {
-        guard let data = try? Data(contentsOf: url) else { return HealthSyncState() }
+        loadIfReadable() ?? HealthSyncState()
+    }
+
+    /// Nil when the file is there but can't be read yet (a phone not unlocked
+    /// since restart): a fresh state then would forget this device's ID.
+    func loadIfReadable() -> HealthSyncState? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return HealthSyncState() }
+        guard let data = try? Data(contentsOf: url) else { return nil }
         if let state = try? JSONDecoder().decode(HealthSyncState.self, from: data) { return state }
         // Unreadable (an older shape, a damaged file): start over, but as the
         // same device, so the host's copy can still be found and deleted.
@@ -136,6 +143,8 @@ final class HealthSyncEngine: ObservableObject {
     private var running: Task<Outcome, Never>?
     private var runningPreferences: HealthSyncPreferences?
     private var turnOffs = 0
+    /// The state file couldn't be read at launch; nothing runs until it can.
+    private var stateUnread = false
 
     init(
         source: HealthDataSource,
@@ -151,7 +160,12 @@ final class HealthSyncEngine: ObservableObject {
         self.calendar = calendar
         self.now = now
         self.deviceName = deviceName
-        self.state = store.load()
+        if let state = store.loadIfReadable() {
+            self.state = state
+        } else {
+            self.state = HealthSyncState()
+            stateUnread = true
+        }
     }
 
     /// Runs a pass, or joins the one already running. A pass started with
@@ -170,7 +184,8 @@ final class HealthSyncEngine: ObservableObject {
         running = task
         runningPreferences = preferences
         isSyncing = true
-        let outcome = await task.value
+        // An expiring background task stops the pass with it.
+        let outcome = await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
         // A follow-up may have taken over already.
         if running == task {
             running = nil
@@ -181,9 +196,20 @@ final class HealthSyncEngine: ObservableObject {
 
     /// Records a pause found outside a pass (another dashboard in use).
     func note(_ pause: HealthSyncPause?) {
-        guard state.pause != pause else { return }
+        guard readStateIfNeeded(), state.pause != pause else { return }
         state.pause = pause
         store.save(state)
+    }
+
+    /// Reads the state file again if it couldn't be read before. False while
+    /// it still can't be.
+    @discardableResult
+    func readStateIfNeeded() -> Bool {
+        guard stateUnread else { return true }
+        guard let state = store.loadIfReadable() else { return false }
+        self.state = state
+        stateUnread = false
+        return true
     }
 
     /// Sharing turned off: forget the key, the anchors and the cursor, and
@@ -191,6 +217,7 @@ final class HealthSyncEngine: ObservableObject {
     /// host confirmed the deletion.
     func turnOff(deleteFromHost request: Request?) async -> Bool {
         turnOffs += 1
+        readStateIfNeeded()
         // A pass still running could save a key after it was forgotten.
         if let running {
             running.cancel()
@@ -219,6 +246,8 @@ final class HealthSyncEngine: ObservableObject {
 
     private func pass(preferences: HealthSyncPreferences, deadline: Date, request: @escaping Request) async -> Outcome {
         guard preferences.isOn, let destination = preferences.destination else { return .off }
+        // Health is unreadable until the user unlocks the phone, this file too.
+        guard readStateIfNeeded() else { return .unfinished }
         if state.destination != destination {
             // Health data never follows the user to another destination.
             keys.clear()

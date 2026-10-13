@@ -146,6 +146,7 @@ extension AppState {
     @discardableResult
     func turnOffHealthSync(deleteFromHost: Bool) async -> Bool {
         let destination = healthSyncPreferences.destination
+        healthSync.readStateIfNeeded()
         let deviceID = healthSync.state.deviceID
         var request: HealthSyncEngine.Request?
         if deleteFromHost, let destination, activeDashboardID == destination.dashboardID,
