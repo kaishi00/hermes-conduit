@@ -126,7 +126,6 @@ private struct ProfilePickerRow: View {
                         .overlay {
                             if isSavingPhoto {
                                 ProgressView().frame(width: 48, height: 48).background(.ultraThinMaterial, in: Circle())
-                                    .accessibilityLabel(AppLocalization.string("Saving…"))
                             }
                         }
                     Image(systemName: "camera.fill").font(.caption2.weight(.bold)).foregroundStyle(Color.conduitBackgroundColor)
@@ -137,6 +136,7 @@ private struct ProfilePickerRow: View {
                     .buttonStyle(.plain)
                     .disabled(isSavingPhoto)
                     .accessibilityLabel("Choose photo for \(appState.profileDisplayName(profile))")
+                    .accessibilityValue(isSavingPhoto ? AppLocalization.string("Saving…") : "")
                 }
             }
 

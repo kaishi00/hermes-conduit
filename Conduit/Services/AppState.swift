@@ -15468,8 +15468,11 @@ final class AppState: ObservableObject {
             // one, nor a picture this app wrote meanwhile.
             if let fetched = botAvatarFetchedGeneration[name], fetched > generation { return true }
             guard profileAvatarLastWrite[name] == writeMark else { return true }
+            // A read with no usable bytes keeps the last picture and is not
+            // pinned to the generation, so a retry can still land it.
+            guard let data, let image = UIImage(data: data) else { return false }
             botAvatarFetchedGeneration[name] = generation
-            botAvatarImages[name] = data.flatMap { UIImage(data: $0) }
+            botAvatarImages[name] = image
             mirrorHermesPicture(data, for: name, dashboardID: dashboardID)
             return true
         } catch {
@@ -15791,11 +15794,10 @@ final class AppState: ObservableObject {
     }
 
     /// Keeps the profile's photo file a copy of its Hermes picture, so chats
-    /// and the profile picker draw it at launch and offline. A read with no
-    /// usable bytes keeps the last copy: only a roster saying the profile
-    /// has no picture removes it (`dropMirror`).
-    private func mirrorHermesPicture(_ data: Data?, for name: String, dashboardID: UUID?) {
-        guard dashboardID == activeDashboardID, let data,
+    /// and the profile picker draw it at launch and offline. Only a roster
+    /// saying the profile has no picture removes the copy (`dropMirror`).
+    private func mirrorHermesPicture(_ data: Data, for name: String, dashboardID: UUID?) {
+        guard dashboardID == activeDashboardID,
               let saved = try? profileAppearanceStore.saveMirroredAvatar(data, for: name, dashboardID: dashboardID)
         else { return }
         // Published when the bytes changed (same URL, new content) or the
