@@ -27,8 +27,9 @@ env:
   SIMULATOR_NAME: "iPhone 17 Pro"
   DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
   # Build budget for scripts/ci-hosted-build.sh. Six macOS jobs share the
-  # account's runners here, so builds run slower than in PR CI (900 s there):
-  # builds of 850-890 s were common, and UI shard 3 hit 900 s on 2026-10-11.
+  # account's runners here, so builds run slower than in PR CI: builds of
+  # 850-890 s were common, and UI shard 3 hit 900 s on 2026-10-11. PR CI uses
+  # 1200 s too since 2026-10-13.
   BUILD_TIMEOUT_SECS: "1200"
 
 jobs:

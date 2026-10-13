@@ -119,16 +119,27 @@ final class DashboardSessionIsolationTests: XCTestCase {
         let cookie = try parentDomainCookie(value: "a-session")
 
         try await awaitWebKit("setCookie on A") { await storeA.httpCookieStore.setCookie(cookie) }
-        // Give WebKit a beat to settle the write.
-        try await Task.sleep(for: .milliseconds(50))
+        // setCookie can return before the network process lists the cookie
+        // (seen on a busy hosted runner), so wait until A reads it back. B
+        // is checked after that, when the write has certainly landed.
+        let isASession: (HTTPCookie) -> Bool = { $0.name == "session" && $0.value == "a-session" }
+        let deadline = ContinuousClock.now + .seconds(10)
+        var cookiesA = try await awaitWebKit("allCookies on A") { await storeA.httpCookieStore.allCookies() }
+        while !cookiesA.contains(where: isASession), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(100))
+            cookiesA = try await awaitWebKit("allCookies on A") { await storeA.httpCookieStore.allCookies() }
+        }
+        // Without A's write landing, B's empty store would prove nothing.
+        guard cookiesA.contains(where: isASession) else {
+            XCTFail("dashboard A never read back its own cookie")
+            return
+        }
 
         let cookiesB = try await awaitWebKit("allCookies on B") { await storeB.httpCookieStore.allCookies() }
         XCTAssertFalse(
-            cookiesB.contains { $0.name == "session" && $0.value == "a-session" },
+            cookiesB.contains(where: isASession),
             "dashboard A's WebKit cookie must never appear in dashboard B's store"
         )
-        let cookiesA = try await awaitWebKit("allCookies on A") { await storeA.httpCookieStore.allCookies() }
-        XCTAssertTrue(cookiesA.contains { $0.name == "session" && $0.value == "a-session" })
     }
 
     // MARK: - Native jar ownership

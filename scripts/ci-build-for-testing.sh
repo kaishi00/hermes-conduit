@@ -19,7 +19,7 @@ SCHEME="Conduit"
 # GitHub-hosted runners for the same repository, which is what makes the
 # absolute paths inside the .xctestrun portable without rewriting anything.
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PWD/ci-derived-data}"
-BUILD_TIMEOUT_SECS="${BUILD_TIMEOUT_SECS:-900}"
+BUILD_TIMEOUT_SECS="${BUILD_TIMEOUT_SECS:-1200}"
 LOG_DIR="ci-lane/build"
 mkdir -p "$LOG_DIR"
 
@@ -39,6 +39,16 @@ if ! wait_for_destination_device; then
   exit 1
 fi
 
+# Build-time trims (2026-10-13: builds of 800-900 s were common and a third of
+# a day's runs hit the budget). None of these change what the tests exercise:
+# - COMPILER_INDEX_STORE_ENABLE=NO: no IDE index is written alongside every
+#   compile (it was on: `-index-store-path` on each swift-frontend call).
+# - -enableCodeCoverage NO: the scheme gathers coverage, which instruments
+#   every Conduit file (`-profile-generate`); nothing in CI reads coverage.
+# - ARCHS = the destination's arch (SIMULATOR_ARCH, arm64 by default, as in
+#   build_destination): the embedded Watch app is a dependency on another
+#   platform, so ONLY_ACTIVE_ARCH did not apply and it compiled for x86_64
+#   too.
 started_at=$(now_iso)
 start=$(date +%s)
 status=0
@@ -49,6 +59,9 @@ run_with_deadline "$BUILD_TIMEOUT_SECS" "$LOG_DIR/build.log" \
   -destination "$DESTINATION" \
   -configuration Debug \
   -derivedDataPath "$DERIVED_DATA_PATH" \
+  -enableCodeCoverage NO \
+  COMPILER_INDEX_STORE_ENABLE=NO \
+  ARCHS="${SIMULATOR_ARCH:-arm64}" \
   CODE_SIGN_IDENTITY="" \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGNING_ALLOWED=NO \

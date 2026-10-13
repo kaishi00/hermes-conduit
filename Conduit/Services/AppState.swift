@@ -23755,11 +23755,11 @@ final class AppState: ObservableObject {
             expireClarifyRequest(requestId: requestId, reason: reason)
 
         case .approval(_, let activity):
-            applyApprovalActivity(activity, authoritative: false)
+            applyApprovalActivity(activity, authoritative: false, commitsStreamedText: true)
             setRunning(true)
 
         case .inputPrompt(_, let activity):
-            applyInputPromptActivity(activity)
+            applyInputPromptActivity(activity, commitsStreamedText: true)
             setRunning(true)
 
         case .inputPromptExpire(_, let requestId, let reason):
@@ -23916,7 +23916,8 @@ final class AppState: ObservableObject {
     /// that session; explicitly identified queued approvals remain distinct.
     private func applyApprovalActivity(
         _ activity: ApprovalActivity,
-        authoritative: Bool
+        authoritative: Bool,
+        commitsStreamedText: Bool = false
     ) {
         let equivalentSessionIDs = activeChatScrollSessionIdentity.equivalentSessionIDs
             .union([activity.sessionId])
@@ -23983,6 +23984,7 @@ final class AppState: ObservableObject {
         }
 
         settleReasoningSegmentIntoTranscript()
+        if commitsStreamedText { flushStreamingPartial() }
         let identity = activity.requestId ?? activity.sessionId
         messages.append(ChatMessage(
             id: "approval-\(identity)-\(UUID().uuidString)",
@@ -24113,9 +24115,15 @@ final class AppState: ObservableObject {
                 sessionIDs: cacheSessionIDs
             )
         }
-        // The clarify row must sit above the live reasoning card's
-        // eventual commit — settle the segment before it lands.
+        // The clarify row must sit below everything the turn produced before
+        // it: settle the live reasoning segment, then commit streamed
+        // assistant text (the explanation leading up to the question).
+        // Hermes' clarify tool.start is skipped above, so nothing else
+        // flushes that text and it would render below the card (#572).
+        // Only the live event does this: a resume snapshot lands before the
+        // stream buffer is rebuilt from the recovered in-flight text.
         settleReasoningSegmentIntoTranscript()
+        if source == .streamEvent { flushStreamingPartial() }
         messages.append(ChatMessage(
             id: "clarify-\(activity.requestId)",
             role: .clarify,
@@ -24147,7 +24155,10 @@ final class AppState: ObservableObject {
     /// Upserts one masked input card keyed by its server request id. A
     /// re-delivery (resume replay) never re-arms a card this device already
     /// answered, skipped or has in flight.
-    private func applyInputPromptActivity(_ activity: InputPromptActivity) {
+    private func applyInputPromptActivity(
+        _ activity: InputPromptActivity,
+        commitsStreamedText: Bool = false
+    ) {
         if let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == activity.requestId }) {
             guard let existing = messages[index].inputPrompt, existing.isAnswerable else { return }
             messages[index].content = activity.title
@@ -24155,6 +24166,7 @@ final class AppState: ObservableObject {
             return
         }
         settleReasoningSegmentIntoTranscript()
+        if commitsStreamedText { flushStreamingPartial() }
         messages.append(ChatMessage(
             id: "input-prompt-\(activity.requestId)",
             role: .inputPrompt,
