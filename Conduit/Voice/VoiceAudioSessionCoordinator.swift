@@ -47,6 +47,8 @@ protocol VoiceAudioSessionControlling: AnyObject {
     /// Whether the session plays out of the built-in earpiece right now
     /// (no headphones, Bluetooth, or car).
     var isOutputOnBuiltInReceiver: Bool { get }
+    /// Whether the session already has this category, mode and options.
+    func isConfigured(as configuration: VoiceAudioSessionConfiguration) -> Bool
     /// Sends output to the loudspeaker; the override is cleared by
     /// CallKit's Speaker button, or by the next category change.
     func overrideOutputToSpeaker() throws
@@ -56,6 +58,7 @@ protocol VoiceAudioSessionControlling: AnyObject {
 extension VoiceAudioSessionControlling {
     var isOutputOnBuiltInSpeaker: Bool { false }
     var isOutputOnBuiltInReceiver: Bool { false }
+    func isConfigured(as configuration: VoiceAudioSessionConfiguration) -> Bool { false }
     func overrideOutputToSpeaker() throws {}
 }
 
@@ -83,6 +86,13 @@ final class SystemVoiceAudioSession: VoiceAudioSessionControlling {
 
     var isOutputOnBuiltInReceiver: Bool {
         AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInReceiver }
+    }
+
+    func isConfigured(as configuration: VoiceAudioSessionConfiguration) -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        return session.category == configuration.category
+            && session.mode == configuration.mode
+            && session.categoryOptions == configuration.options
     }
 
     func overrideOutputToSpeaker() throws {
@@ -366,13 +376,19 @@ final class VoiceAudioSessionCoordinator {
                     ? VoiceAudioSessionConfiguration.nativeCall
                     : VoiceAudioSessionConfiguration.capture
                 // In a call the speaker is an override a category change
-                // clears: a reapply (a route change, the Speaker button
-                // itself) keeps whichever output the user is on.
+                // clears. A reapply (a route change, the Speaker button
+                // itself) leaves a session already on the call's category
+                // alone, so the override's own route change can't loop
+                // back here through a reassert; one that does change it
+                // keeps whichever output the user is on.
+                let changesCategory = !(isInNativeCall && session.isConfigured(as: configuration))
                 let keepsSpeaker = isInNativeCall && session.isOutputOnBuiltInSpeaker
-                try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
+                if changesCategory {
+                    try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
+                }
                 try session.setActive(true, options: [])
                 // Best effort: losing the speaker must not fail capture.
-                if keepsSpeaker { try? session.overrideOutputToSpeaker() }
+                if changesCategory, keepsSpeaker { try? session.overrideOutputToSpeaker() }
                 appliedPolicy = .conversation
             case .standalonePlayback:
                 // Chosen when standalone speech takes the session: alongside

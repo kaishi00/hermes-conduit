@@ -541,6 +541,23 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(session.speakerOverrides, 1, "the category change clears the override: put it back")
     }
 
+    func testReassertAfterTheCallsOwnSpeakerMoveDoesNotLoop() throws {
+        session.reportsCurrentCategory = true
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        _ = try coordinator.acquire(.conversationCapture)
+        let categoryChanges = session.categoryCalls.count
+        let overrides = session.speakerOverrides
+
+        // The override's own route change reasserts (GPT-Live's link
+        // reasserts on every route change but a category change).
+        try coordinator.reassert()
+
+        XCTAssertEqual(session.categoryCalls.count, categoryChanges, "the call's category is already in place")
+        XCTAssertEqual(session.speakerOverrides, overrides, "no new override, so no new route change to loop on")
+        XCTAssertEqual(session.activationCount, 2, "the session is still reactivated")
+    }
+
     func testReapplyInANativeCallLeavesTheEarpieceTheUserChose() throws {
         coordinator.configureForIncomingCall()
         coordinator.nativeCallAudioActivated()
@@ -613,6 +630,8 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
 
     private(set) var categoryCalls: [CategoryCall] = []
     private(set) var activationCalls: [(active: Bool, options: AVAudioSession.SetActiveOptions)] = []
+    /// Off by default: every policy transition sets the category.
+    var reportsCurrentCategory = false
     var categoryError: Error?
     var activateError: Error?
     var deactivateError: Error?
@@ -636,6 +655,11 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     }
 
     var overrideError: Error?
+
+    func isConfigured(as configuration: VoiceAudioSessionConfiguration) -> Bool {
+        guard reportsCurrentCategory, let last = categoryCalls.last else { return false }
+        return last == CategoryCall(category: configuration.category, mode: configuration.mode, options: configuration.options)
+    }
 
     func overrideOutputToSpeaker() throws {
         if let overrideError { throw overrideError }
