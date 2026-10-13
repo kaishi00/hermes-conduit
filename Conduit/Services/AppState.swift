@@ -4042,10 +4042,10 @@ final class AppState: ObservableObject {
         for upload in outcome.uploads {
             let generation = sessionPinSync.recordWrite(pinID: upload.pinID, profile: profile, pinned: true)
             enqueueHostPinWrite { [weak self] in
-                guard let self else { return }
+                // Another host's sync starts over; nothing here is its.
+                guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
                 do {
                     try await self.sendHostPin(upload.hostID, pinned: true, profile: profile, using: bridge)
-                    // Another host's sync starts over; this result isn't its.
                     guard self.sessionPinSync.host == bridge.baseURL else { return }
                     self.sessionPinSync.uploadSucceeded(pinID: upload.pinID, profile: profile)
                 } catch DashboardTicketBridgeError.http(status: 404, detail: _) {
@@ -5722,12 +5722,12 @@ final class AppState: ObservableObject {
         let pinID = pinID(for: session)
         let generation = sessionPinSync.recordWrite(pinID: pinID, profile: profile, pinned: pinned)
         enqueueHostPinWrite { [weak self] in
+            guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
             do {
-                try await self?.sendHostPin(session.id, pinned: pinned, profile: profile, using: bridge)
+                try await self.sendHostPin(session.id, pinned: pinned, profile: profile, using: bridge)
             } catch {
                 // The pin flips back rather than claim a change Hermes
                 // didn't take.
-                guard let self else { return }
                 sessionCatalogLog.notice("Pin write failed: \(String(describing: error), privacy: .public)")
                 guard self.sessionPinSync.host == bridge.baseURL,
                       self.sessionPinSync.discardWrite(pinID: pinID, profile: profile, generation: generation),

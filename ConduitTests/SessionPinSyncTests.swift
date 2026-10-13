@@ -69,6 +69,17 @@ extension ChatReadStateTests {
         XCTAssertTrue(sync.isAdopted(profile: "default"))
     }
 
+    func testPinsUploadTheHostDidntKeepGoesAgain() {
+        var sync = pinSync()
+        _ = sync.reconcile(pins: ["a"], listed: [pinRow("a", pinned: false)], profile: "default", now: Self.pinT0)
+        sync.recordWrite(pinID: "a", profile: "default", pinned: true, at: Self.pinT0)
+        sync.uploadSucceeded(pinID: "a", profile: "default")
+        let later = Self.pinT0.addingTimeInterval(SessionPinSync.pendingWriteLifetime + 1)
+        let outcome = sync.reconcile(pins: ["a"], listed: [pinRow("a", pinned: false)], profile: "default", now: later)
+        XCTAssertEqual(outcome.uploads, [SessionPinSync.Upload(pinID: "a", hostID: "a")])
+        XCTAssertFalse(sync.isAdopted(profile: "default"), "Never adopted while the host disagrees")
+    }
+
     func testPinsAdoptedHostDecides() {
         var sync = pinSync(adopted: true)
         let outcome = sync.reconcile(

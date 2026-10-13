@@ -41,9 +41,9 @@ struct SessionPinSync: Equatable {
         var uploads: [Upload]
     }
 
-    /// How long a written value outranks listings that disagree with it. A
-    /// failed upload keeps its value until then too, so it isn't re-sent on
-    /// every listing.
+    /// How long a written value outranks listings that disagree with it. An
+    /// upload that fails without a definite answer keeps its value until then
+    /// too, so it isn't re-sent on every listing.
     static let pendingWriteLifetime: TimeInterval = 30
 
     /// The dashboard host the runtime state below describes.
@@ -141,7 +141,9 @@ struct SessionPinSync: Equatable {
                 pins.append(id)
             } else if wasAdopted {
                 pins.removeAll { ids.contains($0) }
-            } else if !sent.contains(id) {
+            } else {
+                // Sent before, yet the host still says unpinned once the
+                // write has lapsed: it didn't keep it, so send it again.
                 uploads.append(Upload(pinID: id, hostID: session.id))
             }
         }
