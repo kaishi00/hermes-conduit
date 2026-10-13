@@ -1542,7 +1542,9 @@ private struct ProfileModelSettingsDetail: View {
     }
 
     /// Keeps a saved provider the catalog does not list (e.g. `auto`)
-    /// visible instead of showing the first provider.
+    /// visible instead of showing the first provider. Exact `name` equality
+    /// is enough: `provider` only ever holds a row's `name` (from `selection`
+    /// or a menu pick) or a saved value no row matched.
     private func providerChoices(_ providers: [ProviderInfo]) -> [(id: String, title: String)] {
         let listed = providers.map { (id: $0.name, title: $0.title) }
         return provider.isEmpty || providers.contains(where: { $0.name == provider }) ? listed : [(id: provider, title: provider)] + listed
@@ -1601,9 +1603,10 @@ private struct ProfileModelSettingsDetail: View {
     private func chooseProvider(_ next: String) {
         guard next != provider else { return }
         provider = next
-        // Keep a model the new provider also lists (e.g. one saved with no
-        // provider) rather than swapping it for the row's first model.
-        let models = defaults?.providers.first(where: { $0.name == next })?.models ?? []
+        // The unlisted saved entry has no model list, so keep the model.
+        // Otherwise keep a model the new provider also lists (e.g. one saved
+        // with no provider) rather than swapping it for the row's first model.
+        guard let models = defaults?.providers.first(where: { $0.name == next })?.models else { return }
         if !models.contains(where: { $0.id == model }) {
             model = models.first?.id ?? ""
         }

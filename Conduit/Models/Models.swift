@@ -1050,7 +1050,7 @@ struct ProfileModelDefaults: Equatable {
             ?? uniqueRow(listing: model) {
             return (row.name, model.isEmpty ? row.models.first?.id ?? "" : model)
         }
-        guard provider.isEmpty, model.isEmpty, let row = providers.first else { return (provider, model) }
+        guard ProviderInfo.normalized(provider).isEmpty, ProviderInfo.normalized(model).isEmpty, let row = providers.first else { return (provider, model) }
         return (row.name, row.models.first?.id ?? "")
     }
 
