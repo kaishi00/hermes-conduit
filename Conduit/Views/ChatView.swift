@@ -1779,9 +1779,10 @@ private struct ModelChangeSummaryCard: View {
     }
 }
 
-/// A voice call started from this chat: its spoken turns are saved as
-/// their own session, which the marker opens. In that session (`origin`),
-/// the same card leads back to the chat.
+/// A voice call started from this chat: the marker opens its spoken turns,
+/// kept with the chat (#556) or, for older calls and hosts, saved as their
+/// own session. In such a session (`origin`), the same card leads back to
+/// the chat.
 private struct VoiceCallMarkerCard: View {
     let link: VoiceCallChatLink
     let origin: Bool

@@ -567,7 +567,7 @@ private struct LiveVoiceCallButton: View {
     }
 }
 
-private struct LiveVoiceTranscriptBubble: View {
+struct LiveVoiceTranscriptBubble: View {
     let entry: VoiceConversationTranscriptEntry
     let label: String
 

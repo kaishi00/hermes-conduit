@@ -31,14 +31,19 @@ private final class RecorderHarness {
     var titleRequests = 0
     var nextID = 1
 
-    func makeRecorder(resuming: String? = nil) -> VoiceTranscriptRecorder {
+    func makeRecorder(resuming: String? = nil, continuing: VoiceTranscriptRecorder? = nil) -> VoiceTranscriptRecorder {
         VoiceTranscriptRecorder(
             engine: .geminiLive,
             profile: "default",
             resumingSessionID: resuming,
+            continuing: continuing,
             save: { [unowned self] request in
                 self.requests.append(request)
                 if !self.results.isEmpty { return try self.results.removeFirst().get() }
+                let written = (request.turns.last?.index ?? -1) + 1
+                if request.sessionID == nil, let chatID = request.chatID {
+                    return VoiceTranscriptSaveResult(sessionID: nil, written: written, chatID: chatID)
+                }
                 let id = request.sessionID ?? "row-\(self.nextID)"
                 if request.sessionID == nil { self.nextID += 1 }
                 return VoiceTranscriptSaveResult(sessionID: id, written: (request.turns.last?.index ?? -1) + 1)
@@ -853,5 +858,176 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(loaded.pairs.count, VoiceSessionAliases.maximumAliases)
         XCTAssertNil(loaded.storedID(forRuntime: "rt-0"))
         XCTAssertEqual(loaded.storedID(forRuntime: "rt-\(VoiceSessionAliases.maximumAliases)"), "st-\(VoiceSessionAliases.maximumAliases)")
+    }
+}
+
+// MARK: - Calls kept with their chat (#556)
+
+extension HermesVoiceGatewayTimeoutTests {
+    func testVoiceHistorySaveSendsTheChatOnlyWhenTheCallHasNoRow() async throws {
+        let script = ScriptedVoiceHistoryRequests()
+        script.responses = [
+            .success(["ok": true, "session_id": NSNull(), "chat_id": "st-chat", "written": 1]),
+            .success(["ok": true, "session_id": "row-1", "written": 1]),
+        ]
+        let client = VoiceHistoryClient(request: script.request)
+        let turn = VoiceTranscriptTurn(index: 0, role: .user, text: "Add milk", at: Date(timeIntervalSince1970: 10))
+        let kept = try await client.save(
+            VoiceTranscriptSaveRequest(callID: "c1", engine: .gptLive, sessionID: nil, title: nil, turns: [turn], chatID: "st-chat"),
+            profile: "default"
+        )
+        XCTAssertEqual(kept, VoiceTranscriptSaveResult(sessionID: nil, written: 1, chatID: "st-chat"))
+        XCTAssertEqual(script.calls[0].body?["chat_id"] as? String, "st-chat")
+        _ = try await client.save(
+            VoiceTranscriptSaveRequest(callID: "c1", engine: .gptLive, sessionID: "row-1", title: nil, turns: [turn], chatID: "st-chat"),
+            profile: "default"
+        )
+        XCTAssertNil(script.calls[1].body?["chat_id"], "a call with a row appends to it")
+        // A plugin that predates chat calls makes a row: the result says so.
+        XCTAssertEqual(
+            try VoiceHistoryClient.saveResult(from: ["ok": true, "session_id": "row-2", "chat_id": "st-chat", "written": 1]),
+            VoiceTranscriptSaveResult(sessionID: "row-2", written: 1)
+        )
+    }
+
+    func testVoiceHistoryReadsAChatsCalls() async throws {
+        let script = ScriptedVoiceHistoryRequests()
+        script.responses = [.success(["ok": true, "chat_id": "st chat", "calls": [
+            ["call_id": "c1", "engine": "gpt-live", "turns": [
+                ["role": "user", "text": "What's on today?", "at": 10],
+                ["role": "assistant", "text": " ", "at": 11],
+                ["role": "assistant", "text": "Two meetings.", "at": 12],
+            ]],
+            ["engine": "gpt-live", "turns": []],
+        ]])]
+        let client = VoiceHistoryClient(request: script.request)
+        let calls = try await client.chatCalls(chatID: "st chat", profile: "coder")
+        XCTAssertEqual(calls.map(\.callID), ["c1"])
+        XCTAssertEqual(calls.first?.turns.map(\.speaker), [.user, .assistant])
+        XCTAssertEqual(calls.first?.turns.map(\.text), ["What's on today?", "Two meetings."])
+        XCTAssertEqual(script.calls.first?.method, "GET")
+        XCTAssertEqual(
+            script.calls.first?.path,
+            DashboardPath.withProfile("\(VoiceHistoryClient.chatCallsPath)?chat_id=st%20chat", profile: "coder")
+        )
+        XCTAssertThrowsError(try VoiceHistoryClient.chatCalls(from: ["ok": false]))
+    }
+
+    func testRecorderKeepsAnAttachedCallWithItsChatWithoutATitle() async {
+        let harness = RecorderHarness()
+        let recorder = harness.makeRecorder()
+        recorder.chatID = "st-chat"
+        recorder.capture([entry(.user, "Call me when it's done"), entry(.assistant, "Will do.")], unsettled: [])
+        await recorder.flush()
+        XCTAssertEqual(harness.requests.first?.chatID, "st-chat")
+        XCTAssertNil(harness.requests.first?.sessionID)
+        XCTAssertEqual(harness.titleRequests, 0, "no model call for a title")
+        XCTAssertTrue(recorder.savedWithChat)
+        XCTAssertNil(recorder.sessionID)
+        XCTAssertNil(recorder.outboxRequest)
+
+        recorder.capture([entry(.user, "Call me when it's done"), entry(.assistant, "Will do."), entry(.user, "Thanks")], unsettled: [])
+        XCTAssertEqual(recorder.outboxRequest?.chatID, "st-chat")
+        await recorder.flush()
+        XCTAssertEqual(harness.requests.last?.turns.map(\.index), [2])
+        XCTAssertEqual(harness.requests.last?.chatID, "st-chat")
+    }
+
+    func testRecorderSavesTheWholeCallOnItsOwnWhenItsChatIsGone() async {
+        let harness = RecorderHarness()
+        let recorder = harness.makeRecorder()
+        recorder.chatID = "st-chat"
+        recorder.capture([entry(.user, "One")], unsettled: [])
+        await recorder.flush()
+        harness.results = [.failure(VoiceHistoryError.rowUnavailable)]
+        recorder.capture([entry(.user, "One"), entry(.user, "Two")], unsettled: [])
+        await recorder.flush()
+        let retry = harness.requests.last
+        XCTAssertNil(retry?.chatID)
+        XCTAssertNil(retry?.sessionID)
+        XCTAssertEqual(retry?.turns.map(\.text), ["One", "Two"])
+        XCTAssertNotEqual(retry?.callID, harness.requests.first?.callID)
+        XCTAssertEqual(recorder.sessionID, "row-1")
+        XCTAssertFalse(recorder.savedWithChat)
+    }
+
+    func testAReconnectGoesOnAsTheSameCall() async {
+        let harness = RecorderHarness()
+        let first = harness.makeRecorder()
+        first.chatID = "st-chat"
+        first.capture([entry(.user, "Is the build done?"), entry(.assistant, "Not yet.")], unsettled: [])
+        await first.flush()
+        first.jobSessionIDs = ["job-1"]
+
+        let second = harness.makeRecorder(continuing: first)
+        XCTAssertTrue(first.handedOver)
+        XCTAssertEqual(second.callID, first.callID)
+        XCTAssertEqual(second.chatID, "st-chat")
+        XCTAssertTrue(second.savedWithChat)
+        XCTAssertEqual(second.jobSessionIDs, ["job-1"])
+        second.note("Voice call resumed")
+        second.capture([entry(.user, "Back again")], unsettled: [])
+        await second.flush()
+        XCTAssertEqual(harness.requests.last?.callID, first.callID)
+        XCTAssertEqual(harness.requests.last?.turns.map(\.index), [2, 3])
+        XCTAssertEqual(harness.requests.last?.chatID, "st-chat")
+    }
+
+    func testAReconnectResendsWhatTheEarlierSaveDidntConfirm() async {
+        let harness = RecorderHarness()
+        harness.results = [.failure(URLError(.notConnectedToInternet))]
+        let first = harness.makeRecorder()
+        first.chatID = "st-chat"
+        first.capture([entry(.user, "Hello")], unsettled: [])
+        await first.flush()
+        let second = harness.makeRecorder(continuing: first)
+        second.capture([entry(.user, "Still there?")], unsettled: [])
+        XCTAssertEqual(second.outboxRequest?.turns.map(\.text), ["Hello", "Still there?"])
+        XCTAssertEqual(second.outboxRequest?.callID, first.callID)
+    }
+
+    func testOnlyTheSameChatSoonAfterContinuesACall() {
+        let ended = Date(timeIntervalSince1970: 1_000)
+        func continues(_ chat: String?, profile: String = "default", after gap: TimeInterval) -> Bool {
+            AppState.continuesChatCall(
+                lastChatID: "st-chat", lastProfile: "default", endedAt: ended,
+                chatID: chat, profile: profile, now: ended.addingTimeInterval(gap)
+            )
+        }
+        XCTAssertTrue(continues("st-chat", after: 5))
+        XCTAssertTrue(continues("st-chat", after: AppState.chatCallReconnectWindow))
+        XCTAssertFalse(continues("st-chat", after: AppState.chatCallReconnectWindow + 1))
+        XCTAssertFalse(continues("st-other", after: 5))
+        XCTAssertFalse(continues(nil, after: 5))
+        XCTAssertFalse(continues("st-chat", profile: "work", after: 5))
+    }
+
+    func testAReconnectIsSeededWithTheCallSoFar() {
+        let at = Date(timeIntervalSince1970: 10)
+        let turns = [
+            VoiceTranscriptTurn(index: 0, role: .user, text: "Open the [report](conduit://session/abc)", at: at),
+            VoiceTranscriptTurn(index: 1, role: .assistant, text: "Opened.", at: at),
+        ]
+        let context = VoiceResumeContext.continuing(turns)
+        XCTAssertNil(context.summary)
+        XCTAssertEqual(context.recent.map(\.speaker), [.user, .assistant])
+        XCTAssertFalse(context.recent[0].text.contains("conduit://"))
+        let long = (0..<40).map { VoiceTranscriptTurn(index: $0, role: $0 % 2 == 0 ? .user : .assistant, text: "Turn \($0)", at: at) }
+        XCTAssertEqual(VoiceResumeContext.continuing(long).recent.count, VoiceResumePlan.recentTurnCount)
+    }
+
+    func testACallKeptWithItsChatShowsItsCardAndNeverOwnsTheChat() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        let kept = VoiceCallChatLink(
+            callID: "c1", callSessionID: "", chatRuntimeSessionID: "rt-1", chatStoredSessionID: "st-1",
+            chatTitle: "Daily brief", profile: "default", startedAt: start, endedAt: start.addingTimeInterval(60), resumed: false
+        )
+        links.add(kept)
+        XCTAssertTrue(kept.storedWithChat)
+        // The chat shows the call's card, not a "Started from" card.
+        XCTAssertEqual(links.merge(into: [], chatIDs: ["st-1"], openIDs: ["st-1", ""], profile: "default").map(\.id), ["voice-call-c1"])
+        // Nothing nests under the call: it has no row.
+        XCTAssertNil(links.chatKey(forCallIDs: ["", "st-1"], profile: "default"))
     }
 }

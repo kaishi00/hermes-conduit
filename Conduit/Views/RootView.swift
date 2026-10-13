@@ -121,6 +121,11 @@ struct MainView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: $appState.chatCallTranscript) { call in
+            VoiceChatCallTranscriptSheet(call: call)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         // "Keep phone awake during voice conversations": hold off auto-lock
         // only while a voice conversation is on screen.
         .onChange(

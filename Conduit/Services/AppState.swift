@@ -2734,9 +2734,11 @@ final class AppState: ObservableObject {
                     outbox.store(in: self.defaults)
                 }
                 let key = self.voiceHistoryKey(profile: recorder.profile)
+                // A call kept with its chat files its jobs under the chat.
+                let parentID = recorder.sessionID ?? recorder.chatID
                 for id in sessionIDs where !id.isEmpty {
                     self.voiceSessionTagsByKey[key, default: [:]][id] = VoiceSessionTag(
-                        kind: .job, parentID: recorder.sessionID, parentTitle: self.voiceJobParentTitle(recorder.sessionID)
+                        kind: .job, parentID: parentID, parentTitle: self.voiceJobParentTitle(parentID)
                     )
                 }
             } else {
@@ -3824,12 +3826,11 @@ final class AppState: ObservableObject {
 
     /// A call attached to a chat was saved: the chat gets its marker, at
     /// once when it's on screen.
-    private func linkVoiceCall(_ attachment: VoiceCallAttachment, callSessionID: String, profile: String) {
-        // A chat new at the call's start may only have its stored id now.
+    /// `callSessionID` is empty for a call kept with its chat, `chatID`
+    /// the chat it was kept with.
+    private func linkVoiceCall(_ attachment: VoiceCallAttachment, callSessionID: String, chatID: String? = nil, profile: String) {
         let runtimeID = attachment.thread.runtimeSessionID
-        let storedID = attachment.thread.storedSessionID.flatMap { $0.isEmpty ? nil : $0 }
-            ?? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId.flatMap { $0.isEmpty ? nil : $0 }
-            ?? conversationIdentityIndex.durableID(forRuntime: runtimeID, profile: attachment.thread.profile ?? profile)
+        let storedID = chatID ?? storedChatID(for: attachment.thread, profile: profile)
         learnVoiceSessionAlias(runtimeID: runtimeID, storedID: storedID)
         let link = VoiceCallChatLink(
             callID: attachment.callID,
@@ -3851,6 +3852,32 @@ final class AppState: ObservableObject {
         guard merged.count != messages.count else { return }
         messages = merged
         cacheMessagePresentation()
+    }
+
+    /// The chat's durable id: a chat new at the call's start may only have
+    /// its stored id later.
+    private func storedChatID(for thread: VoiceThreadTarget, profile: String) -> String? {
+        let runtimeID = thread.runtimeSessionID
+        return thread.storedSessionID.flatMap { $0.isEmpty ? nil : $0 }
+            ?? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId.flatMap { $0.isEmpty ? nil : $0 }
+            ?? conversationIdentityIndex.durableID(forRuntime: runtimeID, profile: thread.profile ?? profile)
+    }
+
+    /// The chat a call on `profile` is kept with (#556): its stored id, when
+    /// the chat is on that profile. A Bot Chat lives in the bot's profile,
+    /// so its calls keep rows of their own.
+    private func voiceCallChatID(for thread: VoiceThreadTarget, profile: String) -> String? {
+        guard thread.profile == nil || thread.profile == profile else { return nil }
+        return storedChatID(for: thread, profile: profile)
+    }
+
+    /// Whether a call starting now goes on as the last call kept with a
+    /// chat: same chat and profile, started again within the reconnect
+    /// window.
+    static func continuesChatCall(lastChatID: String, lastProfile: String, endedAt: Date, chatID: String?, profile: String, now: Date) -> Bool {
+        guard let chatID, chatID == lastChatID, profile == lastProfile else { return false }
+        let gap = now.timeIntervalSince(endedAt)
+        return gap >= 0 && gap <= chatCallReconnectWindow
     }
 
     private func persistReview(_ record: ReviewSummaryRecord) {
@@ -4230,6 +4257,14 @@ final class AppState: ObservableObject {
     private var closingVoiceCallUntil: Date?
     /// A saved call the next live call continues (Resume Call).
     private var pendingVoiceResume: (sessionID: String, context: VoiceResumeContext)?
+    /// The last call attached to a chat, which a reconnect in the same chat
+    /// goes on as (#556) instead of starting a second call.
+    private var lastChatCall: (recorder: VoiceTranscriptRecorder, chatID: String, startedAt: Date, endedAt: Date)?
+    /// A call started again in its chat within this long goes on as the
+    /// same call: one card, one transcript.
+    static let chatCallReconnectWindow: TimeInterval = 120
+    /// The call kept with its chat whose transcript is open (#556).
+    @Published var chatCallTranscript: VoiceChatCall?
     /// A call Hermes made (#449) that the live call now connecting answers.
     var pendingHermesCall: HermesCallOpening?
     /// Opens the voice of a call answered in CallKit; the CallKit call's
@@ -4570,10 +4605,22 @@ final class AppState: ObservableObject {
         voiceCallCheckpointedTurns = 0
         voiceCallCheckpointedAt = .distantPast
         let profile = activeProfile
+        let thread = voiceBackgroundJobSupervisor.liveThread
+        // A call attached to a chat is kept with it, not as a row of its own
+        // (#556). A Bot Chat lives in the bot's profile: its calls keep rows.
+        let chatID = resume == nil ? thread.flatMap { voiceCallChatID(for: $0, profile: profile) } : nil
+        let previous = lastChatCall.flatMap { last in
+            Self.continuesChatCall(
+                lastChatID: last.chatID, lastProfile: last.recorder.profile, endedAt: last.endedAt,
+                chatID: chatID, profile: profile, now: Date()
+            ) ? last : nil
+        }
+        lastChatCall = nil
         let recorder = VoiceTranscriptRecorder(
             engine: engine,
             profile: profile,
             resumingSessionID: resume?.sessionID,
+            continuing: previous?.recorder,
             // Nothing reaches the host while a live call runs: a closing
             // save that meets a newer call leaves its turns to the outbox,
             // which retries once no call is running.
@@ -4591,10 +4638,16 @@ final class AppState: ObservableObject {
         // starts, which can be after the first capture below: they aren't
         // this call's.
         recorder.ignore(liveVoiceTranscript(engine))
-        if resume != nil { recorder.note(AppLocalization.string("Voice call resumed")) }
+        if previous == nil { recorder.chatID = chatID }
+        if resume != nil || previous != nil { recorder.note(AppLocalization.string("Voice call resumed")) }
+        // A reconnect picks up where the call left off; a Hermes call
+        // opens with its own news instead.
+        if let previous, liveHermesCall == nil {
+            liveVoiceResumeContext = VoiceResumeContext.continuing(previous.recorder.turns)
+        }
         voiceCallRecorder = recorder
-        voiceCallAttachment = voiceBackgroundJobSupervisor.liveThread.map {
-            VoiceCallAttachment(thread: $0, callID: recorder.callID, startedAt: Date(), resumed: resume != nil)
+        voiceCallAttachment = thread.map {
+            VoiceCallAttachment(thread: $0, callID: recorder.callID, startedAt: previous?.startedAt ?? Date(), resumed: resume != nil)
         }
         let transcript: AnyPublisher<Void, Never>
         switch engine {
@@ -4678,6 +4731,14 @@ final class AppState: ObservableObject {
         voiceCallAttachment = nil
         guard let recorder = voiceCallRecorder else { return }
         captureVoiceCall()
+        // A chat new at the call's start may only have its stored id now.
+        if recorder.chatID == nil, !recorder.savedWithChat, recorder.sessionID == nil,
+           let attachment, !attachment.resumed {
+            recorder.chatID = voiceCallChatID(for: attachment.thread, profile: recorder.profile)
+        }
+        if let chatID = recorder.chatID, let attachment {
+            lastChatCall = (recorder, chatID, attachment.startedAt, attachment.endedAt ?? Date())
+        }
         voiceCallTranscriptSubscription = nil
         voiceCallRecorder = nil
         closingVoiceCallRecorder = recorder
@@ -4706,6 +4767,13 @@ final class AppState: ObservableObject {
             defer { endBackgroundTask() }
             await recorder.flush()
             guard let self else { return }
+            if self.closingVoiceCallRecorder === recorder {
+                self.closingVoiceCallRecorder = nil
+                self.closingVoiceCallUntil = nil
+            }
+            // A reconnect went on as this call: its recorder saves, queues
+            // and links all of it.
+            guard !recorder.handedOver else { return }
             if let queuedCallID {
                 self.voiceTranscriptsSaving.remove(queuedCallID)
                 self.dequeueVoiceTranscript(callID: queuedCallID)
@@ -4716,18 +4784,21 @@ final class AppState: ObservableObject {
                 // A later retry creates the row and links the jobs then.
                 self.queueVoiceTranscript(requeued, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             }
-            if self.closingVoiceCallRecorder === recorder {
-                self.closingVoiceCallRecorder = nil
-                self.closingVoiceCallUntil = nil
-            }
             let callRow = recorder.sessionID
-            if callRow != nil || requeued == nil {
+            // A call kept with its chat files its jobs under the chat.
+            let chatID = recorder.savedWithChat ? recorder.chatID : nil
+            if callRow != nil || chatID != nil || requeued == nil {
                 // Filed under Voice Jobs even when the call saved no row.
                 self.tagVoiceSessions(
-                    recorder.jobSessionIDs, kind: .job, parentID: callRow,
-                    parentTitle: callRow.flatMap { recorder.newRowTitle ?? self.voiceJobParentTitle($0) },
+                    recorder.jobSessionIDs, kind: .job, parentID: callRow ?? chatID,
+                    parentTitle: callRow.flatMap { recorder.newRowTitle ?? self.voiceJobParentTitle($0) }
+                        ?? chatID.flatMap { _ in attachment?.thread.title },
                     profile: recorder.profile
                 )
+            }
+            if let chatID, let attachment {
+                self.linkVoiceCall(attachment, callSessionID: "", chatID: chatID, profile: recorder.profile)
+                return
             }
             guard let sessionID = callRow else { return }
             if let attachment { self.linkVoiceCall(attachment, callSessionID: sessionID, profile: recorder.profile) }
@@ -4846,11 +4917,30 @@ final class AppState: ObservableObject {
                     voiceSessionTagsByKey[key, default: [:]][sessionID] = VoiceSessionTag(kind: .call, engine: request.engine.rawValue)
                 }
                 if let jobs = entry.jobSessionIDs, !jobs.isEmpty {
-                    tagVoiceSessions(jobs, kind: .job, parentID: result.sessionID, parentTitle: result.sessionID.flatMap { _ in request.title }, profile: profile)
+                    tagVoiceSessions(
+                        jobs, kind: .job, parentID: result.sessionID ?? result.chatID,
+                        parentTitle: result.sessionID.flatMap { _ in request.title } ?? result.chatID.flatMap { _ in entry.chatAttachment?.thread.title },
+                        profile: profile
+                    )
                 }
-                if let sessionID = result.sessionID, let attachment = entry.chatAttachment {
-                    linkVoiceCall(attachment, callSessionID: sessionID, profile: profile)
+                if let attachment = entry.chatAttachment {
+                    if let sessionID = result.sessionID {
+                        linkVoiceCall(attachment, callSessionID: sessionID, profile: profile)
+                    } else if let chatID = result.chatID {
+                        linkVoiceCall(attachment, callSessionID: "", chatID: chatID, profile: profile)
+                    }
                 }
+            } catch VoiceHistoryError.rowUnavailable where request.sessionID == nil && request.chatID != nil {
+                // The chat is gone, and its card with it. A whole call is
+                // kept as a row of its own; the rest of one isn't worth one.
+                guard request.turns.first?.index == 0 else {
+                    settled.append((entry, nil))
+                    continue
+                }
+                request.chatID = nil
+                request.callID = UUID().uuidString
+                request.title = request.title ?? Self.fallbackVoiceCallTitle(at: entry.queuedAt)
+                settled.append((entry, .init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt, jobSessionIDs: entry.jobSessionIDs, chatAttachment: nil)))
             } catch VoiceHistoryError.rowUnavailable where request.sessionID != nil && (request.turns.first?.index ?? 0) > 0 {
                 // The row is gone with this call's earlier turns; the rest
                 // alone would pass for the whole call.
@@ -5112,7 +5202,25 @@ final class AppState: ObservableObject {
     /// so a dead tap says so.
     func openVoiceCallTranscript(markerID: String) {
         guard let link = voiceCallLink(markerID: markerID) else { return }
-        openLinkedSession(link.callSessionID, unavailable: AppLocalization.string("That call's transcript is no longer available."))
+        let unavailable = AppLocalization.string("That call's transcript is no longer available.")
+        guard link.storedWithChat else {
+            openLinkedSession(link.callSessionID, unavailable: unavailable)
+            return
+        }
+        // Kept with the chat (#556): read from the host when tapped.
+        guard let chatID = link.chatStoredSessionID, !chatID.isEmpty else {
+            errorMessage = unavailable
+            return
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            let calls = try? await self.voiceHistoryClient.chatCalls(chatID: chatID, profile: link.profile)
+            guard let call = calls?.first(where: { $0.callID == link.callID }), !call.turns.isEmpty else {
+                self.errorMessage = unavailable
+                return
+            }
+            self.chatCallTranscript = call
+        }
     }
 
     /// Opens the chat a call was started from, from the card in the call's
