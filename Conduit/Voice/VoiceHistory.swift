@@ -177,9 +177,14 @@ final class VoiceHistoryClient {
     }
 
     /// The calls kept with a chat, oldest first.
-    func chatCalls(chatID: String, profile: String) async throws -> [VoiceChatCall] {
+    func chatCalls(chatID: String, callID: String? = nil, profile: String) async throws -> [VoiceChatCall] {
         guard let encoded = DashboardPath.encodedQueryComponent(chatID) else { return [] }
-        let response = try await send("\(Self.chatCallsPath)?chat_id=\(encoded)", profile: profile, method: "GET", body: nil)
+        var path = "\(Self.chatCallsPath)?chat_id=\(encoded)"
+        if let callID {
+            guard let call = DashboardPath.encodedQueryComponent(callID) else { return [] }
+            path += "&call_id=\(call)"
+        }
+        let response = try await send(path, profile: profile, method: "GET", body: nil)
         return try Self.chatCalls(from: response)
     }
 

@@ -913,6 +913,14 @@ extension HermesVoiceGatewayTimeoutTests {
             DashboardPath.withProfile("\(VoiceHistoryClient.chatCallsPath)?chat_id=st%20chat", profile: "coder")
         )
         XCTAssertThrowsError(try VoiceHistoryClient.chatCalls(from: ["ok": false]))
+
+        // A card reads just its own call.
+        script.responses = [.success(["ok": true, "chat_id": "st chat", "calls": []])]
+        _ = try await client.chatCalls(chatID: "st chat", callID: "c1", profile: "coder")
+        XCTAssertEqual(
+            script.calls.last?.path,
+            DashboardPath.withProfile("\(VoiceHistoryClient.chatCallsPath)?chat_id=st%20chat&call_id=c1", profile: "coder")
+        )
     }
 
     func testRecorderKeepsAnAttachedCallWithItsChatWithoutATitle() async {

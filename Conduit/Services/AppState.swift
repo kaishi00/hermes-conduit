@@ -5220,7 +5220,7 @@ final class AppState: ObservableObject {
             guard let self else { return }
             let calls: [VoiceChatCall]
             do {
-                calls = try await self.voiceHistoryClient.chatCalls(chatID: chatID, profile: link.profile)
+                calls = try await self.voiceHistoryClient.chatCalls(chatID: chatID, callID: link.callID, profile: link.profile)
             } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.rowUnavailable {
                 self.errorMessage = unavailable
                 return
