@@ -190,9 +190,6 @@ enum HealthHistoryDepth: String, CaseIterable, Identifiable, Codable {
         case .all: return nil
         }
     }
-
-    /// Deeper reaches further back.
-    var rank: Int { Self.allCases.firstIndex(of: self) ?? 0 }
 }
 
 /// Hourly buckets reach back this far at most; older history is daily.
