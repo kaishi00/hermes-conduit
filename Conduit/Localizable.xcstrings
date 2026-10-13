@@ -213853,6 +213853,170 @@
           }
         }
       }
+    },
+    "Sessions and settings follow the active profile. Photos are saved to Hermes, so bots and Hermes Desktop show them too." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sitzungen und Einstellungen folgen dem aktiven Profil. Fotos werden in Hermes gespeichert, daher zeigen Bots und Hermes Desktop sie auch."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las sesiones y los ajustes siguen al perfil activo. Las fotos se guardan en Hermes, así que los bots y Hermes Desktop también las muestran."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les sessions et les réglages suivent le profil actif. Les photos sont enregistrées dans Hermes, donc les bots et Hermes Desktop les affichent aussi."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesi dan pengaturan mengikuti profil aktif. Foto disimpan di Hermes, jadi bot dan Hermes Desktop juga menampilkannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sessioni e impostazioni seguono il profilo attivo. Le foto vengono salvate in Hermes, quindi anche i bot e Hermes Desktop le mostrano."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッションと設定はアクティブなプロファイルに従います。写真はHermesに保存されるため、ボットやHermes Desktopにも表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세션과 설정은 사용 중인 프로필을 따라요. 사진은 Hermes에 저장되므로 봇과 Hermes Desktop에도 표시돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesje i ustawienia zależą od aktywnego profilu. Zdjęcia są zapisywane w Hermesie, więc boty i Hermes Desktop też je pokazują."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As sessões e os ajustes seguem o perfil ativo. As fotos são salvas no Hermes, então os bots e o Hermes Desktop também as mostram."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сеансы и настройки относятся к активному профилю. Фото сохраняются в Hermes, поэтому боты и Hermes Desktop тоже их показывают."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oturumlar ve ayarlar etkin profili izler. Fotoğraflar Hermes'e kaydedilir, bu yüzden botlar ve Hermes Desktop da onları gösterir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会话与设置跟随当前档案。照片保存在 Hermes 上，因此机器人和 Hermes Desktop 也会显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作階段和設定會跟隨目前的設定檔。照片會儲存在 Hermes 上，因此機器人和 Hermes Desktop 也會顯示。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes to change this photo." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinde dich mit Hermes, um dieses Foto zu ändern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conéctate a Hermes para cambiar esta foto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connectez-vous à Hermes pour modifier cette photo."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hubungkan ke Hermes untuk mengubah foto ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connettiti a Hermes per cambiare questa foto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この写真を変更するには、Hermesに接続してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 사진을 바꾸려면 Hermes에 연결하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połącz się z Hermesem, aby zmienić to zdjęcie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conecte-se ao Hermes para alterar esta foto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключитесь к Hermes, чтобы изменить это фото."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu fotoğrafı değiştirmek için Hermes'e bağlanın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到 Hermes 以更改此照片。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線到 Hermes 以更改此照片。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

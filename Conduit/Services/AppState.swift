@@ -1056,6 +1056,13 @@ final class AppState: ObservableObject {
     /// Name to the generation its in-flight fetch serves, so a newer
     /// generation can start its own fetch instead of being deduped away.
     private var botAvatarFetchInflight: [String: Int] = [:]
+    /// Each picture write this app makes takes the next serial, kept per
+    /// profile, so a roster or asset read that started before the write
+    /// never puts the older picture back.
+    private var profileAvatarWriteSerial = 0
+    private var profileAvatarLastWrite: [String: Int] = [:]
+    /// The running photo sync; each roster read queues the next behind it.
+    private var profileAvatarSyncTask: Task<Void, Never>?
     /// `profiles.list` `bot_mode_protocol`: the backend teaches bots the
     /// teammate-messaging protocol itself, so a new bot's SOUL stays
     /// identity-only.
@@ -8422,13 +8429,125 @@ final class AppState: ObservableObject {
         }
     }
 
-    func saveProfileAvatar(_ data: Data, for profile: String) throws {
+    /// A photo kept on this device only: the gateway has no profile asset
+    /// store (older Hermes).
+    func saveProfileAvatarOnDevice(_ data: Data, for profile: String) throws {
         profileAvatarURLs[profile] = try profileAppearanceStore.saveAvatar(data, for: profile, dashboardID: activeDashboardID)
     }
 
-    func removeProfileAvatar(for profile: String) {
+    private func removeProfileAvatarFile(for profile: String) {
         profileAppearanceStore.removeAvatar(for: profile, dashboardID: activeDashboardID)
         profileAvatarURLs.removeValue(forKey: profile)
+    }
+
+    /// False only on a gateway without the profile asset store, where
+    /// photos stay on this device.
+    var profilePhotosLiveOnHermes: Bool {
+        botModePhase != .gatewayUnsupported
+    }
+
+    /// The profile picker's photo. It is the profile's Hermes picture, the
+    /// one bots and Hermes Desktop show, so it is written there; the copy on
+    /// disk follows. Nil `image` removes it. Returns a message when it was
+    /// not saved.
+    func setProfilePhoto(_ image: UIImage?, for profile: String) async -> String? {
+        switch await profilePhotoHome(for: profile) {
+        case .device:
+            guard let image else {
+                removeProfileAvatarFile(for: profile)
+                return nil
+            }
+            guard let data = image.pngData() else { return ProfileAppearanceError.invalidImage.errorDescription }
+            do {
+                try saveProfileAvatarOnDevice(data, for: profile)
+                return nil
+            } catch {
+                return UserFacingError.message(for: error)
+            }
+        case .offline:
+            return AppLocalization.string("Connect to Hermes to change this photo.")
+        case .hermes(let bot, let client):
+            if let image {
+                guard let png = BotAvatarImage.normalizedPNG(from: image) else {
+                    return AppLocalization.string("That picture could not be used.")
+                }
+                return await setHermesPicture(png, for: bot, client: client)
+            }
+            return await removeHermesPicture(for: bot, client: client)
+        }
+    }
+
+    private enum ProfilePhotoHome {
+        case hermes(BotProfile, HermesClient)
+        case device
+        case offline
+    }
+
+    /// Every profile is on the `profiles.list` roster, so a roster row is
+    /// what says the picture lives on Hermes.
+    private func profilePhotoHome(for profile: String) async -> ProfilePhotoHome {
+        if botModePhase == .gatewayUnsupported { return .device }
+        guard let client, isConnected else { return .offline }
+        if !botRoster.contains(where: { $0.name == profile }) {
+            await refreshBotRoster()
+        }
+        guard client === self.client, isConnected else { return .offline }
+        if botModePhase == .gatewayUnsupported { return .device }
+        guard let bot = botRoster.first(where: { $0.name == profile }) else {
+            return botModePhase == .available ? .device : .offline
+        }
+        return .hermes(bot, client)
+    }
+
+    /// Uploads the picture, then sets Desktop's `imageKind` to the photo
+    /// (the bot editor's order, so `imageKind` never claims a photo the
+    /// asset store lacks).
+    private func setHermesPicture(_ png: Data, for bot: BotProfile, client: HermesClient) async -> String? {
+        let epoch = botRosterEpoch
+        guard await storeBotAvatar(png, for: bot.name, client: client, epoch: epoch) else {
+            return AppLocalization.string("The picture was not saved.")
+        }
+        let lookSaved = await writeBotImageKind("photo", for: bot, client: client, epoch: epoch)
+        await refreshBotRosterAfterWrite()
+        return lookSaved ? nil : AppLocalization.string("The picture was saved, but its look was not.")
+    }
+
+    /// Sets `imageKind` back to the shape first, then clears the asset.
+    private func removeHermesPicture(for bot: BotProfile, client: HermesClient) async -> String? {
+        let epoch = botRosterEpoch
+        noteProfileAvatarWrite(bot.name)
+        guard await writeBotImageKind("shape", for: bot, client: client, epoch: epoch) else {
+            return AppLocalization.string("The picture was not removed.")
+        }
+        do {
+            try await client.setBotAvatar(name: bot.name, png: nil)
+        } catch {
+            return AppLocalization.string("The picture was not removed.")
+        }
+        if botOpenFenceIsCurrent(epoch: epoch, client: client) {
+            forgetHermesPicture(for: bot.name)
+        }
+        await refreshBotRosterAfterWrite()
+        return nil
+    }
+
+    private func writeBotImageKind(_ kind: String, for bot: BotProfile, client: HermesClient, epoch: Int) async -> Bool {
+        var patch: [String: Any?] = ["imageKind": kind]
+        if kind == "photo" { patch["custom"] = true }
+        do {
+            let result = try await client.configureBotProfile(
+                name: bot.name,
+                botMeta: BotMetaPatch.merged(existing: bot.botMeta, patch: patch),
+                expectedMetaRevision: bot.botMetaRevision
+            )
+            var outcome = BotMetaWriteOutcome(configureResult: result)
+            if outcome == .conflict {
+                outcome = await retryBotMetaWrite(bot.name, patch: patch, client: client, epoch: epoch)
+            }
+            return outcome == .persisted || outcome == .unsupported
+        } catch {
+            return false
+        }
     }
 
     /// Profile order is only a device-local presentation preference, kept
@@ -15194,6 +15313,7 @@ final class AppState: ObservableObject {
     private func performBotRosterRefresh() async {
         let epoch = botRosterEpoch
         let dashboardID = activeDashboardID
+        let avatarWriteSerial = profileAvatarWriteSerial
         guard let client, isConnected else {
             if botRoster.isEmpty, botModePhase != .gatewayUnsupported {
                 botModePhase = .failed(
@@ -15235,6 +15355,7 @@ final class AppState: ObservableObject {
             botRosterSupportsProtocol = snapshot.supportsBotProtocol
             botModePhase = .available
             botRosterVerifiedForCurrentConnection = true
+            syncProfileAvatarsWithHermes(rosterWriteSerial: avatarWriteSerial)
         } catch {
             guard botModeStateIsCurrent(epoch: epoch, dashboardID: dashboardID),
                   !Task.isCancelled else { return }
@@ -15310,6 +15431,8 @@ final class AppState: ObservableObject {
         guard botAvatarFetchInflight[name] != generation,
               let client, isConnected else { return false }
         let epoch = botRosterEpoch
+        let dashboardID = activeDashboardID
+        let writeMark = profileAvatarLastWrite[name]
         botAvatarFetchInflight[name] = generation
         defer {
             if epoch == botRosterEpoch, botAvatarFetchInflight[name] == generation {
@@ -15319,10 +15442,13 @@ final class AppState: ObservableObject {
         do {
             let data = try await client.botAvatar(name: name)
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return true }
-            // An older generation's fetch landing late never replaces a newer one.
+            // An older generation's fetch landing late never replaces a newer
+            // one, nor a picture this app wrote meanwhile.
             if let fetched = botAvatarFetchedGeneration[name], fetched > generation { return true }
+            guard profileAvatarLastWrite[name] == writeMark else { return true }
             botAvatarFetchedGeneration[name] = generation
             botAvatarImages[name] = data.flatMap { UIImage(data: $0) }
+            mirrorHermesPicture(data, for: name, dashboardID: dashboardID)
             return true
         } catch {
             // Not pinned to the generation, so the caller can retry; whatever
@@ -15533,8 +15659,7 @@ final class AppState: ObservableObject {
             do {
                 try await client.setBotAvatar(name: bot.name, png: nil)
                 if botOpenFenceIsCurrent(epoch: epoch, client: client) {
-                    botAvatarImages[bot.name] = nil
-                    botAvatarFetchedGeneration[bot.name] = nil
+                    forgetHermesPicture(for: bot.name)
                 }
             } catch {
                 problems.append(AppLocalization.string("The picture was not removed."))
@@ -15606,8 +15731,7 @@ final class AppState: ObservableObject {
            owner.caseInsensitiveCompare(bot.name) == .orderedSame {
             clearActiveConversation(replacement: .delete)
         }
-        botAvatarImages[bot.name] = nil
-        botAvatarFetchedGeneration[bot.name] = nil
+        forgetHermesPicture(for: bot.name)
         await refreshBotRosterAfterWrite()
         await loadProfiles()
         return nil
@@ -15617,18 +15741,101 @@ final class AppState: ObservableObject {
         // The generation the write belongs to: a reload that starts while it
         // is in flight must still refetch, in case it read the older asset.
         let generation = botAvatarGeneration
+        let dashboardID = activeDashboardID
+        noteProfileAvatarWrite(name)
         do {
             try await client.setBotAvatar(name: name, png: png)
         } catch {
             return false
         }
+        // Again after it landed: a fetch that started during the upload may
+        // have read the older picture.
+        noteProfileAvatarWrite(name)
         if botOpenFenceIsCurrent(epoch: epoch, client: client), let image = UIImage(data: png) {
             // The upload is the newest picture, but the recorded generation
             // never moves backwards past a newer fetch.
             botAvatarImages[name] = image
             botAvatarFetchedGeneration[name] = max(botAvatarFetchedGeneration[name] ?? generation, generation)
+            mirrorHermesPicture(png, for: name, dashboardID: dashboardID)
         }
         return true
+    }
+
+    // MARK: - Profile photos from Hermes
+
+    private func noteProfileAvatarWrite(_ name: String) {
+        profileAvatarWriteSerial &+= 1
+        profileAvatarLastWrite[name] = profileAvatarWriteSerial
+    }
+
+    /// Keeps the profile's photo file a copy of its Hermes picture (nil: it
+    /// has none), so chats and the profile picker draw it at launch and
+    /// offline.
+    private func mirrorHermesPicture(_ data: Data?, for name: String, dashboardID: UUID?) {
+        guard dashboardID == activeDashboardID else { return }
+        guard let data else {
+            removeProfileAvatarFile(for: name)
+            return
+        }
+        if let url = try? profileAppearanceStore.saveMirroredAvatar(data, for: name, dashboardID: dashboardID) {
+            // Assigned even when the URL is unchanged: the file's content
+            // may be new, and views redraw on the publish.
+            profileAvatarURLs[name] = url
+        }
+    }
+
+    /// The picture is gone from Hermes (removed here, or its profile was
+    /// deleted).
+    private func forgetHermesPicture(for name: String) {
+        noteProfileAvatarWrite(name)
+        botAvatarImages[name] = nil
+        botAvatarFetchedGeneration[name] = nil
+        removeProfileAvatarFile(for: name)
+    }
+
+    /// After each roster read, brings every profile's photo file in step
+    /// with its Hermes picture (see `ProfileAvatarSyncAction`). Runs on its
+    /// own, so a connection never waits on picture downloads, and one sync
+    /// at a time. `rosterWriteSerial` is the write serial when the roster
+    /// read started: a profile whose picture this app changed since is
+    /// newer than the roster and left alone.
+    private func syncProfileAvatarsWithHermes(rosterWriteSerial: Int) {
+        let epoch = botRosterEpoch
+        let dashboardID = activeDashboardID
+        let rows = botRoster
+        let previous = profileAvatarSyncTask
+        profileAvatarSyncTask = Task { @MainActor [weak self] in
+            await previous?.value
+            for bot in rows {
+                guard let self, self.botRosterEpoch == epoch, self.activeDashboardID == dashboardID,
+                      let client = self.client, self.isConnected else { return }
+                if (self.profileAvatarLastWrite[bot.name] ?? 0) > rosterWriteSerial { continue }
+                switch ProfileAvatarSyncAction.action(
+                    hermesHasAvatar: bot.hasAvatar,
+                    hasPhotoOnDevice: self.profileAvatarURLs[bot.name] != nil,
+                    photoIsMirror: self.profileAppearanceStore.isMirrored(bot.name, dashboardID: dashboardID)
+                ) {
+                case .fetch:
+                    await self.loadBotAvatarIfNeeded(bot)
+                case .dropMirror:
+                    self.removeProfileAvatarFile(for: bot.name)
+                case .upload:
+                    await self.moveDevicePhotoToHermes(bot, client: client)
+                case .keep:
+                    break
+                }
+            }
+        }
+    }
+
+    /// A photo picked on this device before photos moved to Hermes becomes
+    /// the profile's Hermes picture. A failed upload keeps the photo and is
+    /// tried again at the next roster read.
+    private func moveDevicePhotoToHermes(_ bot: BotProfile, client: HermesClient) async {
+        guard let data = profileAppearanceStore.avatarData(for: bot.name, dashboardID: activeDashboardID),
+              let image = UIImage(data: data),
+              let png = BotAvatarImage.normalizedPNG(from: image) else { return }
+        _ = await setHermesPicture(png, for: bot, client: client)
     }
 
     /// One retry of a ui_meta write that lost its compare-and-swap: re-read
