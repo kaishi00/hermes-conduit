@@ -382,7 +382,8 @@ final class VoiceTranscriptRecorder {
     }
 
     private func performFlush() async {
-        guard !isDisabled else { return }
+        // A reconnect's recorder carries the call on, and alone recovers it.
+        guard !isDisabled, !handedOver else { return }
         // A call where the user never spoke isn't worth a row, nor an
         // append to one.
         guard hasUserSpeech else { return }

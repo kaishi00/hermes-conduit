@@ -986,6 +986,9 @@ extension HermesVoiceGatewayTimeoutTests {
         second.capture([entry(.user, "Still there?")], unsettled: [])
         XCTAssertEqual(second.outboxRequest?.turns.map(\.text), ["Hello", "Still there?"])
         XCTAssertEqual(second.outboxRequest?.callID, first.callID)
+        let sent = harness.requests.count
+        await first.flush()
+        XCTAssertEqual(harness.requests.count, sent, "a handed-over recorder saves nothing more")
     }
 
     func testOnlyTheSameChatSoonAfterContinuesACall() {
