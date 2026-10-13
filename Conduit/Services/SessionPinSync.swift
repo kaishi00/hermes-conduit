@@ -206,6 +206,7 @@ struct SessionPinSync: Equatable {
 
     /// Forgets which hosts own pins, as when the phone's pins are cleared.
     mutating func reset() {
+        host = nil
         supportedProfiles = []
         adopted = []
         pendingWrites = [:]

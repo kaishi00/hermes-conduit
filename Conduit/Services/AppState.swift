@@ -4048,7 +4048,7 @@ final class AppState: ObservableObject {
                     try await self.sendHostPin(upload.hostID, pinned: true, profile: profile, using: bridge)
                     guard self.sessionPinSync.host == bridge.baseURL else { return }
                     self.sessionPinSync.uploadSucceeded(pinID: upload.pinID, profile: profile)
-                } catch DashboardTicketBridgeError.http(status: 404, detail: _) {
+                } catch DashboardTicketBridgeError.http(status: let status, detail: _) where status == 404 || status == 410 {
                     // The chat is gone from the host; so is its pin.
                     guard self.sessionPinSync.host == bridge.baseURL,
                           self.sessionPinSync.discardWrite(pinID: upload.pinID, profile: profile, generation: generation)
@@ -6034,11 +6034,26 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func removePinnedState(for session: SessionSummary) {
-        let ids = Set([pinID(for: session), session.id] + session.alternateIds)
+    /// `unpinOnHost`: also clear Hermes' flag, so a chat restored later
+    /// doesn't come back pinned (an archived row keeps its flag there).
+    private func removePinnedState(for session: SessionSummary, unpinOnHost: Bool = false) {
+        let profile = activeProfile
+        let wasPinned = isSessionPinned(session)
+        let ids = SessionPinSync.pinIDs(for: session)
         pinnedSessionIDs.removeAll { ids.contains($0) }
-        pinnedSessionIDsByProfile[activeProfile] = pinnedSessionIDs
+        pinnedSessionIDsByProfile[profile] = pinnedSessionIDs
         persistPinnedSessions()
+        guard unpinOnHost, wasPinned, let bridge = dashboardTicketBridge,
+              sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
+        sessionPinSync.recordWrite(pinID: pinID(for: session), profile: profile, pinned: false)
+        enqueueHostPinWrite { [weak self] in
+            guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
+            do {
+                try await self.sendHostPin(session.id, pinned: false, profile: profile, using: bridge)
+            } catch {
+                sessionCatalogLog.notice("Pin clear failed: \(String(describing: error), privacy: .public)")
+            }
+        }
     }
 
     private func pendingDecisionRestorationMessages(for sessionID: String) -> [ChatMessage] {
@@ -14653,7 +14668,7 @@ final class AppState: ObservableObject {
                     )
                     removeSessionFromLiveCatalog(updated)
                     archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
-                    removePinnedState(for: updated)
+                    removePinnedState(for: updated, unpinOnHost: true)
                     clearActiveSessionIfNeeded(updated, replacement: .archive)
                 } else {
                     archivedSessions.removeAll { sessionMatches($0, updated) }
