@@ -38,8 +38,8 @@ extension AppState {
     /// Runs a pass when sharing is on and its dashboard is the one in use.
     @discardableResult
     func runHealthSync(reason: HealthSyncReason) async -> HealthSyncEngine.Outcome {
-        let started = Date()
         await finishHealthDeletionLeftOnHost()
+        let started = Date()
         let preferences = healthSyncPreferences
         guard preferences.isOn, let destination = preferences.destination else { return .off }
         let engine = healthSync
@@ -88,10 +88,12 @@ extension AppState {
         guard let dashboardID = activeDashboardID, let baseURL = connection?.baseUrl else {
             throw DashboardTicketBridgeError.notReady
         }
-        // A deletion still owed on this dashboard must not later take the
-        // new data with it; one owed elsewhere still runs there.
+        // A deletion still owed on this dashboard runs first: afterwards it
+        // would take the new data with it. One owed elsewhere waits there.
         await finishHealthDeletionLeftOnHost()
-        if HealthSyncPendingDeletion.load()?.dashboardID == dashboardID { HealthSyncPendingDeletion.clear() }
+        if HealthSyncPendingDeletion.load()?.dashboardID == dashboardID {
+            throw DashboardTicketBridgeError.notReady
+        }
         try await healthSync.source.requestAuthorization(for: categories, detailed: detailed)
         var preferences = healthSyncPreferences
         preferences.destination = HealthSyncDestination(

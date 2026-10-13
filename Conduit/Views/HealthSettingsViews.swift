@@ -297,6 +297,7 @@ struct HealthSharingConsentSheet: View {
                     Image(systemName: "heart.text.square")
                         .font(.system(size: 44))
                         .foregroundStyle(.pink)
+                        .accessibilityHidden(true)
                     Text("Share health data with Hermes?")
                         .font(.title2.weight(.semibold))
                     Label(AppLocalization.string("Conduit sends the health data you chose to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it."), systemImage: "lock.shield")

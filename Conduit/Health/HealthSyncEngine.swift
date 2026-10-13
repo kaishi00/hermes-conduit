@@ -285,14 +285,15 @@ final class HealthSyncEngine: ObservableObject {
         state.history = nil
     }
 
-    /// Fixes how far back sharing reaches. A deeper choice starts the
-    /// anchors over (their query changes); a shallower one keeps what was
-    /// already sent.
+    /// Fixes how far back sharing reaches. Another choice starts the
+    /// anchors over (their query changes); a shallower one sends nothing
+    /// older from then on, and what was already sent stays on the host
+    /// until the user deletes it.
     private func prepareHistory(_ depth: HealthHistoryDepth) {
         let today = calendar.startOfDay(for: now())
         let start: Date = depth.days.map { calendar.date(byAdding: .day, value: -$0, to: today) ?? today }
             ?? calendar.startOfDay(for: source.earliestDate())
-        if state.historyStart != nil, let known = state.history, known.rank >= depth.rank { return }
+        if state.historyStart != nil, state.history == depth { return }
         if state.historyStart != nil { state.anchors = [:] }
         state.historyStart = start
         state.history = depth

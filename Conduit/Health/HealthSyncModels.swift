@@ -4,8 +4,8 @@
 //
 //  Health data for Hermes. The user turns on
 //  sharing per category; Conduit reads Apple Health and sends it straight
-//  to one Hermes profile on one dashboard, sealed end to end, never through
-//  the push relay. The notifier plugin keeps it for the read-only
+//  to one Hermes profile on one dashboard, sealed end to end (see
+//  HealthSyncCrypto for what that covers), never through the push relay. The notifier plugin keeps it for the read-only
 //  `conduit_health` tool.
 //
 //  What leaves the phone by default is what Apple Health itself computes:
