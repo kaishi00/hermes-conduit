@@ -1166,25 +1166,70 @@ final class PushNotificationService: ObservableObject {
         isWorking = true
         defer { isWorking = false }
         do {
-            var request = authorizedRequest(
-                url: try authenticatedRelayURL("/v1/installations/\(registration.installationID)/pairings"),
-                credential: registration.credential
-            )
-            request.httpMethod = "POST"
-            // Bind the pairing to the dashboard (#148): the relay persists
-            // this UUID at claim time, and every later push derived from that
-            // gateway credential is stamped with it. Older relays ignore the
-            // body, which keeps pre-dashboard relays working.
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(PairingCreateRequest(dashboardID: dashboardID.uuidString))
-            let (data, response) = try await URLSession.shared.data(for: request)
-            try validate(response: response, data: data)
-            let pairing = try JSONDecoder().decode(PairingResponse.self, from: data)
+            let pairing = try await requestPairingCode(registration: registration, dashboardID: dashboardID)
             pairingCode = pairing.pairingCode
             pairingExpiry = pairing.expiresAt
         } catch {
             lastError = UserFacingError.message(for: error)
         }
+    }
+
+    /// A new one-time pairing code from the relay, bound to `dashboardID`.
+    private func requestPairingCode(registration: StoredRegistration, dashboardID: UUID) async throws -> PairingResponse {
+        var request = authorizedRequest(
+            url: try authenticatedRelayURL("/v1/installations/\(registration.installationID)/pairings"),
+            credential: registration.credential
+        )
+        request.httpMethod = "POST"
+        // Bind the pairing to the dashboard (#148): the relay persists
+        // this UUID at claim time, and every later push derived from that
+        // gateway credential is stamped with it. Older relays ignore the
+        // body, which keeps pre-dashboard relays working.
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(PairingCreateRequest(dashboardID: dashboardID.uuidString))
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode(PairingResponse.self, from: data)
+    }
+
+    /// This iPhone's relay installation, which a profile's pairing names.
+    var installationID: String? { registration?.installationID }
+
+    static let pairPath = "/api/plugins/conduit_push/pair"
+
+    /// Who a profile's notifications go to, from the plugin's
+    /// `GET /e2e?profile=` answer.
+    enum ProfilePairing: Equatable {
+        case unpaired
+        case thisDevice
+        /// Another iPhone, or this one before it re-registered.
+        case otherDevice
+    }
+
+    static func profilePairing(status: [String: Any], installationID: String) -> ProfilePairing {
+        guard status["paired"] as? Bool == true else { return .unpaired }
+        return status["installation_id"] as? String == installationID ? .thisDevice : .otherDevice
+    }
+
+    /// Pairs `profile` on the dashboard's host without a code to type
+    /// (plugin 0.24+): a new code from the relay goes to the plugin over
+    /// the signed-in dashboard connection, and the plugin claims it, the
+    /// same claim `hermes conduit-push pair` makes. `request` reaches that
+    /// dashboard.
+    func pairProfile(
+        _ profile: String,
+        dashboardID: UUID,
+        request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
+    ) async throws {
+        // Not mid-move: a code from the old relay is useless once the move lands.
+        guard !isWorking, let registration else { throw DashboardTicketBridgeError.notReady }
+        let pairing = try await requestPairingCode(registration: registration, dashboardID: dashboardID)
+        let body: [String: Any] = ["pairing_code": pairing.pairingCode, "relay_url": relayURL.absoluteString]
+        let response = try await request(DashboardPath.withProfile(Self.pairPath, profile: profile), "POST", body)
+        guard response["ok"] as? Bool == true, response["installation_id"] as? String == registration.installationID else {
+            throw DashboardTicketBridgeError.http(status: 0, detail: AppLocalization.string("The plugin didn't confirm the pairing."))
+        }
+        await refreshMeta()
     }
 
     func didReceiveDeviceToken(_ tokenData: Data) {

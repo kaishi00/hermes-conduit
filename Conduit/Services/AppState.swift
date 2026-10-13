@@ -1354,6 +1354,14 @@ final class AppState: ObservableObject {
     /// to (AppState+GatewayRestart.swift).
     @Published var gatewayRestart = GatewayRestartSlot()
     var gatewayRestartTask: Task<Void, Never>?
+    /// The Conduit plugin update's progress and outcome, and the dashboard
+    /// it belongs to (AppState+NotifierPluginUpdate.swift).
+    @Published var notifierPluginUpdate = NotifierPluginUpdateSlot()
+    var notifierPluginUpdateTask: Task<Void, Never>?
+    /// Dashboard and profile pairs Conduit already tried to pair on its own
+    /// this launch, so a refused or failed pairing isn't retried on every
+    /// connect.
+    var automaticPairingAttempts: Set<String> = []
     @Published private(set) var modelVisibility = ModelVisibility()
 
     // MARK: - UI state
@@ -9258,6 +9266,7 @@ final class AppState: ObservableObject {
         // A restart already handed to Hermes carries on there; Conduit
         // stops following it.
         stopFollowingGatewayRestart()
+        stopFollowingNotifierPluginUpdate()
         cancelScenePhaseAttempt()
         owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
@@ -17856,6 +17865,16 @@ final class AppState: ObservableObject {
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus()
 
+    /// The plugin version whose update notice the user closed with Not now
+    /// (AppState+NotifierPluginUpdate.swift).
+    var dismissedPluginUpdateVersion: String? {
+        get { defaults.string(forKey: Self.dismissedPluginUpdateKey) }
+        set {
+            defaults.set(newValue, forKey: Self.dismissedPluginUpdateKey)
+            objectWillChange.send()
+        }
+    }
+
     /// The settings Hermes may change, and the changes it asked for
     /// (AgentSettings.swift).
     lazy var agentSettings = AgentSettingsSync(defaults: defaults)
@@ -17864,8 +17883,11 @@ final class AppState: ObservableObject {
     func refreshNotifierPluginStatus() async {
         guard let bridge = dashboardTicketBridge else { return }
         let state: NotifierPluginStatus.State
+        var runtime: NotifierPluginStatus.Runtime?
         do {
-            state = NotifierPluginStatus.state(from: try await bridge.requestJSON(path: NotifierPluginStatus.path))
+            let response = try await bridge.requestJSON(path: NotifierPluginStatus.path)
+            state = NotifierPluginStatus.state(from: response)
+            runtime = NotifierPluginStatus.runtime(from: response)
         } catch {
             state = NotifierPluginStatus.state(from: error)
         }
@@ -17873,6 +17895,9 @@ final class AppState: ObservableObject {
         // request says nothing new: keep the last real answer.
         guard bridge === dashboardTicketBridge, state != .unknown else { return }
         notifierPlugin.state = state
+        notifierPlugin.runtime = runtime
+        // Notifications from this dashboard's profile, without a pairing code.
+        await pairActiveProfileAutomatically(bridge: bridge)
         // Calls declined or missed while this host was out of reach.
         deliverHermesCallOutcomes()
         // Whether calls can ring the Watch, for this host and profile.

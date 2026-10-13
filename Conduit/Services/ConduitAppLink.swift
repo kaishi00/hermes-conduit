@@ -41,6 +41,8 @@ enum ConduitAppLink: Equatable {
         case calls
         /// Voice, where "Let Hermes change settings" lives.
         case voice
+        /// The Conduit plugin on the dashboard's host.
+        case plugin
     }
 
     static let scheme = "conduit"
