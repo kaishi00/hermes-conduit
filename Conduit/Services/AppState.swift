@@ -5229,9 +5229,16 @@ final class AppState: ObservableObject {
             let calls: [VoiceChatCall]
             do {
                 calls = try await self.voiceHistoryClient.chatCalls(chatID: chatID, callID: link.callID, profile: link.profile)
-            } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.rowUnavailable {
+            } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.rowUnavailable, VoiceHistoryError.unsupported {
                 guard self.chatCallTranscriptRequest == request else { return }
                 self.errorMessage = unavailable
+                return
+            } catch is VoiceHistoryError {
+                // Busy or a garbled answer: worth another tap shortly.
+                guard self.chatCallTranscriptRequest == request else { return }
+                let name = AppLocalization.string("Voice call")
+                let reason = AppLocalization.string("Hermes is busy right now. Wait a moment, then try again.")
+                self.errorMessage = AppLocalization.string("Could not load \(name): \(reason)")
                 return
             } catch {
                 guard self.chatCallTranscriptRequest == request else { return }
