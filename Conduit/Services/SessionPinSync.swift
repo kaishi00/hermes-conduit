@@ -24,12 +24,21 @@ struct SessionPinSync: Equatable {
         var generation: UInt64
     }
 
+    /// A phone-only pin to send to the host.
+    struct Upload: Equatable {
+        /// The id the pin is stored under.
+        var pinID: String
+        /// The id to write to: the listed row's own id, like read-state
+        /// writes; an unlisted pin has only its stored id.
+        var hostID: String
+    }
+
     struct Reconciliation: Equatable {
         /// The profile's pin list after the listing.
         var pins: [String]
-        /// Pin ids of phone-only pins to send to the host before it is
-        /// adopted, listed or not.
-        var uploads: [String]
+        /// Phone-only pins to send to the host before it is adopted, listed
+        /// or not.
+        var uploads: [Upload]
     }
 
     /// How long a written value outranks listings that disagree with it. A
@@ -110,7 +119,7 @@ struct SessionPinSync: Equatable {
         let sent = uploaded[profile] ?? []
 
         var pins = pins
-        var uploads: [String] = []
+        var uploads: [Upload] = []
         var handled = Set<String>()
         var listedIDs = Set<String>()
         for session in reported {
@@ -133,7 +142,7 @@ struct SessionPinSync: Equatable {
             } else if wasAdopted {
                 pins.removeAll { ids.contains($0) }
             } else if !sent.contains(id) {
-                uploads.append(id)
+                uploads.append(Upload(pinID: id, hostID: session.id))
             }
         }
 
@@ -141,8 +150,8 @@ struct SessionPinSync: Equatable {
             // Pins on chats this listing doesn't show go up too, so adopting
             // the host can't drop them when they show up later.
             for id in pins where !listedIDs.contains(id) && !sent.contains(id)
-                && pendingWrites[Self.key(profile, id)] == nil && !uploads.contains(id) {
-                uploads.append(id)
+                && pendingWrites[Self.key(profile, id)] == nil && !uploads.contains(where: { $0.pinID == id }) {
+                uploads.append(Upload(pinID: id, hostID: id))
             }
             let profilePrefix = Self.key(profile, "")
             let writesInFlight = pendingWrites.keys.contains { $0.hasPrefix(profilePrefix) }
@@ -181,6 +190,16 @@ struct SessionPinSync: Equatable {
         guard pendingWrites[writeKey]?.generation == generation else { return false }
         pendingWrites[writeKey] = nil
         return true
+    }
+
+    /// Forgets a deleted profile, so one re-created under its name starts
+    /// over on every host.
+    mutating func forget(profile: String) {
+        supportedProfiles.remove(profile)
+        adopted = adopted.filter { !$0.hasSuffix(Self.key("", profile)) }
+        uploaded[profile] = nil
+        let profilePrefix = Self.key(profile, "")
+        pendingWrites = pendingWrites.filter { !$0.key.hasPrefix(profilePrefix) }
     }
 
     /// Forgets which hosts own pins, as when the phone's pins are cleared.

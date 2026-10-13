@@ -42,7 +42,10 @@ extension ChatReadStateTests {
         let listed = [pinRow("a", pinned: false), pinRow("b", pinned: true), pinRow("c", pinned: false)]
         let outcome = sync.reconcile(pins: ["a", "gone-from-listing"], listed: listed, profile: "default", now: Self.pinT0)
         XCTAssertEqual(outcome.pins, ["a", "gone-from-listing", "b"], "Host pins join after the phone's, in order")
-        XCTAssertEqual(outcome.uploads, ["a", "gone-from-listing"], "Pins on unlisted chats go up too")
+        XCTAssertEqual(outcome.uploads, [
+            SessionPinSync.Upload(pinID: "a", hostID: "a"),
+            SessionPinSync.Upload(pinID: "gone-from-listing", hostID: "gone-from-listing"),
+        ], "Pins on unlisted chats go up too")
         XCTAssertTrue(sync.supportsPins(profile: "default", host: Self.pinHost))
         XCTAssertFalse(sync.isAdopted(profile: "default"), "Not adopted until the uploads land")
     }
@@ -107,6 +110,26 @@ extension ChatReadStateTests {
         XCTAssertEqual(outcome.pins, ["root"])
         let unpinned = sync.reconcile(pins: ["tip"], listed: [pinRow("tip", pinned: false, lineageRoot: "root")], profile: "default")
         XCTAssertEqual(unpinned.pins, [], "A pin stored under the tip's own id clears too")
+    }
+
+    func testPinsUploadWritesTheListedRowsOwnID() {
+        var sync = pinSync()
+        let outcome = sync.reconcile(
+            pins: ["root"],
+            listed: [pinRow("tip", pinned: false, lineageRoot: "root")],
+            profile: "default"
+        )
+        XCTAssertEqual(outcome.uploads, [SessionPinSync.Upload(pinID: "root", hostID: "tip")])
+    }
+
+    func testPinsForgetADeletedProfile() {
+        var sync = pinSync(adopted: true)
+        _ = sync.reconcile(pins: [], listed: [pinRow("a", pinned: true)], profile: "default")
+        sync.recordWrite(pinID: "a", profile: "default", pinned: false)
+        sync.forget(profile: "default")
+        XCTAssertFalse(sync.isAdopted(profile: "default"))
+        XCTAssertFalse(sync.supportsPins(profile: "default", host: Self.pinHost))
+        XCTAssertTrue(sync.pendingWrites.isEmpty)
     }
 
     func testPinsAnotherHostStartsOver() {
