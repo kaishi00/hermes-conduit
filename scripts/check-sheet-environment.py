@@ -1,0 +1,265 @@
+#!/usr/bin/env python3
+"""Fail when a sheet's content needs an environment object it isn't handed.
+
+SwiftUI is meant to carry `@EnvironmentObject`s across a `.sheet` boundary,
+but on a Mac (0.1.18 build 199) the sidebar drawer was rendered without
+`AppState` and crashed in `EnvironmentObject.error()`. So every presentation
+whose content reads an environment object - directly or through any view it
+builds - injects it explicitly with `.environmentObject(...)`.
+
+Text-level, like check-l10n-coverage.py: it parses Swift just far enough to
+find view structs, their `@EnvironmentObject` dependencies, the views each one
+builds, and the content closure of every `.sheet` / `.fullScreenCover` /
+`.popover`. A view's needs are its own dependencies plus those of every view
+it references, minus the objects it injects itself (a view that owns a store
+and injects it, like KanbanView, satisfies its children).
+
+Usage: check-sheet-environment.py [--repo-root DIR]
+"""
+
+import argparse
+import os
+import re
+import sys
+
+SOURCE_DIRS = ("Conduit", "ConduitWatch", "ConduitWidgets", "ConduitNotificationService", "Shared")
+PRESENTATIONS = re.compile(r"\.(sheet|fullScreenCover|popover)\s*\(")
+VIEW_DECL = re.compile(r"\bstruct\s+(\w+)\s*(?:<[^>{]*>)?\s*:\s*([^{]*)\{")
+EXTENSION_DECL = re.compile(r"\bextension\s+(\w+)\b[^{]*\{")
+ENV_OBJECT = re.compile(r"@EnvironmentObject\s+(?:(?:private|fileprivate)\s+)?var\s+(\w+)\s*:\s*(\w+)")
+TYPED_OBJECT = re.compile(
+    r"@(?:StateObject|ObservedObject|EnvironmentObject)\s+(?:(?:private|fileprivate)\s+)?var\s+(\w+)"
+    r"\s*(?::\s*(\w+))?\s*(?:=\s*(\w+)\s*[.(])?")
+PLAIN_PROPERTY = re.compile(r"\b(?:let|var)\s+(\w+)\s*:\s*([A-Z]\w*)\b")
+INJECTION = re.compile(r"\.environmentObject\(\s*([A-Za-z_][\w.]*)")
+TYPE_REF = re.compile(r"\b([A-Z]\w*)\s*[.({<]")
+VIEW_MEMBER = re.compile(
+    r"\b(?:var\s+(\w+)\s*:\s*some\s+View|func\s+(\w+)\s*(?:<[^>]*>)?\([^)]*\)\s*->\s*some\s+View)\s*\{")
+
+
+def strip_comments(text):
+    """Blanks comments and string contents, keeping offsets (and line numbers) intact."""
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+            out[i:j] = " " * (j - i)
+            i = j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            out[i:j] = [c if c == "\n" else " " for c in text[i:j]]
+            i = j
+        elif text[i] == '"':
+            j = i + 1
+            while j < n and text[j] != '"' and text[j] != "\n":
+                j += 2 if text[j] == "\\" else 1
+            for k in range(i + 1, min(j, n)):
+                out[k] = " "
+            i = j + 1
+        else:
+            i += 1
+    return "".join(out)
+
+
+def block_end(text, open_index):
+    """Index just past the brace or paren that closes the one at open_index."""
+    pairs = {"{": "}", "(": ")"}
+    opener = text[open_index]
+    closer = pairs[opener]
+    depth = 0
+    for j in range(open_index, len(text)):
+        if text[j] == opener:
+            depth += 1
+        elif text[j] == closer:
+            depth -= 1
+            if depth == 0:
+                return j + 1
+    return len(text)
+
+
+class Index:
+    def __init__(self, sources):
+        # sources: {path: comment-stripped text}
+        self.sources = sources
+        self.views = {}       # name -> list of (path, start, end)
+        self.spans = []       # (path, start, end, type name) for structs and extensions
+        for path, text in sources.items():
+            for m in VIEW_DECL.finditer(text):
+                end = block_end(text, m.end() - 1)
+                self.spans.append((path, m.start(), end, m.group(1)))
+                if re.search(r"\bView\b", m.group(2)):
+                    self.views.setdefault(m.group(1), []).append((path, m.start(), end))
+            for m in EXTENSION_DECL.finditer(text):
+                end = block_end(text, m.end() - 1)
+                self.spans.append((path, m.start(), end, m.group(1)))
+        self._needs = {}
+        # Every type some view reads as an environment object; a plain stored
+        # property of one of these types can be injected too.
+        self.env_types = {m.group(2) for text in sources.values() for m in ENV_OBJECT.finditer(text)}
+
+    def bodies(self, name):
+        """All source text belonging to a type: its declarations and extensions."""
+        return [self.sources[p][s:e] for p, s, e, n in self.spans if n == name]
+
+    def object_types(self, name):
+        """Variable name -> ObservableObject type for objects the type holds."""
+        types = {}
+        for body in self.bodies(name):
+            for m in TYPED_OBJECT.finditer(body):
+                held = m.group(2) or m.group(3)
+                if held:
+                    types[m.group(1)] = held
+            for m in PLAIN_PROPERTY.finditer(body):
+                if m.group(2) in self.env_types:
+                    types.setdefault(m.group(1), m.group(2))
+        return types
+
+    def injected_types(self, text, owner):
+        held = self.object_types(owner) if owner else {}
+        found = set()
+        for m in INJECTION.finditer(text):
+            expr = m.group(1)
+            head = expr.split(".")[0]
+            if head in held:
+                found.add(held[head])
+            elif head[:1].isupper():
+                found.add(head)  # `Store.shared`, `Store()`
+        return found
+
+    def needs(self, name, stack=()):
+        if name in self._needs:
+            return self._needs[name]
+        if name in stack:
+            return set()
+        own, refs, provided = set(), set(), set()
+        for body in self.bodies(name):
+            own |= {m.group(2) for m in ENV_OBJECT.finditer(body)}
+            outside = without_presentations(body)
+            refs |= {r for r in TYPE_REF.findall(outside) if r in self.views and r != name}
+            provided |= self.injected_types(outside, name)
+        result = set(own)
+        for ref in refs:
+            result |= self.needs(ref, stack + (name,))
+        result -= provided
+        self._needs[name] = result
+        return result
+
+    def owner_at(self, path, offset):
+        """Innermost struct or extension containing offset."""
+        best = None
+        for p, s, e, n in self.spans:
+            if p == path and s <= offset < e and (best is None or s > best[0]):
+                best = (s, n)
+        return best[1] if best else None
+
+    def member_bodies(self, owner, names):
+        """Bodies of the owner's view-building members named in `names`."""
+        out = []
+        for body in self.bodies(owner):
+            for m in VIEW_MEMBER.finditer(body):
+                if (m.group(1) or m.group(2)) in names:
+                    out.append(body[m.end() - 1:block_end(body, m.end() - 1)])
+        return out
+
+
+def content_span(text, call_open_paren):
+    """(start, end) of the presentation's content: its trailing closure, else
+    a `content:` closure argument. None when there is neither."""
+    close = block_end(text, call_open_paren)
+    rest = text[close:]
+    stripped = rest.lstrip()
+    if stripped.startswith("{"):
+        start = close + (len(rest) - len(stripped))
+        return start, block_end(text, start)
+    last = text.rfind("content:", call_open_paren, close)
+    if last >= 0:
+        brace = text.find("{", last, close)
+        if brace >= 0:
+            return brace, block_end(text, brace)
+    return None
+
+
+def content_closure(text, call_open_paren):
+    span = content_span(text, call_open_paren)
+    return text[span[0]:span[1]] if span else ""
+
+
+def without_presentations(text):
+    """The text with every presentation's content blanked: what a sheet shows
+    is checked at the sheet, and what a view injects into its own sheets
+    supplies only those sheets, never the view itself."""
+    out = list(text)
+    for m in PRESENTATIONS.finditer(text):
+        span = content_span(text, m.end() - 1)
+        if span:
+            for k in range(*span):
+                if out[k] != "\n":
+                    out[k] = " "
+    return "".join(out)
+
+
+def find_problems(sources):
+    index = Index(sources)
+    problems = []
+    for path in sorted(sources):
+        text = sources[path]
+        for m in PRESENTATIONS.finditer(text):
+            content = content_closure(text, m.end() - 1)
+            if not content:
+                continue
+            owner = index.owner_at(path, m.start())
+            texts = [content]
+            if owner:
+                texts += index.member_bodies(owner, set(re.findall(r"\b([a-z]\w*)\b", content)))
+            needed = set()
+            for chunk in texts:
+                for ref in TYPE_REF.findall(chunk):
+                    if ref in index.views:
+                        needed |= index.needs(ref)
+            injected = set()
+            for chunk in texts:
+                injected |= index.injected_types(chunk, owner)
+            missing = sorted(needed - injected)
+            if missing:
+                held = {t: v for v, t in index.object_types(owner).items()} if owner else {}
+                fixes = ", ".join(f".environmentObject({held.get(t, '<' + t + '>')})" for t in missing)
+                line = text.count("\n", 0, m.start()) + 1
+                problems.append(
+                    f"{path}:{line}: .{m.group(1)} content needs {', '.join(missing)} "
+                    f"but doesn't inject it; add {fixes}")
+    return problems
+
+
+def load_sources(repo_root):
+    sources = {}
+    for top in SOURCE_DIRS:
+        for dirpath, _, files in os.walk(os.path.join(repo_root, top)):
+            for name in files:
+                if name.endswith(".swift"):
+                    full = os.path.join(dirpath, name)
+                    with open(full, encoding="utf-8") as f:
+                        sources[os.path.relpath(full, repo_root)] = strip_comments(f.read())
+    return sources
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--repo-root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    args = parser.parse_args(argv)
+    sources = load_sources(args.repo_root)
+    problems = find_problems(sources)
+    for problem in problems:
+        print(problem)
+    if problems:
+        print(f"FAIL: {len(problems)} presentation(s) rely on environment inheritance across a sheet boundary.")
+        return 1
+    print(f"OK: every sheet, full-screen cover and popover injects the environment objects its content reads "
+          f"({len(sources)} Swift files).")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -924,6 +924,7 @@ private struct SettingsHome: View {
                 plan.perform(appState: appState)
                 pendingAppliedNotice = !plan.isEmpty
             }
+            .environmentObject(appState)
         }
         .alert("Settings applied", isPresented: $appliedConnectionNotice) {
             Button("OK", role: .cancel) {}

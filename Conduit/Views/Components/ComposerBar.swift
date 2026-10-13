@@ -493,6 +493,7 @@ struct ComposerBar: View {
         .preferredColorScheme(appState.themePreference.colorScheme)
         .sheet(item: $repairContext) { context in
             ConnectionRepairSetupSheet(context: context)
+                .environmentObject(appState)
         }
     }
 
