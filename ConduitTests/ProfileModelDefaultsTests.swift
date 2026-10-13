@@ -93,13 +93,41 @@ final class ProfileModelDefaultsTests: XCTestCase {
         XCTAssertEqual(value.selection.model, "claude-a")
     }
 
-    func testFirstRowFallbackDoesNotKeepAModelItDoesNotList() {
+    func testUnmatchedSavedDefaultIsKeptInsteadOfFirstRow() {
         let value = defaults([
             provider("anthropic", models: ["claude-a"]),
             provider("openrouter", models: ["x"])
         ], provider: "gone", model: "unlisted")
-        XCTAssertEqual(value.selection.provider, "anthropic")
-        XCTAssertEqual(value.selection.model, "claude-a")
+        XCTAssertEqual(value.selection.provider, "gone")
+        XCTAssertEqual(value.selection.model, "unlisted")
+    }
+
+    /// `auto` names no row and Hermes marks none current; a model two
+    /// aggregators both list must not fall to the first provider's first model.
+    func testAutoProviderWithModelInTwoRowsKeepsSavedDefault() {
+        let value = defaults([
+            provider("anthropic", models: ["claude-a"]),
+            provider("nous", models: ["anthropic/claude-b"]),
+            provider("openrouter", models: ["anthropic/claude-b"])
+        ], provider: "auto", model: "anthropic/claude-b")
+        XCTAssertEqual(value.selection.provider, "auto")
+        XCTAssertEqual(value.selection.model, "anthropic/claude-b")
+    }
+
+    func testCatalogProviderIdSelectsItsRow() {
+        var value = defaults([
+            provider("anthropic", models: ["claude-a"]),
+            provider("openai-codex", models: ["gpt-a", "gpt-b"])
+        ], provider: "codex", model: "gpt-b")
+        value.catalogProvider = "openai-codex"
+        XCTAssertEqual(value.selection.provider, "openai-codex")
+        XCTAssertEqual(value.selection.model, "gpt-b")
+    }
+
+    func testSavedModelWithoutProviderIsKept() {
+        let value = defaults([provider("anthropic", models: ["claude-a"])], provider: "", model: "unlisted")
+        XCTAssertEqual(value.selection.provider, "")
+        XCTAssertEqual(value.selection.model, "unlisted")
     }
 
     func testMatchingTrimsCatalogValuesAndTitleUsesDisplayName() {

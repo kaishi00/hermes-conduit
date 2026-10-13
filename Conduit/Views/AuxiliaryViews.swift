@@ -1541,6 +1541,13 @@ private struct ProfileModelSettingsDetail: View {
         return model.isEmpty || models.contains(where: { $0.id == model }) ? listed : [(id: model, title: model)] + listed
     }
 
+    /// Keeps a saved provider the catalog does not list (e.g. `auto`)
+    /// visible instead of showing the first provider.
+    private func providerChoices(_ providers: [ProviderInfo]) -> [(id: String, title: String)] {
+        let listed = providers.map { (id: $0.name, title: $0.title) }
+        return provider.isEmpty || providers.contains(where: { $0.name == provider }) ? listed : [(id: provider, title: provider)] + listed
+    }
+
     var body: some View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Default model"), symbol: "cpu", tint: .conduitAccent) {
@@ -1549,7 +1556,7 @@ private struct ProfileModelSettingsDetail: View {
                 if let defaults, !defaults.providers.isEmpty {
                     ConduitMenuPicker(
                         value: provider,
-                        choices: defaults.providers.map { (id: $0.name, title: $0.title) },
+                        choices: providerChoices(defaults.providers),
                         onSelect: chooseProvider
                     ) {
                         Text("Provider").foregroundStyle(.secondary)

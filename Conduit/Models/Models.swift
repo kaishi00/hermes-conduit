@@ -1035,23 +1035,28 @@ struct ProfileModelDefaults: Equatable {
     var model: String
     var provider: String
     var reasoning: String
+    /// The options payload's current provider. Hermes normalizes it to a
+    /// catalog id (`coerce_provider_id`), so it can name a row the raw saved
+    /// spelling does not.
+    var catalogProvider: String = ""
 
     /// The picker selection for the saved default. The saved provider can be
     /// spelled differently from the row slug (display name, `custom:<key>`,
     /// or `auto`), so match like Hermes Desktop and then fall back to the row
-    /// Hermes marks current or the row listing the saved model, before the
-    /// first row. A saved model missing from the row's list is kept as is
-    /// rather than replaced by the row's first model, except on the last
-    /// resort first row, which never vouched for it.
+    /// Hermes marks current or the only row listing the saved model. A saved
+    /// default no row vouches for is shown as saved, never swapped for the
+    /// first row: Desktop keeps it the same way, and Save would otherwise pin
+    /// the first provider's first model. The first row is used only when
+    /// nothing is saved. A saved model missing from its row's list is kept.
     var selection: (provider: String, model: String) {
         if let row = providers.first(where: { $0.matches(provider) })
+            ?? providers.first(where: { $0.matches(catalogProvider) })
             ?? providers.first(where: \.isCurrent)
             ?? uniqueRow(listing: model) {
             return (row.name, model.isEmpty ? row.models.first?.id ?? "" : model)
         }
-        guard let row = providers.first else { return (provider, model) }
-        let listed = row.models.contains(where: { $0.id == model })
-        return (row.name, listed ? model : row.models.first?.id ?? "")
+        guard provider.isEmpty, model.isEmpty, let row = providers.first else { return (provider, model) }
+        return (row.name, row.models.first?.id ?? "")
     }
 
     /// The delegate picker selection for saved `delegation.provider` and
