@@ -717,6 +717,7 @@ final class HermesNativeCalls: NSObject {
 
     private func settle() {
         guard calls.isEmpty else { return }
+        VoiceAudioSessionCoordinator.shared.nativeCallEnded()
         AppStateRuntimeRegistry.shared.existing?.setNativeHermesCallActive(false)
     }
 
@@ -816,6 +817,7 @@ extension HermesNativeCalls: CXProviderDelegate {
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         MainActor.assumeIsolated {
             HermesCallTrace.shared.note("CallKit audio on")
+            VoiceAudioSessionCoordinator.shared.nativeCallAudioActivated()
             self.audioActive = true
             self.resumeAudioWaiters()
         }

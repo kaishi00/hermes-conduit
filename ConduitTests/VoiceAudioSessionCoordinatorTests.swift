@@ -477,6 +477,8 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     /// Other media playing keeps standalone speech mixing and ducking
     /// (the pre-#373 policy) unless a test opts out.
     var isOtherAudioPlaying = true
+    var isOutputOnBuiltInSpeaker = false
+    private(set) var speakerOverrides = 0
     struct CategoryCall: Equatable {
         let category: AVAudioSession.Category
         let mode: AVAudioSession.Mode
@@ -504,6 +506,12 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     func resetRecordings() {
         categoryCalls.removeAll()
         activationCalls.removeAll()
+        speakerOverrides = 0
+    }
+
+    func overrideOutputToSpeaker() throws {
+        speakerOverrides += 1
+        isOutputOnBuiltInSpeaker = true
     }
 
     func setCategory(

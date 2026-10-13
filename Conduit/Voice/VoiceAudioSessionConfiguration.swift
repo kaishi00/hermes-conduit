@@ -15,6 +15,20 @@ struct VoiceAudioSessionConfiguration: Equatable {
         outputChannelCount: 1
     )
 
+    /// The conversation's policy while a call from Hermes is up in CallKit
+    /// (#449): the same as `capture` without `.defaultToSpeaker`. With that
+    /// option iOS sends a cleared override to the loudspeaker, not the
+    /// earpiece, so the call screen's Speaker button could never turn the
+    /// speaker off. The call still starts on the speaker, as an override
+    /// the button can clear (VoiceAudioSessionCoordinator).
+    static let nativeCall = Self(
+        category: capture.category,
+        mode: capture.mode,
+        options: [.allowBluetoothHFP],
+        outputSampleRate: capture.outputSampleRate,
+        outputChannelCount: capture.outputChannelCount
+    )
+
     /// Output-only policy for standalone speech (Read Aloud, TTS provider
     /// test): `.playback` never claims the microphone, and `.mixWithOthers` +
     /// `.duckOthers` let already-playing media (Spotify, Audible) continue at
