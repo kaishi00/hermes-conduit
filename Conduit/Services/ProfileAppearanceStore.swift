@@ -139,10 +139,16 @@ final class ProfileAppearanceStore {
     }
 
     func removeAvatar(for profile: String, dashboardID: UUID?) {
-        setMirrored(false, profile: profile, dashboardID: dashboardID)
-        guard let directory = avatarsDirectory(dashboardID: dashboardID, create: false) else { return }
+        guard let directory = avatarsDirectory(dashboardID: dashboardID, create: false) else {
+            setMirrored(false, profile: profile, dashboardID: dashboardID)
+            return
+        }
         let url = directory.appendingPathComponent(Self.fileName(for: profile))
-        try? FileManager.default.removeItem(at: url)
+        // A copy that could not be deleted keeps its mark, so it is never
+        // mistaken for a device photo and uploaded back to Hermes.
+        if (try? FileManager.default.removeItem(at: url)) == nil,
+           FileManager.default.fileExists(atPath: url.path) { return }
+        setMirrored(false, profile: profile, dashboardID: dashboardID)
         ProfileAvatarImageCache.forget(url)
     }
 

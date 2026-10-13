@@ -1063,6 +1063,9 @@ final class AppState: ObservableObject {
     private var profileAvatarLastWrite: [String: Int] = [:]
     /// The running photo sync; each roster read queues the next behind it.
     private var profileAvatarSyncTask: Task<Void, Never>?
+    /// Each profile's last queued photo write. Writes to one profile run in
+    /// the order they were asked for, so the latest one lands last.
+    private var profilePhotoWriteQueue: [String: Task<String?, Never>] = [:]
     /// `profiles.list` `bot_mode_protocol`: the backend teaches bots the
     /// teammate-messaging protocol itself, so a new bot's SOUL stays
     /// identity-only.
@@ -8471,10 +8474,29 @@ final class AppState: ObservableObject {
                 guard let png = BotAvatarImage.normalizedPNG(from: image) else {
                     return AppLocalization.string("That picture could not be used.")
                 }
-                return await setHermesPicture(png, for: bot, client: client)
+                return await queueProfilePhotoWrite(bot.name) {
+                    await self.setHermesPicture(png, for: bot, client: client)
+                }
             }
-            return await removeHermesPicture(for: bot, client: client)
+            return await queueProfilePhotoWrite(bot.name) {
+                await self.removeHermesPicture(for: bot, client: client)
+            }
         }
+    }
+
+    private func queueProfilePhotoWrite(
+        _ name: String,
+        _ write: @escaping @MainActor () async -> String?
+    ) async -> String? {
+        let previous = profilePhotoWriteQueue[name]
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            return await write()
+        }
+        profilePhotoWriteQueue[name] = task
+        let result = await task.value
+        if profilePhotoWriteQueue[name] == task { profilePhotoWriteQueue[name] = nil }
+        return result
     }
 
     private enum ProfilePhotoHome {
@@ -15832,10 +15854,16 @@ final class AppState: ObservableObject {
     /// the profile's Hermes picture. A failed upload keeps the photo and is
     /// tried again at the next roster read.
     private func moveDevicePhotoToHermes(_ bot: BotProfile, client: HermesClient) async {
-        guard let data = profileAppearanceStore.avatarData(for: bot.name, dashboardID: activeDashboardID),
-              let image = UIImage(data: data),
-              let png = BotAvatarImage.normalizedPNG(from: image) else { return }
-        _ = await setHermesPicture(png, for: bot, client: client)
+        let dashboardID = activeDashboardID
+        _ = await queueProfilePhotoWrite(bot.name) {
+            // A write queued ahead of this one may have replaced the photo.
+            guard self.activeDashboardID == dashboardID,
+                  !self.profileAppearanceStore.isMirrored(bot.name, dashboardID: dashboardID),
+                  let data = self.profileAppearanceStore.avatarData(for: bot.name, dashboardID: dashboardID),
+                  let image = UIImage(data: data),
+                  let png = BotAvatarImage.normalizedPNG(from: image) else { return nil }
+            return await self.setHermesPicture(png, for: bot, client: client)
+        }
     }
 
     /// One retry of a ui_meta write that lost its compare-and-swap: re-read
