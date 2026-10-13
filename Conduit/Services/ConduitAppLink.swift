@@ -41,6 +41,8 @@ enum ConduitAppLink: Equatable {
         case calls
         /// Voice, where "Let Hermes change settings" lives.
         case voice
+        /// Health, where sharing Apple Health data is turned on.
+        case health
     }
 
     static let scheme = "conduit"

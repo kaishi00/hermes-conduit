@@ -1,0 +1,195 @@
+//
+//  AppState+HealthSync.swift
+//  Conduit
+//
+//  When health data syncs, and with which connection (designs/health-sync.md).
+//  A pass runs when Conduit connects to the host or comes to the
+//  foreground, when Apple Health wakes Conduit with new data (background
+//  delivery, about hourly), on a background refresh, and on "Sync now".
+//  It goes only to the dashboard and profile sharing was turned on for, over
+//  that dashboard's own connection: never through the push relay.
+//
+
+import BackgroundTasks
+import Foundation
+import OSLog
+import UIKit
+
+enum HealthSyncReason: String {
+    case connected
+    case foreground
+    case healthChanged
+    case backgroundRefresh
+    case manual
+    case turnedOn
+}
+
+extension AppState {
+    static let healthSyncCapability = "health-sync"
+    static let healthSyncTaskIdentifier = "com.milim.relay.health-sync"
+    static let healthSyncLog = Logger(subsystem: "com.milim.relay", category: "health-sync")
+
+    /// Settings shows Health once the host's plugin serves it, or while
+    /// sharing is on (so it can be turned off when the plugin went away).
+    var showsHealthSettings: Bool {
+        notifierPlugin.reports(Self.healthSyncCapability) || healthSyncPreferences.isOn
+    }
+
+    /// Runs a pass when sharing is on and its dashboard is the one in use.
+    @discardableResult
+    func runHealthSync(reason: HealthSyncReason) async -> HealthSyncEngine.Outcome {
+        let preferences = healthSyncPreferences
+        guard preferences.isOn, let destination = preferences.destination else { return .off }
+        let engine = healthSync
+        // Coming back to the app often isn't news; Apple Health's own wakes
+        // and the background refresh cover the rest.
+        if reason == .foreground, let last = engine.state.lastAttempt, Date().timeIntervalSince(last) < 180 {
+            return .unfinished
+        }
+        let inBackground = !PhoneScenePresence.isInForeground
+        // A background launch connects on its own; give it a moment.
+        if dashboardTicketBridge == nil, inBackground {
+            for _ in 0..<15 where dashboardTicketBridge == nil {
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+        guard activeDashboardID == destination.dashboardID else {
+            if activeDashboardID != nil { engine.note(.otherDashboard) }
+            return .paused(.otherDashboard)
+        }
+        guard let bridge = dashboardTicketBridge else { return .unfinished }
+        // About half a minute in the background, as iOS allows; longer on
+        // screen so a first sync can bring in a good part of the history.
+        let deadline = Date().addingTimeInterval(inBackground ? 25 : 120)
+        let profile = destination.profile
+        let outcome = await engine.sync(preferences: preferences, deadline: deadline) { [weak self] path, method, body in
+            // A dashboard swapped mid-pass belongs to someone else's data.
+            guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == destination.dashboardID else {
+                throw DashboardTicketBridgeError.notReady
+            }
+            return try await bridge.requestJSON(
+                path: DashboardPath.withProfile(path, profile: profile),
+                method: method,
+                body: body,
+                timeoutMilliseconds: 30_000
+            )
+        }
+        Self.healthSyncLog.info("Health sync (\(reason.rawValue, privacy: .public)): \(String(describing: outcome), privacy: .public)")
+        return outcome
+    }
+
+    /// Turns sharing on for the dashboard and profile in use. Asks Apple
+    /// Health for read access first; the system sheet lists each type.
+    func turnOnHealthSync(categories: Set<HealthCategory>, detailed: Set<HealthCategory>,
+                          history: HealthHistoryDepth) async throws {
+        guard let dashboardID = activeDashboardID, let baseURL = connection?.baseUrl else {
+            throw DashboardTicketBridgeError.notReady
+        }
+        try await healthSync.source.requestAuthorization(for: categories, detailed: detailed)
+        var preferences = healthSyncPreferences
+        preferences.destination = HealthSyncDestination(
+            dashboardID: dashboardID, profile: activeProfile,
+            host: URL(string: baseURL)?.host ?? baseURL)
+        preferences.categories = categories
+        preferences.detailed = detailed.intersection(categories)
+        preferences.history = history
+        saveHealthSyncPreferences(preferences)
+        await startHealthObservers()
+        Self.scheduleHealthSyncRefresh()
+        Task { await runHealthSync(reason: .turnedOn) }
+    }
+
+    /// Changes what's shared. New categories ask Apple Health first.
+    func updateHealthSync(categories: Set<HealthCategory>, detailed: Set<HealthCategory>,
+                          history: HealthHistoryDepth) async throws {
+        var preferences = healthSyncPreferences
+        guard preferences.destination != nil, !categories.isEmpty else { return }
+        let added = categories.subtracting(preferences.categories)
+        if !added.isEmpty {
+            try await healthSync.source.requestAuthorization(for: categories, detailed: detailed)
+        }
+        preferences.categories = categories
+        preferences.detailed = detailed.intersection(categories)
+        preferences.history = history
+        saveHealthSyncPreferences(preferences)
+        await startHealthObservers()
+        Task { await runHealthSync(reason: .manual) }
+    }
+
+    /// Turns sharing off. With `deleteFromHost`, this phone's health data
+    /// and key are deleted on the host first (when it can be reached).
+    @discardableResult
+    func turnOffHealthSync(deleteFromHost: Bool) async -> Bool {
+        let destination = healthSyncPreferences.destination
+        var request: HealthSyncEngine.Request?
+        if deleteFromHost, let destination, activeDashboardID == destination.dashboardID,
+           let bridge = dashboardTicketBridge {
+            request = { path, method, body in
+                try await bridge.requestJSON(path: DashboardPath.withProfile(path, profile: destination.profile),
+                                             method: method, body: body)
+            }
+        }
+        let deleted = await healthSync.turnOff(deleteFromHost: request)
+        saveHealthSyncPreferences(HealthSyncPreferences())
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.healthSyncTaskIdentifier)
+        return deleted || !deleteFromHost
+    }
+
+    private func saveHealthSyncPreferences(_ preferences: HealthSyncPreferences) {
+        preferences.save()
+        healthSyncPreferences = preferences
+    }
+
+    /// Apple Health wakes Conduit when shared data changes. Observers last
+    /// for the process, so this runs at every launch while sharing is on.
+    func startHealthObservers() async {
+        let categories = healthSyncPreferences.categories
+        guard healthSyncPreferences.isOn else {
+            await healthSync.source.stopObserving()
+            return
+        }
+        await healthSync.source.observe(categories) { done in
+            Task { @MainActor in
+                let app = AppStateRuntimeRegistry.shared.appState
+                await app.runHealthSync(reason: .healthChanged)
+                done()
+            }
+        }
+    }
+
+    // MARK: Background refresh
+
+    /// Registered before launch finishes, as BGTaskScheduler requires.
+    static func registerHealthSyncTask() {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: healthSyncTaskIdentifier, using: nil) { task in
+            Task { @MainActor in
+                scheduleHealthSyncRefresh()
+                let app = AppStateRuntimeRegistry.shared.appState
+                let run = Task { await app.runHealthSync(reason: .backgroundRefresh) }
+                task.expirationHandler = { run.cancel() }
+                let outcome = await run.value
+                if case .failed = outcome {
+                    task.setTaskCompleted(success: false)
+                } else {
+                    task.setTaskCompleted(success: true)
+                }
+            }
+        }
+    }
+
+    static func scheduleHealthSyncRefresh() {
+        guard HealthSyncPreferences.load().isOn else { return }
+        let request = BGAppRefreshTaskRequest(identifier: healthSyncTaskIdentifier)
+        request.earliestBeginDate = Date().addingTimeInterval(2 * 3600)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    /// At launch: observers and the refresh, when sharing is on.
+    func resumeHealthSyncAtLaunch() {
+        guard healthSyncPreferences.isOn else { return }
+        Task {
+            await startHealthObservers()
+            Self.scheduleHealthSyncRefresh()
+        }
+    }
+}

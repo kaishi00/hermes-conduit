@@ -1,0 +1,433 @@
+//
+//  HealthSyncEngine.swift
+//  Conduit
+//
+//  One sync pass: make sure this phone and the Hermes profile share a key,
+//  send the recent days again (the Watch syncs late), then new and deleted
+//  workouts, sleep stages and raw readings, then one more step of older
+//  history. Every piece is re-readable from Apple Health, so there is no
+//  outbox: an anchor or the history cursor moves only after the host has
+//  acknowledged the batch, and a crash or a timeout just means the next
+//  pass sends it again (the host's writes are idempotent).
+//
+//  The pass stops at its deadline (a background wake gets about half a
+//  minute) and picks up where it left off next time.
+//
+
+import CryptoKit
+import Foundation
+
+/// What a pass remembers between runs. No health values: anchors, a date
+/// cursor and the host's store generation. Kept in Application Support,
+/// readable after first unlock, never backed up.
+struct HealthSyncState: Codable, Equatable {
+    var deviceID: String = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    /// Where this state belongs; a different destination starts over.
+    var destination: HealthSyncDestination?
+    var generation: String?
+    /// How far back sharing reaches (fixed per depth so anchors stay valid).
+    var historyStart: Date?
+    var history: HealthHistoryDepth?
+    /// The oldest day already sent; history before it is still to go.
+    var backfillCursor: Date?
+    var anchors: [String: Data] = [:]
+    var lastSync: Date?
+    var lastAttempt: Date?
+    var pause: HealthSyncPause?
+
+    mutating func startOver(keepingDevice: Bool = true) {
+        let device = deviceID
+        self = HealthSyncState()
+        if keepingDevice { deviceID = device }
+    }
+}
+
+/// The state file. Owner-only, readable in the background after first
+/// unlock (as HealthKit itself is), excluded from backups.
+struct HealthSyncStateStore {
+    var url: URL
+
+    static var standard: HealthSyncStateStore {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return HealthSyncStateStore(url: base.appendingPathComponent("HealthSync", isDirectory: true)
+            .appendingPathComponent("state.json"))
+    }
+
+    func load() -> HealthSyncState {
+        guard let data = try? Data(contentsOf: url),
+              let state = try? JSONDecoder().decode(HealthSyncState.self, from: data) else { return HealthSyncState() }
+        return state
+    }
+
+    /// False when the file couldn't be written (a locked phone): the caller
+    /// keeps its anchors in memory and the next pass re-sends.
+    @discardableResult
+    func save(_ state: HealthSyncState) -> Bool {
+        do {
+            var folder = url.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [
+                .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
+            ])
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? folder.setResourceValues(values)
+            try JSONEncoder().encode(state).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func remove() {
+        try? FileManager.default.removeItem(at: url)
+    }
+}
+
+/// The agreed key in the Keychain (readable after first unlock).
+struct HealthSyncKeyStore {
+    var load: () -> HealthSyncCrypto.SessionKey?
+    var save: (HealthSyncCrypto.SessionKey) -> Void
+    var clear: () -> Void
+
+    static let keychain = HealthSyncKeyStore(
+        load: {
+            KeychainHelper.loadHealthSyncKey().flatMap { try? JSONDecoder().decode(HealthSyncCrypto.SessionKey.self, from: $0) }
+        },
+        save: { key in
+            if let data = try? JSONEncoder().encode(key) { KeychainHelper.saveHealthSyncKey(data) }
+        },
+        clear: { KeychainHelper.clearHealthSyncKey() }
+    )
+}
+
+@MainActor
+final class HealthSyncEngine: ObservableObject {
+    typealias Request = (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
+
+    enum Outcome: Equatable {
+        case synced
+        /// Stopped at the deadline or on a locked phone; the next pass goes on.
+        case unfinished
+        case paused(HealthSyncPause)
+        /// Nothing to do: sharing is off.
+        case off
+        case failed(String)
+    }
+
+    static let base = "/api/plugins/conduit_push/health"
+
+    @Published private(set) var state: HealthSyncState
+    @Published private(set) var isSyncing = false
+    @Published private(set) var lastError: String?
+
+    let source: HealthDataSource
+    private let store: HealthSyncStateStore
+    private let keys: HealthSyncKeyStore
+    private let now: () -> Date
+    private let deviceName: () -> String
+    var calendar: Calendar
+    private var running: Task<Outcome, Never>?
+
+    init(
+        source: HealthDataSource,
+        store: HealthSyncStateStore = .standard,
+        keys: HealthSyncKeyStore = .keychain,
+        calendar: Calendar = .current,
+        now: @escaping () -> Date = Date.init,
+        deviceName: @escaping () -> String = { "iPhone" }
+    ) {
+        self.source = source
+        self.store = store
+        self.keys = keys
+        self.calendar = calendar
+        self.now = now
+        self.deviceName = deviceName
+        self.state = store.load()
+    }
+
+    /// Runs a pass, or joins the one already running.
+    func sync(preferences: HealthSyncPreferences, deadline: Date, request: @escaping Request) async -> Outcome {
+        if let running { return await running.value }
+        let task = Task { await self.pass(preferences: preferences, deadline: deadline, request: request) }
+        running = task
+        isSyncing = true
+        let outcome = await task.value
+        running = nil
+        isSyncing = false
+        return outcome
+    }
+
+    /// Records a pause found outside a pass (another dashboard in use).
+    func note(_ pause: HealthSyncPause?) {
+        guard state.pause != pause else { return }
+        state.pause = pause
+        store.save(state)
+    }
+
+    /// Sharing turned off: forget the key, the anchors and the cursor, and
+    /// optionally delete this phone's data on the host first.
+    func turnOff(deleteFromHost request: Request?) async -> Bool {
+        running?.cancel()
+        await source.stopObserving()
+        var deleted = request == nil
+        if let request {
+            do {
+                _ = try await request("\(Self.base)/wipe", "POST", ["device_id": state.deviceID])
+                deleted = true
+            } catch {
+                lastError = Self.describe(error)
+            }
+        }
+        keys.clear()
+        state.startOver()
+        store.save(state)
+        return deleted
+    }
+
+    // MARK: The pass
+
+    private func pass(preferences: HealthSyncPreferences, deadline: Date, request: @escaping Request) async -> Outcome {
+        guard preferences.isOn, let destination = preferences.destination else { return .off }
+        if state.destination != destination {
+            // Health data never follows the user to another destination.
+            keys.clear()
+            state.startOver()
+            state.destination = destination
+        }
+        state.lastAttempt = now()
+        defer { store.save(state) }
+        do {
+            let key = try await ensureKey(request: request)
+            prepareHistory(preferences.history)
+            var session = Session(engine: self, key: key, preferences: preferences, request: request, deadline: deadline)
+            try await session.sendRecentDays()
+            try await session.sendEvents()
+            try await session.sendHistory()
+            state.lastSync = now()
+            state.pause = nil
+            lastError = nil
+            return .synced
+        } catch is CancellationError {
+            return .unfinished
+        } catch HealthDataSourceError.locked {
+            // Health is unreadable until the user unlocks the phone.
+            return .unfinished
+        } catch is DeadlineReached {
+            return .unfinished
+        } catch let error as DashboardTicketBridgeError {
+            switch error {
+            case .signInRequired:
+                state.pause = .signInRequired
+                return .paused(.signInRequired)
+            case .http(let status, _) where status == 404:
+                state.pause = .pluginMissing
+                return .paused(.pluginMissing)
+            case .http(let status, let detail) where status == 409:
+                // The host lost or replaced this phone's key (a wipe, a
+                // reinstall of the plugin's store): set it up again next pass.
+                keys.clear()
+                lastError = detail
+                return .unfinished
+            case .http(let status, let detail) where status == 400 || status == 413:
+                state.pause = .refused(detail)
+                return .paused(.refused(detail))
+            default:
+                lastError = Self.describe(error)
+                return .failed(Self.describe(error))
+            }
+        } catch {
+            lastError = Self.describe(error)
+            return .failed(Self.describe(error))
+        }
+    }
+
+    /// The agreed key, set up again whenever the host doesn't know it.
+    private func ensureKey(request: Request) async throws -> HealthSyncCrypto.SessionKey {
+        let status = try await request("\(Self.base)/status?device_id=\(state.deviceID)", "GET", nil)
+        let generation = status["generation"] as? String
+        let hostKid = (status["device"] as? [String: Any])?["kid"] as? String
+        if let generation, let known = state.generation, known != generation {
+            // A new store on the host: everything goes again.
+            restart()
+        }
+        if let key = keys.load(), key.kid == hostKid {
+            state.generation = generation ?? state.generation
+            return key
+        }
+        let devicePrivate = Curve25519.KeyAgreement.PrivateKey()
+        let answer = try await request("\(Self.base)/key", "POST", [
+            "device_id": state.deviceID,
+            "device_name": deviceName(),
+            "public_key": NotificationE2E.base64URL(devicePrivate.publicKey.rawRepresentation),
+        ])
+        guard let hostPublic = answer["host_public_key"] as? String, let kid = answer["kid"] as? String else {
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The host didn't return a health key."))
+        }
+        let key = try HealthSyncCrypto.agree(devicePrivate: devicePrivate, deviceID: state.deviceID, hostPublicKey: hostPublic, kid: kid)
+        keys.save(key)
+        // The host has nothing from this key yet.
+        restart()
+        state.generation = (answer["generation"] as? String) ?? generation
+        return key
+    }
+
+    private func restart() {
+        state.anchors = [:]
+        state.backfillCursor = nil
+        state.historyStart = nil
+        state.history = nil
+    }
+
+    /// Fixes how far back sharing reaches. A deeper choice starts the
+    /// anchors over (their query changes); a shallower one keeps what was
+    /// already sent.
+    private func prepareHistory(_ depth: HealthHistoryDepth) {
+        let today = calendar.startOfDay(for: now())
+        let start: Date = depth.days.map { calendar.date(byAdding: .day, value: -$0, to: today) ?? today }
+            ?? calendar.startOfDay(for: source.earliestDate())
+        if state.historyStart != nil, let known = state.history, known.rank >= depth.rank { return }
+        if state.historyStart != nil { state.anchors = [:] }
+        state.historyStart = start
+        state.history = depth
+    }
+
+    fileprivate func acknowledged(_ update: (inout HealthSyncState) -> Void) {
+        update(&state)
+        store.save(state)
+    }
+
+    fileprivate var currentNow: Date { now() }
+    fileprivate var currentDeviceName: String { deviceName() }
+
+    static func describe(_ error: Error) -> String {
+        if let error = error as? DashboardTicketBridgeError, let description = error.errorDescription { return description }
+        return error.localizedDescription
+    }
+}
+
+/// Stops a pass when its time is up.
+struct DeadlineReached: Error {}
+
+/// One pass's sending, with the pieces it shares.
+@MainActor
+private struct Session {
+    let engine: HealthSyncEngine
+    let key: HealthSyncCrypto.SessionKey
+    let preferences: HealthSyncPreferences
+    let request: HealthSyncEngine.Request
+    let deadline: Date
+
+    var calendar: Calendar { engine.calendar }
+    var categories: Set<HealthCategory> { preferences.categories }
+
+    init(engine: HealthSyncEngine, key: HealthSyncCrypto.SessionKey, preferences: HealthSyncPreferences,
+         request: @escaping HealthSyncEngine.Request, deadline: Date) {
+        self.engine = engine
+        self.key = key
+        self.preferences = preferences
+        self.request = request
+        self.deadline = deadline
+    }
+
+    func checkTime() throws {
+        try Task.checkCancellation()
+        if engine.currentNow >= deadline { throw DeadlineReached() }
+    }
+
+    func newBatch() -> HealthBatch {
+        HealthBatch(computedAt: engine.currentNow, deviceName: engine.currentDeviceName, timeZone: calendar.timeZone,
+                    categories: HealthCategory.allCases.filter(categories.contains),
+                    detailed: HealthCategory.allCases.filter { preferences.detailed.contains($0) && categories.contains($0) })
+    }
+
+    func send(_ batch: HealthBatch) async throws {
+        for part in batch.split() {
+            try checkTime()
+            let plaintext = try JSONSerialization.data(withJSONObject: part.json(), options: [.sortedKeys])
+            let body = try HealthSyncCrypto.envelope(plaintext: plaintext, key: key, deviceID: engine.state.deviceID,
+                                                     batchID: part.batchID)
+            _ = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
+        }
+    }
+
+    /// Buckets and nights for [from, to), as windows the host replaces.
+    func windows(from: Date, to: Date) async throws -> [HealthWindow] {
+        var windows: [HealthWindow] = []
+        let today = calendar.startOfDay(for: engine.currentNow)
+        let hourlyFloor = calendar.date(byAdding: .day, value: -HealthSyncLimits.hourlyHistoryDays, to: today) ?? today
+        for category in HealthCategory.allCases where categories.contains(category) {
+            for metric in category.metrics {
+                try checkTime()
+                let daily = try await engine.source.buckets(metric, grain: .day, from: from, to: to, calendar: calendar)
+                windows.append(HealthWindow(metric: metric.rawValue, grain: .day, unit: metric.unit,
+                                            from: from, to: to, buckets: daily))
+                if metric.hasHourlyBuckets, to > hourlyFloor {
+                    let start = max(from, hourlyFloor)
+                    let hourly = try await engine.source.buckets(metric, grain: .hour, from: start, to: to, calendar: calendar)
+                    windows.append(HealthWindow(metric: metric.rawValue, grain: .hour, unit: metric.unit,
+                                                from: start, to: to, buckets: hourly))
+                }
+            }
+        }
+        if categories.contains(.sleep) {
+            try checkTime()
+            let range = HealthSleepNights.window(mornings: from, until: to, calendar: calendar)
+            let segments = try await engine.source.sleepSegments(from: range.from, to: range.to)
+            windows.append(HealthWindow(metric: "sleep", grain: .night, unit: "min", from: range.from, to: range.to,
+                                        buckets: HealthSleepNights.summaries(segments, calendar: calendar)))
+        }
+        return windows
+    }
+
+    /// Today and the days before it that the Watch may still fill in.
+    mutating func sendRecentDays() async throws {
+        let today = calendar.startOfDay(for: engine.currentNow)
+        let from = calendar.date(byAdding: .day, value: -(HealthSyncLimits.recomputedDays - 1), to: today) ?? today
+        let to = calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        var batch = newBatch()
+        batch.windows = try await windows(from: from, to: to)
+        try await send(batch)
+        if engine.state.backfillCursor == nil {
+            engine.acknowledged { $0.backfillCursor = from }
+        }
+    }
+
+    /// New and deleted workouts, sleep stages and (where the user chose
+    /// detailed readings) raw readings, each stream from its own anchor.
+    mutating func sendEvents() async throws {
+        guard let since = engine.state.historyStart else { return }
+        var streams: [HealthEventStream] = []
+        if categories.contains(.workouts) { streams.append(.workouts) }
+        if categories.contains(.sleep) { streams.append(.sleep) }
+        for category in HealthCategory.allCases where categories.contains(category) && preferences.detailed.contains(category) {
+            streams.append(contentsOf: category.metrics.map(HealthEventStream.samples))
+        }
+        for stream in streams {
+            var more = true
+            while more {
+                try checkTime()
+                let page = try await engine.source.changes(stream, since: since, anchor: engine.state.anchors[stream.key],
+                                                           limit: HealthSyncLimits.samplesPerQuery)
+                var batch = newBatch()
+                batch.events = page.added
+                batch.deleted = page.deleted
+                if !batch.isEmpty { try await send(batch) }
+                engine.acknowledged { $0.anchors[stream.key] = page.anchor }
+                more = page.more
+            }
+        }
+    }
+
+    /// One step further back per loop, newest first, until history is in.
+    mutating func sendHistory() async throws {
+        guard let target = engine.state.historyStart else { return }
+        while let cursor = engine.state.backfillCursor, cursor > target {
+            try checkTime()
+            let start = max(target, calendar.date(byAdding: .day, value: -HealthSyncLimits.backfillChunkDays, to: cursor) ?? target)
+            var batch = newBatch()
+            batch.windows = try await windows(from: start, to: cursor)
+            try await send(batch)
+            engine.acknowledged { $0.backfillCursor = start }
+        }
+    }
+}
