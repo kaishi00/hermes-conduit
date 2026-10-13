@@ -22884,9 +22884,9 @@ final class AppState: ObservableObject {
             // or the options payload's current selection.
             let modelConfig = config["model"] as? [String: Any] ?? [:]
             let model = [modelConfig["default"] as? String, config["model"] as? String, info["model"] as? String, optionsObject["model"]?.stringValue]
-                .compactMap { $0 }.first(where: { !$0.isEmpty }) ?? ""
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first(where: { !$0.isEmpty }) ?? ""
             let provider = [modelConfig["provider"] as? String, info["provider"] as? String, optionsObject["provider"]?.stringValue]
-                .compactMap { $0 }.first(where: { !$0.isEmpty }) ?? ""
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first(where: { !$0.isEmpty }) ?? ""
             let reasoning = config["reasoning"] as? String ?? config["reasoning_effort"] as? String ?? "medium"
             return ProfileModelDefaults(providers: providers, model: model, provider: provider, reasoning: reasoning)
         } catch {
