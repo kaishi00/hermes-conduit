@@ -114,14 +114,10 @@ final class ProfileModelDefaultsTests: XCTestCase {
         XCTAssertEqual(value.selection.model, "anthropic/claude-b")
     }
 
-    func testCatalogProviderIdSelectsItsRow() {
-        var value = defaults([
-            provider("anthropic", models: ["claude-a"]),
-            provider("openai-codex", models: ["gpt-a", "gpt-b"])
-        ], provider: "codex", model: "gpt-b")
-        value.catalogProvider = "openai-codex"
-        XCTAssertEqual(value.selection.provider, "openai-codex")
-        XCTAssertEqual(value.selection.model, "gpt-b")
+    func testUnmatchedSavedProviderWithoutModelIsKept() {
+        let value = defaults([provider("anthropic", models: ["claude-a"])], provider: "gone", model: "")
+        XCTAssertEqual(value.selection.provider, "gone")
+        XCTAssertEqual(value.selection.model, "")
     }
 
     func testSavedModelWithoutProviderIsKept() {

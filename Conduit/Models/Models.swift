@@ -1035,10 +1035,6 @@ struct ProfileModelDefaults: Equatable {
     var model: String
     var provider: String
     var reasoning: String
-    /// The options payload's current provider. Hermes normalizes it to a
-    /// catalog id (`coerce_provider_id`), so it can name a row the raw saved
-    /// spelling does not.
-    var catalogProvider: String = ""
 
     /// The picker selection for the saved default. The saved provider can be
     /// spelled differently from the row slug (display name, `custom:<key>`,
@@ -1050,7 +1046,6 @@ struct ProfileModelDefaults: Equatable {
     /// nothing is saved. A saved model missing from its row's list is kept.
     var selection: (provider: String, model: String) {
         if let row = providers.first(where: { $0.matches(provider) })
-            ?? providers.first(where: { $0.matches(catalogProvider) })
             ?? providers.first(where: \.isCurrent)
             ?? uniqueRow(listing: model) {
             return (row.name, model.isEmpty ? row.models.first?.id ?? "" : model)

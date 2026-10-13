@@ -22888,10 +22888,7 @@ final class AppState: ObservableObject {
             let provider = [modelConfig["provider"] as? String, info["provider"] as? String, optionsObject["provider"]?.stringValue]
                 .compactMap { $0 }.first(where: { !$0.isEmpty }) ?? ""
             let reasoning = config["reasoning"] as? String ?? config["reasoning_effort"] as? String ?? "medium"
-            return ProfileModelDefaults(
-                providers: providers, model: model, provider: provider, reasoning: reasoning,
-                catalogProvider: optionsObject["provider"]?.stringValue ?? ""
-            )
+            return ProfileModelDefaults(providers: providers, model: model, provider: provider, reasoning: reasoning)
         } catch {
             errorMessage = AppLocalization.string("Could not load model defaults: \(UserFacingError.message(for: error))")
             return nil
