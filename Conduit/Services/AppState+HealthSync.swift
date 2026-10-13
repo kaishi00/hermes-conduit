@@ -122,15 +122,23 @@ extension AppState {
         Task { await runHealthSync(reason: .turnedOn) }
     }
 
+    /// Bumped by each change of what's shared, so an older one still
+    /// waiting on Apple Health can't overwrite it.
+    private static var healthUpdateGeneration = 0
+
     /// Changes what's shared. New categories ask Apple Health first.
     func updateHealthSync(categories: Set<HealthCategory>, detailed: Set<HealthCategory>,
                           history: HealthHistoryDepth) async throws {
-        var preferences = healthSyncPreferences
-        guard preferences.destination != nil, !categories.isEmpty else { return }
-        let added = categories.subtracting(preferences.categories)
+        guard healthSyncPreferences.destination != nil, !categories.isEmpty else { return }
+        Self.healthUpdateGeneration += 1
+        let mine = Self.healthUpdateGeneration
+        let added = categories.subtracting(healthSyncPreferences.categories)
         if !added.isEmpty {
             try await healthSync.source.requestAuthorization(for: categories, detailed: detailed)
         }
+        // A newer change, or turning sharing off, came in while this waited.
+        var preferences = healthSyncPreferences
+        guard mine == Self.healthUpdateGeneration, preferences.destination != nil else { return }
         preferences.categories = categories
         preferences.detailed = detailed.intersection(categories)
         preferences.history = history

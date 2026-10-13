@@ -47,6 +47,9 @@ struct HealthSettingsPage: View {
             if engine.source.isAvailable, preferences.isOn || pluginServesHealth {
                 categorySection
                 historySection
+            }
+            // Turning off stays reachable even if Health becomes unavailable.
+            if preferences.isOn || (engine.source.isAvailable && pluginServesHealth) {
                 actionSection
             }
         }
@@ -162,9 +165,6 @@ struct HealthSettingsPage: View {
             Text("How far back the first sync reaches. A long history comes in over a few days in the background. Hourly detail covers the last 30 days; older history is daily.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            if preferences.isOn {
-                keptOnHostNote
-            }
         }
     }
 
