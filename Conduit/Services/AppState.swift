@@ -5210,6 +5210,8 @@ final class AppState: ObservableObject {
     /// the card is drawn. The row can also be gone (deleted on the host),
     /// so a dead tap says so.
     func openVoiceCallTranscript(markerID: String) {
+        // Any later tap outdates a kept call's fetch still in flight.
+        chatCallTranscriptRequest = nil
         guard let link = voiceCallLink(markerID: markerID) else { return }
         let unavailable = AppLocalization.string("That call's transcript is no longer available.")
         guard link.storedWithChat else {
