@@ -137,6 +137,17 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(host.keyRequests, 2)
     }
 
+    func testUnreadableHealthStateKeepsTheDeviceID() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("health-state-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent("state.json")
+        try Data(#"{"deviceID":"phone1","anchors":"not a map"}"#.utf8).write(to: url)
+        let state = HealthSyncStateStore(url: url).load()
+        XCTAssertEqual(state.deviceID, "phone1")
+        XCTAssertTrue(state.anchors.isEmpty)
+    }
+
     func testRefusedIngestKeepsTheCursorAndPauses() async {
         let source = FakeHealthSource()
         let host = FakeHealthHost()

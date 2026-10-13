@@ -55,10 +55,16 @@ struct HealthSyncStateStore {
     }
 
     func load() -> HealthSyncState {
-        guard let data = try? Data(contentsOf: url),
-              let state = try? JSONDecoder().decode(HealthSyncState.self, from: data) else { return HealthSyncState() }
-        return state
+        guard let data = try? Data(contentsOf: url) else { return HealthSyncState() }
+        if let state = try? JSONDecoder().decode(HealthSyncState.self, from: data) { return state }
+        // Unreadable (an older shape, a damaged file): start over, but as the
+        // same device, so the host's copy can still be found and deleted.
+        var fresh = HealthSyncState()
+        if let known = try? JSONDecoder().decode(DeviceOnly.self, from: data) { fresh.deviceID = known.deviceID }
+        return fresh
     }
+
+    private struct DeviceOnly: Decodable { var deviceID: String }
 
     /// False when the file couldn't be written (a locked phone): the caller
     /// keeps its anchors in memory and the next pass re-sends.

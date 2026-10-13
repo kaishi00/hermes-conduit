@@ -105,6 +105,10 @@ extension AppState {
             throw error
         }
         try await healthSync.source.requestAuthorization(for: categories, detailed: detailed)
+        // The dashboard changed while this waited: its profile isn't the one asked for.
+        guard activeDashboardID == dashboardID, connection?.baseUrl == baseURL else {
+            throw DashboardTicketBridgeError.notReady
+        }
         var preferences = healthSyncPreferences
         preferences.destination = HealthSyncDestination(
             dashboardID: dashboardID, profile: activeProfile,
