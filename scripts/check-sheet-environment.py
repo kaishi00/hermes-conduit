@@ -34,6 +34,9 @@ TYPED_OBJECT = re.compile(
 PLAIN_PROPERTY = re.compile(r"\b(?:let|var)\s+(\w+)\s*:\s*([A-Z]\w*)\b")
 INJECTION = re.compile(r"\.environmentObject\(\s*([A-Za-z_][\w.]*)")
 TYPE_REF = re.compile(r"\b([A-Z]\w*)\s*[.({<]")
+# A bare identifier the content uses as a value: not a member access
+# (`.font(.body)`) and not an argument label (`rootPath:`).
+HELPER_REF = re.compile(r"(?<![.\w])([a-z]\w*)\b(?!\s*:)")
 VIEW_MEMBER = re.compile(
     r"\b(?:var\s+(\w+)\s*:\s*some\s+View|func\s+(\w+)\s*(?:<[^>]*>)?\([^)]*\)\s*->\s*some\s+View)\s*\{")
 
@@ -53,13 +56,28 @@ def strip_comments(text):
             j = n if j < 0 else j + 2
             out[i:j] = [c if c == "\n" else " " for c in text[i:j]]
             i = j
-        elif text[i] == '"':
-            j = i + 1
-            while j < n and text[j] != '"' and text[j] != "\n":
-                j += 2 if text[j] == "\\" else 1
-            for k in range(i + 1, min(j, n)):
-                out[k] = " "
-            i = j + 1
+        elif text[i] == '"' or (text[i] == "#" and re.match(r'#+"', text[i:])):
+            # Raw strings (#"…"#) close on a quote followed by the same
+            # number of hashes; multiline strings (""") on the next """.
+            hashes = len(text[i:]) - len(text[i:].lstrip("#"))
+            start = i + hashes
+            multiline = text.startswith('"""', start)
+            opener = '"""' if multiline else '"'
+            closer = opener + "#" * hashes
+            j = start + len(opener)
+            while j < n:
+                if text.startswith(closer, j):
+                    break
+                if not multiline and text[j] == "\n":
+                    break
+                if text[j] == "\\" and not hashes and j + 1 < n and text[j + 1] != "\n":
+                    j += 2
+                else:
+                    j += 1
+            for k in range(start + len(opener), min(j, n)):
+                if out[k] != "\n":
+                    out[k] = " "
+            i = j + len(closer)
         else:
             i += 1
     return "".join(out)
@@ -132,25 +150,35 @@ class Index:
                 found.add(head)  # `Store.shared`, `Store()`
         return found
 
-    def needs(self, name, stack=()):
+    def needs(self, name):
+        return self._walk(name, ())[0]
+
+    def _walk(self, name, stack):
+        """(needs, ancestors cut short): a result that met a cycle back to an
+        ancestor lacks that ancestor's contribution, so it is never cached;
+        it is complete only once the walk is back at that ancestor."""
         if name in self._needs:
-            return self._needs[name]
+            return self._needs[name], set()
         if name in stack:
-            return set()
+            return set(), {name}
         own, refs, provided = set(), set(), set()
         for body in self.bodies(name):
             own |= {m.group(2) for m in ENV_OBJECT.finditer(body)}
             outside = without_presentations(body)
             refs |= {r for r in TYPE_REF.findall(outside) if r in self.views and r != name}
             provided |= self.injected_types(outside, name)
-        children = set()
+        children, cut = set(), set()
         for ref in refs:
-            children |= self.needs(ref, stack + (name,))
+            ref_needs, ref_cut = self._walk(ref, stack + (name,))
+            children |= ref_needs
+            cut |= ref_cut
         # What a view injects reaches only the views it builds; its own
         # environment reads still have to come from above.
         result = own | (children - provided)
-        self._needs[name] = result
-        return result
+        cut.discard(name)
+        if not cut:
+            self._needs[name] = result
+        return result, cut
 
     def owner_at(self, path, offset):
         """Innermost struct or extension containing offset."""
@@ -213,7 +241,11 @@ def find_problems(sources):
         text = sources[path]
         for m in PRESENTATIONS.finditer(text):
             content = content_closure(text, m.end() - 1)
+            line = text.count("\n", 0, m.start()) + 1
             if not content:
+                problems.append(
+                    f"{path}:{line}: .{m.group(1)} content isn't a closure this check can read; "
+                    f"write it as a trailing closure")
                 continue
             owner = index.owner_at(path, m.start())
             texts = [content]
@@ -222,11 +254,14 @@ def find_problems(sources):
                 seen = set()
                 frontier = [content]
                 while frontier:
-                    names = set(re.findall(r"\b([a-z]\w*)\b", frontier.pop())) - seen
+                    names = set(HELPER_REF.findall(frontier.pop())) - seen - {"body"}
                     seen |= names
                     for member in index.member_bodies(owner, names):
                         texts.append(member)
                         frontier.append(member)
+            # Sheets nested inside this content or its helpers are checked
+            # on their own; nothing in them supplies this one.
+            texts = [without_presentations(chunk) for chunk in texts]
             needed = set()
             for chunk in texts:
                 for ref in TYPE_REF.findall(chunk):
@@ -239,7 +274,6 @@ def find_problems(sources):
             if missing:
                 held = {t: v for v, t in index.object_types(owner).items()} if owner else {}
                 fixes = ", ".join(f".environmentObject({held.get(t, '<' + t + '>')})" for t in missing)
-                line = text.count("\n", 0, m.start()) + 1
                 problems.append(
                     f"{path}:{line}: .{m.group(1)} content needs {', '.join(missing)} "
                     f"but doesn't inject it; add {fixes}")
@@ -263,6 +297,9 @@ def main(argv=None):
     parser.add_argument("--repo-root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     args = parser.parse_args(argv)
     sources = load_sources(args.repo_root)
+    if not sources:
+        print(f"FAIL: no Swift sources under {args.repo_root} ({', '.join(SOURCE_DIRS)}).")
+        return 1
     problems = find_problems(sources)
     for problem in problems:
         print(problem)

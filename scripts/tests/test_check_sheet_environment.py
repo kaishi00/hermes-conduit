@@ -175,6 +175,84 @@ class SheetEnvironmentTests(unittest.TestCase):
         """)
         self.assertEqual(len(found), 1)
 
+    def test_a_sibling_sheets_injection_does_not_satisfy_this_one(self):
+        # `.font(.body)` names `body`; the parent's body (and the other
+        # sheet's injection in it) must not be pulled in as a helper.
+        found = problems(APP_STATE_CHILD, """
+        struct Parent: View {
+            @EnvironmentObject var appState: AppState
+            @State private var a = false
+            @State private var b = false
+            var body: some View {
+                VStack {
+                    Color.clear.sheet(isPresented: $a) { Child().font(.body) }
+                    Color.clear.sheet(isPresented: $b) { Child().environmentObject(appState) }
+                }
+            }
+        }
+        """)
+        self.assertEqual(len(found), 1)
+        self.assertIn("File1.swift:8", found[0])
+
+    def test_needs_are_complete_whichever_view_of_a_cycle_is_walked_first(self):
+        sources = {
+            "File0.swift": check_sheet_environment.strip_comments(textwrap.dedent("""
+            struct A: View {
+                @EnvironmentObject private var appState: AppState
+                var body: some View { B() }
+            }
+            struct B: View {
+                var body: some View { A() }
+            }
+            """)),
+        }
+        index = check_sheet_environment.Index(sources)
+        self.assertEqual(index.needs("A"), {"AppState"})
+        self.assertEqual(index.needs("B"), {"AppState"})  # not the cut-short walk from A
+
+    def test_multiline_and_raw_strings_are_blanked(self):
+        stripped = check_sheet_environment.strip_comments(textwrap.dedent('''
+        let a = """
+            "quoted" Child() { .sheet(
+            """
+        let b = #"raw "Child()" text"#
+        let c = Real()
+        '''))
+        self.assertNotIn("Child", stripped)
+        self.assertNotIn(".sheet", stripped)
+        self.assertIn("Real()", stripped)
+        self.assertEqual(stripped.count("\n"), 6)  # line numbers survive
+
+    def test_full_screen_cover_popover_and_content_label_are_checked(self):
+        found = problems(APP_STATE_CHILD, """
+        struct Parent: View {
+            @EnvironmentObject var appState: AppState
+            @State private var a = false
+            @State private var b = false
+            @State private var c = false
+            var body: some View {
+                VStack {
+                    Color.clear.fullScreenCover(isPresented: $a) { Child() }
+                    Color.clear.popover(isPresented: $b) { Child() }
+                    Color.clear.sheet(isPresented: $c, content: { Child() })
+                }
+            }
+        }
+        """)
+        self.assertEqual([p.split(": ")[1].split()[0] for p in found], [".fullScreenCover", ".popover", ".sheet"])
+
+    def test_content_that_is_not_a_closure_is_reported(self):
+        found = problems(APP_STATE_CHILD, """
+        struct Parent: View {
+            @State private var shown = false
+            var body: some View {
+                Color.clear.sheet(isPresented: $shown, content: makeChild)
+            }
+        }
+        """)
+        self.assertEqual(len(found), 1)
+        self.assertIn("isn't a closure", found[0])
+
     def test_content_after_on_dismiss_is_the_content_checked(self):
         found = problems(APP_STATE_CHILD, """
         struct Parent: View {
@@ -243,6 +321,16 @@ class SheetEnvironmentTests(unittest.TestCase):
             }
         }
         """), [])
+
+
+class CommandLineTests(unittest.TestCase):
+    def test_a_root_without_swift_sources_fails(self):
+        import contextlib
+        import io
+        import tempfile
+        with tempfile.TemporaryDirectory() as empty, contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(check_sheet_environment.main(["--repo-root", empty]), 1)
+        self.assertIn("no Swift sources", out.getvalue())
 
 
 class RepositoryTests(unittest.TestCase):
