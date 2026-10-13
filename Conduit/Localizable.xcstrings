@@ -216969,6 +216969,88 @@
           }
         }
       }
+    },
+    "Unticking a category or shortening the history only stops new uploads. What was already sent stays on the host until you turn off sharing and delete it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du eine Kategorie abwählst oder den Verlauf verkürzt, werden nur keine neuen Daten mehr gesendet. Bereits Gesendetes bleibt auf dem Host, bis du die Freigabe ausschaltest und es löschst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desmarcar una categoría o acortar el historial solo detiene los nuevos envíos. Lo que ya se envió se queda en el host hasta que desactives la compartición y lo elimines."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Décocher une catégorie ou raccourcir l'historique arrête seulement les nouveaux envois. Ce qui a déjà été envoyé reste sur l'hôte jusqu'à ce que tu désactives le partage et le supprimes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menghapus centang kategori atau memperpendek riwayat hanya menghentikan unggahan baru. Data yang sudah dikirim tetap ada di host sampai kamu mematikan berbagi dan menghapusnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deselezionare una categoria o accorciare la cronologia interrompe solo i nuovi invii. Ciò che è già stato inviato resta sull'host finché non disattivi la condivisione e lo elimini."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カテゴリのチェックを外したり履歴を短くしたりしても、新しい送信が止まるだけです。送信済みのデータは、共有をオフにして削除するまでホストに残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "카테고리를 해제하거나 기록 기간을 줄이면 새 업로드만 멈춰요. 이미 보낸 데이터는 공유를 끄고 삭제할 때까지 호스트에 남아 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odznaczenie kategorii lub skrócenie historii zatrzymuje tylko nowe wysyłki. To, co już wysłano, zostaje na hoście, dopóki nie wyłączysz udostępniania i tego nie usuniesz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desmarcar uma categoria ou encurtar o histórico só interrompe novos envios. O que já foi enviado fica no host até você desativar o compartilhamento e apagar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Если снять отметку с категории или сократить историю, прекратятся только новые отправки. Уже отправленные данные останутся на хосте, пока вы не выключите передачу и не удалите их."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir kategorinin işaretini kaldırmak veya geçmişi kısaltmak yalnızca yeni yüklemeleri durdurur. Gönderilmiş veriler, paylaşımı kapatıp silene kadar sunucuda kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消勾选某个类别或缩短历史范围只会停止新的上传。已发送的数据会一直保留在主机上，直到你关闭共享并删除它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消勾選某個類別或縮短歷史範圍只會停止新的上傳。已傳送的資料會一直保留在主機上，直到你關閉分享並刪除它。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

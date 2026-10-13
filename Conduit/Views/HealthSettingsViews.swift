@@ -137,7 +137,17 @@ struct HealthSettingsPage: View {
             Text("Hermes gets hourly and daily summaries computed by Apple Health, a summary of each night's sleep, and each workout. Detailed readings add every individual measurement, such as each heart rate reading.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if preferences.isOn {
+                keptOnHostNote
+            }
         }
+    }
+
+    /// Narrowing what's shared doesn't delete what the host already has.
+    private var keptOnHostNote: some View {
+        Text("Unticking a category or shortening the history only stops new uploads. What was already sent stays on the host until you turn off sharing and delete it.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     private var historySection: some View {
@@ -151,6 +161,9 @@ struct HealthSettingsPage: View {
             Text("How far back the first sync reaches. A long history comes in over a few days in the background. Hourly detail covers the last 30 days; older history is daily.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if preferences.isOn {
+                keptOnHostNote
+            }
         }
     }
 
