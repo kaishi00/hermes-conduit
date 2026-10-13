@@ -4603,7 +4603,10 @@ final class AppState: ObservableObject {
         beginHermesCallPresence()
         // Read now, so "call me when it's done" knows whether Hermes can.
         if supportsHermesCalls { Task { await refreshHermesCallsStatus() } }
-        guard voiceCallSavingEnabled else { return }
+        guard voiceCallSavingEnabled else {
+            lastChatCall = nil
+            return
+        }
         voiceCallCheckpointedTurns = 0
         voiceCallCheckpointedAt = .distantPast
         let profile = activeProfile
