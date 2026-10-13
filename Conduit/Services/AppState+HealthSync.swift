@@ -74,7 +74,8 @@ extension AppState {
                 path: DashboardPath.withProfile(path, profile: profile),
                 method: method,
                 body: body,
-                timeoutMilliseconds: 30_000
+                // Never past the pass's own deadline.
+                timeoutMilliseconds: max(1_000, min(30_000, Int(deadline.timeIntervalSinceNow * 1_000)))
             )
         }
         Self.healthSyncLog.info("Health sync (\(reason.rawValue, privacy: .public)): \(String(describing: outcome), privacy: .public)")

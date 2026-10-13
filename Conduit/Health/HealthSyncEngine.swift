@@ -201,6 +201,7 @@ final class HealthSyncEngine: ObservableObject {
             state.destination = destination
         }
         state.lastAttempt = now()
+        lastError = nil
         defer { store.save(state) }
         do {
             let key = try await ensureKey(request: request)

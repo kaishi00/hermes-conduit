@@ -66,6 +66,9 @@ enum HealthDataSourceError: Error {
 final class HealthKitDataSource: HealthDataSource {
     private let store = HKHealthStore()
     private var observers: [HKObserverQuery] = []
+    /// Bumped by every stop, so an `observe` overtaken by a later stop or
+    /// observe leaves nothing running.
+    private var generation = 0
     private let lock = NSLock()
 
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
@@ -261,7 +264,7 @@ final class HealthKitDataSource: HealthDataSource {
                 types.append(Self.quantityType(metric))
             }
         }
-        var started: [HKObserverQuery] = []
+        let mine = lock.withLock { generation }
         for type in types {
             let query = HKObserverQuery(sampleType: type, predicate: nil) { _, completion, error in
                 // An error means no data came with this call; HealthKit
@@ -272,17 +275,28 @@ final class HealthKitDataSource: HealthDataSource {
                 }
                 onChange { completion() }
             }
+            // Recorded as it starts, so a stop running meanwhile sees it.
+            let current = lock.withLock { () -> Bool in
+                guard generation == mine else { return false }
+                observers.append(query)
+                return true
+            }
+            guard current else { return }
             store.execute(query)
-            started.append(query)
             // Hourly is the most HealthKit allows for steps anyway, and an
             // agent gains nothing from minute-by-minute wakes.
             try? await store.enableBackgroundDelivery(for: type, frequency: .hourly)
+            if lock.withLock({ generation != mine }) {
+                // Stopped while this was being turned on.
+                try? await store.disableBackgroundDelivery(for: type)
+                return
+            }
         }
-        lock.withLock { observers = started }
     }
 
     func stopObserving() async {
         let running = lock.withLock { () -> [HKObserverQuery] in
+            generation += 1
             defer { observers = [] }
             return observers
         }
