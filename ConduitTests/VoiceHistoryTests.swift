@@ -897,6 +897,7 @@ extension HermesVoiceGatewayTimeoutTests {
                 ["role": "user", "text": "What's on today?", "at": 10],
                 ["role": "assistant", "text": " ", "at": 11],
                 ["role": "assistant", "text": "Two meetings.", "at": 12],
+                ["role": "tool", "text": "{\"ok\": true}", "at": 13],
             ]],
             ["engine": "gpt-live", "turns": []],
         ]])]
@@ -904,7 +905,8 @@ extension HermesVoiceGatewayTimeoutTests {
         let calls = try await client.chatCalls(chatID: "st chat", profile: "coder")
         XCTAssertEqual(calls.map(\.callID), ["c1"])
         XCTAssertEqual(calls.first?.turns.map(\.speaker), [.user, .assistant])
-        XCTAssertEqual(calls.first?.turns.map(\.text), ["What's on today?", "Two meetings."])
+        XCTAssertEqual(calls.first?.turns.map(\.text), ["What's on today?", "Two meetings."], "only spoken turns")
+        XCTAssertEqual(calls.first?.engine, .gptLive)
         XCTAssertEqual(script.calls.first?.method, "GET")
         XCTAssertEqual(
             script.calls.first?.path,

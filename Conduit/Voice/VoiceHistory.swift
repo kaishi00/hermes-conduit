@@ -112,6 +112,8 @@ struct VoiceTranscriptSaveResult: Equatable {
 struct VoiceChatCall: Identifiable, Equatable {
     let callID: String
     let turns: [VoiceConversationTranscriptEntry]
+    /// Names the assistant's lines for VoiceOver; nil when the host didn't say.
+    var engine: VoiceCallEngine? = nil
 
     var id: String { callID }
 }
@@ -232,9 +234,13 @@ final class VoiceHistoryClient {
             guard let callID = call["call_id"] as? String, !callID.isEmpty else { return nil }
             let turns = (call["turns"] as? [[String: Any]] ?? []).compactMap { turn -> VoiceConversationTranscriptEntry? in
                 guard let text = (turn["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
-                return VoiceConversationTranscriptEntry(speaker: turn["role"] as? String == "user" ? .user : .assistant, text: text)
+                switch turn["role"] as? String {
+                case "user": return VoiceConversationTranscriptEntry(speaker: .user, text: text)
+                case "assistant": return VoiceConversationTranscriptEntry(speaker: .assistant, text: text)
+                default: return nil
+                }
             }
-            return VoiceChatCall(callID: callID, turns: turns)
+            return VoiceChatCall(callID: callID, turns: turns, engine: (call["engine"] as? String).flatMap(VoiceCallEngine.init(rawValue:)))
         }
     }
 
@@ -631,6 +637,9 @@ struct VoiceResumeContext: Equatable {
     }
 
     /// A reconnect's seed: the call so far, its latest turns word for word.
+    /// A long call keeps only those; no summary is asked for, since a
+    /// reconnect picks up within minutes of a drop and the attached chat
+    /// still carries the rest of the thread.
     static func continuing(_ turns: [VoiceTranscriptTurn]) -> VoiceResumeContext {
         let said = turns.map { VoiceResumeTurn(speaker: $0.role == .user ? .user : .assistant, text: ConduitAppLink.removingLinks(from: $0.text)) }
         switch VoiceResumePlan.plan(turns: said, stored: nil) {

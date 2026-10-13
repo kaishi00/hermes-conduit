@@ -4748,6 +4748,8 @@ final class AppState: ObservableObject {
         // Queued before the final save starts, so the turns survive the app
         // being suspended or closed mid-save; the save then settles it.
         let queuedCallID = recorder.outboxRequest?.callID
+        // The id before the save; a chat that's gone gives the call a new one.
+        let callID = recorder.callID
         if let request = recorder.outboxRequest {
             queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             // The outbox leaves it alone while the save below is running.
@@ -4774,9 +4776,11 @@ final class AppState: ObservableObject {
             // A reconnect went on as this call: its recorder saves, queues
             // and links all of it.
             guard !recorder.handedOver else { return }
-            if let queuedCallID {
-                self.voiceTranscriptsSaving.remove(queuedCallID)
-                self.dequeueVoiceTranscript(callID: queuedCallID)
+            // Also settles an entry the reconnected call's first recorder
+            // left for the same id when this one had nothing left to send.
+            for id in Set([callID, queuedCallID].compactMap { $0 }) {
+                self.voiceTranscriptsSaving.remove(id)
+                self.dequeueVoiceTranscript(callID: id)
             }
             let requeued = recorder.outboxRequest
             if recorder.isDisabled { self.voiceCallSaveBlockedKeys.insert(key) }

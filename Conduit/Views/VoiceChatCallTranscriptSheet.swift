@@ -21,7 +21,7 @@ struct VoiceChatCallTranscriptSheet: View {
                     ForEach(call.turns) { entry in
                         LiveVoiceTranscriptBubble(
                             entry: entry,
-                            label: entry.speaker == .user ? AppLocalization.string("You: \(entry.text)") : entry.text
+                            label: label(for: entry)
                         )
                     }
                 }
@@ -35,6 +35,17 @@ struct VoiceChatCallTranscriptSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+
+    /// Who spoke each line, as the live call sheet says it.
+    private func label(for entry: VoiceConversationTranscriptEntry) -> String {
+        guard entry.speaker == .assistant else { return AppLocalization.string("You: \(entry.text)") }
+        switch call.engine {
+        case .gptLive: return AppLocalization.string("GPT-Live: \(entry.text)")
+        case .grokLive: return AppLocalization.string("Grok: \(entry.text)")
+        case .geminiLive: return AppLocalization.string("Gemini: \(entry.text)")
+        case nil: return entry.text
         }
     }
 }
