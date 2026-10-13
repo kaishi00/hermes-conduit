@@ -4265,6 +4265,8 @@ final class AppState: ObservableObject {
     static let chatCallReconnectWindow: TimeInterval = 120
     /// The call kept with its chat whose transcript is open (#556).
     @Published var chatCallTranscript: VoiceChatCall?
+    /// The call card tap whose fetch may still set the transcript.
+    private var chatCallTranscriptRequest: UUID?
     /// A call Hermes made (#449) that the live call now connecting answers.
     var pendingHermesCall: HermesCallOpening?
     /// Opens the voice of a call answered in CallKit; the CallKit call's
@@ -5216,20 +5218,26 @@ final class AppState: ObservableObject {
             errorMessage = unavailable
             return
         }
+        // Only the latest tap answers, whichever fetch lands last.
+        let request = UUID()
+        chatCallTranscriptRequest = request
         Task { [weak self] in
             guard let self else { return }
             let calls: [VoiceChatCall]
             do {
                 calls = try await self.voiceHistoryClient.chatCalls(chatID: chatID, callID: link.callID, profile: link.profile)
             } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.rowUnavailable {
+                guard self.chatCallTranscriptRequest == request else { return }
                 self.errorMessage = unavailable
                 return
             } catch {
+                guard self.chatCallTranscriptRequest == request else { return }
                 // Offline or a host hiccup: the transcript may well be there.
                 let name = AppLocalization.string("Voice call")
                 self.errorMessage = AppLocalization.string("Could not load \(name): \(UserFacingError.message(for: error))")
                 return
             }
+            guard self.chatCallTranscriptRequest == request else { return }
             guard let call = calls.first(where: { $0.callID == link.callID }), !call.turns.isEmpty else {
                 self.errorMessage = unavailable
                 return
