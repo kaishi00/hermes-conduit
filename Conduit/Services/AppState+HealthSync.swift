@@ -90,9 +90,9 @@ extension AppState {
         }
         // A deletion still owed on this dashboard runs first: afterwards it
         // would take the new data with it. One owed elsewhere waits there.
-        await finishHealthDeletionLeftOnHost()
-        if HealthSyncPendingDeletion.load()?.dashboardID == dashboardID {
-            throw DashboardTicketBridgeError.notReady
+        if let error = await finishHealthDeletionLeftOnHost(),
+           HealthSyncPendingDeletion.load()?.dashboardID == dashboardID {
+            throw error
         }
         try await healthSync.source.requestAuthorization(for: categories, detailed: detailed)
         var preferences = healthSyncPreferences
@@ -153,9 +153,11 @@ extension AppState {
 
     /// Deletes what this phone left on a host when sharing was turned off
     /// while that host couldn't be reached.
-    func finishHealthDeletionLeftOnHost() async {
-        guard let pending = HealthSyncPendingDeletion.load(), activeDashboardID == pending.dashboardID,
-              let bridge = dashboardTicketBridge else { return }
+    /// Why a deletion owed on the active dashboard couldn't run, or nil.
+    @discardableResult
+    func finishHealthDeletionLeftOnHost() async -> Error? {
+        guard let pending = HealthSyncPendingDeletion.load(), activeDashboardID == pending.dashboardID else { return nil }
+        guard let bridge = dashboardTicketBridge else { return DashboardTicketBridgeError.notReady }
         do {
             _ = try await bridge.requestJSON(
                 path: DashboardPath.withProfile("\(HealthSyncEngine.base)/wipe", profile: pending.profile),
@@ -166,7 +168,9 @@ extension AppState {
             HealthSyncPendingDeletion.clear()
         } catch {
             Self.healthSyncLog.info("Health deletion still pending: \(HealthSyncEngine.describe(error), privacy: .public)")
+            return error
         }
+        return nil
     }
 
     private func saveHealthSyncPreferences(_ preferences: HealthSyncPreferences) {

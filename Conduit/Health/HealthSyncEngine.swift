@@ -48,7 +48,8 @@ struct HealthSyncStateStore {
     var url: URL
 
     static var standard: HealthSyncStateStore {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         return HealthSyncStateStore(url: base.appendingPathComponent("HealthSync", isDirectory: true)
             .appendingPathComponent("state.json"))
     }

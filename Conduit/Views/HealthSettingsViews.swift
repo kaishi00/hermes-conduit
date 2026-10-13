@@ -156,7 +156,12 @@ struct HealthSettingsPage: View {
             if preferences.isOn {
                 Button {
                     Haptics.selection()
-                    Task { await appState.runHealthSync(reason: .manual) }
+                    Task {
+                        await appState.runHealthSync(reason: .manual)
+                        // Without a connection the pass can't start: say so.
+                        errorMessage = appState.dashboardTicketBridge == nil
+                            ? DashboardTicketBridgeError.notReady.errorDescription : nil
+                    }
                 } label: {
                     Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
                         .frame(maxWidth: .infinity)
