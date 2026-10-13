@@ -668,6 +668,9 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     private(set) var activationCalls: [(active: Bool, options: AVAudioSession.SetActiveOptions)] = []
     /// Off by default: every policy transition sets the category.
     var reportsCurrentCategory = false
+    /// The session's category as last set. Session state, not a
+    /// recording: `resetRecordings()` leaves it, as on a device.
+    private var currentCategory: CategoryCall?
     var categoryError: Error?
     var activateError: Error?
     var deactivateError: Error?
@@ -684,6 +687,8 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
         activationCalls.last(where: { !$0.active })?.options
     }
 
+    /// Clears what was recorded, not the session's state: the category,
+    /// the route and a live speaker override all survive it, as on a device.
     func resetRecordings() {
         categoryCalls.removeAll()
         activationCalls.removeAll()
@@ -700,7 +705,7 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     /// The production rule: category and mode match, the options cover the
     /// configuration's, and both agree on the speaker default.
     func isConfigured(as configuration: VoiceAudioSessionConfiguration) -> Bool {
-        guard reportsCurrentCategory, let last = categoryCalls.last else { return false }
+        guard reportsCurrentCategory, let last = currentCategory else { return false }
         let reported = last.options.union(systemAddedOptions)
         return last.category == configuration.category
             && last.mode == configuration.mode
@@ -723,6 +728,7 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     ) throws {
         if let categoryError { throw categoryError }
         categoryCalls.append(CategoryCall(category: category, mode: mode, options: options))
+        currentCategory = CategoryCall(category: category, mode: mode, options: options)
         // A category change clears a speaker override, as on a device.
         if speakerOverridden {
             speakerOverridden = false

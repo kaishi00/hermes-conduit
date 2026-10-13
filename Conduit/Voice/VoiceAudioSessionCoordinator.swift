@@ -54,7 +54,9 @@ protocol VoiceAudioSessionControlling: AnyObject {
     func overrideOutputToSpeaker() throws
 }
 
-/// Session seams that never route (tests that don't care about output).
+/// Defaults for session seams that never route: test doubles that don't
+/// care about output. A real session must implement every one, or in-call
+/// speaker handling quietly turns off.
 extension VoiceAudioSessionControlling {
     var isOutputOnBuiltInSpeaker: Bool { false }
     var isOutputOnBuiltInReceiver: Bool { false }
