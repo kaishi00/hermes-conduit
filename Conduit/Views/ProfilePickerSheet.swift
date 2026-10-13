@@ -126,6 +126,7 @@ private struct ProfilePickerRow: View {
                         .overlay {
                             if isSavingPhoto {
                                 ProgressView().frame(width: 48, height: 48).background(.ultraThinMaterial, in: Circle())
+                                    .accessibilityLabel(AppLocalization.string("Saving…"))
                             }
                         }
                     Image(systemName: "camera.fill").font(.caption2.weight(.bold)).foregroundStyle(Color.conduitBackgroundColor)
@@ -216,9 +217,13 @@ private struct ProfilePickerRow: View {
     /// Nil removes the photo.
     private func savePhoto(_ image: UIImage?) {
         isSavingPhoto = true
+        saveError = nil
         Task {
             saveError = await appState.setProfilePhoto(image, for: profile)
             isSavingPhoto = false
+            if let saveError {
+                UIAccessibility.post(notification: .announcement, argument: saveError)
+            }
         }
     }
 

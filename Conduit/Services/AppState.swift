@@ -15790,19 +15790,18 @@ final class AppState: ObservableObject {
         profileAvatarLastWrite[name] = profileAvatarWriteSerial
     }
 
-    /// Keeps the profile's photo file a copy of its Hermes picture (nil: it
-    /// has none), so chats and the profile picker draw it at launch and
-    /// offline.
+    /// Keeps the profile's photo file a copy of its Hermes picture, so chats
+    /// and the profile picker draw it at launch and offline. A read with no
+    /// usable bytes keeps the last copy: only a roster saying the profile
+    /// has no picture removes it (`dropMirror`).
     private func mirrorHermesPicture(_ data: Data?, for name: String, dashboardID: UUID?) {
-        guard dashboardID == activeDashboardID else { return }
-        guard let data else {
-            removeProfileAvatarFile(for: name)
-            return
-        }
-        if let url = try? profileAppearanceStore.saveMirroredAvatar(data, for: name, dashboardID: dashboardID) {
-            // Assigned even when the URL is unchanged: the file's content
-            // may be new, and views redraw on the publish.
-            profileAvatarURLs[name] = url
+        guard dashboardID == activeDashboardID, let data,
+              let saved = try? profileAppearanceStore.saveMirroredAvatar(data, for: name, dashboardID: dashboardID)
+        else { return }
+        // Published when the bytes changed (same URL, new content) or the
+        // URL is new, so views redraw only for a real change.
+        if saved.changed || profileAvatarURLs[name] != saved.url {
+            profileAvatarURLs[name] = saved.url
         }
     }
 
@@ -15852,7 +15851,11 @@ final class AppState: ObservableObject {
 
     /// A photo picked on this device before photos moved to Hermes becomes
     /// the profile's Hermes picture. A failed upload keeps the photo and is
-    /// tried again at the next roster read.
+    /// tried again at the next roster read. A failed `imageKind` write after
+    /// a good upload is accepted: the picture is on Hermes and Conduit shows
+    /// it, and only Desktop keeps its old look until the photo is set again
+    /// (an asset without `imageKind = photo` is also a state Desktop itself
+    /// writes, so a sync can't tell it apart to retry).
     private func moveDevicePhotoToHermes(_ bot: BotProfile, client: HermesClient) async {
         let dashboardID = activeDashboardID
         _ = await queueProfilePhotoWrite(bot.name) {

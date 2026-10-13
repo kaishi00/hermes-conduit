@@ -570,7 +570,10 @@ extension AppStateMultiDashboardTests {
         let store = makeAppearanceStore()
         let png = photoData()
 
-        let url = try store.saveMirroredAvatar(png, for: "coder", dashboardID: primary)
+        let saved = try store.saveMirroredAvatar(png, for: "coder", dashboardID: primary)
+        let url = saved.url
+        XCTAssertTrue(saved.changed)
+        XCTAssertFalse(try store.saveMirroredAvatar(png, for: "coder", dashboardID: primary).changed, "the same bytes are not rewritten")
 
         XCTAssertEqual(try Data(contentsOf: url), png, "the Hermes bytes are kept as they are, transparency included")
         XCTAssertTrue(store.isMirrored("coder", dashboardID: primary))

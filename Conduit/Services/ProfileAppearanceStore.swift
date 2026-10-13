@@ -113,19 +113,20 @@ final class ProfileAppearanceStore {
     /// Stores the Hermes asset's bytes as the profile's photo. The bytes are
     /// kept as they are (PNG, JPEG or WebP; ImageIO reads the content, not
     /// the file extension), so a transparent picture stays transparent.
-    /// Unchanged bytes are not rewritten.
-    func saveMirroredAvatar(_ data: Data, for profile: String, dashboardID: UUID?) throws -> URL {
+    /// Unchanged bytes are not rewritten; `changed` says whether they were.
+    func saveMirroredAvatar(_ data: Data, for profile: String, dashboardID: UUID?) throws -> (url: URL, changed: Bool) {
         guard UIImage(data: data) != nil else { throw ProfileAppearanceError.invalidImage }
         guard let directory = avatarsDirectory(dashboardID: dashboardID, create: true) else {
             throw CocoaError(.fileWriteUnknown)
         }
         let url = directory.appendingPathComponent(Self.fileName(for: profile), isDirectory: false)
-        if (try? Data(contentsOf: url)) != data {
+        let changed = (try? Data(contentsOf: url)) != data
+        if changed {
             try data.write(to: url, options: .atomic)
             ProfileAvatarImageCache.forget(url)
         }
         setMirrored(true, profile: profile, dashboardID: dashboardID)
-        return url
+        return (url, changed)
     }
 
     func isMirrored(_ profile: String, dashboardID: UUID?) -> Bool {
