@@ -405,6 +405,7 @@ struct MainView: View {
         }
         .sheet(isPresented: $appState.showSidebar, onDismiss: presentSettingsAfterSidebarDismissal) {
             SidebarView(onRequestSettings: presentSettingsFromDrawer)
+                .environmentObject(appState)
                 .presentationDetents([.large])
                 .transaction { transaction in
                     transaction.animation = .easeInOut(duration: 0.15)
