@@ -55,8 +55,10 @@ extension AppState {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+        // No dashboard in use yet: nothing to switch back to, try later.
+        guard let activeDashboardID else { return .unfinished }
         guard activeDashboardID == destination.dashboardID else {
-            if activeDashboardID != nil { engine.note(.otherDashboard) }
+            engine.note(.otherDashboard)
             return .paused(.otherDashboard)
         }
         guard let bridge = dashboardTicketBridge else { return .unfinished }

@@ -14,6 +14,7 @@
 
 import Foundation
 import HealthKit
+import os
 
 /// What the sync engine needs from Apple Health. Tests use a fake.
 protocol HealthDataSource: AnyObject {
@@ -64,6 +65,7 @@ enum HealthDataSourceError: Error {
 }
 
 final class HealthKitDataSource: HealthDataSource {
+    private static let log = Logger(subsystem: "com.milim.relay", category: "health-sync")
     private let store = HKHealthStore()
     private var observers: [HKObserverQuery] = []
     /// Bumped by every stop, so an `observe` overtaken by a later stop or
@@ -285,9 +287,16 @@ final class HealthKitDataSource: HealthDataSource {
             store.execute(query)
             // Hourly is the most HealthKit allows for steps anyway, and an
             // agent gains nothing from minute-by-minute wakes.
-            try? await store.enableBackgroundDelivery(for: type, frequency: .hourly)
+            do {
+                try await store.enableBackgroundDelivery(for: type, frequency: .hourly)
+            } catch {
+                // Without it only foreground and background-refresh passes run.
+                Self.log.error("Health background delivery failed: \(error.localizedDescription, privacy: .public)")
+            }
             if lock.withLock({ generation != mine }) {
-                // Stopped while this was being turned on.
+                // Stopped while this was being turned on. The stop may have
+                // run before the query did, so stop it again here.
+                store.stop(query)
                 try? await store.disableBackgroundDelivery(for: type)
                 return
             }
