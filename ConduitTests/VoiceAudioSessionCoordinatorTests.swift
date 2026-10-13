@@ -497,8 +497,23 @@ extension VoiceAudioSessionCoordinatorTests {
         // The Speaker button turned the speaker off, then an interruption
         // ended and CallKit activated the audio again.
         session.isOutputOnBuiltInSpeaker = false
+        session.isOutputOnBuiltInReceiver = true
         session.resetRecordings()
 
+        coordinator.nativeCallAudioActivated()
+
+        XCTAssertEqual(session.speakerOverrides, 0)
+    }
+
+    func testCallAnsweredOnHeadphonesStaysOnThem() {
+        session.isOutputOnBuiltInReceiver = false
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+
+        XCTAssertEqual(session.speakerOverrides, 0, "the override would take the call off the headset")
+
+        // The headphones come off mid-call: iOS's earpiece stands.
+        session.isOutputOnBuiltInReceiver = true
         coordinator.nativeCallAudioActivated()
 
         XCTAssertEqual(session.speakerOverrides, 0)
@@ -532,6 +547,7 @@ extension VoiceAudioSessionCoordinatorTests {
         _ = try coordinator.acquire(.conversationCapture)
         // The Speaker button turned the speaker off.
         session.isOutputOnBuiltInSpeaker = false
+        session.isOutputOnBuiltInReceiver = true
         session.resetRecordings()
 
         try coordinator.reassert()
@@ -586,6 +602,8 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     /// (the pre-#373 policy) unless a test opts out.
     var isOtherAudioPlaying = true
     var isOutputOnBuiltInSpeaker = false
+    /// A call answered with nothing connected starts on the earpiece.
+    var isOutputOnBuiltInReceiver = true
     private(set) var speakerOverrides = 0
     struct CategoryCall: Equatable {
         let category: AVAudioSession.Category
@@ -623,6 +641,7 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
         if let overrideError { throw overrideError }
         speakerOverrides += 1
         isOutputOnBuiltInSpeaker = true
+        isOutputOnBuiltInReceiver = false
     }
 
     func setCategory(

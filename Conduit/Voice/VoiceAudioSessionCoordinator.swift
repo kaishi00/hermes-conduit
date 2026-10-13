@@ -44,6 +44,9 @@ protocol VoiceAudioSessionControlling: AnyObject {
     var isOtherAudioPlaying: Bool { get }
     /// Whether the session plays out of the built-in loudspeaker right now.
     var isOutputOnBuiltInSpeaker: Bool { get }
+    /// Whether the session plays out of the built-in earpiece right now
+    /// (no headphones, Bluetooth, or car).
+    var isOutputOnBuiltInReceiver: Bool { get }
     /// Sends output to the loudspeaker; the override is cleared by
     /// CallKit's Speaker button, or by the next category change.
     func overrideOutputToSpeaker() throws
@@ -52,6 +55,7 @@ protocol VoiceAudioSessionControlling: AnyObject {
 /// Session seams that never route (tests that don't care about output).
 extension VoiceAudioSessionControlling {
     var isOutputOnBuiltInSpeaker: Bool { false }
+    var isOutputOnBuiltInReceiver: Bool { false }
     func overrideOutputToSpeaker() throws {}
 }
 
@@ -75,6 +79,10 @@ final class SystemVoiceAudioSession: VoiceAudioSessionControlling {
 
     var isOutputOnBuiltInSpeaker: Bool {
         AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+    }
+
+    var isOutputOnBuiltInReceiver: Bool {
+        AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInReceiver }
     }
 
     func overrideOutputToSpeaker() throws {
@@ -262,8 +270,15 @@ final class VoiceAudioSessionCoordinator {
     /// it always has, now as an override the Speaker button can clear.
     /// Only the first activation: CallKit activates again after an
     /// interruption, and that must not undo the earpiece the user chose.
+    /// And only from the earpiece: like `.defaultToSpeaker`, a call
+    /// answered on headphones, Bluetooth or in the car stays there (the
+    /// override would take the loudspeaker and the phone's own microphone).
     func nativeCallAudioActivated() {
         guard isInNativeCall, !nativeCallSpeakerChosen else { return }
+        guard session.isOutputOnBuiltInReceiver else {
+            nativeCallSpeakerChosen = true
+            return
+        }
         do {
             try session.overrideOutputToSpeaker()
             // Only once it took: a failed move retries on the next
