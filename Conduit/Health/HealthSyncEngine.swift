@@ -201,6 +201,8 @@ final class HealthSyncEngine: ObservableObject {
             state.destination = destination
         }
         state.lastAttempt = now()
+        // Each outcome below sets its own pause; an old one would hide a new error.
+        state.pause = nil
         lastError = nil
         defer { store.save(state) }
         do {

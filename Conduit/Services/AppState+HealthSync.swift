@@ -64,6 +64,8 @@ extension AppState {
         // connection included, as iOS allows; longer on screen so a first
         // sync can bring in a good part of the history.
         let deadline = inBackground ? started.addingTimeInterval(25) : Date().addingTimeInterval(120)
+        // Sharing may have been turned off while this waited.
+        guard healthSyncPreferences.isOn, healthSyncPreferences.destination == destination else { return .off }
         let profile = destination.profile
         let outcome = await engine.sync(preferences: preferences, deadline: deadline) { [weak self] path, method, body in
             // A dashboard swapped mid-pass belongs to someone else's data.
@@ -142,8 +144,10 @@ extension AppState {
                                              method: method, body: body)
             }
         }
-        let deleted = await healthSync.turnOff(deleteFromHost: request)
+        // Off before anything waits, so a pass queued meanwhile finds it off
+        // and can't send data after the deletion.
         saveHealthSyncPreferences(HealthSyncPreferences())
+        let deleted = await healthSync.turnOff(deleteFromHost: request)
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.healthSyncTaskIdentifier)
         if deleteFromHost, !deleted, let destination {
             HealthSyncPendingDeletion(dashboardID: destination.dashboardID, profile: destination.profile,

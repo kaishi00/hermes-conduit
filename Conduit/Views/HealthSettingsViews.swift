@@ -120,6 +120,9 @@ struct HealthSettingsPage: View {
                     Toggle(isOn: categoryBinding(category)) {
                         Label(category.title, systemImage: category.symbol)
                     }
+                    // The last category stays on while sharing is on: turning
+                    // sharing off is the button below.
+                    .disabled(preferences.isOn && categories == [category])
                     .accessibilityIdentifier("settings.health.\(category.rawValue)")
                     Text(category.summary)
                         .font(.caption)

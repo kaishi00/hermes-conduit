@@ -150,6 +150,13 @@ extension HermesVoiceGatewayTimeoutTests {
         host.ingestError = DashboardTicketBridgeError.http(status: 404, detail: "")
         let missing = await engine.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(missing, .paused(.pluginMissing))
+
+        // A plain failure replaces an old pause, so its error shows.
+        host.ingestError = URLError(.timedOut)
+        let failed = await engine.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture, request: host.handle)
+        XCTAssertNil(engine.state.pause)
+        if case .failed = failed {} else { XCTFail("Expected a failure, got \(failed)") }
+        XCTAssertNotNil(engine.lastError)
     }
 
     func testTurningOffDeletesFromTheHostAndForgetsTheKey() async {
