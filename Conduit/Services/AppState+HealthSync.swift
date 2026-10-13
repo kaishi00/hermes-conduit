@@ -146,8 +146,8 @@ extension AppState {
     @discardableResult
     func turnOffHealthSync(deleteFromHost: Bool) async -> Bool {
         let destination = healthSyncPreferences.destination
-        healthSync.readStateIfNeeded()
-        let deviceID = healthSync.state.deviceID
+        // Unknown until the state file can be read (never while unlocked in practice).
+        let deviceID = healthSync.readStateIfNeeded() ? healthSync.state.deviceID : nil
         var request: HealthSyncEngine.Request?
         if deleteFromHost, let destination, activeDashboardID == destination.dashboardID,
            let bridge = dashboardTicketBridge {
@@ -161,7 +161,7 @@ extension AppState {
         saveHealthSyncPreferences(HealthSyncPreferences())
         let deleted = await healthSync.turnOff(deleteFromHost: request)
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.healthSyncTaskIdentifier)
-        if deleteFromHost, !deleted, let destination {
+        if deleteFromHost, !deleted, let destination, let deviceID {
             HealthSyncPendingDeletion(dashboardID: destination.dashboardID, profile: destination.profile,
                                       deviceID: deviceID).save()
         }

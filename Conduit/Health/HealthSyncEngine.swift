@@ -217,13 +217,21 @@ final class HealthSyncEngine: ObservableObject {
     /// host confirmed the deletion.
     func turnOff(deleteFromHost request: Request?) async -> Bool {
         turnOffs += 1
-        readStateIfNeeded()
         // A pass still running could save a key after it was forgotten.
         if let running {
             running.cancel()
             _ = await running.value
+            if self.running == running {
+                self.running = nil
+                runningPreferences = nil
+                isSyncing = false
+            }
         }
         await source.stopObserving()
+        keys.clear()
+        // Without the saved state this phone's ID is unknown: leave the file
+        // and the host alone rather than wipe or save under a new one.
+        guard readStateIfNeeded() else { return false }
         var deleted = false
         if let request {
             do {
@@ -236,7 +244,6 @@ final class HealthSyncEngine: ObservableObject {
                 lastError = Self.describe(error)
             }
         }
-        keys.clear()
         state.startOver()
         store.save(state)
         return deleted
