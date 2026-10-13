@@ -2,7 +2,7 @@
 //  AppState+HealthSync.swift
 //  Conduit
 //
-//  When health data syncs, and with which connection (designs/health-sync.md).
+//  When health data syncs, and with which connection.
 //  A pass runs when Conduit connects to the host or comes to the
 //  foreground, when Apple Health wakes Conduit with new data (background
 //  delivery, about hourly), on a background refresh, and on "Sync now".
@@ -38,6 +38,8 @@ extension AppState {
     /// Runs a pass when sharing is on and its dashboard is the one in use.
     @discardableResult
     func runHealthSync(reason: HealthSyncReason) async -> HealthSyncEngine.Outcome {
+        let started = Date()
+        await finishHealthDeletionLeftOnHost()
         let preferences = healthSyncPreferences
         guard preferences.isOn, let destination = preferences.destination else { return .off }
         let engine = healthSync
@@ -49,7 +51,7 @@ extension AppState {
         let inBackground = !PhoneScenePresence.isInForeground
         // A background launch connects on its own; give it a moment.
         if dashboardTicketBridge == nil, inBackground {
-            for _ in 0..<15 where dashboardTicketBridge == nil {
+            for _ in 0..<10 where dashboardTicketBridge == nil {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
@@ -58,9 +60,10 @@ extension AppState {
             return .paused(.otherDashboard)
         }
         guard let bridge = dashboardTicketBridge else { return .unfinished }
-        // About half a minute in the background, as iOS allows; longer on
-        // screen so a first sync can bring in a good part of the history.
-        let deadline = Date().addingTimeInterval(inBackground ? 25 : 120)
+        // About half a minute in the background in all, waiting for the
+        // connection included, as iOS allows; longer on screen so a first
+        // sync can bring in a good part of the history.
+        let deadline = inBackground ? started.addingTimeInterval(25) : Date().addingTimeInterval(120)
         let profile = destination.profile
         let outcome = await engine.sync(preferences: preferences, deadline: deadline) { [weak self] path, method, body in
             // A dashboard swapped mid-pass belongs to someone else's data.
@@ -85,6 +88,10 @@ extension AppState {
         guard let dashboardID = activeDashboardID, let baseURL = connection?.baseUrl else {
             throw DashboardTicketBridgeError.notReady
         }
+        // A deletion still owed on this dashboard must not later take the
+        // new data with it; one owed elsewhere still runs there.
+        await finishHealthDeletionLeftOnHost()
+        if HealthSyncPendingDeletion.load()?.dashboardID == dashboardID { HealthSyncPendingDeletion.clear() }
         try await healthSync.source.requestAuthorization(for: categories, detailed: detailed)
         var preferences = healthSyncPreferences
         preferences.destination = HealthSyncDestination(
@@ -117,10 +124,13 @@ extension AppState {
     }
 
     /// Turns sharing off. With `deleteFromHost`, this phone's health data
-    /// and key are deleted on the host first (when it can be reached).
+    /// and key are deleted on the host first. False when the host couldn't
+    /// be reached: the deletion then runs the next time Conduit connects to
+    /// that dashboard.
     @discardableResult
     func turnOffHealthSync(deleteFromHost: Bool) async -> Bool {
         let destination = healthSyncPreferences.destination
+        let deviceID = healthSync.state.deviceID
         var request: HealthSyncEngine.Request?
         if deleteFromHost, let destination, activeDashboardID == destination.dashboardID,
            let bridge = dashboardTicketBridge {
@@ -132,7 +142,29 @@ extension AppState {
         let deleted = await healthSync.turnOff(deleteFromHost: request)
         saveHealthSyncPreferences(HealthSyncPreferences())
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.healthSyncTaskIdentifier)
+        if deleteFromHost, !deleted, let destination {
+            HealthSyncPendingDeletion(dashboardID: destination.dashboardID, profile: destination.profile,
+                                      deviceID: deviceID).save()
+        }
         return deleted || !deleteFromHost
+    }
+
+    /// Deletes what this phone left on a host when sharing was turned off
+    /// while that host couldn't be reached.
+    func finishHealthDeletionLeftOnHost() async {
+        guard let pending = HealthSyncPendingDeletion.load(), activeDashboardID == pending.dashboardID,
+              let bridge = dashboardTicketBridge else { return }
+        do {
+            _ = try await bridge.requestJSON(
+                path: DashboardPath.withProfile("\(HealthSyncEngine.base)/wipe", profile: pending.profile),
+                method: "POST", body: ["device_id": pending.deviceID])
+            HealthSyncPendingDeletion.clear()
+        } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+            // No health sync on this host any more: nothing left to delete.
+            HealthSyncPendingDeletion.clear()
+        } catch {
+            Self.healthSyncLog.info("Health deletion still pending: \(HealthSyncEngine.describe(error), privacy: .public)")
+        }
     }
 
     private func saveHealthSyncPreferences(_ preferences: HealthSyncPreferences) {

@@ -3,7 +3,7 @@
 //  Conduit
 //
 //  Settings > Health: opt-in sharing of Apple Health data with one Hermes
-//  profile (designs/health-sync.md). Off until the user picks what to share
+//  profile. Off until the user picks what to share
 //  and agrees on the consent sheet; turning it off can delete the host's copy.
 //
 
@@ -275,7 +275,7 @@ struct HealthSettingsPage: View {
         Task {
             let done = await appState.turnOffHealthSync(deleteFromHost: delete)
             if !done {
-                errorMessage = AppLocalization.string("Sharing is off, but the host couldn't be reached to delete the data. Turn sharing on and off again while connected to delete it.")
+                errorMessage = AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
             }
             isWorking = false
         }

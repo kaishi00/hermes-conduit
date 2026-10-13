@@ -18,6 +18,8 @@ import HealthKit
 /// What the sync engine needs from Apple Health. Tests use a fake.
 protocol HealthDataSource: AnyObject {
     var isAvailable: Bool { get }
+    /// Detailed readings read the same types as the summaries, so `detailed`
+    /// asks for nothing more today; it's passed for sources that differ.
     func requestAuthorization(for categories: Set<HealthCategory>, detailed: Set<HealthCategory>) async throws
     /// Hourly or daily buckets for `metric` in [from, to).
     func buckets(_ metric: HealthMetric, grain: HealthGrain, from: Date, to: Date, calendar: Calendar) async throws -> [HealthBucket]
@@ -254,8 +256,9 @@ final class HealthKitDataSource: HealthDataSource {
                 // One type per category is enough to wake Conduit: a pass
                 // reads every shared metric. Steps and heart rate change
                 // most often.
-                types.append(Self.quantityType(category.metrics.first(where: { $0 == .steps || $0 == .heartRate })
-                    ?? category.metrics[0]))
+                guard let metric = category.metrics.first(where: { $0 == .steps || $0 == .heartRate })
+                    ?? category.metrics.first else { continue }
+                types.append(Self.quantityType(metric))
             }
         }
         var started: [HKObserverQuery] = []

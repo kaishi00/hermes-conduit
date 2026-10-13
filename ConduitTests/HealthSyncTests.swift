@@ -2,7 +2,7 @@
 //  HealthSyncTests.swift
 //  ConduitTests
 //
-//  Health sharing (designs/health-sync.md): the sealing matches the
+//  Health sharing: the sealing matches the
 //  notifier's vector, nights are summarized by the fixed rule, batches keep
 //  windows whole, and a pass sets up a key, sends sealed batches and moves
 //  its cursors only after the host has taken them. Written as an extension
@@ -17,19 +17,19 @@ import XCTest
 @MainActor
 extension HermesVoiceGatewayTimeoutTests {
     // The notifier's tests/health_vector.json: both sides must agree.
-    private let vectorHostPublic = "j0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8"
-    private let vectorDevicePrivate = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8"
-    private let vectorKid = "568703226d4ca837141b5eebba642b64"
+    private static let vectorHostPublic = "j0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8"
+    private static let vectorDevicePrivate = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8"
+    private static let vectorKid = "568703226d4ca837141b5eebba642b64"
 
     func testSealingMatchesTheNotifierVector() throws {
-        let raw = try XCTUnwrap(NotificationE2E.base64URLDecoded(vectorDevicePrivate))
+        let raw = try XCTUnwrap(NotificationE2E.base64URLDecoded(Self.vectorDevicePrivate))
         let device = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: raw)
         XCTAssertEqual(NotificationE2E.base64URL(device.publicKey.rawRepresentation), "NYBy1jZYgNGu6jKa35EhODhR7SGijjt16WXQ0s0WYlQ")
-        let hostPublic = try XCTUnwrap(NotificationE2E.base64URLDecoded(vectorHostPublic))
-        XCTAssertEqual(HealthSyncCrypto.keyID(devicePublic: device.publicKey.rawRepresentation, hostPublic: hostPublic), vectorKid)
+        let hostPublic = try XCTUnwrap(NotificationE2E.base64URLDecoded(Self.vectorHostPublic))
+        XCTAssertEqual(HealthSyncCrypto.keyID(devicePublic: device.publicKey.rawRepresentation, hostPublic: hostPublic), Self.vectorKid)
 
         let key = try HealthSyncCrypto.agree(devicePrivate: device, deviceID: "device-vector-1",
-                                             hostPublicKey: vectorHostPublic, kid: vectorKid)
+                                             hostPublicKey: Self.vectorHostPublic, kid: Self.vectorKid)
         XCTAssertEqual(key.key.map { String(format: "%02x", $0) }.joined(),
                        "b5b0006ac3d4b1ff1c5bc4d29245fbe723ea03ffdd9ee3a38b8458bef47c2332")
 
@@ -39,10 +39,10 @@ extension HermesVoiceGatewayTimeoutTests {
             nonce: try ChaChaPoly.Nonce(data: Data(count: 12)))
         XCTAssertEqual(envelope["nonce"] as? String, "AAAAAAAAAAAAAAAA")
         XCTAssertEqual(envelope["ct"] as? String, "TcrUbI4YW2m833vWYhvn-tbMWAmZ4-XCdXzRzWT4wxEnlx8N7Z45UyvsHAt6")
-        XCTAssertEqual(envelope["kid"] as? String, vectorKid)
+        XCTAssertEqual(envelope["kid"] as? String, Self.vectorKid)
 
         XCTAssertThrowsError(try HealthSyncCrypto.agree(devicePrivate: device, deviceID: "device-vector-1",
-                                                        hostPublicKey: vectorHostPublic, kid: "0000"),
+                                                        hostPublicKey: Self.vectorHostPublic, kid: "0000"),
                              "An answer for another key is refused")
     }
 
@@ -164,6 +164,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(engine.state.historyStart)
         XCTAssertTrue(engine.state.anchors.isEmpty)
         XCTAssertNil(keys.key)
+
+        // Deletion asked for but no way to reach the host is not a deletion.
+        let offline = makeHealthEngine(source: FakeHealthSource())
+        let offlineDeleted = await offline.turnOff(deleteFromHost: nil)
+        XCTAssertFalse(offlineDeleted)
     }
 
     func testHealthSettingsLinkOpensOnlyInsideTheApp() throws {

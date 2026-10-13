@@ -215166,88 +215166,6 @@
         }
       }
     },
-    "Sharing is off, but the host couldn't be reached to delete the data. Turn sharing on and off again while connected to delete it." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Teilen ist aus, aber der Host war nicht erreichbar, um die Daten zu löschen. Schalte das Teilen bei bestehender Verbindung erneut ein und aus, um sie zu löschen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se dejó de compartir, pero no se pudo conectar con el host para eliminar los datos. Vuelve a activar y desactivar la opción mientras tengas conexión para eliminarlos."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le partage est désactivé, mais l'hôte n'a pas pu être joint pour supprimer les données. Réactivez puis désactivez le partage en étant connecté pour les supprimer."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Berbagi sudah dimatikan, tetapi host tidak dapat dihubungi untuk menghapus data. Nyalakan dan matikan berbagi lagi saat terhubung untuk menghapusnya."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La condivisione è disattivata, ma non è stato possibile raggiungere l'host per eliminare i dati. Per eliminarli, riattiva e disattiva la condivisione mentre sei connesso."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "共有はオフになりましたが、ホストに接続できなかったためデータを削除できませんでした。削除するには、接続中に共有をもう一度オンにしてからオフにしてください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "공유는 꺼졌지만 호스트에 연결할 수 없어 데이터를 삭제하지 못했어요. 삭제하려면 연결된 상태에서 공유를 다시 켰다가 끄세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Udostępnianie jest wyłączone, ale nie udało się połączyć z hostem, aby usunąć dane. Aby je usunąć, włącz i ponownie wyłącz udostępnianie, gdy będziesz mieć połączenie."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O compartilhamento está desativado, mas não foi possível acessar o host para apagar os dados. Ative e desative o compartilhamento novamente enquanto estiver conectado para apagá-los."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Отправка данных выключена, но не удалось связаться с хостом, чтобы удалить данные. Чтобы удалить их, при наличии подключения снова включите и выключите отправку."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Paylaşım kapalı ancak verileri silmek için ana makineye ulaşılamadı. Silmek için bağlıyken paylaşımı yeniden açıp kapatın."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "共享已关闭，但无法连接主机来删除数据。请在联网时重新开启并关闭共享以删除数据。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分享已關閉，但無法連線到主機來刪除資料。請在連線時重新開啟再關閉分享以刪除資料。"
-          }
-        }
-      }
-    },
     "Sharing with %@ on %@" : {
       "localizations" : {
         "de" : {
@@ -216966,6 +216884,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的代理會在你提問或任務需要時讀取這些資料。它讀取的任何內容都會依照你的 Hermes 所用 AI 模型供應商的條款傳送給該供應商。如果你的 Hermes 由他人託管（例如 Hermes Cloud），對方也能讀取這些資料。"
+          }
+        }
+      }
+    },
+    "Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Teilen ist aus. Der Host war nicht erreichbar, daher löscht Conduit die Daten dort, sobald es sich das nächste Mal verbindet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Has dejado de compartir. No se pudo contactar con el host, así que Conduit borrará los datos allí la próxima vez que se conecte."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le partage est désactivé. L’hôte était injoignable : Conduit supprimera les données sur celui-ci lors de sa prochaine connexion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berbagi nonaktif. Host tidak dapat dijangkau, jadi Conduit akan menghapus datanya di sana saat terhubung lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La condivisione è disattivata. L’host non era raggiungibile, quindi Conduit eliminerà i dati lì alla prossima connessione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有をオフにしました。ホストに接続できなかったため、次に接続したときに Conduit がホスト上のデータを削除します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유가 꺼졌어요. 호스트에 연결할 수 없어서 다음에 연결될 때 Conduit이 호스트의 데이터를 삭제해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Udostępnianie jest wyłączone. Nie udało się połączyć z hostem, więc Conduit usunie tam dane przy następnym połączeniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O compartilhamento está desativado. Não foi possível acessar o host, então o Conduit vai apagar os dados lá na próxima vez que se conectar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обмен выключен. Хост был недоступен, поэтому Conduit удалит данные на нём при следующем подключении."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paylaşım kapalı. Ana bilgisayara ulaşılamadı; Conduit bir sonraki bağlantıda verileri orada silecek."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已关闭共享。无法连接主机，Conduit 会在下次连接时删除主机上的数据。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已關閉共享。無法連線到主機，Conduit 會在下次連線時刪除主機上的資料。"
           }
         }
       }

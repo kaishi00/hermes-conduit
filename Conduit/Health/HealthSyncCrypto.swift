@@ -4,8 +4,10 @@
 //
 //  End-to-end sealing of health uploads. The phone and the Hermes profile
 //  agree a key once by X25519 (POST /health/key): only public keys cross
-//  the wire, so someone who watched that exchange, even on a plain-http
-//  LAN dashboard, still can't open later uploads. Every batch is sealed
+//  the wire, so someone who only watched that exchange, even on a plain-http
+//  LAN dashboard, can't open later uploads. The host key isn't otherwise
+//  authenticated: over plain http, someone able to alter that one answer
+//  could put in their own key, so HTTPS or a private tunnel still matters. Every batch is sealed
 //  with ChaCha20-Poly1305 under an HKDF-SHA256 key; the associated data
 //  binds it to the key id, the device and the batch id. Must match
 //  health_store.py in hermes-conduit-notifier; both check the vector in

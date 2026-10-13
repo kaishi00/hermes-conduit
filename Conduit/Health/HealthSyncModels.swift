@@ -2,7 +2,7 @@
 //  HealthSyncModels.swift
 //  Conduit
 //
-//  Health data for Hermes (designs/health-sync.md). The user turns on
+//  Health data for Hermes. The user turns on
 //  sharing per category; Conduit reads Apple Health and sends it straight
 //  to one Hermes profile on one dashboard, sealed end to end, never through
 //  the push relay. The notifier plugin keeps it for the read-only
@@ -240,6 +240,29 @@ struct HealthSyncPreferences: Codable, Equatable {
     func save(to defaults: UserDefaults = .standard) {
         guard let data = try? JSONEncoder().encode(self) else { return }
         defaults.set(data, forKey: Self.storageKey)
+    }
+}
+
+/// A deletion the user asked for while the host couldn't be reached: this
+/// phone's data on that dashboard and profile, deleted on the next connect.
+struct HealthSyncPendingDeletion: Codable, Equatable {
+    var dashboardID: UUID
+    var profile: String
+    var deviceID: String
+
+    static let storageKey = "conduit.healthSync.pendingDeletion.v1"
+
+    static func load(from defaults: UserDefaults = .standard) -> HealthSyncPendingDeletion? {
+        defaults.data(forKey: storageKey).flatMap { try? JSONDecoder().decode(HealthSyncPendingDeletion.self, from: $0) }
+    }
+
+    func save(to defaults: UserDefaults = .standard) {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        defaults.set(data, forKey: Self.storageKey)
+    }
+
+    static func clear(from defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: storageKey)
     }
 }
 

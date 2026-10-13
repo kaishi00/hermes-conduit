@@ -208,7 +208,7 @@ struct HealthSleepSegment: Equatable {
     var fromWatch: Bool
 }
 
-/// The nightly summary rule (designs/health-sync.md): a night runs noon to
+/// The nightly summary rule: a night runs noon to
 /// noon and is named by the morning it ends. Apps overlap, so one source
 /// is chosen per night: an Apple Watch first, otherwise the source with the
 /// most time asleep (in bed when nothing says asleep). Fixed and

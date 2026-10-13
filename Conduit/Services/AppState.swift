@@ -17714,7 +17714,7 @@ final class AppState: ObservableObject {
 
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus()
-    /// Apple Health sharing with one Hermes profile (designs/health-sync.md).
+    /// Apple Health sharing with one Hermes profile.
     /// Off until the user turns it on in Settings > Health.
     @Published var healthSyncPreferences = HealthSyncPreferences.load()
     lazy var healthSync = HealthSyncEngine(source: HealthKitDataSource(), deviceName: { UIDevice.current.name })
@@ -26550,7 +26550,7 @@ enum KeychainHelper {
         delete(account: pushRegistrationKey)
     }
 
-    // MARK: Health sync key (designs/health-sync.md)
+    // MARK: Health sync key
 
     /// The key this phone agreed with the Hermes profile it shares health
     /// data with. Readable after first unlock: background syncs need it.

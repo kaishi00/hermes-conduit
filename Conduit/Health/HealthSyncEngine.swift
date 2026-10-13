@@ -165,11 +165,16 @@ final class HealthSyncEngine: ObservableObject {
     }
 
     /// Sharing turned off: forget the key, the anchors and the cursor, and
-    /// optionally delete this phone's data on the host first.
+    /// optionally delete this phone's data on the host first. True when the
+    /// host confirmed the deletion.
     func turnOff(deleteFromHost request: Request?) async -> Bool {
-        running?.cancel()
+        // A pass still running could save a key after it was forgotten.
+        if let running {
+            running.cancel()
+            _ = await running.value
+        }
         await source.stopObserving()
-        var deleted = request == nil
+        var deleted = false
         if let request {
             do {
                 _ = try await request("\(Self.base)/wipe", "POST", ["device_id": state.deviceID])
@@ -264,6 +269,8 @@ final class HealthSyncEngine: ObservableObject {
             throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The host didn't return a health key."))
         }
         let key = try HealthSyncCrypto.agree(devicePrivate: devicePrivate, deviceID: state.deviceID, hostPublicKey: hostPublic, kid: kid)
+        // Turned off while the host answered: keep nothing.
+        try Task.checkCancellation()
         keys.save(key)
         // The host has nothing from this key yet.
         restart()
