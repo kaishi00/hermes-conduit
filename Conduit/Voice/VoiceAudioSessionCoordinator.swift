@@ -121,6 +121,8 @@ final class VoiceAudioSessionCoordinator {
     /// call is gone: the conversation then uses the call's policy, whose
     /// speaker the call screen can turn off.
     private(set) var isInNativeCall = false
+    /// The call's audio has had its one move to the loudspeaker.
+    private var nativeCallSpeakerChosen = false
 
     enum Policy: Equatable {
         /// `.playAndRecord` + `.voiceChat`: Voice Conversation capture, and
@@ -244,10 +246,13 @@ final class VoiceAudioSessionCoordinator {
     /// CallKit activated.
     func configureForIncomingCall() {
         isInNativeCall = true
+        nativeCallSpeakerChosen = false
+        // Raised first: a conversation already holding the session must
+        // move onto the call's policy even if this category change fails.
+        needsReapply = true
         let configuration = VoiceAudioSessionConfiguration.nativeCall
         do {
             try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
-            needsReapply = true
         } catch {
             audioSessionLogger.error("incoming call category failed: \(String(describing: error), privacy: .public)")
         }
@@ -255,8 +260,11 @@ final class VoiceAudioSessionCoordinator {
 
     /// CallKit activated the call's audio: it starts on the loudspeaker as
     /// it always has, now as an override the Speaker button can clear.
+    /// Only the first activation: CallKit activates again after an
+    /// interruption, and that must not undo the earpiece the user chose.
     func nativeCallAudioActivated() {
-        guard isInNativeCall else { return }
+        guard isInNativeCall, !nativeCallSpeakerChosen else { return }
+        nativeCallSpeakerChosen = true
         do {
             try session.overrideOutputToSpeaker()
         } catch {
@@ -265,11 +273,18 @@ final class VoiceAudioSessionCoordinator {
     }
 
     /// The last call from Hermes is gone: a conversation still holding the
-    /// session goes back to its own policy on its next transition.
+    /// session goes back to its own policy now, speaker by default.
     func nativeCallEnded() {
         guard isInNativeCall else { return }
         isInNativeCall = false
         needsReapply = true
+        guard !leases.isEmpty else { return }
+        do {
+            try applyDominantPolicy()
+        } catch {
+            // needsReapply stays raised: the next transition retries.
+            audioSessionLogger.error("conversation policy after the call failed: \(String(describing: error), privacy: .public)")
+        }
     }
 
     /// Reapplies the dominant policy after the system may have deactivated
