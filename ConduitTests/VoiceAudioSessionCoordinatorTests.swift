@@ -569,6 +569,31 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(session.speakerOverrides, 0, "an override posts a route change: only when it's needed")
     }
 
+    func testOptionsTheSystemAddsStillCountAsTheCallsCategory() throws {
+        session.reportsCurrentCategory = true
+        session.systemAddedOptions = [.allowBluetoothA2DP]
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        _ = try coordinator.acquire(.conversationCapture)
+        session.resetRecordings()
+
+        try coordinator.reassert()
+
+        XCTAssertTrue(session.categoryCalls.isEmpty)
+        XCTAssertEqual(session.speakerOverrides, 0)
+    }
+
+    func testASpeakerDefaultReportedByTheSessionIsNotTheCallsCategory() throws {
+        session.reportsCurrentCategory = true
+        session.systemAddedOptions = [.defaultToSpeaker]
+        coordinator.configureForIncomingCall()
+        session.resetRecordings()
+
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertEqual(session.categoryCalls.count, 1, "a speaker default must be cleared, or the Speaker button can't reach the earpiece")
+    }
+
     func testReapplyInANativeCallLeavesTheEarpieceTheUserChose() throws {
         coordinator.configureForIncomingCall()
         coordinator.nativeCallAudioActivated()
@@ -668,9 +693,19 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     var overrideError: Error?
     private var speakerOverridden = false
 
+    /// Option bits the system adds on its own, reported on top of the
+    /// last category set.
+    var systemAddedOptions: AVAudioSession.CategoryOptions = []
+
+    /// The production rule: category and mode match, the options cover the
+    /// configuration's, and both agree on the speaker default.
     func isConfigured(as configuration: VoiceAudioSessionConfiguration) -> Bool {
         guard reportsCurrentCategory, let last = categoryCalls.last else { return false }
-        return last == CategoryCall(category: configuration.category, mode: configuration.mode, options: configuration.options)
+        let reported = last.options.union(systemAddedOptions)
+        return last.category == configuration.category
+            && last.mode == configuration.mode
+            && reported.isSuperset(of: configuration.options)
+            && reported.contains(.defaultToSpeaker) == configuration.options.contains(.defaultToSpeaker)
     }
 
     func overrideOutputToSpeaker() throws {
