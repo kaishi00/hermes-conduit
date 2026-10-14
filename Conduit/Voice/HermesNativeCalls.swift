@@ -299,11 +299,8 @@ final class HermesNativeCalls: NSObject {
         // `connect` still hears a Watch that answered first.
         var carSettling: Task<HermesRingSettleResult, Never>?
         if watchStops, let ring {
-            if plan == .ring, call.target != nil {
-                carSettling = Task { await HermesRingSettler.settle(ring, by: .phone, outcome: .declined) }
-            } else {
-                settleRing(ring, outcome: .declined)
-            }
+            let settling = settleRing(ring, outcome: .declined)
+            if plan == .ring { carSettling = settling }
         }
         // A push while a call is live ends at once: the live call keeps
         // its trace.
@@ -374,7 +371,7 @@ final class HermesNativeCalls: NSObject {
             if code != .callUUIDAlreadyExists, plan == .ring || plan == .endAtOnce(.missed) {
                 report(.missed, for: target, sentAt: sentAt)
             }
-            if let ring, Self.stopsWatchRing(after: code) {
+            if let ring, plan == .ring, Self.stopsWatchRing(after: code) {
                 if traced { HermesCallTrace.shared.note("Silenced here: the Watch stops ringing too") }
                 settleRing(ring, outcome: .declined)
             }
@@ -713,7 +710,8 @@ final class HermesNativeCalls: NSObject {
 
     /// Tells the relay how this phone settled the ring, with the time to
     /// finish if Conduit goes back to the background meanwhile.
-    private func settleRing(_ ring: HermesRing, outcome: HermesRingOutcome) {
+    @discardableResult
+    private func settleRing(_ ring: HermesRing, outcome: HermesRingOutcome) -> Task<HermesRingSettleResult, Never> {
         var taskID = UIBackgroundTaskIdentifier.invalid
         let end = {
             guard taskID != .invalid else { return }
@@ -721,9 +719,10 @@ final class HermesNativeCalls: NSObject {
             taskID = .invalid
         }
         taskID = UIApplication.shared.beginBackgroundTask(withName: "conduit.hermesCall.settle", expirationHandler: end)
-        Task {
-            _ = await HermesRingSettler.settle(ring, by: .phone, outcome: outcome)
+        return Task {
+            let result = await HermesRingSettler.settle(ring, by: .phone, outcome: outcome)
             end()
+            return result
         }
     }
 
