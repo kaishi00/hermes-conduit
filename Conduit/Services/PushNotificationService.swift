@@ -1223,11 +1223,14 @@ final class PushNotificationService: ObservableObject {
     ) async throws {
         // Not mid-move: a code from the old relay is useless once the move lands.
         guard !isWorking, let registration else { throw DashboardTicketBridgeError.notReady }
+        // One pairing at a time: the button and the automatic one can't overlap.
+        isWorking = true
+        defer { isWorking = false }
         let pairing = try await requestPairingCode(registration: registration, dashboardID: dashboardID)
         let body: [String: Any] = ["pairing_code": pairing.pairingCode, "relay_url": relayURL.absoluteString]
         let response = try await request(DashboardPath.withProfile(Self.pairPath, profile: profile), "POST", body)
         guard response["ok"] as? Bool == true, response["installation_id"] as? String == registration.installationID else {
-            throw DashboardTicketBridgeError.http(status: 0, detail: AppLocalization.string("The plugin didn't confirm the pairing."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the pairing."))
         }
         await refreshMeta()
     }

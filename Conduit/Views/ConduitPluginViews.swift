@@ -402,6 +402,8 @@ struct NotifierPluginUpdateBanner: View {
                     Image(systemName: "xmark")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel(Text(AppLocalization.string("Not now")))
             }
@@ -409,7 +411,9 @@ struct NotifierPluginUpdateBanner: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .conduitGlassSurface(cornerRadius: 18, tint: .conduitAura.opacity(0.08))
-        .task(id: text) {
+        // The notice and how it ended are announced; each step isn't.
+        .task(id: update.isInProgress ? nil : text) {
+            guard !update.isInProgress else { return }
             UIAccessibility.post(notification: .announcement, argument: text)
         }
         // A finished update leaves on its own; with VoiceOver on it stays

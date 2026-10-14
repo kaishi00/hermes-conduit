@@ -71,6 +71,14 @@ extension AppState {
         notifierPluginUpdate.dismiss()
     }
 
+    /// "Restart the dashboard to finish" is stale once the plugin reports
+    /// nothing left to do: the user restarted Hermes.
+    func clearSettledNotifierPluginUpdateOutcome() {
+        guard case .needsDashboardRestart = activeNotifierPluginUpdate,
+              !notifierPlugin.updateAvailable, !notifierPlugin.restartPending else { return }
+        dismissNotifierPluginUpdateOutcome()
+    }
+
     /// Stops following an update and forgets it, for sign-out. Hermes
     /// finishes whatever step it already took.
     func stopFollowingNotifierPluginUpdate() {
@@ -84,12 +92,17 @@ extension AppState {
     static let dismissedPluginUpdateKey = "conduit.notifierPlugin.dismissedUpdateVersion"
 
     /// The notice over the main screen: an update is offered, or one is
-    /// running or just ended. "Not now" hides it until a newer Conduit
-    /// offers a newer plugin.
+    /// running or just ended. "Not now" hides it on this dashboard until a
+    /// newer Conduit offers a newer plugin.
     var showsNotifierPluginUpdateNotice: Bool {
         if activeNotifierPluginUpdate != .idle { return true }
         guard notifierPlugin.updateAvailable else { return false }
-        return dismissedPluginUpdateVersion != notifierPlugin.offeredVersion
+        return dismissedPluginUpdateVersion != pluginUpdateDismissalToken
+    }
+
+    /// "Not now" belongs to one dashboard and one offered version.
+    private var pluginUpdateDismissalToken: String {
+        "\(activeDashboardID?.uuidString ?? "")|\(notifierPlugin.offeredVersion)"
     }
 
     func dismissNotifierPluginUpdateNotice() {
@@ -97,7 +110,7 @@ extension AppState {
         if activeNotifierPluginUpdate != .idle {
             dismissNotifierPluginUpdateOutcome()
         } else {
-            dismissedPluginUpdateVersion = notifierPlugin.offeredVersion
+            dismissedPluginUpdateVersion = pluginUpdateDismissalToken
         }
     }
 
@@ -115,12 +128,17 @@ extension AppState {
               let dashboardID = activeDashboardID else { return }
         let profile = activeProfile
         let attempt = "\(dashboardID.uuidString)|\(profile)"
-        guard !automaticPairingAttempts.contains(attempt) else { return }
+        // Taken before the first await, so refreshes running side by side
+        // check (and pair) once.
+        guard automaticPairingAttempts.insert(attempt).inserted else { return }
         let statusPath = DashboardPath.withProfile(PushNotificationService.e2ePath, profile: profile)
-        guard let status = try? await bridge.requestJSON(path: statusPath),
-              bridge === dashboardTicketBridge,
+        guard let status = try? await bridge.requestJSON(path: statusPath) else {
+            // Nothing learned: the next refresh asks again.
+            automaticPairingAttempts.remove(attempt)
+            return
+        }
+        guard bridge === dashboardTicketBridge,
               PushNotificationService.profilePairing(status: status, installationID: installationID) == .unpaired else { return }
-        automaticPairingAttempts.insert(attempt)
         try? await pairProfile(profile, bridge: bridge, dashboardID: dashboardID)
     }
 
@@ -144,6 +162,6 @@ extension AppState {
             return try await bridge.requestJSON(path: path, method: method, body: body)
         }
         // The new pairing gets its key right away, before its first push.
-        await refreshNotifierPluginStatus()
+        await provisionNotificationEncryption(bridge: bridge)
     }
 }

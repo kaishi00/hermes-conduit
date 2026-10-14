@@ -9267,6 +9267,7 @@ final class AppState: ObservableObject {
         // stops following it.
         stopFollowingGatewayRestart()
         stopFollowingNotifierPluginUpdate()
+        automaticPairingAttempts.removeAll()
         cancelScenePhaseAttempt()
         owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
@@ -17896,8 +17897,7 @@ final class AppState: ObservableObject {
         guard bridge === dashboardTicketBridge, state != .unknown else { return }
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
-        // Notifications from this dashboard's profile, without a pairing code.
-        await pairActiveProfileAutomatically(bridge: bridge)
+        clearSettledNotifierPluginUpdateOutcome()
         // Calls declined or missed while this host was out of reach.
         deliverHermesCallOutcomes()
         // Whether calls can ring the Watch, for this host and profile.
@@ -17905,6 +17905,9 @@ final class AppState: ObservableObject {
         // Settings Hermes may change: share them, take its requests.
         Task { await syncAgentSettings() }
         await provisionNotificationEncryption(bridge: bridge)
+        // Notifications from this dashboard's profile, without a pairing
+        // code, after the rest so connecting doesn't wait on it.
+        Task { await pairActiveProfileAutomatically(bridge: bridge) }
     }
 
     /// Hands each of this dashboard's paired profiles an end-to-end
@@ -17912,7 +17915,7 @@ final class AppState: ObservableObject {
     /// connection so the key never passes through the push relay. Runs on
     /// every connect and Settings > Notifications visit; pairings that
     /// already have a key are left alone.
-    private func provisionNotificationEncryption(bridge: DashboardTicketBridge) async {
+    func provisionNotificationEncryption(bridge: DashboardTicketBridge) async {
         let notifications = PushNotificationService.shared
         guard case .reported(_, let capabilities) = notifierPlugin.state,
               capabilities.contains("e2e-notifications"),
