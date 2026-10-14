@@ -115,8 +115,7 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
             intent: SendToHermesIntent(),
             phrases: [
                 "Ask Hermes in \(.applicationName)",
-                "Send to Hermes in \(.applicationName)",
-                "Ask \(.applicationName)"
+                "Send to Hermes in \(.applicationName)"
             ],
             shortTitle: "Ask Hermes",
             systemImageName: "paperplane.fill"

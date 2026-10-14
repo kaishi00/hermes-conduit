@@ -163,8 +163,9 @@ struct ShortcutSender {
         var chat: VoiceThreadTarget
         var runtimeID: String
         var reused = false
-        if let name, var saved = chats.chat(named: name, profile: profile), let resumed = try await resume(saved) {
-            if !resumed.isEmpty { saved.runtimeSessionID = resumed }
+        if let name, var saved = chats.chat(named: name, profile: profile), let resumed = try await resume(saved),
+           !resumed.isEmpty {
+            saved.runtimeSessionID = resumed
             chat = saved
             runtimeID = resumed
             reused = true

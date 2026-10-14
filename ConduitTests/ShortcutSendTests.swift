@@ -168,11 +168,11 @@ extension ScreenQuestionTests {
         let hermes = FakeHermes()
         let chats = shortcutChats()
         hermes.polls = [[liveRow("run-1", "idle")], [liveRow("run-1", "idle")], [liveRow("run-1", "working")], [liveRow("run-1", "idle")]]
-        hermes.replies = ["Done."]
+        hermes.replies = [nil, nil, "Done."]
         let outcome = try await sender(hermes, chats).send(shortcutRequest("Go", wait: true), deadline: hermes.now.addingTimeInterval(25))
 
         XCTAssertEqual(outcome, .answered("Done."))
-        XCTAssertEqual(hermes.replyReads, 1)
+        XCTAssertEqual(hermes.replyReads, 3, "Each early idle poll only looked for a reply")
     }
 
     @MainActor

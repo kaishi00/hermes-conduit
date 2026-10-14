@@ -54,7 +54,9 @@ extension AppState {
                 guard let self, let client = self.client else { throw HermesError.notConnected }
                 // Shortcut text is literal: "/…" never runs a composer command.
                 if self.isOpenChat(self.scopedShortcutChat(chat)), !self.isBusy, Self.parseSlashCommand(text) == nil {
-                    if await self.submitComposer(text: text) { return .accepted }
+                    // A turn the composer finds running is never steered or
+                    // interrupted from here: it declines and the gateway queues.
+                    if await self.submitComposer(text: text, onBusy: {}) { return .accepted }
                 }
                 // Off screen, a turn running there, or a composer that couldn't
                 // take it (still synchronizing): Hermes takes it, queues it or
