@@ -52,7 +52,10 @@ final class DevicePhoneStatusSource: PhoneStatusSource {
 
     func snapshot() async -> [String: Any] {
         let device = UIDevice.current
+        // On only for this read, then back to how it was.
+        let wasMonitoring = device.isBatteryMonitoringEnabled
         device.isBatteryMonitoringEnabled = true
+        defer { if !wasMonitoring { device.isBatteryMonitoringEnabled = false } }
         var value: [String: Any] = [
             "at": PhoneDates.format(Date()),
             "low_power": ProcessInfo.processInfo.isLowPowerModeEnabled,

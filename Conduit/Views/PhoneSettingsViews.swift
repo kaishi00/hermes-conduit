@@ -21,7 +21,7 @@ struct PhoneSettingsPage: View {
     @State private var showsTurnOff = false
     @State private var isWorking = false
     @State private var errorMessage: String?
-    @State private var calendars: [[String: Any]] = []
+    @State private var calendars: [PhoneCalendarRow] = []
 
     private var preferences: PhoneSyncPreferences { engine.preferences }
     private var pluginServes: Bool { appState.notifierPlugin.reports(AppState.phoneSyncCapability) }
@@ -144,10 +144,9 @@ struct PhoneSettingsPage: View {
             }
             if preferences.isOn, !calendars.isEmpty {
                 DisclosureGroup("Calendars and lists") {
-                    ForEach(calendars.indices, id: \.self) { index in
-                        let entry = calendars[index]
-                        Toggle(isOn: calendarBinding(entry)) {
-                            Text(entry["title"] as? String ?? "")
+                    ForEach(calendars) { row in
+                        Toggle(isOn: calendarBinding(row)) {
+                            Text(row.title)
                         }
                         .font(.subheadline)
                     }
@@ -255,9 +254,8 @@ struct PhoneSettingsPage: View {
 
     /// A calendar or list is shared unless the user left it out; the list
     /// has hashed ids, so it's matched the way the engine hashes them.
-    private func calendarBinding(_ entry: [String: Any]) -> Binding<Bool> {
-        let id = entry["id"] as? String ?? ""
-        let eventKitID = engine.calendarSource.eventKitCalendarID(forShared: id)
+    private func calendarBinding(_ row: PhoneCalendarRow) -> Binding<Bool> {
+        let eventKitID = row.eventKitID
         return Binding(
             get: { eventKitID.map { !choices.hiddenCalendars.contains($0) } ?? true },
             set: { shown in
@@ -280,7 +278,13 @@ struct PhoneSettingsPage: View {
     private func loadCalendars() {
         guard preferences.isOn else { return }
         let source = engine.calendarSource
+        // EventKit ids are looked up once here, not on every redraw.
         calendars = source.calendars(eventsReadable: source.eventAccess == .full, reminders: source.remindersAuthorized)
+            .compactMap { entry in
+                guard let id = entry["id"] as? String else { return nil }
+                return PhoneCalendarRow(id: id, title: entry["title"] as? String ?? "",
+                                        eventKitID: source.eventKitCalendarID(forShared: id))
+            }
     }
 
     private func applyIfOn() {
@@ -487,6 +491,13 @@ struct PhoneChangeCard: View {
         .padding(.horizontal, 12)
         .accessibilityElement(children: .contain)
     }
+}
+
+/// One calendar or reminder list in Settings, by its shared id.
+struct PhoneCalendarRow: Identifiable {
+    let id: String
+    let title: String
+    let eventKitID: String?
 }
 
 /// Shown after an addition went in without asking, with Undo.

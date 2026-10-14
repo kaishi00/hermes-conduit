@@ -58,9 +58,17 @@ protocol PhoneCalendarSource: AnyObject {
     func startObservingChanges(_ handler: @escaping @Sendable () -> Void)
 }
 
+/// The async reads run off the main thread; everything else (applying
+/// changes, the calendar list, the change observer) is called from the main
+/// actor by PhoneSyncEngine and the settings page. The one piece of state
+/// both sides touch, the reminder id map, is behind a lock.
 final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
     private let store = EKEventStore()
     private var observer: NSObjectProtocol?
+    private let lock = NSLock()
+    /// Shared reminder id to EventKit's, from the last read, so applying a
+    /// change finds its reminder without fetching them all.
+    private var reminderIdentifiers: [String: String] = [:]
 
     var eventAccess: PhoneCalendarAccess {
         switch EKEventStore.authorizationStatus(for: .event) {
@@ -157,7 +165,8 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         guard !calendars.isEmpty else { return [] }
         let predicate = store.predicateForEvents(withStart: from, end: to, calendars: calendars)
         let found = store.events(matching: predicate).sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
-        return found.prefix(limit).compactMap { Self.json($0, details: details, emails: emails) }
+        // Cut after dropping unreadable items, so a full list means the cut was hit.
+        return Array(found.lazy.compactMap { Self.json($0, details: details, emails: emails) }.prefix(limit))
     }
 
     static func json(_ event: EKEvent, details: Bool, emails: Bool) -> [String: Any]? {
@@ -208,12 +217,20 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         guard !calendars.isEmpty else { return [] }
         let open = await fetch(store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars))
         let done = await fetch(store.predicateForCompletedReminders(withCompletionDateStarting: completedSince, ending: nil, calendars: calendars))
-        return (open + done).prefix(limit).compactMap { Self.json($0, details: details) }
+        let all = open + done
+        var identifiers: [String: String] = [:]
+        for reminder in all { identifiers[Self.reminderID(reminder)] = reminder.calendarItemIdentifier }
+        lock.withLock { reminderIdentifiers = identifiers }
+        return Array(all.lazy.compactMap { Self.json($0, details: details) }.prefix(limit))
     }
 
     private func fetch(_ predicate: NSPredicate) async -> [EKReminder] {
         await withCheckedContinuation { continuation in
-            store.fetchReminders(matching: predicate) { found in continuation.resume(returning: found ?? []) }
+            // EventKit can call this more than once; only the first counts.
+            let once = ResumeOnce()
+            store.fetchReminders(matching: predicate) { found in
+                if once.claim() { continuation.resume(returning: found ?? []) }
+            }
         }
     }
 
@@ -281,6 +298,10 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
 
     private func findReminder(_ id: String) async throws -> EKReminder {
         guard remindersAuthorized else { throw PhoneCalendarSourceError.denied }
+        let known = lock.withLock { reminderIdentifiers[id] }
+        if let known, let reminder = store.calendarItem(withIdentifier: known) as? EKReminder, Self.reminderID(reminder) == id {
+            return reminder
+        }
         let all = await fetch(store.predicateForReminders(in: nil))
         guard let reminder = all.first(where: { Self.reminderID($0) == id }) else { throw PhoneCalendarSourceError.notFound }
         return reminder
@@ -406,7 +427,8 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
     // MARK: Spelling
 
     private static func hex(_ color: CGColor?) -> String {
-        guard let color, let components = color.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil)?.components,
+        guard let color, let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let components = color.converted(to: space, intent: .defaultIntent, options: nil)?.components,
               components.count >= 3 else { return "#888888" }
         let value = components.prefix(3).map { Int((max(0, min(1, $0)) * 255).rounded()) }
         return String(format: "#%02X%02X%02X", value[0], value[1], value[2])
@@ -448,6 +470,20 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
         case .chair: return "chair"
         case .nonParticipant: return "non_participant"
         default: return "unknown"
+        }
+    }
+}
+
+/// Lets a callback that may run more than once resume a continuation once.
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+
+    func claim() -> Bool {
+        lock.withLock {
+            guard !claimed else { return false }
+            claimed = true
+            return true
         }
     }
 }

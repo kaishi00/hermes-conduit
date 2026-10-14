@@ -501,7 +501,10 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     nonisolated static func hash(_ value: Any) -> String {
-        let data = (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])) ?? Data()
+        // Anything JSON can't spell still hashes by its description, never
+        // all to the same empty value.
+        let data = (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]))
+            ?? Data(String(describing: value).utf8)
         return SHA256.hash(data: data).prefix(12).map { String(format: "%02x", $0) }.joined()
     }
 
