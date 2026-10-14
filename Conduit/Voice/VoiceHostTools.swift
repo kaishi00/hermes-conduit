@@ -113,11 +113,16 @@ struct VoiceHostTool {
             let items = trimmed.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             return items.isEmpty ? nil : items
         case "integer":
-            return Int(trimmed) ?? Double(trimmed).flatMap { Int(exactly: $0.rounded()) }
+            // "7" or "7.0"; "7.5" isn't a whole number, so it isn't sent.
+            return Int(trimmed) ?? Double(trimmed).flatMap { Int(exactly: $0) }
         case "number":
             return Double(trimmed)
         case "boolean":
-            return ["true", "1", "yes"].contains(trimmed.lowercased())
+            switch trimmed.lowercased() {
+            case "true", "1", "yes": return true
+            case "false", "0", "no": return false
+            default: return nil
+            }
         case "object":
             return try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any]
         default:
@@ -182,7 +187,11 @@ struct VoiceHostTool {
               let text = String(data: data, encoding: .utf8) else {
             return ["error": "The host's answer couldn't be read."]
         }
-        return ["result": String(text.prefix(maximumResultCharacters)), "note": answerNote]
+        // Cut JSON would read as wrong numbers: ask for less instead.
+        guard text.count <= maximumResultCharacters else {
+            return ["error": "That answer is too long for a call. Ask for fewer days or metrics."]
+        }
+        return ["result": text, "note": answerNote]
     }
 
     /// GPT-Live's delegation answer.

@@ -327,8 +327,10 @@ struct HealthVoiceReadLog: Codable, Equatable {
         var mode: String
         /// The tool's action ("sleep", "daily").
         var action: String
+        /// Two reads can share a timestamp; not stored.
+        var id = UUID()
 
-        var id: Date { at }
+        private enum CodingKeys: String, CodingKey { case at, mode, action }
     }
 
     var entries: [Entry] = []

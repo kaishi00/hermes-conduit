@@ -69,6 +69,15 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(arguments["metrics"] as? [String], ["steps", "heart_rate"])
         XCTAssertEqual(arguments["days"] as? Int, 7)
         XCTAssertNil(arguments["secret"], "Only the schema's own arguments go to the host")
+        XCTAssertEqual(tool.arguments(from: ["days": "7.0"])["days"] as? Int, 7)
+        XCTAssertNil(tool.arguments(from: ["days": "7.5"])["days"], "Not a whole number: not sent as a guess")
+        XCTAssertEqual(VoiceHostTool.convert("no", to: ["type": "boolean"]) as? Bool, false)
+        XCTAssertNil(VoiceHostTool.convert("banana", to: ["type": "boolean"]))
+
+        // An answer too long for a call asks for less rather than cutting the JSON.
+        let long = VoiceHostTool.modelResult(["text": String(repeating: "x", count: VoiceHostTool.maximumResultCharacters)])
+        XCTAssertNil(long["result"])
+        XCTAssertNotNil(long["error"])
 
         // GPT-Live delegates "Health: {json}" with real JSON types.
         let marked = try XCTUnwrap(VoiceHostTool.marked(in: #"health: {"action": "daily", "metrics": ["steps"]} please"#, tools: [tool]))

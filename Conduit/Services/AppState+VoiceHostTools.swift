@@ -74,11 +74,19 @@ extension AppState {
         }
     }
 
+    /// Bumped by each call's prepare, so an older one still fetching can't
+    /// hand its mode's tools (and that mode's consent) to a newer call.
+    @MainActor private static var voiceToolsGeneration = 0
+
     /// Sets the running call's host tools for `mode`.
     func prepareVoiceHostTools(for mode: LiveVoiceModeName) async {
         let supervisor = voiceBackgroundJobSupervisor
+        Self.voiceToolsGeneration += 1
+        let mine = Self.voiceToolsGeneration
         supervisor.hostTools = []
+        supervisor.runHostTool = nil
         let tools = await voiceHostTools(for: mode)
+        guard mine == Self.voiceToolsGeneration else { return }
         supervisor.hostTools = tools
         supervisor.runHostTool = { [weak self] tool, arguments in
             await self?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
