@@ -248,7 +248,10 @@ final class LiveTurnActivities {
             // Finished, but Conduit stopped before ending it.
             if activity.content.state.turnPhase.isFinished {
                 let content = ActivityContent(state: activity.content.state, staleDate: nil)
-                Task { await activity.end(content, dismissalPolicy: .default) }
+                // Gone 5 minutes after the turn ended, like any other finish.
+                let ended = activity.content.state.endDate ?? Date()
+                let dismissal = ActivityUIDismissalPolicy.after(ended.addingTimeInterval(Self.dismissAfterEnd))
+                Task { await activity.end(content, dismissalPolicy: dismissal) }
                 continue
             }
             track(activity, state: activity.content.state)
