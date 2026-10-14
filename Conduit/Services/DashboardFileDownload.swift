@@ -47,7 +47,12 @@ extension DashboardTicketBridge {
             // past it and try once more, as `requestJSON` does.
             guard let nativeOAuthSession, !isInvalidated else { throw DashboardTicketBridgeError.signInRequired }
             let retry = try await nativeOAuthSession.authorizedRequest(path: path, replacing: request)
-            return try await Self.download(retry, filename: filename, into: root, maxBytes: maxBytes)
+            do {
+                return try await Self.download(retry, filename: filename, into: root, maxBytes: maxBytes)
+            } catch DashboardTicketBridgeError.signInRequired {
+                nativeOAuthSession.discardRejectedGrant()
+                throw DashboardTicketBridgeError.signInRequired
+            }
         }
     }
 

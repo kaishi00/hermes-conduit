@@ -1938,6 +1938,7 @@ private struct GatewayMediaFileCard: View {
             loading = false
             failed = outcome != .presented
             tooLarge = outcome == .tooLarge
+            openTask = nil
         }
     }
 

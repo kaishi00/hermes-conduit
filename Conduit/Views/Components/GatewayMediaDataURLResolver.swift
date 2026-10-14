@@ -47,7 +47,7 @@ final class GatewayMediaDataURLResolver {
 }
 
 /// A gateway `MEDIA:` file fetched for opening.
-enum GatewayMediaFileResult {
+enum GatewayMediaFileResult: Sendable {
     /// On disk; the receiver owns the file's directory.
     case downloaded(DashboardDownloadedFile)
     /// Larger than the phone downloads.

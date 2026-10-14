@@ -550,6 +550,18 @@ final class AppState: ObservableObject {
 
     private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
 
+    /// A stable resolver for another profile's media (a Live Voice job that
+    /// ran there), cached so views read the same instance on every pass.
+    func gatewayMediaResolver(for profile: String) -> GatewayMediaDataURLResolver {
+        if profile == activeProfile { return gatewayMediaResolver }
+        if let cached = otherProfileGatewayMediaResolvers[profile] { return cached }
+        let resolver = GatewayMediaDataURLResolver(appState: self, profile: profile)
+        otherProfileGatewayMediaResolvers[profile] = resolver
+        return resolver
+    }
+
+    private var otherProfileGatewayMediaResolvers: [String: GatewayMediaDataURLResolver] = [:]
+
     @Published private(set) var activeProfile: String = "default" {
         didSet {
             refreshActiveChatScrollSessionIdentity()

@@ -432,6 +432,13 @@ final class NativeOAuthSession {
         return request
     }
 
+    /// Forgets a grant the server rejected again right after a refresh, as
+    /// `requestJSON`'s replay does.
+    func discardRejectedGrant() {
+        guard !isInvalidated else { return }
+        KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
+    }
+
     func mintTicket() async throws -> String {
         let response = try await requestJSON(path: "/api/auth/ws-ticket", method: "POST")
         guard let ticket = response["ticket"] as? String, !ticket.isEmpty else {
